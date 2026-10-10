@@ -8,7 +8,7 @@ import * as React from "react";
 
 import { cn } from "../../../utils/cn";
 import { PanelHeader } from "./page-panel-header";
-import { PagePanelRoot } from "./page-panel-root";
+import { PagePanelRoot } from "./page-panel-layout";
 import type { PagePanelCollapsibleSectionProps } from "./page-panel-types";
 
 export const PagePanelCollapsibleSection = React.forwardRef<

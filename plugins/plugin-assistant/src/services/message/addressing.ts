@@ -16,11 +16,9 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   MESSAGE_SOURCE_TRIGGER_PROMPT,
 } from "@elizaos/core";
-import {
-  type ReplyGateMode,
-  resolveEffectiveReplyGate,
-} from "../../features/advanced-capabilities/personality";
+import { resolveEffectiveReplyGate } from "../../features/advanced-capabilities/personality/reply-gate.ts";
 import { getPersonalityStore } from "../../features/advanced-capabilities/personality/services/personality-store.ts";
+import type { ReplyGateMode } from "../../features/advanced-capabilities/personality/types.ts";
 import { isUnaddressedTextGroupTurn } from "./stage1-prompt-tier.ts";
 
 export function escapeRegex(value: string): string {

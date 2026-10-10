@@ -3,8 +3,9 @@
 Shared host configuration, boot aliases and HTTP plugin lifecycle. Hosts install
 route lifecycle explicitly and own authentication, storage and model composition.
 
-Use `@elizaos/host` for Node HTTP helpers and `@elizaos/host/protocol` for
-browser-safe contracts and configuration. `@elizaos/host/native-host` exposes
+Use `@elizaos/host` for Node HTTP helpers, build variants and native library
+policy; use `@elizaos/host/protocol` for browser-safe contracts, platform detection
+and configuration. `@elizaos/host/native-host` exposes
 Node-only SQLite task gateways, research collection and trace transport, database
 leases, and verified document-runtime packaging. Consumers supply authentication,
 consent, measurement policy and lifecycle ownership. Internal code imports defining files.
@@ -78,4 +79,11 @@ explicit configuration and host factories. It reads selected token/binding files
 chooses the file store or native credential broker, prepares desktop task runtime,
 and hands resources to the shared gateway lifecycle. It does not read environment
 variables or choose product identities. Native admission validates the private
-inbound token, broker endpoint and gateway port before acquiring helpers.
+inbound token, broker endpoint and gateway port before acquiring helpers. A
+desktop host sets `requireInboundToken: true` to require the same inbound token.
+
+`@elizaos/host/voice/*` contains the reusable realtime voice transport, Cartesia
+Ink/Sonic adapters, Fish adapter, and canonical conversation SSE bridge. Hosts
+must inject token verification, owner/session authorization, conversation scope,
+revocation and usage storage; importing these modules grants no authority or
+opens provider connections. Cloud retains its JWT and durable Redis policies.

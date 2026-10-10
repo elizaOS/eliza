@@ -5,7 +5,8 @@
  * `parseJsonModelRecord` / `parseJsonModelArray` add shape guards for the common
  * object / array cases.
  */
-import { unwrapWholeCodeFence } from "../utils/code-fence.ts";
+
+import { unwrapWholeCodeFence } from "../markdown/code.ts";
 import {
 	findNextCloseTag,
 	findNextOpenTag,

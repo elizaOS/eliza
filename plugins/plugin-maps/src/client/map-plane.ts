@@ -9,11 +9,32 @@ import {
 import type { Coordinate, Route } from "./contracts.ts";
 export type RegionalMap = {
   base: string;
+  providerId?: string;
   region: string;
   bounds: [number, number, number, number];
   attribution: string;
 };
+/** A search result or other candidate drawn on the map; tapping reports its id. */
+export type MapPin = Readonly<{
+  id: string;
+  label: string;
+  coordinate: Coordinate;
+}>;
+/** Device position from an explicit location session; heading only while moving. */
+export type MapPosition = Readonly<{
+  coordinate: Coordinate;
+  accuracyMeters: number;
+  headingDegrees?: number;
+}>;
+export type MapOverlay = Readonly<{
+  pins?: readonly MapPin[];
+  position?: MapPosition | null;
+  /** Keep the camera on the position, rotated to its heading (navigation). */
+  follow?: boolean;
+}>;
 export interface MapPlaneOptions {
+  /** Called when the user taps a result pin. */
+  onPin?(id: string): void;
   fontUrl: string;
   workerUrl: string;
   accent: string;
@@ -33,6 +54,11 @@ export class MapPlane {
   private lastRoute = "";
   private requested?: Coordinate;
   private requestedRoute?: Route | null;
+  private requestedOverlay: MapOverlay = {};
+  private pins = new Map<string, { key: string; marker: Marker }>();
+  private position?: Marker;
+  private lastPosition = "";
+  private following = false;
   constructor(
     container: HTMLElement,
     region: RegionalMap,
@@ -187,13 +213,97 @@ export class MapPlane {
     });
     this.map.on("load", () => {
       container.dataset.mapReady = "true";
-      this.update(this.requested, this.requestedRoute);
+      this.update(this.requested, this.requestedRoute, this.requestedOverlay);
     });
   }
-  update(selected?: Coordinate, route?: Route | null) {
+  private drawPins(pins: readonly MapPin[]) {
+    const wanted = new Set(pins.map((pin) => pin.id));
+    for (const [id, entry] of this.pins)
+      if (!wanted.has(id)) {
+        entry.marker.remove();
+        this.pins.delete(id);
+      }
+    for (const pin of pins) {
+      const key = `${pin.label}|${pin.coordinate.longitude},${pin.coordinate.latitude}`;
+      const existing = this.pins.get(pin.id);
+      if (existing?.key === key) continue;
+      existing?.marker.remove();
+      const element = document.createElement("button");
+      element.type = "button";
+      element.dataset.mapPin = pin.id;
+      element.setAttribute("aria-label", pin.label);
+      element.style.cssText = `width:22px;height:22px;border-radius:11px;border:3px solid ${this.options.accent};background:#fff;padding:0;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.35)`;
+      element.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this.options.onPin?.(pin.id);
+      });
+      const marker = new Marker({ element })
+        .setLngLat([pin.coordinate.longitude, pin.coordinate.latitude])
+        .addTo(this.map);
+      this.pins.set(pin.id, { key, marker });
+    }
+  }
+  private drawPosition(
+    position: MapPosition | null | undefined,
+    follow: boolean,
+  ) {
+    if (!position) {
+      this.position?.remove();
+      this.position = undefined;
+      this.lastPosition = "";
+      return;
+    }
+    const { coordinate, headingDegrees } = position;
+    if (!this.position) {
+      const element = document.createElement("div");
+      element.dataset.mapPosition = "";
+      element.setAttribute("role", "img");
+      element.setAttribute("aria-label", "Your position");
+      element.style.cssText =
+        "width:28px;height:28px;position:relative;pointer-events:none";
+      const cone = document.createElement("span");
+      cone.dataset.mapHeading = "";
+      cone.style.cssText = `position:absolute;left:7px;top:-9px;width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:14px solid ${this.options.accent};opacity:.85`;
+      const dot = document.createElement("span");
+      dot.style.cssText = `position:absolute;left:5px;top:5px;width:18px;height:18px;border-radius:9px;background:${this.options.accent};border:3px solid #fff;box-sizing:border-box;box-shadow:0 1px 6px rgba(0,0,0,.4)`;
+      element.append(cone, dot);
+      this.position = new Marker({ element, rotationAlignment: "map" })
+        .setLngLat([coordinate.longitude, coordinate.latitude])
+        .addTo(this.map);
+    }
+    const element = this.position.getElement();
+    const cone = element.querySelector<HTMLElement>("[data-map-heading]");
+    if (cone) cone.style.display = headingDegrees === undefined ? "none" : "";
+    element.dataset.mapPosition =
+      headingDegrees === undefined ? "" : String(Math.round(headingDegrees));
+    this.position
+      .setLngLat([coordinate.longitude, coordinate.latitude])
+      .setRotation(headingDegrees ?? 0);
+    const key = `${coordinate.longitude},${coordinate.latitude},${headingDegrees ?? ""},${follow}`;
+    if (follow && key !== this.lastPosition)
+      this.map.easeTo({
+        center: [coordinate.longitude, coordinate.latitude],
+        zoom: Math.max(this.map.getZoom(), 16.5),
+        bearing: headingDegrees ?? this.map.getBearing(),
+        duration: 500,
+      });
+    this.lastPosition = key;
+  }
+  update(
+    selected?: Coordinate,
+    route?: Route | null,
+    overlay: MapOverlay = {},
+  ) {
     this.requested = selected;
     this.requestedRoute = route;
+    this.requestedOverlay = overlay;
     if (!this.map.isStyleLoaded()) return;
+    this.drawPins(overlay.pins || []);
+    this.drawPosition(overlay.position, !!overlay.follow);
+    // Leaving navigation returns the camera to a north-up overview.
+    if (this.following && !overlay.follow)
+      this.map.easeTo({ bearing: 0, duration: 350 });
+    this.following = !!overlay.follow;
     const key = selected ? `${selected.longitude},${selected.latitude}` : "";
     if (key !== this.lastSelection) {
       this.lastSelection = key;
@@ -203,10 +313,11 @@ export class MapPlane {
         this.marker = new Marker({ color: this.options.accent })
           .setLngLat([selected.longitude, selected.latitude])
           .addTo(this.map);
-        this.map.easeTo({
-          center: [selected.longitude, selected.latitude],
-          duration: 350,
-        });
+        if (!overlay.follow)
+          this.map.easeTo({
+            center: [selected.longitude, selected.latitude],
+            duration: 350,
+          });
       }
     }
     const routeKey = route?.id || "";
@@ -232,7 +343,7 @@ export class MapPlane {
         paint: { "line-color": this.options.accent, "line-width": 6 },
       });
     }
-    if (route) {
+    if (route && !overlay.follow) {
       const p = route.geometry;
       this.map.fitBounds(
         [
@@ -250,6 +361,9 @@ export class MapPlane {
     }
   }
   destroy() {
+    for (const entry of this.pins.values()) entry.marker.remove();
+    this.pins.clear();
+    this.position?.remove();
     this.marker?.remove();
     this.map.remove();
   }

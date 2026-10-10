@@ -13,7 +13,6 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 
 ```bash
 bun run --cwd plugins/plugin-native-wifi build  # build
-bun run --cwd plugins/plugin-native-wifi test   # tests
 ```
 
 Android 10+ connection success means an Internet network suggestion was accepted,

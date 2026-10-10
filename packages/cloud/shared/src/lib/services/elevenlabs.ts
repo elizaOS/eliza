@@ -212,7 +212,7 @@ export class ElevenLabsService {
    */
   async speechToText(options: STTOptions): Promise<string> {
     const modelId: Parameters<ElevenLabsClient["speechToText"]["convert"]>[0]["modelId"] =
-      options.modelId === "scribe_v2" ? "scribe_v2" : "scribe_v1";
+      options.modelId === "scribe_v1" ? "scribe_v1" : "scribe_v2";
 
     const FileConstructor = globalThis.File;
     if (!FileConstructor) {

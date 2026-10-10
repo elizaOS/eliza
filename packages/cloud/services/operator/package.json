@@ -48,7 +48,7 @@
     "pepr": "^2.0.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.14",
+    "@biomejs/biome": "2.5.15",
     "@types/bun": "1.4.2",
     "esbuild": "0.28.1",
     "ioredis-mock": "^8.13.1",

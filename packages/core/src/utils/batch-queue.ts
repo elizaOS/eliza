@@ -1,7 +1,5 @@
 import { logger } from "../logger.js";
-import type { JsonValue, UUID } from "../types/primitives.js";
 import type { IAgentRuntime } from "../types/runtime.js";
-import type { Task } from "../types/task.js";
 import {
 	type BackoffPolicy,
 	computeBackoff,

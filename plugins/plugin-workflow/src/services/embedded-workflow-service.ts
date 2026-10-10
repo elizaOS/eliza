@@ -16,7 +16,7 @@ import {
   TRIGGER_SCHEMA_VERSION,
   type TriggerConfig,
 } from '@elizaos/core';
-import { and, asc, desc, eq, gt, notInArray, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, notInArray, or, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import {
   embeddedExecutions,
@@ -58,6 +58,7 @@ import {
   digestSource,
   digestText,
   HOSTED_SPEC,
+  HOSTED_TEMPLATE_VERSION,
   validateDigestSpec,
   writeDigestResult,
 } from './hosted-digest';
@@ -68,6 +69,11 @@ import {
   readHostedGoogleSource,
   validateHostedGoogleSelection,
 } from './hosted-google-source';
+import {
+  assertHostedNativeSource,
+  readHostedNativeSource,
+  validateHostedNativeSelection,
+} from './hosted-native-source';
 import {
   PHONE_COMPILER_KEY,
   PHONE_COMPILER_REVISION,
@@ -453,9 +459,17 @@ export class EmbeddedWorkflowService extends Service {
     digestKeys(v, ['id', 'kind', 'label', 'text', 'observedAt', 'expiresAt', 'confirmed', 'live']);
     if (v.confirmed !== true || !['tasks', 'calendar', 'email', 'notes'].includes(String(v.kind)))
       throw new WorkflowApiError('Review and confirm the exact snapshot', 400);
-    const live = v.live === undefined ? undefined : validateHostedGoogleSelection(v.live);
+    const live =
+      v.live === undefined
+        ? undefined
+        : digestRecord(v.live).provider === 'native'
+          ? validateHostedNativeSelection(v.live)
+          : validateHostedGoogleSelection(v.live);
     if (live) {
-      if (live.kind !== v.kind || v.text !== undefined)
+      if (
+        (live.provider === 'native' ? v.kind !== 'tasks' : live.kind !== v.kind) ||
+        v.text !== undefined
+      )
         throw new WorkflowApiError(
           'Live source must match selected kind and cannot include snapshot text',
           400
@@ -496,7 +510,9 @@ export class EmbeddedWorkflowService extends Service {
     }
     if (live) {
       try {
-        await assertHostedGoogleSource(this.runtime, ownerId, live, Date.parse(expiresAt));
+        if (live.provider === 'native')
+          await assertHostedNativeSource(this.runtime, ownerId, live, Date.parse(expiresAt));
+        else await assertHostedGoogleSource(this.runtime, ownerId, live, Date.parse(expiresAt));
       } catch {
         throw new WorkflowApiError('Selected source permission changed before saving', 409, {
           code: 'HOSTED_SOURCE_NOT_SAVED',
@@ -565,6 +581,20 @@ export class EmbeddedWorkflowService extends Service {
       source = await digestSource(this.getDb(), this.tenantId, ownerId, spec.sourceId);
     if (source.revision !== spec.sourceRevision)
       throw new WorkflowApiError('Reviewed snapshot revision changed', 409);
+    if (source.live?.provider === 'native' && spec.template !== 'morning')
+      throw new WorkflowApiError(
+        'Selected phone sources support a reviewed morning brief or an on-demand dossier',
+        400
+      );
+    if (source.live?.provider === 'native' && spec.enabled) {
+      if (source.revoked || Date.parse(source.expiresAt) <= Date.now())
+        throw new WorkflowApiError('Native source grant expired or revoked', 409);
+      const grant = await assertHostedNativeSource(this.runtime, ownerId, source.live);
+      if (digestRecord(grant.scope).timeZone !== spec.timeZone)
+        throw new WorkflowApiError('Review a native source grant for this schedule time zone', 409);
+    }
+    if (spec.manualOnly)
+      throw new WorkflowApiError('Use explicit dossier execution for manual source reads', 400);
     const receipt = await this.typedMutation(
       ownerId,
       mutationId,
@@ -576,6 +606,79 @@ export class EmbeddedWorkflowService extends Service {
     await this.syncSchedule(await this.getWorkflow(receipt.workflowId));
     return receipt;
   }
+  async runHostedDossier(
+    ownerId: string,
+    sourceId: string,
+    sourceRevision: string,
+    mutationId: string,
+    wait = false
+  ) {
+    const source = await digestSource(this.getDb(), this.tenantId, ownerId, sourceId);
+    if (source.revision !== sourceRevision || source.live?.provider !== 'native')
+      throw new WorkflowApiError('Dossier source binding changed', 409);
+    const definitionKey = digestHash([
+      'native-dossier-definition',
+      ownerId,
+      sourceId,
+      sourceRevision,
+      HOSTED_TEMPLATE_VERSION,
+      PHONE_COMPILER_REVISION,
+    ]);
+    const existing = await this.typedReceipt(ownerId, definitionKey);
+    if (existing) {
+      const prior = await this.getManualSubmission(existing.workflowId, mutationId, ownerId);
+      if (prior) {
+        const running = wait ? this.running.get(prior.id) : undefined;
+        return running ?? prior;
+      }
+    }
+    if (
+      source.revoked ||
+      source.revision !== sourceRevision ||
+      Date.parse(source.expiresAt) <= Date.now() ||
+      source.live?.provider !== 'native'
+    )
+      throw new WorkflowApiError('Review a current native source for this dossier', 409);
+    const grant = await assertHostedNativeSource(this.runtime, ownerId, source.live);
+    const spec: DigestSpec = {
+      version: 1,
+      template: 'morning',
+      sourceId,
+      sourceRevision,
+      timeZone: String(digestRecord(grant.scope).timeZone),
+      localTime: '08:00',
+      enabled: false,
+      manualOnly: true,
+    };
+    const receipt = await this.typedMutation(
+      ownerId,
+      definitionKey,
+      digestPhoneSpec(spec, source),
+      undefined,
+      undefined,
+      spec
+    );
+    const execution = await this.startReviewedWorkflow(
+      receipt.workflowId,
+      mutationId,
+      receipt.versionId,
+      {},
+      ownerId,
+      (workflow) => {
+        if (
+          workflow.metadata?.elizaOwnerEntityId !== ownerId ||
+          !validateDigestSpec(JSON.parse(String(workflow.metadata?.[HOSTED_SPEC]))).manualOnly
+        )
+          throw new WorkflowApiError('Dossier owner changed', 409);
+      },
+      { sourceId, sourceRevision }
+    );
+    if (wait) {
+      const running = this.running.get(execution.id);
+      if (running) return running;
+    }
+    return execution;
+  }
   async listHostedDigests(ownerId: string) {
     return (
       await this.getDb()
@@ -586,7 +689,8 @@ export class EmbeddedWorkflowService extends Service {
       .filter(
         (row) =>
           row.workflow.metadata?.elizaOwnerEntityId === ownerId &&
-          row.workflow.metadata?.[HOSTED_SPEC]
+          row.workflow.metadata?.[HOSTED_SPEC] &&
+          !validateDigestSpec(JSON.parse(String(row.workflow.metadata[HOSTED_SPEC]))).manualOnly
       )
       .map((row) => ({
         id: row.id,
@@ -770,7 +874,7 @@ export class EmbeddedWorkflowService extends Service {
             elizaOwnerEntityId: ownerId,
             ...(hosted ? { [HOSTED_SPEC]: JSON.stringify(hosted) } : {}),
           },
-          ...(hosted
+          ...(hosted && !hosted.manualOnly
             ? {
                 active: hosted.enabled,
                 schedule: {
@@ -1171,7 +1275,7 @@ export class EmbeddedWorkflowService extends Service {
         })
       );
     return {
-      data: params?.limit ? workflows.slice(0, params.limit) : workflows,
+      data: params?.limit === undefined ? workflows : workflows.slice(0, Math.max(0, params.limit)),
     };
   }
 
@@ -1383,10 +1487,17 @@ export class EmbeddedWorkflowService extends Service {
     versionId: string,
     input: Record<string, unknown>,
     ownerId: string,
-    authorize: (workflow: WorkflowDefinitionResponse) => void
+    authorize: (workflow: WorkflowDefinitionResponse) => void,
+    dossier?: { sourceId: string; sourceRevision: string }
   ): Promise<WorkflowExecution> {
-    const snapshot = cloneJson(input);
+    let snapshot = cloneJson(input);
+    if (dossier && Object.keys(snapshot).length)
+      throw new WorkflowApiError('Dossier occurrence is server-owned', 400);
     const accepted = await this.getDb().transaction(async (tx) => {
+      if (dossier)
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtextextended(${JSON.stringify(['native-dossier-request', this.tenantId, ownerId, submissionId])},0))`
+        );
       const [row] = await tx
         .select()
         .from(embeddedWorkflows)
@@ -1395,8 +1506,16 @@ export class EmbeddedWorkflowService extends Service {
       if (!row) throw new WorkflowApiError('Workflow not found', 404);
       const workflow = responseFromStored(row);
       authorize(workflow);
-      if (workflow.metadata?.[HOSTED_SPEC])
-        throw new WorkflowApiError('Hosted digests use their reviewed schedule', 409);
+      if (workflow.metadata?.[HOSTED_SPEC]) {
+        const spec = validateDigestSpec(JSON.parse(String(workflow.metadata[HOSTED_SPEC])));
+        if (
+          !dossier ||
+          !spec.manualOnly ||
+          spec.sourceId !== dossier.sourceId ||
+          spec.sourceRevision !== dossier.sourceRevision
+        )
+          throw new WorkflowApiError('Hosted digests require their reviewed admission path', 409);
+      } else if (dossier) throw new WorkflowApiError('Dossier definition unavailable', 409);
       requireMutable(workflow);
       const [prior] = await tx
         .select()
@@ -1404,14 +1523,20 @@ export class EmbeddedWorkflowService extends Service {
         .where(
           and(
             eq(manualSubmissions.agentId, this.tenantId),
-            eq(manualSubmissions.workflowId, id),
+            ...(dossier
+              ? [eq(manualSubmissions.ownerId, ownerId)]
+              : [eq(manualSubmissions.workflowId, id)]),
             eq(manualSubmissions.submissionId, submissionId)
           )
         )
         .limit(1);
       if (prior) {
         if (prior.ownerId !== ownerId) throw new WorkflowApiError('Submission not found', 404);
-        if (prior.versionId !== versionId || !isDeepStrictEqual(prior.input, snapshot))
+        if (
+          prior.workflowId !== id ||
+          prior.versionId !== versionId ||
+          (!dossier && !isDeepStrictEqual(prior.input, snapshot))
+        )
           throw new WorkflowApiError('Submission key already bound to another request', 409);
         return { runId: prior.runId, fresh: false, workflow };
       }
@@ -1422,6 +1547,19 @@ export class EmbeddedWorkflowService extends Service {
           submissionId,
           expectedVersionId: versionId,
         });
+      if (dossier) {
+        const occurrence = Date.now();
+        snapshot = {
+          hostedDigest: await digestAdmission(
+            tx,
+            this.tenantId,
+            workflow,
+            occurrence,
+            occurrence,
+            false
+          ),
+        };
+      }
       const pending: WorkflowExecution = {
         id: randomUUID(),
         workflowId: id,
@@ -1485,6 +1623,8 @@ export class EmbeddedWorkflowService extends Service {
       const workflow = responseFromStored(row);
       let hosted: Record<string, unknown> | undefined;
       if (workflow.metadata?.[HOSTED_SPEC]) {
+        if (validateDigestSpec(JSON.parse(String(workflow.metadata[HOSTED_SPEC]))).manualOnly)
+          throw new WorkflowApiError('Dossiers require explicit owner submission', 409);
         const context = digestRecord(options.triggerData ?? options.input),
           scheduledAt = context.scheduledAtMs;
         if (
@@ -1642,7 +1782,9 @@ export class EmbeddedWorkflowService extends Service {
           Date.parse(source.expiresAt) <= Date.now()
         )
           throw new WorkflowApiError('Hosted source grant expired or was revoked', 409);
-        if (source.live) await assertHostedGoogleSource(this.runtime, owner, source.live);
+        if (source.live?.provider === 'native')
+          await assertHostedNativeSource(this.runtime, owner, source.live);
+        else if (source.live) await assertHostedGoogleSource(this.runtime, owner, source.live);
       };
       if (workflow.metadata?.[HOSTED_SPEC]) {
         const context = digestRecord(pending.input.hostedDigest),
@@ -1669,9 +1811,18 @@ export class EmbeddedWorkflowService extends Service {
         const owner = String(workflow.metadata.elizaOwnerEntityId || '');
         const source = await digestSource(this.getDb(), this.tenantId, owner, spec.sourceId);
         if (source.live) {
-          const fresh = await readHostedGoogleSource(this.runtime, owner, source.live, {
-            signal: controller.signal,
-          });
+          const fresh =
+            source.live.provider === 'native'
+              ? await readHostedNativeSource(
+                  this.runtime,
+                  owner,
+                  source.live,
+                  String(context.scheduledAt),
+                  controller.signal
+                )
+              : await readHostedGoogleSource(this.runtime, owner, source.live, {
+                  signal: controller.signal,
+                });
           await assertLiveGrant();
           const compiled = phoneDraftDefinition(
             validatePhoneSpec(digestPhoneSpec(spec, { ...source, ...fresh }))
@@ -1686,10 +1837,14 @@ export class EmbeddedWorkflowService extends Service {
             ...running.input,
             hostedDigest: {
               ...context,
+              ...('receipt' in fresh ? { nativeReadReceipt: fresh.receipt } : {}),
               source: {
                 ...digestRecord(context.source),
                 observedAt: fresh.observedAt,
-                type: 'live_selected_google_read',
+                type:
+                  source.live.provider === 'native'
+                    ? 'live_selected_native_read'
+                    : 'live_selected_google_read',
               },
             },
           };
@@ -2242,7 +2397,9 @@ export class EmbeddedWorkflowService extends Service {
     const data = rows
       .filter((row) => !params.workflowId || row.workflowId === params.workflowId)
       .map((row) => cloneJson(row.execution));
-    return { data: params.limit ? data.slice(0, params.limit) : data };
+    return {
+      data: params.limit === undefined ? data : data.slice(0, Math.max(0, params.limit)),
+    };
   }
 
   async getExecution(id: string): Promise<WorkflowExecution> {

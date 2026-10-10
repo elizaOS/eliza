@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Client } from "pg";
+import { loadCanonicalMigrations } from "../../../../scripts/admin/canonical-migration-ledger";
 import { installBillingCommandEvidenceTestColumns } from "../../testing";
 
 const postgresUrl = process.env.APP_BILLING_TEST_POSTGRES_URL;
@@ -32,6 +33,7 @@ const appB = randomUUID();
 const planA = randomUUID();
 const planB = randomUUID();
 const digest = "a".repeat(64);
+let invoiceAuthorityMigration: string[];
 
 beforeAll(async () => {
   const module = await import("../client");
@@ -96,6 +98,14 @@ beforeAll(async () => {
     for (const statement of migration.split("--> statement-breakpoint"))
       if (statement.trim()) await client.exec(statement.replaceAll('"public".', ""));
   }
+  const canonical = await loadCanonicalMigrations();
+  const authority = canonical.find(
+    (migration) => migration.entry.tag === "0534_subscription_allowance_invoice_authority",
+  );
+  if (!authority)
+    throw new Error("Invoice authority migration is absent from the canonical ledger");
+  invoiceAuthorityMigration = authority.statements;
+  for (const statement of invoiceAuthorityMigration) await client.exec(statement);
   await installBillingCommandEvidenceTestColumns((statement) => client.exec(statement));
 
   await client.query(
@@ -561,6 +571,98 @@ describe("atomic app subscription finalization", () => {
         )
       ).rows,
     ).toEqual([{ credit_balance: "42", stripe_customer_id: "cus_infrastructure" }]);
+  });
+  test("paid allowance cannot use a null invoice as a substitute for financial authority", async () => {
+    const { appSubscriptionFinalizer } = await import("./app-subscription-finalizer");
+    const { input } = await providerTrialFixture();
+    const result = await appSubscriptionFinalizer.applyObservation(input);
+    expect(result.allowance?.grant_source).toBe("trial_claim");
+    expect(result.allowance?.stripe_invoice_id).toBeNull();
+    const insertPaid = (invoice: string | null) =>
+      client.query(
+        `INSERT INTO subscription_allowance_periods
+        (billing_scope_id, merchant_key, organization_id, subscription_id, subscription_revision,
+         provider, provider_environment, stripe_invoice_id, grant_source, trial_claim_id,
+         plan_key, catalog_version, period_start, period_end, expires_at,
+         granted_amount, available_amount)
+       SELECT billing_scope_id, merchant_key, organization_id, subscription_id, subscription_revision,
+         provider, provider_environment, $2, 'paid_invoice', NULL,
+         plan_key, catalog_version, period_start + interval '2 months',
+         period_end + interval '2 months', expires_at + interval '2 months',
+         granted_amount, granted_amount
+       FROM subscription_allowance_periods WHERE id=$1 RETURNING id, stripe_invoice_id`,
+        [result.allowance!.id, invoice],
+      );
+    await expect(insertPaid(null)).rejects.toMatchObject({
+      code: "23514",
+      constraint: "subscription_allowance_periods_invoice_id_check",
+    });
+    await expect(insertPaid("")).rejects.toMatchObject({
+      code: "23514",
+      constraint: "subscription_allowance_periods_invoice_id_check",
+    });
+    await expect(insertPaid("pi_notAnInvoice")).rejects.toMatchObject({
+      code: "23514",
+      constraint: "subscription_allowance_periods_invoice_id_check",
+    });
+    const invoice = `in_${randomUUID().replaceAll("-", "")}`;
+    const paid = (await insertPaid(invoice)).rows as { id: string; stripe_invoice_id: string }[];
+    expect(paid).toHaveLength(1);
+    expect(paid[0]!.stripe_invoice_id).toBe(invoice);
+    await expect(
+      client.query("UPDATE subscription_allowance_periods SET stripe_invoice_id=NULL WHERE id=$1", [
+        paid[0]!.id,
+      ]),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "subscription_allowance_periods_invoice_id_check",
+    });
+    expect(
+      (
+        await client.query(
+          "SELECT stripe_invoice_id FROM subscription_allowance_periods WHERE id=$1",
+          [paid[0]!.id],
+        )
+      ).rows,
+    ).toEqual([{ stripe_invoice_id: invoice }]);
+    // Validate existing data during rollout; never fabricate invoice provenance to
+    // get a dirty historical database through the new migration.
+    const predecessor = (
+      await readFile(
+        new URL("../migrations/0405_subscription_app_scope_guards.sql", import.meta.url),
+        "utf8",
+      )
+    )
+      .split("--> statement-breakpoint")
+      .find((statement) =>
+        statement.includes('ADD CONSTRAINT "subscription_allowance_periods_invoice_id_check"'),
+      );
+    if (!predecessor) throw new Error("Historical invoice constraint is missing");
+    await client.exec("BEGIN");
+    try {
+      await client.exec(
+        "ALTER TABLE subscription_allowance_periods DROP CONSTRAINT subscription_allowance_periods_invoice_id_check",
+      );
+      await client.exec(predecessor);
+      await client.query(
+        "UPDATE subscription_allowance_periods SET stripe_invoice_id=NULL WHERE id=$1",
+        [paid[0]!.id],
+      );
+      await expect(client.exec(invoiceAuthorityMigration.join("\n"))).rejects.toMatchObject({
+        code: "23514",
+        constraint: "subscription_allowance_periods_invoice_id_check",
+      });
+    } finally {
+      await client.exec("ROLLBACK");
+    }
+    const rows = () =>
+      client.query("SELECT * FROM subscription_allowance_periods WHERE id IN ($1,$2) ORDER BY id", [
+        paid[0]!.id,
+        result.allowance!.id,
+      ]);
+    const before = await rows();
+    for (const statement of invoiceAuthorityMigration) await client.exec(statement);
+    expect(await rows()).toEqual(before);
   });
   test("late outbox failure rolls back subscription, grant, projection and command result together", async () => {
     const { appSubscriptionFinalizer } = await import("./app-subscription-finalizer");

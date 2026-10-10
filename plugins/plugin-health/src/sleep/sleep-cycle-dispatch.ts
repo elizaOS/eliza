@@ -10,7 +10,11 @@ import type {
   LifeOpsRegularityClass,
   LifeOpsScheduleRegularity,
 } from "../contracts/health.js";
-import { buildUtcDateFromLocalParts, getZonedDateParts } from "../util/time.js";
+import {
+  addDaysToLocalDate,
+  buildUtcDateFromLocalParts,
+  getZonedDateParts,
+} from "../util/time.js";
 import type { SleepRecap } from "./sleep-recap.js";
 export const MORNING_CHECKIN_WINDOW_MINUTES = 6 * 60;
 export const NIGHT_CHECKIN_LEAD_MINUTES = 3 * 60;
@@ -72,19 +76,21 @@ export function minutesUntilLocalBedtime(args: {
     second: 0,
   }).getTime();
   const nowMs = args.now.getTime();
+  const tomorrow = addDaysToLocalDate(nowParts, 1);
   const candidateMs =
     todayInstant >= nowMs
       ? todayInstant
       : buildUtcDateFromLocalParts(args.timezone, {
-          year: nowParts.year,
-          month: nowParts.month,
-          day: nowParts.day + 1,
+          year: tomorrow.year,
+          month: tomorrow.month,
+          day: tomorrow.day,
           hour: parts.hour,
           minute: parts.minute,
           second: 0,
         }).getTime();
   return Math.round((candidateMs - nowMs) / 60000);
 }
+
 function isIrregular(
   regularityClass: LifeOpsRegularityClass | undefined,
 ): boolean {

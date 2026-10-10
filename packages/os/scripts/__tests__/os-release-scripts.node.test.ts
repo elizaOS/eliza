@@ -1,7 +1,15 @@
 // Exercises OS release pipeline scripts and evidence checks.
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -14,6 +22,7 @@ import {
   sha256CanonicalJson,
   validateManifest,
   validateTeeMeasurements,
+  writeJson,
 } from "../os-release-lib.ts";
 import {
   buildBoundEvidence,
@@ -79,6 +88,51 @@ test("beta manifest binds every required digital distribution class", async () =
       "virtual-block-device",
     ]),
   );
+});
+
+test("release dates reject calendar overflow and accept leap days", async () => {
+  const manifest = await readJson(defaultManifestPath);
+  for (const date of [
+    "2026-02-29",
+    "2026-02-30",
+    "2026-04-31",
+    "2026-13-01",
+    "2026-01-00",
+    "2026-1-01",
+    "",
+    null,
+  ]) {
+    const result = validateManifest({
+      ...manifest,
+      release: { ...manifest.release, availableDate: date },
+    });
+    assert.ok(
+      result.errors.some((error) => error.includes("release.availableDate")),
+      String(date),
+    );
+  }
+  for (const date of ["2024-02-29", "2026-02-28", "2000-02-29"]) {
+    const result = validateManifest({
+      ...manifest,
+      release: { ...manifest.release, availableDate: date },
+    });
+    assert.equal(result.ok, true, result.errors.join("\n"));
+  }
+});
+
+test("JSON replacement cleans temporary files when publication fails", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "elizaos-json-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const target = path.join(root, "manifest.json");
+  await writeJson(target, { version: 1 });
+  await writeJson(target, { version: 2 });
+  assert.deepEqual(await readJson(target), { version: 2 });
+  await assert.rejects(writeJson(target, { version: 3n }));
+  assert.deepEqual(await readJson(target), { version: 2 });
+  await unlink(target);
+  await mkdir(target);
+  await assert.rejects(writeJson(target, { version: 3 }));
+  assert.deepEqual(await readdir(root), ["manifest.json"]);
 });
 
 test("all-zero sha256 placeholders are rejected even outside strict mode", async () => {
@@ -224,9 +278,10 @@ test("TEE release policy validation rejects missing required production claims",
   );
 });
 
-test("checksum generation and verification round-trip local artifacts", async () => {
+test("checksum generation and verification round-trip local artifacts", async (t) => {
   const sourceManifest = await readJson(defaultManifestPath);
   const tmp = await mkdtemp(path.join(os.tmpdir(), "elizaos-release-"));
+  t.after(() => rm(tmp, { recursive: true, force: true }));
   const manifestPath = path.join(tmp, "manifest.json");
   const artifactRoot = path.join(tmp, "artifacts");
   await mkdir(artifactRoot, { recursive: true });
@@ -289,6 +344,16 @@ test("checksum generation and verification round-trip local artifacts", async ()
   assert.equal(checksumRecords.length, 3);
 
   const updated = await readJson(manifestPath);
+  assert.deepEqual(
+    updated.artifacts.map((artifact) => artifact.status),
+    manifest.artifacts.map((artifact) => artifact.status),
+  );
+  assert.ok(
+    updated.artifacts.every((artifact) =>
+      artifact.validation.evidence.includes("sha256-generated"),
+    ),
+  );
+  assert.equal(validateManifest(updated).ok, true);
   assert.ok(
     updated.artifacts.every((artifact) =>
       /^[a-f0-9]{64}$/.test(artifact.sha256),
@@ -379,130 +444,6 @@ test("checksum generation and verification round-trip local artifacts", async ()
     ),
     (error) => error.stderr.includes("size mismatch"),
   );
-});
-
-test("legacy checksum updater preserves valid candidate manifest status", async () => {
-  const tmp = await mkdtemp(path.join(os.tmpdir(), "elizaos-update-sums-"));
-  const manifestPath = path.join(tmp, "manifest.json");
-  const artifactRoot = path.join(tmp, "artifacts");
-  await mkdir(artifactRoot);
-
-  const manifest = {
-    schemaVersion: 1,
-    release: {
-      id: "test-release",
-      channel: "beta",
-      version: "2.0.0-test",
-      availableDate: "2026-05-16",
-      status: "candidate",
-    },
-    commerce: {
-      usbKeyPresale: {
-        enabled: true,
-        priceUsd: 49,
-        saleStarts: "2026-05-16",
-        estimatedShipWindow: {
-          starts: "2026-10-01",
-          ends: "2026-10-31",
-        },
-      },
-    },
-    artifacts: [
-      {
-        id: "raw",
-        kind: "raw-image",
-        status: "candidate",
-        target: { platform: "linux", architecture: "amd64" },
-        filename: "raw.img.zst",
-        downloadUrl: null,
-        sha256: null,
-        sizeBytes: null,
-        validation: {
-          requiredEvidence: ["sha256-generated"],
-          evidence: [],
-        },
-      },
-      {
-        id: "vm",
-        kind: "vm-image",
-        status: "candidate",
-        target: { platform: "linux", architecture: "amd64" },
-        filename: "vm.ova.zip",
-        downloadUrl: null,
-        sha256: null,
-        sizeBytes: null,
-        validation: {
-          requiredEvidence: ["sha256-generated"],
-          evidence: [],
-        },
-      },
-      {
-        id: "android",
-        kind: "android-image",
-        status: "candidate",
-        target: { platform: "android", architecture: "arm64" },
-        filename: "android.zip",
-        downloadUrl: null,
-        sha256: null,
-        sizeBytes: null,
-        validation: {
-          requiredEvidence: ["sha256-generated"],
-          evidence: [],
-        },
-      },
-    ],
-    checksumPolicy: {
-      algorithm: "sha256",
-      generatedFile: "SHA256SUMS",
-      verificationScript: "scripts/verify-release-checksums.ts",
-    },
-    validation: {
-      evidenceDirectory: "evidence",
-      promotionGates: [],
-    },
-  };
-
-  for (const artifact of manifest.artifacts) {
-    await writeFile(
-      path.join(artifactRoot, artifact.filename),
-      `fixture payload for ${artifact.id}\n`,
-    );
-  }
-  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-
-  await execFileAsync(
-    process.execPath,
-    [
-      "scripts/update-manifest-checksums.ts",
-      "--manifest",
-      manifestPath,
-      "--artifacts-dir",
-      artifactRoot,
-    ],
-    { cwd: repoRoot },
-  );
-
-  const updated = await readJson(manifestPath);
-  assert.deepEqual(
-    updated.artifacts.map((artifact) => artifact.status),
-    ["candidate", "candidate", "candidate"],
-  );
-  assert.ok(
-    updated.artifacts.every((artifact) =>
-      artifact.validation.evidence.includes("sha256-generated"),
-    ),
-  );
-  assert.equal(
-    updated.artifacts.every((artifact) =>
-      /^[a-f0-9]{64}$/.test(artifact.sha256),
-    ),
-    true,
-  );
-
-  const validation = validateManifest(updated);
-  assert.equal(validation.ok, true, validation.errors.join("\n"));
-
-  // A later missing artifact must not publish earlier successful hashes.
   const original = `${JSON.stringify(manifest, null, 2)}\n`;
   await writeFile(manifestPath, original);
   await unlink(path.join(artifactRoot, manifest.artifacts.at(-1).filename));
@@ -510,16 +451,20 @@ test("legacy checksum updater preserves valid candidate manifest status", async 
     execFileAsync(
       process.execPath,
       [
-        "scripts/update-manifest-checksums.ts",
+        "scripts/generate-release-checksums.ts",
         "--manifest",
         manifestPath,
-        "--artifacts-dir",
+        "--artifact-root",
         artifactRoot,
+        "--output",
+        checksumsPath,
+        "--update-manifest",
       ],
       { cwd: repoRoot },
     ),
   );
   assert.equal(await readFile(manifestPath, "utf8"), original);
+  assert.equal(await readFile(checksumsPath, "utf8"), checksums);
 });
 
 test("TEE measurement generation hashes required release inputs", async () => {

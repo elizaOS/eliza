@@ -87,10 +87,8 @@ function configuredDiscordDesktopCdpPort(
 function discordDesktopCdpDisabled(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-  return (
-    env.ELIZA_DISABLE_DISCORD_DESKTOP_CDP === "1" ||
-    env.ELIZA_DISABLE_DISCORD_DESKTOP_CDP === "1"
-  );
+  const value = env.ELIZA_DISABLE_DISCORD_DESKTOP_CDP?.trim().toLowerCase();
+  return value === "1" || value === "true";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -787,6 +785,9 @@ export async function relaunchDiscordDesktopForCdp(
     throw new Error(
       current.lastError ?? "Discord Desktop control unavailable.",
     );
+  }
+  if (discordDesktopCdpDisabled(env)) {
+    return current;
   }
   if (current.cdpAvailable) {
     return current;

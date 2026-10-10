@@ -3,13 +3,30 @@ import { readBillAttachments } from "./bill-attachment-reader.mjs";
 import { gmailSourceLink } from "./bill-source-link.mjs";
 import { BillHostError } from "./errors.mjs";
 
-const unavailable = () =>
+/** Fixed read-failure reasons. The renderer can say what to do next. */
+export const BILL_SOURCE_FAILURE_REASONS = Object.freeze([
+  "reauth_required",
+  "cloud_sign_in_required",
+  "insufficient_scope",
+  "account_changed",
+  "account_mismatch",
+  "unavailable",
+  "timeout",
+]);
+const unavailable = (reason = "unavailable") =>
   Object.assign(
     new BillHostError(
       "Bill sources are unavailable. Recheck the connected account and task.",
     ),
-    { code: "BILL_SOURCES_UNAVAILABLE" },
+    { code: "BILL_SOURCES_UNAVAILABLE", reason },
   );
+// Only a typed read-port code passes through; provider text never does.
+const failureReason = (error) =>
+  BILL_SOURCE_FAILURE_REASONS.includes(error?.reason)
+    ? error.reason
+    : BILL_SOURCE_FAILURE_REASONS.includes(error?.code)
+      ? error.code
+      : "unavailable";
 const hash = (value) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const text = (v, max = 300) =>
@@ -48,11 +65,49 @@ function scope(input) {
     throw unavailable();
   if (c.accountEmail !== undefined && !email(c.accountEmail))
     throw unavailable();
+  // Bills go to the configured recipient. Another connected Google account
+  // cannot find them; say so instead of reporting no bill.
+  if (
+    c.accountEmail !== undefined &&
+    !sameAccountAddress(c.accountEmail, c.recipient)
+  )
+    throw unavailable("account_mismatch");
   const url = new URL(c.providerOrigin);
   if (url.protocol !== "https:" || url.origin !== c.providerOrigin)
     throw unavailable();
   Object.freeze(c.senders);
   return Object.freeze(c);
+}
+/**
+ * The connected Google account can receive mail for the configured recipient.
+ * Either side may be shown masked (for example `m•••@example.org`); a mask
+ * character stands for one or more hidden characters of the local part.
+ */
+export function sameAccountAddress(account, recipient) {
+  if (typeof account !== "string" || typeof recipient !== "string")
+    return false;
+  const split = (value) => {
+    const at = value.lastIndexOf("@");
+    return at > 0
+      ? [value.slice(0, at).toLowerCase(), value.slice(at + 1).toLowerCase()]
+      : null;
+  };
+  const a = split(account),
+    b = split(recipient);
+  if (!a || !b || a[1] !== b[1]) return false;
+  const mask = /[*\u2022\u00b7]+/u;
+  const pattern = (local) =>
+    new RegExp(
+      `^${local
+        .split(mask)
+        .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join(".+")}$`,
+      "u",
+    );
+  if (mask.test(a[0]) && mask.test(b[0])) return false;
+  if (mask.test(a[0])) return pattern(a[0]).test(b[0]);
+  if (mask.test(b[0])) return pattern(b[0]).test(a[0]);
+  return a[0] === b[0];
 }
 // Domains are case-insensitive; local parts retain the host's exact sender grants.
 function sameAddress(a, b) {
@@ -79,6 +134,20 @@ function matches(m, c) {
     time < c.before
   );
 }
+/** Identity facts a look-alike message can differ in, in report order. */
+export const BILL_SOURCE_CONFLICT_FIELDS = Object.freeze([
+  "company",
+  "accountLabel",
+  "origin",
+]);
+/**
+ * A message for another company, account or website is a look-alike. It is
+ * reported only by which identity facts differ, never selected. Its own
+ * company, account and website come from an untrusted email and are never
+ * shown, so a spoofed message cannot put a destination in front of the
+ * person. A message whose facts are not complete or valid is unreadable and
+ * is skipped.
+ */
 function candidate(
   parsed,
   detail,
@@ -91,27 +160,39 @@ function candidate(
 ) {
   if (
     !parsed ||
-    !text(parsed.invoiceId, 128) ||
+    ![parsed.company, parsed.accountLabel, parsed.origin].every((v) => text(v))
+  )
+    return { unreadable: true };
+  if (
     parsed.company !== c.company ||
     parsed.accountLabel !== c.accountLabel ||
-    parsed.origin !== c.providerOrigin ||
+    parsed.origin !== c.providerOrigin
+  )
+    return {
+      conflict: {
+        differs: BILL_SOURCE_CONFLICT_FIELDS.filter((key) =>
+          key === "origin"
+            ? parsed.origin !== c.providerOrigin
+            : parsed[key] !== c[key],
+        ),
+      },
+    };
+  if (
+    !text(parsed.invoiceId, 128) ||
     !Number.isSafeInteger(parsed.amountMinor) ||
     parsed.amountMinor < 0 ||
     !/^[A-Z]{3}$/.test(parsed.currency) ||
     !Number.isInteger(parsed.currencyDigits) ||
     parsed.currencyDigits < 0 ||
     parsed.currencyDigits > 4 ||
-    !date(parsed.dueDate) ||
-    (parsed.serviceAddress != null && !text(parsed.serviceAddress))
+    (parsed.dueDate != null && !date(parsed.dueDate)) ||
+    (parsed.serviceAddress != null && !text(parsed.serviceAddress)) ||
+    (parsed.servicePeriod != null &&
+      (!date(parsed.servicePeriod.startsOn) ||
+        !date(parsed.servicePeriod.endsOn) ||
+        parsed.servicePeriod.startsOn > parsed.servicePeriod.endsOn))
   )
-    throw unavailable();
-  if (
-    parsed.servicePeriod != null &&
-    (!date(parsed.servicePeriod.startsOn) ||
-      !date(parsed.servicePeriod.endsOn) ||
-      parsed.servicePeriod.startsOn > parsed.servicePeriod.endsOn)
-  )
-    throw unavailable();
+    return { unreadable: true };
   // Canonical invoice identity is independent of message delivery and amount.
   // Contradictory revisions of the same invoice must remain ambiguous.
   const billId = hash([
@@ -127,7 +208,7 @@ function candidate(
     amountMinor: parsed.amountMinor,
     currency: parsed.currency,
     currencyDigits: parsed.currencyDigits,
-    dueDate: parsed.dueDate,
+    ...(parsed.dueDate != null ? { dueDate: parsed.dueDate } : {}),
     ...(parsed.serviceAddress != null
       ? { serviceAddress: parsed.serviceAddress }
       : {}),
@@ -140,14 +221,19 @@ function candidate(
         }
       : {}),
   };
+  // A link names the full mailbox address, never a masked one.
+  const unmasked = [c.accountEmail, c.recipient].find(
+    (value) => value !== undefined && !/[*\u2022\u00b7]/u.test(value),
+  );
   const url = gmailSourceLink(
     detail.message.htmlLink,
     detail.message.threadId,
-    c.accountEmail ?? c.recipient,
+    unmasked,
   );
   return {
     billId,
     sourceRef: `bill-source:${billId}`,
+    receivedAt: new Date(Date.parse(detail.message.receivedAt)).toISOString(),
     facts,
     sources: [
       {
@@ -165,6 +251,7 @@ export class BillSourceDiscovery {
   constructor({
     google,
     authorize,
+    authorizeReceipt = authorize,
     parse,
     attachmentPolicy,
     parseAttachment,
@@ -181,6 +268,7 @@ export class BillSourceDiscovery {
       throw unavailable();
     this.google = google;
     this.authorize = authorize;
+    this.authorizeReceipt = authorizeReceipt;
     this.parse = parse;
     this.attachmentPolicy = attachmentPolicy;
     this.parseAttachment = parseAttachment;
@@ -188,6 +276,71 @@ export class BillSourceDiscovery {
   }
   revoke() {
     this.#generation++;
+  }
+  /**
+   * After an outcome, look once for its receipt email: from the bill's
+   * senders, to the bill's recipient, after the outcome, naming its provider
+   * reference. Only one such message counts as found; none or several do not.
+   * The search reads at most one page of 10 messages.
+   */
+  async findReceipt(input, outcome, signal) {
+    try {
+      if (
+        typeof outcome?.reference !== "string" ||
+        !/^[A-Za-z0-9][A-Za-z0-9._/-]{2,127}$/.test(outcome.reference) ||
+        !Number.isSafeInteger(outcome.observedAt)
+      )
+        return false;
+      const after = outcome.observedAt - 10 * 60 * 1000;
+      // The task's own mailbox scope is what is authorized; only the time
+      // window of this search is narrowed to after the outcome.
+      const authorizedScope = scope(input);
+      const c = scope({ ...input, after, before: Date.now() + 60 * 1000 }),
+        generation = this.#generation;
+      const check = async () => {
+        signal.throwIfAborted();
+        if (
+          generation !== this.#generation ||
+          !(await this.authorizeReceipt(authorizedScope)) ||
+          generation !== this.#generation
+        )
+          throw unavailable();
+        signal.throwIfAborted();
+      };
+      await check();
+      const result = await this.google.searchGmailMessagesPage({
+        accountId: c.accountId,
+        query: `{${c.senders.map((sender) => `from:${sender}`).join(" ")}} "${outcome.reference}" after:${Math.floor(after / 1000)}`,
+        pageSize: 10,
+      });
+      await check();
+      if (!Array.isArray(result?.messages) || result.messages.length > 10)
+        throw unavailable();
+      // More than one page is more than one possible receipt.
+      if (result.nextPageToken) return false;
+      const named = new RegExp(
+        `(?:^|[^A-Za-z0-9])${outcome.reference.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}(?:$|[^A-Za-z0-9])`,
+      );
+      let found = 0;
+      for (const message of result.messages) {
+        if (!matches(message, c)) continue;
+        const detail = await this.google.getGmailMessageDetail({
+          accountId: c.accountId,
+          messageId: message.externalId,
+        });
+        await check();
+        if (
+          detail?.message?.externalId !== message.externalId ||
+          !matches(detail.message, c) ||
+          typeof detail.bodyText !== "string"
+        )
+          throw unavailable();
+        if (named.test(detail.bodyText)) found++;
+      }
+      return found === 1;
+    } catch (error) {
+      throw unavailable(failureReason(error));
+    }
   }
   async discover(input, signal) {
     try {
@@ -206,9 +359,20 @@ export class BillSourceDiscovery {
       const found = new Map(),
         invoices = new Map(),
         seen = new Set(),
-        tokens = new Set();
+        tokens = new Set(),
+        conflicts = new Map();
       let token,
-        conflict = false;
+        conflict = false,
+        unreadable = 0,
+        newestUnreadable = "";
+      // A newer message that cannot be read may be the current bill.
+      const skip = (detail) => {
+        unreadable++;
+        const at = new Date(
+          Date.parse(detail.message.receivedAt),
+        ).toISOString();
+        if (at > newestUnreadable) newestUnreadable = at;
+      };
       await check();
       for (;;) {
         const result = await this.google.searchGmailMessagesPage({
@@ -235,7 +399,14 @@ export class BillSourceDiscovery {
             typeof detail.bodyText !== "string"
           )
             throw unavailable();
-          const parsed = await this.parse(detail, c);
+          // One message the reviewed parser cannot read does not end the
+          // search. Read-port failures below still do.
+          let parsed;
+          try {
+            parsed = await this.parse(detail, c);
+          } catch {
+            parsed = undefined;
+          }
           await check();
           const documents = await readBillAttachments({
             google: this.google,
@@ -249,18 +420,28 @@ export class BillSourceDiscovery {
           });
           if (documents.incomplete)
             return { status: "incomplete", candidates: [] };
+          if (parsed === undefined && !documents.found.length) skip(detail);
           const extracted = [
-            ...(parsed === null ? [] : [{ parsed }]),
+            ...(parsed == null ? [] : [{ parsed }]),
             ...documents.found,
           ];
           for (const document of extracted) {
             const value = candidate(
-                document.parsed,
-                detail,
-                c,
-                document.source,
-              ),
-              version = hash(value.facts),
+              document.parsed,
+              detail,
+              c,
+              document.source,
+            );
+            if (value.unreadable) {
+              skip(detail);
+              continue;
+            }
+            if (value.conflict) {
+              const key = hash(value.conflict);
+              if (!conflicts.has(key)) conflicts.set(key, value.conflict);
+              continue;
+            }
+            const version = hash(value.facts),
               key = `${value.billId}:${version}`,
               previous = found.get(key);
             if (
@@ -269,8 +450,11 @@ export class BillSourceDiscovery {
             )
               conflict = true;
             invoices.set(value.billId, version);
-            if (previous) previous.sources.push(...value.sources);
-            else found.set(key, { ...value, candidateId: hash(key) });
+            if (previous) {
+              previous.sources.push(...value.sources);
+              if (value.receivedAt > previous.receivedAt)
+                previous.receivedAt = value.receivedAt;
+            } else found.set(key, { ...value, candidateId: hash(key) });
           }
         }
         token = result.nextPageToken;
@@ -281,24 +465,47 @@ export class BillSourceDiscovery {
         tokens.add(token);
       }
       await check();
+      // Newest first. The person sees which bill arrived most recently.
+      const candidates = [...found.values()].sort((a, b) =>
+        b.receivedAt.localeCompare(a.receivedAt),
+      );
+      const notes = {
+        ...(unreadable ? { unreadable } : {}),
+        ...(conflicts.size ? { conflicts: [...conflicts.values()] } : {}),
+      };
+      // An older readable bill is never offered as current while a newer
+      // message from the biller could not be read.
+      if (candidates.length && newestUnreadable > candidates[0].receivedAt)
+        return {
+          status: "incomplete",
+          reason: "newer-unreadable",
+          candidates: [],
+          ...notes,
+        };
+      if (candidates.length) candidates[0].mostRecent = true;
       if (conflict)
         return {
           status: "ambiguous",
           reason: "conflicting-invoice",
-          candidates: [...found.values()],
+          candidates,
+          ...notes,
         };
-      const candidates = [...found.values()];
       return {
         status:
-          candidates.length === 0
-            ? "missing"
-            : candidates.length === 1
-              ? "candidate"
-              : "ambiguous",
+          candidates.length === 1
+            ? "candidate"
+            : candidates.length > 1
+              ? "ambiguous"
+              : conflicts.size
+                ? "conflicting-source"
+                : unreadable
+                  ? "incomplete"
+                  : "missing",
         candidates,
+        ...notes,
       };
-    } catch {
-      throw unavailable();
+    } catch (error) {
+      throw unavailable(failureReason(error));
     } // Provider/parser errors may contain private message bodies.
   }
 }

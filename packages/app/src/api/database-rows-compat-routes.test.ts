@@ -134,3 +134,37 @@ describe("database row count boundary", () => {
     expect(executeRawSql).not.toHaveBeenCalled();
   });
 });
+
+it("pages composite primary keys and keyless rows through real SQL", async () => {
+  const { PGlite } = await import("@electric-sql/pglite");
+  const db = new PGlite();
+  try {
+    await db.exec(
+      "CREATE TABLE gallery_composite (bucket int, item int, PRIMARY KEY(bucket, item)); INSERT INTO gallery_composite SELECT 1, n FROM generate_series(1, 37) n; CREATE TABLE gallery_keyless (item int); INSERT INTO gallery_keyless SELECT n FROM generate_series(1, 37) n;",
+    );
+    executeRawSql.mockReset();
+    executeRawSql.mockImplementation(async (_runtime, query: string) =>
+      db.query(query),
+    );
+    for (const tableName of ["gallery_composite", "gallery_keyless"]) {
+      const collected: number[] = [];
+      for (let offset = 0; offset < 37; offset += 7) {
+        const res = response();
+        await handleDatabaseRowsCompatRoute(
+          {
+            method: "GET",
+            url: `/api/database/tables/${tableName}/rows?schema=public&limit=7&offset=${offset}&sort=bucket`,
+          } as http.IncomingMessage,
+          res,
+          state,
+        );
+        const body = JSON.parse(vi.mocked(res.end).mock.calls[0][0] as string);
+        expect(body.total).toBe(37);
+        collected.push(...body.rows.map((row: { item: number }) => row.item));
+      }
+      expect(collected).toEqual(Array.from({ length: 37 }, (_, i) => i + 1));
+    }
+  } finally {
+    await db.close();
+  }
+}, 30000);

@@ -181,26 +181,10 @@ export function resolveTwilioSmsCostPerSegment(
 ): number {
   assertValidCost(fallbackCostPerSegment, "fallbackCostPerSegment");
 
-  if (rawCostPerSegment === null || rawCostPerSegment === undefined) {
-    return fallbackCostPerSegment;
-  }
-
-  let parsed: number;
-  if (typeof rawCostPerSegment === "number") {
-    parsed = rawCostPerSegment;
-  } else {
-    const trimmed = rawCostPerSegment.trim();
-    if (trimmed === "" || !TWILIO_SMS_COST_PATTERN.test(trimmed)) {
-      return fallbackCostPerSegment;
-    }
-    parsed = Number(trimmed);
-  }
-
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    return fallbackCostPerSegment;
-  }
-
-  return parsed;
+  const classified = classifyTwilioSmsCostConfig(rawCostPerSegment);
+  return classified.status === "valid"
+    ? classified.value
+    : fallbackCostPerSegment;
 }
 
 /**
@@ -221,4 +205,38 @@ export function calculateTwilioSmsBilling(
     segments,
     costPerSegment,
   };
+}
+
+/** Distinguishes missing configuration from malformed explicit prices. */
+export type TwilioSmsCostConfig =
+  | { status: "absent" }
+  | { status: "invalid" }
+  | { status: "valid"; value: number };
+
+export function classifyTwilioSmsCostConfig(
+  rawCostPerSegment: string | number | null | undefined,
+): TwilioSmsCostConfig {
+  if (rawCostPerSegment === null || rawCostPerSegment === undefined) {
+    return { status: "absent" };
+  }
+
+  let parsed: number;
+  if (typeof rawCostPerSegment === "number") {
+    parsed = rawCostPerSegment;
+  } else {
+    const trimmed = rawCostPerSegment.trim();
+    if (trimmed === "") {
+      return { status: "absent" };
+    }
+    if (!TWILIO_SMS_COST_PATTERN.test(trimmed)) {
+      return { status: "invalid" };
+    }
+    parsed = Number(trimmed);
+  }
+
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return { status: "invalid" };
+  }
+
+  return { status: "valid", value: parsed };
 }

@@ -19,6 +19,12 @@
       "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
       "default": "./dist/*.js"
+    },
+    "./services/hosted-native-source": {
+      "eliza-source": "./src/services/hosted-native-source.ts",
+      "types": "./src/services/hosted-native-source.ts",
+      "import": "./dist/services/hosted-native-source.js",
+      "default": "./dist/services/hosted-native-source.js"
     }
   },
   "files": [
@@ -44,7 +50,6 @@
     "dev": "tsc6 --watch",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "test": "node ../../packages/scripts/run-with-flake-retry.ts 'EEXIST[^\\n]*epoll_ctl|error: Failed to connect' -- node ../../packages/scripts/run-with-deadline.ts 1500000 -- node ../../packages/scripts/plugins/plugin-workflow/run-isolated-tests.ts",
-    "test:unit": "bun test --isolate __tests__/unit/",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
@@ -72,7 +77,7 @@
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.14",
+    "@biomejs/biome": "2.5.15",
     "@electric-sql/pglite": "^0.2.17",
     "@elizaos/core": "workspace:*",
     "bun-types": "1.4.2",

@@ -41,8 +41,14 @@ export function createCommandHandler(api) {
             "expiresAt",
             "targets",
             "revoked",
+            "assistantName",
           ].includes(key),
       ) ||
+      // Display name for the overlay cursor and marks; host configuration.
+      (binding.assistantName !== undefined &&
+        (typeof binding.assistantName !== "string" ||
+          !/^[^\p{Cc}\p{Cf}]{1,32}$/u.test(binding.assistantName) ||
+          !binding.assistantName.trim())) ||
       typeof binding.tabId !== "string" ||
       !/^\d+$/.test(binding.tabId) ||
       !Number.isSafeInteger(Number(binding.tabId)) ||
@@ -121,7 +127,16 @@ export function createCommandHandler(api) {
         !command.taskContext)
     )
       throw blocked();
+    if (
+      command.expectedSelector !== undefined &&
+      (!command.taskContext ||
+        !["click", "fill", "scroll"].includes(command.subaction))
+    )
+      throw blocked();
     delete copy.taskPolicy;
+    delete copy.expectedSelector;
+    // Only a bound task action carries the host's preview sentence.
+    if (!command.taskContext) delete copy.actionText;
     if (!command.id) {
       if (command.taskContext) throw blocked();
       return { command: copy, current: () => true };
@@ -177,12 +192,25 @@ export function createCommandHandler(api) {
       throw blocked();
     if (command.selector && !/^[0-9a-f-]{36}:0:\d+$/.test(command.selector))
       throw blocked();
+    // The one reviewed control this action is for. It must be one of this
+    // binding's targets; the page then accepts no other target.
+    if (
+      command.expectedSelector !== undefined &&
+      !binding.targets.some(
+        (target) => target.selector === command.expectedSelector,
+      )
+    )
+      throw blocked();
     copy.taskPolicy = {
       origin: binding.origin,
       targets: binding.targets,
+      ...(command.expectedSelector === undefined
+        ? {}
+        : { expectedSelector: command.expectedSelector }),
       expiresAt,
       guidanceScope: String(binding.bindingRevision),
       protectedValueKind: command.protectedValueKind,
+      assistantName: binding.assistantName,
     };
     return { command: copy, current };
   }
@@ -342,6 +370,9 @@ export function createCommandHandler(api) {
   };
   dispatch.recordManualActivity = (message, sender) =>
     activity.record(message, sender);
+  dispatch.answerGuide = (message, sender) => guidance.answer(message, sender);
+  dispatch.dismissGuide = (message, sender) =>
+    guidance.dismiss(message, sender);
   dispatch.disconnect = () => {
     for (const [tabId, binding] of bindings)
       bindings.set(tabId, { ...binding, revoked: true });

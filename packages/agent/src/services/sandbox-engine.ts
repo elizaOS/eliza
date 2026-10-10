@@ -111,38 +111,6 @@ function checkHealthWithBinary(binary: string, id: string): Promise<boolean> {
   }
 }
 
-function getChildProcessErrorText(error: unknown): string {
-  const execError = error as {
-    message?: string;
-    stderr?: string | Buffer;
-    stdout?: string | Buffer;
-  };
-
-  const parts = [execError.message, execError.stderr, execError.stdout]
-    .map((value) => {
-      if (value === undefined || value === null) return "";
-      if (typeof value === "string") return value;
-      if (typeof value === "object" && "toString" in value)
-        return value.toString();
-      return "";
-    })
-    .filter(Boolean)
-    .join(" ");
-
-  return parts.toLowerCase();
-}
-
-function isContainerVersionUnsupported(error: unknown): boolean {
-  const errorText = getChildProcessErrorText(error);
-  return (
-    errorText.includes("unknown option") ||
-    errorText.includes("unrecognized option") ||
-    errorText.includes("invalid option") ||
-    errorText.includes("unknown flag") ||
-    errorText.includes("no such option")
-  );
-}
-
 async function runExecInContainer(
   opts: ExecCommandResult,
 ): Promise<ContainerExecResult> {
@@ -156,6 +124,7 @@ async function runExecInContainer(
 
     let stdout = "";
     let stderr = "";
+    let stdinError: Error | undefined;
     const timeout = setTimeout(() => proc.kill("SIGKILL"), timeoutMs ?? 30_000);
 
     // Preserve code points split across OS pipe chunks before accumulating,
@@ -170,17 +139,18 @@ async function runExecInContainer(
       stderr += data;
     });
 
-    if (stdin) {
-      proc.stdin.write(stdin);
-      proc.stdin.end();
-    }
+    proc.stdin.on("error", (error) => {
+      stdinError = error;
+      proc.kill("SIGKILL");
+    });
+    proc.stdin.end(stdin);
 
     proc.on("close", (code) => {
       clearTimeout(timeout);
       resolve({
-        exitCode: code ?? 1,
+        exitCode: stdinError ? code || 1 : (code ?? 1),
         stdout,
-        stderr,
+        stderr: stdinError ? `${stderr}\nstdin: ${stdinError.message}` : stderr,
         durationMs: Date.now() - start,
       });
     });
@@ -326,6 +296,7 @@ function parseContainerCommand(command: string): string[] {
 
 export function buildContainerExecArgs(opts: ContainerExecOptions): string[] {
   const args = ["exec"];
+  if (opts.stdin !== undefined) args.push("--interactive");
   if (opts.workdir) args.push("-w", opts.workdir);
   if (opts.env) appendEnvArgs(args, opts.env);
   const commandArgs = parseContainerCommand(opts.command);
@@ -567,28 +538,14 @@ export class AppleContainerEngine implements ISandboxEngine {
     try {
       const binary = this.binary();
       if (!binary) return false;
-      execFileSync(binary, ["--version"], {
+      execFileSync(binary, ["system", "status"], {
         stdio: "ignore",
         timeout: 5000,
         env: hostEngineEnv(),
       });
       return true;
-    } catch (error) {
-      if (!isContainerVersionUnsupported(error)) {
-        return false;
-      }
-      try {
-        const binary = this.binary();
-        if (!binary) return false;
-        execFileSync(binary, ["help"], {
-          stdio: "ignore",
-          timeout: 5000,
-          env: hostEngineEnv(),
-        });
-        return true;
-      } catch {
-        return false;
-      }
+    } catch {
+      return false;
     }
   }
 
@@ -617,80 +574,37 @@ export class AppleContainerEngine implements ISandboxEngine {
   }
 
   async runContainer(opts: ContainerRunOptions): Promise<string> {
-    // Apple Container uses `container run` with different syntax than Docker.
-    // It doesn't have a `-d` detach flag — instead, we spawn it as a background
-    // process with inherited output so the caller observes the container logs.
-    const args = ["run", "--name", opts.name];
-
-    // Apple Container: --mount for readonly, -v for read-write
+    const args = ["run"];
+    if (opts.detach) args.push("--detach");
+    args.push("--name", opts.name);
     appendMountArgs(args, opts.mounts);
     appendEnvArgs(args, opts.env);
-
     args.push(opts.image);
-
-    // Spawn as a background process (non-blocking) instead of execSync.
-    // Apple Container doesn't support `-d`; we use spawn with detached + unref.
-    return new Promise<string>((resolve, reject) => {
-      const binary = this.binary();
-      if (!binary) {
-        reject(new Error("Apple Container executable unavailable"));
-        return;
-      }
-      const proc = spawn(binary, args, {
-        stdio: ["ignore", "inherit", "inherit"],
-        detached: true,
-        env: hostEngineEnv(),
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn(this.requiredBinary(), args, {
+          stdio: "inherit",
+          timeout: 60_000,
+          killSignal: "SIGKILL",
+          env: hostEngineEnv(),
+        });
+        child.once("error", reject);
+        child.once("close", (code, signal) => {
+          if (code === 0) resolve();
+          else
+            reject(
+              new Error(`Container process exited with ${signal ?? code}`),
+            );
+        });
       });
-
-      let startupSettled = false;
-      const rejectImmediateExit = (exitCode: number | null) => {
-        if (startupSettled) return;
-        startupSettled = true;
-        reject(
-          new ElizaError("Apple Container exited before startup completed", {
-            code: "SANDBOX_APPLE_CONTAINER_START_EXITED",
-            context: {
-              containerName: opts.name,
-              engine: "apple-container",
-              exitCode,
-            },
-          }),
-        );
-      };
-
-      // Give it a moment to start, then check if it's still running
-      const checkTimer = setTimeout(() => {
-        if (proc.exitCode !== null) {
-          rejectImmediateExit(proc.exitCode);
-        } else {
-          // Container is running in background
-          startupSettled = true;
-          proc.unref(); // Allow Node process to exit independently
-          resolve(opts.name);
-        }
-      }, 2000);
-
-      proc.on("error", (err) => {
-        clearTimeout(checkTimer);
-        if (startupSettled) return;
-        startupSettled = true;
-        reject(
-          new ElizaError("Apple Container process could not be spawned", {
-            code: "SANDBOX_APPLE_CONTAINER_SPAWN_FAILED",
-            cause: err,
-            context: {
-              containerName: opts.name,
-              engine: "apple-container",
-            },
-          }),
-        );
+      return opts.name;
+    } catch (cause) {
+      throw new ElizaError("Apple Container startup failed", {
+        code: "SANDBOX_APPLE_CONTAINER_START_FAILED",
+        cause,
+        context: { containerName: opts.name, engine: "apple-container" },
       });
-
-      proc.on("exit", (code) => {
-        clearTimeout(checkTimer);
-        rejectImmediateExit(code);
-      });
-    });
+    }
   }
 
   async execInContainer(
@@ -722,7 +636,6 @@ export class AppleContainerEngine implements ISandboxEngine {
   }
 
   async removeContainer(id: string): Promise<void> {
-    // Apple Container uses --rm by default; explicit remove for safety
     try {
       execFileSync(this.requiredBinary(), ["rm", id], {
         timeout: 10000,

@@ -350,6 +350,8 @@ function walk(
 				defineOwn(output, key, CONNECTOR_JSON_BOUNDED);
 				continue;
 			}
+			// An optional field left undefined is omitted, as JSON.stringify does.
+			if (descriptor.value === undefined) continue;
 			const cloned = walk(descriptor.value, depth + 1, false, state, options);
 			if (cloned === BOUNDED_BRANCH || cloned === BOUNDED_EXHAUSTED) {
 				defineOwn(output, key, CONNECTOR_JSON_BOUNDED);

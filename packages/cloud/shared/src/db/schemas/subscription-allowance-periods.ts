@@ -110,7 +110,7 @@ export const subscriptionAllowancePeriods = pgTable(
     ),
     invoice_id_check: check(
       "subscription_allowance_periods_invoice_id_check",
-      sql`${table.provider} = 'stripe' AND ${table.provider_environment} IN ('test','live') AND ((${table.grant_source} = 'paid_invoice' AND ${table.stripe_invoice_id} ~ '^in_[A-Za-z0-9]+$' AND ${table.trial_claim_id} IS NULL) OR (${table.grant_source} = 'trial_claim' AND ${table.billing_scope_id} IS NOT NULL AND ${table.stripe_invoice_id} IS NULL AND ${table.trial_claim_id} IS NOT NULL))`,
+      sql`${table.provider} = 'stripe' AND ${table.provider_environment} IN ('test','live') AND ((${table.grant_source} = 'paid_invoice' AND ${table.stripe_invoice_id} IS NOT NULL AND ${table.stripe_invoice_id} ~ '^in_[A-Za-z0-9]+$' AND ${table.trial_claim_id} IS NULL) OR (${table.grant_source} = 'trial_claim' AND ${table.billing_scope_id} IS NOT NULL AND ${table.stripe_invoice_id} IS NULL AND ${table.trial_claim_id} IS NOT NULL))`,
     ),
     period_check: check(
       "subscription_allowance_periods_period_check",

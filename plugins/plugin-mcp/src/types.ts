@@ -20,8 +20,8 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 
 export const MCP_SERVICE_NAME = "mcp" as const;
-export const DEFAULT_MCP_TIMEOUT_SECONDS = 60000;
-export const MIN_MCP_TIMEOUT_SECONDS = 1;
+export const DEFAULT_MCP_TIMEOUT_MS = 60000;
+export const MIN_MCP_TIMEOUT_MS = 1;
 export const DEFAULT_MAX_RETRIES = 2;
 
 export interface PingConfig {

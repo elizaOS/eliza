@@ -1,11 +1,11 @@
 // Handles webhook gateway twilio behavior for authenticated connector fan-in.
 import crypto from "node:crypto";
-import { z } from "zod";
 import {
   calculateTwilioSmsBilling,
   classifyTwilioSmsCostConfig,
   resolveTwilioSmsCostPerSegment,
-} from "../billing";
+} from "@elizaos/cloud-sdk/browser-contracts";
+import { z } from "zod";
 import { logger } from "../logger";
 import { boundedGatewayFetch } from "./bounded-fetch";
 import {

@@ -20,12 +20,6 @@ import { createService, promoteSubactionsToActions } from "@elizaos/core";
 
 // ─── Trust ────────────────────────────────────────────────────────────────────
 
-// Eagerly import trust components so they are available to the runtime's
-// action planner and provider composition.
-//
-// Direct leaf-file imports — see comment in
-// ./advanced-capabilities/index.ts for the Bun.build mis-rewrite that
-// requires bypassing barrels here too.
 import { trustAction } from "./trust/actions/trust.ts";
 import { adminTrustProvider } from "./trust/providers/adminTrust.ts";
 import { securityStatusProvider } from "./trust/providers/securityStatus.ts";
@@ -76,9 +70,6 @@ const trustCapability = {
 
 // ─── Secrets Manager ──────────────────────────────────────────────────────────
 
-// Direct leaf-file imports — see comment in
-// ./advanced-capabilities/index.ts for the Bun.build mis-rewrite that
-// requires bypassing barrels.
 import { secretsAction } from "./secrets/actions/manage-secret.ts";
 import {
   secretsInfoProvider,

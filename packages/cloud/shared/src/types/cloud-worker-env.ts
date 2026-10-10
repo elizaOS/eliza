@@ -24,8 +24,23 @@ export interface RuntimeDurableObjectNamespace {
 }
 
 export interface Bindings {
+  /** Explicit per-turn Network context; absent disables the integration. */
+  NETWORK_SHARED_ENABLED?: string;
+  /** Private server-owned Network HTTP service binding; no public fetch fallback. */
+  NETWORK_MEMBERSHIP?: import("../lib/services/shared-runtime/network-membership-client").NetworkMembershipFetcher;
+  NETWORK_MEMBERSHIP_SERVER_TOKEN?: string;
+  /** Default off. Enable only after legacy Network history inventory/migration and staging qualification. */
+  NETWORK_PERSONAL_CONTINUITY_ENABLED?: string;
+  /** Default off. Destination-bound phone handoff is admitted only in staging. */
+  NETWORK_SITE_AUTH_ENABLED?: string;
+  /** One exact loopback Network site origin for staging qualification. */
+  NETWORK_SITE_AUTH_ORIGIN?: string;
+  /** Confidential Network server authority. Worker secret; never a public/Vite variable. */
+  NETWORK_SITE_AUTH_SERVER_TOKEN?: string;
   /** Trusted execution environment for app inference; must match the registered app client mode. */
   APP_INFERENCE_EXECUTION_ENVIRONMENT?: "test" | "live";
+  /** Inactive by default: reviewed server-owned owner/room capture policy JSON. */
+  SHARED_OWNER_MODEL_CAPTURE_POLICY?: string;
   // ---- Deployment environment ----
   /**
    * Wrangler environment name (`"production"` | `"staging"`); unset in local

@@ -25,6 +25,7 @@ import { isValidE164, normalizePhoneNumber } from "../../utils/phone-normalizati
 import { findActivePersonalDedicatedTarget } from "../agent-tier-upgrade-target";
 import { apiKeysService } from "../api-keys";
 import { personalSharedAgentId } from "../shared-runtime/personal-shared-agent";
+import { sharedOwnerProfileName } from "../shared-runtime/shared-participant-name";
 import { redeemSignupCode } from "../signup-code";
 import { invalidateBoundPersonalDeliveryProjection } from "./personal-delivery-projection-contract";
 import type { TelegramAuthData } from "./telegram-auth";
@@ -36,6 +37,8 @@ export interface FindOrCreateResult {
 }
 
 export interface PersonalDeliveryResult {
+  /** Canonical owner profile projection; never a connector-supplied display label. */
+  ownerName?: string;
   userId: string;
   organizationId: string;
   dedicatedTarget: Pick<AgentSandbox, "id" | "status" | "bridge_url" | "agent_config"> | null;
@@ -302,6 +305,7 @@ class ElizaAppUserService {
       return {
         userId: reusable.userId,
         organizationId: reusable.organizationId,
+        ...(reusable.ownerName ? { ownerName: reusable.ownerName } : {}),
         dedicatedTarget,
         isNew: false,
         resolution,
@@ -353,9 +357,11 @@ class ElizaAppUserService {
         resolution: "locked-create-or-repair",
       },
     );
+    const ownerName = sharedOwnerProfileName(result.user);
     return {
       userId: result.user.id,
       organizationId: result.organization.id,
+      ...(ownerName ? { ownerName } : {}),
       dedicatedTarget,
       isNew: result.isNew,
       resolution: "locked-create-or-repair",
@@ -383,7 +389,7 @@ class ElizaAppUserService {
     // Scenario 1: Check if user exists by telegram_id (returning Telegram user)
     const existingTelegramUser = await usersRepository.findByTelegramIdWithOrganization(telegramId);
 
-    if (existingTelegramUser && existingTelegramUser.organization) {
+    if (existingTelegramUser?.organization) {
       const linked = await usersRepository.linkTelegramAndPhoneIdentity(existingTelegramUser.id, {
         telegram_id: telegramId,
         telegram_username: telegramData.username,
@@ -418,7 +424,7 @@ class ElizaAppUserService {
     const existingPhoneUser =
       await usersRepository.findByPhoneNumberWithOrganization(normalizedPhone);
 
-    if (existingPhoneUser && existingPhoneUser.organization) {
+    if (existingPhoneUser?.organization) {
       // Re-check telegram_id to prevent race condition (TOCTOU)
       // Another request may have linked a different Telegram account between auth check and now
       if (existingPhoneUser.telegram_id && existingPhoneUser.telegram_id !== telegramId) {
@@ -513,7 +519,7 @@ class ElizaAppUserService {
       if (isUniqueConstraintError(error)) {
         // Try to find the user that was created by the other request (by telegram_id)
         const userByTelegram = await usersRepository.findByTelegramIdWithOrganization(telegramId);
-        if (userByTelegram && userByTelegram.organization) {
+        if (userByTelegram?.organization) {
           logger.info("[ElizaAppUserService] Recovered from race condition (telegram)", {
             telegramId,
           });
@@ -527,7 +533,7 @@ class ElizaAppUserService {
         // Constraint may have been on phone_number (same phone, different Telegram ID)
         const userByPhone =
           await usersRepository.findByPhoneNumberWithOrganization(normalizedPhone);
-        if (userByPhone && userByPhone.organization) {
+        if (userByPhone?.organization) {
           logger.warn("[ElizaAppUserService] Phone already linked by race condition", {
             telegramId,
             phone: `***${normalizedPhone.slice(-4)}`,
@@ -603,7 +609,7 @@ class ElizaAppUserService {
     const normalizedEmail = email.toLowerCase().trim();
     const existingUser = await usersRepository.findByEmailWithOrganization(normalizedEmail);
 
-    if (existingUser && existingUser.organization) {
+    if (existingUser?.organization) {
       logger.info("[ElizaAppUserService] Linked email to existing user (iMessage)", {
         userId: existingUser.id,
         email: maskEmailForLogging(normalizedEmail),
@@ -640,7 +646,7 @@ class ElizaAppUserService {
       // Handle race condition: another request created the user first
       if (isUniqueConstraintError(error)) {
         const user = await usersRepository.findByEmailWithOrganization(normalizedEmail);
-        if (user && user.organization) {
+        if (user?.organization) {
           logger.info("[ElizaAppUserService] Recovered from race condition (email)", {
             email: maskEmailForLogging(normalizedEmail),
           });
@@ -709,7 +715,7 @@ class ElizaAppUserService {
     // Scenario 1: Check if user exists by discord_id (returning Discord user)
     const existingUser = await usersRepository.findByDiscordIdWithOrganization(discordId);
 
-    if (existingUser && existingUser.organization) {
+    if (existingUser?.organization) {
       // Update Discord profile data if changed (non-critical - graceful degradation)
       const updates: Partial<NewUser> = {};
       let needsUpdate = false;
@@ -786,7 +792,7 @@ class ElizaAppUserService {
       // Refetch if we updated phone
       if (normalizedPhone && !existingUser.phone_number) {
         const refetched = await usersRepository.findByDiscordIdWithOrganization(discordId);
-        if (refetched && refetched.organization) {
+        if (refetched?.organization) {
           return {
             user: refetched,
             organization: refetched.organization,
@@ -809,7 +815,7 @@ class ElizaAppUserService {
     // account instead of their existing one.
     const canonicalOnlyUser =
       await usersRepository.findByCanonicalDiscordIdWithOrganization(discordId);
-    if (canonicalOnlyUser && canonicalOnlyUser.organization) {
+    if (canonicalOnlyUser?.organization) {
       await usersRepository.refreshDiscordProjectionForWrite(canonicalOnlyUser.id);
       return {
         user: canonicalOnlyUser,
@@ -823,7 +829,7 @@ class ElizaAppUserService {
       const existingPhoneUser =
         await usersRepository.findByPhoneNumberWithOrganization(normalizedPhone);
 
-      if (existingPhoneUser && existingPhoneUser.organization) {
+      if (existingPhoneUser?.organization) {
         // Re-check discord_id to prevent race condition (TOCTOU)
         if (existingPhoneUser.discord_id && existingPhoneUser.discord_id !== discordId) {
           logger.warn(
@@ -913,7 +919,7 @@ class ElizaAppUserService {
       // Handle race condition: another request created the user first
       if (isUniqueConstraintError(error)) {
         const user = await usersRepository.findByDiscordIdWithOrganization(discordId);
-        if (user && user.organization) {
+        if (user?.organization) {
           logger.info("[ElizaAppUserService] Recovered from race condition (discord)", {
             discordId,
           });
@@ -924,7 +930,7 @@ class ElizaAppUserService {
         if (normalizedPhone) {
           const userByPhone =
             await usersRepository.findByPhoneNumberWithOrganization(normalizedPhone);
-          if (userByPhone && userByPhone.organization) {
+          if (userByPhone?.organization) {
             logger.warn("[ElizaAppUserService] Phone already linked by race condition", {
               discordId,
               phone: `***${normalizedPhone.slice(-4)}`,
@@ -1305,7 +1311,7 @@ class ElizaAppUserService {
     // Scenario 1: Check if user exists by whatsapp_id (returning WhatsApp user)
     const existingWhatsAppUser = await usersRepository.findByWhatsAppIdWithOrganization(whatsappId);
 
-    if (existingWhatsAppUser && existingWhatsAppUser.organization) {
+    if (existingWhatsAppUser?.organization) {
       // Update WhatsApp profile name if changed
       if (profileName && profileName !== existingWhatsAppUser.whatsapp_name) {
         try {
@@ -1338,7 +1344,7 @@ class ElizaAppUserService {
     // Scenario 2: Check if user exists by phone_number (Telegram/iMessage-first user)
     const existingPhoneUser = await usersRepository.findByPhoneNumberWithOrganization(derivedPhone);
 
-    if (existingPhoneUser && existingPhoneUser.organization) {
+    if (existingPhoneUser?.organization) {
       // Re-check whatsapp_id to prevent race condition (TOCTOU)
       if (existingPhoneUser.whatsapp_id && existingPhoneUser.whatsapp_id !== whatsappId) {
         logger.warn(
@@ -1408,7 +1414,7 @@ class ElizaAppUserService {
       if (isUniqueConstraintError(error)) {
         // Try to find the user that was created by the other request (by whatsapp_id)
         const userByWhatsApp = await usersRepository.findByWhatsAppIdWithOrganization(whatsappId);
-        if (userByWhatsApp && userByWhatsApp.organization) {
+        if (userByWhatsApp?.organization) {
           logger.info("[ElizaAppUserService] Recovered from race condition (whatsapp)", {
             whatsappId,
           });
@@ -1421,7 +1427,7 @@ class ElizaAppUserService {
 
         // Constraint may have been on phone_number (same phone, different WhatsApp ID)
         const userByPhone = await usersRepository.findByPhoneNumberWithOrganization(derivedPhone);
-        if (userByPhone && userByPhone.organization) {
+        if (userByPhone?.organization) {
           logger.warn("[ElizaAppUserService] Phone already linked by race condition (whatsapp)", {
             whatsappId,
             phone: `***${derivedPhone.slice(-4)}`,

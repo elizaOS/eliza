@@ -1814,42 +1814,21 @@ async function loadInboxMessages(
   roomSourceHint: string | null,
 ): Promise<InboxMessage[]> {
   const roomById = await loadRelevantRooms(runtime, roomId);
-  let memories: Memory[];
-  if (roomId) {
-    memories = await runtime.getMemories({
-      tableName: "messages",
-      roomId,
-      limit: limit * PER_ROOM_OVERFETCH_MULTIPLIER,
-      unique: false,
-    });
-  } else {
-    const roomIds = await collectAgentRoomIds(runtime);
-    if (roomIds.length === 0) return [];
-    memories = await runtime.getMemoriesByRoomIds({
-      tableName: "messages",
-      roomIds,
-      limit: limit * PER_ROOM_OVERFETCH_MULTIPLIER,
-    });
-  }
   const agentId = runtime.agentId;
-  const reactionsByMessageId = buildMessageReactionMap(memories);
   const roomSourceById = new Map<string, string>();
   for (const [knownRoomId, room] of roomById) {
     const roomSource = readRoomSource(room);
     if (!roomSource || !sourceFilter.has(roomSource.toLowerCase())) continue;
     roomSourceById.set(knownRoomId, roomSource);
   }
-  for (const memory of memories) {
-    const source = extractSource(memory);
-    if (!source || !sourceFilter.has(source.toLowerCase())) continue;
-    const memoryRoomId = memory.roomId;
-    if (!memoryRoomId || roomSourceById.has(memoryRoomId)) continue;
-    roomSourceById.set(memoryRoomId, source);
-  }
   const out: InboxMessageRecord[] = [];
-  for (const memory of memories) {
-    if (extractDiscordReactionEvent(memory)) {
-      continue;
+  const reactionMemories: Memory[] = [];
+  const pendingSourceMemories = new Map<string, Memory[]>();
+  const appendMemory = (memory: Memory): void => {
+    const reaction = extractDiscordReactionEvent(memory);
+    if (reaction) {
+      reactionMemories.push(memory);
+      return;
     }
     const room = roomById.get(memory.roomId);
     const explicitSource = extractSource(memory);
@@ -1859,9 +1838,15 @@ async function loadInboxMessages(
       (roomId
         ? (readRoomSource(room) ?? roomSourceHint ?? undefined)
         : undefined);
-    if (!source || !sourceFilter.has(source.toLowerCase())) continue;
+    if (!source) {
+      const pending = pendingSourceMemories.get(memory.roomId) ?? [];
+      pending.push(memory);
+      pendingSourceMemories.set(memory.roomId, pending);
+      return;
+    }
+    if (!sourceFilter.has(source.toLowerCase())) return;
     const text = extractText(memory);
-    if (!text) continue;
+    if (!text) return;
     out.push({
       id: memory.id ?? "",
       role: memory.entityId === agentId ? "assistant" : "user",
@@ -1875,7 +1860,6 @@ async function loadInboxMessages(
       roomId: memory.roomId,
       hasExternalUrl: extractContentUrl(memory) !== undefined,
       hasExplicitSource: explicitSource !== null,
-      reactions: memory.id ? reactionsByMessageId.get(memory.id) : undefined,
       from: extractFrom(memory),
       fromUserName: extractFromUserName(memory),
       avatarUrl: extractFromAvatarUrl(memory),
@@ -1887,6 +1871,76 @@ async function loadInboxMessages(
         typeof memory.entityId === "string" ? memory.entityId : undefined,
       rawSenderId: extractRawSenderId(memory),
     });
+  };
+
+  const pageSize = limit * PER_ROOM_OVERFETCH_MULTIPLIER;
+  const roomIds = roomId ? null : await collectAgentRoomIds(runtime);
+  if (roomIds && roomIds.length === 0) return [];
+  const seenMemoryIds = new Set<string>();
+  let previousPageFingerprint: string | null = null;
+  let offset = 0;
+  // The public limit counts renderable, deduplicated messages—not raw storage
+  // rows. Keep paging without a history cap; repeated-page detection protects
+  // runtimes whose adapters ignore offset.
+  while (dedupeInboxMessages(out).length < limit) {
+    const page = roomId
+      ? await runtime.getMemories({
+          tableName: "messages",
+          roomId,
+          limit: pageSize,
+          offset,
+          unique: false,
+        })
+      : await runtime.getMemoriesByRoomIds({
+          tableName: "messages",
+          roomIds: roomIds ?? [],
+          limit: pageSize,
+          offset,
+        });
+    if (page.length === 0) break;
+    const pageFingerprint = page
+      .map((memory) =>
+        memory.id
+          ? `id:${memory.id}`
+          : `row:${String(memory.createdAt)}|${memory.roomId}|${extractText(memory)}`,
+      )
+      .join("\n");
+    if (pageFingerprint === previousPageFingerprint) break;
+    previousPageFingerprint = pageFingerprint;
+
+    const freshPage: Memory[] = [];
+    for (const memory of page) {
+      if (memory.id && seenMemoryIds.has(memory.id)) continue;
+      if (memory.id) seenMemoryIds.add(memory.id);
+      freshPage.push(memory);
+    }
+    if (freshPage.length === 0) break;
+
+    const newlyResolvedRooms = new Set<string>();
+    for (const memory of freshPage) {
+      const source = extractSource(memory);
+      if (!source || !sourceFilter.has(source.toLowerCase())) continue;
+      const memoryRoomId = memory.roomId;
+      if (!memoryRoomId || roomSourceById.has(memoryRoomId)) continue;
+      roomSourceById.set(memoryRoomId, source);
+      newlyResolvedRooms.add(memoryRoomId);
+    }
+    for (const resolvedRoomId of newlyResolvedRooms) {
+      const pending = pendingSourceMemories.get(resolvedRoomId) ?? [];
+      pendingSourceMemories.delete(resolvedRoomId);
+      for (const memory of pending) appendMemory(memory);
+    }
+    for (const memory of freshPage) appendMemory(memory);
+
+    if (page.length < pageSize) break;
+    offset += page.length;
+  }
+
+  const reactionsByMessageId = buildMessageReactionMap(reactionMemories);
+  for (const message of out) {
+    message.reactions = message.id
+      ? reactionsByMessageId.get(message.id)
+      : undefined;
   }
   const deduped = dedupeInboxMessages(out);
   // Newest first. The core API doesn't guarantee order across rooms, so

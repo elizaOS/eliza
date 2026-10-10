@@ -589,7 +589,7 @@ function assertCallbackStageOpen(
   }
 }
 
-function assertOptionalContainerMatches(
+function assertContainerMatches(
   attempt: AgentSandboxReplacementAttempt,
   containerId: string | null,
   reference: ValidatedReference,
@@ -639,20 +639,6 @@ function assertLocatorCoreMatches(
   ) {
     throw conflict(
       "Replacement locator replay conflicts with immutable authority",
-      reference,
-      attempt.state,
-    );
-  }
-}
-
-function assertContainerMatches(
-  attempt: AgentSandboxReplacementAttempt,
-  containerId: string,
-  reference: ValidatedReference,
-): void {
-  if (attempt.locator_container_id !== containerId) {
-    throw conflict(
-      "Replacement Docker enrichment conflicts with immutable authority",
       reference,
       attempt.state,
     );
@@ -1435,7 +1421,7 @@ export async function beginAgentSandboxExactRestoreCleanupForLockedAuthoritiesIn
   const current = await lockAttempt(tx, expected);
   assertStartAuthorityMatches(current, expected);
   assertLocatorCoreMatches(current, locator, expected);
-  assertOptionalContainerMatches(current, locator.containerId, expected);
+  assertContainerMatches(current, locator.containerId, expected);
   if (current.state === "cleanup_in_progress" || current.state === "cleanup_proven") {
     return frozenResult(current, true);
   }
@@ -1475,7 +1461,7 @@ export async function finishAgentSandboxExactRestoreCleanupForLockedAuthoritiesI
   const current = await lockAttempt(tx, expected);
   assertStartAuthorityMatches(current, expected);
   assertLocatorCoreMatches(current, locator, expected);
-  assertOptionalContainerMatches(current, locator.containerId, expected);
+  assertContainerMatches(current, locator.containerId, expected);
   if (current.state === "cleanup_proven") {
     if (current.cleanup_receipt_digest !== receiptDigest) {
       throw conflict("Cleanup receipt replay mismatch", expected, current.state);

@@ -1,16 +1,6 @@
-/**
- * TaskEditor — single-screen editor for a prompt automation (glossary term):
- * title, prompt, and a schedule (once / recurring cron / on-event). No node
- * graph — that's a workflow, a separate surface (WorkflowEditor).
- *
- * Most users land here and don't need a node graph. A recurring or
- * on-event schedule is a prompt-kind `TriggerConfig` — the editor creates
- * it via the trigger API (`client.createTrigger` with `kind: "prompt"`,
- * no workflowId), and the one trigger clock fires the prompt as an agent
- * turn. A plain "once" task with no recurrence stays a workbench task
- * (`client.createWorkbenchTask`). Schedule is never encoded onto tags.
- */
+/** Prompt automations use the existing trigger API for Once, cron and events. */
 
+import { resolveDefaultTimeZone } from "@elizaos/contracts";
 import { Calendar, Clock3, Zap } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface/useAgentElement";
@@ -30,23 +20,24 @@ import {
 } from "../ui/select";
 import { Spinner } from "../ui/spinner";
 import { Textarea } from "../ui/textarea";
+import { validateCronExpression } from "./trigger-form-utils";
 
 /** How the simple automation recurs. Drives which persistence path runs. */
 export type TaskScheduleKind = "once" | "recurring" | "event";
 
 export interface TaskEditorInitialValue {
-  /** Workbench-task id, set only when editing a plain "once" task. */
+  /** Retained for legacy workbench rows; their removed API cannot be edited here. */
   id?: string;
-  /**
-   * Trigger id, set only when editing an existing prompt-kind trigger
-   * (`scheduleKind` is "recurring" or "event"). Mutually exclusive with `id`.
-   */
+  /** Canonical prompt trigger identity, preserved across schedule changes. */
   triggerId?: string;
   name: string;
   prompt: string;
   scheduleKind: TaskScheduleKind;
   cronExpression: string;
   eventName: string;
+  scheduledAtIso: string;
+  timezone: string;
+  enabled: boolean;
 }
 
 export interface TaskEditorProps {
@@ -79,11 +70,20 @@ export function TaskEditor({
   const [eventName, setEventName] = useState(
     initial?.eventName ?? availableEvents[0]?.id ?? "",
   );
+  const localTimeZone = resolveDefaultTimeZone();
+  const [scheduledAt, setScheduledAt] = useState(() => {
+    if (!initial?.scheduledAtIso) return "";
+    const date = new Date(initial.scheduledAtIso);
+    return Number.isFinite(date.getTime())
+      ? new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+          .toISOString()
+          .slice(0, -1)
+      : "";
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Editing an existing automation when either a workbench-task id (plain
-  // "once" task) or a trigger id (recurring/event prompt trigger) is present.
+  // Keep legacy rows visible, but never create a duplicate while editing one.
   const isEditing = Boolean(initial?.id || initial?.triggerId);
 
   const cronPreview = useMemo(
@@ -128,6 +128,15 @@ export function TaskEditor({
     getValue: () => eventName,
     onFill: (value) => setEventName(value),
   });
+  const scheduledField = useAgentElement<HTMLInputElement>({
+    id: "task-scheduled-at",
+    role: "text-input",
+    label: t("triggerform.runAt", { defaultValue: "Run at" }),
+    group: "task-editor",
+    description: "Explicit date and time for the one-time prompt",
+    getValue: () => scheduledAt,
+    onFill: setScheduledAt,
+  });
   const cancelButton = useAgentElement<HTMLButtonElement>({
     id: "task-cancel",
     role: "button",
@@ -166,50 +175,52 @@ export function TaskEditor({
     setError(null);
     setBusy(true);
     try {
-      if (scheduleKind === "recurring" || scheduleKind === "event") {
-        // A recurring or on-event schedule is a prompt-kind trigger: the one
-        // trigger clock fires `instructions` as an agent turn. No workflowId.
-        const request = {
-          kind: "prompt" as const,
-          displayName: trimmedName,
-          instructions: trimmedPrompt,
-          triggerType:
-            scheduleKind === "recurring"
-              ? ("cron" as const)
-              : ("event" as const),
-          cronExpression:
-            scheduleKind === "recurring" ? cron.trim() : undefined,
-          eventKind: scheduleKind === "event" ? eventName.trim() : undefined,
-        };
-        if (initial?.triggerId) {
-          await client.updateTrigger(initial.triggerId, request);
-        } else {
-          await client.createTrigger({
-            ...request,
-            wakeMode: "inject_now",
-            enabled: true,
-          });
-          // Cross-boundary edit: this automation was a workbench "once" task and
-          // is now a trigger. Delete the stale workbench task so it doesn't keep
-          // existing alongside the new trigger (no duplicate).
-          if (initial?.id) {
-            await client.deleteWorkbenchTask(initial.id);
-          }
+      if (initial?.id && !initial.triggerId) {
+        throw new Error(
+          "This legacy task cannot be edited as a prompt automation.",
+        );
+      }
+      let scheduledAtIso: string | undefined;
+      if (scheduleKind === "once") {
+        const date = new Date(scheduledAt);
+        const unchangedPausedTime =
+          initial?.enabled === false &&
+          date.getTime() === Date.parse(initial.scheduledAtIso ?? "");
+        if (
+          !Number.isFinite(date.getTime()) ||
+          (!unchangedPausedTime && date.getTime() <= Date.now())
+        ) {
+          throw new Error("Choose a future run time for this one-time prompt.");
         }
+        scheduledAtIso = date.toISOString();
+      }
+      if (scheduleKind === "recurring") {
+        const validation = validateCronExpression(cron);
+        if (!validation.ok) throw new Error(validation.message);
+      }
+      if (scheduleKind === "event" && !eventName.trim()) {
+        throw new Error("Choose an event for this prompt.");
+      }
+      const request = {
+        kind: "prompt" as const,
+        displayName: trimmedName,
+        instructions: trimmedPrompt,
+        triggerType:
+          scheduleKind === "recurring" ? ("cron" as const) : scheduleKind,
+        scheduledAtIso,
+        cronExpression: scheduleKind === "recurring" ? cron.trim() : undefined,
+        eventKind: scheduleKind === "event" ? eventName.trim() : undefined,
+        timezone: initial?.triggerId ? initial.timezone : localTimeZone,
+      };
+      if (initial?.triggerId) {
+        // Same record for every schedule kind. Preserve disabled/wake policy.
+        await client.updateTrigger(initial.triggerId, request);
       } else {
-        // Plain "once" task with no recurrence — a workbench task.
-        const payload = { name: trimmedName, description: trimmedPrompt };
-        if (initial?.id) {
-          await client.updateWorkbenchTask(initial.id, payload);
-        } else {
-          await client.createWorkbenchTask(payload);
-          // Cross-boundary edit: this automation was a recurring/event trigger
-          // and is now a plain "once" task. Delete the stale trigger so it stops
-          // firing (no duplicate).
-          if (initial?.triggerId) {
-            await client.deleteTrigger(initial.triggerId);
-          }
-        }
+        await client.createTrigger({
+          ...request,
+          wakeMode: "inject_now",
+          enabled: true,
+        });
       }
       onSaved?.();
     } catch (e) {
@@ -229,6 +240,11 @@ export function TaskEditor({
     scheduleKind,
     cron,
     eventName,
+    scheduledAt,
+    localTimeZone,
+    initial?.timezone,
+    initial?.enabled,
+    initial?.scheduledAtIso,
     initial?.id,
     initial?.triggerId,
     onSaved,
@@ -303,6 +319,25 @@ export function TaskEditor({
             disabled={availableEvents.length === 0}
           />
         </div>
+
+        {scheduleKind === "once" && (
+          <div className="space-y-2">
+            <FieldLabel htmlFor="task-scheduled-at-input">
+              {t("triggerform.runAt", { defaultValue: "Run at" })} (
+              {localTimeZone})
+            </FieldLabel>
+            <Input
+              id="task-scheduled-at-input"
+              ref={scheduledField.ref}
+              type="datetime-local"
+              step="0.001"
+              value={scheduledAt}
+              onChange={(event) => setScheduledAt(event.target.value)}
+              data-testid="task-editor-scheduled-at"
+              {...scheduledField.agentProps}
+            />
+          </div>
+        )}
 
         {scheduleKind === "recurring" && (
           <div className="space-y-2">

@@ -18,3 +18,10 @@ fonts, colors, regional transport and protocol. Native location uses the host
 bridge supplied to `./client/native-location`; no plugin registry or provider
 authority is chosen by the client library. Callers cancel regional requests and
 retire location ownership; the library does not impose elapsed-time deadlines.
+
+Device navigation exposes provider-reported maneuvers, route progress, origin
+search, saved-place matches and explicit rerouting. Route projection uses the
+short great-circle segments, including routes across the date line. The optional
+map plane draws selectable pins and a moving-device heading, and can follow the
+position during navigation. Hosts still own location permission, voice policy,
+provider configuration and presentation.

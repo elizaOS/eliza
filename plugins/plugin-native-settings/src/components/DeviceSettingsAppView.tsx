@@ -22,7 +22,13 @@ import {
   Volume2,
   Wifi,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type ChangeEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 const ROLE_LABELS: Record<AndroidRoleName, string> = {
   home: "Home",
@@ -312,7 +318,9 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                 <div className="text-xs text-muted">
                   {deviceSettings?.brightnessMode === "automatic"
                     ? "Adaptive"
-                    : "Manual"}
+                    : deviceSettings?.brightnessMode === "manual"
+                      ? "Manual"
+                      : "Unknown"}
                 </div>
               </div>
             </div>
@@ -330,7 +338,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                 min={0}
                 max={100}
                 value={percent(brightness)}
-                onChange={(event) =>
+                onChange={(event: ChangeEvent<HTMLInputElement>) =>
                   setBrightness(clampUnit(Number(event.target.value) / 100))
                 }
                 className="w-full"
@@ -470,7 +478,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                         min={0}
                         max={volume.max}
                         value={value}
-                        onChange={(event) =>
+                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
                           setVolumes((current) => ({
                             ...current,
                             [volume.stream]: clampVolumeValue(

@@ -3,7 +3,7 @@
  * collapsed, and shell navigation layouts.
  */
 import type { Meta, StoryObj } from "@storybook/react";
-import { SidebarBody } from "./sidebar-body";
+import { SidebarBody } from "./sidebar-layout";
 
 const THREAD_ROWS = Array.from({ length: 20 }, (_, i) => ({
   id: `thread-${i + 1}`,

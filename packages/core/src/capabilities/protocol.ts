@@ -1,4 +1,5 @@
 /** Capability contracts; imported directly by internal consumers. */
+
 import type { JsonObject, JsonValue } from "../types/primitives";
 import type {
 	PageLayoutManifest,
@@ -255,7 +256,7 @@ export type RemotePluginSurfaceManifest = JsonObject & {
 };
 
 export type RemotePluginViewManifest = {
-	viewKind?: import("../types/view-kind.js").ViewKind;
+	viewKind?: import("../views/declarations.js").ViewKind;
 	id: string;
 	label: string;
 	viewType?: "gui" | "tui" | "xr";
@@ -336,7 +337,7 @@ export type RemotePluginWidgetManifest = {
 	order?: number;
 	defaultEnabled?: boolean;
 	navGroup?: string;
-	viewKind?: import("../types/view-kind.js").ViewKind;
+	viewKind?: import("../views/declarations.js").ViewKind;
 	componentExport?: string;
 };
 
@@ -360,7 +361,7 @@ export type RemotePluginAppNavTabManifest = {
 	icon?: string;
 	path: string;
 	order?: number;
-	viewKind?: import("../types/view-kind.js").ViewKind;
+	viewKind?: import("../views/declarations.js").ViewKind;
 	group?: string;
 
 	surface?: RemotePluginSurfaceManifest;
@@ -383,7 +384,7 @@ export type RemotePluginAppManifest = {
 	uiExtension?: {
 		detailPanelId?: string;
 	};
-	viewKind?: import("../types/view-kind.js").ViewKind;
+	viewKind?: import("../views/declarations.js").ViewKind;
 	visibleInAppStore?: boolean;
 	navTabs?: RemotePluginAppNavTabManifest[];
 };

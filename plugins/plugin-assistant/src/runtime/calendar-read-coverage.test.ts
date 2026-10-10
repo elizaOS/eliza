@@ -192,14 +192,6 @@ describe("request-bound Calendar read coverage", () => {
       },
       {
         iteration: 1,
-        toolCall: { id: "notes", name: "NOTES_LIST", params: {} },
-        result: {
-          success: true,
-          data: { total: 0, lookupMode: "all", filterApplied: false },
-        },
-      },
-      {
-        iteration: 1,
         toolCall: { id: "next", name: "CALENDAR_NEXT_EVENT", params: {} },
         result: outcome,
       },
@@ -207,18 +199,17 @@ describe("request-bound Calendar read coverage", () => {
     f.output.outcomeCoverage = [1, 2, 3].map((i) => ({
       intentId: `intent:${i}`,
       status: "completed",
-      evidenceStepIds: [`step:${i}`],
+      evidenceStepIds: [`step:${i === 3 ? 2 : 1}`],
     }));
+    f.output.messageToUser = `Opened Notes. Your latest (and only) note is titled "QA regression 1005-202247" and the body says: "The verification word is cobalt."\n\n${reply.userFacingFacts}`;
     const result = await runEvaluator({
       runtime: { useModel: async () => JSON.stringify(f.output) },
       context: f.context,
       trajectory: f.trajectory,
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
     expect(result.decision).toBe("FINISH");
-    expect(result.messageToUser).toContain(
-      "Notes view is open. No notes exist in Notes.",
-    );
+    expect(result.messageToUser).toBe(f.output.messageToUser);
     expect(result.messageToUser).toContain(String(reply.userFacingFacts));
     for (const forbidden of [
       "Report absence",
@@ -382,48 +373,97 @@ describe("request-bound Calendar read coverage", () => {
       calendarReadCoverage(f.output, f.context, f.trajectory).verified,
     ).toBe(true);
   });
-  it.each(["bounded agenda", "non-exhaustive next-event absence"])(
-    "keeps %s honest and terminal without another model call",
-    async (kind) => {
+  it("preserves the captured scoped empty-result reply and its unrelated note content", async () => {
+    const f = fixture();
+    const data = f.trajectory.steps[0].result.data;
+    if (!data) throw new Error("Missing result fixture");
+    data.event = null;
+    data.timeReference = {
+      asOf: "2026-10-06T02:49:45Z",
+      timeZone: "America/Los_Angeles",
+    };
+    data.readScope = {
+      selection: "next_event",
+      timeMin: "2026-10-05T07:00:00Z",
+      timeMax: "2026-11-04T08:00:00Z",
+      exhaustive: false,
+    };
+    data.calendarSources = [{ summary: "Eliza Calendar", status: "fresh" }];
+    f.output.messageToUser =
+      'Opened Notes. Your latest (and only) note is titled "QA regression 1005-202247" and the body says: "The verification word is cobalt."\n\nNext calendar event: none found in Eliza Calendar over the next ~30 days (checked through Nov 3).';
+    const result = await runEvaluator({
+      runtime: { useModel: async () => JSON.stringify(f.output) },
+      context: f.context,
+      trajectory: f.trajectory,
+    });
+    expect(result.success).toBe(true);
+    expect(result.requestFullyCovered).toBe(true);
+    expect(result.decision).toBe("FINISH");
+    expect(result.messageToUser).toBe(f.output.messageToUser);
+  });
+
+  it.each(["stale", "missing-receipt", "invalid-window", "missing-coverage"])(
+    "rejects an empty next-event result with %s evidence",
+    (kind) => {
       const f = fixture();
-      if (kind === "bounded agenda") {
-        f.trajectory.steps[0].toolCall.name = "CALENDAR_FEED";
-        f.trajectory.steps[0].result.data = {
-          replyContext: {
-            domain: "calendar",
-            scenario: "feed_results",
-            context: {
-              selection: "bounded_agenda",
-              nextEventLookupPerformed: false,
-            },
-          },
+      const result = f.trajectory.steps[0].result;
+      const data = result.data as Record<string, unknown>;
+      data.event = null;
+      if (kind === "stale")
+        data.calendarSources = [{ summary: "Calendar", status: "stale" }];
+      if (kind === "missing-receipt") result.effectReceipts = [];
+      if (kind === "invalid-window")
+        data.readScope = {
+          selection: "next_event",
+          timeMin: "bad",
+          timeMax: "bad",
+          exhaustive: false,
         };
-      } else {
-        const data = f.trajectory.steps[0].result.data;
-        if (!data) throw new Error("Missing result fixture");
-        data.event = null;
-      }
-      let calls = 0;
-      const result = await runEvaluator({
-        runtime: {
-          useModel: async () => {
-            calls++;
-            return JSON.stringify(f.output);
-          },
-        },
-        context: f.context,
-        trajectory: f.trajectory,
-      });
-      expect(result.success).toBe(false);
-      expect(result.requestFullyCovered).toBe(false);
-      expect(result.decision).toBe("FINISH");
-      expect(result.messageToUser).not.toContain(
-        "No upcoming events on any calendar.",
-      );
-      expect(result.messageToUser).toContain("couldn't confirm");
-      expect(calls).toBe(1);
+      if (kind === "missing-coverage")
+        data.readScope = {
+          selection: "next_event",
+          timeMin: "2026-10-04T00:00:00Z",
+          timeMax: "2026-11-04T00:00:00Z",
+        };
+      expect(
+        calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+      ).toBe(false);
     },
   );
+
+  it("rejects a bounded agenda substituted for a next-event read without another model call", async () => {
+    const f = fixture();
+    f.trajectory.steps[0].toolCall.name = "CALENDAR_FEED";
+    f.trajectory.steps[0].result.data = {
+      replyContext: {
+        domain: "calendar",
+        scenario: "feed_results",
+        context: {
+          selection: "bounded_agenda",
+          nextEventLookupPerformed: false,
+        },
+      },
+    };
+    let calls = 0;
+    const result = await runEvaluator({
+      runtime: {
+        useModel: async () => {
+          calls++;
+          return JSON.stringify(f.output);
+        },
+      },
+      context: f.context,
+      trajectory: f.trajectory,
+    });
+    expect(result.success).toBe(false);
+    expect(result.requestFullyCovered).toBe(false);
+    expect(result.decision).toBe("FINISH");
+    expect(result.messageToUser).not.toContain(
+      "No upcoming events on any calendar.",
+    );
+    expect(result.messageToUser).toContain("couldn't confirm");
+    expect(calls).toBe(1);
+  });
   it("leaves unrelated legacy requests without bindings unchanged", () => {
     const f = fixture();
     if (!f.context.metadata) throw new Error("Missing metadata fixture");
@@ -433,6 +473,56 @@ describe("request-bound Calendar read coverage", () => {
       calendarReadCoverage(f.output, f.context, f.trajectory).verified,
     ).toBe(true);
   });
+  it.each([
+    ["One line", ""],
+    ["Heading", "\nBody"],
+    ["  Heading ", "\n\nBody  \n"],
+  ])(
+    "preserves exact Notes content when Calendar remains unverified: %j",
+    async (title, body) => {
+      const f = fixture();
+      f.trajectory.outcomeIntents = [
+        ...(f.trajectory.outcomeIntents ?? []),
+        "Read the saved note",
+      ];
+      f.trajectory.steps[0].toolCall.name = "CALENDAR_FEED";
+      f.trajectory.steps[0].result.data = {
+        replyContext: {
+          domain: "calendar",
+          scenario: "feed_results",
+          userFacingFacts: "Only the checked Calendar window was read.",
+          context: {
+            asOf: "2026-10-04T01:19:36Z",
+            selection: "bounded_agenda",
+          },
+        },
+      };
+      f.trajectory.steps.push({
+        iteration: 1,
+        toolCall: { id: "note", name: "NOTES_GET", params: {} },
+        result: { success: true, data: { note: { title, body } } },
+      });
+      f.output.outcomeCoverage?.push({
+        intentId: "intent:2",
+        status: "completed",
+        evidenceStepIds: ["step:2"],
+      });
+      const model = vi.fn(async () => JSON.stringify(f.output));
+      const result = await runEvaluator({
+        runtime: { useModel: model },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+      expect(result.success).toBe(false);
+      expect(result.requestFullyCovered).toBe(false);
+      expect(result.messageToUser).toBe(
+        `Only the checked Calendar window was read. ${title}${body} I couldn't confirm that Calendar request. Those Calendar results cover only the connected sources and dates checked.`,
+      );
+      expect(result.outcomeCoverage?.[0].status).toBe("blocked");
+      expect(result.outcomeCoverage?.[1].status).toBe("completed");
+      expect(model).toHaveBeenCalledTimes(1);
+    },
+  );
   it("replaces unsupported prose with cited current Notes/navigation and bounded Calendar facts", async () => {
     const f = fixture();
     const bindings = f.context.metadata

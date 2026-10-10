@@ -3,8 +3,13 @@
  * deterministic OpenAI-compatible endpoint supplies the model response.
  */
 
-import type { MediaGenerationRequest } from "@elizaos/core";
-import { ChannelType, type UUID } from "@elizaos/core";
+import {
+  ChannelType,
+  ElizaError,
+  type MediaGenerationRequest,
+  type UUID,
+} from "@elizaos/core";
+import { ElizaError as ProtocolElizaError } from "@elizaos/core/protocol";
 import type {
   ScheduledTask,
   ScheduledTaskInput,
@@ -22,8 +27,26 @@ import { chatSseFrame } from "../../../shared/src/lib/services/chat-sse-frames";
 import type { BridgeRequest } from "../../../shared/src/lib/services/eliza-sandbox";
 import { handleCanonicalScopedAgentStream } from "../../../shared/src/lib/services/shared-runtime/canonical-scoped-stream";
 import { isCanonicalPersonalSharedAgent } from "../../../shared/src/lib/services/shared-runtime/personal-shared-identity";
-import { runSharedAgentTurn } from "../../../shared/src/lib/services/shared-runtime/run-shared-agent-turn";
+import {
+  type RunSharedAgentTurnInput,
+  runSharedAgentTurn,
+  runSharedAgentTurnStream,
+  type SharedAgentTurnStreamPart,
+} from "../../../shared/src/lib/services/shared-runtime/run-shared-agent-turn";
+import { runSharedElizaRuntimeTurn } from "../../../shared/src/lib/services/shared-runtime/shared-eliza-runtime";
+import {
+  SharedMemoryStore,
+  type SharedMemoryTurnPair,
+} from "../../../shared/src/lib/services/shared-runtime/shared-memory-store";
+import {
+  createOwnerCaptureBuffer,
+  type OwnerCapturePayload,
+} from "../../../shared/src/lib/services/shared-runtime/shared-owner-model-capture";
 import type { SharedRuntimeAgent } from "../../../shared/src/lib/services/shared-runtime/shared-runtime-agent";
+import {
+  classifySharedRuntimeTurnFailure,
+  SharedRuntimeTurnError,
+} from "../../../shared/src/lib/services/shared-runtime/shared-runtime-errors";
 import type { RuntimeDurableObjectNamespace } from "../../../shared/src/types/cloud-worker-env";
 import {
   type FailureDiagnosticBinding,
@@ -375,13 +398,225 @@ const worker = {
   async fetch(request: Request, env: Env): Promise<Response> {
     return await runWithCloudBindingsAsync(env, async () => {
       const url = new URL(request.url);
+      if (
+        url.pathname === "/cancel-before-model" ||
+        url.pathname === "/cancel-at-dispatch"
+      ) {
+        const controller = new AbortController();
+        const reason = new DOMException(
+          "Cancelled Workerd fixture",
+          "AbortError",
+        );
+        let dispatches = 0;
+        let rejected = false;
+        let thrownReasonUnchanged = false;
+        let modelFailurePresent = false;
+        const outcomes: string[] = [];
+        if (url.pathname === "/cancel-before-model") controller.abort(reason);
+        try {
+          await runSharedElizaRuntimeTurn({
+            character: {
+              name: "Cancelled Shared Probe",
+              system: "You are Eliza.",
+              model: "local/shared-runtime-probe",
+            },
+            history: [],
+            message: "shared cancelled dispatch fixture",
+            agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+            model: "local/shared-runtime-probe",
+            abortSignal: controller.signal,
+            onProviderDispatch: async () => {
+              dispatches++;
+              controller.abort(reason);
+            },
+            onRuntimeTiming: (receipt) => outcomes.push(receipt.outcome),
+            execution: {
+              channel: { type: ChannelType.DM, source: "shared-runtime" },
+              agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+              roomKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+            },
+          });
+        } catch (error) {
+          rejected = true;
+          thrownReasonUnchanged = error === reason;
+          modelFailurePresent = Boolean(
+            new SharedRuntimeTurnError("Fixture cancellation", error)
+              .failureDiagnostic?.modelFailure,
+          );
+        }
+        return Response.json({
+          rejected,
+          thrownReasonUnchanged,
+          modelFailurePresent,
+          dispatches,
+          signalAborted: controller.signal.aborted,
+          abortReasonUnchanged: controller.signal.reason === reason,
+          outcomes,
+        });
+      }
+      if (url.pathname === "/error-brand-consistency") {
+        const runtimeFailure = new ElizaError("Private runtime failure", {
+          code: "SHARED_RUNTIME_MESSAGE_FAILED",
+          context: { failureKind: "transient_failure", transient: true },
+        });
+        const protocolFailure = new ProtocolElizaError(
+          "Private compatibility failure",
+          {
+            code: "SHARED_RUNTIME_MESSAGE_FAILED",
+            context: { failureKind: "transient_failure", transient: true },
+          },
+        );
+        const wrapped = new SharedRuntimeTurnError(
+          "Shared turn failed.",
+          runtimeFailure,
+        );
+        const transported = SharedRuntimeTurnError.fromClassification(
+          wrapped.failureName,
+          wrapped.retryable,
+        );
+        return Response.json({
+          runtimeIsProtocol: runtimeFailure instanceof ProtocolElizaError,
+          wrapperIsProtocol: wrapped instanceof ProtocolElizaError,
+          runtime: classifySharedRuntimeTurnFailure(runtimeFailure),
+          protocol: classifySharedRuntimeTurnFailure(protocolFailure),
+          wrapped: {
+            failureName: wrapped.failureName,
+            retryable: wrapped.retryable,
+          },
+          transported: {
+            failureName: transported.failureName,
+            retryable: transported.retryable,
+          },
+        });
+      }
+      if (
+        url.pathname === "/synthetic-failure-turn" ||
+        url.pathname === "/synthetic-failure-stream" ||
+        url.pathname === "/synthetic-terminal-failure-turn" ||
+        url.pathname === "/synthetic-terminal-failure-stream" ||
+        url.pathname === "/synthetic-empty-turn" ||
+        url.pathname === "/synthetic-empty-stream"
+      ) {
+        const history = [
+          {
+            role: "assistant" as const,
+            content: "A retained successful reply",
+          },
+        ];
+        const persistedPairs: SharedMemoryTurnPair[] = [];
+        class RecordingMemoryStore extends SharedMemoryStore {
+          override async recordTurnPair(
+            pair: SharedMemoryTurnPair,
+          ): Promise<void> {
+            persistedPairs.push(pair);
+          }
+        }
+        const memory = new RecordingMemoryStore({
+          organizationId: forgedRouteAgent.organization_id,
+          userId: forgedRouteAgent.user_id,
+          agentKey: forgedRouteAgent.id,
+          roomKey: forgedRouteAgent.id,
+        });
+        const parts: SharedAgentTurnStreamPart[] = [];
+        const input: RunSharedAgentTurnInput = {
+          character: {
+            name: "Shared Eliza Workerd Probe",
+            system: "You are Eliza.",
+            model: "local/shared-runtime-probe",
+          },
+          history,
+          memory,
+          message: url.pathname.includes("empty")
+            ? "shared empty output fixture shared-private-provider-sentinel"
+            : url.pathname.includes("terminal")
+              ? "shared synthetic terminal failure fixture shared-private-provider-sentinel"
+              : "shared synthetic failure fixture shared-private-provider-sentinel",
+          execution: {
+            channel: { type: ChannelType.DM, source: "shared-runtime" },
+            agentKey: forgedRouteAgent.id,
+            roomKey: forgedRouteAgent.id,
+          },
+        };
+        try {
+          if (url.pathname.endsWith("-stream")) {
+            const stream = await runSharedAgentTurnStream(input);
+            if (!stream.parts)
+              throw new Error("The fixture requires a streamed turn");
+            for await (const part of stream.parts) parts.push(part);
+            return Response.json({
+              success: true,
+              history,
+              persistedPairs,
+              parts,
+            });
+          }
+          const result = await runSharedAgentTurn(input);
+          return Response.json({
+            success: true,
+            history: result.history,
+            persistedPairs,
+          });
+        } catch (error) {
+          // error-policy:J1 the fixture models the existing typed transport boundary.
+          if (
+            !(error instanceof ElizaError) &&
+            !(error instanceof SharedRuntimeTurnError)
+          )
+            throw error;
+          const failure = classifySharedRuntimeTurnFailure(error);
+          return Response.json(
+            {
+              success: false,
+              name: error.name,
+              code: error.code,
+              failureName: failure.failureName,
+              retryable: failure.retryable,
+              modelFailurePresent: Boolean(
+                new SharedRuntimeTurnError("Fixture provider failure", error)
+                  .failureDiagnostic?.modelFailure,
+              ),
+              rootFailureCode:
+                error.cause instanceof ElizaError
+                  ? error.cause.code
+                  : error.code,
+              failureKind:
+                error.context?.failureKind ??
+                (error.cause instanceof ElizaError
+                  ? error.cause.context?.failureKind
+                  : undefined),
+              history,
+              persistedPairs,
+              parts,
+            },
+            { status: failure.retryable ? 503 : 500 },
+          );
+        }
+      }
       if (url.pathname === "/todo-turn") {
         const storedTodos: Todo[] = [];
         const scope = {
           agentId: "70000000-0000-5000-8000-000000000001" as UUID,
           entityId: "70000000-0000-5000-8000-000000000002" as UUID,
         };
+        let captured: OwnerCapturePayload | undefined;
+        const ownerCapture = createOwnerCaptureBuffer(
+          {
+            organizationId: "70000000-0000-5000-8000-000000000010",
+            userId: scope.entityId,
+            roomId: "70000000-0000-5000-8000-000000000005",
+            traceId: "a".repeat(32),
+          },
+          {
+            maxCalls: 32,
+            maxBytes: 4 * 1024 * 1024,
+            expiresAt: Date.now() + 60_000,
+          },
+          (payload) => {
+            captured = payload;
+          },
+        );
         const result = await runSharedAgentTurn({
+          ownerCapture,
           character: {
             name: "Shared Eliza Workerd Probe",
             system: "You are Eliza.",
@@ -403,7 +638,8 @@ const worker = {
             },
           },
         });
-        return Response.json({ result, storedTodos });
+        ownerCapture.finish({ boundary: "test-bridge", result });
+        return Response.json({ result, storedTodos, captured });
       }
       if (url.pathname === "/reminder-turn") {
         const scheduledTasks: ScheduledTask[] = [];
@@ -553,6 +789,32 @@ const worker = {
           },
         });
         return Response.json({ result, mediaRequests });
+      }
+      if (
+        url.pathname === "/bounded-general-search" ||
+        url.pathname === "/bounded-private-search"
+      ) {
+        const message =
+          url.pathname === "/bounded-general-search"
+            ? 'Search the web for C# "shared-general-owned-qa" installation documentation?'
+            : "Search the web for my inbox messages";
+        const result = await runSharedAgentTurn({
+          character: {
+            name: "Shared Eliza Workerd Probe",
+            system: "You are Eliza.",
+            model: "local/shared-runtime-probe",
+          },
+          history: [],
+          message,
+          capabilityText: message,
+          execution: {
+            authenticatedPersonalSharedUser: true,
+            channel: { type: ChannelType.DM, source: "shared-runtime" },
+            agentKey: "personal:b55d99d0-ae38-4c7c-8791-7443e5de8ebc",
+            roomKey: "personal:b55d99d0-ae38-4c7c-8791-7443e5de8ebc",
+          },
+        });
+        return Response.json(result);
       }
       if (url.pathname === "/search-turn") {
         const result = await runSharedAgentTurn({

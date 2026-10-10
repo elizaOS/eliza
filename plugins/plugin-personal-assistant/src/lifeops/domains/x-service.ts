@@ -341,11 +341,14 @@ export class XDomain {
       fail(409, "X is not connected.");
     }
     const accountId = xGrantRuntimeAccountId(grant, requestedAccountId);
+    // Sync the complete available history: the connector slices to `limit`
+    // before returning, and a preview-bounded sync would leave older DMs out
+    // of the cache entirely. The requested limit bounds only the `recent`
+    // preview below, never the sync or the digest counts.
     const delegated = await fetchXDirectMessagesWithRuntimeService({
       runtime: this.ctx.runtime,
       grant,
       accountId,
-      limit: opts.limit,
     });
     if (delegated.status === "handled") {
       const syncedAt = new Date().toISOString();
@@ -410,34 +413,31 @@ export class XDomain {
           updatedAt: syncedAt,
         });
       }
-    } else {
-      const cached = await this.ctx.repository.listXDms(this.ctx.agentId(), {
-        conversationId: opts.conversationId,
-        limit: opts.limit,
-      });
-      if (cached.length === 0) {
-        fail(
-          xDelegationFailureStatus(delegated.reason),
-          delegated.error instanceof Error
-            ? delegated.error.message
-            : delegated.reason,
-        );
-      }
     }
+    // Counts describe curation state over the whole conversation-filtered
+    // cache; the caller's limit bounds only the returned preview list.
     const dms = await this.ctx.repository.listXDms(this.ctx.agentId(), {
       conversationId: opts.conversationId,
-      limit: opts.limit,
     });
+    if (delegated.status !== "handled" && dms.length === 0) {
+      fail(
+        xDelegationFailureStatus(delegated.reason),
+        delegated.error instanceof Error
+          ? delegated.error.message
+          : delegated.reason,
+      );
+    }
     const unread = dms.filter((dm) => dm.isInbound && dm.readAt === null);
     const read = dms.filter((dm) => dm.readAt !== null);
     const replied = dms.filter((dm) => dm.repliedAt !== null);
+    const recent = opts.limit === undefined ? dms : dms.slice(0, opts.limit);
     return {
       generatedAt: new Date().toISOString(),
       conversationId: opts.conversationId ?? null,
       unreadCount: unread.length,
       readCount: read.length,
       repliedCount: replied.length,
-      recent: dms,
+      recent,
     };
   }
 
@@ -452,11 +452,17 @@ export class XDomain {
       fail(409, "X is not connected.");
     }
     const now = new Date().toISOString();
+    // Requested ids must target their exact cache rows: the cache retains the
+    // full DM history, so a newest-rows window would silently skip requested
+    // messages and report the partial curation as success. Without ids the
+    // operation keeps its designed meaning of curating the newest window.
+    const requestedIds = request.messageIds ?? [];
     const messages = await this.ctx.repository.listXDms(this.ctx.agentId(), {
       conversationId: request.conversationId,
-      limit: Math.max(request.messageIds?.length ?? 0, 25),
+      ids: requestedIds.length > 0 ? requestedIds : undefined,
+      limit: requestedIds.length > 0 ? undefined : 25,
     });
-    const ids = new Set(request.messageIds ?? []);
+    const ids = new Set(requestedIds);
     let curated = 0;
     for (const dm of messages) {
       if (ids.size > 0 && !ids.has(dm.id)) {

@@ -6,7 +6,7 @@
  */
 
 import type { RegistryAppInfo } from "@elizaos/core/protocol";
-import { userAgentHasElizaOSMarker } from "@elizaos/core/protocol";
+import { userAgentHasElizaOSMarker } from "@elizaos/host/protocol";
 import { getUiRegistryStore } from "../registry-host.js";
 import type { OverlayApp } from "./overlay-app-api.js";
 

@@ -106,6 +106,9 @@ jobs:
           fi
           docker info
 
+      - name: Configure runner Docker Hub cache
+        uses: ./.github/actions/setup-public-image-cache
+
       - name: Free up disk space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
@@ -240,6 +243,9 @@ jobs:
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
         with:
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
           driver-opts: |
             env.BUILDKIT_STEP_LOG_MAX_SIZE=10485760
             env.BUILDKIT_STEP_LOG_MAX_SPEED=10485760

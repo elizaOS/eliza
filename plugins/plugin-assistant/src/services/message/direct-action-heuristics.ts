@@ -208,7 +208,7 @@ const EXPLICIT_WEB_SEARCH_PATTERN =
   /\b(?:search\s+(?:the\s+)?(?:live\s+)?web|web\s+search|search\s+online|look\s+up|lookup|google|browse\s+(?:the\s+)?(?:live\s+)?web|search\s+(?:the\s+)?internet)\b/iu;
 const EXPLICIT_URL_FETCH_PATTERN =
   /\b(?:fetch|read|retrieve|load|open|visit|summari[sz]e)\b[^\n]{0,160}https:\/\/[^\s<>"']+/iu;
-function intentClauses(text: string): string[] {
+export function intentClauses(text: string): string[] {
   const value = text.toLowerCase();
   const clauses: string[] = [];
   let start = 0;

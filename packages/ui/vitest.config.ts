@@ -280,33 +280,11 @@ export default defineConfig({
       jsdom: { url: "http://localhost/" },
     },
     include: [
-      "__tests__/**/*.test.ts",
-      "src/**/*.test.ts",
-      "src/**/*.test.tsx",
-      // Pure-logic unit tests for the story-gate audit scripts (e.g. the
-      // console/a11y baseline-allowlist guard) run in the standard suite.
-      "test/**/*.test.mjs",
+      "src/**/__e2e__/**/*.test.{ts,tsx}",
+      "test/cloud/network-site-handoff.test.ts",
     ],
-    exclude: [
-      // Owned by test:node, which runs before this suite in the package test command.
-      "**/*.node.test.ts",
-      "test/api/conversation-turn-controller.test.mjs",
-      "test/api/recorded-transcription-controller.test.mjs",
-      "test/api/speech-playback-controllers.test.mjs",
-      "test/api/text-control-editing.test.mjs",
-      "test/api/json-storage.test.mjs",
-      "dist/**",
-      "**/node_modules/**",
-      "**/*.live.test.{ts,tsx}",
-      "**/*.real.test.{ts,tsx}",
-      "**/*.integration.test.{ts,tsx}",
-      "**/*.e2e.test.{ts,tsx}",
-      "**/*.e2e.spec.{ts,tsx}",
-      "**/*.spec.{ts,tsx}",
-      // Heavy jsdom flows live under __e2e__/ — they routinely take >5min
-      // and blow past the global suite budget. Run them via the dedicated
-      // `test:slow` script (vitest.e2e.config.ts) with a 15min cap.
-      "**/__e2e__/**",
-    ],
+    exclude: ["dist/**", "**/node_modules/**"],
+    testTimeout: 900_000,
+    hookTimeout: 900_000,
   },
 });

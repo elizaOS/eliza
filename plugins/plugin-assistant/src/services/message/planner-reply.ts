@@ -239,6 +239,11 @@ export async function finalizePlannerReply(
     args.codingMode === true || recoveredReply?.text === effectiveReplyText
       ? ({ verdict: "allow" } as const)
       : evaluatePlannedReplyEgress({
+          currentScope: {
+            agentId: args.runtime.agentId,
+            entityId: args.message.entityId,
+            id: args.message.id,
+          },
           providers: finalPlannerState.data.providers,
           request: getUserMessageText(args.message),
           reply: effectiveReplyText,
@@ -493,7 +498,9 @@ export async function finalizePlannerReply(
   // request, while leaving successful handoffs unassessed until completion.
   const terminalToolResult = plannerResult.trajectory.steps.at(-1)?.result;
   const requestFulfilled =
-    plannerResult.evaluator?.success ??
+    (plannerResult.evaluator?.requestFullyCovered === false
+      ? false
+      : plannerResult.evaluator?.success) ??
     (terminalToolResult?.continueChain === false &&
     terminalToolResult.success === false
       ? false

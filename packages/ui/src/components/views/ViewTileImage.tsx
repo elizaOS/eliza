@@ -11,7 +11,7 @@
  * order.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   isLimitedCloudAgentApiResourceUrl,
   supportsFullAppShellRoutes,
@@ -75,6 +75,10 @@ export function ViewTileImage({
   imageTestId?: string;
 }) {
   const [failure, setFailure] = useState<"none" | "primary" | "all">("none");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: New image URLs must reset the previous image's failure state.
+  useEffect(() => {
+    setFailure("none");
+  }, [entry.imageUrl, entry.fallbackImageUrl]);
   // Launcher tiles never composite a hero image, they read the glyph directly,
   // so the image-URL resolution below is scoped to the catalog card surface.
   if (source === "launcher") {

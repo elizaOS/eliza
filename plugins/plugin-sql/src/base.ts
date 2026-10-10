@@ -122,7 +122,13 @@ import {
   type WorldMetadataMutationResult,
   worldMetadataValueEquals,
 } from "@elizaos/core";
-import { sanitizeJsonObject, serializeDocumentJsonb, serializeJsonb } from "./sanitize-json";
+import {
+  assertJsonbStorable,
+  isUnsupportedJsonTextError,
+  sanitizeJsonObject,
+  serializeDocumentJsonb,
+  serializeJsonb,
+} from "./sanitize-json";
 import { worldRoleAuditTable } from "./schema/worldRoleAudit";
 import {
   readTaskDueAt,
@@ -569,6 +575,7 @@ function isDuplicateKeyError(error: unknown): boolean {
 }
 
 import { documentsFromDb } from "./agent-mapping";
+import { agentRecordedTime } from "./agent-recorded-time";
 import { usesWebsearchSyntax } from "./message-search";
 import type { DatabaseBackend, DatabaseMigrationService } from "./migration-service";
 import { agentTable } from "./schema/agent";
@@ -1326,26 +1333,23 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           const persistedAgent = transformAgentSettings(agent, encryptedCharacter);
           const agentData = {
             ...persistedAgent,
-            createdAt: new Date(
-              typeof agent.createdAt === "bigint"
-                ? Number(agent.createdAt)
-                : agent.createdAt || Date.now()
-            ),
-            updatedAt: new Date(
-              typeof agent.updatedAt === "bigint"
-                ? Number(agent.updatedAt)
-                : agent.updatedAt || Date.now()
-            ),
+            createdAt: new Date(agentRecordedTime(agent.createdAt, Date.now())),
+            updatedAt: new Date(agentRecordedTime(agent.updatedAt, Date.now())),
           };
           const sanitizedAgentData = Object.fromEntries(
             Object.entries(agentData).filter(([, value]) => value !== undefined)
           ) as typeof agentTable.$inferInsert;
+          // Every agent column here is jsonb; reject unsupported text before the bind.
+          assertJsonbStorable(sanitizedAgentData);
 
           await tx.insert(agentTable).values(sanitizedAgentData);
         });
 
         return true;
       } catch (error) {
+        // error-policy:J3 the typed jsonb text rejection is input validation;
+        // surface it unwrapped instead of as a storage fault.
+        if (isUnsupportedJsonTextError(error)) throw error;
         // error-policy:J3 untrusted-input sanitizing — a duplicate id is the
         // typed "already exists" outcome (false), distinct from a write failure.
         if (isDuplicateKeyError(error)) {
@@ -1421,11 +1425,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             updateData.updatedAt = new Date(); // Always set updatedAt to current time
           }
 
+          assertJsonbStorable(updateData);
           await tx.update(agentTable).set(updateData).where(eq(agentTable.id, agentId));
         });
 
         return true;
       } catch (error) {
+        // error-policy:J3 the typed jsonb text rejection is input validation;
+        // surface it unwrapped instead of as a storage fault.
+        if (isUnsupportedJsonTextError(error)) throw error;
         // error-policy:J2 context-adding rethrow — a failed update must not be
         // indistinguishable from a legitimate no-op; surface the failure.
         throw new ElizaError("updateAgent failed", {
@@ -1718,6 +1726,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           metadata: metadata || {},
         };
       });
+      // `names` is a text[] column bound separately by the driver; only the
+      // jsonb metadata carries the jsonb admissibility contract.
+      for (const entity of normalizedEntities) assertJsonbStorable(entity.metadata);
 
       try {
         // ON CONFLICT DO NOTHING keeps the create idempotent per row: rows
@@ -1744,6 +1755,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         }
         return normalizedEntities.map((entity) => entity.id as UUID);
       } catch (error) {
+        // error-policy:J3 the typed jsonb text rejection is input validation;
+        // surface it unwrapped instead of as a storage fault.
+        if (isUnsupportedJsonTextError(error)) throw error;
         // error-policy:J2 context-adding rethrow — a failed batch insert must
         // not read as "created zero entities" (an empty return is a valid
         // success for an empty input); surface the write failure.
@@ -1795,6 +1809,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         names: this.normalizeEntityNames(entity.names),
         metadata: entity.metadata || {},
       };
+      assertJsonbStorable(normalizedEntity.metadata);
 
       await this.db
         .update(entityTable)
@@ -1886,6 +1901,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .select()
           .from(entityTable)
           .where(eq(entityTable.agentId, agentId))
+          // A bounded page needs a total order: without one Postgres returns
+          // rows in physical order, which an UPDATE rewrites, so "the first
+          // `limit` entities" changes between identical calls. Same order as
+          // queryEntities.
+          .orderBy(asc(entityTable.createdAt), asc(entityTable.id))
           .limit(limit);
 
         return result.map((row: Record<string, unknown>) => ({
@@ -1910,8 +1930,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         WHERE ${entityTable.agentId} = ${agentId}
         AND EXISTS (
           SELECT 1 FROM unnest(${entityTable.names}) AS name
-          WHERE LOWER(name) LIKE LOWER(${`%${query}%`})
+          WHERE name ILIKE ${`%${escapeIlikeLiteral(query)}%`} ESCAPE '\\'
         )
+        ORDER BY
+          -- IDatabaseAdapter contract: exact (case-insensitive) matches first,
+          -- then a total order so the LIMIT keeps the same rows on every call.
+          EXISTS (
+            SELECT 1 FROM unnest(${entityTable.names}) AS name
+            WHERE LOWER(name) = LOWER(${query})
+          ) DESC,
+          ${entityTable.createdAt} ASC,
+          ${entityTable.id} ASC
         LIMIT ${limit}
       `;
 
@@ -2025,6 +2054,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   async createComponent(component: Component): Promise<boolean> {
     return this.withDatabase(async () => {
+      assertJsonbStorable(component.data);
       await this.db.insert(componentTable).values({
         ...component,
         createdAt: new Date(),
@@ -2043,6 +2073,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       try {
         // Convert createdAt from number to Date for database compatibility
         const { createdAt, ...rest } = component;
+        assertJsonbStorable(rest.data);
         await this.db
           .update(componentTable)
           .set({
@@ -2051,6 +2082,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           })
           .where(eq(componentTable.id, component.id));
       } catch (error) {
+        // error-policy:J3 the typed jsonb text rejection is input validation;
+        // surface it unwrapped instead of as a storage fault.
+        if (isUnsupportedJsonTextError(error)) throw error;
         // error-policy:J2 context-adding rethrow — a swallowed update left the
         // component silently stale; surface the write failure instead.
         throw new ElizaError("updateComponent failed", {
@@ -2123,6 +2157,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         return { status: "created", parent: params.parent, removedSegmentIds: [] };
       }
 
+      // The parent gets the strict serializer the create path applies through
+      // insertMemoryInTransaction, before any segment row changes.
+      const replacementContent = serializeJsonb(params.replacementContent, { memoryContent: true });
       const rows = await tx
         .select()
         .from(memoryTable)
@@ -2220,7 +2257,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       }
       const updated = await tx
         .update(memoryTable)
-        .set({ content: params.replacementContent })
+        .set({ content: sql`${replacementContent}::jsonb` })
         .where(eq(memoryTable.id, params.messageId))
         .returning();
       if (updated.length !== 1) {
@@ -5211,6 +5248,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   async updateRoom(room: Room): Promise<void> {
     return this.withDatabase(async () => {
+      assertJsonbStorable(room.metadata);
       await this.db
         .update(roomTable)
         .set({ ...room, agentId: this.agentId })
@@ -5230,6 +5268,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         agentId: this.agentId,
         id: room.id || v4(), // ensure each room has a unique ID
       }));
+      for (const room of roomsWithIds) assertJsonbStorable(room.metadata);
 
       const insertedRooms = await this.db
         .insert(roomTable)
@@ -5570,6 +5609,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         tags: params.tags || [],
         metadata: params.metadata || {},
       };
+      // Metadata is bound as jsonb directly and embedded again inside the
+      // evidence SQL via JSON.stringify({ tags, metadata }) (see
+      // independentRelationshipEvidence), so both fields need the check.
+      assertJsonbStorable({ tags: saveParams.tags, metadata: saveParams.metadata });
       try {
         const inserted = await this.db
           .insert(relationshipTable)
@@ -5593,6 +5636,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .returning();
         return inserted.length > 0;
       } catch (error) {
+        // error-policy:J3 the typed jsonb text rejection is input validation;
+        // surface it unwrapped instead of as a storage fault.
+        if (isUnsupportedJsonTextError(error)) throw error;
         // error-policy:J2 context-adding rethrow — false is the typed "already
         // existed (onConflictDoNothing)" signal; an insert failure must not
         // collapse into it.
@@ -5618,6 +5664,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async updateRelationship(relationship: Relationship): Promise<void> {
     return this.withDatabase(async () => {
       try {
+        assertJsonbStorable({
+          tags: relationship.tags || [],
+          metadata: relationship.metadata || {},
+        });
         await this.db
           .update(relationshipTable)
           .set({
@@ -5635,6 +5685,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             )
           );
       } catch (error) {
+        // error-policy:J3 the typed jsonb text rejection is input validation;
+        // surface it unwrapped instead of as a storage fault.
+        if (isUnsupportedJsonTextError(error)) throw error;
         // error-policy:J2 context-adding rethrow — attach relationship context.
         throw new ElizaError("updateRelationship failed", {
           code: "DB_UPDATE_FAILED",
@@ -5800,6 +5853,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   async setCache<T>(key: string, value: T): Promise<boolean> {
     return this.withDatabase(async () => {
+      assertJsonbStorable(value);
       try {
         await this.db
           .insert(cacheTable)
@@ -5817,6 +5871,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
         return true;
       } catch (error) {
+        // error-policy:J3 the typed jsonb text rejection is input validation;
+        // surface it unwrapped instead of as a storage fault.
+        if (isUnsupportedJsonTextError(error)) throw error;
         // error-policy:J2 context-adding rethrow — setCache only returns true on
         // success, so false here masked a real write failure.
         throw new ElizaError("setCache failed", {
@@ -5900,6 +5957,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       );
       const newWorldId = normalizedWorld.id as UUID;
 
+      assertJsonbStorable(normalizedWorld.metadata);
       try {
         await this.db.insert(worldTable).values(normalizedWorld);
       } catch (error) {
@@ -5970,6 +6028,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           storedRevision
         );
         normalizedWorld.metadata = nextMetadata;
+        assertJsonbStorable(nextMetadata);
         await tx
           .update(worldTable)
           .set(normalizedWorld)
@@ -6059,10 +6118,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             roomId: params.audit.roomId,
           })
         : params.replacementMetadata;
+      const swappedMetadata = advanceWorldMetadataRevision(replacementMetadata, storedRevision);
+      assertJsonbStorable(swappedMetadata);
       await tx
         .update(worldTable)
         .set({
-          metadata: advanceWorldMetadataRevision(replacementMetadata, storedRevision),
+          metadata: swappedMetadata,
         })
         .where(eq(worldTable.id, params.worldId));
       return { status: "updated" as const };
@@ -6112,6 +6173,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           agentId: this.agentId as UUID,
         };
 
+        assertJsonbStorable(values.metadata);
         const result = await this.db.insert(taskTable).values(values).returning();
 
         return result[0].id as UUID;
@@ -6284,6 +6346,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     const scheduledAt = task.dueAt == null ? undefined : serializeTaskDueAt(task.dueAt);
     const replacementMetadata =
       task.metadata === undefined ? undefined : taskMetadataForWrite(task.metadata, task.dueAt);
+    if (replacementMetadata !== undefined) assertJsonbStorable(replacementMetadata);
     await this.withRetry(async () => {
       await this.withDatabase(async () => {
         const updateValues: Partial<typeof taskTable.$inferInsert> = {};
@@ -7612,6 +7675,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       }
 
       await this.withDatabase(async () => {
+        assertJsonbStorable(data);
         await this.db
           .update(componentTable)
           .set({ data })
@@ -7887,7 +7951,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.withDatabase(async () => {
       for (const { id, updates } of logs) {
         const setValues: Record<string, unknown> = {};
-        if (updates.body !== undefined) setValues.body = updates.body;
+        if (updates.body !== undefined) {
+          // Bound as log() binds a new body: NUL stripped, lone surrogates as U+FFFD.
+          setValues.body = sql`${JSON.stringify(sanitizeJsonObject(updates.body))}::jsonb`;
+        }
         if (updates.type !== undefined) setValues.type = updates.type;
         if (Object.keys(setValues).length > 0) {
           await this.db
@@ -7926,6 +7993,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   ): Promise<AtomicMemoryPublicationResult> {
     const headId = params.head.memory.id;
     if (!headId) throw new TypeError("atomic memory publication head requires an id");
+    // The head gets the strict serializers insertMemoryInTransaction applies to
+    // its dependencies, so an invalid head is refused before any row is written.
+    const contentText =
+      params.head.tableName === "document_fragments"
+        ? serializeDocumentJsonb(params.head.memory.content)
+        : serializeJsonb(params.head.memory.content, {
+            documentText: params.head.tableName === "documents",
+            memoryContent: true,
+          });
+    const metadataText = serializeJsonb(params.head.memory.metadata ?? {});
     try {
       return await this.withDatabase(async () =>
         this.db.transaction(async (tx) => {
@@ -7975,8 +8052,6 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             }
           }
 
-          const contentText = JSON.stringify(params.head.memory.content);
-          const metadataText = JSON.stringify(params.head.memory.metadata ?? {});
           let published: MemoryRow[];
           if (params.expectedRevision === null) {
             published = await tx
@@ -8427,6 +8502,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async updatePendingTask(id: UUID, task: Partial<Task>): Promise<boolean> {
     const replacementMetadata =
       task.metadata === undefined ? undefined : taskMetadataForWrite(task.metadata, task.dueAt);
+    if (replacementMetadata !== undefined) assertJsonbStorable(replacementMetadata);
     return this.withRetry(async () => {
       return this.withDatabase(async () => {
         const updateValues: Partial<typeof taskTable.$inferInsert> = {
@@ -8473,6 +8549,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     const guarded = taskMetadataPatchForWrite(patch);
     // JSON.stringify drops undefined values, so an `undefined` in `set` never
     // reaches storage; callers remove keys through `unset`.
+    assertJsonbStorable(guarded.set ?? {});
     const merged = JSON.stringify(guarded.set ?? {});
     let metadata = sql`(COALESCE(${taskTable.metadata}, '{}'::jsonb) || ${merged}::jsonb)`;
     for (const key of guarded.unset ?? []) {

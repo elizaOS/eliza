@@ -29,6 +29,7 @@ import {
   PostSeedMessagesRequestSchema,
   parseChatFailureKind,
   parseChatTerminalFailure,
+  parseChatUserTextFormat,
 } from "@elizaos/contracts";
 import {
   type ActionResult,
@@ -47,11 +48,13 @@ import {
   getEntityRole,
   getInferenceTimer,
   hasAtLeastRole,
+  type IAgentRuntime,
   InferenceTurnTimer,
   type AgentLogEntry as LogEntry,
   logger,
   MESSAGE_SOURCE_AGENT_GREETING,
   MESSAGE_SOURCE_CLIENT_CHAT,
+  MESSAGE_SOURCE_TRIGGER_PROMPT,
   type Memory,
   mergeEffectReceipts,
   nextInferenceTurnId,
@@ -95,6 +98,7 @@ import {
   parseReplyRecoveryHistorySelection,
   projectToolResultForModel,
   resolvePlannedReplyEgress,
+  setDeviceReadReplyConversation,
   shouldSkipResponseMemoryPersistence,
   withDeviceActionTurn,
 } from "@elizaos/plugin-assistant";
@@ -664,7 +668,7 @@ function createRequestDisconnectAbortTracker({
  * token, the trusted-local bypass and cookie sessions keep the existing
  * disconnect-as-cancel behavior.
  */
-async function resolvePairedSessionToken(
+export async function resolvePairedSessionToken(
   req: http.IncomingMessage,
   principal: TrustedApiPrincipal,
   runtime: AgentRuntime | null | undefined,
@@ -1328,7 +1332,7 @@ function captureConversationConnection(
   const ownerId = ensureAdminEntityIdForRuntime(state, runtime);
   const worldId = stringToUuid(`${agentName}-web-chat-world`);
   const messageServerId = stringToUuid(`${agentName}-web-server`) as UUID;
-  return captureConversationConnectionDescriptor({
+  const descriptor = captureConversationConnectionDescriptor({
     runtime,
     conversationId: conv.id,
     roomId: conv.roomId,
@@ -1343,6 +1347,8 @@ function captureConversationConnection(
     callerUserName: caller.userName,
     requestFence,
   });
+  setDeviceReadReplyConversation(runtime, conv.id, conv.roomId);
+  return descriptor;
 }
 async function establishConversationConnection(
   descriptor: ConversationConnectionDescriptor,
@@ -3417,6 +3423,21 @@ const ownerConversationCreations = new WeakMap<
   Map<string, ConversationMeta>,
   Promise<ConversationMeta>
 >();
+/** Bind prompt creation to the admitted runtime across asynchronous restoration. */
+export async function resolvePromptDeliveryRoom(
+  state: ConversationRouteState & { activeConversationId?: string | null },
+  runtime: IAgentRuntime,
+): Promise<UUID> {
+  if (runtime !== state.runtime) {
+    throw new Error("Runtime changed before prompt automation creation");
+  }
+  const conversation = await ensureOwnerConversation(state, state.runtime);
+  if (runtime !== state.runtime) {
+    throw new Error("Runtime changed during prompt automation creation");
+  }
+  return conversation.roomId;
+}
+
 /**
  * Resolve the owner's canonical app conversation: the active one, else the
  * most recently updated, restoring persisted conversations first. When the
@@ -3561,6 +3582,13 @@ async function listConversationMessages(
     // context and serves the full DTO unchanged.
     const viewerAccessContext = resolveHttpAccessContext(req);
     const messages = memories
+      // Scheduler instructions are model input, not a user-authored chat turn.
+      // Project them out only here; stored history and assistant replies stay intact.
+      .filter(
+        (m) =>
+          m.entityId === agentId ||
+          m.content.source !== MESSAGE_SOURCE_TRIGGER_PROMPT,
+      )
       .map((m) => {
         const contentSource = (m.content as Record<string, unknown>)?.source;
         const content = m.content as Record<string, unknown>;
@@ -3632,6 +3660,14 @@ async function listConversationMessages(
           content.accountConnect,
         );
         const role = m.entityId === agentId ? "assistant" : "user";
+        const userTextFormat =
+          role === "user"
+            ? parseChatUserTextFormat(
+                isRecord(content.metadata)
+                  ? content.metadata.userTextFormat
+                  : undefined,
+              )
+            : undefined;
         const interrupted = content.interrupted === true;
         const rawText = formatConversationMessageText(
           (
@@ -3678,6 +3714,7 @@ async function listConversationMessages(
           id: m.id ?? "",
           role,
           text,
+          ...(userTextFormat ? { userTextFormat } : {}),
           ...(role === "assistant" &&
           typeof content.planningAcknowledgment === "string"
             ? { planningAcknowledgment: content.planningAcknowledgment }

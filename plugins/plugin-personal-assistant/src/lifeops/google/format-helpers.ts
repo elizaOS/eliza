@@ -31,6 +31,7 @@ import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,
   getLocalDateKey,
+  getTimeZoneOffsetMinutes,
   getZonedDateParts,
 } from "../time.js";
 
@@ -295,34 +296,89 @@ export function formatCalendarEventDateTime(
   return `${datePart}, ${timePart}`;
 }
 
-function _formatEventTime(event: LifeOpsCalendarEvent): string {
+export function formatCalendarEventTimeRange(
+  event: Pick<LifeOpsCalendarEvent, "startAt" | "endAt"> &
+    Partial<Pick<LifeOpsCalendarEvent, "isAllDay" | "timezone">>,
+): string {
   if (event.isAllDay) {
-    return "all day";
+    // Calendar all-day bounds are civil dates; never shift them into the
+    // owner's timezone. The stored end is exclusive, including across DST.
+    const civilDate = (value: string): Date | null => {
+      const key = /^(\d{4}-\d{2}-\d{2})(?:$|T)/.exec(value)?.[1];
+      if (!key || !Number.isFinite(Date.parse(value))) return null;
+      const date = new Date(`${key}T00:00:00.000Z`);
+      return Number.isFinite(date.getTime()) &&
+        date.toISOString().slice(0, 10) === key
+        ? date
+        : null;
+    };
+    const start = civilDate(event.startAt);
+    const exclusiveEnd = civilDate(event.endAt);
+    if (!start || !exclusiveEnd) return "all day (date unavailable)";
+    if (exclusiveEnd.getTime() <= start.getTime())
+      return "all day (date range unavailable)";
+    const end = new Date(exclusiveEnd.getTime() - 24 * 60 * 60 * 1000);
+    const format = (date: Date) =>
+      formatCalendarDatePart(date, "UTC", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    return `${format(start)}${end.getTime() === start.getTime() ? "" : ` – ${format(end)}`}, all day`;
   }
   const start = new Date(event.startAt);
   const end = new Date(event.endAt);
-  // Always include the date so a list of multiple events doesn't show
-  // identical-looking time-only entries with no way to tell which day
-  // they belong to. Year is included only when the event is in a year
-  // other than the current one to keep the common case readable.
-  const timeZone = event.timezone || undefined;
-  const currentYear = getCalendarYearForDisplay(new Date(), timeZone);
-  const eventYear = getCalendarYearForDisplay(start, timeZone);
-  const includeYear = eventYear !== currentYear;
+  const timeZone = event.timezone || "UTC";
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone });
+  } catch {
+    return "timezone unavailable";
+  }
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
+    if (!Number.isFinite(start.getTime()) && !Number.isFinite(end.getTime()))
+      return "time unavailable";
+    const validTime = formatCalendarEventDateTime(
+      {
+        startAt: Number.isFinite(start.getTime()) ? event.startAt : event.endAt,
+        timezone: timeZone,
+      },
+      { includeYear: true, includeTimeZoneName: true },
+    );
+    return Number.isFinite(start.getTime())
+      ? `${validTime} – end time unavailable`
+      : `start time unavailable – ${validTime}`;
+  }
+  // One date and zone for ordinary ranges; preserve both sides of a midnight
+  // or offset transition so overnight and DST events remain unambiguous.
+  const sameDay =
+    getLocalDateKey(getZonedDateParts(start, timeZone)) ===
+    getLocalDateKey(getZonedDateParts(end, timeZone));
+  const sameOffset =
+    getTimeZoneOffsetMinutes(start, timeZone) ===
+    getTimeZoneOffsetMinutes(end, timeZone);
   const datePart = formatCalendarDatePart(start, timeZone, {
     month: "short",
     day: "numeric",
-    ...(includeYear ? { year: "numeric" } : {}),
+    year: "numeric",
   });
   const startTime = formatCalendarDatePart(start, timeZone, {
     hour: "numeric",
     minute: "2-digit",
+    ...(!sameOffset ? { timeZoneName: "short" } : {}),
   });
   const endTime = formatCalendarDatePart(end, timeZone, {
     hour: "numeric",
     minute: "2-digit",
+    timeZoneName: "short",
   });
-  return `${datePart}, ${startTime} – ${endTime}`;
+  const endDate = sameDay
+    ? ""
+    : `${formatCalendarDatePart(end, timeZone, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })}, `;
+  return `${datePart}, ${startTime} – ${endDate}${endTime}`;
 }
 
 export function formatRelativeMinutes(minutes: number): string {
@@ -437,9 +493,9 @@ export function formatGmailRecommendations(
 }
 
 function describeEmailSearchQuery(query: string): string {
-  const parts = query
-    .trim()
-    .split(/\s+/)
+  // A quoted operator such as from:"Ada Lovelace" is one token. Splitting on
+  // every space turns the last name into a keyword.
+  const parts = (query.trim().match(/(?:[^\s"]+|"[^"]*")+/g) ?? [])
     .map((part) => part.trim())
     .filter((part) => part.length > 0);
   if (parts.length === 0) {

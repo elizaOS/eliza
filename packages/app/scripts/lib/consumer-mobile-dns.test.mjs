@@ -27,7 +27,9 @@ test("immutable DNS bundle loads outside the workspace and rejects byte/source t
   try {
     const file = path.join(temporary, "resolver.mjs"),
       options = { sourceRoot, sourceCommit };
-    buildConsumerMobileDns(file, options);
+    const built = buildConsumerMobileDns(file, options);
+    assert.ok(built.sourceHashes["packages/core/src/utils/env.ts"]);
+    assert.ok(built.sourceHashes["packages/core/src/utils/errors.ts"]);
     verifyConsumerMobileDns(file, options);
     const probe = path.join(temporary, "probe.mjs");
     fs.writeFileSync(
@@ -74,6 +76,14 @@ test("immutable DNS bundle loads outside the workspace and rejects byte/source t
       /differs from reviewed source build/,
     );
     fs.writeFileSync(file, bytes);
+    fs.writeFileSync(`${file}.json`, originalMetadata);
+    const extra = JSON.parse(originalMetadata);
+    extra.sourceHashes["packages/core/src/unrelated.ts"] = "0".repeat(64);
+    fs.writeFileSync(`${file}.json`, JSON.stringify(extra));
+    assert.throws(
+      () => verifyConsumerMobileDns(file, options),
+      /source inventory mismatch/,
+    );
     fs.writeFileSync(`${file}.json`, originalMetadata);
     const metadata = JSON.parse(fs.readFileSync(`${file}.json`));
     metadata.sourceHashes[Object.keys(metadata.sourceHashes)[0]] = "0".repeat(

@@ -1,7 +1,4 @@
 /** Optional assistant feature plugins and names used by the host plugin catalog. */
-// Direct leaf-file imports — see comment in
-// ../features/advanced-capabilities/index.ts for the Bun.build mis-rewrite
-// that requires bypassing the barrels here too.
 
 import type { Plugin } from "@elizaos/core";
 import { promoteSubactionsToActions } from "@elizaos/core";
@@ -24,10 +21,7 @@ import {
   fetchDocumentFromUrl,
   isYouTubeUrl,
 } from "../features/documents/index";
-import {
-  TrajectoriesService,
-  trajectoriesPlugin,
-} from "../features/trajectories/index";
+import { trajectoriesPlugin } from "../features/trajectories/index";
 import { FollowUpService } from "../services/followUp.ts";
 import { RelationshipsService } from "../services/relationships.ts";
 

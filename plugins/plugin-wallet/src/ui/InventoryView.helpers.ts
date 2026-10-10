@@ -10,6 +10,7 @@ import type {
   WalletConfigStatus,
 } from "@elizaos/contracts";
 import { client } from "@elizaos/ui";
+import { parseFiniteAmount } from "./inventory/constants.ts";
 
 export function resolveWalletAddresses({
   walletAddresses,
@@ -29,10 +30,7 @@ export function resolveWalletAddresses({
 }
 
 export function parseUsd(value: string | number | null | undefined): number {
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
-  if (typeof value !== "string") return 0;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
+  return parseFiniteAmount(value);
 }
 
 export function summarizeWalletBalances(

@@ -15,8 +15,8 @@ import {
   truncateWellFormed,
 } from "@elizaos/core";
 import type { ElizaConfig } from "@elizaos/host/protocol";
-import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.ts";
 import { getBundledRuntimePluginIds } from "../runtime/release-plugin-policy.ts";
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import {
   type PluginParamInfo,
   validatePluginConfig,
@@ -78,7 +78,7 @@ function findPluginsManifestRoot(startDir: string): string {
 
   for (let i = 0; i < 16; i += 1) {
     if (fs.existsSync(path.join(dir, "plugins.json"))) {
-      // Keep walking so wrapper wrapper repos can override the nested
+      // Keep walking so wrapper repos can override the nested
       // upstream eliza checkout's package root with the outer workspace manifest.
       manifestRoot = dir;
     }

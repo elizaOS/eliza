@@ -4,6 +4,11 @@ Shared React UI library for elizaOS apps: primitives, composites, layouts, the t
 instrumentation, GenUI, voice, and host capability interfaces.
 
 Public JavaScript APIs use the package root; UI internals import owner files directly.
+Batch voice hosts use `@elizaos/ui/voice/batch-conversation` to load the coordinator
+without the React UI root. This public entry owns no credentials, media or provider
+lifecycle. Hosts must await its stop promise before reporting media retirement;
+an idle state alone does not confirm cleanup. Run `test:batch-voice-package` for
+packed external types, runtime and browser-bundle verification.
 The app owns renderer composition and native transport selection. Consumers render
 domain DTOs imported from `@elizaos/contracts`; business logic belongs to domain services. Use `bun run --cwd packages/ui storybook` for
 component development. Changes reaching the app require its visual audit.
@@ -85,7 +90,10 @@ Browser speech lifecycle APIs are available from the package root.
 `DeviceSpeechController` owns device
 utterance cancellation, stale callbacks and page visibility cleanup; dispose it on
 unmount. `SegmentedSpeechPlayback` owns sequential synthesized clips, playback
-state/captions, live rate changes and object URL/player cleanup. Inject synthesis
+state/captions, live rate changes and object URL/player cleanup. Its optional
+`attach` mode composes progressive streams with acknowledged rendering speed,
+exact word timing, cancellation and explicit EOF completion; hosts own cache,
+volume and sentence policy through `segments`. Inject synthesis
 and state observers, call `stop()` on cancellation/teardown, and supply product
 copy and consent gestures in the host. These encoded-audio and device-speech paths
 do not replace the realtime PCM voice-session player or acquire a microphone.
@@ -123,3 +131,7 @@ The committed fixture is a synthetic four-second 440 Hz tone, generated with
 `ffmpeg -f lavfi -i sine=frequency=440:sample_rate=44100:duration=4 -ac 1 -b:a 32k -write_xing 0 -map_metadata -1 synthetic-tone.mp3`.
 The test permits autoplay explicitly; it does not qualify autoplay policy,
 provider timing/voice quality, mobile WebView or physical speakers.
+
+`BatchVoiceConversation` shares the foreground capture, turn, reply and playback loop through injected ports. Hosts own credentials, microphone access, Cloud transcription, `VOICE_DM` submission and matching playback completion. Stop retires late replies and drains owned capture before replacement. It never edits a text draft, selects a provider or resumes itself after retirement. `createVoiceTurnAggregator` and `createVoiceActivityDetector` also serve the existing shell; native peak-only activity does not invent RMS measurements.
+
+A durable owner-input reply can pause `BatchVoiceConversation` with `awaitingUserInput`. The host keeps its existing Review controls visible; the coordinator opens no microphone and starts no speech while paused. After the host authenticates and completes that same original request, `resume({pause, reply})` admits its exact new assistant reply once. The pause carries request, conversation, user-message, assistant-message and proposal correlations only. It never approves an action, sends a new user message or restores a retired voice session.

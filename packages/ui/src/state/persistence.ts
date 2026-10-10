@@ -537,6 +537,7 @@ function normalizeLastNativeTab(tab: unknown): Tab {
     case "browser":
     case "inventory":
     case "documents":
+    case "clock":
     case "automations":
     case "plugins":
     case "skills":

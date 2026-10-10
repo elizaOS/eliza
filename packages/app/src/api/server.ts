@@ -96,6 +96,7 @@ import {
 import { sendJson as sendJsonResponse } from "./response";
 import { enforceCompatRouteAuthPolicy } from "./route-auth-policy";
 import { handleRuntimeModeRoute } from "./runtime-mode-routes";
+import { createSelfHostedVoice } from "./self-hosted-voice";
 import {
   closeStandaloneKokoro,
   handleStandaloneKokoroRoute,
@@ -1049,6 +1050,9 @@ export async function startApiServer(
   }
 
   const callerOptions = args[0];
+  const voiceHost = createSelfHostedVoice(compatState, {
+    protectedHost: Boolean(callerOptions?.hostAdmission),
+  });
   let speechHostStarted = false;
   const upstreamStart = Date.now();
   const server = await upstreamStartApiServer({
@@ -1061,8 +1065,10 @@ export async function startApiServer(
         compatState,
       ),
     onRuntimeActivated: async (previousRuntime, activeRuntime) => {
-      if (compatState.current !== activeRuntime)
+      if (compatState.current !== activeRuntime) {
         stopStandaloneKokoro(compatState);
+        voiceHost.reset();
+      }
       compatState.current = activeRuntime;
       if (speechHostStarted) warmStandaloneKokoro(compatState);
       clearCompatRuntimeRestart(compatState);
@@ -1070,6 +1076,7 @@ export async function startApiServer(
     },
     requestMiddleware: async (req, res, next) => {
       await runCompatRequestPipeline(req, res, compatState, async () => {
+        if (await voiceHost.handleRequest(req, res)) return;
         if (callerOptions?.requestMiddleware) {
           await callerOptions.requestMiddleware(req, res, next);
           return;
@@ -1171,9 +1178,16 @@ export async function startApiServer(
       }
       return (await callerOptions?.authorizeWebSocket?.(request, url)) === true;
     },
+    handleProtocolUpgrade: async (request, socket, head) =>
+      (await voiceHost.handleUpgrade(request, socket, head)) ||
+      (await callerOptions?.handleProtocolUpgrade?.(request, socket, head)) ===
+        true,
     configureServer: async (httpServer) => {
       await callerOptions?.configureServer?.(httpServer);
     },
+  }).catch((error: unknown) => {
+    voiceHost.close();
+    throw error;
   });
   logger.info(
     `[eliza-api] upstreamStartApiServer took ${Date.now() - upstreamStart}ms`,
@@ -1190,7 +1204,10 @@ export async function startApiServer(
   ) => void;
 
   server.updateRuntime = (runtime: AgentRuntime) => {
-    if (compatState.current !== runtime) stopStandaloneKokoro(compatState);
+    if (compatState.current !== runtime) {
+      stopStandaloneKokoro(compatState);
+      voiceHost.reset();
+    }
     compatState.current = runtime;
     clearCompatRuntimeRestart(compatState);
     // Make the runtime immediately visible to upstream routes so hot swaps do
@@ -1221,6 +1238,7 @@ export async function startApiServer(
   const originalClose = server.close.bind(server);
   server.close = async () => {
     closeStandaloneKokoro(compatState);
+    voiceHost.close();
     await originalClose();
   };
   return server;

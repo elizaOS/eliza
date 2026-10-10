@@ -3,9 +3,11 @@ import {
   asUUID,
   ChannelType,
   type ChatMessage,
+  COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS,
   type ContextDefinition,
   type ContextObject,
   compactHistoricalReceiptSegments,
+  completionContextSources,
   HANDLE_RESPONSE_TOOL_NAME,
   type IAgentRuntime,
   type Memory,
@@ -33,6 +35,7 @@ import {
   projectBackgroundHistory,
   withBackgroundHistory,
 } from "./history-discovery.js";
+import { labelHistorySources } from "./history-wire.js";
 import { messageHandlerTemplate } from "./prompts.js";
 import {
   ambientTurnProviderExclusions,
@@ -150,6 +153,8 @@ export function renderMessageHandlerModelInput(
     contextCatalog?: ContextCatalogReference;
     history?: HistoryDiscovery;
     historyReadEvidence?: HistoryDiscovery;
+    /** Label originals only when the native response schema offers review. */
+    completionContextSelection?: boolean;
   },
 ): {
   messages: ChatMessage[];
@@ -170,7 +175,7 @@ export function renderMessageHandlerModelInput(
       id: "background-history-notice",
       stable: false,
       content:
-        "Earlier originals were deferred by a complete, source-bound background review. This is not a review of the current request. Read missing constraints, corrections, referents or exact historical evidence before replying or planning; use history:all for exhaustive or uncertain recall." +
+        "Earlier originals were deferred by a complete, source-bound background review. This is not a review of the current request. Read missing constraints, corrections, referents or exact historical evidence before replying or planning. For a specific saved-fact lookup, first use advertised stored-memory references, known history IDs or literal searches of the fact's subject; inspect matched originals and their corrections. Use history:all when targeted reads leave dependencies unresolved, for exhaustive coverage, or before claiming something was never discussed." +
         historyReferenceNotice(context, options?.history),
     });
   const instructions = renderMessageHandlerInstructions(
@@ -195,7 +200,18 @@ export function renderMessageHandlerModelInput(
   const priorDialogueSegments = remainingDynamicSegments.filter(
     (segment) => segment.label?.startsWith("prior_message:") === true,
   );
-  const transcript = priorDialogueSegments
+  const transcriptSegments = options?.completionContextSelection
+    ? labelHistorySources(
+        priorDialogueSegments,
+        new Map(
+          completionContextSources(context).sources.map(({ id, event }) => [
+            event.id,
+            id,
+          ]),
+        ),
+      )
+    : priorDialogueSegments;
+  const transcript = transcriptSegments
     .map((segment) => segment.content)
     .join("\n");
   // Past effects remain complete historical evidence, before the instruction
@@ -258,7 +274,12 @@ export function renderMessageHandlerModelInput(
     },
     {
       id: "conversation",
-      content: `# Conversation\n${transcript}`,
+      content: [
+        ...(options?.completionContextSelection
+          ? [COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS]
+          : []),
+        `# Conversation\n${transcript}`,
+      ].join("\n\n"),
       stable: false,
     },
     ...currentMessages,

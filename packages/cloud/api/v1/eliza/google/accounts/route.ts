@@ -5,7 +5,10 @@
  * `side` query param scopes the result to OWNER, AGENT, or TEAM accounts.
  */
 
-import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  requirePrivateOwnerAccess,
+  requireUserOrApiKeyWithOrg,
+} from "@elizaos/cloud-shared/auth";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   AgentGoogleConnectorError,
@@ -32,6 +35,7 @@ app.get("/", async (c) => {
     if (rawSide !== null && !side) {
       return c.json({ error: "side must be OWNER, AGENT, or TEAM." }, 400);
     }
+    if (!side || side === "OWNER") await requirePrivateOwnerAccess(c, user);
     const sides = side ? [side] : ACCOUNT_ROLES;
     const accounts = (
       await Promise.all(

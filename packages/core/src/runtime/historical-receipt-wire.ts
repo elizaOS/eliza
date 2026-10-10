@@ -1,7 +1,8 @@
 /** Wire-only tables of complete historical receipts. Original context events
  * remain authoritative for source selection, authorization and restoration. */
-import type { ContextObjectPromptSegment } from "../types/context-object";
+
 import { isObjectRecord } from "../utils/type-guards";
+import type { ContextObjectPromptSegment } from "./context-object";
 import { segmentBlock } from "./context-renderer";
 
 function receiptTableEntry(segment: ContextObjectPromptSegment) {
@@ -82,13 +83,9 @@ function encodeReceiptTable(entry: ReceiptEntry, rows: ReceiptEntry["row"][]) {
 		columns: ["requestSourceEventId", entry.field],
 		receiptColumns: entry.columns,
 		...(entry.scope === undefined ? {} : { scope: entry.scope }),
-		rows,
 	};
-	let content = JSON.stringify(table);
+	let content = JSON.stringify({ ...table, rows });
 	const receiptIndex = entry.columns.indexOf("receipt");
-	const receiptShapes: string[][] = [];
-	const shapeIndices = new Map<string, number>();
-	const encodedReceipts: unknown[] = [];
 	const navigation = entry.field === "navigation";
 	const allowedFields = new Set(
 		navigation
@@ -117,50 +114,82 @@ function encodeReceiptTable(entry: ReceiptEntry, rows: ReceiptEntry["row"][]) {
 					"rollback",
 				],
 	);
-	let packable = true;
-	for (const [, receipts] of rows) {
-		for (const receipt of receipts) {
-			const original = receipt[receiptIndex];
-			let object = original;
-			if (navigation) {
-				try {
-					object = JSON.parse(String(original));
-				} catch {
-					// error-policy:J3 Noncanonical or malformed strings remain opaque.
+	const nestedFields = new Set([
+		"resource",
+		"idempotency",
+		"commit",
+		"failure",
+		"rollback",
+	]);
+	// Keep the existing flat encodings as candidates. Nested field-name sharing
+	// wins only when its complete wire, including decoding instructions, is smaller.
+	// Cost: two bounded receipt passes; no I/O, source omission or model calls.
+	for (const packNested of navigation ? [false] : [false, true]) {
+		const receiptShapes: (string | [string, string[]])[][] = [];
+		const shapeIndices = new Map<string, number>();
+		const encodedReceipts: unknown[] = [];
+		let packable = true;
+		for (const [, receipts] of rows) {
+			for (const receipt of receipts) {
+				const original = receipt[receiptIndex];
+				let object = original;
+				if (navigation) {
+					try {
+						object = JSON.parse(String(original));
+					} catch {
+						// error-policy:J3 Noncanonical or malformed strings remain opaque.
+						packable = false;
+						break;
+					}
+					if (JSON.stringify(object) !== original) {
+						packable = false;
+						break;
+					}
+				}
+				if (
+					!isObjectRecord(object) ||
+					Object.keys(object).some((key) => !allowedFields.has(key))
+				) {
 					packable = false;
 					break;
 				}
-				if (JSON.stringify(object) !== original) {
-					packable = false;
-					break;
+				const keys = Object.keys(object).map((key) =>
+					packNested &&
+					nestedFields.has(key) &&
+					isObjectRecord(object[key]) &&
+					Object.keys(object[key]).length > 0
+						? ([key, Object.keys(object[key])] as [string, string[]])
+						: key,
+				);
+				const shapeKey = JSON.stringify(keys);
+				let shapeIndex = shapeIndices.get(shapeKey);
+				if (shapeIndex === undefined) {
+					shapeIndex = receiptShapes.length;
+					receiptShapes.push(keys);
+					shapeIndices.set(shapeKey, shapeIndex);
 				}
+				encodedReceipts.push([
+					shapeIndex,
+					keys.map((key) =>
+						typeof key === "string"
+							? object[key]
+							: Object.values(object[key[0]] as Record<string, unknown>),
+					),
+				]);
 			}
-			if (
-				!isObjectRecord(object) ||
-				Object.keys(object).some((key) => !allowedFields.has(key))
-			) {
-				packable = false;
-				break;
-			}
-			const keys = Object.keys(object);
-			const shapeKey = JSON.stringify(keys);
-			let shapeIndex = shapeIndices.get(shapeKey);
-			if (shapeIndex === undefined) {
-				shapeIndex = receiptShapes.length;
-				receiptShapes.push(keys);
-				shapeIndices.set(shapeKey, shapeIndex);
-			}
-			encodedReceipts.push([shapeIndex, Object.values(object)]);
+			if (!packable) break;
 		}
 		if (!packable) break;
-	}
-	if (packable) {
 		let receiptOffset = 0;
 		const packed = {
 			...table,
-			receiptEncoding: navigation
-				? "receipt=[shapeIndex,values]; receiptShapes gives exact property order. Reconstruct the original receipt string with JSON.stringify(Object.fromEntries(columns paired with values)). Only canonical JSON strings are encoded; every value is exact."
-				: "receipt=[shapeIndex,values]; receiptShapes gives property order. Pair columns with values to reconstruct the complete original receipt object. Every value is exact.",
+			receiptEncoding:
+				(navigation
+					? "receipt=[shapeIndex,values]; receiptShapes gives exact property order. Reconstruct the original receipt string with JSON.stringify(Object.fromEntries(columns paired with values)). Only canonical JSON strings are encoded; every value is exact."
+					: "receipt=[shapeIndex,values]; receiptShapes gives property order. Pair columns with values to reconstruct the complete original receipt object. Every value is exact.") +
+				(packNested && receiptShapes.some((shape) => shape.some(Array.isArray))
+					? " A string shape entry copies its corresponding value unchanged, including arrays and objects. A [fieldName,childColumns] shape entry pairs the corresponding child value array with those columns to reconstruct that complete nested object in property order."
+					: ""),
 			receiptShapes,
 			rows: rows.map(([requestSourceEventId, receipts]) => [
 				requestSourceEventId,
@@ -209,7 +238,7 @@ function encodeReceiptTable(entry: ReceiptEntry, rows: ReceiptEntry["row"][]) {
 		scope?: string;
 		rows: ReceiptEntry["row"][];
 		receiptEncoding?: string;
-		receiptShapes?: string[][];
+		receiptShapes?: (string | [string, string[]])[][];
 	};
 }
 

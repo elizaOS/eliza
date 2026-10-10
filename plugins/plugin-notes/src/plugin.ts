@@ -7,6 +7,7 @@
 import {
   type ContextDefinition,
   promoteSubactionsToActions,
+  registerDirectActionRoutingRule,
 } from "@elizaos/core";
 import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import { notesAction } from "./action.js";
@@ -41,6 +42,31 @@ export const notesPlugin: Plugin = {
   contexts: ["notes"],
   async init(_config, runtime) {
     runtime.contexts.tryRegister(NOTES_CONTEXT);
+    registerDirectActionRoutingRule(runtime, {
+      id: "notes.create",
+      actionNames: ["NOTES_CREATE"],
+      requiredActionTags: ["resource:notes", "capability:write"],
+      contexts: ["notes"],
+      // A backend save does not depend on an open Notes view. Only direct
+      // creation commands seed this operation; drafting, reported speech,
+      // explanations and other CRUD requests retain ordinary routing.
+      matches: (text) =>
+        /^\s*(?:please\s+)?(?:create|save|add)\s+(?:(?:a|an|my|new)\s+)*notes?(?:\s|$|[,:])/iu.test(
+          text,
+        ),
+    });
+    registerDirectActionRoutingRule(runtime, {
+      id: "notes.read",
+      actionNames: ["NOTES_LIST"],
+      requiredActionTags: ["resource:notes", "capability:read"],
+      contexts: ["notes"],
+      // Explicit store reads need current records; ordinary recall can still
+      // answer from supplied evidence. The list operation supports a title filter.
+      matches: (text) =>
+        /^\s*(?:please\s+)?(?:read|list|search|find|look\s+up)\s+(?:(?:a|the|my|all|saved|latest)\s+)*notes?(?:\s|$|[,:])/iu.test(
+          text,
+        ),
+    });
   },
   actions: [
     ...promoteSubactionsToActions(notesAction, {
@@ -65,7 +91,7 @@ export const notesPlugin: Plugin = {
         get: { similes: ["NOTES_GET_NOTE"] },
         patch: {
           description:
-            "Update one note. Required target identifies it by id or text. Use the user's identifying text when they name a note; if multiple records match, ask which one. An ID in the index is not evidence the user selected that record. Repairing edit arguments must not replace an ambiguous title with a guessed ID. For field replacement supply changes entries (field, value) and expectedRevision from the complete note snapshot used to prepare this edit. Never guess the revision. Any intervening Notes mutation, including deleting another note, requires a fresh complete read and reconciliation. Omitted fields remain unchanged; replacing a body does not require rewriting its title. Preserve exact user wording. For a literal word/substring substitution use NOTES_UPDATE with textEdit instead; its unique-match atomic operation needs no preliminary read or revision.",
+            "Update one note. Required target identifies it by id or text. Use the user's identifying text when they name a note; if multiple records match, ask which one. An ID in the index is not evidence the user selected that record. Repairing edit arguments must not replace an ambiguous title with a guessed ID. For field replacement supply changes entries (field, value) and notesRevision from the complete commit/read snapshot as expectedRevision. CREATE includes its exact transaction revision. Never guess the revision. Any intervening Notes mutation, including deleting another note, requires a fresh complete read and reconciliation. Body value excludes bodySeparator but preserves every authored leading newline and space. The store adds one framing newline; do not include the separator in the replacement. Omitted fields remain unchanged; replacing a body does not require rewriting its title. For a literal word/substring substitution use NOTES_UPDATE with textEdit instead; its unique-match atomic operation needs no preliminary read or revision.",
         },
       },
     }),

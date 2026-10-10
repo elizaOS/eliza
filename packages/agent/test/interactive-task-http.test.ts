@@ -3,7 +3,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import {
+  TaskLifecycle,
+  type TaskLifecycleState,
+} from "../../ui/src/api/task-lifecycle.ts";
 import { InteractiveTaskChoices } from "../src/services/interactive-task-choices.ts";
 import { createInteractiveTaskHandler } from "../src/services/interactive-task-http.ts";
 import { SqliteTaskPresentation } from "../src/services/interactive-task-presentation.ts";
@@ -391,75 +395,140 @@ describe("task event transport", () => {
   });
 });
 
-it("HTTP control waits for cleanup and retries only cleanup after a missing acknowledgement", async () => {
-  const f = setup(),
-    entered = deferred<void>(),
-    release = deferred<void>();
-  let calls = 0,
-    fail = false;
-  const runtime = new InteractiveTaskRuntime({
-    owner,
-    store: f.store,
-    actuator: {
-      capabilities: [],
-      observe: async () => {
-        throw new Error("unexpected observe");
+it.each(["pause", "close"] as const)(
+  "shared client %s waits for ordered HTTP cleanup and retries only cleanup after a missing acknowledgement",
+  async (command) => {
+    const f = setup(),
+      entered = deferred<void>(),
+      release = deferred<void>();
+    let calls = 0,
+      fail = false;
+    const reasons: unknown[] = [];
+    const runtime = new InteractiveTaskRuntime({
+      owner,
+      store: f.store,
+      actuator: {
+        capabilities: [],
+        observe: async () => {
+          throw new Error("unexpected observe");
+        },
+        execute: async () => {
+          throw new Error("unexpected execute");
+        },
+        quiesce: async ({ reason }) => {
+          reasons.push(reason);
+          calls++;
+          if (calls === 1) {
+            entered.resolve();
+            await release.promise;
+          }
+          if (fail) throw new Error("no removal acknowledgement");
+        },
       },
-      execute: async () => {
-        throw new Error("unexpected execute");
+    });
+    runtime.create(goal("cleanup"));
+    const http = await listenTaskHttp(
+      createInteractiveTaskHandler({
+        runtime,
+        authenticate: async () => owner,
+        authorizeGoal: async (ref) => goal(ref),
+      }),
+    );
+    const states: TaskLifecycleState[] = [];
+    const client = new TaskLifecycle(
+      async (path, body) => {
+        const response = await http.call(path, body);
+        if (!response.ok) throw new Error(`Task HTTP ${response.status}`);
+        return response.json();
       },
-      quiesce: async () => {
-        calls++;
-        if (calls === 1) {
-          entered.resolve();
-          await release.promise;
-        }
-        if (fail) throw new Error("no removal acknowledgement");
+      (state) => states.push(state),
+      {
+        start: "start failed",
+        pause: "pause failed",
+        resume: "resume failed",
+        cancel: "cancel failed",
       },
-    },
-  });
-  runtime.create(goal("cleanup"));
-  const http = await listenTaskHttp(
-    createInteractiveTaskHandler({
-      runtime,
-      authenticate: async () => owner,
-      authorizeGoal: async (ref) => goal(ref),
-    }),
-  );
-  try {
-    let completed = false;
-    const pending = http
-      .call("/tasks/task-1/pause", { expectedRevision: 0 })
-      .then((response) => {
+    );
+    try {
+      let completed = false;
+      const pending = client.control(command).then((response) => {
         completed = true;
         return response;
       });
-    await entered.promise;
-    expect(runtime.get("task-1").status).toBe("paused");
-    expect(completed).toBe(false);
-    release.resolve();
-    expect((await pending).status).toBe(200);
-    fail = true;
-    const cancelled = await http.call("/tasks/task-1/cancel", {
-      expectedRevision: runtime.get("task-1").revision,
-    });
-    expect(cancelled.status).toBe(503);
-    expect(await cancelled.json()).toEqual({
-      code: "TASK_CLEANUP_UNCONFIRMED",
-    });
-    const revision = runtime.get("task-1").revision;
-    fail = false;
-    const refreshed = await http.call("/tasks/current");
-    expect(refreshed.status).toBe(200);
-    expect(await refreshed.json()).toEqual({ task: null });
-    expect(runtime.get("task-1").revision).toBe(revision);
-    expect(calls).toBe(3);
-  } finally {
-    release.resolve();
-    await http.close();
-    f.close();
-  }
-});
+      await entered.promise;
+      expect(runtime.get("task-1").status).toBe("paused");
+      expect(completed).toBe(false);
+      // A host may close a task while its earlier Pause cleanup still awaits an ack.
+      runtime.control("task-1", runtime.get("task-1").revision, "close");
+      await Promise.resolve();
+      const beforePauseAcknowledged = [...reasons];
+      release.resolve();
+      expect(await pending).toBe(true);
+      expect(beforePauseAcknowledged).toEqual([command]);
+      // Close is a pause; only the host cleanup reason differs.
+      for (const body of [
+        { expectedRevision: 1, reason: "pause" },
+        { expectedRevision: 1, reason: "close", extra: true },
+      ])
+        expect((await http.call("/tasks/task-1/pause", body)).status).toBe(400);
+      expect(
+        (
+          await http.call("/tasks/task-1/cancel", {
+            expectedRevision: 1,
+            reason: "close",
+          })
+        ).status,
+      ).toBe(400);
+      expect(await client.control("close")).toBe(true);
+      expect(states.at(-1)).toMatchObject({
+        pending: false,
+        error: "",
+        task: { status: "paused" },
+      });
+      fail = true;
+      expect(await client.control("close")).toBe(false);
+      const failedRevision = runtime.get("task-1").revision;
+      expect(await client.control("pause")).toBe(false);
+      expect(runtime.get("task-1").revision).toBe(failedRevision);
+      fail = false;
+      expect(await client.control("pause")).toBe(true);
+      expect(runtime.get("task-1").revision).toBe(failedRevision);
+      const beforeRepeatedPause = calls;
+      expect(await client.control("pause")).toBe(true);
+      expect(calls).toBe(beforeRepeatedPause);
+      fail = true;
+      const cancelled = await http.call("/tasks/task-1/cancel", {
+        expectedRevision: runtime.get("task-1").revision,
+      });
+      expect(cancelled.status).toBe(503);
+      expect(await cancelled.json()).toEqual({
+        code: "TASK_CLEANUP_UNCONFIRMED",
+      });
+      const revision = runtime.get("task-1").revision;
+      fail = false;
+      const refreshed = await http.call("/tasks/current");
+      expect(refreshed.status).toBe(200);
+      expect(await refreshed.json()).toEqual({ task: null });
+      expect(runtime.get("task-1").revision).toBe(revision);
+      expect(calls).toBe(8);
+      // A retried cleanup keeps the reason of the control that started it.
+      expect(reasons).toEqual([
+        command,
+        "close",
+        "close",
+        "close",
+        "close",
+        "close",
+        "cancel",
+        "cancel",
+      ]);
+    } finally {
+      release.resolve();
+      await http.close();
+      f.close();
+    }
+  },
+);
 
 it("does not deliver a choice when an authenticated pause finishes during refresh", async () => {
   const storage = setup();
@@ -529,3 +598,118 @@ it("does not deliver a choice when an authenticated pause finishes during refres
     storage.close();
   }
 });
+
+it.each(["reply", "lost-reply", "pause-timeout"])(
+  "Pause covers a pending start, including a lost creation reply (%s)",
+  async (replyMode) => {
+    const f = setup();
+    const runtime = new InteractiveTaskRuntime({
+      owner,
+      store: f.store,
+      actuator: {
+        capabilities: [],
+        observe: async () => {
+          throw new Error("unexpected observe");
+        },
+        execute: async () => {
+          throw new Error("unexpected execute");
+        },
+        quiesce: async () => {},
+      },
+    });
+    const created = deferred<void>();
+    const authorizing = deferred<void>();
+    const pauseReply = deferred<void>();
+    let pauseRequests = 0;
+    const http = await listenTaskHttp(
+      createInteractiveTaskHandler({
+        runtime,
+        authenticate: async () => owner,
+        authorizeGoal: async (ref) => {
+          authorizing.resolve();
+          await created.promise;
+          return goal(ref);
+        },
+      }),
+    );
+    const paths: string[] = [];
+    const states: TaskLifecycleState[] = [];
+    const client = new TaskLifecycle(
+      async (path, body) => {
+        paths.push(path);
+        const response = await http.call(path, body);
+        if (!response.ok) throw new Error(`Task HTTP ${response.status}`);
+        const reply = await response.json();
+        if (
+          path === "/tasks/current/pause" &&
+          ++pauseRequests === 1 &&
+          replyMode === "pause-timeout"
+        )
+          await pauseReply.promise;
+        if (path === "/tasks" && replyMode === "lost-reply")
+          throw new Error("Creation reply lost");
+        return reply;
+      },
+      (state) => states.push(state),
+      {
+        start: "start failed",
+        pause: "pause failed",
+        resume: "resume failed",
+        cancel: "cancel failed",
+      },
+    );
+    try {
+      for (const body of [{ reason: "pause" }, { reason: "close", extra: 1 }])
+        expect((await http.call("/tasks/current/pause", body)).status).toBe(
+          400,
+        );
+      expect(
+        await (await http.call("/tasks/current/pause", {})).json(),
+      ).toEqual({
+        task: null,
+      });
+      const starting = client.start("bill");
+      await authorizing.promise;
+      paths.length = 0;
+      let paused = false;
+      const pausing = client.control("pause").then((value) => {
+        paused = value;
+        return value;
+      });
+      // The pause request is answered while the start is still pending.
+      while (!paths.includes("/tasks/current/pause"))
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      expect(paused).toBe(false);
+      expect(await pausing).toBe(replyMode !== "pause-timeout");
+      expect(states.at(-1)).toMatchObject({
+        pending: false,
+        error: replyMode === "pause-timeout" ? "pause failed" : "",
+      });
+      // No creation reply is needed for the public Pause promise to settle.
+      const beforeRefresh = paths.length;
+      await client.refresh();
+      expect(paths).toHaveLength(beforeRefresh);
+      created.resolve();
+      pauseReply.resolve();
+      expect(await starting).toBe(false);
+      // A timeout reports failure promptly but does not abandon the pending pause.
+      await vi.waitFor(() =>
+        expect(runtime.get("task-1").status).toBe("paused"),
+      );
+      // The task that start created is paused, not left running.
+      expect(runtime.get("task-1").status).toBe("paused");
+      expect(
+        paths.filter((path) => path === "/tasks/current/pause"),
+      ).toHaveLength(2);
+      expect(paths.some((path) => /\/tasks\/task-1\/pause$/.test(path))).toBe(
+        false,
+      );
+    } finally {
+      created.resolve();
+      pauseReply.resolve();
+      await http.close();
+      f.close();
+    }
+  },
+  20_000,
+);

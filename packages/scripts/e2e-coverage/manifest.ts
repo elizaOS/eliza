@@ -36,11 +36,15 @@ export const LARP_TEST_ARTIFACTS: ReadonlySet<string> = new Set();
 /** New keyless route tests boot the real handler via this prod entry point. */
 const REAL_DISPATCH_SIGNAL = "tryHandleRuntimePluginRoute";
 
-function covered(artifact: string, extraSignals: string[] = []): CoverageEntry {
+function covered(
+  artifact: string,
+  extraSignals: string[] = [],
+  dispatchSignal = REAL_DISPATCH_SIGNAL,
+): CoverageEntry {
   return {
     status: "covered",
     artifacts: [artifact],
-    signals: [REAL_DISPATCH_SIGNAL, ...extraSignals],
+    signals: [dispatchSignal, ...extraSignals],
   };
 }
 
@@ -57,6 +61,8 @@ function existing(artifact: string): CoverageEntry {
 export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   "plugin-assistant": covered(
     "plugins/plugin-assistant/src/routes-e2e.test.ts",
+    [],
+    "tryHandleHonoRuntimeRoute",
   ),
   // ── Dedicated route tests ──
   "plugin-agent-orchestrator": existing(
@@ -105,7 +111,11 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   "plugin-computeruse": covered(
     "plugins/plugin-computeruse/src/__tests__/routes-e2e.test.ts",
   ),
-  "plugin-github": covered("plugins/plugin-github/src/routes-e2e.test.ts"),
+  "plugin-github": covered(
+    "plugins/plugin-github/src/routes-e2e.test.ts",
+    [],
+    "tryHandleHonoRuntimeRoute",
+  ),
   "plugin-imessage": covered("plugins/plugin-imessage/src/routes-e2e.test.ts"),
   "plugin-telegram": covered("plugins/plugin-telegram/src/routes-e2e.test.ts"),
   "plugin-workflow": covered(

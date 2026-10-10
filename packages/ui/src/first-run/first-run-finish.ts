@@ -16,13 +16,11 @@ import type { UiLanguage } from "@elizaos/core/protocol";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { client } from "../api/client";
 import {
-  type DedicatedAdoptionConfirmationRequester,
   getCloudAuthToken,
   isDirectCloudSharedAgentBase,
 } from "../api/client-cloud";
 
 import type { CloudCompatAgent } from "../api/client-types-cloud";
-import type { DedicatedActivationConfirmationRequester } from "../api/dedicated-activation-confirmation";
 import {
   getDesktopRuntimeMode,
   invokeDesktopBridgeRequest,
@@ -134,12 +132,9 @@ export interface FirstRunFinishPorts {
   /**
    * Fires immediately after interactive Cloud login settles successfully so
    * the conductor can retire the OAuth-only recovery deadline before personal
-   * agent activation begins.
+   * runtime resolution begins.
    */
   onInteractiveLoginComplete?: () => void;
-  /** Visible first-run quote/consent seam; absent callers stay read-only. */
-  requestDedicatedAdoptionConfirmation?: DedicatedAdoptionConfirmationRequester;
-  requestDedicatedActivationConfirmation?: DedicatedActivationConfirmationRequester;
 }
 
 type FirstRunRuntimeStateKey =
@@ -791,9 +786,9 @@ export async function bindCloudAgent(
 }
 
 /**
- * Cloud finish entry: connect Eliza Cloud (Steward), then bind the best healthy
- * existing agent or create one if needed. First-run stays a single clean path;
- * specific agent management belongs in Settings after onboarding.
+ * Cloud finish entry: connect Eliza Cloud (Steward), then bind its existing
+ * personal runtime without activating paid compute. Specific agent management
+ * belongs in Settings after onboarding.
  */
 export async function listOrAutoProvisionCloudAgent(
   sourceDraft: FirstRunProfileDraft,
@@ -838,18 +833,6 @@ export async function listOrAutoProvisionCloudAgent(
     authToken,
     signal: ports.signal,
     onProgress: (status, detail) => ports.onStatus?.(detail ?? status, status),
-    ...(ports.requestDedicatedActivationConfirmation
-      ? {
-          requestDedicatedActivationConfirmation:
-            ports.requestDedicatedActivationConfirmation,
-        }
-      : {}),
-    ...(ports.requestDedicatedAdoptionConfirmation
-      ? {
-          requestDedicatedAdoptionConfirmation:
-            ports.requestDedicatedAdoptionConfirmation,
-        }
-      : {}),
   });
   addAgentProfile({
     kind: "cloud",

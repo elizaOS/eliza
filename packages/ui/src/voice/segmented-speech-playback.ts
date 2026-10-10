@@ -1,7 +1,14 @@
+import type { SpeechAudioFrame } from "@elizaos/cloud-sdk/native-speech-stream";
 import { splitSpeechSegments } from "./speech-segments.ts";
+import {
+  createSpeechWordTimeline,
+  type SpeechWordRange,
+} from "./speech-word-timeline.ts";
 export interface SegmentedSpeechState {
   phase: "idle" | "preparing" | "playing" | "waiting";
   caption: string;
+  /** Present for progressive playback; null when confirmed timing is unavailable. */
+  word?: SpeechWordRange | null;
 }
 export interface SpeechAudioEnvironment {
   createUrl: (blob: Blob) => string;
@@ -15,11 +22,26 @@ export class SpeechPlaybackError extends Error {
     this.code = code;
   }
 }
-export interface SegmentedSpeechOptions {
-  synthesize: (text: string) => Promise<unknown>;
+export type SegmentedSpeechOptions = {
+  /** Host policy may keep an already prepared utterance intact. */
+  segments?: (text: string) => readonly string[];
   changed: (state: SegmentedSpeechState) => void;
   environment?: SpeechAudioEnvironment;
-}
+} & (
+  | { synthesize: (text: string) => Promise<unknown>; attach?: never }
+  | {
+      synthesize?: never;
+      /** Attach exactly one utterance. loaded resolves only after explicit EOF. */
+      attach: (
+        player: HTMLAudioElement,
+        text: string,
+        callbacks: {
+          onReady: (renderedSpeed: number | null) => void;
+          onFrame: (frame: SpeechAudioFrame) => void;
+        },
+      ) => { loaded: Promise<unknown>; dispose: () => void };
+    }
+);
 /** Sequential encoded-audio playback, distinct from realtime PCM streaming. */
 export class SegmentedSpeechPlayback {
   private options: SegmentedSpeechOptions;
@@ -27,6 +49,8 @@ export class SegmentedSpeechPlayback {
   private generation = 0;
   private running = false;
   private rate = 1;
+  private renderedSpeed = 1;
+  private detach: (() => void) | null = null;
   private player: HTMLAudioElement | null = null;
   private url: string | null = null;
   private finish: (() => void) | null = null;
@@ -42,7 +66,13 @@ export class SegmentedSpeechPlayback {
     return this.running;
   }
   setRate(rate: number): void {
+    if (!Number.isFinite(rate) || rate <= 0)
+      throw new RangeError("Invalid speech rate");
     this.rate = rate;
+    this.applyRate();
+  }
+  private applyRate(): void {
+    const rate = this.rate / this.renderedSpeed;
     if (this.player) {
       this.player.defaultPlaybackRate = rate;
       this.player.playbackRate = rate;
@@ -55,10 +85,17 @@ export class SegmentedSpeechPlayback {
     this.player = null;
     const url = this.url;
     this.url = null;
+    const detach = this.detach;
+    this.detach = null;
+    this.renderedSpeed = 1;
     try {
       player?.pause();
     } finally {
-      if (url) this.environment.revokeUrl(url);
+      try {
+        detach?.();
+      } finally {
+        if (url) this.environment.revokeUrl(url);
+      }
     }
   }
   stop(): void {
@@ -70,6 +107,151 @@ export class SegmentedSpeechPlayback {
       this.options.changed({ phase: "idle", caption: "" });
     }
   }
+  private playProgressive(
+    segment: string,
+    ticket: number,
+    attach: NonNullable<SegmentedSpeechOptions["attach"]>,
+  ): Promise<void> {
+    const player = this.environment.audio("");
+    this.player = player;
+    player.preservesPitch = true;
+    this.applyRate();
+    const timeline = createSpeechWordTimeline(segment);
+    return new Promise<void>((resolve, reject) => {
+      let done = false;
+      let ready = false;
+      let loaded = false;
+      let ended = false;
+      let playing = false;
+      let publishedWord: SpeechWordRange | null | undefined;
+      let frame: number | null = null;
+      const active = () => !done && ticket === this.generation;
+      const cancelFrame = () => {
+        if (frame !== null) cancelAnimationFrame(frame);
+        frame = null;
+      };
+      const finish = (error?: unknown) => {
+        if (done) return;
+        done = true;
+        cancelFrame();
+        this.finish = null;
+        player.onended = null;
+        player.onerror = null;
+        player.onplaying = null;
+        player.onwaiting = null;
+        player.onpause = null;
+        player.ontimeupdate = null;
+        player.onseeking = null;
+        player.onseeked = null;
+        if (error) reject(error);
+        else resolve();
+      };
+      this.finish = () => finish();
+      const publish = () => {
+        if (!active() || !playing) return;
+        const word = timeline.at(player.currentTime);
+        if (
+          publishedWord !== undefined &&
+          (word === null
+            ? publishedWord === null
+            : publishedWord?.from === word.from &&
+              publishedWord.to === word.to &&
+              publishedWord.start === word.start &&
+              publishedWord.end === word.end)
+        )
+          return;
+        publishedWord = word;
+        this.options.changed({ phase: "playing", caption: segment, word });
+      };
+      const animate = () => {
+        frame = null;
+        publish();
+        if (active() && playing && typeof requestAnimationFrame === "function")
+          frame = requestAnimationFrame(animate);
+      };
+      const resume = () => {
+        if (!active() || ended) return;
+        playing = true;
+        cancelFrame();
+        animate();
+      };
+      const wait = () => {
+        if (!active()) return;
+        playing = false;
+        publishedWord = undefined;
+        cancelFrame();
+        this.options.changed({
+          phase: "waiting",
+          caption: segment,
+          word: null,
+        });
+      };
+      player.onplaying = resume;
+      player.onwaiting = wait;
+      player.onpause = wait;
+      player.ontimeupdate = publish;
+      player.onseeking = wait;
+      player.onseeked = () => {
+        if (!player.paused) resume();
+      };
+      player.onended = () => {
+        if (!active()) return;
+        ended = true;
+        if (loaded) finish();
+        else wait();
+      };
+      player.onerror = () => finish(new SpeechPlaybackError("playback"));
+      try {
+        const attachment = attach(player, segment, {
+          onFrame: (value) => {
+            if (!active()) return;
+            timeline.append(value.alignment);
+            publish();
+          },
+          onReady: (speed) => {
+            if (!active() || ready) return;
+            ready = true;
+            if (speed !== null && (!Number.isFinite(speed) || speed <= 0)) {
+              finish(new SpeechPlaybackError("invalid-audio"));
+              return;
+            }
+            this.renderedSpeed = speed ?? 1;
+            try {
+              this.applyRate();
+              void player.play().then(
+                () => {
+                  if (!active()) {
+                    player.pause();
+                    return;
+                  }
+                  resume();
+                },
+                (error) => finish(new SpeechPlaybackError("playback", error)),
+              );
+            } catch (error) {
+              finish(new SpeechPlaybackError("playback", error));
+            }
+          },
+        });
+        // Observe rejection even if a synchronous callback stopped this operation.
+        void attachment.loaded.then(
+          () => {
+            if (!active()) return;
+            loaded = true;
+            timeline.finish();
+            if (!ready) finish(new SpeechPlaybackError("invalid-audio"));
+            else if (ended) finish();
+            else publish();
+          },
+          (error) => finish(new SpeechPlaybackError("playback", error)),
+        );
+        if (!active()) attachment.dispose();
+        else this.detach = () => attachment.dispose();
+      } catch (error) {
+        finish(new SpeechPlaybackError("playback", error));
+      }
+    });
+  }
   /** Optional observer receives only the current operation's settled result, after cleanup. */
   async speak(
     text: string,
@@ -80,10 +262,18 @@ export class SegmentedSpeechPlayback {
     const ticket = ++this.generation;
     let failure: unknown | null = null;
     try {
-      for (const segment of splitSpeechSegments(text)) {
+      for (const segment of (this.options.segments ?? splitSpeechSegments)(
+        text,
+      )) {
         if (ticket !== this.generation) return;
         this.options.changed({ phase: "preparing", caption: "" });
         if (ticket !== this.generation) return;
+        if (this.options.attach) {
+          await this.playProgressive(segment, ticket, this.options.attach);
+          if (ticket !== this.generation) return;
+          this.release();
+          continue;
+        }
         const value = await this.options.synthesize(segment);
         if (ticket !== this.generation) return;
         const result = value as {

@@ -156,10 +156,10 @@ export function registerCloudRoute(def: CloudRouteDef): void {
 }
 
 function isDevMode(): boolean {
-  return (
+  return Boolean(
     import.meta.env.DEV ||
-    import.meta.env.MODE === "test" ||
-    process.env.NODE_ENV !== "production"
+      import.meta.env.MODE === "test" ||
+      process.env.NODE_ENV !== "production",
   );
 }
 

@@ -29,6 +29,123 @@
       "browser": null,
       "import": "./native-host/index.mjs",
       "default": "./native-host/index.mjs"
+    },
+    "./voice/session": {
+      "workerd": "./dist/voice/session.js",
+      "worker": "./dist/voice/session.js",
+      "browser": null,
+      "eliza-source": "./src/voice/session.ts",
+      "types": "./dist/voice/session.d.ts",
+      "import": "./dist/voice/session.js",
+      "default": "./dist/voice/session.js"
+    },
+    "./voice/uplink-reframer": {
+      "workerd": "./dist/voice/uplink-reframer.js",
+      "worker": "./dist/voice/uplink-reframer.js",
+      "browser": null,
+      "eliza-source": "./src/voice/uplink-reframer.ts",
+      "types": "./dist/voice/uplink-reframer.d.ts",
+      "import": "./dist/voice/uplink-reframer.js",
+      "default": "./dist/voice/uplink-reframer.js"
+    },
+    "./voice/local-runtime-conversation-fetch": {
+      "workerd": "./dist/voice/local-runtime-conversation-fetch.js",
+      "worker": "./dist/voice/local-runtime-conversation-fetch.js",
+      "browser": null,
+      "eliza-source": "./src/voice/local-runtime-conversation-fetch.ts",
+      "types": "./dist/voice/local-runtime-conversation-fetch.d.ts",
+      "import": "./dist/voice/local-runtime-conversation-fetch.js",
+      "default": "./dist/voice/local-runtime-conversation-fetch.js"
+    },
+    "./voice/cartesia-ink": {
+      "workerd": "./dist/voice/cartesia-ink.js",
+      "worker": "./dist/voice/cartesia-ink.js",
+      "browser": null,
+      "eliza-source": "./src/voice/cartesia-ink.ts",
+      "types": "./dist/voice/cartesia-ink.d.ts",
+      "import": "./dist/voice/cartesia-ink.js",
+      "default": "./dist/voice/cartesia-ink.js"
+    },
+    "./voice/cartesia-sonic-tts": {
+      "workerd": "./dist/voice/cartesia-sonic-tts.js",
+      "worker": "./dist/voice/cartesia-sonic-tts.js",
+      "browser": null,
+      "eliza-source": "./src/voice/cartesia-sonic-tts.ts",
+      "types": "./dist/voice/cartesia-sonic-tts.d.ts",
+      "import": "./dist/voice/cartesia-sonic-tts.js",
+      "default": "./dist/voice/cartesia-sonic-tts.js"
+    },
+    "./voice/fish-audio-tts": {
+      "workerd": "./dist/voice/fish-audio-tts.js",
+      "worker": "./dist/voice/fish-audio-tts.js",
+      "browser": null,
+      "eliza-source": "./src/voice/fish-audio-tts.ts",
+      "types": "./dist/voice/fish-audio-tts.d.ts",
+      "import": "./dist/voice/fish-audio-tts.js",
+      "default": "./dist/voice/fish-audio-tts.js"
+    },
+    "./voice/phrase-aggregator": {
+      "workerd": "./dist/voice/phrase-aggregator.js",
+      "worker": "./dist/voice/phrase-aggregator.js",
+      "browser": null,
+      "eliza-source": "./src/voice/phrase-aggregator.ts",
+      "types": "./dist/voice/phrase-aggregator.d.ts",
+      "import": "./dist/voice/phrase-aggregator.js",
+      "default": "./dist/voice/phrase-aggregator.js"
+    },
+    "./voice/protocol": {
+      "workerd": "./dist/voice/protocol.js",
+      "worker": "./dist/voice/protocol.js",
+      "browser": null,
+      "eliza-source": "./src/voice/protocol.ts",
+      "types": "./dist/voice/protocol.d.ts",
+      "import": "./dist/voice/protocol.js",
+      "default": "./dist/voice/protocol.js"
+    },
+    "./voice/session-registry": {
+      "workerd": "./dist/voice/session-registry.js",
+      "worker": "./dist/voice/session-registry.js",
+      "browser": null,
+      "eliza-source": "./src/voice/session-registry.ts",
+      "types": "./dist/voice/session-registry.d.ts",
+      "import": "./dist/voice/session-registry.js",
+      "default": "./dist/voice/session-registry.js"
+    },
+    "./voice/eliza-sse-bridge": {
+      "workerd": "./dist/voice/eliza-sse-bridge.js",
+      "worker": "./dist/voice/eliza-sse-bridge.js",
+      "browser": null,
+      "eliza-source": "./src/voice/eliza-sse-bridge.ts",
+      "types": "./dist/voice/eliza-sse-bridge.d.ts",
+      "import": "./dist/voice/eliza-sse-bridge.js",
+      "default": "./dist/voice/eliza-sse-bridge.js"
+    },
+    "./voice/ws-handler": {
+      "workerd": "./dist/voice/ws-handler.js",
+      "worker": "./dist/voice/ws-handler.js",
+      "browser": null,
+      "eliza-source": "./src/voice/ws-handler.ts",
+      "types": "./dist/voice/ws-handler.d.ts",
+      "import": "./dist/voice/ws-handler.js",
+      "default": "./dist/voice/ws-handler.js"
+    },
+    "./voice/session-token": {
+      "workerd": "./dist/voice/session-token.js",
+      "worker": "./dist/voice/session-token.js",
+      "browser": null,
+      "eliza-source": "./src/voice/session-token.ts",
+      "types": "./dist/voice/session-token.d.ts",
+      "import": "./dist/voice/session-token.js",
+      "default": "./dist/voice/session-token.js"
+    },
+    "./voice/usage": {
+      "workerd": "./dist/voice/usage.js",
+      "worker": "./dist/voice/usage.js",
+      "browser": null,
+      "eliza-source": "./src/voice/usage.ts",
+      "types": "./dist/voice/usage.d.ts",
+      "import": "./dist/voice/usage.js",
+      "default": "./dist/voice/usage.js"
     }
   },
   "scripts": {
@@ -44,13 +161,14 @@
     "@elizaos/core": "workspace:*",
     "zod": "^4.6.5",
     "@elizaos/contracts": "workspace:*",
-    "tar": "7.5.22"
+    "tar": "7.5.22",
+    "@msgpack/msgpack": "3.1.3"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.3"
   },
   "publishConfig": {
     "access": "public"

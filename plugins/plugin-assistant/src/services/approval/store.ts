@@ -1144,13 +1144,16 @@ export class PgApprovalQueue implements ApprovalQueue {
     if (filter.action !== null) {
       where.push(`action = ${sqlText(filter.action)}`);
     }
+    if (filter.excludeAction != null) {
+      where.push(`action <> ${sqlText(filter.excludeAction)}`);
+    }
     const limitClause =
       typeof filter.limit === "number"
         ? `LIMIT ${sqlInteger(filter.limit)}`
         : "";
     const sql = `SELECT ${SELECT_COLUMNS} FROM approval_requests
       WHERE ${where.join(" AND ")}
-      ORDER BY created_at DESC
+      ORDER BY created_at DESC, id DESC
       ${limitClause}`;
     const rows = await executeRawSql(this.runtime, sql);
     return rows.map(rowToRequest);

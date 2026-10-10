@@ -5,7 +5,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
-import { PagePanelToolbar } from "./page-panel-toolbar";
+import { PagePanelToolbar } from "./page-panel-layout";
 
 const meta = {
   title: "Composites/PagePanel/PagePanelToolbar",

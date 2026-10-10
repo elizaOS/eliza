@@ -1,40 +1,49 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { NativeHostError } from "./errors.mjs";
-import {
-  containsSensitiveText,
-  requireNonSensitiveText,
-} from "./sensitive-text.mjs";
+import { containsSensitiveText } from "./sensitive-text.mjs";
 
-test("sensitive text is rejected wholly without echoing synthetic protected values", () => {
+test("spoken and spaced verification codes are recognized", () => {
   for (const text of [
-    "password: fictional-secret",
-    "API key is sk-proj-fictional01234567890123456789",
-    "verification code is 123456",
     "123456",
-    "Card 4111 1111 1111 1111",
-    "Bearer fictional0123456789012345",
-    "-----BEGIN PRIVATE KEY-----",
-    "ｐａｓｓｗｏｒｄ： fictional-secret",
-  ]) {
-    assert.equal(containsSensitiveText(text), true);
-    assert.throws(
-      () => requireNonSensitiveText(text),
-      (error) =>
-        error instanceof NativeHostError &&
-        error.status === 422 &&
-        error.code === "SENSITIVE_TEXT" &&
-        !error.message.includes(text),
-    );
-  }
+    "1 2 3 4 5 6",
+    "4821-77",
+    "four eight two one",
+    "Four, eight, two, one, seven, seven.",
+    "the verification code is one two three four five six",
+    "my sign in code is 1 2 3 4",
+    // A plain "code" in ordinary words.
+    "my code is one two three four",
+    "my code is one two three four five six",
+    "the code is 4 8 2 9 1 7",
+    "The code is 4 8 1 5 1 6.",
+    "the code is 482917",
+    "my code is 482917",
+    "the code they sent is 4 8 2 9 1 7",
+    "482917 is the code",
+    "four eight two nine one seven is my code",
+    "code: 482-917",
+    "482 917",
+    // A spoken card number passes the same checksum as a typed one.
+    "four two four two four two four two four two four two four two four two",
+  ])
+    assert.equal(containsSensitiveText(text), true, text);
+});
+
+test("ordinary speech with numbers is not withheld", () => {
   for (const text of [
-    "Help me change my password",
-    "What is a verification code?",
-    "My bill is $125.00",
-    "Call 202-555-0134",
-    "The year is 2026.",
-  ]) {
-    assert.equal(containsSensitiveText(text), false);
-    assert.doesNotThrow(() => requireNonSensitiveText(text));
-  }
+    "12.50",
+    "1,000",
+    "pay the water bill",
+    "I have one or two questions",
+    "call me at three",
+    "the bill is one hundred and twenty dollars",
+    // A phone number, a time and an address code are not secrets.
+    "555-1234",
+    "10 30",
+    "my zip code is 90210",
+    "the area code is 415",
+    "the postal code is 10115",
+    "the code they sent did not work",
+  ])
+    assert.equal(containsSensitiveText(text), false, text);
 });

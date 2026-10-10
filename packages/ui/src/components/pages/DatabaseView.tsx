@@ -39,8 +39,10 @@ import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { PagePanel } from "../composites/page-panel";
 import { MetaPill } from "../composites/page-panel/page-panel-header";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
-import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
-import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
+import {
+  SidebarPanel,
+  SidebarScrollRegion,
+} from "../composites/sidebar/sidebar-layout";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { Button } from "../ui/button";
 import { SegmentedControl } from "../ui/segmented-control";
@@ -80,7 +82,14 @@ export function DatabaseView({
     cachedStatus?.data ?? null,
   );
   const [tables, setTables] = useState<TableInfo[]>(cachedTables?.data ?? []);
+  const tableLabel = (table: TableInfo): string =>
+    tables.some(
+      (other) => other.name === table.name && other.schema !== table.schema,
+    )
+      ? `${table.schema}.${table.name}`
+      : table.name;
   const [selectedTable, setSelectedTable] = useState("");
+  const [selectedSchema, setSelectedSchema] = useState("");
   const [tableData, setTableData] = useState<TableRowsResponse | null>(null);
   const [columnMeta, setColumnMeta] = useState<Map<string, ColumnInfo>>(
     new Map(),
@@ -157,22 +166,31 @@ export function DatabaseView({
   const loadTableData = useCallback(
     async (
       tableName: string,
-      opts?: { sort?: string; order?: "asc" | "desc"; offset?: number },
+      opts?: {
+        sort?: string;
+        order?: "asc" | "desc";
+        offset?: number;
+        schema?: string;
+      },
     ) => {
       setLoading(true);
       setErrorMessage("");
       try {
+        const info = tablesRef.current.find(
+          (tbl) =>
+            tbl.name === tableName &&
+            (opts?.schema ? tbl.schema === opts.schema : true),
+        );
         const data = await client.getDatabaseRows(tableName, {
           limit: ROW_LIMIT,
           offset: opts?.offset ?? 0,
           sort: opts?.sort,
           order: opts?.order,
+          schema: info?.schema,
         });
         setTableData(data);
         setSelectedTable(tableName);
-
-        // Get column metadata for the table
-        const info = tablesRef.current.find((tbl) => tbl.name === tableName);
+        setSelectedSchema(info?.schema ?? "");
         if (info?.columns) {
           const meta = new Map<string, ColumnInfo>();
           for (const col of info.columns) meta.set(col.name, col);
@@ -214,18 +232,19 @@ export function DatabaseView({
           sort: newDir ? col : undefined,
           order: newDir ?? undefined,
           offset: 0,
+          schema: selectedSchema || undefined,
         });
       }
     },
-    [sortCol, sortDir, selectedTable, loadTableData],
+    [sortCol, sortDir, selectedTable, selectedSchema, loadTableData],
   );
 
   const handleSelectTable = useCallback(
-    (tableName: string) => {
+    (tableName: string, schema?: string) => {
       setSortCol("");
       setSortDir(null);
       setRowOffset(0);
-      loadTableData(tableName);
+      loadTableData(tableName, { schema });
     },
     [loadTableData],
   );
@@ -237,8 +256,16 @@ export function DatabaseView({
       sort: sortDir ? sortCol : undefined,
       order: sortDir ?? undefined,
       offset: newOffset,
+      schema: selectedSchema || undefined,
     });
-  }, [rowOffset, selectedTable, sortCol, sortDir, loadTableData]);
+  }, [
+    rowOffset,
+    selectedTable,
+    selectedSchema,
+    sortCol,
+    sortDir,
+    loadTableData,
+  ]);
 
   const handleNext = useCallback(() => {
     const newOffset = rowOffset + ROW_LIMIT;
@@ -247,8 +274,16 @@ export function DatabaseView({
       sort: sortDir ? sortCol : undefined,
       order: sortDir ?? undefined,
       offset: newOffset,
+      schema: selectedSchema || undefined,
     });
-  }, [rowOffset, selectedTable, sortCol, sortDir, loadTableData]);
+  }, [
+    rowOffset,
+    selectedTable,
+    selectedSchema,
+    sortCol,
+    sortDir,
+    loadTableData,
+  ]);
 
   const runQuery = useCallback(async () => {
     if (!queryText.trim()) return;
@@ -438,11 +473,13 @@ export function DatabaseView({
         contentIdentity="database"
         collapsedRailItems={filteredTables.map((table) => (
           <SidebarContent.RailItem
-            key={table.name}
-            aria-label={table.name}
-            title={table.name}
-            active={selectedTable === table.name}
-            onClick={() => handleSelectTable(table.name)}
+            key={JSON.stringify([table.schema, table.name])}
+            aria-label={tableLabel(table)}
+            title={tableLabel(table)}
+            active={
+              selectedTable === table.name && selectedSchema === table.schema
+            }
+            onClick={() => handleSelectTable(table.name, table.schema)}
           >
             {table.name.slice(0, 1).toUpperCase()}
           </SidebarContent.RailItem>
@@ -474,14 +511,19 @@ export function DatabaseView({
                 ) : (
                   filteredTables.map((table) => (
                     <SidebarContent.Item
-                      key={table.name}
-                      active={selectedTable === table.name}
-                      onClick={() => handleSelectTable(table.name)}
+                      key={JSON.stringify([table.schema, table.name])}
+                      active={
+                        selectedTable === table.name &&
+                        selectedSchema === table.schema
+                      }
+                      onClick={() =>
+                        handleSelectTable(table.name, table.schema)
+                      }
                       className="rounded-none border-b border-border/50 px-1 py-2.5"
                     >
                       <SidebarContent.ItemBody>
                         <SidebarContent.ItemTitle>
-                          {table.name}
+                          {tableLabel(table)}
                         </SidebarContent.ItemTitle>
                         <SidebarContent.ItemDescription>
                           {t("databaseview.RowCountLabel", {
@@ -703,14 +745,17 @@ export function DatabaseView({
                   >
                     {filteredTables.map((t) => (
                       <SidebarContent.Item
-                        key={t.name}
-                        active={selectedTable === t.name}
-                        onClick={() => handleSelectTable(t.name)}
+                        key={JSON.stringify([t.schema, t.name])}
+                        active={
+                          selectedTable === t.name &&
+                          selectedSchema === t.schema
+                        }
+                        onClick={() => handleSelectTable(t.name, t.schema)}
                         className="rounded-none border-b border-border/50 px-1 py-2.5"
                       >
                         <SidebarContent.ItemBody>
                           <SidebarContent.ItemTitle>
-                            {t.name}
+                            {tableLabel(t)}
                           </SidebarContent.ItemTitle>
                           <SidebarContent.ItemDescription>
                             {(t.rowCount ?? 0).toLocaleString("en-US")} rows

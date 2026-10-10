@@ -133,11 +133,11 @@ function convertSearchTweet(tweet: TweetV2, includes?: SearchIncludes): Tweet {
       tweet.referenced_tweets?.some((rt) => rt.type === "quoted") || false,
     isPin: false,
     sensitiveContent: false,
-    likes: tweet.public_metrics?.like_count || undefined,
-    replies: tweet.public_metrics?.reply_count || undefined,
-    retweets: tweet.public_metrics?.retweet_count || undefined,
-    views: tweet.public_metrics?.impression_count || undefined,
-    quotes: tweet.public_metrics?.quote_count || undefined,
+    likes: tweet.public_metrics?.like_count,
+    replies: tweet.public_metrics?.reply_count,
+    retweets: tweet.public_metrics?.retweet_count,
+    views: tweet.public_metrics?.impression_count,
+    quotes: tweet.public_metrics?.quote_count,
   };
 }
 

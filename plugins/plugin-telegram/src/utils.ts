@@ -132,14 +132,24 @@ export function convertMarkdownToTelegram(markdown: string): string {
     },
   );
 
+  // Protect escaped asterisks before interpreting emphasis. Consuming pairs
+  // of backslashes also preserves whether the next asterisk is escaped.
+  // Code and link destinations were already stored above and stay unchanged.
+  converted = converted.replace(/\\([\\*])/g, (_match, literal) =>
+    storeReplacement(escapePlainText(literal)),
+  );
+
   // 4. Bold text: standard markdown bold **text**
   //    Telegram bold is delimited by single asterisks: *text*
-  converted = converted.replace(/\*\*([^*]+)\*\*/g, (_match, content) => {
-    const formattedContent = escapePlainText(content);
-    const formatted = `*${formattedContent}*`;
-    boldInner.set(replacements.length, formattedContent);
-    return storeReplacement(formatted);
-  });
+  converted = converted.replace(
+    /\*\*(?!\s)([^*]+)(?<!\s)\*\*/g,
+    (_match, content) => {
+      const formattedContent = escapePlainText(content);
+      const formatted = `*${formattedContent}*`;
+      boldInner.set(replacements.length, formattedContent);
+      return storeReplacement(formatted);
+    },
+  );
 
   // 5. Strikethrough: standard markdown uses ~~text~~,
   //    while Telegram uses ~text~
@@ -153,9 +163,12 @@ export function convertMarkdownToTelegram(markdown: string): string {
   //    Standard markdown italic can be written as either *text* or _text_.
   //    In Telegram MarkdownV2 italic must be delimited by underscores.
   //    Process asterisk-based italic first.
-  //    (Using negative lookbehind/lookahead to avoid matching bold **)
+  //    Bold spans have already been stored; remaining single delimiters
+  //    can sit beside literal unmatched asterisks.
+  //    As in CommonMark, a `*` followed by whitespace cannot open italic and
+  //    one preceded by whitespace cannot close it, so `2 * 3 * 4` stays literal.
   converted = converted.replace(
-    /(?<!\*)\*([^*\n]+)\*(?!\*)/g,
+    /\*(?![\s*])([^*\n]+)(?<!\s)\*/g,
     (_match, content) => {
       const formattedContent = escapePlainText(content);
       const formatted = `_${formattedContent}_`;

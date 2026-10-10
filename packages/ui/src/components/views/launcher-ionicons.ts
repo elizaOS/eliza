@@ -283,6 +283,7 @@ const FIRST_PARTY_ICONS: Readonly<Record<string, LauncherIconAsset>> = {
   calendar: IONICONS.calendar,
   "simple-calendar": IONICONS.calendar,
   notes: IONICONS.documentText,
+  clock: IONICONS.time,
   automations: IONICONS.time,
   browser: IONICONS.compass,
   cloud: IONICONS.cloud,

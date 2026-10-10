@@ -2674,6 +2674,13 @@ export const INVALID_TRACER_PROVIDER = {};
       "react-router",
       "react-router/dom",
       "react-router-dom",
+      // Zustand's selector entry (used by React Flow) imports these CJS shims.
+      // Explicit aliases alone do not convert them when discovery is disabled.
+      "use-sync-external-store/shim",
+      "use-sync-external-store/shim/with-selector",
+      "use-sync-external-store/shim/with-selector.js",
+      "use-sync-external-store/with-selector",
+      "use-sync-external-store/with-selector.js",
       // Three.js core + all subpath imports must be pre-bundled together so
       // the optimizer shares a single module identity.
       "three",

@@ -1,5 +1,12 @@
 import type http from "node:http";
-import type { IAgentRuntime } from "@elizaos/core";
+import { validateNativeNotesReadReplyHint } from "@elizaos/contracts/native-notes-query";
+import {
+  AgentRuntime,
+  ChannelType,
+  type IAgentRuntime,
+  runWithStreamingContext,
+  type UUID,
+} from "@elizaos/core";
 import {
   ApprovalIdempotencyConflictError,
   ApprovalNotFoundError,
@@ -9,9 +16,19 @@ import {
   DeviceActionError,
   DeviceActionService,
   type DeviceCredential,
+  type DeviceReadCompletionHint,
   deviceProposalDigest,
 } from "@elizaos/plugin-assistant";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
+import { getAgentHostBridge } from "../runtime/host-bridge.ts";
+import {
+  persistAssistantConversationMemory,
+  resolveTrustedApiPrincipal,
+} from "./chat-routes.ts";
+import {
+  createConversationStreamDisconnectTracker,
+  resolvePairedSessionToken,
+} from "./conversation-routes.ts";
 import { workflowDeviceOwner } from "./workflow-device-owner.ts";
 
 export function requiresDeviceIdentity(
@@ -48,23 +65,26 @@ export function deviceRequestCredential(
     typeof capabilityHeader === "string"
       ? capabilityHeader.split(",").map((value) => value.trim())
       : [];
+  const allowedCapabilities = new Set([
+    "calendar.local-event.v1",
+    "calendar.create.v1",
+    "calendar.next-read.v1",
+    "notes.local-record.v1",
+    "notes.query.v1",
+    "reminders.local-record.v1",
+    "reminders.local-record.v2",
+    "reminders.create.v1",
+    "maps.selected-read.v1",
+    "clock.handoff.v1",
+    "clock.handoff.v2",
+    "clock.alarms.v1",
+  ]);
   if (
-    capabilities.length > 6 ||
+    capabilities.length > allowedCapabilities.size ||
     (capabilities.includes("reminders.local-record.v1") &&
       capabilities.includes("reminders.local-record.v2")) ||
     new Set(capabilities).size !== capabilities.length ||
-    capabilities.some(
-      (value) =>
-        ![
-          "calendar.local-event.v1",
-          "notes.local-record.v1",
-          "reminders.local-record.v1",
-          "reminders.local-record.v2",
-          "reminders.create.v1",
-          "maps.selected-read.v1",
-          "clock.handoff.v1",
-        ].includes(value),
-    )
+    capabilities.some((value) => !allowedCapabilities.has(value))
   )
     return null;
   return {
@@ -84,6 +104,8 @@ interface RouteContext {
   authorization?: AgentHttpRequestAuthorization;
   json(res: http.ServerResponse, value: unknown, status?: number): void;
   error(res: http.ServerResponse, message: string, status?: number): void;
+  revalidateAuthorization?: () => Promise<AgentHttpRequestAuthorization>;
+  assertRuntimeCurrent?: () => void;
   readJsonBody<T>(
     req: http.IncomingMessage,
     res: http.ServerResponse,
@@ -122,15 +144,24 @@ export async function handleDeviceActionRoutes(
           protocol: 1,
           capabilities: [
             "calendar.local-event.v1",
+            "calendar.create.v1",
+            "calendar.next-read.v1",
             "notes.local-record.v1",
+            "notes.query.v1",
             "reminders.local-record.v1",
             "reminders.local-record.v2",
             "reminders.create.v1",
             "maps.selected-read.v1",
             "clock.handoff.v1",
+            "clock.handoff.v2",
+            "clock.alarms.v1",
           ],
         },
       });
+      return true;
+    }
+    if (method === "GET" && pathname === "/api/client-devices/context") {
+      json(res, await service.context(credential));
       return true;
     }
     if (pathname === "/api/client-devices/view-profile") {
@@ -180,12 +211,202 @@ export async function handleDeviceActionRoutes(
     }
     if (method === "GET" && pathname === "/api/client-devices/proposals") {
       json(res, {
-        proposals: (await service.list(credential)).map((proposal) => ({
-          ...proposal,
-          digest: deviceProposalDigest(proposal),
-        })),
+        proposals: await Promise.all(
+          (await service.list(credential)).map(async (proposal) => {
+            const digest = deviceProposalDigest(proposal);
+            const pendingRead =
+              proposal.state === "pending" &&
+              proposal.expiresAt.getTime() > Date.now() &&
+              proposal.payload.action === "device_action" &&
+              ["notes_query", "notes_read_selected"].includes(
+                proposal.payload.operation.type,
+              );
+            const readReplyOrigin = pendingRead
+              ? await service.readReplyOrigin(credential, proposal.id, digest)
+              : undefined;
+            return {
+              ...proposal,
+              digest,
+              ...(readReplyOrigin ? { readReplyOrigin } : {}),
+            };
+          }),
+        ),
       });
       return true;
+    }
+    const completionMatch =
+      /^\/api\/client-devices\/proposals\/([A-Za-z0-9_-]+)\/(read-completion|cancel-read-completion)$/.exec(
+        pathname,
+      );
+    if (method === "POST" && completionMatch) {
+      const body = await ctx.readJsonBody<Record<string, unknown>>(req, res);
+      if (!body) return true;
+      if (typeof body.digest !== "string")
+        throw new DeviceActionError("Invalid read completion digest");
+      if (completionMatch[2] === "cancel-read-completion") {
+        if (Object.keys(body).some((key) => key !== "digest"))
+          throw new DeviceActionError("Invalid read cancellation");
+        await service.cancelReadReply(
+          credential,
+          completionMatch[1],
+          body.digest,
+        );
+        json(res, { cancelled: true });
+        return true;
+      }
+      if (!ctx.authorization?.ok || ctx.authorization.role !== "OWNER") {
+        error(res, "Owner role required", 403);
+        return true;
+      }
+      let hint: DeviceReadCompletionHint;
+      try {
+        hint = validateNativeNotesReadReplyHint(body);
+      } catch {
+        throw new DeviceActionError("Invalid original read completion");
+      }
+      if (hint.proposalId !== completionMatch[1])
+        throw new DeviceActionError("Original read proposal changed");
+      const retained = await service.readCompletionHint(
+        credential,
+        hint.proposalId,
+        hint.digest,
+        hint.attemptId,
+      );
+      if (
+        !retained ||
+        retained.digest !== hint.digest ||
+        retained.attemptId !== hint.attemptId ||
+        retained.requestId !== hint.requestId ||
+        retained.conversationId !== hint.conversationId ||
+        retained.inReplyTo !== hint.inReplyTo
+      )
+        throw new DeviceActionError("Original read completion changed");
+      if (!(runtime instanceof AgentRuntime))
+        throw new DeviceActionError(
+          "Canonical reply host unavailable",
+          "DEVICE_STORE_UNAVAILABLE",
+        );
+      const roomId = await service.readCompletionRoom(credential, retained);
+      const pairedSessionToken = await resolvePairedSessionToken(
+        req,
+        resolveTrustedApiPrincipal(req, ctx.authorization),
+        runtime,
+      );
+      const tracker = createConversationStreamDisconnectTracker({
+        req,
+        res,
+        conversationId: retained.conversationId,
+        roomId,
+        continueOnDisconnect: false,
+        pairedSessionToken,
+        runtime,
+      });
+      const recheck = async () => {
+        tracker.signal.throwIfAborted();
+        const resolve = getAgentHostBridge().resolveHttpRequestAuthorization;
+        const fresh = ctx.revalidateAuthorization
+          ? await ctx.revalidateAuthorization()
+          : resolve
+            ? await resolve(req, runtime, {
+                allowCookieAuth: true,
+                allowTrustedLocalBypass: false,
+                allowBearerAuth: true,
+              })
+            : null;
+        const current = fresh ? deviceRequestCredential(req, fresh) : null;
+        if (
+          !fresh?.ok ||
+          fresh.role !== "OWNER" ||
+          current?.subjectUserId !== credential.subjectUserId ||
+          current.installationId !== credential.installationId
+        ) {
+          tracker.abort(new Error("Original read owner authority retired"));
+          throw new DeviceActionError("Original read owner authority retired");
+        }
+        tracker.signal.throwIfAborted();
+      };
+      try {
+        if (!(await tracker.authorityReady))
+          throw new DeviceActionError("Read completion authority retired");
+        const reply = await runtime.turnControllers.runWith(
+          roomId,
+          (turnSignal) => {
+            const signal = AbortSignal.any([tracker.signal, turnSignal]);
+            return runtime.roomHandlerQueue.withLease(
+              roomId,
+              (lease) =>
+                runWithStreamingContext({ abortSignal: signal }, () =>
+                  service.completeReadReply(
+                    credential,
+                    retained,
+                    signal,
+                    async (reply, current, assertCurrent) => {
+                      assertCurrent();
+                      await persistAssistantConversationMemory(
+                        runtime,
+                        roomId,
+                        {
+                          text: reply.text,
+                          inReplyTo: reply.inReplyTo as UUID,
+                          source: "client_chat",
+                          channelType: ChannelType.API,
+                          agentVoiced: true,
+                          metadata: {
+                            deviceReadCompletion: {
+                              proposalId: retained.proposalId,
+                              attemptId: retained.attemptId,
+                              requestId: retained.requestId,
+                            },
+                          },
+                        },
+                        ChannelType.API,
+                        undefined,
+                        reply.messageId as UUID,
+                        lease,
+                        assertCurrent,
+                      );
+                      current.throwIfAborted();
+                    },
+                    recheck,
+                    ctx.assertRuntimeCurrent,
+                  ),
+                ),
+              { signal },
+            );
+          },
+        );
+        tracker.signal.throwIfAborted();
+        tracker.markCompleted();
+        json(res, { reply });
+        return true;
+      } catch (cause) {
+        tracker.abort(
+          cause instanceof Error
+            ? cause
+            : new Error("Original read completion retired"),
+        );
+        throw cause;
+      } finally {
+        if (tracker.signal.aborted) {
+          try {
+            await service.cancelReadReply(
+              credential,
+              retained.proposalId,
+              retained.digest,
+            );
+          } catch {
+            runtime.reportError(
+              "DeviceReadCompletion",
+              new Error("Completion cancellation could not be confirmed"),
+              {
+                code: "DEVICE_READ_COMPLETION_RETIREMENT_UNCONFIRMED",
+                proposalId: retained.proposalId,
+              },
+            );
+          }
+        }
+        tracker.dispose();
+      }
     }
     const match =
       /^\/api\/client-devices\/proposals\/([A-Za-z0-9_-]+)\/(decision|claim|receipt|reconciliation)$/.exec(

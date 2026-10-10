@@ -98,15 +98,23 @@ function lines(value: string): string[] {
 	return result;
 }
 
-function units(value: string, unit: "line" | "fragment"): string[] {
+function units(
+	value: string,
+	unit: "line" | "fragment",
+	continuesNonBlankLine = false,
+): string[] {
 	const sourceLines = lines(value);
 	if (unit === "line") return sourceLines;
 	return sourceLines
-		.reduce<string[]>((fragments, line) => {
+		.reduce<string[]>((fragments, line, index) => {
 			const last = fragments.length - 1;
 			if (last < 0) fragments.push(line);
 			else fragments[last] += line;
-			if (line.replace(/[\r\n]/gu, "").trim().length === 0) fragments.push("");
+			if (
+				!(index === 0 && continuesNonBlankLine) &&
+				line.replace(/[\r\n]/gu, "").trim().length === 0
+			)
+				fragments.push("");
 			return fragments;
 		}, [])
 		.filter((fragment) => fragment.length > 0);
@@ -309,6 +317,24 @@ function coordinate(
 ): number | null {
 	return safeNumber(
 		metadata[`source${unit === "line" ? "Line" : "Fragment"}${boundary}`],
+	);
+}
+
+/**
+ * A segment cut inside a non-blank line can leave only its whitespace tail
+ * (often just the line ending) at the start of the next row. On its own that
+ * tail looks like a blank line, but it does not close a fragment. The row's
+ * fragment span, computed from the whole source, tells the cases apart.
+ */
+function rowContinuesNonBlankLine(row: Memory | undefined): boolean {
+	const metadata = (row?.metadata ?? {}) as Record<string, unknown>;
+	const start = coordinate(metadata, "fragment", "Start");
+	const end = coordinate(metadata, "fragment", "End");
+	return (
+		metadata.sourceLineStartBoundary !== true &&
+		start !== null &&
+		end !== null &&
+		units(row?.content.text ?? "", "fragment").length > end - start
 	);
 }
 
@@ -552,8 +578,14 @@ export function readDocumentSourceProjection(args: {
 			},
 		});
 	}
+	const continuesNonBlankLine =
+		unit === "fragment" && rowContinuesNonBlankLine(first);
 	if (rows.length > DOCUMENT_SOURCE_READ_MAX_SEGMENTS) {
-		const skipped = units(first?.content.text ?? "", unit)
+		const skipped = units(
+			first?.content.text ?? "",
+			unit,
+			continuesNonBlankLine,
+		)
 			.slice(0, args.params.offset - firstUnit)
 			.join("");
 		const firstByte = safeNumber(firstMetadata.sourceByteStart) ?? 0;
@@ -587,6 +619,7 @@ export function readDocumentSourceProjection(args: {
 	const pageText = units(
 		rows.map((row) => row.content.text ?? "").join(""),
 		unit,
+		continuesNonBlankLine,
 	)
 		.slice(args.params.offset - firstUnit, requestedEnd - firstUnit)
 		.join("");

@@ -5,6 +5,7 @@ import {
   actionGateRejection,
   buildPlannerToolsFromActions,
   ContextRegistry,
+  HOOK_MODES,
   type IAgentRuntime,
   type Memory,
   promoteSubactionsToActions,
@@ -12,6 +13,10 @@ import {
 import { describe, expect, it } from "vitest";
 import { fileAction } from "../../../../plugin-coding-tools/src/actions/file.ts";
 import { notesPlugin } from "../../../../plugin-notes/src/plugin";
+import {
+  briefAction,
+  briefDeliveredImpressionsAction,
+} from "../../../../plugin-personal-assistant/src/actions/brief.ts";
 import { scheduledTaskAction } from "../../../../plugin-personal-assistant/src/actions/scheduled-task.ts";
 import { createHouseholdOperationsAction } from "../../../../plugin-personal-assistant/src/lifeops/household-operations/action.ts";
 import { createResourceCapacityAction } from "../../../../plugin-personal-assistant/src/lifeops/resource-capacity/action.ts";
@@ -42,6 +47,90 @@ const sharedCalendarActions = [
 ];
 
 describe("contextual native discovery", () => {
+  it("keeps every lifecycle hook out of the catalog and planner while retaining default and explicit PLANNER actions", async () => {
+    const currentRuntime = new AgentRuntime({
+      character: { name: "Hook visibility", bio: "Test" },
+      logLevel: "fatal",
+    });
+    const ordinary: Action = {
+      name: "DEFAULT_READ",
+      description: "Read records",
+      contexts: ["general"],
+      validate: async () => true,
+      handler: async () => ({ success: true }),
+    };
+    currentRuntime.actions.push(
+      ordinary,
+      { ...ordinary, name: "EXPLICIT_READ", mode: "PLANNER" },
+      ...HOOK_MODES.map((mode) => ({
+        ...ordinary,
+        name: `HOOK_${mode}`,
+        mode,
+      })),
+      briefDeliveredImpressionsAction,
+    );
+    const currentMessage = {
+      entityId: currentRuntime.agentId,
+      content: { text: "Read records", channelType: "DM" },
+    } as Memory;
+    const catalog = collectDiscoveryCatalogActions({
+      actions: currentRuntime.actions,
+      message: currentMessage,
+      selectedContexts: ["general"],
+      userRoles: ["OWNER"],
+    });
+    expect(catalog.map((action) => action.name)).toEqual([
+      "DEFAULT_READ",
+      "EXPLICIT_READ",
+    ]);
+    const candidates = await collectV5PlannerCandidateActions({
+      runtime: currentRuntime,
+      message: currentMessage,
+      state: { text: "", values: {}, data: {} },
+      discoverActions: true,
+      candidateActions: currentRuntime.actions.map((action) => action.name),
+      userRoles: ["OWNER"],
+    });
+    expect(candidates.map((action) => action.name)).toEqual([
+      "DEFAULT_READ",
+      "EXPLICIT_READ",
+    ]);
+  });
+
+  it.each(["briefing", "dossier"])(
+    "discovers the existing BRIEF composer through the registered %s domain",
+    async (domain) => {
+      const contexts = new ContextRegistry();
+      contexts.registerMany([...DEFAULT_CONTEXT_DEFINITIONS]);
+      const currentRuntime = { ...runtime, contexts } as IAgentRuntime;
+      const actions: Action[] = [
+        briefAction,
+        {
+          name: "CONNECTOR_LIST",
+          contexts: ["connectors"],
+          description: "List configured connector accounts",
+        },
+      ];
+      const discovery = createPlannerToolDiscoveryAction(
+        actions,
+        () => {},
+        async () => actions,
+      );
+      const result = await discovery.handler?.(
+        currentRuntime,
+        message,
+        undefined,
+        {
+          parameters: {
+            query: `compose my daily ${domain}`,
+            contexts: [domain],
+          },
+        },
+      );
+      expect(result?.data?.loadedTools).toEqual(["BRIEF"]);
+    },
+  );
+
   it.each([
     ["workflow create", "OWNER", "automation", true],
     [

@@ -1,10 +1,8 @@
 /** Owns in-flight prompt optimization traces and their run-indexed enrichment lifecycle.
  * Each runtime has its own store; persistence remains with registered optimization hooks. */
-import { ScoreCard } from "../types/prompt-optimization-score-card";
-import type {
-	ExecutionTrace,
-	ScoreSignal,
-} from "../types/prompt-optimization-trace";
+
+import type { ExecutionTrace, ScoreSignal } from "../prompt-optimization";
+import { ScoreCard } from "../prompt-optimization";
 export class ActivePromptTraces {
 	private activeTraces = new Map<string, ExecutionTrace>();
 	private runToTraces = new Map<string, Set<string>>();

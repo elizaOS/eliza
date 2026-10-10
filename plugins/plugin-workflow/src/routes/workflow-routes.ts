@@ -9,7 +9,8 @@ import {
   EMBEDDED_WORKFLOW_SERVICE_TYPE,
   type EmbeddedWorkflowService,
 } from '../services/embedded-workflow-service';
-import { digestId, digestKeys, digestRecord } from '../services/hosted-digest';
+import { digestId, digestKeys, digestRecord, digestText } from '../services/hosted-digest';
+import { hostedNativeSourcesAvailable } from '../services/hosted-native-source';
 import { MAX_WORKFLOW_JSON_BYTES } from '../services/workflow-json';
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/workflow-service';
 import type { WorkflowDefinition } from '../types/index';
@@ -171,6 +172,21 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
         ctx.json(ctx.res, { loops: await embedded.listHostedDigests(owner) });
         return;
       }
+      if (ctx.method === 'POST' && path === '/hosted/dossier') {
+        const body = await readBody(ctx.req, 2000);
+        digestKeys(body, ['sourceId', 'sourceRevision', 'mutationId', 'confirmed']);
+        if (body.confirmed !== true)
+          throw new WorkflowApiError('Confirm this on-demand model execution', 400);
+        ctx.json(ctx.res, {
+          execution: await embedded.runHostedDossier(
+            owner,
+            digestId(body.sourceId),
+            digestText(body.sourceRevision, 64),
+            digestId(body.mutationId)
+          ),
+        });
+        return;
+      }
       if (ctx.method === 'POST' && path === '/hosted/loops') {
         const body = await readBody(ctx.req);
         digestKeys(body, ['spec', 'id', 'expectedVersionId', 'mutationId', 'confirmed']);
@@ -223,6 +239,7 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
         lifecycleMutationProtocol: 1,
         typedAuthoringProtocol: 1,
         hostedDigestProtocol: 1,
+        ...(hostedNativeSourcesAvailable() ? { hostedNativeSourceProtocol: 1 } : {}),
       });
       return;
     }

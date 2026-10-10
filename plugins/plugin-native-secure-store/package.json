@@ -51,7 +51,7 @@
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "rollup": "^4.63.5",
+    "rollup": "^4.64.0",
     "typescript": "^6.0.3"
   },
   "peerDependencies": {

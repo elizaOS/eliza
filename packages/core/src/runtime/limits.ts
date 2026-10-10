@@ -5,8 +5,9 @@
  * `TrajectoryLimitExceeded` error, and the assert/count helpers that stop a
  * runaway or stuck planner from burning a turn.
  */
+
 import type { ActionFailureProvenance } from "../types/action-failure";
-import { toWellFormedUnicode } from "../utils/well-formed";
+import { toWellFormedUnicode } from "../utils/unicode";
 
 export interface ChainingLoopConfig {
 	/** Explicit domain-call ceiling; discovery does not spend it. Unbounded by default. */

@@ -1,12 +1,77 @@
 # Contributing
 
+> [!IMPORTANT]
+> **Read this before you open an issue or pull request. These rules are required.**
+> Work must support the approved minimum viable product (MVP) and product
+> requirements document (PRD). Maintainers will close unnecessary work. Contributors
+> who submit unnecessary work will be subject to penalties set by maintainers.
+
+## Human-only issue creation
+
+> [!IMPORTANT]
+> **Agents are banned from writing or creating contributor issues.** Outside
+> contributors must personally write the title and body and submit the issue
+> by hand on the GitHub website.
+
+Do not use an agent to draft or submit the issue. Do not create issues through
+an API, command-line tool, browser automation, or another agent. A human review
+or approval of an agent-written issue does not satisfy this rule. If an agent
+finds a problem, it must report the finding privately to the human in the
+current work session. The human must decide whether to write and submit an
+issue. This rule applies to every issue template, including bugs, MVP gaps,
+agent work items, and tracking issues. It does not ban agent work on an
+existing issue or an authorized pull request.
+
+## Issue scope
+
+Report a real bug or a missing requirement in the approved MVP. Link the relevant
+PRD section and MVP plan item. Show the problem, its effect on users, and the
+expected result. Follow this guide and the owning package's README.
+
+Do not submit work for minor points with no useful effect. Do not add unnecessary
+tests, defensive code, validation, or truncation. Do not expand the MVP through
+an issue or pull request. For a new feature, first discuss it with human
+maintainers. Maintainers must approve it and add it to the PRD and MVP plan
+before an implementation issue or pull request is opened. If the requirement is
+unclear or you cannot find the approved plan, ask maintainers before you start.
+
+## Pull request requirements
+
+- **Prove a useful improvement.** Show a failure before the fix and a successful
+  result after it, a gain in accuracy or another relevant score, or a demonstrated
+  improvement to an approved capability. State the test conditions and results.
+- **Make the code simpler.** Remove unnecessary code. Combine duplicate types and
+  functions. Use existing work. Add a type or code only when the approved task
+  needs it. Explain why existing code cannot meet that need.
+- **Explain the choice.** Show what you researched, the alternatives you examined,
+  and why the selected implementation is the best fit. Keep the explanation
+  proportional to the change.
+- **Test the real behavior.** Run the relevant end-to-end flow and provide the
+  commands, setup, results, and evidence for the reviewed commit. Use existing
+  tests first. Avoid new unit tests, tests that only check mocks, and tests that
+  repeat the implementation. A test count or a passing mock is not proof that
+  the product works. Run the required package checks and repository checks.
+  For documentation-only changes, check the text and links; do not add artificial
+  runtime tests. State any failed or blocked checks.
+- **For every UI change, upload an MP4 walkthrough to the PR.** Explain the change
+  in the video and show the complete user flow working. Include video evidence
+  of the changed behavior, desktop and mobile before-and-after screenshots,
+  the app visual audit, and detailed steps for a reviewer to test the change.
+  Screenshots alone do not meet the video requirement.
+- **Write every issue and PR in ASD-STE100 Simplified Technical English.** Use
+  short, direct sentences and consistent terms. Explain necessary technical
+  terms. A non-technical reader must be able to understand the problem, change,
+  and test steps.
+
 Contribute through issues, project boards, discussions, and pull requests against
 `develop`. The repository is agent-operated as well as human-maintained, so the
 useful record is the one a reviewer can inspect later: scoped work, current
 board state, linked code, and evidence that the real behavior happened.
 
 Current setup and validation commands are in [README.md](README.md) and
-[AGENTS.md](AGENTS.md). Read the nearest package guide before editing.
+[AGENTS.md](AGENTS.md). Read the owning package's README before editing.
+The root `AGENTS.md` is the only repository agent guide. Do not add nested
+`AGENTS.md` files.
 
 ## Pull Requests
 

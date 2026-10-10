@@ -15,8 +15,9 @@ export {
  * Playback / TTS logic for voice chat — text processing, sentence splitting,
  * speech text extraction, and mouth animation helpers.
  */
-import { ElizaError, sanitizeSpeechText } from "@elizaos/core/protocol";
-import { MOUTH_OPEN_STEP, type SpeechSegmentKind } from "./voice-chat-types";
+import { ElizaError, sanitizeSpeechText } from "@elizaos/core/speech";
+export type SpeechSegmentKind = "full" | "first-sentence" | "remainder";
+export const MOUTH_OPEN_STEP = 0.02;
 // ── Text processing helpers ───────────────────────────────────────────
 export function normalizeCacheText(input: string): string {
   return collapseWhitespace(input.normalize("NFKC")).toLowerCase();

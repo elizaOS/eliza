@@ -518,6 +518,87 @@ it("sends a deadline-bound effect only to a feedback-capable peer", async () => 
       result: { dispatched: true },
     });
     await expect(executing).resolves.toMatchObject({ subaction: "click" });
+    // The preview sentence comes only from trusted options, never the command.
+    const worded = target.execute(
+      {
+        subaction: "click",
+        id: "1",
+        selector: "00000000-0000-0000-0000-000000000000:0:0",
+        actionText: "Page text cannot word this.",
+      } as never,
+      {
+        taskContext,
+        taskExpiresAt,
+        actionText: "I will choose your saved Visa.",
+      },
+    );
+    await vi.waitFor(() => expect(frames.messages).toHaveLength(2));
+    expect(frames.messages[1].command.actionText).toBe(
+      "I will choose your saved Visa.",
+    );
+    frames.send({
+      type: "result",
+      id: frames.messages[1].id,
+      ok: true,
+      result: { dispatched: true },
+    });
+    await worded;
+    const unbound = target.execute({
+      subaction: "click",
+      id: "1",
+      selector: "00000000-0000-0000-0000-000000000000:0:0",
+      actionText: "Unbound text.",
+    } as never);
+    for (const actionText of ["", "x".repeat(201), "line\nbreak"])
+      await expect(
+        target.execute(
+          {
+            subaction: "click",
+            id: "1",
+            selector: "00000000-0000-0000-0000-000000000000:0:0",
+          },
+          { taskContext, taskExpiresAt, actionText },
+        ),
+      ).rejects.toMatchObject({ kind: "POLICY_BLOCKED" });
+    await vi.waitFor(() => expect(frames.messages).toHaveLength(3));
+    expect(frames.messages[2].command.actionText).toBeUndefined();
+    frames.send({
+      type: "result",
+      id: frames.messages[2].id,
+      ok: true,
+      result: { dispatched: true },
+    });
+    await unbound;
+    // A reviewed target comes only from trusted options, and only a peer
+    // that enforces it may receive one.
+    await expect(
+      target.execute(
+        {
+          subaction: "click",
+          id: "1",
+          selector: "00000000-0000-0000-0000-000000000000:0:0",
+        },
+        { taskContext, taskExpiresAt, expectedSelector: "#method" },
+      ),
+    ).rejects.toMatchObject({ kind: "UNSUPPORTED" });
+    const raw = target.execute(
+      {
+        subaction: "click",
+        id: "1",
+        selector: "00000000-0000-0000-0000-000000000000:0:0",
+        expectedSelector: "#page-chosen",
+      } as never,
+      { taskContext, taskExpiresAt },
+    );
+    await vi.waitFor(() => expect(frames.messages).toHaveLength(4));
+    expect(frames.messages[3].command.expectedSelector).toBeUndefined();
+    frames.send({
+      type: "result",
+      id: frames.messages[3].id,
+      ok: true,
+      result: { dispatched: true },
+    });
+    await raw;
   } finally {
     socket?.destroy();
     await target.stop();
@@ -570,5 +651,267 @@ it("binds Android sockets to validated host application identity", async () => {
       }),
     ).rejects.toThrow("Invalid native browser Android application ID");
     await target.stop();
+  }
+});
+
+it("waits for only the expected registration without sending commands and rejects unavailable waits", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "native-profile-wait-"));
+  const target = new NativeSocketBrowserTarget(() => {});
+  let socket: Socket | undefined;
+  try {
+    await target.start({
+      ELIZA_BROWSER_NATIVE_SOCKET: join(directory, "browser.sock"),
+    });
+    await expect(
+      target.waitForProfile("wanted", { timeoutMs: 20 }),
+    ).rejects.toMatchObject({ kind: "UNAVAILABLE" });
+    const controller = new AbortController();
+    const aborted = expect(
+      target.waitForProfile("wanted", { signal: controller.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    controller.abort();
+    await aborted;
+    const registered = target.waitForProfile("wanted");
+    socket = createConnection(join(directory, "browser.sock"));
+    const frames = socketFrames(socket);
+    frames.send({
+      type: "hello",
+      protocol: 2,
+      extensionId: "pmldpcoefklbdbgmggcejkfoinmjfeio",
+      profileId: "wanted",
+      capabilities: ["list"],
+      nonce: "wait-nonce",
+    });
+    await registered;
+    await vi.waitFor(() => expect(frames.messages).toHaveLength(1));
+    expect(frames.messages[0]?.type).toBe("hello-ack");
+    await expect(target.waitForProfile("different")).rejects.toMatchObject({
+      kind: "UNAVAILABLE",
+    });
+    await expect(
+      target.waitForProfile("wanted", { signal: controller.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    for (const timeoutMs of [0, -1, 1.5, 30001, Number.NaN])
+      await expect(
+        target.waitForProfile("wanted", { timeoutMs }),
+      ).rejects.toThrow("Invalid native profile");
+    await expect(target.waitForProfile("")).rejects.toThrow(
+      "Invalid native profile",
+    );
+    socket.destroy();
+    await vi.waitFor(() => expect(target.getProfileId()).toBeNull());
+    const stopped = expect(
+      target.waitForProfile("wanted"),
+    ).rejects.toMatchObject({ kind: "UNAVAILABLE" });
+    await target.stop();
+    await stopped;
+    expect(frames.messages).toHaveLength(1);
+  } finally {
+    socket?.destroy();
+    await target.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("relays one value-free answer for the current offer and drops stale answers", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "native-guide-answer-"));
+  const socketPath = join(directory, "browser.sock");
+  const diagnostics: Error[] = [];
+  const target = new NativeSocketBrowserTarget((error) =>
+    diagnostics.push(error),
+  );
+  let socket: Socket | undefined;
+  try {
+    await target.start({ ELIZA_BROWSER_NATIVE_SOCKET: socketPath });
+    socket = createConnection(socketPath);
+    const frames = socketFrames(socket);
+    frames.send({
+      type: "hello",
+      protocol: 2,
+      extensionId: "pmldpcoefklbdbgmggcejkfoinmjfeio",
+      profileId: "answer-profile",
+      capabilities: ["task-bind", "task-guide", "task-guide-label"],
+    });
+    await vi.waitFor(async () => expect(await target.available()).toBe(true));
+    const answers: unknown[] = [];
+    target.onTaskGuideAnswer((answer) => answers.push(answer));
+    const base = {
+      tabId: "1",
+      taskContext: {
+        actorId: "actor",
+        accountId: "account",
+        agentId: "agent",
+        taskId: "task",
+        epoch: 1,
+      },
+      kind: "show" as const,
+      stepId: "email",
+      selector: "00000000-0000-0000-0000-000000000000:0:0",
+      text: "Which email?",
+      tone: "offer" as const,
+      answers: [
+        { id: "card-0", kind: "card" as const, text: "a@example.test" },
+        { id: "card-1", kind: "card" as const, text: "b@example.test" },
+        { id: "type", kind: "secondary" as const, text: "I'll type it" },
+      ],
+      expiresAt: Date.now() + 60000,
+    };
+    const shown = target.guideTask({ ...base, revision: 1 });
+    await vi.waitFor(() => expect(frames.messages).toHaveLength(1));
+    const offerId = frames.messages[0].id;
+    frames.send({
+      type: "result",
+      id: offerId,
+      ok: true,
+      result: { accepted: true },
+    });
+    await shown;
+    const answer = {
+      type: "task-guide-answer",
+      id: offerId,
+      tabId: "1",
+      stepId: "email",
+      revision: 1,
+      answerId: "card-1",
+    };
+    frames.send({ ...answer, answerId: "card-9" });
+    frames.send(answer);
+    frames.send(answer);
+    await vi.waitFor(() => expect(answers).toHaveLength(1));
+    expect(answers[0]).toEqual({
+      tabId: "1",
+      stepId: "email",
+      revision: 1,
+      answerId: "card-1",
+    });
+    // A newer guide for the tab replaces the offer before an in-flight answer lands.
+    const second = target.guideTask({ ...base, revision: 2 });
+    await vi.waitFor(() => expect(frames.messages).toHaveLength(2));
+    const secondId = frames.messages[1].id;
+    frames.send({
+      type: "result",
+      id: secondId,
+      ok: true,
+      result: { accepted: true },
+    });
+    await second;
+    const paused = target.guideTask({
+      tabId: "1",
+      taskContext: base.taskContext,
+      revision: 3,
+      kind: "pause",
+    });
+    await vi.waitFor(() => expect(frames.messages).toHaveLength(3));
+    frames.send({
+      type: "result",
+      id: frames.messages[2].id,
+      ok: true,
+      result: { visible: false, paused: true },
+    });
+    await paused;
+    frames.send({ ...answer, id: secondId, revision: 2, answerId: "type" });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(answers).toHaveLength(1);
+    expect(await target.available()).toBe(true);
+    // An answer already in flight must not cross a binding replacement.
+    const third = target.guideTask({ ...base, revision: 4 });
+    await vi.waitFor(() => expect(frames.messages).toHaveLength(4));
+    const thirdId = frames.messages[3].id;
+    frames.send({
+      type: "result",
+      id: thirdId,
+      ok: true,
+      result: { accepted: true },
+    });
+    await third;
+    const rebound = target.bindTask({
+      ...base.taskContext,
+      epoch: 2,
+      bindingRevision: 2,
+      tabId: "1",
+      origin: "https://example.test",
+      expiresAt: Date.now() + 60000,
+      targets: [],
+      revoked: false,
+    });
+    await vi.waitFor(() => expect(frames.messages).toHaveLength(5));
+    frames.send({ ...answer, id: thirdId, revision: 4 });
+    frames.send({
+      type: "result",
+      id: frames.messages[4].id,
+      ok: true,
+      result: { bound: true },
+    });
+    await rebound;
+    expect(answers).toHaveLength(1);
+    // A malformed or value-carrying answer is a protocol violation.
+    frames.send({ ...answer, value: "b@example.test" });
+    await vi.waitFor(async () => expect(await target.available()).toBe(false));
+    expect(JSON.stringify(answers)).not.toContain("example.test");
+  } finally {
+    socket?.destroy();
+    await target.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("requires the guide-label capability for labels, offers, pause and a configured name", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "native-guide-label-"));
+  const socketPath = join(directory, "browser.sock");
+  const target = new NativeSocketBrowserTarget(() => {});
+  let socket: Socket | undefined;
+  try {
+    await target.start({ ELIZA_BROWSER_NATIVE_SOCKET: socketPath });
+    socket = createConnection(socketPath);
+    const frames = socketFrames(socket);
+    frames.send({
+      type: "hello",
+      protocol: 2,
+      extensionId: "pmldpcoefklbdbgmggcejkfoinmjfeio",
+      profileId: "older-profile",
+      capabilities: ["task-bind", "task-guide"],
+    });
+    await vi.waitFor(async () => expect(await target.available()).toBe(true));
+    const taskContext = {
+      actorId: "actor",
+      accountId: "account",
+      agentId: "agent",
+      taskId: "task",
+      epoch: 1,
+    };
+    for (const guidance of [
+      { tabId: "1", taskContext, revision: 1, kind: "pause" as const },
+      {
+        tabId: "1",
+        taskContext,
+        revision: 1,
+        kind: "show" as const,
+        stepId: "s",
+        selector: "00000000-0000-0000-0000-000000000000:0:0",
+        text: "Done.",
+        tone: "success" as const,
+        expiresAt: Date.now() + 60000,
+      },
+    ])
+      await expect(target.guideTask(guidance)).rejects.toMatchObject({
+        kind: "UNSUPPORTED",
+      });
+    await expect(
+      target.bindTask({
+        ...taskContext,
+        tabId: "1",
+        bindingRevision: 1,
+        origin: "https://example.test",
+        expiresAt: Date.now() + 60000,
+        revoked: false,
+        targets: [],
+        assistantName: "Grace",
+      }),
+    ).rejects.toMatchObject({ kind: "UNSUPPORTED" });
+    expect(frames.messages).toHaveLength(0);
+  } finally {
+    socket?.destroy();
+    await target.stop();
+    await rm(directory, { recursive: true, force: true });
   }
 });

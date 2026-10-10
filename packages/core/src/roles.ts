@@ -26,11 +26,10 @@ import {
 	MESSAGE_SOURCE_CODING_AGENT,
 	MESSAGE_SOURCE_SUB_AGENT,
 } from "./types/message-source";
-import type { Metadata } from "./types/primitives";
-import type { UUID } from "./types/primitives.js";
+import type { Metadata, UUID } from "./types/primitives";
 import type { IAgentRuntime } from "./types/runtime.js";
 import { ServiceType } from "./types/service";
-import { formatError } from "./utils/format-error";
+import { formatError } from "./utils/errors";
 import { stringToUuid } from "./utils/string-to-uuid.js";
 import { asRecordOrUndefined as asRecord } from "./utils/type-guards";
 import { validateUuid } from "./utils/uuid.js";

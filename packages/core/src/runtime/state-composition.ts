@@ -31,7 +31,7 @@ import {
 	shouldIncludeByContext,
 } from "../utils/context-routing";
 import { buildDeterministicSeed } from "../utils/deterministic.js";
-import { toWellFormedUnicode } from "../utils/well-formed.js";
+import { toWellFormedUnicode } from "../utils/unicode.js";
 import {
 	awaitProviderExecution,
 	type CachedProviderResult,

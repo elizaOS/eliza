@@ -73,6 +73,7 @@ import {
   getFoodDomainService,
 } from "../lifeops/food/index.js";
 import { HOUSEHOLD_SCHEDULE_PROPOSAL_APPROVAL_WORKFLOW_ID } from "../lifeops/household/types.js";
+import { resolveOwnerTimeZone } from "../lifeops/owner/fact-store.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import {
   getResourceCapacityService,
@@ -773,12 +774,16 @@ async function persistSentMailCommitments(args: {
     return;
   }
 
+  // Relative deadlines ("tomorrow", "Friday") are the owner's civil days,
+  // as on the transcript path; without a zone they resolve on the UTC day.
+  const timeZone = await resolveOwnerTimeZone(args.runtime, args.sentAt);
   const records = extractCommitmentLedgerRecords({
     agentId: args.runtime.agentId,
     source: "sent_mail",
     sourceKey: `approval:${args.request.id}`,
     text: payload.body,
     observedAt: args.sentAt.toISOString(),
+    timeZone,
     counterparty: payload.to.join(", ") || null,
     metadata: {
       approvalRequestId: args.request.id,

@@ -68,7 +68,10 @@ import {
 import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
 import { ownerAgreementKnowledgeAction } from "./actions/agreement-knowledge.js";
 import { blockAction } from "./actions/block.js";
-import { briefAction } from "./actions/brief.js";
+import {
+  briefAction,
+  briefDeliveredImpressionsAction,
+} from "./actions/brief.js";
 import {
   calendarAction,
   calendarActionPromotionOptions,
@@ -743,6 +746,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     ownerAgreementKnowledgeAction,
     ...promoteSubactionsToActions(creativeDraftAction),
     ...promoteSubactionsToActions(briefAction),
+    briefDeliveredImpressionsAction,
     ...promoteSubactionsToActions(prioritizeAction),
     ...promoteSubactionsToActions(conflictDetectAction),
     // INBOX (+ its INBOX_* virtuals) registers via @elizaos/plugin-inbox,

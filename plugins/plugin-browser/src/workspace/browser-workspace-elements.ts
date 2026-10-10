@@ -743,6 +743,15 @@ export function findClosestBrowserWorkspaceForm(
   if (!element) {
     return null;
   }
+  if (["BUTTON", "INPUT", "SELECT", "TEXTAREA"].includes(element.tagName)) {
+    return (
+      element as
+        | HTMLButtonElement
+        | HTMLInputElement
+        | HTMLSelectElement
+        | HTMLTextAreaElement
+    ).form;
+  }
   return (
     element.tagName === "FORM" ? element : element.closest("form")
   ) as HTMLFormElement | null;

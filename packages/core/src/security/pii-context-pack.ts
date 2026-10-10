@@ -9,15 +9,15 @@
 import { ElizaError } from "../errors.js";
 import type { PiiScrubRequestPayload } from "../types/events.js";
 import type { Memory } from "../types/memory.js";
-import type {
-	PiiPseudonymAssignment,
-	TextEmbeddingParams,
+import {
+	ModelType,
+	type PiiPseudonymAssignment,
+	type TextEmbeddingParams,
 } from "../types/model.js";
-import { ModelType } from "../types/model.js";
 import type { UUID } from "../types/primitives.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import type { Service } from "../types/service.js";
-import { toWellFormedUnicode } from "../utils/well-formed.js";
+import { toWellFormedUnicode } from "../utils/unicode.js";
 import { canonicalKind } from "./entity-recognizer.js";
 import type { CorpusPseudonymMap } from "./pii-pseudonym-map.js";
 

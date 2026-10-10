@@ -813,7 +813,7 @@ export function loadHistoryReferences(
 }
 
 export const REVIEWED_HISTORY_SELECTION_INSTRUCTIONS = `History selection: use the separate source map to identify original dialogue. Select facts, applicable constraints/corrections, referents and explicitly continued unfinished work; a complete selection retains their exact union, never a summary. Prior selection can miss dependencies.
-Read missing originals through READ_CONTEXT or contextRequests (empty reply/action fields): history:hN for known IDs; history:search:<literal>, history:search-user:<literal> or history:search-assistant:<literal> for case-insensitive substring search. Search subjects as well as current values to find corrections. Speaker filters mean roles, not people. Matches establish occurrences, not earliest versions; zero matches establish literal absence only. Use history:all for unresolved interpretation or exhaustive coverage, and before claiming something was never discussed. These are conversation reads, not external app actions; do not reread supplied originals or infer omitted permission.
+Read missing originals through READ_CONTEXT or contextRequests (empty reply/action fields): history:hN for known IDs; history:search:<literal>, history:search-user:<literal> or history:search-assistant:<literal> for case-insensitive substring search. For a specific saved-fact lookup, first read an advertised stored-memory reference, a known history ID or a literal search of the fact's subject. When only the fact's location is unknown, search its subject first. Inspect matched originals and their corrections before requesting broader history. Search subjects as well as current values to find corrections. Speaker filters mean roles, not people. Matches establish occurrences, not earliest versions; zero matches establish literal absence only. Use history:all when targeted reads leave dependencies or interpretation unresolved, for exhaustive coverage, or before claiming something was never discussed. These are conversation reads, not external app actions; do not reread supplied originals or infer omitted permission.
 Once dependencies are resolved, use relevant_prior_dialogue with complete=true and the sourceSetId required by the response schema. Incomplete selection restores all originals. Original speaker attribution, current request, system/provider constraints, receipts and retention checkpoints remain intact. Navigation receipts follow their original request.`;
 
 export function historyReferenceNotice(
@@ -821,7 +821,7 @@ export function historyReferenceNotice(
   projection?: HistoryDiscovery,
 ): string {
   if (!projection) return "";
-  return `\nHistory index: h1–h${collectCompletionContextSources(context).length} in chronological order. Read known IDs with history:hN, literal matches with history:search:<text>, or all originals with history:all. Supplied/loaded originals need no reread.`;
+  return `\nHistory index: h1–h${collectCompletionContextSources(context).length} in chronological order. For a specific saved-fact lookup, first use an advertised stored-memory reference, a known history:hN, or history:search:<text> for the fact's subject; inspect matched originals and their corrections. Read all originals with history:all when targeted reads leave dependencies unresolved, for exhaustive coverage, or before claiming something was never discussed. Supplied/loaded originals need no reread.`;
 }
 
 /** Carry completed conversation lookups into planning only while their sources remain identical. */

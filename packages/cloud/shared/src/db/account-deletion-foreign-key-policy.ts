@@ -24,12 +24,12 @@ export interface AccountDeletionForeignKeyDescriptor {
   onDelete: string;
 }
 /**
- * SHA-256 of the 274 sorted direct user/organization FK descriptors, each
+ * SHA-256 of the 277 sorted direct user/organization FK descriptors, each
  * serialized as `source|columns|target|targetColumns|onDelete` and joined with
  * `\n` (see `serializeDescriptor`). Recompute when the FK inventory changes.
  */
 export const ACCOUNT_DELETION_FOREIGN_KEY_SNAPSHOT_SHA256 =
-  "a79cc245e9885f9e9a4bc6e766f12cf32ab80c56f4b1a44b52bd11c7b786b52e";
+  "8a9bf17aa942aa36fabd907fc66bed724e82251c6995378194b676075f374a02";
 
 function serializeDescriptor(descriptor: AccountDeletionForeignKeyDescriptor): string {
   return [
@@ -80,6 +80,10 @@ export function listAccountDeletionForeignKeys(): AccountDeletionForeignKeyDescr
  */
 const EXTERNAL_RESOURCE_TABLES = new Set([
   "ad_accounts",
+  "app_billing_application_slots",
+  "app_billing_notification_endpoints",
+  "app_billing_scopes",
+  "billing_merchants",
   "agent_activation_publications",
   "agent_backup_admission_work",
   "agent_backup_catalog_authorities",
@@ -154,6 +158,9 @@ const SHARED_RESOURCE_TABLES = new Set([
  * erase privacy-bearing history instead of retaining and anonymizing it.
  */
 const RETAINED_AUDIT_TABLES = new Set([
+  "subscription_adjustment_attempts",
+  "subscription_adjustment_observations",
+  "subscription_adjustment_scans",
   "admin_users",
   "affiliate_payout_outbox",
   "agent_billing_records",
@@ -232,6 +239,10 @@ export function classifyAccountDeletionForeignKey(
   }
   if (EXTERNAL_RESOURCE_TABLES.has(sourceTable)) {
     return "reconcile_external_resource";
+  }
+  // Membership grants are explicitly revoked by the local grant adapter.
+  if (sourceTable === "app_billing_members") {
+    return "delete_private_data";
   }
   if (onDelete === "set null") {
     return "anonymize_retained_record";

@@ -13,6 +13,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { stripHtmlRawTextElements, toWellFormedUnicode } from "@elizaos/core";
+import { decodeHTML } from "entities";
 import {
   failureToActionResult,
   readStringParam,
@@ -33,14 +34,6 @@ export function isCodingWebFetchEnabled(): boolean {
 }
 
 function decodeHtmlEntity(entity: string): string {
-  const named: Record<string, string> = {
-    amp: "&",
-    apos: "'",
-    gt: ">",
-    lt: "<",
-    nbsp: " ",
-    quot: '"',
-  };
   if (entity.startsWith("#")) {
     const code = entity.startsWith("#x")
       ? Number.parseInt(entity.slice(2), 16)
@@ -52,9 +45,13 @@ function decodeHtmlEntity(entity: string): string {
       code >= 0 &&
       code <= 0x10ffff &&
       (code < 0xd800 || code > 0xdfff);
-    return isUnicodeScalarValue ? String.fromCodePoint(code) : `&${entity};`;
+    // The numeric spellings of U+00A0 (&#160; / &#xA0;) decode to the same
+    // character as &nbsp;, so they must become the same readable plain space.
+    return isUnicodeScalarValue
+      ? String.fromCodePoint(code).replace(/\u00a0/g, " ")
+      : `&${entity};`;
   }
-  return named[entity] ?? `&${entity};`;
+  return decodeHTML(`&${entity};`).replace(/\u00a0/g, " ");
 }
 
 function normalizeWhitespace(text: string): string {

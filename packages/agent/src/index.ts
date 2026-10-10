@@ -780,7 +780,12 @@ export {
   VirtualFilesystemService,
   type VirtualFilesystemSnapshot,
 } from "./services/virtual-filesystem.ts";
-export { resolveDefaultAgentWorkspaceDir } from "./shared/workspace-resolution.ts";
+export {
+  DEFAULT_AGENT_WORKSPACE_DIR,
+  resolveDefaultAgentWorkspaceDir,
+  shouldBootstrapWorkspaceInitFiles,
+  shouldUseRuntimeCwdWorkspace,
+} from "./shared/workspace-resolution.ts";
 export {
   startTriggerEventBridge,
   type TriggerEventBridgeHandle,

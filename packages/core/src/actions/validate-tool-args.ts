@@ -8,6 +8,7 @@
  * `pattern`s are compiled defensively and bounded by input length to blunt ReDoS,
  * since a JS regex runs synchronously and cannot be interrupted.
  */
+import { toActionParameterValue } from "../action-parameter-value";
 import type { Action } from "../types/components.js";
 import { isObjectRecord as isRecord } from "../utils/type-guards";
 import {
@@ -301,20 +302,15 @@ export function validateSchema(
 				return value;
 			}
 			const normalized = validateEnum(schema, value, path, errors) as string;
-			if (
-				schema.minLength !== undefined &&
-				normalized.length < schema.minLength
-			) {
+			const length = [...normalized].length;
+			if (schema.minLength !== undefined && length < schema.minLength) {
 				errors.push(
-					`Argument '${formatPath(path)}' length ${normalized.length} is below minimum ${schema.minLength}`,
+					`Argument '${formatPath(path)}' length ${length} is below minimum ${schema.minLength}`,
 				);
 			}
-			if (
-				schema.maxLength !== undefined &&
-				normalized.length > schema.maxLength
-			) {
+			if (schema.maxLength !== undefined && length > schema.maxLength) {
 				errors.push(
-					`Argument '${formatPath(path)}' length ${normalized.length} exceeds maximum ${schema.maxLength}`,
+					`Argument '${formatPath(path)}' length ${length} exceeds maximum ${schema.maxLength}`,
 				);
 			}
 			if (schema.pattern !== undefined) {
@@ -402,16 +398,45 @@ export function validateSchema(
 	}
 }
 
-function omitDeclaredModelSentinels(
+function normalizeModelParameters(
 	action: Action,
 	args: Record<string, unknown>,
 ): Record<string, unknown> {
 	let normalized = args;
 	for (const parameter of action.parameters ?? []) {
+		if (!hasOwn(args, parameter.name)) continue;
 		const suppliedValue = args[parameter.name];
+		const schema = parameter.schema;
+		const branches = [...(schema.anyOf ?? []), ...(schema.oneOf ?? [])];
+		const requiresObject =
+			schema.type === "object" ||
+			(schema.type === undefined &&
+				branches.length > 0 &&
+				branches.every((branch) => branch.type === "object"));
+		// Decode only a declared object parameter's transport representation.
+		// String and mixed unions retain literal text; recursive schema validation
+		// still enforces every discriminator, property and value after decoding.
+		if (requiresObject && typeof suppliedValue === "string") {
+			let parsed: unknown;
+			try {
+				parsed = JSON.parse(suppliedValue);
+			} catch {
+				// error-policy:J3 malformed model JSON stays untrusted input and fails
+				// the authored object schema rather than guessing or repairing it.
+			}
+			if (isRecord(parsed)) {
+				const value = toActionParameterValue(parsed);
+				if (normalized === args) normalized = { ...args };
+				Object.defineProperty(normalized, parameter.name, {
+					value,
+					enumerable: true,
+					configurable: true,
+					writable: true,
+				});
+			}
+		}
 		if (
 			parameter.required ||
-			!hasOwn(args, parameter.name) ||
 			typeof suppliedValue !== "string" ||
 			!parameter.modelOmissionSentinels?.length
 		) {
@@ -474,7 +499,7 @@ export function validateToolArgs(
 		};
 	}
 
-	const normalizedArgs = omitDeclaredModelSentinels(action, args);
+	const normalizedArgs = normalizeModelParameters(action, args);
 	const admissionSchema = admitLegacyRequiredAlternatives(
 		action,
 		schema,

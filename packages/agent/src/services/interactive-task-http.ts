@@ -90,10 +90,43 @@ export function createInteractiveTaskHandler(options: {
     try {
       if (!(await authenticated(request)))
         return json(401, { code: "TASK_UNAUTHORIZED" });
+      const url = new URL(request.url);
+      // Pause the current task as soon as the request arrives. It reads the
+      // revision on the host, so it never waits for earlier cleanup, a
+      // pending start reply or a second renderer round trip.
+      if (url.pathname === "/tasks/current/pause" && !url.search) {
+        if (request.method !== "POST")
+          return json(405, { code: "TASK_METHOD_NOT_ALLOWED" });
+        const input = await body(request);
+        const keys = Object.keys(input);
+        if (
+          keys.some((key) => key !== "reason") ||
+          (keys.length === 1 && input.reason !== "close")
+        )
+          return json(400, { code: "TASK_INVALID" });
+        if (!(await authenticated(request)))
+          return json(401, { code: "TASK_UNAUTHORIZED" });
+        const close = input.reason === "close";
+        let task = options.runtime.current();
+        // Close still reaches a paused task, so the host removes its guide.
+        if (
+          task &&
+          !["completed", "cancelled"].includes(task.status) &&
+          (task.status !== "paused" || close)
+        )
+          task = options.runtime.control(
+            task.id,
+            task.revision,
+            close ? "close" : "pause",
+          );
+        await options.runtime.settle(task?.id);
+        if (!(await authenticated(request)))
+          return json(401, { code: "TASK_UNAUTHORIZED" });
+        return json(200, { task: task ? view(task) : null });
+      }
       await options.runtime.settle();
       if (!(await authenticated(request)))
         return json(401, { code: "TASK_UNAUTHORIZED" });
-      const url = new URL(request.url);
       const eventsRoute =
         /^\/tasks\/([A-Za-z0-9][A-Za-z0-9_.:@-]{0,255})\/events$/.exec(
           url.pathname,
@@ -149,8 +182,11 @@ export function createInteractiveTaskHandler(options: {
       if (!command || request.method !== "POST")
         return json(405, { code: "TASK_METHOD_NOT_ALLOWED" });
       const input = await body(request);
+      // Pause accepts reason "close": the user also closed the task surface.
+      const close = command === "pause" && "reason" in input;
       if (
-        Object.keys(input).length !== 1 ||
+        Object.keys(input).length !== (close ? 2 : 1) ||
+        (close && input.reason !== "close") ||
         !Number.isSafeInteger(input.expectedRevision) ||
         Number(input.expectedRevision) < 0
       )
@@ -168,7 +204,7 @@ export function createInteractiveTaskHandler(options: {
           : options.runtime.control(
               id,
               Number(input.expectedRevision),
-              command as "pause" | "cancel",
+              close ? "close" : (command as "pause" | "cancel"),
             );
       await options.runtime.settle(id);
       if (!(await authenticated(request)))

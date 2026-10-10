@@ -5,8 +5,8 @@
  * the runtime must salvage structure from a weak model's not-quite-valid JSON.
  */
 
-import { unwrapWholeCodeFence } from "../utils/code-fence.ts";
-import { formatError } from "../utils/format-error.ts";
+import { unwrapWholeCodeFence } from "../markdown/code.ts";
+import { formatError } from "../utils/errors.ts";
 
 export function parseJsonObject<T extends object>(raw: string): T | null {
 	const trimmed = raw.trim();

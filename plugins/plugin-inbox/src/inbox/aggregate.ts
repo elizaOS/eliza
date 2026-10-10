@@ -553,31 +553,49 @@ export function buildInboxFromMessages(
     return bTime - aTime;
   });
 
-  const trimmed =
-    options.limit !== undefined && collected.length > options.limit
-      ? collected.slice(0, options.limit)
-      : collected;
-
   if (options.llmScores && options.llmScores.size > 0) {
-    applyLlmScores(trimmed, options.llmScores);
+    applyLlmScores(collected, options.llmScores);
   }
 
-  let messages = trimmed;
+  // A missed view filters on age, reply state, and priority score, so the
+  // display limit must apply after that filter: trimming newest-first rows
+  // first would spend the window on messages that can never qualify.
+  const preLimit =
+    options.missedOnly === true
+      ? collected.filter((m) => isMissedMessage(m, Date.now()))
+      : collected;
+
+  const trimmed =
+    options.limit !== undefined && preLimit.length > options.limit
+      ? preLimit.slice(0, options.limit)
+      : preLimit;
+
+  const messages = trimmed;
   let threadGroups: LifeOpsInboxThreadGroup[] | undefined;
 
   if (options.groupByThread) {
-    threadGroups = buildThreadGroups(
-      trimmed,
-      options.llmScores,
-      options.sortByPriority === true,
-    );
-  }
-
-  if (options.missedOnly === true) {
-    const nowMs = Date.now();
-    messages = messages.filter((m) => isMissedMessage(m, nowMs));
-    if (threadGroups) {
-      threadGroups = threadGroups.filter((g) => isMissedThreadGroup(g, nowMs));
+    if (options.missedOnly === true) {
+      // Group from the full newest-first read window before the missed
+      // filter: grouping missed rows only would make every group describe
+      // just its missed subset (`latestMessage`, counts, participants, and
+      // non-missed members would vanish from the thread). Keep groups with
+      // any missed member, then trim the group list to the display limit.
+      const nowMs = Date.now();
+      const missedGroups = buildThreadGroups(
+        collected,
+        options.llmScores,
+        options.sortByPriority === true,
+      ).filter((group) => isMissedThreadGroup(group, nowMs));
+      threadGroups =
+        options.limit !== undefined && missedGroups.length > options.limit
+          ? missedGroups.slice(0, options.limit)
+          : missedGroups;
+    } else {
+      threadGroups = buildThreadGroups(
+        trimmed,
+        options.llmScores,
+        options.sortByPriority === true,
+      );
     }
   }
 
@@ -595,15 +613,21 @@ export function buildInboxFromMessages(
   return inbox;
 }
 
+/** A display limit cannot cap candidates before missed-message eligibility. */
+function missedReadWindow(resolved: ResolvedInboxRequest): number | undefined {
+  return resolved.missedOnly ? undefined : resolved.limit;
+}
+
 function cacheReadLimitFor(resolved: ResolvedInboxRequest): number | undefined {
-  if (resolved.limit === undefined) return resolved.cacheLimit;
+  const window = missedReadWindow(resolved);
+  if (window === undefined) return resolved.cacheLimit;
   return resolved.cacheLimit === undefined
-    ? resolved.limit
-    : Math.max(resolved.limit, resolved.cacheLimit);
+    ? window
+    : Math.max(window, resolved.cacheLimit);
 }
 
 function cacheWarmLimitFor(resolved: ResolvedInboxRequest): number | undefined {
-  return resolved.cacheLimit ?? resolved.limit;
+  return resolved.cacheLimit ?? missedReadWindow(resolved);
 }
 
 function isFreshCache(records: readonly CachedInboxMessage[]): boolean {
@@ -777,9 +801,12 @@ async function buildInboxWithLlm(
   const ownerName = resolveOwnerName(runtime);
   // First pass: trim and filter without LLM scoring or grouping. We still
   // honor the chatType / participant / gmail filters here because LLM scoring
-  // should only run on messages the user will actually see.
+  // should only run on messages the user will actually see. A missed view
+  // additionally widens the scoring selection past the display limit so
+  // older missed candidates get scored instead of staying invisible.
+  const scoringLimit = missedReadWindow(resolved);
   const initial = buildInbox(inbound, {
-    ...(resolved.limit === undefined ? {} : { limit: resolved.limit }),
+    ...(scoringLimit === undefined ? {} : { limit: scoringLimit }),
     allowed: resolved.allowed,
     sources,
     chatTypeFilter: resolved.chatTypeFilter,
@@ -831,9 +858,9 @@ export async function fetchInbox(
       ? resolved.cacheLimit === undefined
         ? {}
         : { limit: resolved.cacheLimit }
-      : resolved.limit === undefined
+      : missedReadWindow(resolved) === undefined
         ? {}
-        : { limit: resolved.limit }),
+        : { limit: missedReadWindow(resolved) }),
     includeGmail: resolved.allowed.has("gmail"),
     gmailSource,
     xDmSource,

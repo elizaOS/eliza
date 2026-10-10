@@ -119,6 +119,72 @@ describe("durable SQLite agent adapter", () => {
     ]);
   });
 
+  it("keeps quoted phrases, negation and OR in message search, like plugin-sql", async () => {
+    const adapter = await open();
+    const adjacent = "the exact phrase alpha beta lives here";
+    const apart = "alpha appears alone and beta appears far away later";
+    const misspelled = "alpah or zephry are deliberately misspelled";
+    const zephyr = "duplicate marker zephyr";
+    const ticket = "ticket abc-123 is closed";
+    await adapter.createMemories(
+      [adjacent, apart, misspelled, zephyr, ticket].map((text, index) => ({
+        memory: {
+          ...memory(text),
+          createdAt: 1_700_000_000_000 + index,
+          embedding: undefined,
+        },
+        tableName: "messages",
+      })),
+    );
+    const search = async (query: string) =>
+      (
+        await adapter.searchMessages({
+          roomIds: [roomId],
+          query,
+          tableName: "messages",
+          limit: 50,
+        })
+      )
+        .map((hit) => hit.memory.content.text)
+        .sort();
+
+    expect(await search('"alpha beta"')).toEqual([adjacent]);
+    expect(await search("alpha beta")).toEqual([apart, adjacent].sort());
+    expect(await search("alpha -far")).toEqual([adjacent]);
+    expect(await search("alpha OR zephyr")).toEqual(
+      [adjacent, apart, zephyr].sort(),
+    );
+    // An interior hyphen is ordinary text, not negation.
+    expect(await search("abc-123")).toEqual([ticket]);
+
+    const farm = "alpha beta farm";
+    const partialWords = "xalpha betamax";
+    await adapter.createMemories(
+      [farm, partialWords].map((text) => ({
+        memory: { ...memory(text), embedding: undefined },
+        tableName: "messages",
+      })),
+    );
+    expect.soft(await search('"alpha beta"')).toEqual([adjacent, farm].sort());
+    expect.soft(await search("alpha -far")).toEqual([adjacent, farm].sort());
+
+    // Postgres reads a sentence-final `beta.` or `far.` as `beta` or `far`.
+    const sentence = "we ship alpha beta.";
+    const tooFar = "alpha is too far.";
+    await adapter.createMemories(
+      [sentence, tooFar].map((text) => ({
+        memory: { ...memory(text), embedding: undefined },
+        tableName: "messages",
+      })),
+    );
+    expect
+      .soft(await search('"alpha beta"'))
+      .toEqual([adjacent, farm, sentence].sort());
+    expect
+      .soft(await search("alpha -far"))
+      .toEqual([adjacent, farm, sentence].sort());
+  });
+
   it("deletes document fragments when the document is deleted", async () => {
     const adapter = await open();
     const documentId = id();
@@ -507,6 +573,57 @@ describe("durable SQLite agent adapter", () => {
         (row) => row.entityId,
       ),
     ).toEqual([otherEntityId]);
+  });
+
+  it("replaces memory and relationship metadata on update, so keys can be removed", async () => {
+    const adapter = await open();
+    await adapter.ensureEmbeddingDimension(3);
+    await adapter.createAgents([{ id: agentId, name: "Metadata agent" }]);
+    await adapter.createEntities([{ id: entityId, agentId, names: ["User"] }]);
+    const reply = {
+      ...memory("recovered reply"),
+      metadata: {
+        type: "custom",
+        source: "client_chat",
+        chatFailureKind: "provider_error",
+      },
+    } as Memory & { id: UUID };
+    await adapter.createMemories([{ memory: reply, tableName: "messages" }]);
+
+    // Reply recovery clears the failure marker and writes the rest back.
+    await adapter.updateMemories([
+      { id: reply.id, metadata: { type: "custom", source: "client_chat" } },
+    ]);
+    await adapter.updateMemories([
+      { id: reply.id, content: { text: "edited" } },
+    ]);
+
+    const [stored] = await adapter.getMemoriesByIds([reply.id]);
+    expect(stored?.metadata).toEqual({ type: "custom", source: "client_chat" });
+    expect(stored?.content.text).toBe("edited");
+
+    const [relationship] = await adapter.createRelationships([
+      {
+        sourceEntityId: agentId,
+        targetEntityId: entityId,
+        tags: ["friend"],
+        metadata: { pinned: true, note: "met at conf" },
+      },
+    ]);
+    await adapter.updateRelationships([
+      {
+        id: relationship as UUID,
+        sourceEntityId: agentId,
+        targetEntityId: entityId,
+        agentId,
+        tags: ["friend"],
+        metadata: { note: "met at conf" },
+      },
+    ]);
+    const [updated] = await adapter.getRelationshipsByIds([
+      relationship as UUID,
+    ]);
+    expect(updated?.metadata).toEqual({ note: "met at conf" });
   });
 
   it("rolls back domain records and runtime semantic state in one native transaction", async () => {

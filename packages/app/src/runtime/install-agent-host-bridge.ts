@@ -1,4 +1,34 @@
+import {
+  type AgentHostBridge,
+  setAgentHostBridge,
+} from "@elizaos/agent/runtime/host-bridge";
+import {
+  applyAccountPoolApiCredentials,
+  createAccountPoolConsumerKey,
+  getDefaultAccountPool,
+  listAccountPoolConsumerKeys,
+  rotateAccountPoolConsumerKey,
+  startAccountPoolKeepAlive,
+  updateAccountPoolConsumerKey,
+} from "@elizaos/auth/accounts";
+import { getBuildVariant, isStoreBuild } from "@elizaos/host";
+import { registerAppRoutePluginLoader } from "@elizaos/host/protocol";
+import { getAccountPoolBrokerSnapshot } from "../api/account-pool-broker-routes";
+import {
+  resolveAuthorizedRouteRole,
+  resolveSessionTokenRole,
+} from "../api/auth";
+import { subscribeSessionRevocations } from "../api/auth/sessions";
+import { handleCloudPairRoute } from "../api/cloud-pair-route";
 import { resolveCloudRuntimeOwner } from "../api/cloud-runtime-owner";
+import { handleDesktopAuthBootstrapRoute } from "../api/desktop-auth-bootstrap-routes";
+import {
+  captureWalletEnvBootBaseline,
+  hydrateWalletKeysFromNodePlatformSecureStore,
+} from "../security/hydrate-wallet-keys-from-platform-store";
+import { runVaultBootstrap } from "../services/vault-bootstrap";
+import { sharedVault } from "../services/vault-mirror";
+
 /**
  * Install the app implementation of the agent host bridge.
  *
@@ -13,36 +43,6 @@ import { resolveCloudRuntimeOwner } from "../api/cloud-runtime-owner";
  * Called once from the app boot funnel before the runtime starts.
  * Idempotent — repeated calls re-install the same bridge cheaply.
  */
-
-import {
-  type AgentHostBridge,
-  setAgentHostBridge,
-} from "@elizaos/agent/runtime/host-bridge";
-import {
-  applyAccountPoolApiCredentials,
-  createAccountPoolConsumerKey,
-  getDefaultAccountPool,
-  listAccountPoolConsumerKeys,
-  rotateAccountPoolConsumerKey,
-  startAccountPoolKeepAlive,
-  updateAccountPoolConsumerKey,
-} from "@elizaos/auth/accounts";
-import { getBuildVariant, isStoreBuild } from "@elizaos/core";
-import { registerAppRoutePluginLoader } from "@elizaos/host/protocol";
-import { getAccountPoolBrokerSnapshot } from "../api/account-pool-broker-routes";
-import {
-  resolveAuthorizedRouteRole,
-  resolveSessionTokenRole,
-} from "../api/auth";
-import { subscribeSessionRevocations } from "../api/auth/sessions";
-import { handleCloudPairRoute } from "../api/cloud-pair-route";
-import { handleDesktopAuthBootstrapRoute } from "../api/desktop-auth-bootstrap-routes";
-import {
-  captureWalletEnvBootBaseline,
-  hydrateWalletKeysFromNodePlatformSecureStore,
-} from "../security/hydrate-wallet-keys-from-platform-store";
-import { runVaultBootstrap } from "../services/vault-bootstrap";
-import { sharedVault } from "../services/vault-mirror";
 
 let installed = false;
 

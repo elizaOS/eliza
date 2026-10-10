@@ -19,17 +19,9 @@ import { installReadyDesktopStatusBridge } from "./helpers/desktop-status-bridge
 import { launcherGrid } from "./helpers/launcher-navigation";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
-// #9143 — the home launcher mounts <WidgetHost slot="home"> and ranks the
-// per-plugin home widgets by importance: a stable base order plus live
-// activity/notification signals plus each widget's self-published attention.
-// This spec boots the app to the Views launcher with sparse home widgets
-// enabled, seeds attention-worthy data into the kept widget sources (at-risk
-// goal, imminent calendar event, irregular sleep, urgent notification), and
-// proves the urgent widgets render and rank correctly. Finance, relationships,
-// inbox, workflow, feed, and orchestrator app/activity cards are intentionally
-// absent from the ranked home host.
-// Desktop + mobile screenshots land under
-// test-results/aesthetic-audit/home-widget-priority/.
+// Home retains the existing notification center and calendar surface. Populated
+// goal/todo source fixtures prove that removed Today cards stay absent without
+// deleting owner data. Desktop/mobile captures also retain launcher access.
 
 const SCREENSHOT_DIR = testOutputPath(
   "aesthetic-audit",
@@ -481,58 +473,20 @@ async function screenshot(page: Page, name: string): Promise<void> {
   });
 }
 
-// The WidgetSection testIds each widget renders (read from source — not guessed).
-// The Today card (todo plugin) absorbed the standalone goals resident
-// (registry.ts §E item 5): an at-risk goal renders as a flagged row inside it
-// and contributes the goals escalation weight, so the Today card IS the urgent
-// home widget.
-const TODAY_TESTID = "chat-widget-todos";
-const GOAL_ROW_TESTID = "todo-goal-attention-row";
 const CALENDAR_TESTID = "chat-widget-calendar-upcoming";
-// The notification inbox renders inline on the home column, outside the ranked
-// WidgetHost (asserted below).
 const NOTIFICATION_CENTER_TESTID = "home-notification-center";
-
-const URGENT_TESTIDS = [TODAY_TESTID];
-const SEEDED_TESTIDS = [TODAY_TESTID, CALENDAR_TESTID];
+const SEEDED_TESTIDS = [CALENDAR_TESTID];
 const REMOVED_HOME_TESTIDS = [
+  "chat-widget-todos",
+  "today-todo-row",
+  "todo-goal-attention-row",
   "chat-widget-relationships",
   "chat-widget-inbox-unread",
   "chat-widget-automations",
-  // The standalone goals and sleep residents were absorbed/removed
-  // (registry.ts "Explicitly NOT residents"); their routed components remain
-  // but must not render as home cards.
+  // Routed goal and sleep components remain available without Home residents.
   "widget-goals-attention",
   "widget-health-sleep",
 ];
-
-/**
- * The rank order of the widgets inside widget-host-home, read from DOM document
- * order. The host renders each ranked widget as a direct child in importance
- * order (WidgetHost.tsx `displayed.map`), each wrapped in an error boundary, so
- * DOM order IS the rank order — robust to the responsive grid that puts two
- * cards on the same visual row (sorting by getBoundingClientRect().top alone
- * would tie row-mates). We collect each seeded widget's testid element and sort
- * by their relative document position.
- */
-async function homeWidgetOrder(page: Page): Promise<string[]> {
-  return page.evaluate((testIds: string[]) => {
-    const host = document.querySelector('[data-testid="widget-host-home"]');
-    if (!host) return [];
-    const present: Array<{ id: string; el: Element }> = [];
-    for (const id of testIds) {
-      const el = host.querySelector(`[data-testid="${id}"]`);
-      if (el) present.push({ id, el });
-    }
-    present.sort((a, b) => {
-      if (a.el === b.el) return 0;
-      const position = a.el.compareDocumentPosition(b.el);
-      // DOCUMENT_POSITION_FOLLOWING (4): b comes after a → a first.
-      return position & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
-    });
-    return present.map((entry) => entry.id);
-  }, SEEDED_TESTIDS);
-}
 
 test.describe("home widget priority (#9143)", () => {
   test.beforeEach(({ page }) => {
@@ -543,7 +497,7 @@ test.describe("home widget priority (#9143)", () => {
     await expectNoPageDiagnostics(page, testInfo.title);
   });
 
-  test("ranks attention-worthy home widgets first on the launcher", async ({
+  test("keeps notifications and calendar without a separate Today section", async ({
     page,
   }) => {
     await rm(SCREENSHOT_DIR, { force: true, recursive: true });
@@ -568,11 +522,7 @@ test.describe("home widget priority (#9143)", () => {
       ).toBeVisible({ timeout: 30_000 });
     }
 
-    // Sanity-check the seeded urgent content actually rendered: the at-risk
-    // goal surfaces as the flagged row inside the merged Today card.
-    await expect(
-      host.getByTestId(TODAY_TESTID).getByTestId(GOAL_ROW_TESTID),
-    ).toContainText("Ship the release");
+    await expect(host.getByText("Ship the release")).toHaveCount(0);
     for (const testId of REMOVED_HOME_TESTIDS) {
       await expect(
         host.getByTestId(testId),
@@ -593,34 +543,7 @@ test.describe("home widget priority (#9143)", () => {
       "the notification inbox lives outside the ranked WidgetHost",
     ).toHaveCount(0);
 
-    // The ranking re-settles once useNow installs the real clock in an effect
-    // (it returns 0 on the first render for determinism). Poll for the stable
-    // post-effect order: the urgent goal widget must occupy the top of the host,
-    // ahead of non-urgent calendar/health cards.
-    await expect
-      .poll(
-        async () => {
-          const order = await homeWidgetOrder(page);
-          const urgentRanks = URGENT_TESTIDS.map((id) => order.indexOf(id));
-          if (urgentRanks.some((rank) => rank === -1)) return false;
-          const maxUrgentRank = Math.max(...urgentRanks);
-          // Every urgent widget sits in the leading block — no non-urgent
-          // widget may appear before the last urgent one.
-          return maxUrgentRank <= URGENT_TESTIDS.length - 1;
-        },
-        { timeout: 20_000, message: "urgent home widgets must rank first" },
-      )
-      .toBe(true);
-
-    const finalOrder = await homeWidgetOrder(page);
-    // Record the asserted ordering for the run log.
-    console.log("HOME_WIDGET_ORDER>", JSON.stringify(finalOrder));
-    expect(
-      finalOrder.slice(0, URGENT_TESTIDS.length).sort(),
-      `urgent widgets ${JSON.stringify(URGENT_TESTIDS)} should be the leading block; got ${JSON.stringify(finalOrder)}`,
-    ).toEqual([...URGENT_TESTIDS].sort());
-
-    // Desktop screenshot (1280x900) of the populated, ranked home host.
+    // Desktop screenshot (1280x900) of the retained Home surfaces.
     await page.setViewportSize({ width: 1280, height: 900 });
     await expect(host).toBeVisible();
     await screenshot(page, "desktop");
@@ -628,8 +551,8 @@ test.describe("home widget priority (#9143)", () => {
     // Mobile screenshot (Pixel-7-ish 390px width).
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(host).toBeVisible();
-    // Keep the urgent widget + the pinned center visible at the mobile width.
-    for (const testId of URGENT_TESTIDS) {
+    // Keep the calendar and existing center visible at the mobile width.
+    for (const testId of SEEDED_TESTIDS) {
       await expect(host.getByTestId(testId)).toBeVisible({ timeout: 15_000 });
     }
     await expect(page.getByTestId(NOTIFICATION_CENTER_TESTID)).toBeVisible({
@@ -637,7 +560,7 @@ test.describe("home widget priority (#9143)", () => {
     });
     await screenshot(page, "mobile");
 
-    // This spec owns widget ranking rather than gesture recognition. Exercise
+    // This spec owns Home composition rather than gesture recognition. Exercise
     // the rail through its real desktop control, then return to the mobile
     // viewport for the launcher capture; dedicated pager specs own swipes.
     await page.setViewportSize({ width: 1280, height: 900 });

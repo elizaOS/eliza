@@ -32,7 +32,9 @@ export type CharacterDefinition = {
    */
   templates?: StylePreset["templates"];
   messageExamples: StylePreset["messageExamples"];
-  variants: Record<CharacterLanguage, CharacterVariant>;
+  variants: Record<Exclude<CharacterLanguage, "ja">, CharacterVariant> & {
+    ja?: CharacterVariant;
+  };
 };
 export const CHARACTER_DEFINITIONS: CharacterDefinition[] = [
   {

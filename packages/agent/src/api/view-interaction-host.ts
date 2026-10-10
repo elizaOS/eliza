@@ -28,7 +28,13 @@ export class ViewInteractionHost {
   private readonly pending = new PendingRequestMap();
   private readonly callers = new Map<
     string,
-    { clientId: string; entry: ViewRegistryEntry; claimId?: string }
+    {
+      clientId: string;
+      entry: ViewRegistryEntry;
+      claimId?: string;
+      ownerId?: string;
+      navigation?: boolean;
+    }
   >();
 
   private readonly stopSignal: AbortSignal | undefined;
@@ -48,11 +54,41 @@ export class ViewInteractionHost {
     clientId: string,
     entry: ViewRegistryEntry,
     timeoutMs: number,
+    binding: { ownerId?: string; navigation?: boolean } = {},
   ): Promise<ViewInteractResult> {
     if (this.closed)
       throw new ElizaError("View host is closed", { code: "VIEW_HOST_CLOSED" });
     assertRuntimeViewEntry(this.runtime, entry);
-    const caller = { clientId, entry };
+    if (this.callers.has(requestId))
+      throw new ElizaError(
+        "A renderer request with this ID is already pending",
+        {
+          code: "VIEW_REQUEST_PENDING",
+        },
+      );
+    if (binding.navigation) {
+      const priorNavigations = [...this.callers].filter(
+        ([, prior]) =>
+          prior.navigation &&
+          prior.clientId === clientId &&
+          prior.ownerId === binding.ownerId,
+      );
+      // A claim has already authorized renderer execution. Reject another
+      // preparation until it settles rather than revoke its acknowledgment or
+      // allow two claimed destinations to commit out of order.
+      if (priorNavigations.some(([, prior]) => prior.claimId))
+        throw new ElizaError("A navigation is already being applied", {
+          code: "VIEW_NAVIGATION_BUSY",
+        });
+      for (const [id] of priorNavigations)
+        this.cancel(
+          id,
+          new ElizaError("Navigation was superseded", {
+            code: "VIEW_NAVIGATION_SUPERSEDED",
+          }),
+        );
+    }
+    const caller = { clientId, entry, ...binding };
     this.callers.set(requestId, caller);
     return this.pending.waitFor(requestId, timeoutMs).finally(() => {
       if (this.callers.get(requestId) === caller)
@@ -65,10 +101,12 @@ export class ViewInteractionHost {
     clientId: string,
     binding: ViewInteractionBinding,
     roles: RoleGateRole[],
+    ownerId?: string,
   ): string | null {
     const caller = this.matchCaller(clientId, binding);
     if (
       !caller ||
+      (caller.ownerId !== undefined && caller.ownerId !== ownerId) ||
       caller.claimId ||
       !satisfiesRoleGate(roles, caller.entry.roleGate)
     )
@@ -109,15 +147,38 @@ export class ViewInteractionHost {
     return caller;
   }
 
-  resolve(clientId: string, result: RendererViewInteractResult): void {
+  resolve(
+    clientId: string,
+    result: RendererViewInteractResult,
+    ownerId?: string,
+  ): boolean {
     const caller = this.matchCaller(clientId, result);
-    if (!caller?.claimId || caller.claimId !== result.claimId) return;
+    if (
+      !caller?.claimId ||
+      caller.claimId !== result.claimId ||
+      (caller.ownerId !== undefined && caller.ownerId !== ownerId)
+    )
+      return false;
+    if (caller.navigation) {
+      const value = result.result;
+      if (
+        !value ||
+        typeof value !== "object" ||
+        Array.isArray(value) ||
+        Object.keys(value).length !== 1 ||
+        !("switched" in value) ||
+        value.switched !== result.success ||
+        result.error !== undefined
+      )
+        return false;
+    }
     this.pending.resolve(result.requestId, {
       requestId: result.requestId,
       success: result.success,
       ...(result.result !== undefined ? { result: result.result } : {}),
       ...(result.error !== undefined ? { error: result.error } : {}),
     });
+    return true;
   }
 
   cancel(requestId: string, reason: Error): void {

@@ -1,23 +1,49 @@
 /**
  * Runs the production Shared conversation coordinator in Workerd and proves a
  * committed Personal Shared -> Dedicated cutover cannot reopen Shared for a
- * reminder turn.
+ * reminder turn. Network cases exercise actual DO scope/history/claim storage
+ * and actual Shared bridge early replay/conflict; seeded receipts and transport
+ * probes are not generated model/provider completions.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { svcSign, svcVerify } from "@elizaos/plugin-network/svc-auth";
+import { exportSPKI, generateKeyPair, SignJWT } from "jose";
 import { Miniflare } from "miniflare";
+import {
+  type NetworkAppId,
+  networkMembershipScopeId,
+} from "../../shared/src/lib/services/shared-runtime/network-membership-client";
+import type {
+  NetworkSharedTurnContext,
+  NetworkSharedTurnObservation,
+} from "../../shared/src/lib/services/shared-runtime/network-shared-context";
+import {
+  legacyNetworkPersonalSharedAgentId,
+  personalSharedAgentId,
+} from "../../shared/src/lib/services/shared-runtime/personal-shared-identity";
+import {
+  SharedRuntimeChatService,
+  type SharedRuntimeHistoryStore,
+  type SharedTurnClaimStore,
+  type SharedTurnTerminalResult,
+  sharedRuntimeRoomKey,
+} from "../../shared/src/lib/services/shared-runtime/shared-runtime-chat";
 
 const RUNTIME_BOUNDARIES = {
+  fallbackAuthority:
+    /packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]services[\\/]personal-dedicated-fallback\.ts$/,
+  usersRepository:
+    /packages[\\/]cloud[\\/]shared[\\/]src[\\/]db[\\/]repositories[\\/]users\.ts$/,
+
   apiErrors:
     /packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]api[\\/]errors\.ts$/,
   apnsProvider:
     /packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]mobile-push[\\/]apns-provider\.ts$/,
-  cloudBindings:
-    /packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]runtime[\\/]cloud-bindings\.ts$/,
   databaseClient:
     /packages[\\/]cloud[\\/]shared[\\/]src[\\/]db[\\/]client\.ts$/,
   historyRepository:
@@ -37,6 +63,15 @@ const RUNTIME_BOUNDARIES = {
 } as const;
 
 const RUNTIME_STUBS = {
+  fallbackAuthority: `
+    export function resolvePersonalDedicatedRoute() { throw new Error("Unexpected Dedicated route"); }
+    export async function resolvePersonalFallbackCutoverRecovery() {
+      const response = await fetch("https://fallback-authority.test/state");
+      return await response.json();
+    }
+  `,
+  usersRepository: `export const usersRepository = { async findByPhoneNumberWithOrganization(phone) { return { id: phone === "+14155550802" ? "handled-user" : "continuity-user", organization_id: phone === "+14155550802" ? "handled-org" : "continuity-org", phone_number: phone, phone_verified: true, is_active: true, deleted_at: null, organization: { is_active: true } }; } };`,
+
   apiErrors: `
     export class InsufficientCreditsError extends Error {}
     export class RateLimitError extends Error {}
@@ -50,12 +85,25 @@ const RUNTIME_STUBS = {
   cachedAgentDates: `
     export function rehydrateCachedAgentDates(agent) { return agent; }
   `,
-  cloudBindings: `
-    export async function runWithCloudBindingsAsync(_bindings, operation) {
-      return await operation();
-    }
-  `,
   coreEdge: `
+    export { MediaFetchError, readResponseWithLimit } from ${JSON.stringify(
+      fileURLToPath(
+        new URL("../../../core/src/media/fetch.ts", import.meta.url),
+      ),
+    )};
+    export { trimEndCharacters } from ${JSON.stringify(
+      fileURLToPath(
+        new URL(
+          "../../../core/src/utils/string-boundaries.ts",
+          import.meta.url,
+        ),
+      ),
+    )};
+    export { isSensitiveKeyName, redactSensitiveText } from ${JSON.stringify(
+      fileURLToPath(
+        new URL("../../../core/src/security/redact.ts", import.meta.url),
+      ),
+    )};
     export class ElizaError extends Error {}
     export const ChannelType = {
       SELF: "SELF",
@@ -101,6 +149,9 @@ const RUNTIME_STUBS = {
         return await store.load(agentId, roomId);
       },
       async bridge(agent, rpc, options) {
+        if (rpc.id === "network-transport-probe") {
+          return { jsonrpc: "2.0", id: rpc.id, result: { observation: options.trustedNetworkContext ?? null, roomId: rpc.params.roomId } };
+        }
         if (rpc.id === "fallback-account-state") {
           // Echo the server-owned options the coordinator admitted, plus the
           // exact history the turn would load for its room.
@@ -116,6 +167,10 @@ const RUNTIME_STUBS = {
               }),
             },
           };
+        }
+        if (rpc.id === "continuity-read") {
+          return { jsonrpc: "2.0", id: rpc.id, result: { history: await options.historyStore.load(agent.id, rpc.params.roomId) } };
+
         }
         await fetch("https://model-probe.test/v1/chat/completions", {
           method: "POST",
@@ -158,7 +213,10 @@ const RUNTIME_STUBS = {
             async cancel() {
               options.historyStore.stagePending(agent.id, roomId, interrupted);
               options.executionCtx.waitUntil((async () => {
-                await fetch("https://finalization-gate.test/wait");
+                const response = await fetch("https://finalization-gate.test/wait");
+                // Drain the outbound body so the fixture does not retain a
+                // Workerd reference while the test evicts the Durable Object.
+                await response.text();
                 throw new Error("simulated off-queue finalization failure");
               })());
             },
@@ -170,26 +228,92 @@ const RUNTIME_STUBS = {
         });
         throw new Error("Committed cutover reached Shared inference");
       },
-      async recordLifecycleEvent() {
-        throw new Error("Lifecycle writes are outside this cutover test");
+      async recordLifecycleEvent(agentId, roomId, event, store) {
+        await store.merge(agentId, roomId, [event]);
       },
     };
   `,
-  sharedRuntimeErrors: "export class SharedRuntimeTurnError extends Error {}",
+  sharedRuntimeErrors:
+    "export class PersonalCutoverHoldError extends Error {} export class SharedRuntimeTurnError extends Error {} export class SharedRuntimeCacheWarmingError extends Error {} export class SharedTurnConflictError extends Error {}",
   tierUpgradeTarget:
     "export async function findActivePersonalDedicatedTarget() { return null; }",
 } as const;
+
+const HANDLED_ROUTE_STUBS: Record<string, string> = {
+  "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-turn":
+    'export function prepareNetworkSharedTurnForAccount() { throw new Error("Handled replies must not load optional model context"); }',
+  "@elizaos/auth/kms":
+    'export function createKmsClient() { throw new Error("Capture encryption is outside this delivery fixture"); } export function resolveKmsBackend() { throw new Error("Capture encryption is outside this delivery fixture"); } export function orgKey() { throw new Error("Capture encryption is outside this delivery fixture"); } export function systemKey() { throw new Error("Capture encryption is outside this delivery fixture"); }',
+  "@elizaos/cloud-shared/lib/services/personal-conversation-repair":
+    'export function repairPersonalConversation() { throw new Error("Unexpected repair"); }',
+  "@elizaos/cloud-shared/lib/services/personal-dedicated-fallback-reconcile":
+    'export function reconcilePersonalFallbackIntoDedicated() { throw new Error("Unexpected Dedicated reconciliation"); }',
+
+  "@elizaos/cloud-shared/lib/observability/http-telemetry":
+    "export function resolveElizaTraceId() { return 'controlled-trace'; }",
+  "@elizaos/cloud-shared/db/repositories/personal-shared-group-consent":
+    "export const personalSharedGroupConsentRepository = {};",
+  "@elizaos/cloud-shared/db/repositories/personal-shared-group-participants":
+    "export const personalSharedGroupParticipantsRepository = {};",
+  "@elizaos/cloud-shared/db/repositories/personal-shared-groups":
+    "export const personalSharedGroupsRepository = {};",
+  "@elizaos/cloud-shared/lib/network/member-store":
+    'export function serviceNetworkStoreFactory() { throw new Error("Handled turns must not load model context"); }',
+  "@elizaos/cloud-shared/lib/services/eliza-app":
+    'export const elizaAppUserService = { async resolvePersonalDelivery(input) { globalThis.__phoneOwnerCalls = (globalThis.__phoneOwnerCalls ?? 0) + 1; if (input.platform !== "phone") throw new Error("Unexpected account owner"); return { userId: input.phoneNumber === "+14155550802" ? "handled-user" : "continuity-user", organizationId: input.phoneNumber === "+14155550802" ? "handled-org" : "continuity-org", dedicatedTarget: null, isNew: globalThis.__phoneOwnerCalls === 1, resolution: "fixture-phone-owner" }; } };',
+  "@elizaos/cloud-shared/lib/services/eliza-app/blooio-media-allowlist":
+    "export function isAllowedBlooioMediaUrl() { return false; }",
+  "@elizaos/cloud-shared/lib/services/eliza-app/describe-inbound-media":
+    "export const MAX_INBOUND_MEDIA_IMAGES = 4;",
+  "@elizaos/cloud-shared/lib/services/eliza-app/inbound-media-enrichment":
+    'export function enrichInboundImageMedia() { throw new Error("No model or provider enrichment is allowed"); }',
+  "@elizaos/cloud-shared/lib/services/eliza-app/onboarding-chat":
+    'export function runOnboardingChat() { throw new Error("Unexpected onboarding model"); }',
+  "@elizaos/cloud-shared/lib/services/eliza-sandbox":
+    "export const elizaSandboxService = {};",
+  "@elizaos/cloud-shared/lib/services/personal-dedicated-delivery":
+    'export function preparePersonalDedicatedDelivery() { throw new Error("Dedicated must refuse before send"); }',
+  "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent":
+    'export function personalSharedAgent() { throw new Error("Handled replies do not create a second runtime"); }',
+  "@elizaos/cloud-shared/lib/services/shared-runtime/prewarm-shared-agent":
+    'export function prewarmPersonalSharedAgentTurnCaches() { throw new Error("Handled replies do not prewarm a model"); }',
+  "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent":
+    "export function resolveSharedRuntimeWorkerRequestContext(c) { return { namespace: c.env.SHARED_RUNTIME_CONVERSATIONS, executionCtx: { waitUntil() {} } }; }",
+  "@elizaos/cloud-shared/lib/services/shared-runtime/shared-rest-adapter":
+    'export function sharedRestMessageSend() { throw new Error("Handled replies must not infer"); } export function sharedTurnServerTiming() { return ""; }',
+};
 
 describe("Personal Shared cutover reminder containment in Workerd", () => {
   let buildDirectory: string;
   let miniflare: Miniflare;
   const modelRequests: string[] = [];
+  let fallbackResolution = "pending";
+  let fallbackAuthorityReads = 0;
+  const gatewayRequests: Array<Record<string, unknown>> = [];
+  const serviceAcknowledgements: Array<Record<string, unknown>> = [];
+  let gatewayJWT: string;
+  let publicKey: string;
+  let serviceReplyMode: "accepted" | "oversize" | "redirect" = "accepted";
+
   let releaseFinalizationGate = () => {};
   const finalizationGate = new Promise<void>((resolve) => {
     releaseFinalizationGate = resolve;
   });
 
   beforeAll(async () => {
+    const pair = await generateKeyPair("ES256", { extractable: true });
+    publicKey = Buffer.from(await exportSPKI(pair.publicKey)).toString(
+      "base64",
+    );
+    gatewayJWT = await new SignJWT({ service: "webhook-gateway" })
+      .setProtectedHeader({ alg: "ES256" })
+      .setSubject("controlled-gateway")
+      .setIssuer("eliza-cloud")
+      .setAudience("eliza-cloud-internal")
+      .setIssuedAt()
+      .setExpirationTime("60s")
+      .setJti("controlled-gateway-token")
+      .sign(pair.privateKey);
     const apiDirectory = fileURLToPath(new URL("../", import.meta.url));
     buildDirectory = await mkdtemp(
       join(tmpdir(), "shared-cutover-reminder-workerd-"),
@@ -205,6 +329,11 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
       entrypoint,
       `
         import { SharedRuntimeConversation } from ${JSON.stringify(coordinatorSource)};
+        import networkDeliver from ${JSON.stringify(join(apiDirectory, "internal/network/deliver/route.ts"))};
+        import handledMessages from ${JSON.stringify(join(apiDirectory, "internal/eliza-app/personal-shared/messages/route.ts"))};
+        import { Hono } from ${JSON.stringify(fileURLToPath(import.meta.resolve("hono")))};
+        import { runWithCloudBindingsAsync } from ${JSON.stringify(join(sharedSourceDirectory, "lib/runtime/cloud-bindings.ts"))};
+        const handledApp = new Hono().route("/api/internal/eliza-app/personal-shared/messages", handledMessages);
 
         export class TestSharedRuntimeConversation extends SharedRuntimeConversation {
           constructor(state, env) {
@@ -213,6 +342,23 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
           }
 
           async fetch(request) {
+            if (new URL(request.url).pathname === "/__test/claims") {
+              const body = await request.json();
+              const claims = this.turnClaims();
+              const decision = await claims.claim(body.key, body.hash);
+              if (decision.state === "claimed" && body.seedResult) {
+                await claims.complete(body.key, body.seedResult);
+                return Response.json(await claims.claim(body.key, body.hash));
+              }
+              return Response.json(decision);
+            }
+            if (new URL(request.url).pathname === "/__test/history-store") {
+              const body = await request.json();
+              const store = this.historyStore(true);
+              return Response.json(body.messages
+                ? await store.merge(body.agentId, body.channelId, body.messages)
+                : await store.load(body.agentId, body.channelId));
+            }
             if (new URL(request.url).pathname === "/__test/seed") {
               const body = await request.json();
               await this.testState.storage.put("conversation", body.conversation);
@@ -236,12 +382,19 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
           }
         }
 
+        export class DisabledSharedRuntimeConversation extends TestSharedRuntimeConversation {
+          constructor(state, env) { super(state, { ...env, NETWORK_PERSONAL_CONTINUITY_ENABLED: undefined }); }
+        }
         export default {
-          async fetch(request, env) {
+          async fetch(request, env, ctx) {
+            if (new URL(request.url).pathname === "/__test/phone-owner-count") return Response.json({ calls: globalThis.__phoneOwnerCalls ?? 0 });
+            if (new URL(request.url).pathname === "/api/internal/eliza-app/personal-shared/messages") return await runWithCloudBindingsAsync(env, () => handledApp.fetch(request, env, ctx));
+            if (new URL(request.url).pathname === "/signed-deliver") return await networkDeliver.fetch(new Request("https://runtime.test/", request), env);
             const name = request.headers.get("x-test-room");
             if (!name) return new Response("missing room", { status: 400 });
-            const id = env.SHARED_RUNTIME_CONVERSATIONS.idFromName(name);
-            const stub = env.SHARED_RUNTIME_CONVERSATIONS.get(id);
+            const namespace = new URL(request.url).pathname.startsWith("/disabled") ? env.DISABLED_CONVERSATIONS : env.SHARED_RUNTIME_CONVERSATIONS;
+            const id = namespace.idFromName(name);
+            const stub = namespace.get(id);
             return await stub.fetch(request);
           },
         };
@@ -260,11 +413,16 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
           entrypoints: [process.env.SHARED_CUTOVER_ENTRYPOINT],
           format: "esm",
           target: "browser",
-          conditions: ["worker", "browser"],
+          conditions: ["eliza-source", "worker", "browser"],
           external: ["node:*"],
           plugins: [{
             name: "shared-cutover-reminder-runtime-boundaries",
             setup(build) {
+              const handledStubs = ${JSON.stringify(HANDLED_ROUTE_STUBS)};
+              handledStubs["@elizaos/cloud-shared/lib/services/eliza-app/user-service"] = handledStubs["@elizaos/cloud-shared/lib/services/eliza-app"];
+              build.onLoad({ filter: /jwt-internal-denylist[.]ts$/ }, () => ({ loader: "ts", contents: "export function isDenylistConfigured() { return false; } export async function isJtiRevoked() { throw new Error('Bounded Gateway JWT must skip denylist I/O'); } export async function revokeInternalToken() { throw new Error('No token mutation in fixture'); }" }));
+              build.onResolve({ filter: /^@elizaos\\/(?:cloud-shared\\/|auth\\/kms$)/ }, (args) => handledStubs[args.path] ? { path: args.path, namespace: "handled-unused-boundary" } : undefined);
+              build.onLoad({ filter: /.*/, namespace: "handled-unused-boundary" }, (args) => ({ loader: "ts", contents: handledStubs[args.path] }));
               build.onResolve({ filter: /^@elizaos\\/core(?:\\/edge)?$/ }, () => ({
                 path: "core-edge",
                 namespace: "shared-cutover-test-stub",
@@ -280,14 +438,15 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
                 ),
               }));
               build.onLoad(
+                { filter: boundary(${JSON.stringify(RUNTIME_BOUNDARIES.usersRepository.source)}) },
+                () => ({ loader: "ts", contents: ${JSON.stringify(RUNTIME_STUBS.usersRepository)} }),
+              );
+              build.onLoad(
                 { filter: boundary(${JSON.stringify(RUNTIME_BOUNDARIES.databaseClient.source)}) },
                 () => ({ loader: "ts", contents: ${JSON.stringify(RUNTIME_STUBS.databaseClient)} }),
               );
               build.onLoad(
-                { filter: boundary(${JSON.stringify(RUNTIME_BOUNDARIES.cloudBindings.source)}) },
-                () => ({ loader: "ts", contents: ${JSON.stringify(RUNTIME_STUBS.cloudBindings)} }),
-              );
-              build.onLoad(
+
                 { filter: boundary(${JSON.stringify(RUNTIME_BOUNDARIES.sharedRuntimeChat.source)}) },
                 () => ({ loader: "ts", contents: ${JSON.stringify(RUNTIME_STUBS.sharedRuntimeChat)} }),
               );
@@ -306,6 +465,10 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
               build.onLoad(
                 { filter: boundary(${JSON.stringify(RUNTIME_BOUNDARIES.historyRepository.source)}) },
                 () => ({ loader: "ts", contents: ${JSON.stringify(RUNTIME_STUBS.historyRepository)} }),
+              );
+              build.onLoad(
+                { filter: boundary(${JSON.stringify(RUNTIME_BOUNDARIES.fallbackAuthority.source)}) },
+                () => ({ loader: "ts", contents: ${JSON.stringify(RUNTIME_STUBS.fallbackAuthority)} }),
               );
               build.onLoad(
                 { filter: boundary(${JSON.stringify(RUNTIME_BOUNDARIES.tierUpgradeTarget.source)}) },
@@ -363,9 +526,48 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
       modules: true,
       script: await readFile(outputPath, "utf8"),
       outboundService: async (request: Request) => {
+        if (new URL(request.url).hostname === "fallback-authority.test") {
+          fallbackAuthorityReads += 1;
+          return Response.json(fallbackResolution);
+        }
         if (new URL(request.url).hostname === "finalization-gate.test") {
           await finalizationGate;
           return new Response("released");
+        }
+        if (new URL(request.url).hostname === "network-service-probe.test") {
+          const raw = await request.text();
+          const proof = await svcVerify(
+            "continuity-fixture-service-secret-0123456789",
+            {
+              method: "POST",
+              path: new URL(request.url).pathname,
+              headers: request.headers,
+              body: raw,
+            },
+          );
+          expect(proof.ok).toBe(true);
+          serviceAcknowledgements.push(JSON.parse(raw));
+          if (serviceReplyMode === "oversize")
+            return new Response("x".repeat(4 * 1024 * 1024 + 1));
+          if (serviceReplyMode === "redirect")
+            return new Response(null, {
+              status: 302,
+              headers: {
+                Location:
+                  "https://forbidden-redirect.test/credentials-must-not-follow",
+              },
+            });
+          return Response.json({ ok: true, replayed: false });
+        }
+        if (new URL(request.url).hostname === "gateway-probe.test") {
+          const body = (await request.json()) as Record<string, unknown>;
+          gatewayRequests.push(body);
+          return Response.json({
+            success: true,
+            idempotencyKey: body.idempotencyKey,
+            acceptedAt: "2026-10-09T12:00:00.000Z",
+            providerMessageIds: ["controlled-network-receipt"],
+          });
         }
         modelRequests.push(request.url);
         return Response.json(
@@ -373,7 +575,19 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
           { status: 500 },
         );
       },
+      bindings: {
+        JWT_SIGNING_PUBLIC_KEY: publicKey,
+        NETWORK_SERVICE_URL: "https://network-service-probe.test",
+        NETWORK_PERSONAL_CONTINUITY_ENABLED: "true",
+        SERVICE_TURN_SECRET: "continuity-fixture-service-secret-0123456789",
+        GATEWAY_INTERNAL_SECRET: "fixture-gateway-secret",
+        ELIZA_APP_WEBHOOK_GATEWAY_URL: "https://gateway-probe.test",
+      },
       durableObjects: {
+        DISABLED_CONVERSATIONS: {
+          className: "DisabledSharedRuntimeConversation",
+          useSQLite: true,
+        },
         SHARED_RUNTIME_CONVERSATIONS: {
           className: "TestSharedRuntimeConversation",
           useSQLite: true,
@@ -607,6 +821,189 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
     expect(modelRequests).toEqual([]);
   }, 120_000);
 
+  test("fallback recovery seals its imported snapshot and retains admission fencing after failed import", async () => {
+    if (
+      process.env.DATABASE_URL &&
+      !process.env.DATABASE_URL.startsWith("pglite")
+    ) {
+      throw new Error("Fallback recovery fixture requires isolated PGlite");
+    }
+    process.env.DATABASE_URL = "pglite://memory";
+    const { elizaSandboxService } = await import(
+      "../../shared/src/lib/services/eliza-sandbox"
+    );
+    const { reconcilePersonalFallbackIntoDedicated } = await import(
+      "../../shared/src/lib/services/personal-dedicated-fallback-reconcile"
+    );
+    const agent = {
+      id: "personal:fallback-recovery-workerd",
+      organization_id: "fallback-organization",
+      user_id: "fallback-user",
+      character_id: null,
+      agent_name: "Eliza",
+      agent_config: { character: { name: "Eliza" } },
+      execution_tier: "shared",
+    };
+    const roomId = "fallback:recovery-workerd";
+    const room = `${agent.id}:${roomId}`;
+    const history = [
+      {
+        id: "fallback-user-message",
+        role: "user",
+        content: "Retain this complete turn",
+        createdAt: 1787184000000,
+      },
+    ];
+    const seeded = await post(room, "/__test/seed", {
+      conversation: {
+        agentId: agent.id,
+        channelId: roomId,
+        history,
+        dirty: false,
+        version: 1,
+      },
+    });
+    expect(seeded.status, await seeded.text()).toBe(200);
+    const namespace = {
+      getByName(name: string) {
+        return {
+          fetch: async (url: string | Request, init?: RequestInit) => {
+            const request = new Request(url, init);
+            const response = await post(
+              name,
+              new URL(request.url).pathname,
+              (await request.json()) as Record<string, unknown>,
+            );
+            return new Response(await response.arrayBuffer(), {
+              status: response.status,
+              headers: Object.fromEntries(response.headers),
+            });
+          },
+        };
+      },
+    };
+    const fallback = {
+      id: "fallback-interval",
+      generation: 1,
+      revision: 7,
+      source_agent_id: agent.id,
+      journal_room_id: roomId,
+      organization_id: agent.organization_id,
+      user_id: agent.user_id,
+      dedicated_agent_id: "dedicated-recovery",
+      state: "recovery_pending",
+    } as Parameters<
+      typeof reconcilePersonalFallbackIntoDedicated
+    >[0]["fallback"];
+    let releaseImport = () => {};
+    let startedImport = () => {};
+    const importing = new Promise<void>((resolve) => {
+      startedImport = resolve;
+    });
+    const importGate = new Promise<void>((resolve) => {
+      releaseImport = resolve;
+    });
+    const importer = spyOn(
+      elizaSandboxService,
+      "importCanonicalConversation",
+    ).mockImplementation(async () => {
+      startedImport();
+      await importGate;
+      return null;
+    });
+    const recovery = reconcilePersonalFallbackIntoDedicated({
+      fallback,
+      namespace,
+    });
+    try {
+      await importing;
+      expect(importer).toHaveBeenCalledWith(
+        fallback.dedicated_agent_id,
+        agent.organization_id,
+        agent.id,
+        [
+          {
+            sourceId: history[0].id,
+            role: "user",
+            text: history[0].content,
+            timestamp: history[0].createdAt,
+          },
+        ],
+      );
+      const turn = () =>
+        post(room, "/personal-bridge", {
+          operation: "personal-bridge",
+          agent,
+          rpc: {
+            jsonrpc: "2.0",
+            id: "fallback-account-state",
+            method: "message.send",
+            params: { text: "arrived after snapshot", roomId },
+          },
+        });
+      const held = await turn();
+      expect(held.status, await held.text()).toBe(423);
+      releaseImport();
+      expect(await recovery).toEqual({
+        reconciled: false,
+        reason: "import_failed",
+      });
+
+      // Renew the same attempt with a short lease. Expiry must consult this
+      // interval, not the already-committed original Dedicated upgrade.
+      const sealPayload = {
+        operation: "cutover-seal",
+        agentId: agent.id,
+        roomId,
+        organizationId: agent.organization_id,
+        userId: agent.user_id,
+        dedicatedAgentId: fallback.dedicated_agent_id,
+        token: `fallback-recovery:${fallback.id}:${fallback.revision}`,
+        leaseMs: 1,
+        fallback: { id: fallback.id, generation: 1, revision: 7, roomId },
+      };
+      const resealed = await post(room, "/cutover-seal", sealPayload);
+      expect(resealed.status, await resealed.text()).toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const readsBefore = fallbackAuthorityReads;
+      fallbackResolution = "pending";
+      const expired = await turn();
+      expect(expired.status, await expired.text()).toBe(423);
+      expect(fallbackAuthorityReads).toBeGreaterThan(readsBefore);
+      // A late release cannot reopen a snapshot whose import may be in flight.
+      const release = await post(room, "/cutover-release", {
+        operation: "cutover-release",
+        token: `fallback-recovery:${fallback.id}:${fallback.revision}`,
+      });
+      expect(release.status, await release.text()).toBe(409);
+      const stillHeld = await turn();
+      expect(stillHeld.status, await stillHeld.text()).toBe(423);
+      // Reusing the token cannot renew a seal whose authority conflicts.
+      fallbackResolution = "conflict";
+      const conflictingRenewal = await post(room, "/cutover-seal", sealPayload);
+      expect(conflictingRenewal.status, await conflictingRenewal.text()).toBe(
+        423,
+      );
+      // Only a superseding database revision can invalidate this attempt.
+      fallbackResolution = "released";
+      const resumed = await turn();
+      expect(resumed.status, await resumed.text()).toBe(200);
+      // A database commit with a lost DO acknowledgement closes the old
+      // journal permanently when its lease expires.
+      const finalSeal = await post(room, "/cutover-seal", sealPayload);
+      expect(finalSeal.status, await finalSeal.text()).toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      fallbackResolution = "committed";
+      const committed = await turn();
+      expect(committed.status, await committed.text()).toBe(409);
+    } finally {
+      releaseImport();
+      await recovery;
+      importer.mockRestore();
+      fallbackResolution = "pending";
+    }
+  }, 120_000);
+
   test("an evicted object reloads a checkpointed interrupted turn before admission", async () => {
     const within = async <T>(
       label: string,
@@ -800,4 +1197,646 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
     });
     expect(await history.json()).toEqual({ history: [] });
   }, 120_000);
+
+  function networkFixture(
+    app: NetworkAppId,
+    userId = "network-continuous-user",
+  ): {
+    agent: import("../../shared/src/lib/services/shared-runtime/shared-runtime-agent").SharedRuntimeAgent;
+    context: NetworkSharedTurnContext;
+  } {
+    const organizationId = "network-continuous-org";
+    const agent = {
+      id: personalSharedAgentId({ userId, organizationId }),
+      organization_id: organizationId,
+      user_id: userId,
+      character_id: null,
+      agent_name: "Eliza",
+      agent_config: { character: { name: "Eliza", system: "Fixture" } },
+      execution_tier: "shared" as const,
+    };
+    const binding = {
+      cloudUserId: userId,
+      organizationId,
+      app,
+      personId: "network-fixture-person",
+      memberId: `${app}-fixture-member`,
+    };
+    return {
+      agent,
+      context: {
+        membership: { ...binding, scopeId: networkMembershipScopeId(binding) },
+        context: {
+          app,
+          memberId: binding.memberId,
+          firstName: "Fixture",
+          city: "SF",
+          state: "open",
+          stateUntil: null,
+          facets: [],
+          activeItems: null,
+        },
+      },
+    };
+  }
+
+  test("real DO rejects forged Network scope before transport or history access", async () => {
+    const { agent, context } = networkFixture("slop", "network-forgery-user");
+    const room = `${agent.id}:${agent.id}`;
+    const before = modelRequests.length;
+    for (const forged of [
+      {
+        ...context,
+        membership: { ...context.membership, scopeId: "forged-scope" },
+      },
+      { ...context, context: { ...context.context, app: "friends" } },
+      networkFixture("slop", "other-user").context,
+    ]) {
+      for (const operation of ["personal-bridge", "personal-stream"]) {
+        const response = await post(room, "/network-forged", {
+          operation,
+          agent,
+          trustedNetworkContext: forged,
+          rpc: {
+            jsonrpc: "2.0",
+            id: "network-transport-probe",
+            method: "message.send",
+            params: { text: "Fixture", roomId: agent.id },
+          },
+        });
+        expect(response.status).toBe(400);
+        expect(await response.json()).toMatchObject({
+          code: "invalid_network_scope",
+        });
+      }
+    }
+    const history = await post(room, "/history", {
+      operation: "history",
+      agentId: agent.id,
+      roomId: agent.id,
+    });
+    expect(await history.json()).toEqual({ history: [] });
+    expect(modelRequests.length).toBe(before);
+  });
+
+  test("Slop and Friends transport metadata keep one canonical Personal conversation", async () => {
+    const slop = networkFixture("slop", "network-transport-user");
+    const friends = networkFixture("friends", "network-transport-user");
+    const room = `${slop.agent.id}:${slop.agent.id}`;
+    const history = [
+      {
+        id: "existing-personal-turn",
+        role: "user",
+        content: "Existing Personal history",
+        createdAt: 1,
+      },
+      {
+        id: "prior-slop-turn",
+        role: "user",
+        content: "Prior Slop discussion",
+        createdAt: 2,
+      },
+      {
+        id: "prior-friends-turn",
+        role: "user",
+        content: "Prior Friends discussion",
+        createdAt: 3,
+      },
+    ];
+    await post(room, "/__test/seed", {
+      conversation: {
+        agentId: slop.agent.id,
+        channelId: slop.agent.id,
+        history,
+        dirty: false,
+        version: 1,
+      },
+    });
+    for (const fixture of [slop, friends]) {
+      const response = await post(room, "/network-transport-probe", {
+        operation: "personal-bridge",
+        agent: fixture.agent,
+        trustedNetworkContext: fixture.context,
+        rpc: {
+          jsonrpc: "2.0",
+          id: "network-transport-probe",
+          method: "message.send",
+          params: {
+            text: "Fixture transport only",
+            roomId: fixture.agent.id,
+            clientMessageId: `transport-${fixture.context.membership.app}`,
+          },
+        },
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        result: { observation: fixture.context, roomId: slop.agent.id },
+      });
+    }
+    const result = await post(room, "/history", {
+      operation: "history",
+      agentId: slop.agent.id,
+      roomId: slop.agent.id,
+    });
+    expect(await result.json()).toEqual({ history });
+  });
+
+  test("actual Shared bridge and stream replay DO receipts across Network changes without inference", async () => {
+    const slop = networkFixture("slop", "network-claim-user");
+    const friends = networkFixture("friends", "network-claim-user");
+    const room = `${slop.agent.id}:${slop.agent.id}`;
+    const channelId = sharedRuntimeRoomKey(slop.agent.id, slop.agent.id);
+    const existing = [
+      {
+        id: "continuous-slop-history",
+        role: "user" as const,
+        content: "Slop history",
+        createdAt: 1,
+      },
+      {
+        id: "continuous-friends-history",
+        role: "user" as const,
+        content: "Friends history",
+        createdAt: 2,
+      },
+    ];
+    await post(room, "/__test/seed", {
+      conversation: {
+        agentId: slop.agent.id,
+        channelId,
+        history: existing,
+        dirty: false,
+        version: 1,
+      },
+    });
+    const priorReceipt: SharedTurnTerminalResult = {
+      text: "Seeded prior terminal receipt; no model completion",
+      messageId: "receipt-assistant",
+      userMessageId: "receipt-user",
+      agentName: "Eliza",
+      channelId,
+      model: "seeded-receipt",
+      degraded: false,
+      runtime: "shared",
+      transport: "shared-runtime",
+    };
+    let claimCalls = 0;
+    let historyLoads = 0;
+    let historyMerges = 0;
+    const claims: SharedTurnClaimStore = {
+      async claim(key, hash) {
+        claimCalls++;
+        const response = await post(room, "/__test/claims", {
+          key,
+          hash,
+          seedResult: priorReceipt,
+        });
+        return (await response.json()) as Awaited<
+          ReturnType<SharedTurnClaimStore["claim"]>
+        >;
+      },
+      async complete() {
+        throw new Error("Replay must not complete a new turn");
+      },
+    };
+    const store: SharedRuntimeHistoryStore = {
+      async load(agentId, loadedChannel) {
+        historyLoads++;
+        const response = await post(room, "/__test/history-store", {
+          agentId,
+          channelId: loadedChannel,
+        });
+        return (await response.json()) as typeof existing;
+      },
+      async merge(agentId, mergedChannel, messages) {
+        historyMerges++;
+        const response = await post(room, "/__test/history-store", {
+          agentId,
+          channelId: mergedChannel,
+          messages,
+        });
+        return (await response.json()) as typeof existing;
+      },
+    };
+    const chat = new SharedRuntimeChatService();
+    const rpc = {
+      jsonrpc: "2.0" as const,
+      id: "fixture-retry",
+      method: "message.send",
+      params: {
+        text: "Same complete user message",
+        roomId: slop.agent.id,
+        clientMessageId: "same-client-key",
+      },
+    };
+    const before = modelRequests.length;
+    const unavailable: NetworkSharedTurnObservation = {
+      status: "unavailable",
+      cloudUserId: slop.agent.user_id,
+      organizationId: slop.agent.organization_id,
+      reason: "private_service_unavailable",
+    };
+    // Each first claim seeds a terminal receipt through the production DO
+    // ledger. Retry identity belongs to this conversation and submitted text;
+    // the server's current Network observation is not new client input.
+    for (const [index, firstContext] of [
+      slop.context,
+      unavailable,
+      undefined,
+    ].entries()) {
+      const submitted = {
+        ...rpc,
+        params: { ...rpc.params, clientMessageId: `same-client-key-${index}` },
+      };
+      const options = {
+        turnClaims: claims,
+        historyStore: store,
+        funding: "platform" as const,
+      };
+      const original = await chat.bridge(slop.agent, submitted, {
+        ...options,
+        trustedNetworkContext: firstContext,
+      });
+      expect(original.result).toMatchObject(priorReceipt);
+      for (const trustedNetworkContext of [
+        slop.context,
+        unavailable,
+        undefined,
+        friends.context,
+      ]) {
+        const replayOptions = { ...options, trustedNetworkContext };
+        const replay = await chat.bridge(slop.agent, submitted, replayOptions);
+        expect(replay.result).toMatchObject(priorReceipt);
+        const stream = await chat.stream(slop.agent, submitted, replayOptions);
+        expect(stream.status).toBe(200);
+        const events = (await stream.text()).split("\n\n");
+        const done = events.find((event) => event.startsWith("event: done\n"));
+        if (!done)
+          throw new Error("Replay did not include a terminal SSE frame");
+        expect(JSON.parse(done.split("data: ")[1])).toMatchObject({
+          messageId: priorReceipt.messageId,
+          userMessageId: priorReceipt.userMessageId,
+          text: priorReceipt.text,
+          fullText: priorReceipt.text,
+        });
+        const changed = {
+          ...submitted,
+          params: { ...submitted.params, text: "Changed user message" },
+        };
+        await expect(
+          chat.bridge(slop.agent, changed, replayOptions),
+        ).rejects.toMatchObject({
+          name: "SharedTurnConflictError",
+        });
+        await expect(
+          chat.stream(slop.agent, changed, replayOptions),
+        ).rejects.toMatchObject({
+          name: "SharedTurnConflictError",
+        });
+      }
+    }
+    const beforeInvalidScope = claimCalls;
+    await expect(
+      chat.bridge(
+        slop.agent,
+        { ...rpc, params: { ...rpc.params, roomId: "forged-room" } },
+        {
+          trustedNetworkContext: slop.context,
+          turnClaims: claims,
+          historyStore: store,
+        },
+      ),
+    ).rejects.toMatchObject({ code: "NETWORK_SHARED_CONTEXT_SCOPE_INVALID" });
+    expect(claimCalls).toBe(beforeInvalidScope);
+    expect(historyLoads).toBe(0);
+    expect(historyMerges).toBe(0);
+    expect(await chat.getHistory(slop.agent.id, slop.agent.id, store)).toEqual(
+      existing,
+    );
+    expect(modelRequests.length).toBe(before);
+  });
+  test("canonical Network delivery extends Personal history once and honors ownership fences before dispatch", async () => {
+    const account = {
+      userId: "continuity-user",
+      organizationId: "continuity-org",
+    };
+    const agentId = personalSharedAgentId(account);
+    const name = `${agentId}:${agentId}`;
+    const oldId = legacyNetworkPersonalSharedAgentId(account);
+    const original = {
+      id: "original-personal-turn",
+      role: "user",
+      content: "Remember my existing Personal conversation.",
+      createdAt: 1787184000000,
+    };
+    expect(
+      (
+        await post(name, "/__test/seed", {
+          conversation: {
+            agentId,
+            channelId: agentId,
+            history: [original],
+            dirty: false,
+            version: 1,
+          },
+        })
+      ).status,
+    ).toBe(200);
+    const delivery = {
+      project: "network",
+      app: "slop",
+      ...account,
+      phoneNumber: "+14155550801",
+      platform: "blooio",
+      idempotencyKey: "owned-intro-1",
+      text: "A Network intro in the same conversation.",
+    };
+    const payload = {
+      operation: "network-delivery",
+      agentId,
+      roomId: agentId,
+      delivery,
+    };
+    const first = await post(name, "/network-delivery", payload);
+    expect(first.status).toBe(200);
+    expect(await first.json()).toMatchObject({
+      ok: true,
+      history: true,
+      replayed: false,
+      providerMessageIds: ["controlled-network-receipt"],
+    });
+    const replay = await post(name, "/network-delivery", payload);
+    expect(await replay.json()).toMatchObject({
+      ok: true,
+      history: true,
+      replayed: true,
+    });
+    expect(gatewayRequests).toHaveLength(1);
+    for (const project of [undefined, "network"]) {
+      const next = await post(name, "/bridge", {
+        operation: "personal-bridge",
+        agent: {
+          id: agentId,
+          user_id: account.userId,
+          organization_id: account.organizationId,
+          execution_tier: "shared",
+          ...(project ? { project } : {}),
+        },
+        rpc: {
+          jsonrpc: "2.0",
+          id: "continuity-read",
+          method: "message.send",
+          params: { roomId: agentId, text: "What did we discuss?" },
+        },
+      });
+      expect(next.status).toBe(200);
+      expect(await next.json()).toMatchObject({
+        result: {
+          history: [original, { role: "assistant", content: delivery.text }],
+        },
+      });
+    }
+    expect(
+      (
+        await post(name, "/network-delivery", {
+          ...payload,
+          delivery: { ...delivery, text: "Changed same key" },
+        })
+      ).status,
+    ).toBe(409);
+    for (const forged of [
+      { ...payload, roomId: "group:foreign" },
+      { ...payload, agentId: oldId, roomId: oldId },
+      { ...payload, delivery: { ...delivery, userId: "foreign-user" } },
+      { ...payload, delivery: { ...delivery, organizationId: "foreign-org" } },
+      { ...payload, delivery: { ...delivery, project: "eliza-app" } },
+    ])
+      expect((await post(name, "/network-delivery", forged)).status).toBe(400);
+    expect(gatewayRequests).toHaveLength(1);
+    expect(
+      (await post(name, "/disabled/network-delivery", payload)).status,
+    ).toBe(503);
+    const token = "continuity-cutover";
+    expect(
+      (
+        await post(name, "/cutover-seal", {
+          operation: "cutover-seal",
+          agentId,
+          roomId: agentId,
+          token,
+          leaseMs: 60000,
+          ...account,
+          dedicatedAgentId: "dedicated-continuity",
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await post(name, "/network-delivery", {
+          ...payload,
+          delivery: { ...delivery, idempotencyKey: "after-seal" },
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await post(name, "/cutover-commit", {
+          operation: "cutover-commit",
+          token,
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await post(name, "/network-delivery", {
+          ...payload,
+          delivery: { ...delivery, idempotencyKey: "after-cutover" },
+        })
+      ).status,
+    ).toBe(409);
+    expect(gatewayRequests).toHaveLength(1);
+    expect(
+      (await post(name, "/delete", { operation: "delete", agentId })).status,
+    ).toBe(200);
+    expect((await post(name, "/network-delivery", payload)).status).toBe(410);
+    expect(gatewayRequests).toHaveLength(1);
+    expect(modelRequests).toEqual([]);
+  }, 120_000);
+  test("first handled text requires real Gateway JWT and service proof, then reuses the phone owner and canonical history", async () => {
+    const path = "/api/internal/eliza-app/personal-shared/messages";
+    const request = {
+      messageId: "first-handled-phone",
+      channel: "blooio",
+      from: "+14155550802",
+      to: null,
+      text: "Join friends",
+      transport: "imessage",
+      receivedAt: 1791540000000,
+    };
+    const response = {
+      outcome: "handled",
+      replies: ["What are you looking for?"],
+      replyIds: ["first-handled-output"],
+      delivery: "collected",
+      replyKind: "reply",
+      accountEligible: true,
+      reason: "join_asked",
+      app: "friends",
+      memberId: null,
+    };
+    const payload = {
+      platform: "blooio",
+      project: "network",
+      connectorAccountId: "controlled-connector",
+      phoneNumber: request.from,
+      messageId: `blooio:network:${request.messageId}`,
+      message: request.text,
+      networkHandled: { request, response },
+    };
+    const count = async () =>
+      (
+        (await (
+          await miniflare.dispatchFetch(
+            "https://runtime.test/__test/phone-owner-count",
+          )
+        ).json()) as { calls: number }
+      ).calls;
+    async function submit(value = payload, jwt = gatewayJWT, sign = true) {
+      const body = JSON.stringify(value);
+      const proof = sign
+        ? await svcSign("continuity-fixture-service-secret-0123456789", {
+            method: "POST",
+            path,
+            id: request.messageId,
+            body,
+          })
+        : {};
+      return await miniflare.dispatchFetch(`https://runtime.test${path}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${jwt}`,
+          ...proof,
+        },
+        body,
+      });
+    }
+    const before = await count();
+    const sends = gatewayRequests.length;
+    expect((await submit(payload, "invalid-token")).status).toBe(401);
+    expect((await submit(payload, gatewayJWT, false)).status).toBe(403);
+    expect(
+      (await submit({ ...payload, phoneNumber: "+14155550803" })).status,
+    ).toBe(403);
+    expect(await count()).toBe(before);
+    expect(gatewayRequests).toHaveLength(sends);
+    // A separate account keeps this case independent of the earlier synthetic deletion.
+    const accepted = await submit();
+    expect(accepted.status, await accepted.clone().text()).toBe(200);
+    expect(await accepted.json()).toMatchObject({
+      success: true,
+      data: {
+        account: { userId: "handled-user", organizationId: "handled-org" },
+        delivery: {
+          ok: true,
+          history: true,
+          providerMessageIds: ["controlled-network-receipt"],
+        },
+      },
+    });
+    expect((await submit()).status).toBe(200);
+    expect(gatewayRequests).toHaveLength(sends + 1);
+    expect(serviceAcknowledgements.at(-1)).toMatchObject({
+      channel: "blooio",
+      messageId: request.messageId,
+      replyIds: response.replyIds,
+      outcome: "accepted",
+      historyRecorded: true,
+    });
+    const ownerId = personalSharedAgentId({
+      userId: "handled-user",
+      organizationId: "handled-org",
+    });
+    const history = await post(`${ownerId}:${ownerId}`, "/history", {
+      operation: "history",
+      agentId: ownerId,
+      roomId: ownerId,
+    });
+    expect(await history.json()).toMatchObject({
+      history: [
+        { role: "user", content: request.text },
+        { role: "assistant", content: response.replies[0] },
+      ],
+    });
+    serviceReplyMode = "oversize";
+    const bounded = {
+      ...payload,
+      messageId: "blooio:network:bounded-service-ack",
+      networkHandled: {
+        request: { ...request, messageId: "bounded-service-ack" },
+        response: { ...response, replyIds: ["bounded-output"] },
+      },
+    };
+    const boundedBody = JSON.stringify(bounded);
+    const boundedProof = await svcSign(
+      "continuity-fixture-service-secret-0123456789",
+      { method: "POST", path, id: "bounded-service-ack", body: boundedBody },
+    );
+    const issue = () =>
+      miniflare.dispatchFetch(`https://runtime.test${path}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${gatewayJWT}`,
+          ...boundedProof,
+        },
+        body: boundedBody,
+      });
+    expect((await issue()).status).toBe(200);
+    const afterBoundedSend = gatewayRequests.length;
+    serviceReplyMode = "redirect";
+    expect((await issue()).status).toBe(200);
+    expect(modelRequests).toEqual([]);
+    serviceReplyMode = "accepted";
+    expect((await issue()).status).toBe(200);
+    expect(gatewayRequests).toHaveLength(afterBoundedSend);
+    const calls = await count();
+    const policy = {
+      ...payload,
+      messageId: `blooio:network:ineligible-handled`,
+      networkHandled: {
+        request: { ...request, messageId: "ineligible-handled" },
+        response: {
+          ...response,
+          accountEligible: false,
+          replyKind: "compliance",
+          reason: "under_age",
+          replyIds: ["policy-output"],
+        },
+      },
+    };
+    const body = JSON.stringify(policy);
+    const signed = await svcSign(
+      "continuity-fixture-service-secret-0123456789",
+      { method: "POST", path, id: "ineligible-handled", body },
+    );
+    const policyAck = await miniflare.dispatchFetch(
+      `https://runtime.test${path}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${gatewayJWT}`,
+          ...signed,
+        },
+        body,
+      },
+    );
+    expect(policyAck.status).toBe(200);
+    expect(await policyAck.json()).toMatchObject({
+      data: { delivery: { ok: true, history: false } },
+    });
+    expect(await count()).toBe(calls);
+    expect(modelRequests).toEqual([]);
+  }, 120000);
 });

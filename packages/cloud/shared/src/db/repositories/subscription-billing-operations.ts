@@ -773,9 +773,10 @@ export class SubscriptionBillingOperationsRepository {
 
   async recordEvent(
     input: RecordSubscriptionEventInput,
+    executor: typeof dbWrite | DbTransaction = dbWrite,
   ): Promise<RepositoryMutation<BillingSubscriptionEventReceipt>> {
     requireDate(input.now, "now");
-    const [created] = await dbWrite
+    const [created] = await executor
       .insert(billingSubscriptionEventReceipts)
       .values({
         id: input.id,
@@ -802,7 +803,7 @@ export class SubscriptionBillingOperationsRepository {
       })
       .returning();
     if (created) return { value: created, replayed: false };
-    const [existing] = await dbWrite
+    const [existing] = await executor
       .select()
       .from(billingSubscriptionEventReceipts)
       .where(
@@ -821,19 +822,22 @@ export class SubscriptionBillingOperationsRepository {
     return { value: existing, replayed: true };
   }
 
-  async claimEvent(input: {
-    billingScope?: SubscriptionEventScope;
-    organizationId: string;
-    receiptId: string;
-    leaseToken: string;
-    leaseDurationMs: number;
-  }): Promise<BillingSubscriptionEventReceipt | null> {
+  async claimEvent(
+    input: {
+      billingScope?: SubscriptionEventScope;
+      organizationId: string;
+      receiptId: string;
+      leaseToken: string;
+      leaseDurationMs: number;
+    },
+    executor: typeof dbWrite | DbTransaction = dbWrite,
+  ): Promise<BillingSubscriptionEventReceipt | null> {
     if (!Number.isSafeInteger(input.leaseDurationMs) || input.leaseDurationMs <= 0) {
       invalid("leaseDurationMs must be a positive safe integer", "leaseDurationMs");
     }
     const databaseNow = sql`clock_timestamp()`;
     const leaseExpiresAt = sql`clock_timestamp() + (${input.leaseDurationMs} * interval '1 millisecond')`;
-    const [claimed] = await dbWrite
+    const [claimed] = await executor
       .update(billingSubscriptionEventReceipts)
       .set({
         status: "processing",
@@ -862,7 +866,7 @@ export class SubscriptionBillingOperationsRepository {
       )
       .returning();
     if (claimed) return claimed;
-    const [replayed] = await dbWrite
+    const [replayed] = await executor
       .select()
       .from(billingSubscriptionEventReceipts)
       .where(
@@ -1180,8 +1184,8 @@ export class SubscriptionBillingOperationsRepository {
     organizationId: string;
     receiptId: string;
     leaseToken: string;
-  }): Promise<void> {
-    await dbWrite
+  }): Promise<boolean> {
+    const [released] = await dbWrite
       .update(billingSubscriptionEventReceipts)
       .set({
         status: "received",
@@ -1197,7 +1201,9 @@ export class SubscriptionBillingOperationsRepository {
           eq(billingSubscriptionEventReceipts.lease_token, input.leaseToken),
           gt(billingSubscriptionEventReceipts.lease_expires_at, sql`clock_timestamp()`),
         ),
-      );
+      )
+      .returning({ id: billingSubscriptionEventReceipts.id });
+    return released !== undefined;
   }
 
   async failEvent(input: {

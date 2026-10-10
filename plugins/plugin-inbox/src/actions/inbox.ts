@@ -240,6 +240,14 @@ function createDefaultPlatformFetcher(platform: InboxPlatform): InboxFetcher {
     if (typeof runtime.getService !== "function") return [];
     try {
       const service = getDefaultTriageService();
+      // A source no adapter registers (e.g. whatsapp with no whatsapp
+      // connector deployed) can never produce rows; failing here routes the
+      // platform into `degraded` instead of a checked-and-empty feed.
+      if (!service.listRegisteredSources().includes(source)) {
+        throw new Error(
+          `no inbox source registered for ${platform} in this deployment`,
+        );
+      }
       const refs = query
         ? await service.search(runtime, {
             sources: [source],
@@ -614,6 +622,12 @@ function ensureSourceMessageId(entry: TriageEntry): string {
   );
 }
 
+function inboxReceivedAtMs(createdAt: string, now = Date.now()): number {
+  const parsed = Date.parse(createdAt);
+  // Date.parse of the Unix epoch is 0. `|| Date.now()` stored that message as received now.
+  return Number.isFinite(parsed) ? parsed : now;
+}
+
 function seedMessageRefForEntry(
   runtime: IAgentRuntime,
   entry: TriageEntry,
@@ -634,7 +648,7 @@ function seedMessageRefForEntry(
     to: [{ identifier: runtime.agentId }],
     snippet: entry.snippet,
     body: entry.threadContext?.join("\n") ?? entry.snippet,
-    receivedAtMs: Date.parse(entry.createdAt) || Date.now(),
+    receivedAtMs: inboxReceivedAtMs(entry.createdAt),
     hasAttachments: false,
     isRead: false,
     metadata: {

@@ -48,7 +48,7 @@ import {
 // The app resolves light/dark from `eliza:ui-theme-mode` (values light | dark |
 // system) and applies it as CSS variables on documentElement.style via
 // applyThemeToDocument (NOT a `light`/`dark` class). See
-// packages/ui/src/state/persistence.ts + themes/apply-theme.ts.
+// packages/ui/src/state/persistence.ts + config/theme.ts.
 const THEME_MODE_STORAGE_KEY = "eliza:ui-theme-mode";
 
 const OUTPUT_ROOT = path.join(

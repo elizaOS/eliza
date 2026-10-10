@@ -1,3 +1,4 @@
+import type { GeneratedAudio } from "../providers/audio/types";
 /**
  * Generated media (images, music, sound effects) stored in Cloud R2 counts
  * toward the organization's single storage quota (#20956). There is no
@@ -148,4 +149,66 @@ export async function releaseGeneratedMediaStorage(
       error: error instanceof Error ? error.message : String(error),
     });
   }
+}
+
+function extensionForContentType(contentType: string): string {
+  if (contentType.includes("wav")) return "wav";
+  if (contentType.includes("L16") || contentType.includes("pcm")) return "pcm";
+  if (contentType.includes("basic")) return "ulaw";
+  return "mp3";
+}
+
+interface StoredAudio {
+  url: string;
+  file_name?: string;
+  file_size?: number;
+  content_type?: string;
+}
+
+export async function storeGeneratedAudio(
+  env: PublicObjectBindings,
+  organizationId: string,
+  generated: GeneratedAudio,
+  keyPrefix: string,
+  customMetadata: Record<string, string>,
+): Promise<{ stored: StoredAudio; storage: StoredGeneratedMedia | null }> {
+  if (generated.source === "hosted") {
+    // Provider-hosted results never touch Cloud R2, so they use no storage.
+    return {
+      stored: {
+        url: generated.url,
+        file_name: generated.fileName,
+        file_size: generated.fileSize,
+        content_type: generated.contentType,
+      },
+      storage: null,
+    };
+  }
+
+  if (!env.BLOB) {
+    throw new Error("R2 storage is not configured");
+  }
+  const ext = extensionForContentType(generated.contentType);
+  const key = `${keyPrefix}/${crypto.randomUUID()}.${ext}`;
+  const body = generated.bytes.buffer.slice(
+    generated.bytes.byteOffset,
+    generated.bytes.byteOffset + generated.bytes.byteLength,
+  ) as ArrayBuffer;
+  // Byte results count toward the organization storage quota (#20956).
+  const storage = await putGeneratedMediaObject(env, {
+    organizationId,
+    key,
+    body,
+    contentType: generated.contentType,
+    customMetadata,
+  });
+  return {
+    stored: {
+      url: storage.url,
+      file_name: key.split("/").at(-1),
+      file_size: storage.sizeBytes,
+      content_type: generated.contentType,
+    },
+    storage,
+  };
 }

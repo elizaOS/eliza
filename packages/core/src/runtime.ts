@@ -1,50 +1,3 @@
-import { flattenRuntimeSettings } from "./runtime-settings.ts";
-/** Owns one agent’s public runtime identity, registries, settings, and initialization. Model dispatch, structured prompts, provider composition, service startup, embeddings, and data mutations have dedicated owners that share this runtime’s state. Settings remain agent-scoped, and embedding width stays pinned to the provider that passed the boot probe. */
-
-import { RuntimeDataMutations } from "./runtime/data-mutations.js";
-import {
-	EmbeddingDimensionProbeError,
-	RuntimeEmbeddings,
-} from "./runtime/embeddings.js";
-import { RuntimeRetirement } from "./runtime/retirement.js";
-import {
-	RuntimeServiceLifecycle,
-	type ServicePromiseHandler,
-	type ServiceRejecter,
-	type ServiceResolver,
-} from "./runtime/service-lifecycle.js";
-import type { TaskMetadataPatch, TaskMetadataPatchOutcome } from "./types/task";
-
-export {
-	EMBEDDING_STORE_ACCEPT_MODEL_SETTING,
-	EMBEDDING_STORE_IDENTITY_CACHE_KEY,
-	EmbeddingDimensionProbeError,
-	type EmbeddingProbeAttempt,
-	type EmbeddingStoreIdentity,
-} from "./runtime/embeddings.js";
-
-import { RuntimeModelDispatch } from "./runtime/model-dispatch.js";
-import {
-	type ResolvedModelRegistration,
-	TEXT_GENERATION_MODEL_KEYS,
-} from "./runtime/model-policy.js";
-import type { ConfidentialInferenceAuthority } from "./security/confidential-inference.js";
-import {
-	bindProcessingPolicy,
-	type ProcessingPolicy,
-	processingPolicyFor,
-} from "./security/processing-policy.js";
-
-export {
-	NoModelProviderConfiguredError,
-	readReasoningTokensFromResponse,
-} from "./runtime/model-policy.js";
-
-import { RuntimePipelineHooks } from "./runtime/pipeline-hooks.js";
-import { ProviderStateComposer } from "./runtime/state-composition.js";
-
-export { calculateProviderOverlaps } from "./runtime/provider-execution.js";
-
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID as uuidv4 } from "node:crypto";
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
@@ -61,6 +14,11 @@ import { ElizaError, type ReportedError, toElizaError } from "./errors";
 import { createLogger } from "./logger";
 import type { FetchLike } from "./media/fetch";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
+import type {
+	ExecutionTrace,
+	PromptOptimizationRuntimeHooks,
+	ScoreSignal,
+} from "./prompt-optimization";
 import { runPluginMigrations } from "./provisioning";
 import { resolveActionEventWorldId } from "./runtime/action-event-world";
 import { resolveActionGateFailure } from "./runtime/action-gate";
@@ -71,18 +29,41 @@ import { ActivePromptTraces } from "./runtime/active-prompt-traces";
 import { ChatPreHandlerRegistry } from "./runtime/chat-pre-handler-registry";
 import { RuntimeConnectorRegistry } from "./runtime/connector-registry.js";
 import { ContextRegistry } from "./runtime/context-registry";
-import { resolveProviderModelString } from "./runtime/model-policy";
+import { RuntimeDataMutations } from "./runtime/data-mutations.js";
+import {
+	EmbeddingDimensionProbeError,
+	RuntimeEmbeddings,
+} from "./runtime/embeddings.js";
+import { RuntimeModelDispatch } from "./runtime/model-dispatch.js";
+import {
+	type ResolvedModelRegistration,
+	resolveProviderModelString,
+	TEXT_GENERATION_MODEL_KEYS,
+} from "./runtime/model-policy.js";
+import { RuntimePipelineHooks } from "./runtime/pipeline-hooks.js";
 import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators";
-import type { ResponseHandlerFieldEvaluator } from "./runtime/response-handler-field-evaluator";
-import { ResponseHandlerFieldRegistry } from "./runtime/response-handler-field-registry";
+import {
+	type ResponseHandlerFieldEvaluator,
+	ResponseHandlerFieldRegistry,
+} from "./runtime/response-handler-fields";
+import { RuntimeRetirement } from "./runtime/retirement.js";
 import { RoomHandlerQueue } from "./runtime/room-handler-queue";
+import {
+	RuntimeServiceLifecycle,
+	type ServicePromiseHandler,
+	type ServiceRejecter,
+	type ServiceResolver,
+} from "./runtime/service-lifecycle.js";
 import { SingleFlightMemo } from "./runtime/single-flight-memo";
+import { ProviderStateComposer } from "./runtime/state-composition.js";
 import {
 	buildCanonicalSystemPrompt,
 	resolveEffectiveSystemPrompt,
 	textFromChatMessageContent,
 } from "./runtime/system-prompt";
 import { TurnControllerRegistry } from "./runtime/turn-controller";
+import { flattenRuntimeSettings } from "./runtime-settings.ts";
+import type { ConfidentialInferenceAuthority } from "./security/confidential-inference.js";
 import { createCoreSecurityHooksPlugin } from "./security/core-hooks";
 import {
 	CompositeEntityRecognizer,
@@ -105,6 +86,11 @@ import {
 	PseudonymSession,
 	parsePiiSwapList,
 } from "./security/pii-pseudonymizer.js";
+import {
+	bindProcessingPolicy,
+	type ProcessingPolicy,
+	processingPolicyFor,
+} from "./security/processing-policy.js";
 import { MIN_SECRET_LENGTH, redactWithSecrets } from "./security/redact.js";
 import {
 	parseSecretSwapExemptValues,
@@ -112,6 +98,7 @@ import {
 	SECRET_SWAP_EXEMPT_VALUES_SETTING,
 	SecretSwapSession,
 } from "./security/secret-swap";
+import { deriveKnownSecrets } from "./security/secrets";
 import {
 	authorizeOwnerExclusiveDisclosure,
 	PRIVACY_DENIED_TEXT,
@@ -215,18 +202,13 @@ import type {
 	RuntimeEventStorage,
 	ServiceClass,
 } from "./types/plugin.js";
-import type { Content } from "./types/primitives.js";
 import {
 	ChannelType,
+	type Content,
 	type JsonValue,
 	type Metadata,
 	type UUID,
 } from "./types/primitives.js";
-import type { PromptOptimizationRuntimeHooks } from "./types/prompt-optimization-hooks";
-import type {
-	ExecutionTrace,
-	ScoreSignal,
-} from "./types/prompt-optimization-trace";
 import type { IAgentRuntime, RuntimeStopOptions } from "./types/runtime.js";
 import {
 	type SearchCategoryEnumerationOptions,
@@ -241,7 +223,12 @@ import {
 } from "./types/service.js";
 import type { RuntimeSettings } from "./types/settings.js";
 import type { State } from "./types/state.js";
-import type { Task, TaskWorker } from "./types/task.js";
+import type {
+	Task,
+	TaskMetadataPatch,
+	TaskMetadataPatchOutcome,
+	TaskWorker,
+} from "./types/task";
 import { parseBooleanValue } from "./utils/boolean";
 import { createHash } from "./utils/crypto-compat";
 import { getNumberEnv } from "./utils/environment";
@@ -249,7 +236,23 @@ import { getOptimizationRootDir } from "./utils/state-dir";
 import { stringToUuid } from "./utils/string-to-uuid.js";
 import { isPlainObject } from "./utils/type-guards";
 import { validateUuid } from "./utils/uuid.js";
-import { deriveKnownSecrets } from "./validation/secret-catalog";
+
+/** Owns one agent’s public runtime identity, registries, settings, and initialization. Model dispatch, structured prompts, provider composition, service startup, embeddings, and data mutations have dedicated owners that share this runtime’s state. Settings remain agent-scoped, and embedding width stays pinned to the provider that passed the boot probe. */
+
+export {
+	EMBEDDING_STORE_ACCEPT_MODEL_SETTING,
+	EMBEDDING_STORE_IDENTITY_CACHE_KEY,
+	EmbeddingDimensionProbeError,
+	type EmbeddingProbeAttempt,
+	type EmbeddingStoreIdentity,
+} from "./runtime/embeddings.js";
+
+export {
+	NoModelProviderConfiguredError,
+	readReasoningTokensFromResponse,
+} from "./runtime/model-policy.js";
+
+export { calculateProviderOverlaps } from "./runtime/provider-execution.js";
 
 const DEFAULT_SERVICE_START_SHUTDOWN_TIMEOUT_MS = 1_000;
 const DEFAULT_FAST_SERVICE_STOP_TIMEOUT_MS = 500;
@@ -383,6 +386,9 @@ function swapEnvSetting(key: string): string | undefined {
 }
 
 export class AgentRuntime implements IAgentRuntime {
+	static readonly ownerToolExecutionObserverVersion = 1 as const;
+	readonly ownerToolExecutionObserverVersion = 1 as const;
+	ownerToolExecutionObserver?: IAgentRuntime["ownerToolExecutionObserver"];
 	private readonly dataMutations = new RuntimeDataMutations(this, {
 		invalidateTurnEntityDetails: (...args) =>
 			this.invalidateTurnEntityDetails(...args),
@@ -1738,6 +1744,11 @@ export class AgentRuntime implements IAgentRuntime {
 				{ src: "agent", agentId: this.agentId },
 				"Agent entity created",
 			);
+		} else if (this.character.name) {
+			// A rename persisted before the entity followed it (or by an older
+			// build) would otherwise keep labelling the agent's turns with the
+			// old name forever, since creation is skipped once the entity exists.
+			await this.syncAgentEntityName(agentEntity, this.character.name);
 		}
 
 		// Room creation and participant setup
@@ -4034,7 +4045,32 @@ export class AgentRuntime implements IAgentRuntime {
 		return ids.length > 0;
 	}
 	async updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
-		return this.adapter.updateAgents([{ agentId, agent }]);
+		const updated = await this.adapter.updateAgents([{ agentId, agent }]);
+		const name = typeof agent.name === "string" ? agent.name.trim() : "";
+		if (updated && agentId === this.agentId && name) {
+			const [agentEntity] = await this.adapter.getEntitiesByIds([agentId]);
+			if (agentEntity) await this.syncAgentEntityName(agentEntity, name);
+		}
+		return updated;
+	}
+
+	/**
+	 * Keeps the agent's own entity named after its character. Prompts label
+	 * speakers with `entity.names[0]`, so a rename (character PUT, CHARACTER
+	 * action, first-run) must move the new name to the front of `names`.
+	 */
+	private async syncAgentEntityName(
+		agentEntity: Entity,
+		name: string,
+	): Promise<void> {
+		if (agentEntity.names[0] === name) return;
+		await this.updateEntity({
+			...agentEntity,
+			names: [
+				name,
+				...agentEntity.names.filter((existing) => existing !== name),
+			],
+		});
 	}
 	async deleteAgent(agentId: UUID): Promise<boolean> {
 		return this.adapter.deleteAgents([agentId]);

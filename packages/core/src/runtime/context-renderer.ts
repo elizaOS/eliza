@@ -6,6 +6,12 @@
  * plus single-user plus assistant/tool-suffix message array each planner stage
  * sends.
  */
+
+import type {
+	ChatMessage,
+	ChatMessageRole,
+	PromptSegment,
+} from "../types/model";
 import type {
 	ContextEvent,
 	ContextInstructionEvent,
@@ -18,12 +24,7 @@ import type {
 	ContextProviderEvent,
 	ContextSegmentEvent,
 	ContextToolEvent,
-} from "../types/context-object";
-import type {
-	ChatMessage,
-	ChatMessageRole,
-	PromptSegment,
-} from "../types/model";
+} from "./context-object";
 
 export interface RenderedContextObject {
 	messages: ContextObjectMessage[];

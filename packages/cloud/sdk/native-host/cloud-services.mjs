@@ -11,6 +11,200 @@ import { createSpeechStreamSessions } from "./timed-speech.mjs";
 
 const fail = (message, status = 400) =>
   new NativeCloudServiceError(message, { status });
+// Renderer-safe invoice facts. Merchant metadata and provider identifiers stay private.
+function invoiceProjection(value, id) {
+  if (
+    !value ||
+    value.id !== id ||
+    !["draft", "open", "paid", "void", "uncollectible"].includes(value.status)
+  )
+    throw fail("Invoice details are unavailable.", 502);
+  const currency =
+    typeof value.currency === "string" ? value.currency.toUpperCase() : "";
+  if (!Intl.supportedValuesOf("currency").includes(currency))
+    throw fail("Invoice currency is unavailable.", 502);
+  const digits = new Intl.NumberFormat("en", {
+    style: "currency",
+    currency,
+  }).resolvedOptions().maximumFractionDigits;
+  const amount = (input) => {
+    // Legacy APIs return binary floating-point values. Above this conservative
+    // ceiling adjacent decimal minor units may round to the same number before
+    // this projection receives them. Decimal strings retain the full safe-unit
+    // range checked below; do not present a guessed cent from a large number.
+    if (
+      typeof input === "number" &&
+      digits > 0 &&
+      input > Number.MAX_SAFE_INTEGER / (2 * 10 ** digits)
+    )
+      throw fail("Invoice numeric amount exceeds exact precision.", 502);
+    const source =
+      typeof input === "number" && Number.isFinite(input)
+        ? String(input)
+        : input;
+    if (
+      typeof source !== "string" ||
+      !/^(0|[1-9][0-9]{0,14})(\.[0-9]{1,4})?$/.test(source)
+    )
+      throw fail("Invoice amount is unavailable.", 502);
+    const [whole, fraction = ""] = source.split(".");
+    if (fraction.length > digits && /[1-9]/.test(fraction.slice(digits)))
+      throw fail("Invoice amount has unsupported precision.", 502);
+    const units =
+      BigInt(whole) * 10n ** BigInt(digits) +
+      BigInt(fraction.slice(0, digits).padEnd(digits, "0") || "0");
+    if (units > BigInt(Number.MAX_SAFE_INTEGER))
+      throw fail("Invoice amount is too large.", 502);
+    return digits
+      ? `${whole}.${fraction.slice(0, digits).padEnd(digits, "0")}`
+      : whole;
+  };
+  const date = (input, required = false) => {
+    if (input == null && !required) return null;
+    if (
+      typeof input !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(input) ||
+      !Number.isFinite(Date.parse(input)) ||
+      new Date(input).toISOString().slice(0, 19) !== input.slice(0, 19)
+    )
+      throw fail("Invoice date is unavailable.", 502);
+    return new Date(input).toISOString();
+  };
+  const invoiceNumber =
+    value.invoiceNumber == null ? null : value.invoiceNumber;
+  if (
+    invoiceNumber !== null &&
+    (typeof invoiceNumber !== "string" ||
+      !invoiceNumber.trim() ||
+      invoiceNumber.length > 128 ||
+      [...invoiceNumber].some(
+        (char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127,
+      ))
+  )
+    throw fail("Invoice number is unavailable.", 502);
+  let merchantUrl = null;
+  if (
+    typeof value.hostedInvoiceUrl === "string" &&
+    value.hostedInvoiceUrl.length <= 4096
+  ) {
+    try {
+      const u = new URL(value.hostedInvoiceUrl);
+      if (
+        u.origin === "https://invoice.stripe.com" &&
+        u.pathname.startsWith("/i/") &&
+        !u.username &&
+        !u.password &&
+        !u.hash
+      )
+        merchantUrl = u.href;
+    } catch {}
+  }
+  let pdfUrl = null;
+  if (typeof value.invoicePdf === "string" && value.invoicePdf.length <= 4096) {
+    try {
+      const u = new URL(value.invoicePdf);
+      if (
+        u.origin === "https://pay.stripe.com" &&
+        /^\/invoice\/acct_[A-Za-z0-9]+\/[A-Za-z0-9_-]+\/pdf$/.test(
+          u.pathname,
+        ) &&
+        !u.username &&
+        !u.password &&
+        !u.hash
+      )
+        pdfUrl = u.href;
+    } catch {}
+  }
+  const amountDue = amount(value.amountDue),
+    amountPaid = amount(value.amountPaid);
+  // Only the supported paid USD auto-top-up receipt, bound to this invoice.
+  // Missing/malformed optional lines must not hide otherwise valid invoice facts.
+  let chargeBreakdown = null;
+  const breakdown = value.chargeBreakdown;
+  if (
+    value.invoiceType === "auto_top_up" &&
+    value.status === "paid" &&
+    currency === "USD" &&
+    breakdown &&
+    typeof breakdown === "object" &&
+    !Array.isArray(breakdown)
+  ) {
+    const keys = [
+      "creditedBaseUsd",
+      "affiliateMarkupUsd",
+      "platformFeeUsd",
+      "totalChargeUsd",
+    ];
+    const cents = keys.map((key) => {
+      const v = breakdown[key];
+      if (typeof v !== "string" || !/^(0|[1-9][0-9]{0,13})\.[0-9]{2}$/.test(v))
+        return null;
+      const n = BigInt(v.replace(".", ""));
+      return n <= BigInt(Number.MAX_SAFE_INTEGER) ? n : null;
+    });
+    if (
+      cents.every((n) => n !== null) &&
+      cents[0] + cents[1] + cents[2] === cents[3] &&
+      breakdown.totalChargeUsd === amountPaid &&
+      amountPaid === amountDue
+    ) {
+      chargeBreakdown = Object.fromEntries(
+        keys.map((key) => [key, breakdown[key]]),
+      );
+    }
+  }
+  return {
+    id,
+    invoiceNumber,
+    status: value.status,
+    currency,
+    amountDue,
+    amountPaid,
+    createdAt: date(value.createdAt, true),
+    dueDate: date(value.dueDate),
+    paidAt: date(value.paidAt),
+    merchantUrl,
+    pdfUrl,
+    chargeBreakdown,
+  };
+}
+
+const googleGrantId = (value) =>
+  typeof value === "string" && /^[A-Za-z0-9_-]{1,256}$/.test(value);
+const googleScopes = (value) =>
+  Array.isArray(value)
+    ? value.filter(
+        (scope) =>
+          typeof scope === "string" &&
+          /^(?:https:\/\/www\.googleapis\.com\/auth\/[a-z.]{1,64}|https:\/\/mail\.google\.com\/|openid|email|profile)$/.test(
+            scope,
+          ),
+      )
+    : [];
+// The Cloud Gmail search and read routes need one of these scopes.
+const gmailBodyRead = (scopes) =>
+  [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.modify",
+    "https://mail.google.com/",
+  ].some((scope) => scopes.includes(scope));
+/**
+ * Typed task-read failure. `code` is one fixed reason; no provider text.
+ * reauth_required: the Google connection must be reconnected.
+ * cloud_sign_in_required: Eliza Cloud refused the saved sign-in itself.
+ */
+const googleReadFailure = (code) =>
+  new NativeCloudServiceError(`Google task read failed (${code})`, {
+    status:
+      {
+        reauth_required: 401,
+        cloud_sign_in_required: 401,
+        insufficient_scope: 403,
+        account_changed: 409,
+        timeout: 504,
+      }[code] ?? 503,
+    code,
+  });
 const CHECKOUT_SESSION_ID = /^cs_(live|test)_[A-Za-z0-9]+$/;
 function send(res, status, value) {
   res.writeHead(status, {
@@ -332,6 +526,8 @@ export function createCloudRoutes({
   const attempts = new Map(),
     checkoutKeys = new Map();
   let generation = 0;
+  // Advanced by Gmail disconnect; fences task reads that started before it.
+  let googleGeneration = 0;
   let speechStreams;
   function advanceGeneration() {
     generation++;
@@ -343,6 +539,8 @@ export function createCloudRoutes({
     ? createNativeCloudAuth({
         fetchImpl,
         api,
+        // Google account linking stays off until the host enables it.
+        accountLinkReady: hostPolicy.accountLinkReady === true,
         pendingStore: pendingCredentialStore,
         readActive: async () => {
           await credentialWrites;
@@ -587,7 +785,11 @@ export function createCloudRoutes({
       }
       let method = req.method,
         requestInput;
-      if (path === "/gmail/status" || path === "/gmail/connect")
+      if (
+        path === "/gmail/status" ||
+        path === "/gmail/connect" ||
+        path === "/gmail/disconnect"
+      )
         path = "/cloud" + path;
       if (path === "/gmail/list" && method === "POST") {
         requestInput = await body(req);
@@ -609,6 +811,16 @@ export function createCloudRoutes({
         path = "/cloud/gmail/messages/" + requestInput.messageId;
         method = "GET";
       }
+      // The renderer names the connection it shows (from /gmail/status), so
+      // a list or read never falls back to another connected mailbox.
+      if (
+        requestInput?.grantId !== undefined &&
+        !googleGrantId(requestInput.grantId)
+      )
+        throw fail(message("invalidGoogleConnection"));
+      const grantQuery = requestInput?.grantId
+        ? `&grantId=${encodeURIComponent(requestInput.grantId)}`
+        : "";
       allowedQuery(
         url,
         path === "/cloud/login/status"
@@ -648,7 +860,22 @@ export function createCloudRoutes({
               interval: p.interval,
               ...(typeof p.allowance?.amountUsd === "string" &&
               /^\d+(\.\d+)?$/.test(p.allowance.amountUsd)
-                ? { allowance: { amountUsd: p.allowance.amountUsd } }
+                ? {
+                    allowance: {
+                      amountUsd: p.allowance.amountUsd,
+                      // The catalog's own terms: what the allowance pays for,
+                      // that it does not roll over, and when it ends.
+                      ...(p.allowance.fundingClass === "allowance_eligible"
+                        ? { fundingClass: p.allowance.fundingClass }
+                        : {}),
+                      ...(p.allowance.rollover === false
+                        ? { rollover: false }
+                        : {}),
+                      ...(p.allowance.expiresAt === "billing_period_end"
+                        ? { expiresAt: p.allowance.expiresAt }
+                        : {}),
+                    },
+                  }
                 : {}),
             })),
         });
@@ -1250,6 +1477,24 @@ export function createCloudRoutes({
       const key = await usableCredential();
       current(credentialEpoch);
       if (!key) throw fail(message("signInToElizaCloudFirst"), 401);
+      const invoiceDetail = path.match(
+        /^\/cloud\/account\/invoices\/([A-Za-z0-9_-]{1,128})$/,
+      );
+      if (method === "GET" && invoiceDetail) {
+        if (url.search)
+          throw fail("Invoice query parameters are not supported");
+        const id = invoiceDetail[1];
+        const value = await parse(
+          await request(`/api/invoices/${id}`, {
+            key,
+            signal,
+            authorityGeneration: credentialEpoch,
+          }),
+        );
+        current(credentialEpoch);
+        send(res, 200, { invoice: invoiceProjection(value.invoice, id) });
+        return true;
+      }
       if (method === "GET" && path === "/cloud/account/invoices") {
         const value = await parse(
           await request("/api/invoices/list", {
@@ -1419,6 +1664,15 @@ export function createCloudRoutes({
         const text = value.text ?? value.transcript;
         if (typeof text !== "string")
           throw fail(message("invalidTranscriptionResponse"), 502);
+        // The same host policy that screens typed text screens what was heard.
+        // A spoken secret never reaches the renderer's draft.
+        try {
+          requireNonSensitiveText(text);
+        } catch (error) {
+          if (error?.code !== "SENSITIVE_TEXT") throw error;
+          send(res, 200, { text: "", redacted: true });
+          return true;
+        }
         send(res, 200, { text });
         return true;
       }
@@ -1448,21 +1702,114 @@ export function createCloudRoutes({
           )
             ? value.identity.email
             : null;
+        const connected = value.connected === true;
         send(res, 200, {
-          connected: value.connected === true,
+          connected,
           configured: value.configured === true,
           reason,
           identity: email ? { email } : null,
+          // The connection the renderer shows; list, read and disconnect name it.
+          connectionId:
+            connected && googleGrantId(value.connectionId)
+              ? value.connectionId
+              : null,
           grantedCapabilities:
             Array.isArray(value.grantedCapabilities) &&
             value.grantedCapabilities.includes("google.gmail.triage")
               ? ["google.gmail.triage"]
               : [],
+          // A metadata-only grant still reports triage. Message reads need a
+          // body-read scope, so the app checks the scopes themselves.
+          grantedScopes: connected ? googleScopes(value.grantedScopes) : [],
+          canReadMessages:
+            connected && gmailBodyRead(googleScopes(value.grantedScopes)),
         });
+        return true;
+      }
+      if (method === "POST" && path === "/cloud/gmail/disconnect") {
+        const input = await body(req, 1024);
+        if (
+          Object.keys(input).some((field) => field !== "connectionId") ||
+          (input.connectionId !== undefined &&
+            !googleGrantId(input.connectionId))
+        )
+          throw fail(message("invalidGoogleConnection"));
+        // Fence task reads first. A read that started for this grant fails
+        // closed even when the remote removal fails.
+        googleGeneration++;
+        await parse(
+          await request("/api/v1/eliza/google/disconnect", {
+            method: "POST",
+            json: {
+              side: "owner",
+              ...(input.connectionId
+                ? { connectionId: input.connectionId }
+                : {}),
+            },
+            key,
+            signal,
+            authorityGeneration: credentialEpoch,
+          }),
+        );
+        googleGeneration++;
+        send(res, 200, { disconnected: true });
+        return true;
+      }
+      // One Google account at a time. After a new grant completes, the app
+      // names the connection it shows; every other owner connection is
+      // removed so task reads cannot use an older mailbox.
+      if (method === "POST" && path === "/cloud/gmail/disconnect-others") {
+        const input = await body(req, 1024);
+        if (
+          Object.keys(input).join(",") !== "connectionId" ||
+          !googleGrantId(input.connectionId)
+        )
+          throw fail(message("invalidGoogleConnection"));
+        const status = await parse(
+          await request("/api/v1/eliza/google/status?side=owner", {
+            key,
+            signal,
+            authorityGeneration: credentialEpoch,
+          }),
+        );
+        // Only the connection Cloud reports as current can be kept.
+        if (
+          status.connected !== true ||
+          status.connectionId !== input.connectionId
+        )
+          throw fail(message("invalidGoogleConnection"), 409);
+        const accounts = await parse(
+          await request("/api/v1/eliza/google/accounts?side=owner", {
+            key,
+            signal,
+            authorityGeneration: credentialEpoch,
+          }),
+        );
+        if (!Array.isArray(accounts))
+          throw fail(message("invalidCloudResponse"), 502);
+        const others = accounts
+          .map((account) => account?.connectionId)
+          .filter((id) => googleGrantId(id) && id !== input.connectionId);
+        // Fence task reads first, as for a single disconnect.
+        googleGeneration++;
+        for (const connectionId of new Set(others))
+          await parse(
+            await request("/api/v1/eliza/google/disconnect", {
+              method: "POST",
+              json: { side: "owner", connectionId },
+              key,
+              signal,
+              authorityGeneration: credentialEpoch,
+            }),
+          );
+        googleGeneration++;
+        send(res, 200, { disconnected: new Set(others).size });
         return true;
       }
       if (method === "POST" && path === "/cloud/gmail/connect") {
         await body(req);
+        // A new consent can replace the active connection.
+        googleGeneration++;
         const value = await parse(
           await request("/api/v1/eliza/google/connect/initiate", {
             method: "POST",
@@ -1492,7 +1839,7 @@ export function createCloudRoutes({
         if (query.length > 1000) throw fail(message("searchQueryTooLong"));
         const value = await parse(
           await request(
-            `/api/v1/eliza/google/gmail/search?side=owner&maxResults=${maxResults}&query=${encodeURIComponent(query)}`,
+            `/api/v1/eliza/google/gmail/search?side=owner&maxResults=${maxResults}&query=${encodeURIComponent(query)}${grantQuery}`,
             { key, signal, authorityGeneration: credentialEpoch },
           ),
         );
@@ -1510,7 +1857,7 @@ export function createCloudRoutes({
       if (method === "GET" && read) {
         const value = await parse(
           await request(
-            `/api/v1/eliza/google/gmail/read?side=owner&messageId=${encodeURIComponent(read[1])}`,
+            `/api/v1/eliza/google/gmail/read?side=owner&messageId=${encodeURIComponent(read[1])}${grantQuery}`,
             { key, signal, authorityGeneration: credentialEpoch },
           ),
         );
@@ -1538,12 +1885,21 @@ export function createCloudRoutes({
     const access = await accountAccess();
     if (access.state !== "active") throw hostPolicy.fundingError(access);
   };
-  // This port is never exposed as a renderer route. It shares login/logout epochs.
-  handleCloudRoute.googleForAccount = ({ actorId, accountId }) => {
+  // This port is never exposed as a renderer route. It shares login/logout
+  // epochs. Each read first checks that the owner's connected Google account
+  // is still the grant it reads, so a reconnect to another mailbox is noticed.
+  // Without `accountId`, the caller binds each task to the grant that
+  // `currentAccountId()` returned when the task started.
+  handleCloudRoute.googleForAccount = ({
+    actorId,
+    accountId,
+    timeoutMs = 20000,
+    retryDelaysMs = [250, 1000],
+  }) => {
     if (typeof credentialGate !== "function" || typeof actorId !== "string")
       throw fail(message("taskAccountBindingUnavailable"), 503);
     const epoch = generation;
-    const check = async () => {
+    const check = async (googleEpoch) => {
       await ready;
       current(epoch);
       await credentialWrites;
@@ -1551,41 +1907,121 @@ export function createCloudRoutes({
       if ((await credentialGate()) !== actorId)
         throw fail(message("taskAccountChanged"), 409);
       current(epoch);
+      if (googleEpoch !== googleGeneration)
+        throw googleReadFailure("account_changed");
     };
-    return createManagedGoogleReadPort({
-      accountId,
-      request: async (path, maxBytes) => {
-        await check();
-        const key = await usableCredential();
-        await check();
-        if (!key) throw fail(message("cloudAccountUnavailable"), 401);
-        const response = await request(path, {
-          key,
-          authorityGeneration: epoch,
-        });
-        if (!response.ok)
-          throw fail(
-            `Cloud request failed (HTTP ${response.status})`,
-            response.status,
-          );
-        const chunks = [];
-        let size = 0;
-        for await (const chunk of response.body) {
-          await check();
-          size += chunk.length;
-          if (size > maxBytes)
-            throw fail(message("cloudResponseTooLarge"), 502);
-          chunks.push(chunk);
-        }
-        await check();
-        let value;
+    // Every task read is a GET. Retry only a timeout, 429 or 5xx, a bounded
+    // number of times; never a refusal.
+    const readJson = async (path, maxBytes, googleEpoch) => {
+      for (let attempt = 0; ; attempt++) {
         try {
-          value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-        } catch {
-          throw fail(message("invalidCloudResponse"), 502);
+          await check(googleEpoch);
+          const key = await usableCredential();
+          await check(googleEpoch);
+          if (!key) throw googleReadFailure("cloud_sign_in_required");
+          const response = await request(path, {
+            key,
+            authorityGeneration: epoch,
+            signal: AbortSignal.timeout(timeoutMs),
+          });
+          if (!response.ok) {
+            void response.body?.cancel().catch(() => {});
+            // Cloud's own 401/403 rejects the Eliza Cloud sign-in, not Google.
+            if (response.status === 401 || response.status === 403)
+              throw googleReadFailure("cloud_sign_in_required");
+            // The Google connection no longer exists.
+            if (response.status === 404)
+              throw googleReadFailure("account_changed");
+            // Cloud's Google connector answers 409 when the Google token
+            // cannot be refreshed, the grant was revoked or it is
+            // metadata-only. The caller rechecks status to tell them apart.
+            if (response.status === 409)
+              throw Object.assign(googleReadFailure("reauth_required"), {
+                googleConflict: true,
+              });
+            throw Object.assign(googleReadFailure("unavailable"), {
+              retry: response.status === 429 || response.status >= 500,
+            });
+          }
+          const chunks = [];
+          let size = 0;
+          for await (const chunk of response.body) {
+            await check(googleEpoch);
+            size += chunk.length;
+            if (size > maxBytes)
+              throw fail(message("cloudResponseTooLarge"), 502);
+            chunks.push(chunk);
+          }
+          await check(googleEpoch);
+          try {
+            return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+          } catch {
+            throw fail(message("invalidCloudResponse"), 502);
+          }
+        } catch (error) {
+          const timedOut = error?.name === "TimeoutError";
+          if ((timedOut || error?.retry) && attempt < retryDelaysMs.length) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, retryDelaysMs[attempt]),
+            );
+            continue;
+          }
+          throw timedOut ? googleReadFailure("timeout") : error;
         }
-        return value;
+      }
+    };
+    const currentAccount = async (googleEpoch) => {
+      const status = await readJson(
+        "/api/v1/eliza/google/status?side=owner",
+        65536,
+        googleEpoch,
+      );
+      if (status?.connected !== true)
+        throw googleReadFailure(
+          ["needs_reauth", "token_missing"].includes(status?.reason)
+            ? "reauth_required"
+            : "account_changed",
+        );
+      if (!googleGrantId(status.connectionId))
+        throw googleReadFailure("unavailable");
+      if (!gmailBodyRead(googleScopes(status.grantedScopes)))
+        throw googleReadFailure("insufficient_scope");
+      const email = status.identity?.email;
+      return {
+        accountId: status.connectionId,
+        ...(typeof email === "string" &&
+        email.length <= 254 &&
+        /^[^\s@\p{Cc}\p{Cf}]+@[^\s@\p{Cc}\p{Cf}]+\.[^\s@\p{Cc}\p{Cf}]+$/u.test(
+          email,
+        )
+          ? { email }
+          : {}),
+      };
+    };
+    const currentAccountId = async (googleEpoch) =>
+      (await currentAccount(googleEpoch)).accountId;
+    const port = createManagedGoogleReadPort({
+      accountId,
+      request: async (path, maxBytes, grantId) => {
+        const googleEpoch = googleGeneration;
+        if ((await currentAccountId(googleEpoch)) !== grantId)
+          throw googleReadFailure("account_changed");
+        try {
+          return await readJson(path, maxBytes, googleEpoch);
+        } catch (error) {
+          if (!error?.googleConflict) throw error;
+          // Name the Google conflict from the connection's current status:
+          // gone or replaced, metadata-only, or a token that needs reconnect.
+          if ((await currentAccountId(googleEpoch)) !== grantId)
+            throw googleReadFailure("account_changed");
+          throw googleReadFailure("reauth_required");
+        }
       },
+    });
+    return Object.assign(port, {
+      currentAccountId: () => currentAccountId(googleGeneration),
+      /** The connected grant and, when Cloud reports it, its address. */
+      currentAccount: () => currentAccount(googleGeneration),
     });
   };
   handleCloudRoute.documentImagesForAccount = ({

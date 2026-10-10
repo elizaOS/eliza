@@ -9,6 +9,16 @@ Node-only integration. Enable the relevant Google APIs and configure `GOOGLE_CLI
 can be injected without starting OAuth. Keep account scopes and token isolation intact;
 Google Chat uses its separate service-account transport.
 
+## OAuth callback setup
+
+The connector callback path is `/api/connectors/google/oauth/callback`. Set
+`GOOGLE_REDIRECT_URI` to the exact URL served by the Eliza API at that path, then
+add that same URL to the Google OAuth client's authorized redirect URIs. The
+scheme, hostname, port, and path must match; for a public host, use HTTPS and
+route the callback path to the connector API. Plain HTTP callbacks are accepted
+only on loopback addresses. A mismatch in host, port, or path prevents account
+authorization from completing.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

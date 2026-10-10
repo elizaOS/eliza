@@ -5,14 +5,17 @@
  * it pulls together components, memory, model, and database types into the single
  * object the whole framework passes around.
  */
+
 import type { ReportedError } from "../errors";
 import type { Logger } from "../logger";
 import type { FetchLike } from "../media/fetch";
 import type { ConnectorInteractionCapabilityProfile } from "../messaging/interaction-profiles";
 import type { ContextRegistry } from "../runtime/context-registry";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
-import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
-import type { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
+import type {
+	ResponseHandlerFieldEvaluator,
+	ResponseHandlerFieldRegistry,
+} from "../runtime/response-handler-fields";
 import type { RoomHandlerQueue } from "../runtime/room-handler-queue";
 import type { TurnControllerRegistry } from "../runtime/turn-controller";
 import type { Agent, Character } from "./agent";
@@ -653,7 +656,34 @@ type RuntimeDatabaseAdapterSurface = Omit<
 	| "patchTaskMetadata"
 >;
 
+/** Owner-private diagnostic projection from the canonical executor, never model proposals. */
+export interface OwnerToolExecutionObservation {
+	phase: "gate" | "started" | "settled" | "omitted";
+	gate:
+		| "lookup"
+		| "role-context"
+		| "disclosure"
+		| "schema"
+		| "action-validation"
+		| "connector-account"
+		| "execution";
+	gateOutcome: "passed" | "denied" | "failed" | "executed" | "unknown";
+	actionName: string;
+	executionId?: string;
+	toolCallId?: string;
+	args?: unknown;
+	result?: unknown;
+	redactedFields: number;
+	redactedStrings: number;
+	omittedFields: number;
+}
 export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
+	/** Positively attests the canonical executor observation contract. Absent on older Core. */
+	readonly ownerToolExecutionObserverVersion?: 1;
+	/** Server-installed owner capture only. Synchronous, immutable, isolated and default absent. */
+	ownerToolExecutionObserver?: (
+		observation: Readonly<OwnerToolExecutionObservation>,
+	) => void;
 	// Properties
 	/** Database adapter. Set in constructor; required. */
 	adapter: IDatabaseAdapter;
@@ -689,7 +719,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 * schema, instructs the LLM to populate them in ONE call, then
 	 * dispatches each parsed slice to its owner's handler.
 	 *
-	 * See `runtime/response-handler-field-evaluator.ts` for the contract.
+	 * See `runtime/response-handler-fields.ts` for the contract.
 	 */
 	responseHandlerFieldEvaluators: ResponseHandlerFieldEvaluator[];
 	/**
@@ -1111,7 +1141,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	structuredPromptExecutor?: IAgentRuntime["dynamicPromptExecFromState"];
 	/** Record generic model/provider trace data for later enrichment. */
 	recordPromptTrace(
-		trace: import("./prompt-optimization-trace").ExecutionTrace,
+		trace: import("../prompt-optimization").ExecutionTrace,
 	): void;
 	purgePromptTraces(): void;
 
@@ -1164,18 +1194,18 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 */
 	enrichTrace(
 		runId: string,
-		signal: import("./prompt-optimization-trace").ScoreSignal,
+		signal: import("../prompt-optimization").ScoreSignal,
 	): void;
 
 	/** Retrieve the most recent in-flight optimization trace for a runId. */
 	getActiveTrace(
 		runId: string,
-	): import("./prompt-optimization-trace").ExecutionTrace | undefined;
+	): import("../prompt-optimization").ExecutionTrace | undefined;
 
 	/** Retrieve all in-flight optimization traces for a runId (multiple DPE calls per run). */
 	getActiveTracesForRun?(
 		runId: string,
-	): import("./prompt-optimization-trace").ExecutionTrace[];
+	): import("../prompt-optimization").ExecutionTrace[];
 
 	/** Remove all in-flight optimization traces for a runId after finalization. */
 	deleteActiveTrace(runId: string): void;
@@ -1189,12 +1219,12 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 */
 	registerPromptOptimizationHooks(
 		hooks:
-			| import("./prompt-optimization-hooks").PromptOptimizationRuntimeHooks
+			| import("../prompt-optimization").PromptOptimizationRuntimeHooks
 			| null,
 	): void;
 
 	getPromptOptimizationHooks():
-		| import("./prompt-optimization-hooks").PromptOptimizationRuntimeHooks
+		| import("../prompt-optimization").PromptOptimizationRuntimeHooks
 		| null;
 
 	/** Resolved `OPTIMIZATION_DIR` (see `getOptimizationRootDir`). */

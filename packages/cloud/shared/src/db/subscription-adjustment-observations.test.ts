@@ -61,6 +61,10 @@ beforeAll(async () => {
   const migration = migrations[index]!;
   expect(migration.entry.idx).toBe(migrations[index - 1]!.entry.idx + 1);
   for (const statement of migration.statements) await db.exec(statement);
+  const claims = migrations[index + 1]!;
+  expect(claims.entry.tag).toBe("0529_subscription_adjustment_recovery");
+  expect(claims.entry.idx).toBe(migration.entry.idx + 1);
+  for (const statement of claims.statements) await db.exec(statement);
 }, 30000);
 afterAll(() => db.close());
 async function insert({
@@ -158,4 +162,51 @@ test("organization fences and backwards observation times deny appends", async (
   expect(
     (await db.query("SELECT count(*)::int AS count FROM subscription_allowance_transactions")).rows,
   ).toEqual([{ count: 1 }]);
+});
+
+test("attempt identity, terminal receipts and null completion timestamps cannot be rewritten", async () => {
+  const id = randomUUID(),
+    token = randomUUID();
+  await db.query(
+    "INSERT INTO subscription_adjustment_scans(grant_id,organization_id,generation) VALUES($1,$2,1)",
+    [grant, org],
+  );
+  await db.query(
+    "INSERT INTO subscription_adjustment_attempts(id,grant_id,organization_id,generation,lease_token,original_digest,started_at,expires_at) VALUES($1,$2,$3,1,$4,$5,clock_timestamp(),clock_timestamp()+interval '1 minute')",
+    [id, grant, org, token, digest],
+  );
+  await expect(
+    db.query("UPDATE subscription_adjustment_attempts SET lease_token=$1 WHERE id=$2", [
+      randomUUID(),
+      id,
+    ]),
+  ).rejects.toThrow();
+  await expect(
+    db.query(
+      "UPDATE subscription_adjustment_attempts SET disposition='failed',reason='provider_unavailable' WHERE id=$1",
+      [id],
+    ),
+  ).rejects.toThrow();
+  await expect(
+    db.query(
+      "UPDATE subscription_adjustment_attempts SET disposition='recorded',observation_id=$1,completed_at=clock_timestamp() WHERE id=$2",
+      [first, id],
+    ),
+  ).rejects.toThrow();
+  await db.query(
+    "UPDATE subscription_adjustment_attempts SET disposition='failed',reason='provider_unavailable',completed_at=clock_timestamp() WHERE id=$1",
+    [id],
+  );
+  await expect(
+    db.query("UPDATE subscription_adjustment_attempts SET reason='changed' WHERE id=$1", [id]),
+  ).rejects.toThrow();
+  await expect(
+    db.query("DELETE FROM subscription_adjustment_attempts WHERE id=$1", [id]),
+  ).rejects.toThrow();
+  await expect(
+    db.query(
+      "INSERT INTO subscription_adjustment_attempts(grant_id,organization_id,generation,lease_token,original_digest,started_at,expires_at) VALUES($1,$2,2,$3,$4,clock_timestamp(),clock_timestamp()+interval '1 minute')",
+      [grant, foreign, randomUUID(), digest],
+    ),
+  ).rejects.toThrow();
 });

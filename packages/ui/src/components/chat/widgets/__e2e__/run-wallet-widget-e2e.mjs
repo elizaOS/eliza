@@ -102,7 +102,7 @@ await writeFile(navigationStub, `export function shouldUseHashNavigation() { ret
 // resolve it straight to the self-contained shared source module instead.
 const registryHostSource = join(here, "../../../../registry-host.ts");
 const sharedOverlayRegistrySource = join(here, "../../../../apps/overlay-app-registry.ts");
-const sharedAppsContractSource = join(here, "../../../../../../core/src/contracts/apps.ts");
+const sharedAppsContractSource = join(here, "../../../../../../core/src/catalog/apps.ts");
 const stubModules = {
     name: "stub-wallet-deps",
     setup(b) {

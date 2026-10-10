@@ -18,7 +18,7 @@
     "outDir": "./dist",
     "rootDir": "../..",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["node", "bun-types"],
+    "types": ["node", "bun-types", "vite/client"],
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "allowImportingTsExtensions": true,

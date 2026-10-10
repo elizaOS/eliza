@@ -3,6 +3,7 @@ import {
   type Action,
   ChannelType,
   type ContextEvent,
+  type ContextObject,
   conversationClientUserMemoryId,
   type IAgentRuntime,
   type Memory,
@@ -12,6 +13,7 @@ import {
 import { expect, it } from "vitest";
 import { appendPriorDialogueEvents } from "./dialogue-context";
 import { historicalReceiptGroups } from "./navigation-history";
+import { renderMessageHandlerModelInput } from "./stage1-input";
 
 const read = normalizeEffectReceipt({
   receiptId: "read-1",
@@ -189,17 +191,91 @@ it("accepts persisted JSON object-key reordering but rejects extra fields, dupli
     expect(historicalReceiptGroups([input], [owner]).observations).toEqual([]);
 });
 
-it("retains the observation declaration after a real JSONB storage roundtrip", async () => {
+it("retains observation admission and complete ordered mutation receipts after JSONB storage and model rendering", async () => {
   const database = new PGlite();
   try {
     await database.exec(
-      "CREATE TABLE observation_audit (result jsonb NOT NULL)",
+      "CREATE TABLE observation_audit (position integer, result jsonb NOT NULL)",
     );
-    await database.query("INSERT INTO observation_audit VALUES ($1::jsonb)", [
-      JSON.stringify(result()),
-    ]);
+    const mutations = [
+      {
+        outcome: "applied",
+        commit: {
+          kind: "durable",
+          id: "local-commit",
+          committedAt: read.observedAt,
+        },
+      },
+      {
+        outcome: "applied",
+        commit: {
+          kind: "provider_accepted",
+          id: "accepted-commit",
+          committedAt: read.observedAt,
+        },
+      },
+      {
+        outcome: "noop",
+        reason: "Verified earlier commit",
+        idempotency: { key: "earlier-operation", replayed: true },
+      },
+      {
+        outcome: "failed",
+        failure: { code: "REJECTED", retryable: false, acceptance: "rejected" },
+      },
+      {
+        outcome: "failed",
+        failure: { code: "TIMEOUT", retryable: true, acceptance: "unknown" },
+      },
+      {
+        outcome: "rolled_back",
+        rollback: {
+          receiptId: "compensation",
+          revertedReceiptIds: ["mutation-0", "mutation-1"],
+          rolledBackAt: read.observedAt,
+        },
+      },
+      { outcome: "preview" },
+    ];
+    const inputs = [
+      result(),
+      ...Array.from({ length: 28 }, (_, index) => {
+        const variant = mutations[index % mutations.length];
+        const receipt = normalizeEffectReceipt({
+          ...read,
+          receiptId: `mutation-${index}`,
+          operation: "calendar.event.create",
+          resource: {
+            kind: "calendar.event",
+            id: `event-${index}`,
+            ...(index % 2 ? { version: "v2" } : {}),
+          },
+          artifacts:
+            index % 2
+              ? [
+                  {
+                    kind: "calendar.child",
+                    id: `child-${index}`,
+                    version: "v1",
+                  },
+                ]
+              : [],
+          ...variant,
+        });
+        return result(receipt, {
+          success: receipt.outcome !== "failed",
+          // Mixed observation and mutation results retain their separate lanes.
+          effectReceipts: index === 0 ? [read, receipt] : [receipt],
+        });
+      }),
+    ];
+    for (const [position, input] of inputs.entries())
+      await database.query(
+        "INSERT INTO observation_audit VALUES ($1, $2::jsonb)",
+        [position, JSON.stringify(input)],
+      );
     const stored = await database.query<{ result: Record<string, unknown> }>(
-      "SELECT result FROM observation_audit",
+      "SELECT result FROM observation_audit ORDER BY position",
     );
     const grouped = historicalReceiptGroups(
       stored.rows.map((row) => row.result),
@@ -207,8 +283,199 @@ it("retains the observation declaration after a real JSONB storage roundtrip", a
     );
     expect(grouped.observations).toEqual([
       { actionName: owner.name, success: true, receipt: read },
+      { actionName: owner.name, success: true, receipt: read },
     ]);
-    expect(grouped.effects).toEqual([]);
+    expect(grouped.effects).toHaveLength(28);
+    const scope = "agent:room:owner";
+    const originals = stored.rows.map(({ result: actionResult }, index) => {
+      const clientMessageId = `stored-${index}`;
+      const id = conversationClientUserMemoryId(scope, clientMessageId);
+      return {
+        id,
+        agentId: "agent",
+        roomId: "room",
+        entityId: "owner",
+        createdAt: index,
+        content: {
+          text: `Original request ${index}.`,
+          source: "client_chat",
+          channelType: ChannelType.DM,
+          chatIdempotency: {
+            version: 1,
+            scope,
+            clientMessageId,
+            fingerprint: "a".repeat(64),
+            outcomeJson: JSON.stringify({
+              userMessageId: id,
+              actionResults: [actionResult],
+            }),
+          },
+        },
+      } as Memory;
+    });
+    const before = structuredClone(originals);
+    const events: ContextEvent[] = [];
+    appendPriorDialogueEvents(
+      events,
+      { agentId: "agent", actions: [owner] } as IAgentRuntime,
+      {
+        data: {
+          providers: {
+            RECENT_MESSAGES: { data: { recentMessages: originals } },
+          },
+        },
+      } as State,
+      {
+        id: "current",
+        agentId: "agent",
+        roomId: "room",
+        entityId: "owner",
+        content: { text: "What happened to the original requests?" },
+      } as Memory,
+    );
+    const context: ContextObject = { id: "stored-receipts", events };
+    // These opaque/future shapes exercise the existing rendering boundary,
+    // not admission of malformed records as normalized effect receipts.
+    for (const shape of [
+      "stored",
+      "future-child",
+      "opaque-child",
+      "future-top",
+      "malformed",
+    ]) {
+      const wireContext = structuredClone(context);
+      for (const event of wireContext.events) {
+        if (
+          event.type !== "segment" ||
+          event.segment.label !== "runtime:historical_effects"
+        )
+          continue;
+        const record = JSON.parse(event.segment.content);
+        for (const outcome of record.outcomes) {
+          if (shape === "future-child")
+            outcome.receipt.resource = {
+              ...outcome.receipt.resource,
+              futureField: null,
+              opaqueArray: ["Ω", null, {}],
+              emptyObject: {},
+            };
+          if (shape === "opaque-child") {
+            outcome.receipt.resource = {};
+            outcome.receipt.idempotency = null;
+            if ("commit" in outcome.receipt) outcome.receipt.commit = [];
+          }
+          if (shape === "future-top")
+            outcome.receipt.futureField = {
+              original: "  Ω  ",
+              values: [null, [], {}],
+            };
+          if (shape === "malformed")
+            outcome.receipt = "Opaque malformed receipt — unchanged";
+        }
+        event.segment.content = JSON.stringify(record);
+      }
+      const canonical = wireContext.events.flatMap((event) =>
+        event.type === "segment" &&
+        event.segment.label === "runtime:historical_effects"
+          ? [JSON.parse(event.segment.content)]
+          : [],
+      );
+      const contextBefore = structuredClone(wireContext);
+      for (const directMessage of [true, false]) {
+        const rendered = renderMessageHandlerModelInput(
+          { character: { name: "Eliza" } },
+          wireContext,
+          [],
+          { directMessage },
+        );
+        const legends = new Map();
+        const decoded = [];
+        let sawNestedShape = false;
+        for (const segment of rendered.promptSegments) {
+          if (!segment.label?.startsWith("runtime:historical_")) continue;
+          const body = JSON.parse(segment.content.trim());
+          if (segment.label === "runtime:historical_receipt_encoding") {
+            legends.set(body.id, { ...body, decodedReceipts: [] });
+            continue;
+          }
+          if (!segment.label.startsWith("runtime:historical_effects")) continue;
+          if (!Array.isArray(body) && !body.rows) {
+            decoded.push(body);
+            continue;
+          }
+          const table = Array.isArray(body)
+            ? legends.get(body[0])
+            : { ...body, decodedReceipts: [] };
+          expect(table).toBeDefined();
+          expect(table.columns).toEqual(["requestSourceEventId", "outcomes"]);
+          const rows = Array.isArray(body) ? [body[1]] : body.rows;
+          for (const [requestSourceEventId, outcomes] of rows) {
+            const completeOutcomes = outcomes.map((columns: unknown[]) =>
+              Object.fromEntries(
+                table.receiptColumns.map((column: string, index: number) => {
+                  let value = columns[index];
+                  if (column === "receipt" && table.receiptShapes) {
+                    const encoded = value as unknown[];
+                    if (encoded.length === 1) {
+                      value = table.decodedReceipts[Number(encoded[0])];
+                    } else {
+                      const shape = table.receiptShapes[Number(encoded[0])];
+                      const values = encoded[1] as unknown[];
+                      value = Object.fromEntries(
+                        shape.map(
+                          (
+                            field: string | [string, string[]],
+                            fieldIndex: number,
+                          ) => {
+                            if (typeof field === "string")
+                              return [field, values[fieldIndex]];
+                            sawNestedShape = true;
+                            expect([
+                              "resource",
+                              "idempotency",
+                              "commit",
+                              "failure",
+                              "rollback",
+                            ]).toContain(field[0]);
+                            const childValues = values[fieldIndex] as unknown[];
+                            expect(childValues).toHaveLength(field[1].length);
+                            return [
+                              field[0],
+                              Object.fromEntries(
+                                field[1].map((key, childIndex) => [
+                                  key,
+                                  childValues[childIndex],
+                                ]),
+                              ),
+                            ];
+                          },
+                        ),
+                      );
+                    }
+                    table.decodedReceipts.push(value);
+                  }
+                  return [column, value];
+                }),
+              ),
+            );
+            decoded.push({
+              requestSourceEventId,
+              scope: table.scope,
+              outcomes: completeOutcomes,
+            });
+          }
+        }
+        if (shape === "stored" || shape === "future-child")
+          expect(sawNestedShape).toBe(true);
+        if (shape === "future-top" || shape === "malformed")
+          expect(sawNestedShape).toBe(false);
+        // JSON equality additionally proves original ordered object keys, arrays,
+        // null idempotency keys, empty artifacts and every source/occurrence.
+        expect(JSON.stringify(decoded)).toBe(JSON.stringify(canonical));
+        expect(wireContext).toEqual(contextBefore);
+      }
+    }
+    expect(originals).toEqual(before);
   } finally {
     await database.close();
   }

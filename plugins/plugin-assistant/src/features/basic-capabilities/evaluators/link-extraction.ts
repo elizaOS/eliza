@@ -28,11 +28,11 @@ import {
 } from "@elizaos/core";
 import { v4 } from "uuid";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
+import { extractUrls } from "../../../utils/extract-urls.ts";
 
 const EVALUATOR_NAME = "linkExtraction";
 const EVALUATOR_SOURCE = "link_extraction_evaluator";
 const MEMORY_TABLE = "links";
-const URL_REGEX = /https?:\/\/[^\s<>"'`)]+/gi;
 const SUMMARY_FETCH_TIMEOUT_MS = 5_000;
 
 interface LinkRecord {
@@ -72,42 +72,8 @@ function getMessageSource(message: Memory): string {
   return typeof source === "string" && source.length > 0 ? source : "unknown";
 }
 
-function extractUrls(text: string): string[] {
-  const matches = text.match(URL_REGEX);
-  if (!matches) {
-    return [];
-  }
-  const seen = new Set<string>();
-  const urls: string[] = [];
-  for (const raw of matches) {
-    const trimmed = stripTrailingPunctuation(raw);
-    if (!trimmed) {
-      continue;
-    }
-    if (seen.has(trimmed)) {
-      continue;
-    }
-    seen.add(trimmed);
-    urls.push(trimmed);
-  }
-  return urls;
-}
-
-function stripTrailingPunctuation(url: string): string {
-  let result = url;
-  while (result.length > 0 && /[.,;:!?\])}>]/.test(result.slice(-1))) {
-    result = result.slice(0, -1);
-  }
-  return result;
-}
-
 function hasUrl(message: Memory): boolean {
-  const text = getMessageText(message);
-  if (!text) {
-    return false;
-  }
-  URL_REGEX.lastIndex = 0;
-  return URL_REGEX.test(text);
+  return extractUrls(getMessageText(message)).length > 0;
 }
 
 function extractTitle(html: string): string {
@@ -115,11 +81,31 @@ function extractTitle(html: string): string {
   if (titleMatch?.[1]) {
     return decodeHtmlEntities(titleMatch[1]).replace(/\s+/g, " ").trim();
   }
-  const ogMatch = html.match(
-    /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i,
-  );
-  if (ogMatch?.[1]) {
-    return decodeHtmlEntities(ogMatch[1]).trim();
+  // HTML attributes are unordered. Requiring property before content drops
+  // <meta content="Hello World" property="og:title"> and stores an empty title.
+  const ogTitle = extractOpenGraphTitle(html);
+  if (ogTitle) {
+    return decodeHtmlEntities(ogTitle).trim();
+  }
+  return "";
+}
+
+function extractOpenGraphTitle(html: string): string {
+  for (const match of html.matchAll(
+    /<meta(?=[\s/>])(?:"[^"]*"|'[^']*'|[^'">])*>/gi,
+  )) {
+    let property: string | undefined;
+    let content: string | undefined;
+    // Consume complete quoted values so title text cannot masquerade as an attribute.
+    for (const attribute of match[0].matchAll(
+      /\s([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g,
+    )) {
+      const name = attribute[1].toLowerCase();
+      const value = attribute[2] ?? attribute[3] ?? attribute[4];
+      if (name === "property") property ??= value;
+      if (name === "content") content ??= value;
+    }
+    if (property?.toLowerCase() === "og:title" && content) return content;
   }
   return "";
 }

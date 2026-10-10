@@ -1,4 +1,8 @@
-import { type EffectReceipt, normalizeEffectReceipt } from "@elizaos/core";
+import {
+  type EffectReceipt,
+  normalizeEffectReceipt,
+  type PlannerToolResult,
+} from "@elizaos/core";
 import type { ApprovalEnqueueResult } from "../approval/types.ts";
 import { type DeviceOperation, validateDevicePayload } from "./contract.ts";
 
@@ -138,7 +142,9 @@ function deviceOperationIsRead(type: DeviceOperation["type"]): boolean {
   switch (type) {
     case "maps_read_selected":
     case "notes_read_selected":
+    case "notes_query":
     case "reminder_read_selected":
+    case "calendar_read_next":
     case "calendar_read_selected":
     case "read_selected_notes":
     case "read_calendar_range":
@@ -149,10 +155,12 @@ function deviceOperationIsRead(type: DeviceOperation["type"]): boolean {
     case "reminder_complete":
     case "reminder_snooze":
     case "reminder_cancel":
+    case "calendar_create_local":
     case "calendar_create":
     case "calendar_update":
     case "calendar_delete":
     case "clock_handoff":
+    case "clock_alarm":
     case "create_note":
     case "create_reminder":
     case "reminder_create":
@@ -165,5 +173,39 @@ function deviceOperationIsRead(type: DeviceOperation["type"]): boolean {
       const unreachable: never = type;
       throw new Error("Unclassified device operation: " + unreachable);
     }
+  }
+}
+
+/** A durable proposal is a user-input barrier, never proof of its requested effect. */
+export const DEVICE_APPROVAL_REVIEW_TEXT =
+  "Review this request on your phone before it can run.";
+export function isPersistedDeviceApprovalPause(
+  result: PlannerToolResult | undefined,
+): boolean {
+  const data = result?.data;
+  if (
+    result?.success !== true ||
+    data?.state !== "pending" ||
+    data.executed !== false ||
+    data.awaitingUserInput !== true ||
+    data.approvalRequired !== true ||
+    typeof data.proposalId !== "string"
+  )
+    return false;
+  try {
+    const receipt = normalizeEffectReceipt(data.approvalPersistence);
+    if (
+      receipt.operation !== "device.approval.create" ||
+      receipt.receiptId !== data.proposalId ||
+      receipt.resource.kind !== "device.approval" ||
+      receipt.resource.id !== data.proposalId
+    )
+      return false;
+    return receipt.outcome === "applied"
+      ? receipt.commit?.kind === "durable" &&
+          receipt.commit.id === data.proposalId
+      : receipt.outcome === "noop" && receipt.idempotency.replayed === true;
+  } catch {
+    return false;
   }
 }

@@ -10,6 +10,8 @@
  * instead of dead turns.
  */
 import { ElizaError } from "../errors";
+import type { TokenUsage } from "../types/model";
+import { formatError } from "./errors.js";
 
 const TRANSIENT_MODEL_ERROR_PATTERNS = [
 	"service temporarily unavailable",
@@ -29,13 +31,9 @@ const TRANSIENT_MODEL_ERROR_PATTERNS = [
 	"504",
 ];
 
-export function getErrorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}
-
 export function isTransientModelError(error: unknown): boolean {
 	if (isModelFundingAuthorityError(error)) return false;
-	const message = getErrorMessage(error).toLowerCase();
+	const message = formatError(error).toLowerCase();
 	return TRANSIENT_MODEL_ERROR_PATTERNS.some((pattern) =>
 		message.includes(pattern),
 	);
@@ -87,27 +85,104 @@ export function isModelOutputLimitFinishReason(reason: unknown): boolean {
 	return OUTPUT_LIMIT_FINISH_REASONS.has(normalized);
 }
 
+/** Safe accounting evidence for a rejected model output. */
+export interface ModelOutputEvidence {
+	/** The gateway's wire reason need not be the underlying provider's reason. */
+	finishReasonSource?: "cloud-chat-completions";
+	emptyVisibleOutput?: boolean;
+	/** null records an omitted wire cap; undefined means it was not observed. */
+	maxTokens?: number | null;
+	usage?: Partial<TokenUsage>;
+	costUsd?: number;
+}
+
+/** Only terminal metadata and numeric accounting may cross this error boundary. */
+export function modelOutputIncompleteEvidence(error: unknown):
+	| (ModelOutputEvidence & {
+			provider?: string;
+			model?: string;
+			finishReason: string;
+	  })
+	| undefined {
+	for (const node of modelErrorChain(error)) {
+		const value = node as { code?: unknown; context?: Record<string, unknown> };
+		if (value.code !== "MODEL_OUTPUT_INCOMPLETE" || !value.context) continue;
+		const c = value.context;
+		if (
+			typeof c.finishReason !== "string" ||
+			!INCOMPLETE_FINISH_REASONS.has(
+				c.finishReason
+					.trim()
+					.toLowerCase()
+					.replace(/[^a-z0-9]+/g, "_"),
+			)
+		)
+			continue;
+		const usage: Partial<TokenUsage> = {};
+		if (c.usage && typeof c.usage === "object") {
+			for (const key of [
+				"promptTokens",
+				"completionTokens",
+				"totalTokens",
+				"cacheReadInputTokens",
+				"cacheCreationInputTokens",
+				"reasoningTokens",
+			] as const) {
+				const count = (c.usage as Record<string, unknown>)[key];
+				if (typeof count === "number" && Number.isFinite(count) && count >= 0)
+					usage[key] = count;
+			}
+		}
+		return {
+			finishReason: c.finishReason,
+			...(typeof c.emptyVisibleOutput === "boolean"
+				? { emptyVisibleOutput: c.emptyVisibleOutput }
+				: {}),
+			...(c.finishReasonSource === "cloud-chat-completions"
+				? { finishReasonSource: c.finishReasonSource }
+				: {}),
+			...(typeof c.provider === "string" ? { provider: c.provider } : {}),
+			...(typeof c.model === "string" ? { model: c.model } : {}),
+			...(c.maxTokens === null ||
+			(typeof c.maxTokens === "number" &&
+				Number.isFinite(c.maxTokens) &&
+				c.maxTokens > 0)
+				? { maxTokens: c.maxTokens }
+				: {}),
+			...(Object.keys(usage).length ? { usage } : {}),
+			...(typeof c.costUsd === "number" &&
+			Number.isFinite(c.costUsd) &&
+			c.costUsd >= 0
+				? { costUsd: c.costUsd }
+				: {}),
+		};
+	}
+	return undefined;
+}
+
 /** Reject partial model output instead of returning it as successful context. */
-export function assertModelOutputComplete(options: {
-	finishReason: unknown;
-	provider: string;
-	model?: string;
-}): void {
+export function assertModelOutputComplete(
+	options: {
+		finishReason: unknown;
+		provider: string;
+		model?: string;
+	} & ModelOutputEvidence,
+): void {
 	if (typeof options.finishReason !== "string") return;
 	const normalized = options.finishReason
 		.trim()
 		.toLowerCase()
 		.replace(/[^a-z0-9]+/g, "_");
 	if (!INCOMPLETE_FINISH_REASONS.has(normalized)) return;
+	const evidence = modelOutputIncompleteEvidence({
+		code: "MODEL_OUTPUT_INCOMPLETE",
+		context: options,
+	});
 	throw new ElizaError(
 		`[${options.provider}] Model output did not complete successfully (${String(options.finishReason)}).`,
 		{
 			code: "MODEL_OUTPUT_INCOMPLETE",
-			context: {
-				provider: options.provider,
-				...(options.model ? { model: options.model } : {}),
-				finishReason: options.finishReason,
-			},
+			context: { ...evidence },
 		},
 	);
 }

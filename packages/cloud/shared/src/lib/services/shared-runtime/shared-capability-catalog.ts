@@ -17,6 +17,7 @@ export interface SharedCapabilityFlags {
   reminders: boolean;
   todos: boolean;
   media: boolean;
+  googleContext?: boolean;
   transport?: AgentCapabilityTransport;
 }
 
@@ -269,29 +270,48 @@ export function buildSharedCapabilityCatalog(flags: SharedCapabilityFlags): Agen
       flags.media,
     ],
   ];
-  const personal = PERSONAL_CAPABILITIES.map<AgentCapabilityDescriptor>((definition) => ({
-    ...definition,
-    availability: "needs_workspace",
-    currentTier: "shared",
-    requiredTier: "personal",
-    transports: ALL_TRANSPORTS,
-    prerequisites: [
-      {
-        kind: "workspace",
-        id: "personal",
-        label: "Personal workspace",
-      },
-      ...(definition.connection
-        ? [
-            {
-              kind: "connection" as const,
-              id: definition.connection,
-              label: `Connect ${definition.connection}`,
-            },
-          ]
-        : []),
-    ],
-  }));
+  const personal = PERSONAL_CAPABILITIES.map<AgentCapabilityDescriptor>((definition) => {
+    if (flags.googleContext && (definition.id === "cloud-apps" || definition.id === "calendar")) {
+      return availableCapability(
+        {
+          ...definition,
+          label:
+            definition.id === "calendar"
+              ? "Google Calendar reads (owner permission required)"
+              : "Google connection and Gmail reads (owner permission required)",
+          examples:
+            definition.id === "calendar" ? ["Show my calendar"] : ["Connect Gmail", "Search Gmail"],
+          consequence: "read_only",
+          requiresConfirmation: false,
+          nextAction: "none",
+        },
+        transport,
+      );
+    }
+    return {
+      ...definition,
+      availability: "needs_workspace",
+      currentTier: "shared",
+      requiredTier: "personal",
+      transports: ALL_TRANSPORTS,
+      prerequisites: [
+        {
+          kind: "workspace",
+          id: "personal",
+          label: "Personal workspace",
+        },
+        ...(definition.connection
+          ? [
+              {
+                kind: "connection" as const,
+                id: definition.connection,
+                label: `Connect ${definition.connection}`,
+              },
+            ]
+          : []),
+      ],
+    };
+  });
   return {
     version: 1,
     tier: "shared",

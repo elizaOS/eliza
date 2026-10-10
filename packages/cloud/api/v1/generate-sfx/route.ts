@@ -13,7 +13,6 @@ import {
   jsonError,
 } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { getAudioProvider } from "@elizaos/cloud-shared/lib/providers/audio/registry";
-import type { GeneratedAudio } from "@elizaos/cloud-shared/lib/providers/audio/types";
 import {
   type BillingContext,
   billFlatUsage,
@@ -30,8 +29,7 @@ import { generationsService } from "@elizaos/cloud-shared/lib/services/generatio
 import {
   assertGeneratedMediaStorageHeadroom,
   discardGeneratedMediaObject,
-  putGeneratedMediaObject,
-  type StoredGeneratedMedia,
+  storeGeneratedAudio,
 } from "@elizaos/cloud-shared/lib/storage/generated-media-storage";
 import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
@@ -74,68 +72,6 @@ function providerConfigured(env: Bindings, provider: string): boolean {
     return Boolean(envString(env, "FAL_KEY") ?? envString(env, "FAL_API_KEY"));
   }
   return Boolean(envString(env, "ELEVENLABS_API_KEY"));
-}
-
-function extensionForContentType(contentType: string): string {
-  if (contentType.includes("wav")) return "wav";
-  if (contentType.includes("L16") || contentType.includes("pcm")) return "pcm";
-  if (contentType.includes("basic")) return "ulaw";
-  return "mp3";
-}
-
-interface StoredAudio {
-  url: string;
-  file_name?: string;
-  file_size?: number;
-  content_type?: string;
-}
-
-async function storeGeneratedSfx(
-  env: Bindings,
-  organizationId: string,
-  generated: GeneratedAudio,
-  keyPrefix: string,
-  customMetadata: Record<string, string>,
-): Promise<{ stored: StoredAudio; storage: StoredGeneratedMedia | null }> {
-  if (generated.source === "hosted") {
-    // Provider-hosted results never touch Cloud R2, so they use no storage.
-    return {
-      stored: {
-        url: generated.url,
-        file_name: generated.fileName,
-        file_size: generated.fileSize,
-        content_type: generated.contentType,
-      },
-      storage: null,
-    };
-  }
-
-  if (!env.BLOB) {
-    throw new Error("R2 storage is not configured");
-  }
-  const ext = extensionForContentType(generated.contentType);
-  const key = `${keyPrefix}/${crypto.randomUUID()}.${ext}`;
-  const body = generated.bytes.buffer.slice(
-    generated.bytes.byteOffset,
-    generated.bytes.byteOffset + generated.bytes.byteLength,
-  ) as ArrayBuffer;
-  // Byte results count toward the organization storage quota (#20956).
-  const storage = await putGeneratedMediaObject(env, {
-    organizationId,
-    key,
-    body,
-    contentType: generated.contentType,
-    customMetadata,
-  });
-  return {
-    stored: {
-      url: storage.url,
-      file_name: key.split("/").at(-1),
-      file_size: storage.sizeBytes,
-      content_type: generated.contentType,
-    },
-    storage,
-  };
 }
 
 app.post("/", async (c) => {
@@ -319,7 +255,7 @@ app.post("/", async (c) => {
       },
     });
 
-    const { stored: audio, storage } = await storeGeneratedSfx(
+    const { stored: audio, storage } = await storeGeneratedAudio(
       c.env,
       user.organization_id,
       generated,

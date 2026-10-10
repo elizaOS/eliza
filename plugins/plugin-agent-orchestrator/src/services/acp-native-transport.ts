@@ -843,10 +843,12 @@ export class NativeAcpClient {
     const content = await readFile(filePath, "utf8");
     const line = numberValue(params?.line);
     const limit = numberValue(params?.limit);
-    if (!line && !limit) return { content };
+    // An omitted line and limit is the whole file. An explicit limit, including
+    // 0, is a window — `!limit` treated 0 as "no window" and returned every line.
+    if (line === undefined && limit === undefined) return { content };
     const lines = content.split(/\r?\n/u);
     const start = Math.max((line ?? 1) - 1, 0);
-    const end = limit ? start + limit : undefined;
+    const end = limit === undefined ? undefined : start + Math.max(0, limit);
     return { content: lines.slice(start, end).join("\n") };
   }
 

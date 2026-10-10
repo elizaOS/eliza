@@ -70,6 +70,7 @@ const { strict: AUDIT_STRICT, needsWorkStrict: AUDIT_STRICT_NEEDS_WORK } =
 // un-contained overflow (WS5) blows past this comfortably.
 const HORIZONTAL_OVERFLOW_TOLERANCE_PX = 2;
 const FRAMED_PAGE_SLUGS = new Set([
+  "builtin-clock",
   "builtin-character",
   "builtin-character-skills",
   "builtin-database",
@@ -2119,7 +2120,6 @@ test.describe("all-views aesthetic audit (#8796)", () => {
     await page.setContent(`
       <section data-testid="home-screen">
         <h1>Mostly clear</h1>
-        <p>Learn conversational Spanish</p>
       </section>
       <div data-test-overlay>Ask Eliza</div>
     `);
@@ -2322,6 +2322,18 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         // contract that later judges screenshot OCR.
         const viewRoot = semanticRootForView(page, view.slug);
         await viewRoot.waitFor({ state: "visible", timeout: 15_000 });
+        if (view.slug === "builtin-chat") {
+          // Owner records stay in the fixture; Home no longer projects Today cards.
+          await expect(viewRoot.getByTestId("chat-widget-todos")).toHaveCount(
+            0,
+          );
+          await expect(
+            viewRoot.getByText("Learn conversational Spanish"),
+          ).toHaveCount(0);
+          await expect(
+            viewRoot.getByText("Submit the quarterly report"),
+          ).toHaveCount(0);
+        }
         if (view.slug === "builtin-tasks") {
           await expect(
             page.getByTestId("task-coordinator-panel"),

@@ -212,6 +212,7 @@ import {
   LazyCharacterEditor,
   LazyCharacterExperienceView,
   LazyCharacterSkillsView,
+  LazyClockView,
   LazyDatabasePageView,
   LazyDesktopWorkspaceSection,
   LazyFilesView,
@@ -1433,6 +1434,7 @@ function buildStaticTabRenderers(): Record<
         <LazyTasksPageView />
       </ShellViewAgentSurface>,
     ),
+    clock: wrapOverlayAware(<LazyClockView />),
     automations: wrapOverlayAware(<LazyAutomationsFeed />),
     plugins: wrap(<LazyPluginsPageView />),
     skills: wrap(<LazySkillsView />),

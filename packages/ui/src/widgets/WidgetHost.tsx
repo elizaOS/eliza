@@ -16,6 +16,7 @@ import {
   Component,
   type ErrorInfo,
   type ReactNode,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -31,7 +32,11 @@ import { useAppSelectorShallow } from "../state/app-store";
 import { useNotifications } from "../state/notifications/notification-store";
 import { useEnabledViewKinds } from "../state/useViewKinds";
 import { useHomeAttentionSignals } from "./home-attention-store";
-import { isHomeWidgetSunset, useHomeDismissals } from "./home-dismissal-store";
+import {
+  isHomeWidgetSunset,
+  recordHomeWidgetSeen,
+  useHomeDismissals,
+} from "./home-dismissal-store";
 import {
   type HomeWidgetSignal,
   homeSignalsFromEvents,
@@ -45,7 +50,7 @@ import {
   subscribeWidgetRegistry,
 } from "./registry";
 import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
-import { WIDGET_UI_ACTION_EVENT } from "./WidgetHost.constants";
+import { WIDGET_UI_ACTION_EVENT } from "./types";
 
 export interface WidgetUiActionEventDetail {
   pluginId: string;
@@ -357,6 +362,15 @@ export function WidgetHost({
     displayedRef.current = { key: orderKey, resolved, entries: ranked };
   }
   const displayed = displayedRef.current.entries;
+
+  useEffect(() => {
+    if (slot !== "home") return;
+    for (const { declaration } of displayed) {
+      if (typeof declaration.sunset?.afterSeen === "number") {
+        recordHomeWidgetSeen(homeWidgetKey(declaration));
+      }
+    }
+  }, [displayed, slot]);
 
   const pluginById = useMemo(() => {
     const map = new Map<string, (typeof plugins)[number]>();

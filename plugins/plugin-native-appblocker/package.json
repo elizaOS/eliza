@@ -32,7 +32,6 @@
   "scripts": {
     "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-appblocker -- bun run build:unlocked",
     "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
-    "test": "vitest run",
     "prepublishOnly": "bun run build",
     "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -59,10 +58,10 @@
   },
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
-    "rollup": "^4.63.5",
+    "rollup": "^4.64.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.3"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"

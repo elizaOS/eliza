@@ -125,7 +125,10 @@ const HTTP_TOKEN_PATTERN = "[!#$%&'*+\\-.^_`|~0-9A-Za-z]+";
 const HTTP_BWS_PATTERN = String.raw`[ \t]*`;
 const HTTP_QUOTED_STRING_PATTERN = String.raw`"(?:[\t\x20\x21\x23-\x5B\x5D-\x7E\x80-\xFF]|\\[\t\x20-\x7E\x80-\xFF])*"`;
 const HTTP_AUTH_PARAM_PATTERN = `${HTTP_TOKEN_PATTERN}${HTTP_BWS_PATTERN}=${HTTP_BWS_PATTERN}(?:${HTTP_TOKEN_PATTERN}|${HTTP_QUOTED_STRING_PATTERN})`;
-const HTTP_AUTH_PARAM_LIST_PATTERN = `(?:,${HTTP_BWS_PATTERN})*${HTTP_AUTH_PARAM_PATTERN}(?:${HTTP_BWS_PATTERN},${HTTP_BWS_PATTERN}(?:${HTTP_AUTH_PARAM_PATTERN})?)*`;
+// Each separator consumes its comma; each interior separator run must end in
+// a parameter. Whitespace between empty entries has only one parse, avoiding
+// exponential backtracking when a malformed remainder fails the boundary check.
+const HTTP_AUTH_PARAM_LIST_PATTERN = `(?:,${HTTP_BWS_PATTERN})*${HTTP_AUTH_PARAM_PATTERN}(?:(?:${HTTP_BWS_PATTERN},)+${HTTP_BWS_PATTERN}${HTTP_AUTH_PARAM_PATTERN})*(?:${HTTP_BWS_PATTERN},)*`;
 const HTTP_TOKEN68_PATTERN = String.raw`[A-Za-z0-9._~+/\-]+={0,}`;
 
 /**

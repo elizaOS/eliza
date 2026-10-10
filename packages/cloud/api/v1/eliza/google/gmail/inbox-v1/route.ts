@@ -1,4 +1,7 @@
-import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  requirePrivateOwnerAccess,
+  requireUserOrApiKeyWithOrg,
+} from "@elizaos/cloud-shared/auth";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   managedInboxProvider,
@@ -18,6 +21,7 @@ import { Hono } from "hono";
 const app = new Hono<AppEnv>();
 async function identity(context: AppContext) {
   const user = await requireUserOrApiKeyWithOrg(context);
+  await requirePrivateOwnerAccess(context, user);
   return { organizationId: user.organization_id, userId: user.id };
 }
 async function selected(context: AppContext) {

@@ -23,14 +23,16 @@ import {
 } from "./addressing.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
 
-/** Stage 1 owns interpretation and disclosure context; domain state and output grammars wait for planning. */
+/** Stage 1 owns interpretation, the current clock and disclosure context; domain state and output grammars wait for planning. */
 export const STAGE1_RESPONSE_STATE_PROVIDERS = [
   "RECENT_MESSAGES",
+  "CURRENT_TIME",
   "CHARACTER_GATE_NOTICE",
   "ENTITIES",
   "userPersonalityPreferences",
   "BOT_AWARENESS",
   "CHOICE",
+  "CurrentElizaOwnedAlarmSnapshot",
 ] as const;
 
 export const CORE_RESPONSE_STATE_PROVIDERS = [

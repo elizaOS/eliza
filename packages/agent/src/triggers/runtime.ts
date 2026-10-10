@@ -29,6 +29,7 @@ import type {
 } from "@elizaos/core";
 import {
   ElizaError,
+  formatError,
   inspectSendHandlerResult,
   MESSAGE_SOURCE_CLIENT_CHAT,
   MESSAGE_SOURCE_TRIGGER_PROMPT,
@@ -522,6 +523,9 @@ async function dispatchPrompt(
   // swallowed into the task service's generic "execution failed" wrapper.
   try {
     const room = await runtime.getRoom(roomId);
+    if (originRoomId && !room?.source?.trim()) {
+      throw new Error("Prompt automation delivery conversation is unavailable");
+    }
 
     // Forward the turn's replies to the origin room's connector. The reply
     // content is already model-voiced, so it is marked agentVoiced to skip
@@ -624,11 +628,11 @@ async function dispatchPrompt(
       releaseInternalActor();
     }
   } catch (err) {
-    const detail =
-      err instanceof Error
-        ? `${err.name}: ${err.message}${err.stack ? `\n${err.stack.split("\n").slice(1, 4).join("\n")}` : ""}`
-        : String(err);
-    return { ok: false, error: detail };
+    runtime.reportError("TriggerRuntime.promptDispatch", err, {
+      triggerId: trigger.triggerId,
+      roomId,
+    });
+    return { ok: false, error: formatError(err) };
   }
   return { ok: true };
 }

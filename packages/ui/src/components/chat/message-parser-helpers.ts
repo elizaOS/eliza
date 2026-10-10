@@ -22,7 +22,10 @@
  */
 
 import type { ConfigUiHint } from "@elizaos/contracts";
-import { stripAssistantStageDirections } from "@elizaos/core/protocol";
+import {
+  REASONING_TAG_NAMES,
+  stripAssistantStageDirections,
+} from "@elizaos/core/protocol";
 import type {
   JsonSchemaObject,
   ConfigUiPatchOp as PatchOp,
@@ -116,8 +119,13 @@ export const FENCED_CODE_RE = /```([^\n`]*)\n([\s\S]*?)```/g;
  */
 export const INLINE_CODE_RE = /`([^`\n]+)`/g;
 export const FORM_SUBMIT_DISPLAY_RE = /^\[form:submit\s+([^\]\s]+)\]/;
-export const HIDDEN_TAG_BLOCK_RE =
-  /<(think|analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi;
+const HIDDEN_TAG_NAMES = [...REASONING_TAG_NAMES, "tool_calls?", "tools?"].join(
+  "|",
+);
+export const HIDDEN_TAG_BLOCK_RE = new RegExp(
+  `<(${HIDDEN_TAG_NAMES})\\b[^>]*>[\\s\\S]*?(?:<\\/\\1>|$)`,
+  "gi",
+);
 /**
  * Strip trailing partial hidden tags at the end of a streaming text chunk.
  * During streaming, the buffer may end mid-tag (e.g. `"Hello<thi"`,
@@ -257,7 +265,7 @@ export function compilePatches(patches: PatchOp[]): UiSpec | null {
     root?: string;
     elements: Record<string, unknown>;
     state: Record<string, unknown>;
-  } = { elements: {}, state: createSafeRecord() };
+  } = { elements: createSafeRecord(), state: createSafeRecord() };
   for (const patch of patches) {
     if (patch.op !== "add" && patch.op !== "replace") continue;
     const { path, value } = patch as {
@@ -270,7 +278,12 @@ export function compilePatches(patches: PatchOp[]): UiSpec | null {
     if (parts[0] === "root" && parts.length === 1) {
       spec.root = value as string;
     } else if (parts[0] === "elements" && parts.length === 2) {
-      spec.elements[parts[1]] = value;
+      // Same hardening as the state branches below: a blocked id must not
+      // become a key (an id of "__proto__" would replace the container's
+      // prototype instead of creating an element), and the value is
+      // untrusted, so it goes through the sanitizer like state values do.
+      if (BLOCKED_IDS.has(parts[1])) continue;
+      spec.elements[parts[1]] = sanitizePatchValue(value);
     } else if (parts[0] === "state" && parts.length === 1) {
       const nextState = sanitizePatchValue(value);
       spec.state =

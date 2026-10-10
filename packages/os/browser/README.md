@@ -53,9 +53,21 @@ Run `bun run --cwd packages/os test:browser` for protocol tests.
 Installed-browser and signed Android native-host verification are separate required
 integration checks; a built extension alone does not prove those paths work.
 
-Run `ELIZA_BROWSER_EXECUTABLE=/absolute/test/chromium bun run --cwd packages/os
-test:browser:page` for real isolated-world DOM freshness tests. This uses a fresh
-test profile and local controlled page, not the installed native-message path.
+Run the isolated-world DOM freshness tests with a fresh profile and local
+controlled page. In Bash or Zsh, run:
+
+```sh
+ELIZA_BROWSER_EXECUTABLE=/absolute/test/chromium bun run --cwd packages/os test:browser:page
+```
+
+In PowerShell, set the executable and run the test separately:
+
+```powershell
+$env:ELIZA_BROWSER_EXECUTABLE = 'C:\absolute\test\chromium.exe'
+bun run --cwd packages/os test:browser:page
+```
+
+These tests do not exercise the installed native-message path.
 
 
 Owned Chromium component builds can preserve the extension ID without the old
@@ -130,15 +142,58 @@ input, target, binding and per-command expiry. Cancel/dismissal or stale context
 prevents dispatch. The brief tap marker represents dispatch, not verified success;
 normal readback still determines the outcome. Raw task-guide calls cannot request
 an action pointer. Cleanup uses the same acknowledged removal/recovery path.
-Product Pause/Close integration remains required before enabling it in a product.
-Run `ELIZA_BROWSER_EXECUTABLE=/absolute/test/chromium bun run --cwd packages/os
-test:browser:guidance` for actual Chromium renderer tests. These do not establish
-native-host, Android or pre-action pointer integration.
 
-Run `ELIZA_BROWSER_EXECUTABLE=/absolute/test/chromium bun run --cwd packages/os
-test:browser:task-guidance` for actual Chromium binding/removal checks. Socket
-framing is covered by the browser plugin tests; installed native transport and
-Android are separate acceptance gates.
+With the `task-guide-label` capability a guide may add a `detail` line and a
+`tone` (`instruction`, `active`, `offer`, `success`). Success is drawn only when
+the host sends it. An `offer` carries host answers: two or three value cards or
+one Yes, plus one decline button. Values exist only as text in the closed shadow
+tree, never in page attributes, events or logs. A trusted tap, after 800 ms of
+stable visibility, sends only the answer ID. The worker accepts it once, for the
+current show, binding, transport, document and per-show key, then sends a
+`task-guide-answer` event to the host. Any new guide, cancel, pause, rebind or
+disconnect ends the offer. `pause` removes the label and answers and leaves a
+grey, show-only "<name> · paused" cursor; it cancels a pending action and is
+owner-bound like removal. Hosts use `pause` for product Pause and `hide` for Close.
+The cursor travels from where it was last seen and hides before the ring and
+label appear. A show-only guide never plays a tap, because the person presses
+that control. An action cursor stays on its target, and the 800 ms readiness
+starts after it arrives. Reduced motion shows everything in place.
+The binding's optional `assistantName` (default "Eliza") names the cursor tag and
+label mark. A bound task action may carry the host's own preview sentence
+(`actionText`, at most 200 characters); otherwise the preview uses a generic line.
+A task policy never clicks a control whose name uses the `COMMIT_CONTROL`
+vocabulary in `src/commands.mjs` (pay, confirm, continue, schedule, sign in and
+similar). The person presses those controls. `guide-font.mjs` bundles Figtree 500/700 (`figtree-OFL.txt`). The
+overlay adds it from bytes under a random family name and falls back to the
+system font if a page face claims that name.
+Run the actual Chromium renderer guidance tests. In Bash or Zsh, run:
+
+```sh
+ELIZA_BROWSER_EXECUTABLE=/absolute/test/chromium bun run --cwd packages/os test:browser:guidance
+```
+
+In PowerShell, set the executable as above, then run:
+
+```powershell
+bun run --cwd packages/os test:browser:guidance
+```
+
+These do not establish native-host, Android or pre-action pointer integration.
+
+Run the actual Chromium binding/removal checks. In Bash or Zsh, run:
+
+```sh
+ELIZA_BROWSER_EXECUTABLE=/absolute/test/chromium bun run --cwd packages/os test:browser:task-guidance
+```
+
+In PowerShell, with `ELIZA_BROWSER_EXECUTABLE` set as above, run:
+
+```powershell
+bun run --cwd packages/os test:browser:task-guidance
+```
+
+Socket framing is covered by the browser plugin tests; installed native
+transport and Android are separate acceptance gates.
 
 Task snapshots now attach `manualActivity` from a value-free extension journal.
 The isolated main-frame listener records a form-submit attempt following recent
@@ -161,7 +216,18 @@ and a matching OTP input. It does not allow password fields or Verify/submit
 activation. Run `node --conditions=eliza-source
 packages/os/browser/scripts/test-protected-fill.mjs` for controlled Chromium
 field-policy and snapshot-redaction checks; native transport and provider
-qualification remain separate.
+qualification remain separate. The same script checks the task effect watch: a
+fill that makes a code field submit itself, and a button that calls
+`form.submit()`, are stopped and reported as `effectViolation`; a link click still
+opens its link. It also checks date fills (`YYYY-MM-DD`, real days only), the
+`expectedSelector` target check and the value-free `hasInput` field flag.
+
+Show-only guides scroll an off-screen target into view and report `placement`.
+Action guides never scroll. A trusted Dismiss sends only the guide ID; the
+extension keeps the step dismissed for that tab, task and epoch, also after a
+reload, until the host restores it. Snapshot references in `keepClear` name
+controls the label must not cover. Manual-activity events from a form with a
+password, code or user-name field carry `credential: true`.
 
 
 Android component generation accepts `--embed-host` only as an explicit build

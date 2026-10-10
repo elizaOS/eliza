@@ -13,7 +13,11 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import type { EmailLikeMessage } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
-import { extractBill } from "./bill-extraction.js";
+import {
+  extractAmountFromText,
+  extractBill,
+  extractDueDateFromText,
+} from "./bill-extraction.js";
 
 function runtimeWithModel(response: string): IAgentRuntime {
   return {
@@ -101,5 +105,76 @@ describe("extractBill merge merchant selection", () => {
     });
     const bill = await extractBill(runtimeWithModel(payload), message);
     expect(bill?.merchant).toBe("Unknown merchant");
+  });
+});
+
+describe("extractAmountFromText currency code", () => {
+  it("keeps an explicit CAD code when the amount uses a dollar sign", () => {
+    expect(extractAmountFromText("Amount due CAD $49.99")).toEqual({
+      amount: 49.99,
+      currency: "CAD",
+    });
+    expect(extractAmountFromText("Amount due $49.99 CAD")).toEqual({
+      amount: 49.99,
+      currency: "CAD",
+    });
+  });
+
+  it("still maps a bare dollar sign to USD", () => {
+    expect(extractAmountFromText("Amount due $49.95")).toEqual({
+      amount: 49.95,
+      currency: "USD",
+    });
+  });
+});
+
+describe("extractDueDateFromText ordinal day", () => {
+  const observedAt = new Date("2027-03-01T00:00:00.000Z");
+
+  it("keeps the written year when the day has an ordinal suffix", () => {
+    expect(
+      extractDueDateFromText("payment due April 15th, 2026", observedAt),
+    ).toBe("2026-04-15");
+  });
+
+  it("still reads a day that has no ordinal suffix", () => {
+    expect(
+      extractDueDateFromText("payment due April 15, 2026", observedAt),
+    ).toBe("2026-04-15");
+  });
+});
+
+describe("extractBill sender-domain fallback", () => {
+  it.each([
+    ["receipts@mail.stripe.com", "Stripe"],
+    ["billing@stripe.com", "Stripe"],
+    ["billing@mail.stripe.co.uk", "Stripe"],
+    ["billing@stripe.co.uk", "Stripe"],
+    ["billing@alice.github.io", "Alice.github.io"],
+    ["billing@bob.github.io", "Bob.github.io"],
+    ["billing@mail.alice.github.io", "Alice.github.io"],
+    ["billing@accounts.example.internal", "Accounts.example.internal"],
+  ])(
+    "keeps the correct sender fallback for %s",
+    async (fromEmail, merchant) => {
+      const message: EmailLikeMessage = {
+        id: `merchant-domain-${fromEmail}`,
+        fromEmail,
+        subject: "Invoice ready",
+        bodyText: "Amount $49.95 due 5/20/2026",
+      };
+      const bill = await extractBill(runtimeWithModel(netflixPayload), message);
+      expect(bill).toMatchObject({ merchant, amount: 49.95, currency: "USD" });
+    },
+  );
+
+  it("keeps the sender display name ahead of a hosting domain", async () => {
+    const bill = await extractBill(runtimeWithModel(netflixPayload), {
+      id: "merchant-hosted-display-name",
+      from: '"Alice Studio" <billing@mail.alice.github.io>',
+      fromEmail: "billing@mail.alice.github.io",
+      bodyText: "Amount $49.95 due 5/20/2026",
+    });
+    expect(bill?.merchant).toBe("Alice Studio");
   });
 });

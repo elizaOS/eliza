@@ -1,14 +1,40 @@
+> [!IMPORTANT]
+> **All [contribution rules](https://github.com/elizaOS/eliza/blob/develop/CONTRIBUTING.md) are required.**
+> Stay within the approved MVP and PRD. Prove a useful improvement. Prefer removal,
+> simpler code, and reuse. Do not submit unnecessary tests, defensive code,
+> validation, or truncation. Maintainers will close unnecessary work and apply
+> contributor penalties. Write in ASD-STE100 Simplified Technical English for a
+> non-technical reader. Every UI change needs an uploaded explainer and walkthrough
+> video, evidence that the changed flow works, and detailed steps to test it.
+
 # Relates to
 
-<!-- Link the issue or explain the problem. -->
+<!-- Link the issue, PRD section, and approved MVP plan item. For a new feature,
+link the human discussion, maintainer approval, and updates to both plans. -->
 
 # Change
 
-<!-- Describe the resulting behavior and any material risks. -->
+<!-- Explain the problem and resulting behavior in plain language. Show the
+failure before and success after, a relevant score gain with test conditions,
+or another demonstrated improvement to an approved capability. -->
+
+# Why this implementation
+
+<!-- Explain your research, the alternatives, and why this choice is best.
+Describe what you removed, simplified, combined, or reused. Explain why any new
+type or code is necessary. Keep the explanation proportional to the change. -->
 
 # Testing
 
-<!-- List commands and results. Include reproduction or review steps when needed. -->
+<!-- Give setup, commands, expected results, and actual results from the real
+end-to-end flow at this commit. Use existing tests first. Avoid new unit tests,
+mock-only proof, and tests that repeat the implementation. For documentation-only
+changes, report text and link checks. State failures and blockers honestly. -->
+
+## How to test
+
+<!-- Give the reviewer detailed steps, prerequisites, inputs, and expected
+results. This section is required for every UI change. -->
 
 - [ ] Targets `develop` and has no conflicts with the latest `origin/develop`.
 - [ ] Ran `bun install` and `bun run verify` after syncing; record blockers below.
@@ -22,7 +48,8 @@ sets the marker from the live PR head; rerun after each push.
 
 Keep every row. Attach artifacts inline or write `N/A - <reason>` where
 inapplicable. UI changes require desktop/mobile before-and-after screenshots,
-a walkthrough, logs, and OCR review. Use MP4 videos and preferably JPG images.
+an uploaded MP4 explainer and walkthrough, video proof of the changed flow,
+logs, and OCR review. Screenshots do not replace video. Use JPG images where possible.
 Keep generated artifacts out of source control.
 
 <!-- evidence-row:before-screenshots -->
@@ -32,8 +59,9 @@ Keep generated artifacts out of source control.
 - [ ] After full-page screenshots are attached for every affected UI surface
       (desktop and mobile), or marked `N/A - <reason>`.
 <!-- evidence-row:walkthrough-video -->
-- [ ] A video walkthrough of the complete user flow is attached, or marked
-      `N/A - <reason>`.
+- [ ] An MP4 explainer and walkthrough is uploaded to this PR and shows the
+      complete user flow and changed behavior working. Use `N/A - <reason>`
+      only when this PR has no UI change.
 <!-- evidence-row:backend-logs -->
 - [ ] Backend logs show the real code path firing end to end, or are marked
       `N/A - <reason>`.

@@ -152,16 +152,16 @@ test("wallet inventory exposes chain badges, rows, copy controls, and hide state
     sidebar.getByTestId("wallet-token-row-ethereum-native-usdc"),
   ).toHaveCount(0);
 
-  await expect
-    .poll(async () => {
-      const raw = await page.evaluate(() =>
-        window.localStorage.getItem("eliza:wallet:hidden-token-ids:v1"),
-      );
-      return raw ? JSON.parse(raw) : [];
-    })
-    .toContain("ethereum:native:usdc");
-
   await expect(
     await visibleByTestId(page, "wallet-copy-evm-address"),
   ).toBeEnabled();
+
+  await page.reload();
+  const restoredSidebar = await openWalletSidebar(page);
+  await expect(
+    restoredSidebar.getByRole("button", { name: "Show 1 hidden token" }),
+  ).toBeVisible();
+  await expect(
+    restoredSidebar.getByTestId("wallet-token-row-ethereum-native-usdc"),
+  ).toHaveCount(0);
 });

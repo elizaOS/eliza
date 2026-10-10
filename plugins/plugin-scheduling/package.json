@@ -48,7 +48,7 @@
     "dist"
   ],
   "devDependencies": {
-    "@biomejs/biome": "2.5.14",
+    "@biomejs/biome": "2.5.15",
     "@electric-sql/pglite": "^0.4.5",
     "@types/node": "^25.0.6",
     "@types/react": "^19.3.0",
@@ -60,7 +60,7 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
-    "vitest": "^5.0.2",
+    "vitest": "^5.0.3",
     "@elizaos/plugin-sqlite": "workspace:*"
   }
 }

@@ -26,6 +26,7 @@
  * does not double-register.
  */
 
+import type { NotificationCategory } from "@elizaos/core";
 import { client, ElizaClient } from "../../api/client";
 import {
   getPushNotificationsPlugin,
@@ -113,6 +114,7 @@ interface RegisteredPushToken {
   value: string;
   platform?: "ios" | "android";
   deliveryEnabled?: boolean;
+  reminderDataNotifications?: boolean;
   epoch?: number;
   captureAuthority?: PushRegistrationDeps["captureAuthority"];
   authorityKey: string;
@@ -120,6 +122,25 @@ interface RegisteredPushToken {
   sleep?: PushRegistrationDeps["sleep"];
 }
 let registeredToken: RegisteredPushToken | null = null;
+let nativeDelivery: {
+  key: string;
+  owner: string;
+  epoch: number;
+  getPlugin: PushRegistrationDeps["getPlugin"];
+  captureAuthority: PushRegistrationDeps["captureAuthority"];
+} | null = null;
+
+/** Capture before any delivery await. A later lookup cannot authorize an old
+ * record for a newly selected account on the same server URL. */
+export function captureNativeNotificationOwner(): string | null {
+  return nativeDelivery &&
+    nativeDelivery.epoch === authorityEpoch &&
+    nativeDelivery.key === activeAuthorityKey &&
+    nativeDelivery.key ===
+      (nativeDelivery.captureAuthority?.() ?? { key: "default" }).key
+    ? nativeDelivery.owner
+    : null;
+}
 let pendingRevocations: RegisteredPushToken[] = [];
 
 const TOKEN_POST_RETRY_DELAYS_MS = [0, 250, 1_000] as const;
@@ -266,6 +287,7 @@ async function onRegistration(
     registeredToken = {
       value,
       platform,
+      reminderDataNotifications,
       deliveryEnabled:
         typeof registration === "object" &&
         registration !== null &&
@@ -363,6 +385,34 @@ async function startPushRegistration(
     if (status.receive !== "granted") return false;
   }
 
+  if (
+    platform === "android" &&
+    typeof plugin.getNativeNotificationDeliveryStatus === "function"
+  ) {
+    const native = await plugin.getNativeNotificationDeliveryStatus();
+    if (native.transport === "native") {
+      if (!native.owner || !/^[a-f0-9]{64}$/.test(native.owner))
+        throw new Error("Native notification owner unavailable");
+      const authority = activeAuthorityKey;
+      const epoch = authorityEpoch;
+      await plugin.register();
+      if (epoch !== authorityEpoch || authority !== activeAuthorityKey)
+        throw new Error("Native notification authority changed during startup");
+      if (!authority)
+        throw new Error("Native notification authority unavailable");
+      nativeDelivery = {
+        key: authority,
+        owner: native.owner,
+        epoch,
+        getPlugin: deps.getPlugin,
+        captureAuthority: deps.captureAuthority,
+      };
+      // The service owns delivery and taps. There is no OS push token or
+      // server push-token mutation on this transport.
+      return true;
+    }
+  }
+
   registrationOutcome = new Promise((resolve) => {
     settleRegistrationOutcome = resolve;
   });
@@ -422,8 +472,10 @@ async function addPushListeners(
   );
 }
 
-/** The current Android backend owns OS delivery; WS still owns inbox ingress. */
-export async function hasAndroidPushDelivery(): Promise<boolean> {
+/** Whether the current Android push path owns this category's OS presentation. */
+export async function hasAndroidPushDelivery(
+  category: NotificationCategory,
+): Promise<boolean> {
   try {
     await initPushRegistration();
     await registrationOutcome;
@@ -432,9 +484,47 @@ export async function hasAndroidPushDelivery(): Promise<boolean> {
     // error-policy:J4 registration/provider failure keeps renderer fallback.
     logger.warn({ error }, "[push-registration] Android push unavailable");
   }
+  if (
+    nativeDelivery !== null &&
+    nativeDelivery.epoch === authorityEpoch &&
+    nativeDelivery.key === activeAuthorityKey &&
+    nativeDelivery.key ===
+      (nativeDelivery.captureAuthority?.() ?? { key: "default" }).key
+  ) {
+    const plugin = nativeDelivery.getPlugin();
+    if (typeof plugin.getNativeNotificationDeliveryStatus === "function") {
+      try {
+        const native = await plugin.getNativeNotificationDeliveryStatus();
+        const background =
+          typeof document !== "undefined" &&
+          document.visibilityState === "hidden";
+        return (
+          native.transport === "native" &&
+          native.owner === nativeDelivery.owner &&
+          native.enabled &&
+          native.notificationsAllowed &&
+          (!background || native.backgroundReliable)
+        );
+      } catch (error) {
+        // error-policy:J4 unavailable native ownership keeps the renderer's
+        // existing notification fallback; it is not successful push delivery.
+        logger.warn(
+          { error },
+          "[push-registration] Native connection unavailable",
+        );
+        return false;
+      }
+    }
+  }
   return (
     registeredToken?.platform === "android" &&
     registeredToken.deliveryEnabled === true &&
+    // Stock FCM notification payloads display in the background. Foreground
+    // presentation is owned only by our negotiated native reminder receiver.
+    ((typeof document !== "undefined" &&
+      document.visibilityState === "hidden") ||
+      (category === "reminder" &&
+        registeredToken.reminderDataNotifications === true)) &&
     registeredToken.epoch === authorityEpoch &&
     registeredToken.authorityKey === activeAuthorityKey &&
     registeredToken.authorityKey ===
@@ -446,6 +536,13 @@ export async function hasAndroidPushDelivery(): Promise<boolean> {
 export async function unregisterPushToken(
   _deps: PushRegistrationDeps = defaultDeps,
 ): Promise<void> {
+  if (nativeDelivery !== null) {
+    const plugin = nativeDelivery.getPlugin();
+    if (typeof plugin.unregister !== "function")
+      throw new Error("Native notification retirement unavailable");
+    await plugin.unregister();
+    nativeDelivery = null;
+  }
   const token = registeredToken;
   if (token) {
     queueRevocation(token);
@@ -505,5 +602,6 @@ export function __resetPushRegistrationForTests(): void {
   settleRegistrationOutcome = null;
   registrationOutcome = null;
   registeredToken = null;
+  nativeDelivery = null;
   pendingRevocations = [];
 }

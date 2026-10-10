@@ -1,29 +1,30 @@
 /** Generic trajectory contracts and value projection. File persistence is assistant-owned. */
+
 import { ElizaError } from "../errors";
 import {
 	projectCompleteToolArgsForModel,
 	projectCompleteToolValueForModel,
 	type ToolDiagnosticTextRedactor,
 } from "../security/tool-diagnostics";
+import type { RecordedStageKind } from "../services/trajectory-semantic-stage";
 import type { EvaluationResult } from "../types/components";
 import type {
 	ChatMessage,
 	GenerateTextResult,
 	ToolChoice,
 } from "../types/model";
-import { toWellFormedUnicode } from "../utils/well-formed";
+import { toWellFormedUnicode } from "../utils/unicode";
 import { resolveTrajectoryGate } from "./trajectory-gate";
 import {
 	canonicalPromptForModelCall,
 	omitUnvalidatedProviderSpans,
 	type TrajectoryProviderAttribution,
 } from "./trajectory-provider-attribution";
-import type { RecordedStageKind } from "./trajectory-stage-kind";
 
 export {
 	RECORDED_STAGE_KINDS,
 	type RecordedStageKind,
-} from "./trajectory-stage-kind";
+} from "../services/trajectory-semantic-stage";
 
 // Schema (mirrors PLAN.md §18.1)
 

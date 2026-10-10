@@ -55,11 +55,8 @@ const VIEW_UNAVAILABLE_FALLBACK: OcrExpectation = {
 
 export const VIEW_OCR_POLICIES = {
   "builtin-chat": expected({
-    requireAny: [
-      "Mostly clear",
-      "Learn conversational Spanish",
-      "Submit the quarterly report",
-    ],
+    requireAll: ["Mostly clear"],
+    forbid: ["Learn conversational Spanish", "Submit the quarterly report"],
   }),
   "builtin-camera": exempt(
     "The camera is an AOSP-native surface, so the browser audit intentionally renders the truthful unavailable state.",
@@ -110,6 +107,9 @@ export const VIEW_OCR_POLICIES = {
       "Post Examples",
       "You are",
     ],
+  }),
+  "builtin-clock": expected({
+    requireAll: ["Clock", "Alarms"],
   }),
   "builtin-automations": expected({
     requireAll: ["All"],

@@ -303,7 +303,8 @@ test("parseCertificationArgs requires an exact SHA and explicit output directory
     ]),
     {
       deploySha: SHA,
-      probeCase: "qwen-3.8-27b@none@512",
+      environment: "staging",
+      probeCase: "qwen-3.8-27b@high@max",
       outputDir: join(process.cwd(), "artifacts/cert"),
       acknowledgedContractDigest: "",
       runAuth: true,
@@ -741,8 +742,9 @@ test("explicit probe controls retain the selected reasoning policy and token bud
     "synthetic proof",
     "synthetic-cache-key",
   );
-  assert.equal(Reflect.get(body, "reasoning_effort"), "none");
-  assert.equal(body.max_tokens, 512);
+  assert.equal(Reflect.get(body, "reasoning_effort"), "high");
+  assert.equal(Object.hasOwn(body, "max_tokens"), false);
+  assert.equal(Object.hasOwn(body, "max_completion_tokens"), false);
   const selected = parseCertificationArgs([
     "--deploy-sha",
     SHA,
@@ -769,5 +771,93 @@ test("explicit probe controls retain the selected reasoning policy and token bud
         "qwen-3.8-27b@none@invalid",
       ]),
     /max_tokens/,
+  );
+});
+
+test("probe budgets preserve provider maximum and explicit caller limits", async () => {
+  const { buildOpenAiRequestBody, parseProbeCase } = await import(
+    "./chat-latency.ts"
+  );
+  for (const value of ["qwen-3.8-27b@high", "qwen-3.8-27b@high@max"]) {
+    const probe = parseProbeCase(value);
+    assert.equal(probe.maxTokens, null);
+    const body = buildOpenAiRequestBody(probe, "proof", undefined);
+    assert.equal(Object.hasOwn(body, "max_tokens"), false);
+    assert.equal(
+      JSON.parse(JSON.stringify({ maxTokens: probe.maxTokens })).maxTokens,
+      null,
+    );
+  }
+  for (const cap of [512, 32768, 65536]) {
+    const probe = parseProbeCase(`qwen-3.8-27b@none@${cap}`);
+    const body = buildOpenAiRequestBody(probe, "proof", undefined);
+    assert.equal(body.max_tokens, cap);
+    assert.equal(Reflect.get(body, "reasoning_effort"), "none");
+  }
+  for (const cap of [
+    "0",
+    "-1",
+    "512garbage",
+    "1.5",
+    "Infinity",
+    "9007199254740992",
+  ]) {
+    assert.throws(
+      () => parseProbeCase(`qwen-3.8-27b@high@${cap}`),
+      /max_tokens/,
+    );
+  }
+});
+
+test("production certification uses only its fixed endpoint and rejects staging identity", async () => {
+  const args = [
+    "--deploy-sha",
+    SHA,
+    "--output-dir",
+    "artifacts/cert",
+    "--environment",
+    "production",
+  ];
+  assert.equal(parseCertificationArgs(args).environment, "production");
+  assert.throws(
+    () => parseCertificationArgs([...args, "--auth"]),
+    /only in staging/,
+  );
+  assert.throws(
+    () =>
+      parseCertificationArgs([
+        ...args.slice(0, -1),
+        "https://untrusted.invalid",
+      ]),
+    /Unsupported/,
+  );
+  let calls = 0;
+  const result = await verifyExactDeployment(
+    SHA,
+    async (url) => {
+      calls++;
+      assert.equal(url, "https://api.eliza.app/api/health");
+      return Response.json({ commit: SHA, environment: "production" });
+    },
+    "production",
+  );
+  assert.equal(calls, 1);
+  assert.equal(result.environment, "production");
+  await assert.rejects(
+    verifyExactDeployment(
+      SHA,
+      async () => Response.json({ commit: SHA, environment: "staging" }),
+      "production",
+    ),
+    /wrong environment/,
+  );
+  await assert.rejects(
+    verifyExactDeployment(
+      SHA,
+      async () =>
+        Response.json({ commit: "b".repeat(40), environment: "production" }),
+      "production",
+    ),
+    /expected commit/,
   );
 });

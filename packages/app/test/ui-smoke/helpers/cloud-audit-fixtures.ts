@@ -1064,6 +1064,14 @@ const STUB_RULES: StubRule[] = [
     match: prefix("/api/v1/oauth/connections"),
     body: { connections: [] },
   },
+  {
+    match: path_("/api/v1/eliza/google/status"),
+    body: {
+      purpose: "personal_google_context_v1",
+      selectedConnectionId: null,
+      status: null,
+    },
+  },
   { match: path_("/api/v1/discord/connections"), body: { connections: [] } },
   { match: path_("/api/v1/twilio/status"), body: { connected: false } },
   { match: path_("/api/v1/telegram/status"), body: { connected: false } },

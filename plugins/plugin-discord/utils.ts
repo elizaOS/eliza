@@ -179,15 +179,25 @@ export function cleanUrl(url: string): string {
 		}
 	}
 
-	let prev = "";
-	while (prev !== clean) {
-		prev = clean;
-		clean = clean.replace(/[)\]>.,;!*_]+$/, "");
-		clean = clean.replace(
-			/[（）［］【】｛｝《》〈〉「」『』、。，．；：！？~～]+$/,
-			"",
-		);
+	// Track the last retained character once: unmatched closers and punctuation
+	// are trimmed only at the end, without rescanning long closing suffixes.
+	let depth = 0;
+	let end = 0;
+	for (let i = 0; i < clean.length; i++) {
+		const char = clean[i];
+		if (char === "(") depth++;
+		else if (char === ")") {
+			if (depth === 0) continue;
+			depth--;
+		} else if (
+			/[\]>.,;!*_（）［］【】｛｝《》〈〉「」『』、。，．；：！？~～]/.test(
+				char,
+			)
+		)
+			continue;
+		end = i + 1;
 	}
+	clean = clean.slice(0, end);
 
 	return clean;
 }
@@ -226,18 +236,28 @@ export function getAttachmentFileName(media: Media): string {
 	if (media.url && media.url.slice(0, 5).toLowerCase() !== "data:") {
 		try {
 			const urlPath = new URL(media.url).pathname;
-			const urlExtension = urlPath.substring(urlPath.lastIndexOf("."));
-			if (urlExtension && urlExtension.length > 1 && urlExtension.length <= 5) {
-				extension = urlExtension;
+			// lastIndexOf returns -1 when the path has no dot. substring treats
+			// a negative start as 0, so a short path such as "/img" becomes the
+			// extension and the file is named "photo/img".
+			const dot = urlPath.lastIndexOf(".");
+			if (dot > urlPath.lastIndexOf("/")) {
+				const urlExtension = urlPath.slice(dot);
+				if (urlExtension.length > 1 && urlExtension.length <= 5) {
+					extension = urlExtension;
+				}
 			}
 		} catch {
-			const lastDot = media.url.lastIndexOf(".");
-			const queryStart = media.url.indexOf("?", lastDot);
-			if (lastDot > 0 && (queryStart === -1 || queryStart > lastDot + 1)) {
-				const potentialExt = media.url.substring(
-					lastDot,
-					queryStart > -1 ? queryStart : undefined,
-				);
+			const relativePath = media.url.split(/[?#]/, 1)[0] ?? "";
+			const lastDot = relativePath.lastIndexOf(".");
+			if (
+				lastDot >
+				Math.max(
+					0,
+					relativePath.lastIndexOf("/"),
+					relativePath.lastIndexOf("\\"),
+				)
+			) {
+				const potentialExt = relativePath.slice(lastDot);
 				if (potentialExt.length > 1 && potentialExt.length <= 5) {
 					extension = potentialExt;
 				}

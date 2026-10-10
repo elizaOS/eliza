@@ -74,7 +74,9 @@ describe("BRIEF narrative — OptimizedPromptService routing", () => {
     // The dynamic header + data scaffold is preserved around the instructions.
     expect(prompt).toContain("composing the owner's morning briefing");
     expect(prompt).toContain("Data:");
-    expect(prompt).toContain('"calendar": "unavailable"');
+    expect(JSON.parse(prompt.split("Data:\n")[1]).sourceErrors).toEqual({
+      calendar: "unavailable",
+    });
     expect(prompt).toContain("are unavailable, not empty");
   });
 

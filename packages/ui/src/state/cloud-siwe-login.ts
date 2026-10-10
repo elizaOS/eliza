@@ -90,7 +90,7 @@ export async function readWalletChainId(
   if (typeof raw !== "string") return null;
   const trimmed = raw.trim();
   if (!trimmed.startsWith("0x")) return null;
-  const parsed = Number.parseInt(trimmed.slice(2), 16);
+  const parsed = Number(trimmed);
   if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
   return parsed;
 }

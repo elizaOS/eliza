@@ -247,3 +247,111 @@ fences and the journal head before append. A stable request UUID replays the fir
 saved result without provider reads. This records evidence only: callers still
 own authentication, orchestration and explicit correction policy; no allowance
 posting or public adjustment endpoint is enabled.
+
+Migration 0529 adds grant-scoped observation claims with database-time leases,
+generations, immutable attempt receipts and bounded failure backoff. Discovery
+uses original funded periods without excluding terminal subscription history.
+Journal append, completion and next-due scheduling commit together; expired
+workers cannot publish. These private primitives do not enable automatic polling,
+change allowance policy or reconstruct missing legacy evidence.
+
+The existing Stripe maintenance endpoint now invokes bounded original-grant
+adjustment observation recovery independently of current-subscription recovery.
+It reuses the read-only absolute-deadline provider client, records grant-attributed
+incidents in the existing billing operations store, and backs off unavailable
+legacy evidence without reconstruction. Lane infrastructure failures remain visible;
+recorded observations never post allowance corrections. Deploy migrations through
+0529 before enabling the updated maintenance handler.
+
+Original Acacia invoice-paid events with debit balances are retained under their
+existing platform billing receipt before funding recovery. Migration 0530 adds
+immutable, tenant-bound observations; atomic receipt insertion preserves exact
+replay and rejects late backfill. These records are not payment proof: deferred
+collection/allocation and allowance publication remain unavailable until separately
+qualified. Current provider invoices never replace original signed event bodies.
+
+Private retained-invoice discovery includes historical and terminal subscription
+sources without requiring a funded period or current item. Claims reuse the
+existing receipt lease/counter, primary database clock and capped retry delay;
+organization deletion and billing fences are rechecked after lock acquisition.
+The selector/claim boundary does not run provider reads or publish allowance.
+
+Migration 0531 retains versioned balance observations under the original invoice
+receipt. The private observer reads outside locks, then rechecks the organization,
+source fence and live receipt lease before atomic append and retry release. The
+claim token replays its first durable result without touching a newer lease.
+Observations never mark financial application complete or grant allowance. The
+existing authenticated Stripe maintenance endpoint invokes an independent lane of
+at most five original receipts under one 20-second read-only provider deadline.
+Expected observation failures retain receipt-attributed incidents before retry
+release; database failures fail the lane visibly. Deploy migrations through 0533
+before enabling this handler. Migration 0532 preserves earlier balance rows and
+admits the collecting-capture shape under the same immutable journal and receipt
+lease. Only retained original positive starting balance and amount due select
+capture reads; later provider pointers cannot promote a deferred original.
+Capture failures remain retryable incidents and never fall back to balance-only
+success. Complete captured payment evidence does not allocate historic debt or
+authorize allowance; allocation proof and policy remain open.
+
+The private `traceOriginalInvoiceDebt` calculation traces full-debit carry chains
+through retained originals and complete ledger movements. It preserves each
+invoice's net new contribution, subscription and original period; a carried
+starting balance is never counted as new debt. Repeated equivalent events do not
+duplicate components. Missing/conflicting originals, reversed or partial
+applications, unsupported credit movements and broken arithmetic fail explicitly.
+This is provenance evidence only: provider-shape qualification, fresh capture and
+original-invoice observations, durable attribution, source fencing and allowance
+policy remain required before financial publication. The original-invoice maintenance lane now uses this calculation through the
+combined current-observation path described below.
+
+`observeOriginalInvoiceDebt` brackets two current reads of every traced original
+with repeated authenticated collecting-capture observations. Current projected
+collector and original invoice fields must still equal retained facts. It reuses
+the read-only absolute-deadline transport with four concurrent component readers,
+awaits outstanding readers on failure, and returns only a complete, consistent
+observation. Provider changes and private response errors reject. Migration 0533 retains this combined evidence in the existing receipt journal.
+Publication rechecks original receipts and locks the billing fences of all
+contributing subscriptions; unrelated sources do not block it. The existing
+maintenance lane records unsupported traces and missing originals as incidents.
+Earlier balance/capture versions remain immutable and replayable. This does not
+grant allowance; repeated reads are not an atomic provider snapshot. Deploy
+migration 0533 before the updated maintenance handler.
+
+The private original-invoice commercial resolver binds an explicitly selected immutable
+source revision to the retained invoice item and interval, original purchased merchant,
+and purchased or reviewed paid-plan price/product. It never falls back to deployment
+prices or today's plan. The complementary commercial-origin resolver uses a named completed checkout, paid
+upgrade or originally configured downgrade when the invoice interval has no paid
+revision. It validates the actual command revisions and retained review/snapshot,
+preserves the signed invoice interval, and never synthesizes a paid source. Missing
+purchase/review authority remains unavailable. These digests record nominal terms only: receipt ownership,
+current collection evidence, policy decisions, fences and atomic financial publication
+remain separate requirements. Reading terms never changes lifecycle or allowance.
+
+Receipt-owned commercial selection now loads its original invoice from storage,
+checks organization/source restrictions, and inspects complete bounded applied
+origin history. Matching origins must agree on nominal terms; all matches are
+retained deterministically. It can join the caller's transaction for publication
+revalidation, but writes no decision or allowance and enables no maintenance lane.
+
+Network turns retain server-owned app authority while using the account's original
+Personal assistant and canonical history. `NETWORK_PERSONAL_CONTINUITY_ENABLED`
+defaults off pending legacy history/todo/reminder inventory, reviewed migration
+receipts and staging qualification. This code creates no alias or migration.
+
+The canonical conversation owner persists delivery intent before gateway I/O,
+serializes sends with cutover/deletion, stores verified provider receipts before
+history append, and replays completion without resending. Unknown outcomes permit
+only read-only receipt recovery through the existing room alarm. Pending delivery
+fences lifecycle changes until resolved. Dedicated ownership refuses before send.
+
+Gateway handled turns require authenticated channel provenance and a signed service
+admission. Eligible first contacts use the existing phone account owner and record
+inbound plus accepted replies in that same history. Proactive/relay traffic never
+creates accounts. Ineligible policy acknowledgements create no Cloud account or
+history. STOP remains line-wide; a newer scoped START permits only its own app.
+
+Network membership, invitations, availability, and consent are owned by the signed
+Network service. Cloud keeps no parallel Network membership tables or invitation
+fallback. Legacy spike schemas and separate histories remain saved on the original
+integration branch; this candidate performs no database migration or history import.

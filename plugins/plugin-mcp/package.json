@@ -114,12 +114,13 @@
     "json5": "^2.2.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.14",
+    "@biomejs/biome": "2.5.15",
+    "@elizaos/testing": "workspace:*",
     "@types/json-schema": "^7.0.15",
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.3"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"

@@ -21,6 +21,12 @@ is development evidence, not release provisioning.
 outcome after dispatch; it never retries on another profile. Older peers reject
 cancellable requests before dispatch. Callers still reconcile any uncertain effect.
 
+Trusted hosts can call `NativeSocketBrowserTarget.waitForProfile(profileId, { timeoutMs, signal })`
+before binding a task after restart. It waits at most 10 seconds by default
+(30 seconds maximum), rejects a different registered profile immediately, and
+stops on cancellation or transport shutdown. It sends no commands and never
+retries dispatched work. Hosts must recheck task/account authority after waiting.
+
 `NativeTaskActuator` composes the core task journal with this transport. The host
 supplies task lookup, reviewed page policy, durable binding revisions, protected
 value resolution, outcome verification and redacted evidence storage. It checks
@@ -68,7 +74,12 @@ Trusted hosts can use `NativeSocketBrowserTarget.guideTask` after negotiating
 `task-guide` and `task-bind`. Supply the exact task context, increasing per-binding
 guidance revision and a current main-frame snapshot selector. The extension admits
 request IDs once and removes annotations on cancellation/rebind/disconnect.
-This does not wire product pause/close or qualify installed browser UI behavior.
+Peers with `task-guide-label` also accept `detail`, `tone`, offer `answers`,
+`kind: "pause"` and a binding `assistantName`; older peers reject them before
+dispatch. `onTaskGuideAnswer` delivers one tap per current offer as
+`{tabId, stepId, revision, answerId}`. It never carries the value. Answers to a
+replaced offer are dropped. `NativeTaskActuator` passes these fields, returns the
+guide revision and adds `pauseGuidance`. Installed browser UI is not qualified here.
 
 `NativeTaskActuator.showGuidance` requires an active task and a target from its
 current observation. `quiesce` removes that owner's guide and waits for a removal
@@ -91,6 +102,16 @@ password fields and Verify/submit clicks remain denied. The value still travels
 only on the authenticated native channel and is excluded from DOM snapshots;
 host evidence/screenshot pipelines must also preserve secret redaction. This
 primitive does not resolve codes, grant account access, or qualify a live provider.
+
+A proposal can set `expectedSelector` to the one reviewed binding target it is
+for. The actuator refuses it before dispatch unless the binding holds that
+selector for the action, and the browser (`task-expected-target`) accepts no
+other node. For a few seconds after a task fill or click, the browser stops any
+form submit or page change that the person's own input did not start (a link
+click still opens its link). A snapshot then reports `effectViolation`; the
+actuator records such an action as an unknown outcome. `showGuidance` accepts
+`keepClearRefs` (controls the label must not cover, peer capability
+`task-guide-keep-clear`) and returns `placement` and `dismissed`.
 
 Android hosts set `ELIZA_BROWSER_ANDROID_APPLICATION` to their application ID
 when starting the native target. It connects and reconnects only to that app's

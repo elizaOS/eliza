@@ -75,7 +75,7 @@ const CARTESIA_BATCH_STT_MODEL = "ink-whisper";
 const CARTESIA_BATCH_STT_API_VERSION = "2026-03-01";
 const DEFAULT_CARTESIA_BATCH_STT_TIMEOUT_MS = 120_000;
 const MAX_CARTESIA_BATCH_STT_TIMEOUT_MS = 300_000;
-const STT_PRICING_PROXY_MODEL = "elevenlabs/scribe_v1";
+const STT_PRICING_PROXY_MODEL = "elevenlabs/scribe_v2";
 const DEFAULT_MAX_MULTIPART_BODY_BYTES = 25 * 1024 * 1024;
 const MAX_MULTIPART_BODY_BYTES_ENV = "VOICE_STT_MAX_MULTIPART_BYTES";
 const OVERSIZED_MULTIPART_RESPONSE = {
@@ -1238,7 +1238,7 @@ async function __hono_POST(c: AppContext) {
       organizationId: user.organization_id,
       userId: user.id,
       apiKeyId,
-      model: "elevenlabs/scribe_v1",
+      model: "elevenlabs/scribe_v2",
       provider: "elevenlabs",
       billingSource: "elevenlabs",
       requestId: billingRequestId,

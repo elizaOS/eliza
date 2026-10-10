@@ -19,8 +19,7 @@
 import { cp, mkdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
-
-import { readEnv } from "./read-env.ts";
+import { readEnv } from "./environment.ts";
 
 /** Expand a leading `~` segment and resolve to an absolute path. */
 export function resolveUserPath(input: string): string {

@@ -19,11 +19,12 @@ test("isolates hosts and source revisions, preserves source, and rejects tampere
       "package fixture\n",
     );
     const hostPolicy = {
-      schema: 1,
+      schema: 2,
       product: "host-one",
       package: "org.fixture.one",
       cohortDomain: "fixture",
       runtimeInventoryHeader: "fixture-v1",
+      runtimeExcludedAgentDirectories: ["models"],
     };
     const options = { sharedSource, testDirectory, cacheDirectory, hostPolicy };
     const one = composeTrustSource(options);
@@ -70,6 +71,17 @@ test("isolates hosts and source revisions, preserves source, and rejects tampere
         }),
       /Invalid OTA host/,
     );
+    const { runtimeExcludedAgentDirectories: _, ...schemaOne } = hostPolicy;
+    for (const invalid of [
+      { ...schemaOne, schema: 1 },
+      { ...hostPolicy, runtimeExcludedAgentDirectories: ["../models"] },
+      { ...hostPolicy, runtimeExcludedAgentDirectories: ["models", "models"] },
+      { ...hostPolicy, runtimeExcludedAgentDirectories: "models" },
+    ])
+      assert.throws(
+        () => composeTrustSource({ ...options, hostPolicy: invalid }),
+        /Invalid OTA host/,
+      );
     fs.writeFileSync(path.join(sharedSource, "consumer_test.go"), "existing");
     assert.throws(() => composeTrustSource(options), /colliding/);
   } finally {

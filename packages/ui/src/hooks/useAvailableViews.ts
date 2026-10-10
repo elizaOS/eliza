@@ -20,6 +20,7 @@ import {
   subscribeAppShellPages,
 } from "../app-shell-registry";
 import { isManagedCloudRuntime } from "../cloud/managed-cloud-runtime";
+import { onViewEvent, VIEW_EVENTS } from "../events/view-events";
 import { isAospShellEnabled, TAB_PATHS, titleForTab } from "../navigation";
 import type { BuiltinTab } from "../navigation/builtin-route-descriptors";
 import { getFrontendPlatform } from "../platform/platform-guards";
@@ -28,9 +29,6 @@ import {
   isShellPaintable,
   type StartupPhaseValue,
 } from "../state/startup-coordinator";
-
-import { onViewEvent } from "../views/view-event-bus";
-import { VIEW_EVENTS } from "../views/view-event-types";
 import { invalidate, startPolling } from "./resource-cache";
 import { useActiveAgentAuthority } from "./useActiveAgentAuthority";
 import { useCachedResource } from "./useCachedResource";
@@ -395,6 +393,7 @@ const TAB_ICON_NAMES: Partial<Record<BuiltinTab, string>> = {
   views: "LayoutGrid",
   character: "Bot",
   "character-select": "Users",
+  clock: "AlarmClock",
   automations: "Clock3",
   inventory: "Wallet",
   documents: "FileText",
@@ -432,6 +431,7 @@ const BUILTIN_TAB_ORDER: Partial<Record<BuiltinTab, number>> =
       "transcripts",
       "memories",
       "relationships",
+      "clock",
       "automations",
       "plugins",
       "skills",

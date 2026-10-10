@@ -104,14 +104,13 @@ function parseCollectorLine(line: string): ParsedCollectorLine {
   if (p.event !== "activate" && p.event !== "deactivate") {
     return { kind: "ignored" };
   }
-  const bundleId =
-    typeof p.bundleId === "string" && p.bundleId.trim().length > 0
-      ? p.bundleId.trim()
-      : null;
-  const appName =
-    typeof p.appName === "string" && p.appName.trim().length > 0
-      ? p.appName.trim()
-      : null;
+  // The Swift collector coalesces a missing bundle id or app name to ""
+  // and still emits the event — including the synthetic activate and the
+  // sleep/lock deactivate that anchor duration computation. The exported
+  // event type admits "" and the consumer persists it, so accept any
+  // string value here; only a missing or non-string field is malformed.
+  const bundleId = typeof p.bundleId === "string" ? p.bundleId.trim() : null;
+  const appName = typeof p.appName === "string" ? p.appName.trim() : null;
   const windowTitle =
     typeof p.windowTitle === "string" ? p.windowTitle : undefined;
   if (bundleId === null || appName === null) {

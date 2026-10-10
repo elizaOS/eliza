@@ -12,6 +12,7 @@ import * as anchor from "@coral-xyz/anchor";
 import {
   type IAgentRuntime,
   type LpPositionDetails,
+  logger,
   type PoolInfo,
   Service,
   type TokenBalance,
@@ -20,6 +21,10 @@ import {
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { autoFillYByStrategy, DLMM, type LbPosition, StrategyType } from "../utils/dlmm.ts";
 import { sendTransaction } from "../utils/sendTransaction.ts";
+import {
+  sumParsedTokenAccountBaseUnits,
+  withdrawalReceivedBaseUnits,
+} from "./token-account-base-units.ts";
 
 const { BN } = anchor;
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
@@ -162,10 +167,13 @@ export class MeteoraLpService extends Service {
         },
       });
 
+      // initializePosition marks the new position account as a signer.
+      // The official SDK example signs with [user, positionKeypair].
       const signature = await sendTransaction(
         this.connection,
         createPositionTx.instructions,
-        params.userVault
+        params.userVault,
+        [newPosition]
       );
 
       // Wait for the transaction to be confirmed to ensure the position is created.
@@ -223,7 +231,8 @@ export class MeteoraLpService extends Service {
       const tokenAMint = new PublicKey(poolInfo.tokenA.mint);
       const tokenBMint = new PublicKey(poolInfo.tokenB.mint);
 
-      // Get balances before withdrawal
+      // Read before the withdrawal. A failed read throws and the outer catch
+      // returns before any transaction is sent.
       const preBalanceA = await this.getTokenBalance(params.userVault.publicKey, tokenAMint);
       const preBalanceB = await this.getTokenBalance(params.userVault.publicKey, tokenBMint);
 
@@ -252,32 +261,54 @@ export class MeteoraLpService extends Service {
         await this.connection.confirmTransaction(lastSignature, "confirmed");
       }
 
-      // Get balances after withdrawal
-      const postBalanceA = await this.getTokenBalance(params.userVault.publicKey, tokenAMint);
-      const postBalanceB = await this.getTokenBalance(params.userVault.publicKey, tokenBMint);
-
-      const tokensReceived: TokenBalance[] = [
-        {
-          address: poolInfo.tokenA.mint,
-          symbol: poolInfo.tokenA.symbol,
-          decimals: poolInfo.tokenA.decimals ?? 0,
-          balance: postBalanceA.sub(preBalanceA).toString(),
-        },
-        {
-          address: poolInfo.tokenB.mint,
-          symbol: poolInfo.tokenB.symbol,
-          decimals: poolInfo.tokenB.decimals ?? 0,
-          balance: postBalanceB.sub(preBalanceB).toString(),
-        },
-      ];
+      // The withdrawal is already confirmed. A failed post-read must not
+      // become a zero balance, and it must not hide the signature.
+      let tokensReceived: TokenBalance[] | undefined;
+      try {
+        const postBalanceA = await this.getTokenBalance(params.userVault.publicKey, tokenAMint);
+        const postBalanceB = await this.getTokenBalance(params.userVault.publicKey, tokenBMint);
+        const receivedA = withdrawalReceivedBaseUnits(postBalanceA, preBalanceA);
+        const receivedB = withdrawalReceivedBaseUnits(postBalanceB, preBalanceB);
+        if (receivedA !== null && receivedB !== null) {
+          tokensReceived = [
+            {
+              address: poolInfo.tokenA.mint,
+              symbol: poolInfo.tokenA.symbol,
+              decimals: poolInfo.tokenA.decimals ?? 0,
+              balance: receivedA,
+            },
+            {
+              address: poolInfo.tokenB.mint,
+              symbol: poolInfo.tokenB.symbol,
+              decimals: poolInfo.tokenB.decimals ?? 0,
+              balance: receivedB,
+            },
+          ];
+        }
+      } catch (error) {
+        // Diagnostics cannot turn a confirmed withdrawal into a failed receipt.
+        try {
+          logger.error(
+            { error, poolId: params.poolId, transactionId: lastSignature },
+            "Meteora withdrawal confirmed but token balance read failed"
+          );
+          this.runtime?.reportError("meteora.withdrawal.balance", error, {
+            poolId: params.poolId,
+            transactionId: lastSignature,
+          });
+        } catch {
+          // error-policy:J7 retain the confirmed signature if diagnostics fail.
+        }
+      }
 
       return {
         success: true,
         transactionId: lastSignature,
-        tokensReceived,
+        ...(tokensReceived ? { tokensReceived } : {}),
       };
     } catch (error) {
-      console.error("[MeteoraLpService] Error removing liquidity:", error);
+      logger.error({ error, poolId: params.poolId }, "Meteora withdrawal failed");
+      this.runtime?.reportError("meteora.withdrawal", error, { poolId: params.poolId });
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error),
@@ -399,25 +430,13 @@ export class MeteoraLpService extends Service {
     }
   }
 
-  private async getTokenBalance(
-    walletAddress: PublicKey,
-    mintAddress: PublicKey
-  ): Promise<anchor.BN> {
-    try {
-      const tokenAccounts = await this.connection.getParsedTokenAccountsByOwner(walletAddress, {
-        mint: mintAddress,
-      });
-      if (tokenAccounts.value.length > 0) {
-        const balance = tokenAccounts.value[0].account.data.parsed.info.uiAmount;
-        const decimals = tokenAccounts.value[0].account.data.parsed.info.decimals;
-        // Convert UI amount to lamports
-        return new BN(balance * 10 ** decimals);
-      }
-      return new BN(0);
-    } catch (_e) {
-      // This can happen if the token account doesn't exist.
-      return new BN(0);
-    }
+  private async getTokenBalance(walletAddress: PublicKey, mintAddress: PublicKey): Promise<bigint> {
+    // An empty account list is a real zero. getParsedTokenAccountsByOwner
+    // throws on RPC failure; that error must reach the caller.
+    const tokenAccounts = await this.connection.getParsedTokenAccountsByOwner(walletAddress, {
+      mint: mintAddress,
+    });
+    return sumParsedTokenAccountBaseUnits(tokenAccounts.value);
   }
 }
 

@@ -10,6 +10,7 @@ import {
 	recordInferenceSpan,
 	setInferenceModelProvider,
 } from "../inference-timing";
+import { RUNTIME_DEBUG_LOG_ENABLED } from "../logger.js";
 import {
 	type ConfidentialInferenceAuthority,
 	ConfidentialInferenceOperation,
@@ -42,12 +43,12 @@ import {
 } from "../trajectory-utils";
 import type { StreamChunkCallback } from "../types/components.js";
 import { EventType } from "../types/events.js";
-import type { ModelHandler } from "../types/model.js";
 import {
 	type GenerateTextParams,
 	getModelFallbackChain,
 	MODEL_PROVIDER_ATTEMPTS,
 	type ModelAttemptContext,
+	type ModelHandler,
 	type ModelParamsMap,
 	type ModelProviderAttempt,
 	type ModelRegistrationInfo,
@@ -68,12 +69,13 @@ import type { JsonValue, UUID } from "../types/primitives.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import type { Service, ServiceTypeName } from "../types/service.js";
 import { BufferUtils } from "../utils/buffer";
+import { resolveSetting } from "../utils/environment";
 import {
 	assertModelOutputComplete,
+	modelOutputIncompleteEvidence,
 	modelProviderErrorDetail,
 } from "../utils/model-errors";
 import { captureModelLookupCaller } from "../utils/model-lookup-caller";
-import { resolveSetting } from "../utils/resolve-setting";
 import { ResponseSkeletonStreamExtractor } from "../utils/streaming";
 import { isPlainObject } from "../utils/type-guards";
 import {
@@ -87,7 +89,6 @@ import {
 	runWithoutActionRoutingContext,
 } from "./action-routing-context";
 import { stringifyForModel } from "./json-output";
-import { RUNTIME_DEBUG_LOG_ENABLED } from "./model-diagnostics.js";
 import {
 	buildModelInputBudget,
 	DEFAULT_INPUT_RESERVE_TOKENS,
@@ -102,6 +103,7 @@ import {
 import {
 	assertModelResultPresent,
 	assertRuntimeModelOutputComplete,
+	isCanonicalModelCapabilityDisabled,
 	isTextStreamResult,
 	isUnavailableLocalModel,
 	NoModelProviderConfiguredError,
@@ -110,7 +112,6 @@ import {
 	resolveResponseSkeletonStreamFields,
 	TEXT_GENERATION_MODEL_KEYS,
 } from "./model-policy.js";
-import { isCanonicalModelCapabilityDisabled } from "./model-policy.ts";
 import type { RuntimePipelineHooks } from "./pipeline-hooks.js";
 import {
 	dropDuplicateLeadingSystemMessage,
@@ -2589,6 +2590,7 @@ export class RuntimeModelDispatch {
 			const sanitizedMessage = this.runtime.redactSecrets(
 				`${errorMessage}${detailSuffix}`,
 			);
+			const failureEvidence = modelOutputIncompleteEvidence(args.error);
 			const activeTrace = this.runtime.getActiveTrace(
 				this.runtime.getCurrentRunId(),
 			);
@@ -2615,11 +2617,27 @@ export class RuntimeModelDispatch {
 				responseSchema: paramsRecord.responseSchema,
 				providerOptions: paramsRecord.providerOptions,
 				response: `[model call failed] ${sanitizedMessage}`,
-				finishReason: "error",
-				...(typeof tempRaw === "number" ? { temperature: tempRaw } : {}),
-				...(typeof maxTokensRaw === "number"
-					? { maxTokens: maxTokensRaw }
+				finishReason: failureEvidence?.finishReason ?? "error",
+				...(failureEvidence
+					? {
+							model: failureEvidence.model ?? args.resolvedModelKey,
+							providerMetadata: failureEvidence,
+							promptTokens: failureEvidence.usage?.promptTokens,
+							completionTokens: failureEvidence.usage?.completionTokens,
+							cacheReadInputTokens: failureEvidence.usage?.cacheReadInputTokens,
+							cacheCreationInputTokens:
+								failureEvidence.usage?.cacheCreationInputTokens,
+							reasoningTokens: failureEvidence.usage?.reasoningTokens,
+						}
 					: {}),
+				...(failureEvidence?.maxTokens === null
+					? { maxTokensOmitted: true }
+					: typeof failureEvidence?.maxTokens === "number"
+						? { maxTokens: failureEvidence.maxTokens }
+						: typeof maxTokensRaw === "number"
+							? { maxTokens: maxTokensRaw }
+							: {}),
+				...(typeof tempRaw === "number" ? { temperature: tempRaw } : {}),
 				purpose: trajCtx.purpose ?? "action",
 				actionType: "runtime.useModel",
 				latencyMs: Math.max(0, Math.round(args.elapsedTime)),

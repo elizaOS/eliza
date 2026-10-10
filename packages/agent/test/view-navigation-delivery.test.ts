@@ -1,25 +1,41 @@
 /** Real loopback HTTP and registered-view delivery, with actor roles and renderer targets isolated. */
-import { createServer } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import type { AddressInfo } from "node:net";
 import {
   type Action,
+  AgentRuntime,
+  type ContextObject,
+  type ContextProviderEvent,
   ContextRegistry,
+  type GenerateTextParams,
   type GenerateTextResult,
+  getStreamingContext,
   type IAgentRuntime,
   isObjectRecord,
   type Memory,
   type MessageHandlerResult,
+  MODEL_CANONICAL_CONTEXT,
   ModelType,
+  projectDeferredProviders,
   promoteSubactionsToActions,
   ResponseHandlerFieldRegistry,
+  registerDirectActionRoutingRule,
   runResponseHandlerEvaluators,
   runWithStreamingContext,
+  runWithTrajectoryContext,
   type ToolDefinition,
   type UUID,
 } from "@elizaos/core";
+import { findViewActionHandoff } from "@elizaos/core/protocol";
 import { createMockRuntime } from "@elizaos/testing";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { uiContextProvider } from "../../../plugins/plugin-assistant/src/features/basic-capabilities/providers/uiContext.ts";
+import { createAssistantPlugin } from "../../../plugins/plugin-assistant/src/index.ts";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
 import { runEvaluator } from "../../../plugins/plugin-assistant/src/runtime/evaluator.ts";
 import {
@@ -33,18 +49,39 @@ import {
 } from "../../../plugins/plugin-assistant/src/services/message/action-surface.ts";
 import { runV5MessageRuntimeStage1 } from "../../../plugins/plugin-assistant/src/services/message/pipeline.ts";
 import { collectBudgetedStageOneCandidateActions } from "../../../plugins/plugin-assistant/src/services/message/planned-tool.ts";
+import { BUILTIN_RESPONSE_HANDLER_EVALUATORS } from "../../../plugins/plugin-assistant/src/services/message/stage1-evaluators.ts";
 import { renderMessageHandlerModelInput } from "../../../plugins/plugin-assistant/src/services/message/stage1-input.ts";
 import { createPlannerToolDiscoveryAction } from "../../../plugins/plugin-assistant/src/services/message/tool-discovery.ts";
+import { DefaultMessageService } from "../../../plugins/plugin-assistant/src/services/message.ts";
 import { calendarAction } from "../../../plugins/plugin-calendar/src/actions/calendar.ts";
+import { calendarReadBindingEvaluator } from "../../../plugins/plugin-calendar/src/read-binding.ts";
 import { notesPlugin } from "../../../plugins/plugin-notes/src/plugin.ts";
+import { briefAction } from "../../../plugins/plugin-personal-assistant/src/actions/brief.ts";
+import { createTrackedWorkRecapDirectRoutingRule } from "../../../plugins/plugin-personal-assistant/src/lifeops/briefing/direct-routing.ts";
 import { viewsAction } from "../src/actions/views.ts";
+import { summarizeRuntimeActionResults } from "../src/api/chat-routes.ts";
+import { enrichChatUiViewMetadata } from "../src/api/chat-view-metadata.ts";
+import { registerInProcessApi } from "../src/api/in-process-api.ts";
+import { normalizeWsClientId } from "../src/api/server-helpers-auth.ts";
+import { closeViewInteractionHost } from "../src/api/view-interaction-host.ts";
 import {
   closeRuntimeViewRegistry,
+  getView,
+  listViews,
   registerBuiltinViews,
   registerPluginViews,
 } from "../src/api/views-registry.ts";
-import { handleViewsRoutes } from "../src/api/views-routes.ts";
+import {
+  getCurrentViewState,
+  handleViewsRoutes,
+} from "../src/api/views-routes.ts";
 import { createElizaPlugin } from "../src/runtime/eliza-plugin.ts";
+import { installPromptOptimizations } from "../src/runtime/prompt-optimization.ts";
+import {
+  activeViewSourceEvaluator,
+  capturedActiveViewSource,
+} from "../src/runtime/view-action-affinity.ts";
+import { runWithViewClient } from "../src/runtime/view-client-context.ts";
 import {
   viewNavigationEvaluator,
   viewNavigationField,
@@ -63,24 +100,36 @@ afterEach(async () => {
   await Promise.all(cleanup.splice(0).map((close) => close()));
   vi.unstubAllEnvs();
 });
-async function fixture(delivered = 1) {
+async function fixture(
+  delivered = 1,
+  suppliedRuntime?: IAgentRuntime,
+  handleTurn?: () => Promise<unknown>,
+  inProcess = false,
+  missingNotesBundle = false,
+) {
   const frames: Array<{ client: string; frame: object }> = [];
   let requests = 0;
-  const runtime = {
-    agentId: "44444444-4444-4444-8444-444444444444",
-    actions: [viewsAction],
-    responseHandlerEvaluators: [viewNavigationEvaluator],
-    getRoom: async () => ({ worldId: "world" }),
-    getWorld: async () => ({
-      id: "world",
-      metadata: { roles: { [owner]: "OWNER" }, ownership: { ownerId: owner } },
-    }),
-    getSetting: () => undefined,
-    getEntityById: async () => null,
-    emitEvent: async () => undefined,
-    reportError: vi.fn(),
-    logger: { debug() {}, info() {}, warn() {}, error() {} },
-  } as unknown as IAgentRuntime;
+  let kernelRequests = 0;
+  const runtime =
+    suppliedRuntime ??
+    ({
+      agentId: "44444444-4444-4444-8444-444444444444",
+      actions: [viewsAction],
+      responseHandlerEvaluators: [viewNavigationEvaluator],
+      getRoom: async () => ({ worldId: "world" }),
+      getWorld: async () => ({
+        id: "world",
+        metadata: {
+          roles: { [owner]: "OWNER" },
+          ownership: { ownerId: owner },
+        },
+      }),
+      getSetting: () => undefined,
+      getEntityById: async () => null,
+      emitEvent: async () => undefined,
+      reportError: vi.fn(),
+      logger: { debug() {}, info() {}, warn() {}, error() {} },
+    } as unknown as IAgentRuntime);
   registerBuiltinViews(runtime);
   await registerPluginViews(
     runtime,
@@ -88,7 +137,14 @@ async function fixture(delivered = 1) {
       name: "test-nav-views",
       description: "Fixture view owner",
       views: [
-        { id: "notes", label: "Notes", path: "/notes", bundleUrl: "/notes.js" },
+        {
+          id: "notes",
+          label: "Notes",
+          path: "/notes",
+          ...(missingNotesBundle
+            ? { bundlePath: "missing-native-counterpart-bundle.js" }
+            : { bundleUrl: "/notes.js" }),
+        },
         {
           id: "calendar",
           label: "Calendar",
@@ -100,14 +156,34 @@ async function fixture(delivered = 1) {
     { pluginDir: process.cwd(), indexEmbeddings: false },
   );
   const hostKey = {};
-  const server = createServer((req, res) => {
+  const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
     requests++;
-    if (req.headers.authorization !== "Bearer local-navigation-test") {
+    const otherOwner =
+      inProcess &&
+      req.headers.authorization === "Bearer other-navigation-owner";
+    if (
+      req.headers.authorization !== "Bearer local-navigation-test" &&
+      !otherOwner
+    ) {
       res.writeHead(401).end();
       return;
     }
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
-    void handleViewsRoutes({
+    if (url.pathname === "/api/owned-source-turn" && handleTurn) {
+      const clientId = normalizeWsClientId(req.headers["x-eliza-client-id"]);
+      void runWithViewClient(
+        clientId ? { hostKey, clientId } : undefined,
+        handleTurn,
+      )
+        .then((result) =>
+          res
+            .writeHead(200, { "content-type": "application/json" })
+            .end(JSON.stringify(result)),
+        )
+        .catch((error) => res.writeHead(500).end(String(error)));
+      return;
+    }
+    await handleViewsRoutes({
       req,
       res,
       method: req.method ?? "GET",
@@ -115,7 +191,11 @@ async function fixture(delivered = 1) {
       url,
       hostKey,
       runtime,
-      callerAuthorization: { ok: true, role: "OWNER", identityId: owner },
+      callerAuthorization: {
+        ok: true,
+        role: "OWNER",
+        identityId: otherOwner ? "55555555-5555-4555-8555-555555555555" : owner,
+      },
       json: (response, body) => {
         response.writeHead(200, { "Content-Type": "application/json" });
         response.end(JSON.stringify(body));
@@ -134,16 +214,36 @@ async function fixture(delivered = 1) {
     }).catch((error) => {
       res.writeHead(500).end(String(error));
     });
+  };
+  const server = createServer((req, res) => {
+    void handleRequest(req, res);
   });
+  const unregister = inProcess
+    ? registerInProcessApi(runtime, {
+        handle: async (req, res) => {
+          kernelRequests++;
+          await handleRequest(req, res);
+        },
+      })
+    : undefined;
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   vi.stubEnv("ELIZA_API_PORT", String((server.address() as AddressInfo).port));
   vi.stubEnv("ELIZA_API_TOKEN", "local-navigation-test");
   cleanup.push(async () => {
+    unregister?.();
+    closeViewInteractionHost(hostKey);
     closeRuntimeViewRegistry(runtime);
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
-  return { runtime, frames, requests: () => requests };
+  return {
+    runtime,
+    frames,
+    requests: () => requests,
+    kernelRequests: () => kernelRequests,
+    hostKey,
+    url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+  };
 }
 async function show(runtime: IAgentRuntime, view: string, input = message) {
   return viewsAction.handler?.(runtime, input, undefined, {
@@ -1241,17 +1341,39 @@ describe("model-selected host navigation", () => {
     { reply: "Chat is open.", wrongDestination: false },
     { reply: "Messages is open.", wrongDestination: true },
     { reply: "Calendar is open.", wrongDestination: true },
+    {
+      reply: "Notes is open.",
+      wrongDestination: false,
+      missingNativeBundle: true,
+    },
   ])(
     "runs the canonical pipeline and gates the held reply ($reply)",
-    async ({ reply, wrongDestination }) => {
-      const f = await fixture();
+    async ({ reply, wrongDestination, missingNativeBundle = false }) => {
+      const f = await fixture(
+        1,
+        undefined,
+        undefined,
+        missingNativeBundle,
+        missingNativeBundle,
+      );
+      if (missingNativeBundle)
+        vi.stubEnv("ELIZA_LOCAL_AGENT_TRANSPORT", "filesystem-v1");
+      const destination = missingNativeBundle ? "notes" : "chat";
       const input = clientMessage();
-      input.content.text = "Open Home";
+      input.content.text = missingNativeBundle ? "Open Notes" : "Open Home";
       input.content.metadata = {
         viewClientId: "origin-client",
         uiView: "notes",
         uiViewCapabilities: ["PRIVATE_CONTROL_SENTINEL"],
+        ...(missingNativeBundle ? { viewDelivery: "completed-action" } : {}),
       };
+      if (missingNativeBundle) {
+        // Exercise the actual HTTP metadata producer before the canonical pipeline.
+        input.content.metadata = enrichChatUiViewMetadata(
+          input.content.metadata,
+          listViews(f.runtime, { viewType: "gui" }),
+        ) as Memory["content"]["metadata"];
+      }
       const fields = new ResponseHandlerFieldRegistry();
       for (const field of [
         ...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
@@ -1320,7 +1442,7 @@ describe("model-selected host navigation", () => {
                 emotion: "none",
                 visualContinuation: {
                   disposition: "direct",
-                  viewId: "chat",
+                  viewId: destination,
                   reason: "Only requested navigation",
                 },
               },
@@ -1385,10 +1507,51 @@ describe("model-selected host navigation", () => {
         expect(useModel).toHaveBeenCalledTimes(1);
         expect(result).toMatchObject({
           kind: "planned_reply",
-          result: { responseContent: { text: reply } },
+          result: {
+            responseContent: {
+              text: missingNativeBundle ? "Opening Notes." : reply,
+            },
+          },
         });
+        if (missingNativeBundle) {
+          if (result.kind !== "planned_reply")
+            throw Error("Missing native navigation reply");
+          expect(getView(f.runtime, "notes")?.available).toBe(false);
+          expect(result.result.actionResults).toEqual([
+            expect.objectContaining({
+              values: expect.objectContaining({
+                navigationPrepared: true,
+                completedActionDelivered: false,
+              }),
+            }),
+          ]);
+          expect(
+            findViewActionHandoff(
+              summarizeRuntimeActionResults(
+                f.runtime as AgentRuntime,
+                input.id,
+                result.result.actionResults,
+              ),
+            ),
+          ).toMatchObject({
+            viewId: "notes",
+            navigationPrepared: true,
+            navigationBinding: {
+              clientId: "origin-client",
+              viewId: "notes",
+              installationId: getView(f.runtime, "notes")?.installationId,
+            },
+          });
+          expect(
+            getCurrentViewState(f.runtime, {
+              hostKey: f.hostKey,
+              clientId: "origin-client",
+            }),
+          ).toBeNull();
+          expect(f.kernelRequests()).toBe(1);
+        }
       }
-      expect(f.frames).toHaveLength(1);
+      expect(f.frames).toHaveLength(missingNativeBundle ? 0 : 1);
     },
   );
   it.each([
@@ -1524,5 +1687,1212 @@ describe("model-selected host navigation", () => {
       });
       expect(useModel).toHaveBeenCalledTimes(1);
     }
+  });
+});
+
+describe("inferred visual scope invalidation", () => {
+  const briefRequest =
+    "Give me my daily dossier using the connected sources available now.";
+  const visual480 = {
+    disposition: "planning",
+    viewId: "Home",
+    reason:
+      "Requests a composite daily dossier; needs multiple source reads before composing, so navigation is part of the planning scope rather than a satisfying direct view.",
+  };
+  async function staged(
+    text = briefRequest,
+    value = visual480,
+    registerOwner = true,
+  ) {
+    const f = await fixture();
+    const input = clientMessage();
+    input.createdAt = 1000;
+    input.content.text = text;
+    input.content.metadata = {
+      uiTab: "chat",
+      uiBrowserSurface: "native",
+      uiTimeZone: "America/Los_Angeles",
+      viewClientId: "origin-client",
+    };
+    f.runtime.actions.push({ ...briefAction, validate: async () => true });
+    if (registerOwner)
+      registerDirectActionRoutingRule(
+        f.runtime,
+        createTrackedWorkRecapDirectRoutingRule(),
+      );
+    const fields = new ResponseHandlerFieldRegistry();
+    fields.register(viewNavigationField);
+    const state = { values: {}, data: {}, text: "" };
+    await fields.dispatch({
+      runtime: f.runtime,
+      message: input,
+      state,
+      senderRole: "OWNER",
+      turnSignal: new AbortController().signal,
+      rawParsed: {
+        visualContinuation: value,
+        invalidatedScopeFields: ["visualContinuation"],
+      },
+    });
+    const handler: MessageHandlerResult = {
+      processMessage: "RESPOND",
+      thought: "",
+      plan: {
+        contexts: [
+          "productivity",
+          "calendar",
+          "tasks",
+          "todos",
+          "health",
+          "screen_time",
+          "connectors",
+          "notes",
+          "lifeops",
+        ],
+        intents: [
+          "Compile the daily dossier using the connected sources available now",
+        ],
+        replyEffectStatus: "pending",
+        requiresTool: true,
+        calendarReadBindings: [
+          {
+            intentId: "intent:1",
+            operation: "feed",
+            execution: "required",
+            sourceMessageId: input.id ?? "",
+            roomId: input.roomId,
+            actorId: input.entityId,
+            requestedAt: 1000,
+          },
+        ],
+        contextSlices: ["Existing authorized source context"],
+      },
+    };
+    const direct = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+      (evaluator) =>
+        evaluator.name === "core.direct_registered_capability_request",
+    );
+    if (!direct) throw new Error("Missing direct-route evaluator");
+    return { f, input, state, handler, direct };
+  }
+  it("captures controls through real MessageService lifetime with distinct incoming and assistant response IDs", async () => {
+    const runtime = new AgentRuntime({
+      character: { name: "Source lifetime fixture", bio: [] },
+      plugins: [
+        createAssistantPlugin(),
+        {
+          name: "source-lifetime-host",
+          description: "Isolated native source host",
+          responseHandlerEvaluators:
+            createElizaPlugin().responseHandlerEvaluators,
+          responseHandlerFieldEvaluators: [viewNavigationField],
+          actions: [
+            {
+              ...briefAction,
+              validate: async () => true,
+              handler: async () => ({
+                success: true,
+                text: "Brief complete.",
+                userFacingText: "Brief complete.",
+                verifiedUserFacing: true,
+                turnComplete: true,
+              }),
+            },
+          ],
+          init: async (_config, active) =>
+            registerDirectActionRoutingRule(
+              active,
+              createTrackedWorkRecapDirectRoutingRule(),
+            ),
+        },
+      ],
+      enableAutonomy: false,
+      logLevel: "fatal",
+    });
+    runtime.registerDatabaseAdapter(
+      SQLiteDatabaseAdapter.create(":memory:", runtime.agentId),
+    );
+    cleanup.push(async () => {
+      await runtime.stop();
+      await runtime.close();
+    });
+    runtime.registerModel(
+      ModelType.TEXT_EMBEDDING,
+      async () => [1, ...Array(383).fill(0)],
+      "source-lifetime-test",
+    );
+    await runtime.initialize();
+    expect(runtime.messageService).toBeInstanceOf(DefaultMessageService);
+    const worldId = "66666666-6666-4666-8666-666666666666" as UUID;
+    await runtime.createWorld({
+      id: worldId,
+      name: "Source owner world",
+      agentId: runtime.agentId,
+      metadata: { ownership: { ownerId: owner }, roles: { [owner]: "OWNER" } },
+    });
+    await runtime.ensureConnection({
+      entityId: owner,
+      roomId: room,
+      worldId,
+      userName: "source-owner",
+      name: "source-owner",
+      source: "client_chat",
+      type: "DM",
+    });
+    const input = clientMessage();
+    input.agentId = runtime.agentId;
+    input.content.text = briefRequest;
+    let nativeWire = "";
+    let responseId: string | undefined;
+    runtime.registerModel(
+      ModelType.RESPONSE_HANDLER,
+      async () => ({
+        text: "",
+        finishReason: "tool-calls",
+        toolCalls: [
+          {
+            id: "owned-routing",
+            name: "HANDLE_RESPONSE",
+            arguments: {
+              shouldRespond: "RESPOND",
+              contexts: ["simple"],
+              intents: [],
+              candidateActionNames: [],
+              contextRequests: [],
+              replyText: "",
+              replyEffectStatus: "none",
+              facts: [],
+              relationships: [],
+              topics: [],
+              addressedTo: [],
+              emotion: "none",
+              visualContinuation: {
+                disposition: "none",
+                viewId: "",
+                reason: "Domain request",
+              },
+            },
+          },
+        ],
+      }),
+      "source-lifetime-test",
+    );
+    runtime.registerModel(
+      ModelType.ACTION_PLANNER,
+      async (_active, params) => {
+        const modelParams = params as GenerateTextParams;
+        expect(modelParams[MODEL_CANONICAL_CONTEXT]).toBeUndefined();
+        nativeWire = JSON.stringify(modelParams.messages);
+        expect(nativeWire).toContain(
+          "Full controls remain in canonical source",
+        );
+        expect(nativeWire).not.toContain("HTTP-published Ω value");
+        return {
+          text: "",
+          toolCalls: [
+            {
+              id: "owned-brief",
+              name: "BRIEF",
+              arguments: { action: "compose_morning" },
+            },
+          ],
+        };
+      },
+      "source-lifetime-test",
+    );
+    // Observe the actual invocation before core intentionally removes runtime-only
+    // metadata from provider parameters; delegate to the real model dispatcher.
+    const originalUseModel = runtime.useModel.bind(runtime);
+    runtime.useModel = (async (
+      ...args: Parameters<typeof runtime.useModel>
+    ) => {
+      if (args[0] === ModelType.ACTION_PLANNER) {
+        responseId = getStreamingContext()?.messageId;
+        expect(responseId).toBeTruthy();
+        expect(responseId).not.toBe(input.id);
+        const canonical = (args[1] as GenerateTextParams)[
+          MODEL_CANONICAL_CONTEXT
+        ];
+        expect(canonical?.metadata?.messageId).toBe(input.id);
+        expect(canonical?.metadata?.actorId).toBe(owner);
+        const source = canonical?.events.find(
+          (event) => event.source === "host:active-view",
+        ) as ContextProviderEvent;
+        expect(source?.text).toContain("HTTP-published Ω value");
+      }
+      return originalUseModel(...args);
+    }) as typeof runtime.useModel;
+    installPromptOptimizations(runtime);
+    const f = await fixture(1, runtime, async () => {
+      const result = await runtime.messageService?.handleMessage(
+        runtime,
+        input,
+        async () => [],
+        { onStreamChunk: async () => {} },
+      );
+      return {
+        status: result?.outcome.status,
+        response: result?.responseContent?.text,
+      };
+    });
+    const post = async (path: string, body: object) => {
+      const result = await fetch(`${f.url}${path}`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer local-navigation-test",
+          "content-type": "application/json",
+          "x-eliza-client-id": "origin-client",
+        },
+        body: JSON.stringify(body),
+      });
+      expect(result.status).toBe(200);
+      return result;
+    };
+    await post("/api/views/notes/navigate", { source: "user" });
+    await post("/api/views/notes/elements", {
+      installationId: getView(runtime, "notes")?.installationId,
+      elements: [
+        {
+          id: "lifetime-control",
+          role: "textbox",
+          label: "Source control",
+          value: "HTTP-published Ω value",
+        },
+      ],
+    });
+    const result = await post("/api/owned-source-turn", {});
+    expect(await result.json()).toMatchObject({
+      status: "completed",
+      response: "Brief complete.",
+    });
+    expect(nativeWire).toContain("Full controls remain in canonical source");
+    expect(responseId).not.toBe(input.id);
+  });
+  it.each([
+    "current",
+    "actor",
+    "message",
+    "serialized",
+    "changed-elements",
+    "request",
+    "duplicate",
+    "copy-deleted-flag",
+    "forged-no-markers",
+    "client",
+    "response",
+  ])(
+    "captures exact HTTP-reported controls and keeps full originals for %s source binding",
+    async (mode) => {
+      const x = await staged();
+      x.f.runtime.responseHandlerEvaluators.push(activeViewSourceEvaluator);
+      const post = async (resource: string, body: object) => {
+        const response = await fetch(`${x.f.url}/api/views/notes/${resource}`, {
+          method: "POST",
+          headers: {
+            authorization: "Bearer local-navigation-test",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ clientId: "origin-client", ...body }),
+        });
+        expect(response.status).toBe(200);
+      };
+      await post("navigate", { source: "user" });
+      const installationId = getView(x.f.runtime, "notes")?.installationId;
+      await post("elements", {
+        installationId,
+        elements: [
+          {
+            id: "literal-control",
+            role: "textbox",
+            label: "Exact Ω label",
+            value: "  original  value  ",
+          },
+        ],
+      });
+      await runWithViewClient(
+        { hostKey: x.f.hostKey, clientId: "origin-client" },
+        () =>
+          runWithStreamingContext(
+            { messageId: "88888888-8888-4888-8888-888888888888" },
+            async () => {
+              const run = await runResponseHandlerEvaluators({
+                runtime: x.f.runtime,
+                message: x.input,
+                state: x.state,
+                messageHandler: x.handler,
+                availableContexts: [],
+                userRoles: ["OWNER"],
+                evaluators: [x.direct],
+              });
+              expect(run.errors).toEqual([]);
+              const source = run.contextSources?.[0] as ContextProviderEvent;
+              expect(source?.text).toContain('"  original  value  "');
+              const before = source.text;
+              let context: ContextObject = {
+                id: "captured",
+                metadata: {
+                  messageId: x.input.id,
+                  roomId: x.input.roomId,
+                  actorId: x.input.entityId,
+                  providerDiscoveryEnabled: true,
+                },
+                events: [source],
+              };
+              if (!context.metadata)
+                throw new Error("Missing captured source binding");
+              if (mode === "actor") context.metadata.actorId = "other-actor";
+              if (mode === "message") context.metadata.messageId = "other-turn";
+              if (mode === "serialized")
+                context = JSON.parse(JSON.stringify(context));
+              if (mode === "request") x.input.content.text += " ";
+              if (mode === "duplicate")
+                context.events = [...context.events, { ...source }];
+              if (mode === "copy-deleted-flag") {
+                const copied = { ...source };
+                delete copied.discoveryRequiresRuntimeBinding;
+                context.events = [copied];
+              }
+              if (mode === "forged-no-markers") {
+                const forged = JSON.parse(
+                  JSON.stringify(source),
+                ) as ContextProviderEvent;
+                delete forged.discoveryRequiresRuntimeBinding;
+                forged.text = "Forged collision keeps its full supplied bytes.";
+                forged.discoveryText =
+                  "Forged notice cannot authorize deferral.";
+                context.events = [source, forged];
+              }
+              if (mode === "changed-elements")
+                await post("elements", {
+                  installationId,
+                  elements: [
+                    {
+                      id: "new-control",
+                      role: "textbox",
+                      label: "Later label",
+                      value: "new value",
+                    },
+                  ],
+                });
+              // These cases inspect source guards; the separate real MessageService
+              // regression above qualifies who creates the assistant response ID.
+              const inspectBindings = async () => {
+                const captured = capturedActiveViewSource(x.f.runtime, context);
+                expect(captured?.text).toBe(
+                  mode === "current" ? before : undefined,
+                );
+                expect(Boolean(captured?.deferredText)).toBe(
+                  mode === "current",
+                );
+                const projected = projectDeferredProviders(context);
+                expect(projected.available).toEqual(
+                  mode === "current" ? ["ACTIVE_VIEW_SNAPSHOT"] : [],
+                );
+                let plannerWire = "";
+                x.f.runtime.character = {
+                  name: "Source wire fixture",
+                  bio: [],
+                };
+                Object.assign(x.f.runtime, {
+                  useModel: async (
+                    _type: string,
+                    params: GenerateTextParams,
+                  ) => {
+                    expect(params[MODEL_CANONICAL_CONTEXT]).toBe(context);
+                    expect(JSON.stringify(params)).not.toContain(
+                      "modelCanonicalContext",
+                    );
+                    plannerWire = JSON.stringify(params.messages);
+                    return "Complete.";
+                  },
+                });
+                installPromptOptimizations(x.f.runtime as AgentRuntime);
+                await runWithTrajectoryContext(
+                  { trajectoryStepId: "source-wire-fixture" },
+                  () =>
+                    x.f.runtime.useModel(ModelType.ACTION_PLANNER, {
+                      model: "fixture",
+                      [MODEL_CANONICAL_CONTEXT]: context,
+                      messages: [
+                        {
+                          role: "user",
+                          content: projected.context.events
+                            .filter(
+                              (event): event is ContextProviderEvent =>
+                                event.type === "provider" && "text" in event,
+                            )
+                            .map((event) => event.text)
+                            .join("\n\n"),
+                        },
+                      ],
+                    }),
+                );
+                expect(plannerWire.includes("original  value")).toBe(
+                  mode !== "current",
+                );
+                if (mode === "changed-elements")
+                  expect(plannerWire).toContain("new value");
+                if (mode === "forged-no-markers")
+                  expect(plannerWire).toContain(
+                    "Forged collision keeps its full supplied bytes.",
+                  );
+                let evaluatorWire = "";
+                await runEvaluator({
+                  context,
+                  trajectory: {
+                    context,
+                    modelBaseContext: context,
+                    steps: [],
+                    archivedSteps: [],
+                    plannedQueue: [],
+                    evaluatorOutputs: [],
+                  },
+                  runtime: {
+                    useModel: async (_type, params) => {
+                      evaluatorWire = JSON.stringify(params.messages);
+                      return JSON.stringify({
+                        decision: "CONTINUE",
+                        success: false,
+                        thought: "Source wire inspection",
+                      });
+                    },
+                  },
+                });
+                expect(evaluatorWire.includes("original  value")).toBe(
+                  mode !== "current",
+                );
+                if (mode === "forged-no-markers")
+                  expect(evaluatorWire).toContain(
+                    "Forged collision keeps its full supplied bytes.",
+                  );
+                expect(source.text).toBe(before);
+                expect(x.handler.plan).not.toHaveProperty("wholeRequestOwner");
+              };
+              if (mode === "client")
+                await runWithViewClient(
+                  { hostKey: x.f.hostKey, clientId: "other-client" },
+                  inspectBindings,
+                );
+              else if (mode === "response")
+                await runWithStreamingContext(
+                  { messageId: "other-assistant-response" },
+                  inspectBindings,
+                );
+              else await inspectBindings();
+            },
+          ),
+      );
+    },
+  );
+  it("replays capture480 through the actual staged host field and all three evaluators", async () => {
+    const x = await staged();
+    const original = structuredClone(x.input);
+    const run = await runResponseHandlerEvaluators({
+      runtime: x.f.runtime,
+      message: x.input,
+      state: x.state,
+      messageHandler: x.handler,
+      availableContexts: [],
+      userRoles: ["OWNER"],
+      evaluators: [x.direct, calendarReadBindingEvaluator],
+    });
+    expect(run.errors).toEqual([]);
+    expect(x.handler.plan.intents).toEqual([briefRequest]);
+    expect(x.handler.plan.contexts).toEqual(["productivity", "tasks"]);
+    expect(x.handler.plan.candidateActions).toEqual(["BRIEF"]);
+    expect(x.handler.plan.calendarReadBindings).toBeUndefined();
+    expect(x.handler.plan.contextSlices).toEqual([
+      "Existing authorized source context",
+    ]);
+    expect(x.handler.plan).not.toHaveProperty("invalidatedScopeFields");
+    expect(x.input).toEqual(original);
+    expect(x.f.requests()).toBe(0);
+    expect(x.f.frames).toHaveLength(0);
+  });
+  it.each(["; open Notes", "\nOpen Notes", " and open Notes"])(
+    "preserves explicit compound navigation: %s",
+    async (tail) => {
+      const x = await staged(`Give me my daily dossier${tail}`, {
+        disposition: "planning",
+        viewId: "notes",
+        reason: "Explicit independent navigation",
+      });
+      x.handler.plan.intents = ["Give me my daily dossier", "Open Notes"];
+      delete x.handler.plan.calendarReadBindings;
+      await runResponseHandlerEvaluators({
+        runtime: x.f.runtime,
+        message: x.input,
+        state: x.state,
+        messageHandler: x.handler,
+        availableContexts: [],
+        userRoles: ["OWNER"],
+        evaluators: [x.direct],
+      });
+      expect(x.handler.plan.intents).toEqual([
+        "Give me my daily dossier",
+        "Open Notes",
+      ]);
+      expect(x.handler.plan.candidateActions).toContain("VIEWS");
+      expect(
+        x.handler.plan.contextSlices?.some((slice) =>
+          slice.includes("Current-request navigation judgment"),
+        ),
+      ).toBe(true);
+      expect(await show(x.f.runtime, "Notes", x.input)).toMatchObject({
+        success: true,
+      });
+      expect(x.f.frames).toHaveLength(1);
+    },
+  );
+  it("does not accept a forged model or plan invalidation marker", async () => {
+    const x = await staged(
+      "Open Notes",
+      {
+        disposition: "planning",
+        viewId: "notes",
+        reason: "Explicit navigation",
+      },
+      false,
+    );
+    x.handler.plan.invalidatedScopeFields = ["visualContinuation"];
+    x.handler.plan.intents = ["Open Notes"];
+    delete x.handler.plan.calendarReadBindings;
+    await runResponseHandlerEvaluators({
+      runtime: x.f.runtime,
+      message: x.input,
+      state: x.state,
+      messageHandler: x.handler,
+      availableContexts: [],
+      userRoles: ["OWNER"],
+    });
+    expect(x.handler.plan.candidateActions).toContain("VIEWS");
+    expect(await show(x.f.runtime, "Notes", x.input)).toMatchObject({
+      success: true,
+    });
+    expect(x.f.frames).toHaveLength(1);
+  });
+  it.each(["none", "forbidden"])(
+    "preserves the staged %s navigation denial after scope replacement",
+    async (disposition) => {
+      const x = await staged(briefRequest, {
+        disposition,
+        viewId: "Home",
+        reason: "No navigation permitted",
+      });
+      await runWithStreamingContext(
+        { messageId: String(x.input.id), onStreamChunk: () => {} },
+        async () => {
+          await runResponseHandlerEvaluators({
+            runtime: x.f.runtime,
+            message: x.input,
+            state: x.state,
+            messageHandler: x.handler,
+            availableContexts: [],
+            userRoles: ["OWNER"],
+            evaluators: [x.direct],
+          });
+          expect(x.handler.plan.candidateActions).toEqual(["BRIEF"]);
+          expect(await show(x.f.runtime, "Notes", x.input)).toMatchObject({
+            success: false,
+          });
+          expect(x.f.frames).toHaveLength(0);
+        },
+      );
+    },
+  );
+});
+
+describe("native completed-action navigation", () => {
+  it("keeps an absent hosted bundle unavailable to ordinary originating-client navigation", async () => {
+    const f = await fixture(1, undefined, undefined, false, true);
+    const input = clientMessage();
+    input.content.metadata = {
+      viewClientId: "origin-client",
+      viewDelivery: "originating-client",
+    };
+    const selected = await selectNavigation(f, input);
+    expect(getView(f.runtime, "notes")?.available).toBe(false);
+    expect(selected.plan.deterministicToolCall).toBeUndefined();
+    expect(f.requests()).toBe(0);
+    expect(f.frames).toHaveLength(0);
+  });
+  it("retires an unclaimed prepared navigation with its owning host", async () => {
+    const f = await fixture(0, undefined, undefined, true);
+    vi.stubEnv("ELIZA_LOCAL_AGENT_TRANSPORT", "filesystem-v1");
+    const input = clientMessage();
+    input.content.metadata = {
+      viewClientId: "origin-client",
+      viewDelivery: "completed-action",
+    };
+    await selectNavigation(f, input);
+    const result = await show(f.runtime, "notes", input);
+    if (!result || typeof result === "boolean" || !result.values)
+      throw Error("Missing prepared result");
+    closeViewInteractionHost(f.hostKey);
+    const response = await fetch(f.url + "/api/views/interact-claim", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer local-navigation-test",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(result.values.navigationBinding),
+    });
+    expect(response.ok).toBe(false);
+    expect(
+      getCurrentViewState(f.runtime, {
+        hostKey: f.hostKey,
+        clientId: "origin-client",
+      }),
+    ).toBeNull();
+    expect(f.frames).toHaveLength(0);
+  });
+
+  it("prepares through the registered kernel and commits only an exact owner/renderer claim and switch result", async () => {
+    const f = await fixture(0, undefined, undefined, true, true);
+    vi.stubEnv("ELIZA_LOCAL_AGENT_TRANSPORT", "filesystem-v1");
+    const input = clientMessage();
+    input.content.metadata = {
+      viewClientId: "origin-client",
+      viewDelivery: "completed-action",
+      uiView: "chat",
+    };
+    await selectNavigation(f, input);
+    expect(getView(f.runtime, "notes")?.available).toBe(false);
+    const events = vi.spyOn(f.runtime, "emitEvent");
+    const result = await show(f.runtime, "notes", input);
+    expect(result).toMatchObject({
+      success: true,
+      verifiedUserFacing: true,
+      data: { navigation: { status: "prepared" } },
+      values: { navigationPrepared: true, completedActionDelivered: false },
+    });
+    expect(
+      result && typeof result !== "boolean" && result.userFacingText,
+    ).not.toContain("Opened");
+    expect(f.kernelRequests()).toBe(1);
+    expect(f.frames).toHaveLength(0);
+    const scope = { hostKey: f.hostKey, clientId: "origin-client" };
+    expect(getCurrentViewState(f.runtime, scope)).toBeNull();
+    if (
+      !result ||
+      typeof result === "boolean" ||
+      !result.values ||
+      !isObjectRecord(result.values.navigationBinding)
+    )
+      throw Error("Missing prepared binding");
+    const binding = result.values.navigationBinding;
+    const post = (
+      path: string,
+      body: unknown,
+      authorization = "Bearer local-navigation-test",
+    ) =>
+      fetch(f.url + path, {
+        method: "POST",
+        headers: { authorization, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    expect(
+      (
+        await post(
+          "/api/views/interact-claim",
+          binding,
+          "Bearer other-navigation-owner",
+        )
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await post("/api/views/interact-claim", {
+          ...binding,
+          clientId: "other-client",
+        })
+      ).status,
+    ).toBe(409);
+    const claimed = await post("/api/views/interact-claim", binding);
+    expect(claimed.status).toBe(200);
+    const { claimId } = await claimed.json();
+    // Request IDs share one host map, so a different renderer or owner must
+    // not replace this claim by colliding with its caller-provided ID.
+    for (const authorization of [
+      "Bearer local-navigation-test",
+      "Bearer other-navigation-owner",
+    ])
+      expect(
+        (
+          await post(
+            "/api/views/notes/navigate",
+            {
+              clientId: "other-client",
+              delivery: "completed-action",
+              completedActionHandoffId: binding.requestId,
+              viewType: "gui",
+              prepareOnly: true,
+            },
+            authorization,
+          )
+        ).status,
+      ).toBe(409);
+    // Once execution is claimed, a later preparation cannot revoke its ack
+    // or introduce a second claim that can commit out of order.
+    const nextNavigation = {
+      clientId: "origin-client",
+      delivery: "completed-action",
+      completedActionHandoffId: "claimed-navigation-next",
+      viewType: "gui",
+      prepareOnly: true,
+    };
+    expect(
+      (await post("/api/views/notes/navigate", nextNavigation)).status,
+    ).toBe(409);
+    const settled = {
+      ...binding,
+      claimId,
+      success: true,
+      result: { switched: true },
+    };
+    expect(
+      await (
+        await post("/api/views/interact-result", {
+          ...settled,
+          claimId: "wrong",
+        })
+      ).json(),
+    ).toMatchObject({ accepted: false });
+    expect(
+      await (
+        await post(
+          "/api/views/interact-result",
+          settled,
+          "Bearer other-navigation-owner",
+        )
+      ).json(),
+    ).toMatchObject({ accepted: false });
+    expect(
+      await (
+        await post("/api/views/interact-result", {
+          ...settled,
+          result: { switched: true, personalText: "not authorized" },
+        })
+      ).json(),
+    ).toMatchObject({ accepted: false });
+    expect(getCurrentViewState(f.runtime, scope)).toBeNull();
+    expect(
+      await (await post("/api/views/interact-result", settled)).json(),
+    ).toMatchObject({ accepted: true });
+    await vi.waitFor(() =>
+      expect(getCurrentViewState(f.runtime, scope)?.viewId).toBe("notes"),
+    );
+    const nextPrepared = await post(
+      "/api/views/notes/navigate",
+      nextNavigation,
+    );
+    expect(nextPrepared.status).toBe(200);
+    const nextBinding = (await nextPrepared.json()).navigationBinding;
+    // Unclaimed preparations remain replaceable; only issued execution claims
+    // prevent supersession.
+    const superseding = await post("/api/views/notes/navigate", {
+      ...nextNavigation,
+      completedActionHandoffId: "unclaimed-navigation-newer",
+    });
+    expect(superseding.status).toBe(200);
+    const latestBinding = (await superseding.json()).navigationBinding;
+    expect((await post("/api/views/interact-claim", nextBinding)).status).toBe(
+      409,
+    );
+    const latestClaim = await post("/api/views/interact-claim", latestBinding);
+    expect(latestClaim.status).toBe(200);
+    expect(
+      await (
+        await post("/api/views/interact-result", {
+          ...latestBinding,
+          claimId: (await latestClaim.json()).claimId,
+          success: true,
+          result: { switched: true },
+        })
+      ).json(),
+    ).toMatchObject({ accepted: true });
+    expect(events).not.toHaveBeenCalled();
+    expect(
+      await (await post("/api/views/interact-result", settled)).json(),
+    ).toMatchObject({ accepted: false });
+    expect(f.frames).toHaveLength(0);
+  });
+  it.each([
+    { disposition: "planning", plan: {} },
+    {
+      disposition: "direct",
+      plan: { intents: ["Read condition", "Open Notes only when true"] },
+    },
+  ])(
+    "keeps conditional/compound native navigation in planning without an automatic effect: %j",
+    async ({ disposition, plan }) => {
+      const f = await fixture(0, undefined, undefined, true);
+      const input = clientMessage();
+      input.content.metadata = {
+        viewClientId: "origin-client",
+        viewDelivery: "completed-action",
+      };
+      const selected = await selectNavigation(f, input, { disposition }, plan);
+      expect(selected.plan.deterministicToolCall).toBeUndefined();
+      expect(f.kernelRequests()).toBe(0);
+      expect(f.requests()).toBe(0);
+      expect(f.frames).toHaveLength(0);
+    },
+  );
+
+  it("allows direct Notes falling through mixed routing candidates to prepare via the real promoted planner action", async () => {
+    const f = await fixture(0, undefined, undefined, true);
+    vi.stubEnv("ELIZA_LOCAL_AGENT_TRANSPORT", "filesystem-v1");
+    const input = clientMessage();
+    input.content.metadata = {
+      viewClientId: "origin-client",
+      viewDelivery: "completed-action",
+    };
+    const selected = await selectNavigation(
+      f,
+      input,
+      {},
+      {
+        candidateActions: ["PROPOSE_DEVICE_ACTION", "VIEWS"],
+        parentActionHints: ["PROPOSE_DEVICE_ACTION"],
+      },
+    );
+    expect(selected.plan.deterministicToolCall).toBeUndefined();
+    expect(selected.plan.candidateActions).toContain("PROPOSE_DEVICE_ACTION");
+    expect(f.kernelRequests()).toBe(0);
+    const navigation = createElizaPlugin().actions?.find(
+      (action) => action.name === "VIEWS_SHOW",
+    );
+    if (!navigation?.handler) throw Error("Missing promoted navigation action");
+    const received: unknown[] = [];
+    await runPlannerLoop({
+      context: {
+        id: String(input.id),
+        metadata: { roomId: input.roomId, messageId: input.id },
+        events: [],
+      },
+      runtime: {
+        useModel: async (): Promise<GenerateTextResult> => ({
+          text: "",
+          toolCalls: [
+            {
+              id: "planned-notes",
+              name: "VIEWS_SHOW",
+              arguments: { view: "notes", eliza_turn_scope: "final" },
+            },
+          ],
+        }),
+      },
+      executeToolCall: async (call) => {
+        expect(call.name).toBe("VIEWS_SHOW");
+        const view = call.params?.view;
+        if (typeof view !== "string") throw Error("Missing planned view");
+        const result = await navigation.handler(f.runtime, input, undefined, {
+          parameters: { view },
+        });
+        if (!result || typeof result === "boolean")
+          throw Error("Missing action result");
+        received.push({ ...result, actionName: call.name });
+        return result as never;
+      },
+      evaluate: async () => ({
+        success: true,
+        decision: "FINISH",
+        thought: "Only preparation is proved.",
+        messageToUser: "Opening Notes.",
+        raw: {},
+      }),
+    });
+    expect(received).toEqual([
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({
+          navigation: expect.objectContaining({ status: "prepared" }),
+        }),
+        values: expect.objectContaining({
+          navigationPrepared: true,
+          completedActionDelivered: false,
+        }),
+      }),
+    ]);
+    const handoff = findViewActionHandoff(received);
+    expect(handoff).toMatchObject({
+      viewId: "notes",
+      navigationPrepared: true,
+      navigationBinding: { clientId: "origin-client", viewId: "notes" },
+    });
+    const promoted = received[0];
+    if (!isObjectRecord(promoted) || !isObjectRecord(promoted.values))
+      throw Error("Missing promoted result");
+    for (const actionName of [
+      "VIEWS_LIST",
+      "VIEWS_OPEN",
+      "VIEWS_SHOW_RECORD",
+      "PROPOSE_DEVICE_ACTION",
+    ]) {
+      expect(findViewActionHandoff([{ ...promoted, actionName }])).toBeNull();
+    }
+    expect(
+      findViewActionHandoff([
+        { ...promoted, values: { ...promoted.values, mode: "open" } },
+      ]),
+    ).toBeNull();
+    expect(f.kernelRequests()).toBe(1);
+    expect(f.frames).toHaveLength(0);
+    expect(
+      getCurrentViewState(f.runtime, {
+        hostKey: f.hostKey,
+        clientId: "origin-client",
+      }),
+    ).toBeNull();
+    const binding = handoff?.navigationBinding;
+    if (!binding) throw Error("Promoted navigation was not parsed");
+    const post = (path: string, body: unknown) =>
+      fetch(f.url + path, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer local-navigation-test",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+    const claim = await post("/api/views/interact-claim", binding);
+    expect(claim.status).toBe(200);
+    const { claimId } = await claim.json();
+    expect(
+      getCurrentViewState(f.runtime, {
+        hostKey: f.hostKey,
+        clientId: "origin-client",
+      }),
+    ).toBeNull();
+    expect(
+      await (
+        await post("/api/views/interact-result", {
+          ...binding,
+          claimId,
+          success: true,
+          result: { switched: true },
+        })
+      ).json(),
+    ).toMatchObject({ accepted: true });
+    await vi.waitFor(() =>
+      expect(
+        getCurrentViewState(f.runtime, {
+          hostKey: f.hostKey,
+          clientId: "origin-client",
+        })?.viewId,
+      ).toBe("notes"),
+    );
+  });
+
+  it("does not auto-execute conditional navigation when the planner prerequisite is false", async () => {
+    const f = await fixture(0, undefined, undefined, true);
+    const input = clientMessage();
+    input.content.metadata = {
+      viewClientId: "origin-client",
+      viewDelivery: "completed-action",
+    };
+    const selected = await selectNavigation(
+      f,
+      input,
+      { disposition: "planning" },
+      {
+        intents: [
+          "Check prerequisite",
+          "Open Notes only when prerequisite is true",
+        ],
+        candidateActions: ["VIEWS", "CHECK_CONDITION"],
+      },
+    );
+    expect(selected.plan.deterministicToolCall).toBeUndefined();
+    const executed: string[] = [];
+    await runPlannerLoop({
+      context: {
+        id: String(input.id),
+        metadata: { roomId: input.roomId, messageId: input.id },
+        events: [],
+      },
+      runtime: {
+        useModel: async (): Promise<GenerateTextResult> => ({
+          text: "",
+          toolCalls: [
+            {
+              id: "condition",
+              name: "CHECK_CONDITION",
+              arguments: { eliza_turn_scope: "final" },
+            },
+          ],
+        }),
+      },
+      executeToolCall: async (call) => {
+        executed.push(call.name);
+        return {
+          success: true,
+          data: { condition: false },
+          text: "Condition is false.",
+        };
+      },
+      evaluate: async () => ({
+        success: true,
+        decision: "FINISH",
+        thought: "Prerequisite false; do not navigate.",
+        messageToUser: "The condition was not met.",
+        raw: {},
+      }),
+    });
+    expect(executed).toEqual(["CHECK_CONDITION"]);
+    expect(f.kernelRequests()).toBe(0);
+    expect(f.requests()).toBe(0);
+    expect(f.frames).toHaveLength(0);
+  });
+});
+
+describe("trusted navigation-only consumer counterparts", () => {
+  const declarations = [
+    { id: "photos", label: "Photos", path: "/photos" },
+    { id: "maps", label: "Maps", path: "/maps" },
+    { id: "camera", label: "Camera", path: "/camera" },
+  ];
+  it.each(declarations)(
+    "prepares $id through the canonical action and retains exact owner/client/installation claim and acknowledgment",
+    async ({ id }) => {
+      vi.stubEnv(
+        "ELIZA_NATIVE_VIEW_DECLARATIONS",
+        JSON.stringify(declarations),
+      );
+      vi.stubEnv("ELIZA_LOCAL_AGENT_TRANSPORT", "filesystem-v1");
+      const f = await fixture(1, undefined, undefined, true);
+      const input = clientMessage();
+      input.content.metadata = {
+        viewClientId: "origin-client",
+        viewDelivery: "completed-action",
+        uiView: id,
+      };
+      const selected = await selectNavigation(f, input, {
+        disposition: "direct",
+        viewId: id,
+      });
+      expect(selected.plan.deterministicToolCall?.params).toMatchObject({
+        action: "show",
+        view: id,
+      });
+      const result = await show(f.runtime, id, input);
+      expect(result).toMatchObject({
+        success: true,
+        values: {
+          navigationPrepared: true,
+          viewId: id,
+          viewPath: `/${id}`,
+          completedActionDelivered: false,
+        },
+      });
+      const binding = result?.values?.navigationBinding;
+      if (!isObjectRecord(binding)) throw Error("Missing counterpart binding");
+      const post = (
+        path: string,
+        body: unknown,
+        token = "local-navigation-test",
+      ) =>
+        fetch(f.url + path, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        });
+      expect(
+        (
+          await post("/api/views/interact-claim", {
+            ...binding,
+            clientId: "another-client",
+          })
+        ).status,
+      ).toBe(409);
+      expect(
+        (
+          await post(
+            "/api/views/interact-claim",
+            binding,
+            "other-navigation-owner",
+          )
+        ).status,
+      ).toBe(409);
+      const claim = await post("/api/views/interact-claim", binding);
+      expect(claim.status).toBe(200);
+      const { claimId } = await claim.json();
+      const ack = await post("/api/views/interact-result", {
+        ...binding,
+        claimId,
+        success: true,
+        result: { switched: true },
+      });
+      expect(ack.status).toBe(200);
+      expect(await ack.json()).toMatchObject({ accepted: true });
+      expect(f.frames).toHaveLength(0);
+      expect(f.runtime.reportError).not.toHaveBeenCalled();
+      // A native counterpart never supplies a missing hosted executable.
+      const ordinary = await show(f.runtime, id, clientMessage());
+      expect(ordinary?.success).toBe(false);
+    },
+  );
+  it("does not create views from renderer metadata or device profile hints, or admit an unauthorized actor", async () => {
+    const f = await fixture();
+    for (const id of [
+      "photos",
+      "maps",
+      "camera",
+      "unknown-consumer",
+      "phone",
+      "messages",
+      "contacts",
+    ]) {
+      const input = clientMessage();
+      input.content.metadata = {
+        viewClientId: "origin-client",
+        viewDelivery: "completed-action",
+        uiView: id,
+        supportedViews: [id],
+      };
+      expect(
+        (
+          await selectNavigation(f, input, {
+            disposition: "direct",
+            viewId: id,
+          })
+        ).plan.deterministicToolCall,
+      ).toBeUndefined();
+    }
+    vi.stubEnv("ELIZA_NATIVE_VIEW_DECLARATIONS", JSON.stringify(declarations));
+    const consumer = await fixture();
+    const input = clientMessage();
+    input.entityId = "55555555-5555-4555-8555-555555555555" as UUID;
+    input.content.metadata = {
+      viewClientId: "origin-client",
+      viewDelivery: "completed-action",
+    };
+    expect((await show(consumer.runtime, "maps", input))?.success).toBe(false);
+    expect(consumer.requests()).toBe(0);
+  });
+  it("retires a declared counterpart preparation with its host before any execution claim", async () => {
+    vi.stubEnv("ELIZA_NATIVE_VIEW_DECLARATIONS", JSON.stringify(declarations));
+    vi.stubEnv("ELIZA_LOCAL_AGENT_TRANSPORT", "filesystem-v1");
+    const f = await fixture(1, undefined, undefined, true);
+    const input = clientMessage();
+    input.content.metadata = {
+      viewClientId: "origin-client",
+      viewDelivery: "completed-action",
+    };
+    const result = await show(f.runtime, "maps", input);
+    closeViewInteractionHost(f.hostKey);
+    const response = await fetch(`${f.url}/api/views/interact-claim`, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer local-navigation-test",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(result?.values?.navigationBinding),
+    });
+    expect(response.ok).toBe(false);
   });
 });

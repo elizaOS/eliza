@@ -423,6 +423,14 @@ export class LifeOpsRepository {
     return this.goalsRepo.updateGoal(goal);
   }
 
+  async updateGoalReview(
+    agentId: string,
+    goalId: string,
+    review: Parameters<GoalsRepository["updateGoalReview"]>[2],
+  ): Promise<void> {
+    return this.goalsRepo.updateGoalReview(agentId, goalId, review);
+  }
+
   async getGoal(
     agentId: string,
     goalId: string,

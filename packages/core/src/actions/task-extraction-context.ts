@@ -1,16 +1,17 @@
 /** Request-bound task extraction view of the planner's reviewed originals.
  * Complete state and source events stay intact. This capability is process-local;
  * serialized/cloned provider data never grants source-selection authority. */
+
 import { getAmbientSingleton } from "../ambient-context";
 import {
 	completionContextSources,
 	selectHistoricalNavigation,
 } from "../runtime/completion-context";
 import { hashStableJson } from "../runtime/context-hash";
+import type { ContextObject } from "../runtime/context-object";
 import { renderContextObject, segmentBlock } from "../runtime/context-renderer";
 import { compactHistoricalReceiptSegments } from "../runtime/historical-receipt-wire";
 import { projectDeferredProviders } from "../runtime/provider-context";
-import type { ContextObject } from "../types/context-object";
 import type { Memory } from "../types/memory";
 import type { State } from "../types/state";
 

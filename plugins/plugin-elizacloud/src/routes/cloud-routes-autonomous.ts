@@ -4,6 +4,7 @@ import type http from "node:http";
 import path from "node:path";
 import { ELIZA_CLOUD_CLIENT_ADDRESS_KEY_ENV } from "../cloud/cloud-wallet.js";
 import { applyCanonicalSetupConfig } from "../lib/config-like";
+import { invalidateCloudAccountCache } from "../cloud-providers/cloud-account";
 import { getOrCreateClientAddressKey } from "../cloud/cloud-wallet.js";
 import { isCliLoginSessionId } from "@elizaos/cloud-sdk";
 import { isCloudInferenceSelectedInConfig } from "@elizaos/host/protocol";
@@ -691,6 +692,7 @@ export async function handleCloudRoute(req: http.IncomingMessage, res: http.Serv
             sendJson(res, { ok: false, error: `Cloud createAgent failed: ${String(err)}` }, 502);
             return true;
         }
+        if (state.runtime) invalidateCloudAccountCache(state.runtime);
         sendJson(res, { ok: true, agent }, 201);
         return true;
     }
@@ -749,6 +751,7 @@ export async function handleCloudRoute(req: http.IncomingMessage, res: http.Serv
             sendJson(res, { ok: false, error: `Cloud shutdown failed: ${String(err)}` }, 502);
             return true;
         }
+        if (state.runtime) invalidateCloudAccountCache(state.runtime);
         sendJson(res, { ok: true, agentId, status: "stopped" });
         return true;
     }

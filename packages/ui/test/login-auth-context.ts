@@ -1,0 +1,65 @@
+import type { LoginAuthContextValue } from "../src/login/types.js";
+
+async function unexpectedAuthCall(): Promise<never> {
+  throw new Error(
+    "Unexpected auth operation: provide an explicit test implementation",
+  );
+}
+
+export function createLoginAuthContext(
+  overrides: Partial<LoginAuthContextValue> = {},
+): LoginAuthContextValue {
+  return {
+    isAuthenticated: false,
+    isLoading: false,
+    user: null,
+    session: null,
+    providers: null,
+    isProvidersLoading: false,
+    guestState: { isGuest: false, isExpired: false, expiryMessage: null },
+    signOut: unexpectedAuthCall,
+    signInAsGuest: unexpectedAuthCall,
+    upgradeGuestWithEmail: unexpectedAuthCall,
+    deleteGuest: unexpectedAuthCall,
+    getToken: () => null,
+    signInWithPasskey: unexpectedAuthCall,
+    addPasskey: unexpectedAuthCall,
+    signInWithEmail: unexpectedAuthCall,
+    sendSmsOtp: unexpectedAuthCall,
+    verifySmsOtp: unexpectedAuthCall,
+    sendWhatsAppOtp: unexpectedAuthCall,
+    verifyWhatsAppOtp: unexpectedAuthCall,
+    verifyEmailCallback: unexpectedAuthCall,
+    signInWithSIWE: unexpectedAuthCall,
+    signInWithOAuth: unexpectedAuthCall,
+    signInWithTelegram: unexpectedAuthCall,
+    signInWithFarcaster: unexpectedAuthCall,
+    getIdentityToken: unexpectedAuthCall,
+    getTotpStatus: unexpectedAuthCall,
+    enrollTotp: unexpectedAuthCall,
+    verifyTotp: unexpectedAuthCall,
+    completeTotpMfa: unexpectedAuthCall,
+    completeRecoveryCodeMfa: unexpectedAuthCall,
+    stepUpWithTotp: unexpectedAuthCall,
+    stepUpWithRecoveryCode: unexpectedAuthCall,
+    getRecoveryCodeStatus: unexpectedAuthCall,
+    regenerateRecoveryCodes: unexpectedAuthCall,
+    unenrollTotp: unexpectedAuthCall,
+    getSmsMfaStatus: unexpectedAuthCall,
+    enrollSmsMfa: unexpectedAuthCall,
+    verifySmsMfa: unexpectedAuthCall,
+    sendSmsMfaCode: unexpectedAuthCall,
+    completeSmsMfa: unexpectedAuthCall,
+    stepUpWithSms: unexpectedAuthCall,
+    completePasskeyMfa: unexpectedAuthCall,
+    unenrollSmsMfa: unexpectedAuthCall,
+    activeTenantId: null,
+    tenants: null,
+    isTenantsLoading: false,
+    listTenants: unexpectedAuthCall,
+    switchTenant: unexpectedAuthCall,
+    joinTenant: unexpectedAuthCall,
+    leaveTenant: unexpectedAuthCall,
+    ...overrides,
+  };
+}

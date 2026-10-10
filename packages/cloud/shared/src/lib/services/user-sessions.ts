@@ -3,7 +3,7 @@
  */
 
 import crypto from "crypto";
-import { userSessionsRepository } from "../../db/repositories";
+import { userSessionsRepository } from "../../db/repositories/user-sessions";
 import type { NewUserSession, UserSession } from "../../db/schemas/user-sessions";
 
 /**

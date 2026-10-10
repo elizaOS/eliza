@@ -22,7 +22,7 @@ func preparationArtifact(t *testing.T, name string, artifact releaseArtifact) re
 	defer archive.Close()
 	var inventory []byte
 	for _, entry := range archive.File {
-		if entry.Name == "assets/runtime-payload.tsv" {
+		if entry.Name == runtimeInventoryAsset {
 			inventory, err = readAPKEntry(entry, 2*1024*1024)
 			if err != nil {
 				t.Fatal(err)

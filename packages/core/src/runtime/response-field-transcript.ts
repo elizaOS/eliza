@@ -49,6 +49,13 @@ const FIELD_LINE = new RegExp(
 const FENCE_LINE = /^\s{0,3}(?:`{3,}|~{3,})/;
 
 /**
+ * A fence opener written inline after a field name (`replyText: ```bash`).
+ * A backtick run whose info string holds another backtick is an inline code
+ * span (`replyText: ```npm i``` first`), not a fence.
+ */
+const INLINE_FENCE_OPEN = /^\s{0,3}(?:`{3,}[^`]*|~{3,}.*)$/;
+
+/**
  * Cheap skeleton detector for the fail-closed send-boundary guard. Returns true
  * when `text` IS a raw field transcript that must NOT be shipped to a user
  * channel — as opposed to a composed reply that merely QUOTES one.
@@ -155,6 +162,9 @@ export function parseFieldTranscript(
 			foundAny = true;
 			const inline = match[2];
 			buffer = inline && inline.length > 0 ? [inline] : [];
+			// The value opened a fence on the field line itself, so the next
+			// fence line closes it rather than opening quoted mode.
+			if (INLINE_FENCE_OPEN.test(inline)) inFence = true;
 		} else if (currentField !== null) {
 			// Continuation line of the current field value (including blank lines
 			// and any fenced quoted content).

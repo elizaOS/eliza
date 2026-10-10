@@ -12,7 +12,7 @@ import (
 // package default exists: host policy must be embedded by the signed build.
 func TestMain(m *testing.M) {
 	if compiledHostPolicyBase64 == "" {
-		compiledHostPolicyBase64 = base64.RawURLEncoding.EncodeToString([]byte(`{"schema":1,"product":"senior-care","package":"ai.elizaresearch.seniorcare","cohortDomain":"senior-care-ota-v1","runtimeInventoryHeader":"senior-care-runtime-v1"}`))
+		compiledHostPolicyBase64 = base64.RawURLEncoding.EncodeToString([]byte(`{"schema":2,"product":"senior-care","package":"ai.elizaresearch.seniorcare","cohortDomain":"senior-care-ota-v1","runtimeInventoryHeader":"eliza-runtime-v1","runtimeExcludedAgentDirectories":["models"]}`))
 	}
 	os.Exit(m.Run())
 }
@@ -20,7 +20,10 @@ func TestHostPolicyFailsClosed(t *testing.T) {
 	saved := compiledHostPolicyBase64
 	defer func() { compiledHostPolicyBase64 = saved }()
 	v := admissionVectors(t)[0]
-	for _, value := range []string{"", "invalid", base64.RawURLEncoding.EncodeToString([]byte(`{"schema":1}`))} {
+	for _, value := range []string{"", "invalid", base64.RawURLEncoding.EncodeToString([]byte(`{"schema":1}`)),
+		// Schema 1 lacked runtime exclusions and must be migrated explicitly.
+		base64.RawURLEncoding.EncodeToString([]byte(`{"schema":1,"product":"senior-care","package":"ai.elizaresearch.seniorcare","cohortDomain":"senior-care-ota-v1","runtimeInventoryHeader":"eliza-runtime-v1"}`)),
+		base64.RawURLEncoding.EncodeToString([]byte(`{"schema":2,"product":"senior-care","package":"ai.elizaresearch.seniorcare","cohortDomain":"senior-care-ota-v1","runtimeInventoryHeader":"eliza-runtime-v1","runtimeExcludedAgentDirectories":["../models"]}`))} {
 		compiledHostPolicyBase64 = value
 		if _, err := EvaluateReleaseInterval(v.Release, v.Device, v.Policy); err == nil {
 			t.Fatal("unconfigured host admitted release")

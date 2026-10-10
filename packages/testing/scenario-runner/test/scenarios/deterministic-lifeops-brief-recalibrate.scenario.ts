@@ -145,30 +145,28 @@ const composeText = "Give me my morning brief";
 const resetText = "Reset the brief recalibration for the newsletter digests";
 const composeAgainText = "Run my morning brief again";
 
-// Route straight to the promoted `<BRIEF>_<SUBACTION>` virtual actions
-// (`promoteSubactionsToActions` in core): picking the plain BRIEF umbrella
-// tool triggers a second subaction-narrowing planner pass, which a strict
-// one-fixture-per-turn scenario deliberately does not model.
+// Whole-brief requests are owned by the canonical BRIEF tool. Route its
+// explicit subaction through the same strict request and receipt fixtures.
 const strictRoutes: StrictActionRouteFixture[] = [
   {
-    actionName: "BRIEF_RECALIBRATE",
+    actionName: "BRIEF",
     input: recalibrateText,
-    args: {},
+    args: { action: "recalibrate" },
   },
   {
-    actionName: "BRIEF_COMPOSE_MORNING",
+    actionName: "BRIEF",
     input: composeText,
-    args: {},
+    args: { action: "compose_morning" },
   },
   {
-    actionName: "BRIEF_RESET_RECALIBRATION",
+    actionName: "BRIEF",
     input: resetText,
-    args: { itemClass: NEWSLETTER_CLASS },
+    args: { action: "reset_recalibration", itemClass: NEWSLETTER_CLASS },
   },
   {
-    actionName: "BRIEF_COMPOSE_MORNING",
+    actionName: "BRIEF",
     input: composeAgainText,
-    args: {},
+    args: { action: "compose_morning" },
   },
 ];
 
@@ -599,26 +597,16 @@ export default scenario({
       },
     },
     {
+      // Per-turn assertions above retain the recalibrate/compose/reset counts
+      // and result contracts while the canonical action name is now shared.
       type: "actionCalled",
-      actionName: "BRIEF_RECALIBRATE",
+      actionName: "BRIEF",
       status: "success",
-      minCount: 1,
-    },
-    {
-      type: "actionCalled",
-      actionName: "BRIEF_COMPOSE_MORNING",
-      status: "success",
-      minCount: 2,
-    },
-    {
-      type: "actionCalled",
-      actionName: "BRIEF_RESET_RECALIBRATION",
-      status: "success",
-      minCount: 1,
+      minCount: 4,
     },
     {
       type: "selectedActionArguments",
-      actionName: "BRIEF_RESET_RECALIBRATION",
+      actionName: "BRIEF",
       includesAll: [/"itemClass":"inbox:newsletter-digest"/],
     },
     {

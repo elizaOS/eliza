@@ -7,7 +7,18 @@
  * map, validates it for drift against registered actions/views, and renders the
  * active-view awareness block injected into planner prompts.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import {
+  type ContextObject,
+  type ContextProviderEvent,
+  getStreamingContext,
+  getUserMessageText,
+  hashStableJson,
+  hashString,
+  type IAgentRuntime,
+  type Memory,
+  OWNED_CONTEXT_SOURCE_SCOPE,
+  type ResponseHandlerEvaluator,
+} from "@elizaos/core";
 import type { ViewRegistryEntry } from "../api/view-registry-types.ts";
 import { getView, listViews } from "../api/views-registry.ts";
 import {
@@ -80,6 +91,154 @@ function isActiveViewSwitchFresh(view: ActiveViewContext): boolean {
 }
 
 const activeViews = createViewClientStore<ActiveViewContext>();
+
+// Runtime provenance follows this exact canonical source, not serialized fields.
+const capturedSources = new WeakMap<
+  ContextProviderEvent,
+  {
+    runtime: IAgentRuntime;
+    message: Memory;
+    requestHash: string;
+    view: ActiveViewContext;
+    scope: ViewClientScope;
+    messageId: string;
+    responseId: string;
+    roomId: string;
+    actorId: string;
+    textHash: string;
+  }
+>();
+
+function currentCapturedSource(
+  runtime: IAgentRuntime,
+  source: ContextProviderEvent,
+  context?: ContextObject,
+): boolean {
+  const binding = capturedSources.get(source);
+  const scope = getViewClientScope();
+  return Boolean(
+    binding &&
+      binding.runtime === runtime &&
+      scope &&
+      scope.hostKey === binding.scope.hostKey &&
+      scope.clientId === binding.scope.clientId &&
+      getStreamingContext()?.messageId === binding.responseId &&
+      binding.message.id === binding.messageId &&
+      binding.message.roomId === binding.roomId &&
+      binding.message.entityId === binding.actorId &&
+      hashStableJson(binding.message.content) === binding.requestHash &&
+      getActiveViewContext(runtime) === binding.view &&
+      hashString(source.text ?? "") === binding.textHash &&
+      (!context ||
+        (context.events.includes(source) &&
+          context.events.filter(
+            (event) =>
+              event.type === "provider" &&
+              "name" in event &&
+              event.source === "host:active-view" &&
+              event.name === "ACTIVE_VIEW_SNAPSHOT",
+          ).length === 1 &&
+          context.metadata?.messageId === binding.messageId &&
+          context.metadata.roomId === binding.roomId &&
+          context.metadata.actorId === binding.actorId)),
+  );
+}
+
+/** Capture once before model composition. Zero I/O; source lifetime follows the canonical turn. */
+export const activeViewSourceEvaluator: ResponseHandlerEvaluator = {
+  name: "host.active-view-source",
+  priority: 70,
+  shouldRun: ({ messageHandler, wholeRequestOwner }) =>
+    messageHandler.processMessage === "RESPOND" &&
+    wholeRequestOwner?.wholeRequest?.inputScope === "domain-only",
+  evaluate: ({ runtime, message, wholeRequestOwner }) => {
+    const scope = getViewClientScope();
+    const view = getActiveViewContext(runtime);
+    const requestText = getUserMessageText(message);
+    // MessageService scopes streaming to its generated assistant response ID;
+    // canonical source context remains bound to the incoming user message ID.
+    const responseId = getStreamingContext()?.messageId;
+    if (
+      !scope ||
+      !view ||
+      !message.id ||
+      !wholeRequestOwner?.wholeRequest?.matches(requestText, message) ||
+      !responseId
+    )
+      return;
+    const text = renderActiveViewContextBlock(runtime, view);
+    const textHash = hashString(text);
+    const identity = text.split("\n").slice(0, 2).join("\n");
+    const notice = `${identity}\nFull controls remain in canonical source active-view:${message.id} (sha256 ${textHash}). Call RESTORE_CONTEXT alone with scope=providers before using displayed controls or values.`;
+    const source: ContextProviderEvent = {
+      id: `active-view:${message.id}`,
+      type: "provider",
+      source: "host:active-view",
+      name: "ACTIVE_VIEW_SNAPSHOT",
+      text,
+      // The dispatch boundary restores complete bytes for stale or serialized
+      // provenance. Both canonical representations remain immutable.
+      discoveryText: notice,
+      discoveryRequiresRuntimeBinding: true,
+      [OWNED_CONTEXT_SOURCE_SCOPE]: Object.freeze({
+        actionNames: Object.freeze([...wholeRequestOwner.actionNames]),
+        canDefer: (context: ContextObject, candidate: ContextProviderEvent) =>
+          currentCapturedSource(runtime, candidate, context),
+      }),
+    };
+    capturedSources.set(source, {
+      runtime,
+      message,
+      requestHash: hashStableJson(message.content),
+      view,
+      scope: { ...scope },
+      messageId: message.id,
+      responseId,
+      roomId: message.roomId,
+      actorId: message.entityId,
+      textHash,
+    });
+    Object.freeze(source);
+    return { contextSources: [source] };
+  },
+};
+
+/** A captured canonical source replaces later host injection, never current-UI substitution. */
+export function capturedActiveViewSource(
+  runtime: IAgentRuntime,
+  context: ContextObject | undefined,
+):
+  | {
+      text: string;
+      deferredText?: string;
+    }
+  | undefined {
+  if (!context || !Array.isArray(context.events)) return;
+  const sources = context?.events.filter(
+    (event): event is ContextProviderEvent =>
+      event.type === "provider" &&
+      event.source === "host:active-view" &&
+      "name" in event &&
+      "text" in event &&
+      event.name === "ACTIVE_VIEW_SNAPSHOT" &&
+      typeof event.text === "string" &&
+      Boolean(event.text),
+  );
+  if (!sources?.length) return;
+  if (sources.length !== 1) return;
+  const source = sources[0];
+  if (!currentCapturedSource(runtime, source, context)) return;
+  return {
+    text: source.text ?? "",
+    ...(currentCapturedSource(runtime, source, context) &&
+    context?.metadata?.providerDiscoveryEnabled === true &&
+    (!context.metadata.loadedContextProviders ||
+      (Array.isArray(context.metadata.loadedContextProviders) &&
+        !context.metadata.loadedContextProviders.includes(source.name)))
+      ? { deferredText: source.discoveryText }
+      : {}),
+  };
+}
 
 export function setActiveViewContext(
   runtime: IAgentRuntime,

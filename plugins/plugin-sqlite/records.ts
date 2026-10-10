@@ -2389,10 +2389,9 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         const updated: StoredMemory = {
           ...existing,
           ...persistableMemory(memory),
-          metadata: {
-            ...(existing.metadata ?? {}),
-            ...(memory.metadata ?? {}),
-          } as MemoryMetadata,
+          // Provided metadata replaces the stored object, as in plugin-sql, so
+          // a caller can remove a key (e.g. a cleared failure marker).
+          metadata: (memory.metadata ?? existing.metadata) as MemoryMetadata,
         };
         await this.storage.set(COLLECTIONS.MEMORIES, memory.id, updated);
         if (memory.embedding && memory.embedding.length > 0) {
@@ -3296,7 +3295,8 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         targetEntityId: rel.targetEntityId,
         agentId: rel.agentId,
         tags: rel.tags,
-        metadata: { ...(existing.metadata ?? {}), ...(rel.metadata ?? {}) },
+        // Provided metadata replaces the stored object, as in plugin-sql.
+        metadata: rel.metadata ?? existing.metadata,
       };
       await this.storage.set(COLLECTIONS.RELATIONSHIPS, rel.id, next);
     }

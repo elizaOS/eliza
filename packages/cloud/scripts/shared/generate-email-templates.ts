@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const emailDir = join(here, "../../shared", "src", "lib", "email");
 const templatesDir = join(emailDir, "templates");
-const outFile = join(emailDir, "utils", "email-templates.generated.ts");
+const outFile = join(emailDir, "email-templates.generated.ts");
 
 const files = readdirSync(templatesDir)
   .filter((f) => f.endsWith(".html") || f.endsWith(".txt"))

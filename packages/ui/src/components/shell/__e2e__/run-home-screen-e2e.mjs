@@ -457,13 +457,9 @@ async function readHomeDarkForegrounds(page) {
                 : ((normalized + 0.055) / 1.055) ** 2.4;
         };
         const luminance = ({ r, g, b }) => 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
-        // Home resident set after the spec §E cut: notifications, the merged Today
-        // card (with its flagged at-risk goal row), and calendar. wallet.balance +
-        // health.sleep left home; goals.attention folded into Today.
+        // Current Home residents: notifications and the retained Calendar card.
         const surfaces = [
             "home-notification-center",
-            "chat-widget-todos",
-            "todo-goal-attention-row",
             "chat-widget-calendar-upcoming",
         ];
         const failures = [];
@@ -685,9 +681,6 @@ try {
     await Promise.all([
         mobile.getByTestId("home-time-widget").waitFor({ state: "visible" }),
         mobile.getByTestId("home-weather").waitFor({ state: "visible" }),
-        homeWidgetHost.getByText("Buy groceries", { exact: true }).waitFor({
-            state: "visible",
-        }),
         homeWidgetHost.getByText("Design review", { exact: true }).waitFor({
             state: "visible",
         }),
@@ -722,15 +715,9 @@ try {
     // Wait for the staggered home-enter fade-up to settle so the cards are fully
     // opaque (and the data-driven cards have mounted + fetched) before asserting.
     await waitForHomeEnterSettled(mobile);
-    // Kept per-plugin home widgets render only when their injected data is
-    // attention-worthy. Post spec §E cut, the resident set is Today (todos) - with
-    // the at-risk goal folded in as one flagged row - plus calendar. The removed
-    // autonomous/domain cards AND the demoted wallet/health cards must stay absent
-    // even though the fixture still exposes their plugins/routes elsewhere.
+    // Populated routed todo/goal records must not resurrect the retired Today
+    // projection. Calendar remains a real ranked Home resident.
     const WIDGET_CARDS = [
-        ["chat-widget-todos", "Buy groceries"],
-        // The merged at-risk goal renders inside the Today card (§E item 5).
-        ["todo-goal-attention-row", "Ship the release"],
         ["chat-widget-calendar-upcoming", "Design review"],
     ];
     for (const [testId, text] of WIDGET_CARDS) {
@@ -741,10 +728,10 @@ try {
             assert((await homeWidgetHost.getByText(text, { exact: false }).count()) > 0, `home widget ${testId} shows "${text}"`);
         }
     }
-    // Demoted (wallet.balance, health.sleep) + previously-removed domain cards
-    // must not resurface as home residents. goals.attention no longer stands
-    // alone - its data now lives inside the Today card's flagged row above.
+    // Removed domain projections stay absent even with populated fixture data.
     for (const testId of [
+        "chat-widget-todos",
+        "todo-goal-attention-row",
         "widget-goals-attention",
         "widget-health-sleep",
         "chat-widget-wallet-prices",
@@ -857,7 +844,7 @@ try {
             });
         });
         assert(geometry !== null, "home WidgetHost present for geometry probe");
-        assert((geometry ?? []).length > 1, `home grid geometry probe sees multiple widgets (${geometry?.length ?? 0})`);
+        assert((geometry ?? []).length === WIDGET_CARDS.length, `home grid geometry probe sees exactly the retained widgets (${geometry?.length ?? 0})`);
         for (const item of geometry ?? []) {
             assert(item.overflowX <= TOLERANCE, `home widget ${item.testId} content fits its grid cell (overflow ${item.overflowX}px)`);
         }
@@ -1089,7 +1076,7 @@ try {
     });
     shortHome.on("pageerror", recordPageError);
     await shortHome.goto(`${url}?homeData=attention`);
-    await shortHome.getByTestId("chat-widget-todos").waitFor();
+    await shortHome.getByTestId("chat-widget-calendar-upcoming").waitFor();
     const clockBefore = await shortHome.getByTestId("default-home-widgets").boundingBox();
     await shortHome.mouse.move(140, 60);
     await shortHome.mouse.wheel(0, 180);
@@ -1101,8 +1088,8 @@ try {
         return false;
     });
     const clockAfter = await shortHome.getByTestId("default-home-widgets").boundingBox();
-    assert(clockBefore && clockAfter && clockAfter.y < clockBefore.y - 40, "short home scrolls from the clock instead of trapping Today in a tiny region");
-    for (const testId of ["todo-goal-attention-row", "today-todo-row"]) {
+    assert(clockBefore && clockAfter && clockAfter.y < clockBefore.y - 40, "short home scrolls from the clock instead of trapping Calendar in a tiny region");
+    for (const testId of ["chat-widget-calendar-upcoming"]) {
         const row = shortHome.getByTestId(testId);
         await row.scrollIntoViewIfNeeded();
         const reachable = await row.evaluate((element) => {

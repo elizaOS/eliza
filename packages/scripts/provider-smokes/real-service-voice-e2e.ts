@@ -50,7 +50,7 @@ const SYSTEM =
 
 const DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"; // Rachel — on every account
 const TTS_MODEL = process.env.ELEVENLABS_MODEL_ID ?? "eleven_turbo_v2_5";
-const STT_MODEL = process.env.ELEVENLABS_STT_MODEL_ID ?? "scribe_v1";
+const STT_MODEL = process.env.ELEVENLABS_STT_MODEL_ID ?? "scribe_v2";
 
 const outDir = (() => {
   const i = process.argv.indexOf("--out");

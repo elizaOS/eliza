@@ -5,102 +5,16 @@
  * git-inits a brand-new workspace. Loads those init files for prompt injection,
  * detects unedited default boilerplate so it can be skipped, dedups the two
  * MEMORY filename variants by realpath, and narrows the set to a subagent
- * allowlist for subagent sessions. Also exports the timed command runner used
- * for the git bootstrap. Consumed by the workspace provider and boot path.
+ * allowlist for subagent sessions. Consumed by the workspace provider and boot path.
  */
-import { spawn } from "node:child_process";
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
-import * as elizaCore from "@elizaos/core";
-import { resolveUserPath } from "@elizaos/core";
-import {
-  DEFAULT_AGENT_WORKSPACE_DIR,
-  resolveDefaultAgentWorkspaceDir,
-  shouldBootstrapWorkspaceInitFiles,
-  shouldUseRuntimeCwdWorkspace,
-} from "../shared/workspace-resolution.ts";
+import { promisify } from "node:util";
+import { isSubagentSessionKey, logger, resolveUserPath } from "@elizaos/core";
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 
-export {
-  DEFAULT_AGENT_WORKSPACE_DIR,
-  resolveDefaultAgentWorkspaceDir,
-  shouldBootstrapWorkspaceInitFiles,
-  shouldUseRuntimeCwdWorkspace,
-};
-
-export interface RunCommandResult {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
-
-export interface RunCommandOptions {
-  cwd?: string;
-  timeoutMs?: number;
-  env?: NodeJS.ProcessEnv;
-}
-
-/**
- * Runs a command with an optional timeout.
- * Returns { code, stdout, stderr }.
- * Rejects if the process cannot be spawned or the timeout fires.
- */
-export function runCommandWithTimeout(
-  argv: string[],
-  opts: RunCommandOptions = {},
-): Promise<RunCommandResult> {
-  const [cmd, ...args] = argv;
-  if (!cmd) {
-    return Promise.reject(new Error("runCommandWithTimeout: empty argv"));
-  }
-
-  return new Promise<RunCommandResult>((resolve, reject) => {
-    const child = spawn(cmd, args, {
-      cwd: opts.cwd,
-      env: opts.env ?? process.env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    const stdoutChunks: Buffer[] = [];
-    const stderrChunks: Buffer[] = [];
-
-    child.stdout.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
-    child.stderr.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
-
-    let timedOut = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-
-    if (opts.timeoutMs && opts.timeoutMs > 0) {
-      timer = setTimeout(() => {
-        timedOut = true;
-        child.kill("SIGKILL");
-      }, opts.timeoutMs);
-    }
-
-    child.on("error", (err) => {
-      if (timer) clearTimeout(timer);
-      reject(err);
-    });
-
-    child.on("close", (exitCode) => {
-      if (timer) clearTimeout(timer);
-
-      if (timedOut) {
-        reject(
-          new Error(
-            `Command timed out after ${opts.timeoutMs}ms: ${argv.join(" ")}`,
-          ),
-        );
-        return;
-      }
-
-      resolve({
-        code: exitCode ?? 1,
-        stdout: Buffer.concat(stdoutChunks).toString("utf-8"),
-        stderr: Buffer.concat(stderrChunks).toString("utf-8"),
-      });
-    });
-  });
-}
+const exec = promisify(execFile);
 
 const DEFAULT_AGENTS_FILENAME = "AGENTS.md";
 const DEFAULT_TOOLS_FILENAME = "TOOLS.md";
@@ -206,35 +120,6 @@ export function isDefaultBoilerplate(name: string, content: string): boolean {
   );
 }
 
-type ElizaCoreWorkspaceHelpers = {
-  isSubagentSessionKey?: (key: string) => boolean;
-  logger?: {
-    warn: (message: string) => void;
-  };
-};
-
-const coreWorkspaceHelpers = elizaCore as ElizaCoreWorkspaceHelpers;
-
-function isSubagentSessionKey(sessionKey: string): boolean {
-  if (typeof coreWorkspaceHelpers.isSubagentSessionKey === "function") {
-    return coreWorkspaceHelpers.isSubagentSessionKey(sessionKey);
-  }
-  // Older @elizaos/core versions do not expose subagent helpers.
-  // Treat all sessions as primary sessions in that case.
-  return false;
-}
-
-function logWarn(message: string): void {
-  if (
-    coreWorkspaceHelpers.logger &&
-    typeof coreWorkspaceHelpers.logger.warn === "function"
-  ) {
-    coreWorkspaceHelpers.logger.warn(message);
-  } else {
-    elizaCore.logger.warn(message);
-  }
-}
-
 async function writeFileIfMissing(filePath: string, content: string) {
   try {
     await fs.writeFile(filePath, content, {
@@ -262,10 +147,8 @@ async function hasGitRepo(dir: string): Promise<boolean> {
 
 async function isGitAvailable(): Promise<boolean> {
   try {
-    const result = await runCommandWithTimeout(["git", "--version"], {
-      timeoutMs: 2_000,
-    });
-    return result.code === 0;
+    await exec("git", ["--version"], { timeout: 2_000, killSignal: "SIGKILL" });
+    return true;
   } catch {
     return false;
   }
@@ -282,12 +165,13 @@ async function ensureGitRepo(dir: string, isBrandNewWorkspace: boolean) {
     return;
   }
   try {
-    await runCommandWithTimeout(["git", "init"], {
+    await exec("git", ["init"], {
       cwd: dir,
-      timeoutMs: 10_000,
+      timeout: 10_000,
+      killSignal: "SIGKILL",
     });
   } catch (err) {
-    logWarn(`[workspace] git init failed: ${String(err)}`);
+    logger.warn({ src: "workspace", error: err }, "Git initialization failed");
   }
 }
 

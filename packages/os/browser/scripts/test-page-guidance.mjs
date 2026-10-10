@@ -13,8 +13,24 @@ const require = createRequire(
 const { default: puppeteer } = require("puppeteer-core");
 if (!process.env.ELIZA_BROWSER_EXECUTABLE)
   throw new Error("Set ELIZA_BROWSER_EXECUTABLE");
-const server = createServer((_req, res) => {
+const server = createServer((req, res) => {
   res.setHeader("Content-Type", "text/html");
+  if (req.url === "/labels") {
+    // A strict font policy must not block the overlay's bundled font bytes.
+    res.setHeader("Content-Security-Policy", "font-src 'none'");
+    res.end(
+      '<!doctype html><style>body{margin:0;font:22px Arial}button,input{position:absolute;font:22px Arial;padding:16px}</style><button id="first" style="left:40px;top:40px">First step</button><input id="email" aria-label="Email" style="left:600px;top:40px"><button id="last" style="left:40px;top:520px">Last step</button><script>window.pageClicks=[];document.addEventListener("click",e=>window.pageClicks.push({target:e.target.nodeName,path:e.composedPath().map(n=>n.nodeName||"window")}),true)</script>',
+    );
+    return;
+  }
+  if (req.url === "/far") {
+    // The step's control is below the visible page; a Pay button sits where
+    // the label would go under the date field.
+    res.end(
+      '<!doctype html><style>body{margin:0;height:3000px;font:22px Arial}button,input{position:absolute;font:22px Arial;padding:16px}</style><input id="date" aria-label="Payment date" style="left:40px;top:40px"><button id="pay" style="left:40px;top:130px">Pay now</button><button id="far" style="left:40px;top:2200px">Account details</button>',
+    );
+    return;
+  }
   res.end(
     '<!doctype html><style>body{height:2400px;font:22px system-ui}button{margin:100px 20px;padding:20px}</style><button id="target">Continue on this website</button><input type="password" value="private-secret"><p>Provider content</p>',
   );
@@ -29,14 +45,23 @@ try {
   });
   const page = await browser.newPage();
   await page.setViewport({ width: 1280, height: 800 });
+  // Placement and invalidation cases use reduced motion: the guide appears in
+  // place. Cursor travel and its timing are checked separately below.
+  await page.emulateMediaFeatures([
+    { name: "prefers-reduced-motion", value: "reduce" },
+  ]);
   const origin = `http://127.0.0.1:${server.address().port}`;
   await page.goto(origin);
   const cdp = await page.createCDPSession();
-  const { frameTree } = await cdp.send("Page.getFrameTree");
-  const { executionContextId } = await cdp.send("Page.createIsolatedWorld", {
-    frameId: frameTree.frame.id,
-    worldName: "eliza-guidance-test",
-  });
+  let executionContextId;
+  const isolate = async () => {
+    const { frameTree } = await cdp.send("Page.getFrameTree");
+    ({ executionContextId } = await cdp.send("Page.createIsolatedWorld", {
+      frameId: frameTree.frame.id,
+      worldName: "eliza-guidance-test",
+    }));
+  };
+  await isolate();
   const evaluate = async (expression) => {
     const r = await cdp.send("Runtime.evaluate", {
       contextId: executionContextId,
@@ -145,7 +170,7 @@ try {
   );
   cases.push("isolated annotation does not restyle provider or cover target");
   await evaluate(
-    "globalThis.__elizaPageGuidanceV1.shadow.querySelector('button').click()",
+    "globalThis.__elizaPageGuidanceV1.shadow.querySelector('.close').click()",
   );
   assert.equal((await state()).visible, false);
   assert.equal((await offer()).dismissed, true);
@@ -183,7 +208,7 @@ try {
   await settle();
   assert.equal((await state()).visible, true);
   await evaluate(
-    "globalThis.__elizaPageGuidanceV1.shadow.querySelector('button').click()",
+    "globalThis.__elizaPageGuidanceV1.shadow.querySelector('.close').click()",
   );
   await offer("genuinely-new-step");
   await settle();
@@ -247,6 +272,427 @@ try {
   cases.push(
     "IME-sized viewport uses available side space without covering the field",
   );
+  // ---- Labels, offers, answers, cursor travel, pause and font -------------
+  await page.setViewport({ width: 1280, height: 800 });
+  await page.goto(`${origin}/labels`);
+  await isolate();
+  const { guideFonts } = await import("../src/guide-font.mjs");
+  const read = async (snapshotId) => {
+    const snapshot = await call(
+      pageCommand,
+      { subaction: "snapshot" },
+      snapshotId,
+    );
+    return (label) => {
+      const found = snapshot.elements.find((e) => e.label === label);
+      assert.ok(found, JSON.stringify(snapshot.elements.map((e) => e.label)));
+      return found.id;
+    };
+  };
+  const show = async (snapshotId, node, extra = {}) =>
+    call(pageGuidance, {
+      kind: "show",
+      id: "labels",
+      origin,
+      snapshotId,
+      nodeId: node,
+      text: "Type your email here.",
+      expiresAt: Date.now() + 60000,
+      assistantName: "Grace",
+      fonts: guideFonts,
+      ...extra,
+    });
+  const part = (selector, expression) =>
+    evaluate(
+      `(()=>{const n=globalThis.__elizaPageGuidanceV1.shadow.querySelector(${JSON.stringify(selector)});return n&&(${expression})})()`,
+    );
+  const until = async (expression, timeout = 4000) => {
+    const deadline = Date.now() + timeout;
+    while (!(await evaluate(expression))) {
+      assert.ok(Date.now() < deadline, `Timed out waiting for ${expression}`);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  };
+  const shown =
+    "globalThis.__elizaPageGuidanceV1?.visible && globalThis.__elizaPageGuidanceV1.shadow.querySelector('.label').classList.contains('shown')";
+  // Show-only sequence: travel 1.4s, cursor hides with no tap (the person
+  // presses this control), ring, then the label 250ms later. Sampled every
+  // frame inside the isolated realm.
+  await page.emulateMediaFeatures([
+    { name: "prefers-reduced-motion", value: "no-preference" },
+  ]);
+  let element = await read("labels-1");
+  await evaluate(
+    "globalThis.__elizaGuideCursorV1 = { point: [1000, 600] }; true",
+  );
+  assert.equal((await show("labels-1", element("Email"))).accepted, true);
+  await evaluate(
+    `(()=>{const samples=globalThis.__samples=[];const t0=performance.now();const tick=()=>{const s=globalThis.__elizaPageGuidanceV1;const q=(c)=>s.shadow.querySelector(c);const p=q('.pointer');const r=p.getBoundingClientRect();samples.push({t:performance.now()-t0,pointer:p.style.display==='block',tapping:Boolean(q('.tapring'))||!q('.tap').hidden,x:r.left,y:r.top,ring:!q('.ring').hidden,label:!q('.label').hidden,shown:q('.label').classList.contains('shown'),opacity:getComputedStyle(q('.label')).opacity});if(samples.length<400)requestAnimationFrame(tick)};requestAnimationFrame(tick);return true})()`,
+  );
+  await until(shown);
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  const samples = await evaluate("globalThis.__samples");
+  const first = (test) => samples.find(test)?.t;
+  const travelStart = first((x) => x.pointer);
+  const ringStart = first((x) => x.ring);
+  const labelShown = first((x) => x.shown);
+  assert.ok(Math.abs(samples.find((x) => x.pointer).x - 997) < 2);
+  assert.ok(
+    samples.every((x) => !x.tapping),
+    "show-only guidance never plays the agent tap",
+  );
+  assert.ok(ringStart - travelStart >= 1350 && ringStart - travelStart < 1600);
+  assert.ok(
+    samples.filter((x) => x.ring || x.label).every((x) => !x.pointer),
+    "the cursor hides before the ring and label appear",
+  );
+  assert.ok(labelShown - ringStart >= 230 && labelShown - ringStart < 400);
+  assert.ok(samples.filter((x) => x.t < ringStart).every((x) => !x.label));
+  assert.equal(
+    await part(".pointer", "getComputedStyle(n).transitionTimingFunction"),
+    "cubic-bezier(0.45, 0, 0.25, 1), cubic-bezier(0.45, 0, 0.25, 1)",
+  );
+  assert.equal(
+    await part(".ring", "getComputedStyle(n).animationIterationCount"),
+    "3",
+  );
+  assert.equal(await part(".label", "getComputedStyle(n).opacity"), "1");
+  cases.push(
+    "cursor travels 1.4s from where last seen and hides without a tap; ring then label 250ms later",
+  );
+  // Grace computed styles, configured name and the bundled font.
+  await until(
+    "globalThis.__elizaPageGuidanceV1.shadow.querySelector('.ring').getAnimations().length === 0",
+  );
+  assert.deepEqual(
+    await evaluate(
+      `(()=>{const s=globalThis.__elizaPageGuidanceV1.shadow;const css=(c)=>getComputedStyle(s.querySelector(c));return {ring:css('.ring').boxShadow,label:[css('.label').borderTopColor,css('.label').borderTopWidth,css('.label').borderTopLeftRadius,css('.label').paddingTop],title:[css('.title').fontSize,css('.title').fontWeight,css('.title').lineHeight],mark:[s.querySelector('.mark').textContent,css('.mark').width,css('.mark').backgroundColor],tag:s.querySelector('.tag').textContent,close:[css('.close').height,css('.close').borderTopLeftRadius],family:css('.title').fontFamily.startsWith('eliza-guide-'),loaded:[...document.fonts].filter(f=>f.family.startsWith('eliza-guide-')).map(f=>f.status+':'+f.weight)}})()`,
+    ),
+    {
+      ring: "rgb(255, 255, 255) 0px 0px 0px 3px, rgb(74, 52, 40) 0px 0px 0px 6px",
+      label: ["rgb(179, 170, 211)", "2px", "16px", "18px"],
+      title: ["22px", "700", "28px"],
+      mark: ["G", "34px", "rgb(212, 206, 234)"],
+      tag: "GGrace",
+      close: ["64px", "20px"],
+      family: true,
+      loaded: ["loaded:500", "loaded:700"],
+    },
+  );
+  assert.equal(
+    await page.evaluate(() =>
+      [...document.fonts].some((f) => f.family.startsWith("eliza-guide-")),
+    ),
+    true,
+    "the bundled font is added from bytes despite the page's font-src 'none'",
+  );
+  cases.push(
+    "Grace ring, label, mark and close styles; configured name; bundled Figtree loads under page CSP",
+  );
+  // The same step's later revision changes tone in place: no travel or slide.
+  assert.equal(
+    (
+      await show("labels-1", element("Email"), {
+        text: "Filled in your email.",
+        detail: "Check it before you continue.",
+        tone: "success",
+      })
+    ).accepted,
+    true,
+  );
+  await until("globalThis.__elizaPageGuidanceV1?.visible");
+  assert.equal(await part(".pointer", "n.style.display"), "none");
+  assert.equal(await part(".label", "n.classList.contains('shown')"), true);
+  assert.deepEqual(
+    await evaluate(
+      `(()=>{const s=globalThis.__elizaPageGuidanceV1.shadow;const css=(c)=>getComputedStyle(s.querySelector(c));return [css('.label').borderTopColor,s.querySelector('.mark').textContent,css('.mark').backgroundColor,s.querySelector('.detail').textContent,css('.detail').fontSize,css('.detail').fontWeight]})()`,
+    ),
+    [
+      "rgb(38, 91, 25)",
+      "✓",
+      "rgb(38, 91, 25)",
+      "Check it before you continue.",
+      "17px",
+      "500",
+    ],
+  );
+  await page.screenshot({ path: `${output}/success.png` });
+  cases.push("success tone and detail line replace the same step in place");
+  // Offers: value cards and Yes / I'll type it. Values stay in the closed tree.
+  await page.emulateMediaFeatures([
+    { name: "prefers-reduced-motion", value: "reduce" },
+  ]);
+  await evaluate(
+    "globalThis.chrome={runtime:{sendMessage:async(m)=>{(globalThis.__sent??=[]).push(m);return {delivered:true}}}};true",
+  );
+  const privateValues = ["margaret@example.test", "m.hale@example.test"];
+  await page.evaluate(() => {
+    const cover = document.createElement("div");
+    cover.id = "cover";
+    cover.popover = "manual";
+    cover.style.cssText =
+      "inset:0;width:100vw;height:100vh;margin:0;border:0;background:#fff8;pointer-events:none";
+    cover.textContent = "Fake label";
+    document.body.append(cover);
+  });
+  element = await read("labels-2");
+  await show("labels-2", element("Email"), {
+    id: "offer",
+    text: "Which email should I use?",
+    tone: "offer",
+    answerKey: "answer-key-1",
+    answers: [
+      { id: "card-0", kind: "card", text: privateValues[0], tag: "Personal" },
+      { id: "card-1", kind: "card", text: privateValues[1], tag: "Work" },
+      { id: "type", kind: "secondary", text: "I'll type it" },
+    ],
+  });
+  await until(shown);
+  const center = (selector) =>
+    part(
+      selector,
+      "(()=>{const r=n.getBoundingClientRect();return [r.left+r.width/2,r.top+r.height/2]})()",
+    );
+  // A tap within 800ms of the label appearing is ignored (clickjacking guard).
+  await page.mouse.click(...(await center(".card")));
+  await page.screenshot({ path: `${output}/offer-cards.png` });
+  assert.deepEqual(
+    await evaluate(
+      `(()=>{const s=globalThis.__elizaPageGuidanceV1.shadow;const css=(n)=>getComputedStyle(n);const card=s.querySelector('.card');return {cards:s.querySelectorAll('.card').length,value:[css(card.querySelector('.value')).fontSize,css(card.querySelector('.value')).fontWeight],purpose:[css(card.querySelector('.purpose')).fontSize,css(card.querySelector('.purpose')).fontWeight],card:card.getBoundingClientRect().height>=64,secondary:[css(s.querySelector('.secondary')).height,css(s.querySelector('.secondary')).boxShadow],close:!!s.querySelector('.close')}})()`,
+    ),
+    {
+      cards: 2,
+      value: ["22px", "700"],
+      purpose: ["17px", "500"],
+      card: true,
+      secondary: ["64px", "rgba(74, 52, 40, 0.6) 0px 0px 0px 1.5px inset"],
+      close: false,
+    },
+  );
+  const pageView = await page.evaluate(() => {
+    const host = [...document.documentElement.children].at(-1);
+    return {
+      html: document.documentElement.outerHTML,
+      text: document.body.innerText,
+      attributes: host.getAttributeNames(),
+      shadow: host.shadowRoot,
+    };
+  });
+  for (const value of privateValues) {
+    assert.ok(!pageView.html.includes(value));
+    assert.ok(!pageView.text.includes(value));
+  }
+  assert.deepEqual(pageView.attributes, ["style"]);
+  assert.equal(pageView.shadow, null);
+  const observed = await call(
+    pageCommand,
+    { subaction: "snapshot" },
+    "labels-3",
+  );
+  for (const value of privateValues)
+    assert.ok(!JSON.stringify(observed).includes(value));
+  cases.push(
+    "offer cards and decline render 22/700 values, 17/500 tags, 64px buttons; values never reach page DOM, attributes or snapshot",
+  );
+  // Script clicks are not trusted taps.
+  await part(".card", "(n.click(),true)");
+  assert.equal(await evaluate("(globalThis.__sent??[]).length"), 0);
+  await new Promise((resolve) => setTimeout(resolve, 850));
+  // A page top-layer element drawn over the label, even one that lets taps
+  // through, blocks answers until it is gone. Opening a popover changes no DOM.
+  await page.evaluate(() => document.querySelector("#cover").showPopover());
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  await page.mouse.click(...(await center(".card")));
+  assert.equal(await evaluate("(globalThis.__sent??[]).length"), 0);
+  await page.evaluate(() => document.querySelector("#cover").hidePopover());
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  await page.mouse.click(...(await center(".card:nth-child(2)")));
+  assert.equal(await evaluate("(globalThis.__sent??[]).length"), 0);
+  await new Promise((resolve) => setTimeout(resolve, 850));
+  await page.mouse.click(...(await center(".card:nth-child(2)")));
+  await page.mouse.click(...(await center(".secondary")));
+  const sent = await evaluate("globalThis.__sent");
+  assert.deepEqual(sent, [
+    {
+      type: "task-guide-answer",
+      guideId: "offer",
+      answerKey: "answer-key-1",
+      answerId: "card-1",
+    },
+  ]);
+  const clicks = await page.evaluate(() => window.pageClicks);
+  assert.ok(clicks.length >= 2);
+  for (const click of clicks) {
+    assert.equal(click.target, "DIV");
+    assert.ok(!click.path.includes("BUTTON"));
+  }
+  assert.ok(!JSON.stringify(clicks).includes("example.test"));
+  cases.push(
+    "one trusted tap sends only the answer ID once; script clicks, early taps, covered labels and repeats send nothing; page sees only the host",
+  );
+  // Pause: ring, label and answers leave; the grey cursor stays.
+  element = await read("labels-4");
+  await show("labels-4", element("Last step"), {
+    id: "action-preview",
+    action: "click",
+  });
+  await until("globalThis.__elizaPageGuidanceV1?.visible");
+  const jumped = await part(
+    ".pointer",
+    "[n.style.display,getComputedStyle(n).transitionDuration,n.getBoundingClientRect().left]",
+  );
+  assert.equal(jumped[0], "block");
+  assert.equal(jumped[1], "0s");
+  cases.push("reduced motion: the action cursor jumps to its target");
+  assert.deepEqual(await call(pageGuidance, { kind: "pause" }), {
+    visible: false,
+    paused: true,
+  });
+  assert.deepEqual(
+    await evaluate(
+      `(()=>{const s=globalThis.__elizaPageGuidanceV1;const q=(c)=>s.shadow.querySelector(c);return {paused:s.paused,ring:q('.ring').hidden,label:q('.label').hidden,pointer:q('.pointer').style.display,left:q('.pointer').getBoundingClientRect().left,tag:q('.tag').textContent,tagColor:getComputedStyle(q('.tag')).backgroundColor,arrow:getComputedStyle(q('svg')).fill}})()`,
+    ),
+    {
+      paused: true,
+      ring: true,
+      label: true,
+      pointer: "block",
+      left: jumped[2],
+      tag: "GGrace · paused",
+      tagColor: "rgb(74, 74, 71)",
+      arrow: "rgb(115, 114, 108)",
+    },
+  );
+  assert.deepEqual(
+    await call(pageGuidance, {
+      kind: "action-status",
+      id: "action-preview",
+      snapshotId: "labels-4",
+      nodeId: element("Last step"),
+      action: "click",
+    }),
+    { ready: false, cancelled: true },
+  );
+  await page.screenshot({ path: `${output}/paused.png` });
+  await new Promise((resolve) => setTimeout(resolve, 900));
+  assert.equal(
+    await evaluate("globalThis.__elizaPageGuidanceV1.visible"),
+    false,
+  );
+  await call(pageGuidance, { kind: "hide" });
+  assert.equal(
+    await page.evaluate(
+      () => document.documentElement.lastElementChild.tagName,
+    ),
+    "BODY",
+  );
+  cases.push(
+    "pause leaves a grey '<name> · paused' cursor where last seen and cancels a pending action",
+  );
+  // A page face that claims the overlay family switches it to the system font.
+  element = await read("labels-5");
+  await show("labels-5", element("First step"));
+  await until(shown);
+  await page.evaluate(() => {
+    const ours = [...document.fonts].find((f) =>
+      f.family.startsWith("eliza-guide-"),
+    );
+    document.fonts.add(new FontFace(ours.family, "local(Arial)"));
+  });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(
+    await part(".title", "getComputedStyle(n).fontFamily"),
+    "system-ui, sans-serif",
+  );
+  await call(pageGuidance, { kind: "hide" });
+  cases.push("a page font claiming the overlay family is refused");
+  // ---- Placement: off-screen target, keep-clear controls, dismissal -------
+  await page.emulateMediaFeatures([
+    { name: "prefers-reduced-motion", value: "reduce" },
+  ]);
+  await page.goto(`${origin}/far`);
+  await isolate();
+  element = await read("far-1");
+  const scrolledFrom = await page.evaluate(() => scrollY);
+  const far = await show("far-1", element("Account details"), {
+    id: "far",
+  });
+  assert.equal(far.accepted, true);
+  assert.equal(far.placement, "scrolled");
+  await until(shown);
+  assert.ok((await page.evaluate(() => scrollY)) > scrolledFrom);
+  const farBox = await page.$eval("#far", (n) => {
+    const r = n.getBoundingClientRect();
+    return { top: r.top, bottom: r.bottom };
+  });
+  assert.ok(farBox.top >= 0 && farBox.bottom <= 800);
+  await call(pageGuidance, { kind: "hide" });
+  await page.evaluate(() => scrollTo(0, 0));
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  element = await read("far-2");
+  // An action guide never moves the page it is about to act on.
+  const action = await show("far-2", element("Account details"), {
+    id: "far-action",
+    action: "click",
+  });
+  assert.equal(action.placement, "off-screen");
+  assert.equal(await page.evaluate(() => scrollY), 0);
+  await call(pageGuidance, { kind: "hide" });
+  cases.push(
+    "an off-screen step is scrolled into view and shown; an action guide reports off-screen and never scrolls",
+  );
+  const overlaps = async () => {
+    const box = await part(
+      ".label",
+      "(()=>{const r=n.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height}})()",
+    );
+    const pay = await page.$eval("#pay", (n) => {
+      const r = n.getBoundingClientRect();
+      return { x: r.x, y: r.y, w: r.width, h: r.height };
+    });
+    return !(
+      box.x + box.w <= pay.x ||
+      box.x >= pay.x + pay.w ||
+      box.y + box.h <= pay.y ||
+      box.y >= pay.y + pay.h
+    );
+  };
+  element = await read("clear-1");
+  await show("clear-1", element("Payment date"), { id: "clear" });
+  await until(shown);
+  assert.equal(await overlaps(), true, "fixture: the label would cover Pay");
+  await call(pageGuidance, { kind: "hide" });
+  element = await read("clear-2");
+  await show("clear-2", element("Payment date"), {
+    id: "clear",
+    keepClear: [element("Pay now")],
+  });
+  await until(shown);
+  assert.equal(await overlaps(), false);
+  await page.screenshot({ path: `${output}/keep-clear.png` });
+  cases.push("a keep-clear control is never covered by the label");
+  // A step the person dismissed before a reload starts dismissed; an
+  // explicit restore shows it again.
+  await call(pageGuidance, { kind: "hide" });
+  element = await read("dismissed-1");
+  const again = await show("dismissed-1", element("Payment date"), {
+    id: "clear",
+    dismissed: true,
+  });
+  assert.equal(again.dismissed, true);
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.equal(await part(".label", "n.hidden"), true);
+  await call(pageGuidance, { kind: "hide" });
+  element = await read("dismissed-2");
+  const restored = await show("dismissed-2", element("Payment date"), {
+    id: "clear",
+    dismissed: true,
+    restore: true,
+  });
+  assert.equal(restored.dismissed, false);
+  await until(shown);
+  await call(pageGuidance, { kind: "hide" });
+  cases.push("a remembered dismissal keeps the step hidden until restored");
   await writeFile(
     `${output}/verification.json`,
     JSON.stringify(

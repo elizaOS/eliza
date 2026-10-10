@@ -28,17 +28,22 @@ jobs:
   secret-scan:
     uses: ./.github/workflows/gitleaks.yml
     with:
-      base_sha: ${{ github.event.before || inputs.base_sha || '' }}
+      base_sha: ${{ inputs.base_sha || github.event.before || '' }}
       head_sha: ${{ github.sha }}
   os:
+    if: needs.preflight.outputs.os == 'true'
     name: OS verification
+    needs: preflight
     uses: ./.github/workflows/os.yml
   quality:
     name: Quality
+    if: needs.preflight.outputs.source == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
       NODE_OPTIONS: --max-old-space-size=4096
+      TURBO_SCM_BASE: ${{ needs.preflight.outputs.base }}
+      RUN_TURBO_AFFECTED: ${{ needs.preflight.outputs.full == 'false' && '1' || '0' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -55,8 +60,6 @@ jobs:
           setup-python: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
-      - name: Validate Windows command coverage contract
-        run: node packages/scripts/ci-windows-command-coverage-contract.ts
       - name: Build core contract
         run: bun run build:core
       - name: Repository verification
@@ -66,8 +69,6 @@ jobs:
         run: bun run verify
       - name: Formatting
         run: bun run format:check
-      - name: Check maintained Markdown link targets
-        run: node packages/scripts/check-markdown-links.ts
       - name: Prompt secret scan
         run: node packages/scripts/check-prompt-secrets.ts
       - name: Validate CI Bun version pin contract
@@ -79,104 +80,41 @@ jobs:
           path: ${{ runner.temp }}/bun-runtime-inventory.json
           retention-days: 7
     needs: preflight
-  tests:
-    name: Tests (scripts)
-    needs: preflight
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          submodules: false
-      - uses: ./.github/actions/setup-bun-workspace
-        with:
-          publish-bun-install-cache: "false"
-          bun-version: ${{ env.BUN_VERSION }}
-          node-version: ${{ env.NODE_VERSION }}
-          install-command: bun install --frozen-lockfile --ignore-scripts
-          install-native-deps: "false"
-          skip-avatar-clone: "true"
-          no-vision-deps: "true"
-          install-protoc: "false"
-          setup-python: "false"
-      - name: Build core contract for script tests
-        run: bun run build:core
-      - name: Script contract tests
-        env:
-          E2E_COVERAGE_GATE_ENFORCE: "1"
-        run: bun run test:scripts
-      - name: Upload script-test evidence
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: script-tests-linux
-          path: |
-            test-results/script-tests/
-            test-results/script-tests-node/
-          if-no-files-found: error
-          retention-days: 7
-  tests_server:
-    name: Tests (server, ${{ matrix.partition }})
-    needs: preflight
-    runs-on: ubuntu-24.04
-    timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - partition: agent
-            filter: ^@elizaos/agent \(packages/agent\)#test$
-          - partition: remaining
-            # OS verification owns the Linux installer tests.
-            filter: ^(?!@elizaos/agent \(packages/agent\)#test$|@elizaos/linux-installer-plan )
-    env:
-      TEST_PACKAGE_FILTER: ${{ matrix.filter }}
-      PGLITE_WASM_MODE: node
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          submodules: false
-      - uses: ./.github/actions/setup-bun-workspace
-        with:
-          publish-bun-install-cache: "false"
-          bun-version: ${{ env.BUN_VERSION }}
-          node-version: ${{ env.NODE_VERSION }}
-          install-command: bun install --frozen-lockfile --ignore-scripts
-          install-native-deps: "false"
-          skip-avatar-clone: "true"
-          no-vision-deps: "true"
-          install-protoc: "false"
-          setup-python: ${{ matrix.partition == 'remaining' }}
-          python-version: "3.14.6"
-      - name: Prepare pinned GEPA producer dependencies
-        if: matrix.partition == 'remaining'
-        run: bun run --cwd packages/benchmarks gepa:setup
-      - name: Server tests
-        run: bun run test:server
-      - name: Pinned GEPA integration tests
-        if: matrix.partition == 'remaining'
-        run: bun run --cwd packages/benchmarks test:gepa
   tests_auth_integration:
+    if: needs.preflight.outputs.auth == 'true'
     name: Login browser and PostgreSQL integration
     needs: preflight
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_PASSWORD: login_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       LOGIN_TEST_DATABASE_URL: postgres://postgres:login_test@127.0.0.1:5432/postgres
+      LOGIN_TEST_POSTGRES_CONTAINER: eliza-login-postgres-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      # GitHub starts services before steps, so configure this fresh runner's
+      # daemon before pulling the owned PostgreSQL container. Keep Hub fallback.
+      - name: Configure runner Docker Hub cache
+        uses: ./.github/actions/setup-public-image-cache
+      - name: Start owned PostgreSQL for login contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          public_pull_config="$(mktemp -d "$RUNNER_TEMP/public-postgres-pull.XXXXXX")"
+          trap 'rm -rf "$public_pull_config"' EXIT
+          printf '{}\n' > "$public_pull_config/config.json"
+          docker --config "$public_pull_config" run --pull=always --detach --name "$LOGIN_TEST_POSTGRES_CONTAINER" \
+            --env POSTGRES_PASSWORD=login_test --publish 5432:5432 \
+            --health-cmd "pg_isready -U postgres" --health-interval 10s \
+            --health-timeout 5s --health-retries 5 postgres:17
+          for ((attempt = 0; attempt < 45; attempt++)); do
+            status="$(docker inspect --format '{{.State.Health.Status}}' "$LOGIN_TEST_POSTGRES_CONTAINER")"
+            if [ "$status" = healthy ]; then exit 0; fi
+            if [ "$status" = unhealthy ]; then break; fi
+            sleep 2
+          done
+          docker logs "$LOGIN_TEST_POSTGRES_CONTAINER"
+          echo "::error::Owned PostgreSQL container did not become healthy within 90 seconds."
+          exit 1
       - uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
@@ -193,94 +131,9 @@ jobs:
         run: bunx playwright install --with-deps chromium
       - name: Browser and required PostgreSQL contracts
         run: bun run --cwd packages/auth test:integration
-  tests_client:
-    name: Tests (client)
-    needs: preflight
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          submodules: false
-      - uses: ./.github/actions/setup-bun-workspace
-        with:
-          publish-bun-install-cache: "false"
-          bun-version: ${{ env.BUN_VERSION }}
-          node-version: ${{ env.NODE_VERSION }}
-          install-command: bun install --frozen-lockfile --ignore-scripts
-          install-native-deps: "false"
-          skip-avatar-clone: "true"
-          no-vision-deps: "true"
-          install-protoc: "false"
-          setup-python: "false"
-      - name: Install browser for client integration tests
-        run: bunx playwright install --with-deps chromium
-      - name: Client tests
-        # The plugin matrix owns personal-assistant; OS verification owns installers.
-        run: bun run test:client --filter='^(?!@elizaos/(?:plugin-personal-assistant|os|setup|os-usb-installer) )'
-  tests_plugins:
-    name: Plugin Tests (${{ matrix.shard }}/4)
-    needs: preflight
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 95
-    strategy:
-      fail-fast: false
-      matrix:
-        shard:
-          - 1
-          - 2
-          - 3
-          - 4
-    env:
-      CI: "true"
-      BUN_VERSION: 1.4.2
-      NODE_VERSION: 24.15.0
-      NODE_NO_WARNINGS: "1"
-      NODE_OPTIONS: --max-old-space-size=8192
-      ELIZA_SKIP_FUSED_INFERENCE_SETUP: "1"
-      TEST_SHARD: ${{ matrix.shard }}/4
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          submodules: false
-          fetch-depth: 1
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - name: Setup workspace dependencies
-        uses: ./.github/actions/setup-bun-workspace
-        with:
-          publish-bun-install-cache: "false"
-          publish-caches: ${{ matrix.shard == 1 }}
-          bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile --ignore-scripts
-          install-native-deps: "false"
-          skip-avatar-clone: "true"
-          no-vision-deps: "true"
-          setup-python: "true"
-          install-protoc: "true"
-      - name: Build view bundles
-        run: bun run build:views
-      - name: Initialize pinned native sources for provenance tests
-        run: git submodule update --init --depth 1 plugins/plugin-local-inference/native/llama.cpp
-      - name: Verify durable device-action HTTP lifecycle
-        if: ${{ matrix.shard == 1 }}
-        timeout-minutes: 10
-        run: |
-          mkdir -p test-results/device-actions
-          bun run --cwd plugins/plugin-assistant test:device-actions --reporter=default --reporter=junit --outputFile.junit="$GITHUB_WORKSPACE/test-results/device-actions/junit.xml"
-      - name: Preserve device-action flow evidence
-        if: ${{ always() && matrix.shard == 1 }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: device-action-http-lifecycle
-          path: test-results/device-actions/
-          if-no-files-found: warn
-          retention-days: 14
-      - name: Run plugin tests
-        timeout-minutes: 85
-        run: bun run test:plugins
+      - name: Remove owned login PostgreSQL container
+        if: always()
+        run: docker rm --force --volumes "$LOGIN_TEST_POSTGRES_CONTAINER" >/dev/null 2>&1 || true
   required:
     name: All Tests Passed
     if: ${{ always() && !cancelled() }}
@@ -288,61 +141,70 @@ jobs:
       - secret-scan
       - os
       - quality
-      - tests
-      - tests_server
       - tests_auth_integration
-      - tests_client
-      - tests_plugins
       - preflight
       - remote-capabilities
-      - desktop-contract
+      - agent-integration
       - zero-key-scenario-runner
       - zero-key-model-provider-e2e
-      - scenario-unit-coverage
+      - local-runtime-integration
       - app-accounts-ui
-      - app-workflow-runtime
       - frontend-build
     runs-on: ubuntu-24.04
     steps:
       - name: Require every CI job to succeed
         env:
           RESULTS: |-
-            secret-scan=${{ needs.secret-scan.result }}
-            os=${{ needs.os.result }}
-            quality=${{ needs.quality.result }}
-            tests=${{ needs.tests.result }}
-            tests_server=${{ needs.tests_server.result }}
-            tests_auth_integration=${{ needs.tests_auth_integration.result }}
-            tests_client=${{ needs.tests_client.result }}
-            tests_plugins=${{ needs.tests_plugins.result }}
-            preflight=${{ needs.preflight.result }}
-            remote-capabilities=${{ needs.remote-capabilities.result }}
-            desktop-contract=${{ needs.desktop-contract.result }}
-            zero-key-scenario-runner=${{ needs.zero-key-scenario-runner.result }}
-            zero-key-model-provider-e2e=${{ needs.zero-key-model-provider-e2e.result }}
-            scenario-unit-coverage=${{ needs.scenario-unit-coverage.result }}
-            app-accounts-ui=${{ needs.app-accounts-ui.result }}
-            app-workflow-runtime=${{ needs.app-workflow-runtime.result }}
-            frontend-build=${{ needs.frontend-build.result }}
+            secret-scan=${{ needs.secret-scan.result }}:true
+            os=${{ needs.os.result }}:${{ needs.preflight.outputs.os }}
+            quality=${{ needs.quality.result }}:${{ needs.preflight.outputs.source }}
+            tests_auth_integration=${{ needs.tests_auth_integration.result }}:${{ needs.preflight.outputs.auth }}
+            preflight=${{ needs.preflight.result }}:true
+            remote-capabilities=${{ needs.remote-capabilities.result }}:${{ needs.preflight.outputs.runtime }}
+            agent-integration=${{ needs.agent-integration.result }}:${{ needs.preflight.outputs.runtime }}
+            zero-key-scenario-runner=${{ needs.zero-key-scenario-runner.result }}:${{ needs.preflight.outputs.scenarios }}
+            zero-key-model-provider-e2e=${{ needs.zero-key-model-provider-e2e.result }}:${{ needs.preflight.outputs.providers }}
+            local-runtime-integration=${{ needs.local-runtime-integration.result }}:${{ needs.preflight.outputs.app }}
+            app-accounts-ui=${{ needs.app-accounts-ui.result }}:${{ needs.preflight.outputs.app }}
+            frontend-build=${{ needs.frontend-build.result }}:${{ needs.preflight.outputs.app }}
         run: |
           set -euo pipefail
           if [ -z "$RESULTS" ]; then echo "::error::Missing required job results"; exit 1; fi
           for pair in $RESULTS; do
             name="${pair%%=*}"
-            result="${pair#*=}"
-            if [ "$result" != "success" ]; then
+            value="${pair#*=}"
+            result="${value%%:*}"
+            planned="${value#*:}"
+            expected=success
+            if [ "$planned" = "false" ]; then expected=skipped; fi
+            if [ "$planned" != "true" ] && [ "$planned" != "false" ]; then
+              echo "::error::Missing affected plan for $name"; exit 1
+            fi
+            if [ "$result" != "$expected" ]; then
               echo "::error title=CI aggregate::$name finished with $result"
               exit 1
             fi
           done
   preflight:
-    name: Validate source before fan-out
+    name: Select affected validation
+    outputs:
+      full: ${{ steps.affected.outputs.full }}
+      base: ${{ steps.affected.outputs.base }}
+      source: ${{ steps.affected.outputs.source }}
+      auth: ${{ steps.affected.outputs.auth }}
+      runtime: ${{ steps.affected.outputs.runtime }}
+      scenarios: ${{ steps.affected.outputs.scenarios }}
+      providers: ${{ steps.affected.outputs.providers }}
+      provider_matrix: ${{ steps.affected.outputs.provider_matrix }}
+      app: ${{ steps.affected.outputs.app }}
+      os: ${{ steps.affected.outputs.os }}
+      cloud: ${{ steps.affected.outputs.cloud }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          fetch-depth: 2
+          fetch-depth: 0
           submodules: false
       - name: Reject unresolved merge-conflict markers
         run: |
@@ -359,7 +221,56 @@ jobs:
           echo "No unresolved merge-conflict markers in tracked files."
       - name: Check source whitespace
         run: git show --format= --check HEAD
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Check maintained Markdown link targets
+        run: node packages/scripts/check-markdown-links.ts
+      - name: Select affected integration lanes
+        id: affected
+        env:
+          BASE_SHA: ${{ inputs.base_sha || '' }}
+        run: node packages/scripts/ci-affected.ts "$BASE_SHA"
+  agent-integration:
+    if: needs.preflight.outputs.runtime == 'true'
+    name: Agent transport and persistence integration
+    needs: preflight
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 90
+    env:
+      CI: "true"
+      BUN_VERSION: 1.4.2
+      NODE_VERSION: 24.15.0
+      NODE_NO_WARNINGS: "1"
+      NODE_OPTIONS: --max-old-space-size=8192
+      ELIZA_SKIP_FUSED_INFERENCE_SETUP: "1"
+      PGLITE_WASM_MODE: node
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          publish-bun-install-cache: "false"
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+          install-protoc: "false"
+          setup-python: "false"
+          setup-node: "false"
+      - name: Build runtime dependencies
+        run: bun run build:core
+      - name: Agent transport and persistence integration
+        run: bun run --cwd packages/agent test:integration
   remote-capabilities:
+    if: needs.preflight.outputs.runtime == 'true'
     name: Remote capability integration contracts
     needs: preflight
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
@@ -396,44 +307,12 @@ jobs:
         run: bun run build:views
       - name: Remote capability plugin surface audit
         run: bun packages/agent/scripts/audit-capability-router-plugin-surface.ts
+      - name: Device-action HTTP and database lifecycle
+        run: bun run --cwd plugins/plugin-assistant test:device-actions
       - name: Run synthetic-world transaction tests
         run: bun run --cwd packages/testing test:synthetic-world
-  desktop-contract:
-    name: Electrobun Desktop Contract
-    needs: preflight
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          submodules: false
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - name: Setup workspace dependencies
-        uses: ./.github/actions/setup-bun-workspace
-        with:
-          publish-bun-install-cache: "false"
-          bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile --ignore-scripts
-          install-native-deps: "false"
-          setup-fused-inference: "true"
-          setup-python: "true"
-          install-protoc: "true"
-      - name: Build workspace packages for Vitest resolution
-        run: bun run build:core
-      - name: Run Electrobun contract tests
-        working-directory: packages/app/platforms/electrobun
-        run: bun run test
-    env:
-      CI: "true"
-      BUN_VERSION: 1.4.2
-      NODE_VERSION: 24.15.0
-      NODE_NO_WARNINGS: "1"
-      NODE_OPTIONS: --max-old-space-size=8192
-      ELIZA_SKIP_FUSED_INFERENCE_SETUP: "1"
   zero-key-scenario-runner:
+    if: needs.preflight.outputs.scenarios == 'true'
     name: Zero-Key scenario runner
     needs: preflight
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
@@ -501,7 +380,12 @@ jobs:
         if: always()
         run: bun --conditions=eliza-source packages/scripts/e2e-coverage/write-coverage-matrix-report.ts --report-dir reports/coverage
   zero-key-model-provider-e2e:
-    name: Zero-Key harness E2E
+    if: needs.preflight.outputs.providers == 'true'
+    name: Provider integration (${{ matrix.provider }})
+    strategy:
+      fail-fast: false
+      matrix:
+        provider: ${{ fromJSON(needs.preflight.outputs.provider_matrix) }}
     needs: preflight
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
@@ -544,10 +428,9 @@ jobs:
           setup-python: "true"
           install-protoc: "true"
       - name: Per-plugin deterministic model-provider runtime adoption proofs
-        run: |
-          bun run --cwd plugins/plugin-anthropic test:real-runtime
-          bun run --cwd plugins/plugin-discord test:real-runtime
-  scenario-unit-coverage:
+        run: bun run --cwd plugins/plugin-${{ matrix.provider }} test:integration
+  local-runtime-integration:
+    if: needs.preflight.outputs.app == 'true'
     name: Local provisioning and chat contracts
     needs: preflight
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
@@ -596,6 +479,7 @@ jobs:
       NVIDIA_API_KEY: ""
       ELIZAOS_CLOUD_API_KEY: ""
   app-accounts-ui:
+    if: needs.preflight.outputs.app == 'true'
     name: Zero-Key accounts UI e2e (real API + pool + disk)
     needs: preflight
     runs-on: ubuntu-24.04
@@ -653,63 +537,8 @@ jobs:
       XAI_API_KEY: ""
       NVIDIA_API_KEY: ""
       ELIZAOS_CLOUD_API_KEY: ""
-  app-workflow-runtime:
-    name: Browser workflow with real local runtime
-    needs: preflight
-    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 55
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          submodules: false
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - name: Setup workspace dependencies
-        uses: ./.github/actions/setup-bun-workspace
-        with:
-          publish-bun-install-cache: "false"
-          bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile --ignore-scripts
-          install-native-deps: "false"
-          skip-avatar-clone: "true"
-          no-vision-deps: "true"
-          install-protoc: "false"
-          setup-python: "false"
-          setup-node: "false"
-      - name: Install Playwright browsers
-        run: packages/scripts/github/install-playwright-browsers.sh chromium
-      - name: Native workflow browser-to-runtime coverage
-        run: ELIZA_UI_SMOKE_REAL_LOCAL_STACK=1 ELIZA_UI_SMOKE_WORKFLOW_JOURNEY=1 ELIZA_UI_SMOKE_DISABLE_VIDEO=1 bun run --cwd packages/app test:e2e test/ui-smoke/workflow-real-local.spec.ts --project=chromium
-      - name: Upload app browser extended artifacts
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: scenario-pr-app-browser-extended
-          path: |
-            packages/app/playwright-report/
-            test-results/app/
-          if-no-files-found: ignore
-          retention-days: 3
-    env:
-      CI: "true"
-      BUN_VERSION: 1.4.2
-      NODE_VERSION: 24.15.0
-      NODE_OPTIONS: --max-old-space-size=4096
-      TEST_LANE: pr
-      ELIZA_LIVE_TEST: "0"
-      SCENARIO_USE_DETERMINISTIC_MODEL: "1"
-      CEREBRAS_API_KEY: ""
-      OPENAI_API_KEY: ""
-      ANTHROPIC_API_KEY: ""
-      GROQ_API_KEY: ""
-      OPENROUTER_API_KEY: ""
-      GOOGLE_GENERATIVE_AI_API_KEY: ""
-      XAI_API_KEY: ""
-      NVIDIA_API_KEY: ""
-      ELIZAOS_CLOUD_API_KEY: ""
   frontend-build:
+    if: needs.preflight.outputs.app == 'true'
     name: Consolidated Frontend Build
     runs-on: ubuntu-24.04
     timeout-minutes: 45

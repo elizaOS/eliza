@@ -474,10 +474,14 @@ export async function findEntityByName(
   }
   // Complete room transcript: this is model-facing resolution context, so a
   // single unbounded read (no LIMIT clause) — not a page or window — feeds it.
+  // Oldest-first: the model resolves pronouns against the latest mention, and
+  // adapters default to newest-first.
   const recentMessages = await runtime.getMemories({
     tableName: "messages",
     roomId: room.id,
     includeEmbedding: false,
+    orderBy: "createdAt",
+    orderDirection: "asc",
   });
   const interactionData = await getRecentInteractions(
     message.entityId,

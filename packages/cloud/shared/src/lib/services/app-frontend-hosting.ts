@@ -16,6 +16,7 @@
  *    view server-side when a document is served (no secret embedded in the page).
  */
 
+import { stripHtmlRawTextElements } from "@elizaos/core/protocol";
 import { appFrontendDeploymentsRepository } from "../../db/repositories/app-frontend-deployments";
 import type { App } from "../../db/repositories/apps";
 import type {
@@ -491,6 +492,24 @@ function hasFileExtension(path: string): boolean {
   return last.includes(".") && !last.startsWith(".");
 }
 
+function declaresAttribute(html: string, attribute: string, value: string): boolean {
+  const tagName = attribute === "rel" ? "link" : "meta";
+  // Consume whole tags and quoted values; prose and comments are not declarations.
+  for (const tag of html.matchAll(
+    /<!--[\s\S]*?(?:-->|$)|<(meta|link)(?=[\s/>])(?:"[^"]*"|'[^']*'|[^'">])*>/gi,
+  )) {
+    if (tag[1]?.toLowerCase() !== tagName) continue;
+    for (const entry of tag[0].matchAll(
+      /\s([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g,
+    )) {
+      if (entry[1].toLowerCase() !== attribute) continue;
+      if ((entry[2] ?? entry[3] ?? entry[4])?.toLowerCase() === value) return true;
+      break;
+    }
+  }
+  return false;
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -510,34 +529,35 @@ export function injectSeo(html: string, seo: FrontendSeo): string {
 
   const tags: string[] = [];
   const lower = html.toLowerCase();
+  const metadataHtml = stripHtmlRawTextElements(html);
 
   if (seo.title && !/<title[\s>]/i.test(html)) {
     tags.push(`<title>${escapeHtml(seo.title)}</title>`);
   }
-  if (seo.description && !lower.includes('name="description"')) {
+  if (seo.description && !declaresAttribute(metadataHtml, "name", "description")) {
     tags.push(`<meta name="description" content="${escapeHtml(seo.description)}" />`);
   }
-  if (seo.title && !lower.includes('property="og:title"')) {
+  if (seo.title && !declaresAttribute(metadataHtml, "property", "og:title")) {
     tags.push(`<meta property="og:title" content="${escapeHtml(seo.title)}" />`);
   }
-  if (seo.description && !lower.includes('property="og:description"')) {
+  if (seo.description && !declaresAttribute(metadataHtml, "property", "og:description")) {
     tags.push(`<meta property="og:description" content="${escapeHtml(seo.description)}" />`);
   }
-  if (seo.image && !lower.includes('property="og:image"')) {
+  if (seo.image && !declaresAttribute(metadataHtml, "property", "og:image")) {
     tags.push(`<meta property="og:image" content="${escapeHtml(seo.image)}" />`);
   }
-  if (seo.url && !lower.includes('property="og:url"')) {
+  if (seo.url && !declaresAttribute(metadataHtml, "property", "og:url")) {
     tags.push(`<meta property="og:url" content="${escapeHtml(seo.url)}" />`);
   }
-  if (seo.siteName && !lower.includes('property="og:site_name"')) {
+  if (seo.siteName && !declaresAttribute(metadataHtml, "property", "og:site_name")) {
     tags.push(`<meta property="og:site_name" content="${escapeHtml(seo.siteName)}" />`);
   }
-  if ((seo.title || seo.image) && !lower.includes('name="twitter:card"')) {
+  if ((seo.title || seo.image) && !declaresAttribute(metadataHtml, "name", "twitter:card")) {
     tags.push(
       `<meta name="twitter:card" content="${seo.image ? "summary_large_image" : "summary"}" />`,
     );
   }
-  if (seo.url && !lower.includes('rel="canonical"')) {
+  if (seo.url && !declaresAttribute(metadataHtml, "rel", "canonical")) {
     tags.push(`<link rel="canonical" href="${escapeHtml(seo.url)}" />`);
   }
   if (seo.jsonLd && !lower.includes("application/ld+json")) {

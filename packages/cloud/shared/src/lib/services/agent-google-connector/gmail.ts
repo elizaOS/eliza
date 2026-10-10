@@ -181,8 +181,20 @@ function decodeHtmlEntities(value: string): string {
     quot: '"',
     "#39": "'",
   };
-  return value.replace(/&(nbsp|amp|lt|gt|quot|#39);/gi, (entity, name: string) => {
-    return namedEntities[name.toLowerCase()] ?? entity;
+  return value.replace(/&(nbsp|amp|lt|gt|quot|#x[0-9a-f]+|#\d+);/gi, (entity, name: string) => {
+    const key = name.toLowerCase();
+    const named = namedEntities[key];
+    if (named !== undefined) return named;
+    // Gmail HTML writes apostrophes as &#x27;. Named &#39; is already covered.
+    const hex = /^#x([0-9a-f]+)$/i.exec(key);
+    const decimal = hex ? null : /^#(\d+)$/.exec(key);
+    const digits = hex?.[1] ?? decimal?.[1];
+    if (!digits) return entity;
+    const code = Number.parseInt(digits, hex ? 16 : 10);
+    if (!Number.isInteger(code) || code <= 0 || code > 0x10ffff) return entity;
+    if (code >= 0xd800 && code <= 0xdfff) return entity;
+    if (code === 0xa0) return " ";
+    return String.fromCodePoint(code);
   });
 }
 
@@ -402,6 +414,7 @@ async function fetchManagedGoogleGmailMessages(args: {
   userId: string;
   side: OAuthConnectionRole;
   grantId?: string;
+  personalContextRead?: true;
   maxResults: number;
   selfEmail: string | null;
   query?: string;
@@ -430,6 +443,7 @@ async function fetchManagedGoogleGmailMessages(args: {
     userId: args.userId,
     side: args.side,
     grantId: args.grantId,
+    personalContextRead: args.personalContextRead,
     url: `${GOOGLE_GMAIL_MESSAGES_ENDPOINT}?${listParams.toString()}`,
   });
   const listed = (await listResponse.json()) as GoogleGmailListResponse;
@@ -460,6 +474,7 @@ async function fetchManagedGoogleGmailMessages(args: {
         userId: args.userId,
         side: args.side,
         grantId: args.grantId,
+        personalContextRead: args.personalContextRead,
         url: `${GOOGLE_GMAIL_MESSAGES_ENDPOINT}/${encodeURIComponent(messageId)}?${params.toString()}`,
       });
       const parsed = (await response.json()) as GoogleGmailMetadataResponse;
@@ -521,6 +536,7 @@ export async function fetchManagedGoogleGmailSearch(args: {
   userId: string;
   side: OAuthConnectionRole;
   grantId?: string;
+  personalContextRead?: true;
   query: string;
   maxResults: number;
   pageToken?: string;
@@ -536,6 +552,7 @@ export async function fetchManagedGoogleGmailSearch(args: {
     userId: args.userId,
     side: args.side,
     grantId: args.grantId,
+    personalContextRead: args.personalContextRead,
   });
   if (!hasGmailBodyReadScope(connectorStatus.grantedScopes)) {
     fail(
@@ -554,6 +571,7 @@ export async function fetchManagedGoogleGmailSearch(args: {
       userId: args.userId,
       side: args.side,
       grantId: args.grantId,
+      personalContextRead: args.personalContextRead,
       maxResults,
       selfEmail,
       query,
@@ -639,6 +657,7 @@ export async function readManagedGoogleGmailMessage(args: {
   userId: string;
   side: OAuthConnectionRole;
   grantId?: string;
+  personalContextRead?: true;
   messageId: string;
 }): Promise<ManagedGoogleGmailReadResult> {
   const connectorStatus = await getManagedGoogleConnectorStatus({
@@ -646,6 +665,7 @@ export async function readManagedGoogleGmailMessage(args: {
     userId: args.userId,
     side: args.side,
     grantId: args.grantId,
+    personalContextRead: args.personalContextRead,
   });
   if (!hasGmailBodyReadScope(connectorStatus.grantedScopes)) {
     fail(
@@ -662,6 +682,7 @@ export async function readManagedGoogleGmailMessage(args: {
     userId: args.userId,
     side: args.side,
     grantId: args.grantId,
+    personalContextRead: args.personalContextRead,
     url: `${GOOGLE_GMAIL_MESSAGES_ENDPOINT}/${encodeURIComponent(args.messageId)}?format=full`,
     maxResponseBytes: Math.ceil(MAX_GMAIL_ATTACHMENT_BYTES / 3) * 4 + 65536,
   });

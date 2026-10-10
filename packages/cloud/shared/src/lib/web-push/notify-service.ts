@@ -122,7 +122,12 @@ export async function notifyAgentReply(
 
     let pruned = 0;
     if (result.goneEndpoints.length > 0) {
-      pruned = await repo.pruneEndpoints(result.goneEndpoints);
+      const gone = new Set(result.goneEndpoints);
+      pruned = await repo.pruneStaleSubscriptions(
+        rows
+          .filter((row) => gone.has(row.endpoint))
+          .map(({ id, p256dh, auth }) => ({ id, p256dh, auth })),
+      );
       logger.info("[web-push] pruned dead subscriptions", {
         userId: input.userId,
         agentId: input.agentId,

@@ -22,7 +22,7 @@
  *   1. the fake page exposes 2 live per-participant audio elements,
  *   2. the REAL capture binding fires (per-speaker PCM crosses browser->Node),
  *   3. the pipeline receives per-speaker audio for BOTH speaker keys,
- *   4. finalize() produces confirmed segments carrying the mapped speaker labels,
+ *   4. finalize() produces confirmed segments retaining uncertain roster attribution,
  *   5. the transcript record is created (recording) then finalized (ready) in the
  *      runtime double, with both speakers + the scripted text, and the knowledge
  *      mirror lands.
@@ -177,7 +177,7 @@ async function main() {
     writer.updateSegments(update.confirmed);
   });
 
-  // Map stream keys -> display names (as speaker-attribution would).
+  // Roster names alone are hints, not confirmed speaker identities.
   pipeline.setSpeakerName("0", "Jill");
   pipeline.setSpeakerName("1", "Bob");
 
@@ -252,8 +252,29 @@ async function main() {
   );
   const labels = new Set(segments.map((s) => s.speakerLabel));
   assert(
-    labels.has("Jill") || labels.has("Bob"),
-    `segments carry mapped speaker labels (${[...labels].join(", ")})`,
+    labels.has("Speaker 1") && labels.has("Speaker 2"),
+    `roster-only evidence keeps both speaker labels anonymous (${[...labels].join(", ")})`,
+  );
+  const candidateNames = new Set(
+    segments.flatMap((segment) =>
+      (segment.speakerNameAttribution?.candidateNames ?? []).map(
+        (candidate) => candidate.name,
+      ),
+    ),
+  );
+  assert(
+    candidateNames.has("Jill") &&
+      candidateNames.has("Bob") &&
+      segments.every(
+        (segment) =>
+          segment.speakerNameAttribution?.resolution === "needs_confirmation" &&
+          segment.speakerNameAttribution.requiresReview &&
+          segment.speakerNameAttribution.provenance.some(
+            (evidence) => evidence.source === "platform_roster",
+          ) &&
+          segment.speakerEntityId === undefined,
+      ),
+    "both roster candidates retain reviewable provenance without confirmed identity",
   );
   const wav = pipeline.sessionAudioWav();
   assert(

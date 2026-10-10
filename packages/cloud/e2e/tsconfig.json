@@ -10,7 +10,7 @@
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "noEmit": true,
-    "types": ["node", "bun-types"],
+    "types": ["node", "bun-types", "vite/client"],
     "ignoreDeprecations": "5.0",
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx"

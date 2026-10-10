@@ -128,9 +128,13 @@ export async function recentConversationTexts(args: {
 	}
 
 	try {
+		// Callers render these texts as the conversation, so read oldest-first;
+		// adapters default to newest-first.
 		const memories = await args.runtime.getMemories({
 			roomId,
 			tableName: "messages",
+			orderBy: "createdAt",
+			orderDirection: "asc",
 		});
 		const memoryTexts = Array.isArray(memories)
 			? memories

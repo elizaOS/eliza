@@ -23,6 +23,9 @@ export async function handleImageGeneration(
   runtime: IAgentRuntime,
   params: ImageGenerationParams
 ): Promise<{ url: string }[]> {
+  // An omitted count is one image. An explicit count of 0 asks for none —
+  // `count || 1` treated 0 as missing and billed a generation.
+  if (params.count === 0) return [];
   const numImages = params.count || 1;
   const size = params.size || "1024x1024";
   const prompt = params.prompt;

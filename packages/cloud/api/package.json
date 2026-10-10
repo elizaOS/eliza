@@ -49,12 +49,10 @@
     "wrangler": "^4.0.0",
     "zod": "^4.6.5",
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-sqlite": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/plugin-scheduling": "workspace:*",
     "@elizaos/cloud-sdk": "workspace:*",
-    "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/host": "workspace:*",
     "@elizaos/contracts": "workspace:*",
     "@elizaos/voice": "workspace:*"
@@ -62,7 +60,7 @@
   "devDependencies": {
     "@elizaos/plugin-todos": "workspace:*",
     "@elizaos/plugin-web-search": "workspace:*",
-    "@biomejs/biome": "2.5.14",
+    "@biomejs/biome": "2.5.15",
     "@types/pg": "^8.23.1",
     "@types/ws": "^8.18.1",
     "@typescript/native": "npm:typescript@^7.0.2",
@@ -71,6 +69,8 @@
     "miniflare": "4.20260730.0",
     "pg": "^8.23.0",
     "typescript": "^6.0.3",
-    "ws": "^8.21.3"
+    "ws": "^8.21.3",
+    "@elizaos/plugin-sqlite": "workspace:*",
+    "@elizaos/plugin-network": "workspace:*"
   }
 }

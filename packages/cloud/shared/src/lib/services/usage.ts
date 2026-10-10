@@ -7,7 +7,7 @@ import {
   type UsageRecord,
   type UsageStats,
   usageRecordsRepository,
-} from "../../db/repositories";
+} from "../../db/repositories/usage-records";
 
 /**
  * Service for tracking and querying usage records.

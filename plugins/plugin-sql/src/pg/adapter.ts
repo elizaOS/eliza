@@ -19,6 +19,7 @@ import {
 } from "@elizaos/core";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
+import { agentRecordedTime } from "../agent-recorded-time";
 import { BaseDrizzleAdapter } from "../base";
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "../schema/embedding";
 import type { PostgresConnectionManager } from "./manager";
@@ -72,8 +73,8 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
         : agent.bio
           ? [agent.bio]
           : ["An AI agent"]) as string[],
-      createdAt: agent.createdAt || Date.now(),
-      updatedAt: agent.updatedAt || Date.now(),
+      createdAt: agentRecordedTime(agent.createdAt, Date.now()),
+      updatedAt: agentRecordedTime(agent.updatedAt, Date.now()),
     };
 
     await this.createAgent(newAgent);

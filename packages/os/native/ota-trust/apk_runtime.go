@@ -9,11 +9,18 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"syscall"
 	"unicode/utf8"
 )
+
+// runtimeInventoryAsset is the APK entry written by plugin-native-agent's
+// stageAndroidRuntimeInventory (ANDROID_RUNTIME_INVENTORY_ASSET) and read by
+// RuntimeBundleStore. Its first line must equal the host policy's
+// runtimeInventoryHeader, which the host also passes to the packager and store.
+const runtimeInventoryAsset = "assets/agent-runtime.inventory"
 
 // VerifyRuntimeArtifact verifies complete APK identity and packaged runtime
 // bytes against authenticated artifact metadata. Android must independently
@@ -74,7 +81,7 @@ func VerifyRuntimeArtifact(name string, artifactJSON []byte, approvedHosts, abi 
 		}
 		entries[entry.Name] = entry
 	}
-	inventory := entries["assets/runtime-payload.tsv"]
+	inventory := entries[runtimeInventoryAsset]
 	if inventory == nil || inventory.UncompressedSize64 > 2*1024*1024 {
 		return errors.New("runtime inventory missing or oversized")
 	}
@@ -156,7 +163,11 @@ func VerifyRuntimeArtifact(name string, artifactJSON []byte, approvedHosts, abi 
 		}
 	}
 	for name, entry := range entries {
-		if (strings.HasPrefix(name, "assets/agent/") || strings.HasPrefix(name, "assets/runtime-blobs/")) && !entry.FileInfo().IsDir() && !sources[name] {
+		if entry.FileInfo().IsDir() || sources[name] {
+			continue
+		}
+		agentPath, agent := strings.CutPrefix(name, "assets/agent/")
+		if strings.HasPrefix(name, "assets/runtime-blobs/") || agent && !excludedAgentAsset(agentPath, host.RuntimeExcludedAgentDirectories) && !readdressedArchive(agentPath, destinations) {
 			return errors.New("unlisted runtime asset")
 		}
 	}
@@ -177,6 +188,26 @@ func VerifyRuntimeArtifact(name string, artifactJSON []byte, approvedHosts, abi 
 		return errors.New("gateway bootstrap missing")
 	}
 	return nil
+}
+
+// excludedAgentAsset mirrors the packager's exact-directory exclusions.
+func excludedAgentAsset(name string, directories []string) bool {
+	for _, directory := range directories {
+		if strings.HasPrefix(name, directory+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// readdressedArchive reports whether an agent archive was packaged as a listed
+// content-addressed blob. RuntimeBundleStore never extracts the original path.
+func readdressedArchive(name string, destinations map[string]string) bool {
+	base := path.Base(name)
+	if strings.HasSuffix(base, ".tar") {
+		base += ".gz"
+	}
+	return strings.HasSuffix(base, ".tar.gz") && destinations[base] != ""
 }
 func runtimePath(value string) bool {
 	if value == "" || len(value) > 1024 || strings.HasPrefix(value, "/") {

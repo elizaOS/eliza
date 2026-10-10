@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import http from "node:http";
 import {
+  type IMessageService,
   type JsonObject,
   type Memory,
   type PlannerToolResult,
@@ -16,6 +17,12 @@ import {
   type TriggerRouteContext,
 } from "../../../plugins/plugin-workflow/src/trigger-routes.ts";
 import { triggerAction } from "../src/actions/trigger.ts";
+import {
+  ensureOwnerConversation,
+  resolvePromptDeliveryRoom,
+} from "../src/api/conversation-routes.ts";
+import type { ServerState } from "../src/api/server-types.ts";
+import { registerClientChatSendHandler } from "../src/services/client-chat-sender.ts";
 import {
   executeTriggerTask,
   getTriggerHealthSnapshot,
@@ -362,6 +369,18 @@ async function requestTrigger(
   method: string,
   pathname: string,
   body: JsonObject,
+  state: ServerState = {
+    runtime: fixture.runtime,
+    config: {},
+    agentName: "TriggerScheduleBoundary",
+    adminEntityId: null,
+    chatUserId: null,
+    logBuffer: [],
+    conversations: new Map(),
+    activeChatTurnCount: 0,
+    conversationRestorePromise: null,
+    deletedConversationIds: new Set(),
+  } as unknown as ServerState,
 ) {
   let routeFailure: unknown;
   const sendJson = (
@@ -380,6 +399,8 @@ async function requestTrigger(
         req,
         res,
         runtime: fixture.runtime,
+        resolvePromptDeliveryRoom: (runtime) =>
+          resolvePromptDeliveryRoom(state, runtime),
         ownerEntityId: resolveOwnerEntityIdOrDefault(fixture.runtime),
         localOwnerEntityId: resolveOwnerEntityIdOrDefault(fixture.runtime),
         readJsonBody: async () => {
@@ -610,5 +631,180 @@ it("upgrades persisted workbench schedules without losing timing or duplicating 
     expect(readTriggerConfig(reread)).toEqual(readTriggerConfig(saved));
   } finally {
     await fixture.runtime.deleteTask(taskId);
+  }
+});
+
+it.each([
+  "new",
+  "existing",
+  "delivery-failure",
+  "missing-at-create",
+  "missing-at-dispatch",
+])(
+  "delivers an API Once reply through the persisted owner room (%s)",
+  async (scenario) => {
+    const existing = scenario !== "new";
+    const fails =
+      scenario === "delivery-failure" || scenario === "missing-at-dispatch";
+    const runtime = fixture.runtime;
+    const broadcasts: unknown[] = [];
+    const state = {
+      runtime,
+      config: {},
+      agentName: "TriggerScheduleBoundary",
+      adminEntityId: null,
+      chatUserId: null,
+      logBuffer: [],
+      conversations: new Map(),
+      activeChatTurnCount: 0,
+      conversationRestorePromise: null,
+      deletedConversationIds: new Set(),
+      broadcastWs: (event: unknown) => broadcasts.push(event),
+    } as unknown as ServerState;
+    const original = existing
+      ? await ensureOwnerConversation(state, runtime)
+      : undefined;
+    if (scenario === "missing-at-create" && original) {
+      await runtime.deleteRoom(original.roomId);
+    }
+    registerClientChatSendHandler(runtime, state);
+    const instructions = `Offline Once delivery ${randomUUID()}`;
+    const response = await requestTrigger(
+      "POST",
+      "/api/triggers",
+      {
+        kind: "prompt",
+        displayName: instructions,
+        instructions,
+        triggerType: "once",
+        scheduledAtIso: new Date(Date.now() + 60_000).toISOString(),
+        roomId: randomUUID(),
+      },
+      state,
+    );
+    if (scenario === "missing-at-create") {
+      expect(response.status).toBe(503);
+      expect(
+        (await listTriggerTasks(runtime)).some(
+          (task) => readTriggerConfig(task)?.instructions === instructions,
+        ),
+      ).toBe(false);
+      if (original) expect(await runtime.getRoom(original.roomId)).toBeNull();
+      return;
+    }
+    expect(response.status).toBe(201);
+    expect(state.conversations.size).toBe(1);
+    const conversation = await ensureOwnerConversation(state, runtime);
+    if (original) expect(conversation.id).toBe(original.id);
+    const task = (await listTriggerTasks(runtime)).find(
+      (task) => readTriggerConfig(task)?.instructions === instructions,
+    );
+    if (!task?.id) throw new Error("Created task missing");
+    expect(task.roomId).toBe(conversation.roomId);
+    expect(task.entityId).toBe(resolveOwnerEntityIdOrDefault(runtime));
+    if (!task.roomId) throw new Error("Prompt delivery room missing");
+    expect((await runtime.getRoom(task.roomId))?.source).toBe("client_chat");
+    if (scenario === "missing-at-dispatch")
+      await runtime.deleteRoom(task.roomId);
+    let handledMessages = 0;
+    const priorMessageService = runtime.messageService;
+    runtime.messageService = {
+      handleMessage: async (_runtime, message, callback) => {
+        handledMessages++;
+        expect(message.roomId).toBe(conversation.roomId);
+        if (!callback) throw new Error("Missing delivery callback");
+        if (fails) throw new Error("Delivery unavailable");
+        const responseMessages = await callback({ text: instructions });
+        return {
+          outcome: { status: "completed", effects: [] },
+          didRespond: true,
+          responseMessages: responseMessages ?? [],
+        };
+      },
+    } satisfies Pick<
+      IMessageService,
+      "handleMessage"
+    > as unknown as IMessageService;
+    try {
+      const result = await executeTriggerTask(runtime, task, {
+        source: "scheduler",
+        force: true,
+      });
+      expect(result.status).toBe(fails ? "error" : "success");
+      expect(result.taskDeleted).toBe(true);
+      if (fails) {
+        const error =
+          scenario === "missing-at-dispatch"
+            ? "Prompt automation delivery conversation is unavailable"
+            : "Delivery unavailable";
+        expect(result.error).toBe(error);
+        expect(result.runRecord?.error).toBe(error);
+      }
+      if (scenario === "missing-at-dispatch") {
+        expect(handledMessages).toBe(0);
+        expect(await runtime.getRoom(conversation.roomId)).toBeNull();
+      }
+      const messages = await runtime.getMemories({
+        roomId: conversation.roomId,
+        tableName: "messages",
+        count: 20,
+      });
+      expect(
+        messages.filter((memory) => memory.content.text === instructions),
+      ).toHaveLength(fails ? 0 : 1);
+      if (!fails)
+        expect(broadcasts).toContainEqual(
+          expect.objectContaining({
+            type: "proactive-message",
+            conversationId: conversation.id,
+            message: expect.objectContaining({ text: instructions }),
+          }),
+        );
+    } finally {
+      runtime.messageService = priorMessageService;
+      await runtime.deleteTask(task.id);
+    }
+  },
+);
+
+it("rejects a prompt delivery binding when the host runtime changes during conversation restore", async () => {
+  const runtime = fixture.runtime;
+  const replacement = await createTestRuntime({
+    characterName: "ReplacementPromptOwner",
+  });
+  const state = {
+    runtime,
+    config: {},
+    agentName: "TriggerScheduleBoundary",
+    adminEntityId: null,
+    chatUserId: null,
+    logBuffer: [],
+    conversations: new Map(),
+    activeChatTurnCount: 0,
+    conversationRestorePromise: null,
+    deletedConversationIds: new Set(),
+  } as unknown as ServerState;
+  const conversation = await ensureOwnerConversation(state, runtime);
+  let release!: () => void;
+  state.conversationRestorePromise = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const pending = resolvePromptDeliveryRoom(state, runtime);
+  // The real resolver passed its initial fence and is awaiting the restoration
+  // promise. The same state object now belongs to another real runtime.
+  state.runtime = replacement.runtime;
+  const rejection = expect(pending).rejects.toThrow(
+    "Runtime changed during prompt automation creation",
+  );
+  release();
+  try {
+    await rejection;
+    await expect(resolvePromptDeliveryRoom(state, runtime)).rejects.toThrow(
+      "Runtime changed before prompt automation creation",
+    );
+    expect(state.conversations.get(conversation.id)).toBe(conversation);
+  } finally {
+    release();
+    await replacement.cleanup();
   }
 });

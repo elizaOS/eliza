@@ -63,6 +63,7 @@
     "@elizaos/plugin-web-search": "workspace:*",
     "@vscode/ripgrep": "^1.15.9",
     "cross-spawn": "^7.0.6",
+    "entities": "^4.5.0",
     "minimatch": "^10.2.6",
     "zod": "^4.6.5"
   },
@@ -74,7 +75,7 @@
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2",
+    "vitest": "^5.0.3",
     "@types/cross-spawn": "^6.0.6"
   },
   "scripts": {

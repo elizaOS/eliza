@@ -105,8 +105,10 @@ const BEDTIME_TARGET_MAX_FUTURE_MS = DAY_MS;
  * Builds a UTC instant for a normalized local bedtime hour
  * (in the canonical [12, 36) range) anchored on the sleep-day that `anchorMs`
  * belongs to. When no wake anchor is given, the local date of `nowMs` is used.
- * The result is then rolled ±24h so it represents "tonight's" bedtime relative
- * to now: not more than ~18h in the past and not more than ~24h in the future.
+ * The result is then rolled by civil days so it represents "tonight's" bedtime
+ * relative to now: not more than ~18h in the past and not more than ~24h in
+ * the future. A 24-hour step would move 23:00 to midnight across the
+ * spring-forward.
  */
 function localHourInstantMs(args: {
   timezone: string;
@@ -133,18 +135,35 @@ function localHourInstantMs(args: {
     minute: minuteOfDay % 60,
     second: 0,
   }).getTime();
-  // Advance one day at a time until the target is no longer unreasonably far
-  // in the past — this handles stale wake anchors without clobbering a
-  // just-passed bedtime (e.g. 12:56 AM after an 11:30 PM target).
+  // Advance one civil day at a time until the target is no longer
+  // unreasonably far in the past. Adding 24 absolute hours crosses the
+  // spring-forward and lands a 23:00 bedtime at midnight.
   for (let step = 0; step < 14; step += 1) {
     if (candidate >= args.nowMs - BEDTIME_TARGET_MAX_PAST_MS) break;
-    candidate += DAY_MS;
+    candidate = shiftLocalCivilDays(candidate, args.timezone, 1);
   }
   for (let step = 0; step < 14; step += 1) {
     if (candidate <= args.nowMs + BEDTIME_TARGET_MAX_FUTURE_MS) break;
-    candidate -= DAY_MS;
+    candidate = shiftLocalCivilDays(candidate, args.timezone, -1);
   }
   return candidate;
+}
+
+function shiftLocalCivilDays(
+  instantMs: number,
+  timezone: string,
+  dayDelta: number,
+): number {
+  const parts = getZonedDateParts(new Date(instantMs), timezone);
+  const date = addDaysToLocalDate(parts, dayDelta);
+  return buildUtcDateFromLocalParts(timezone, {
+    year: date.year,
+    month: date.month,
+    day: date.day,
+    hour: parts.hour,
+    minute: parts.minute,
+    second: parts.second,
+  }).getTime();
 }
 function isAsleepState(state: LifeOpsCircadianState): boolean {
   return state === "sleeping" || state === "napping";

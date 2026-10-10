@@ -20,6 +20,18 @@ public final class CalendarConfigurationInstrumentedTest {
    try{configuration("test",prefix);fail("Invalid prefix admitted");}catch(IllegalArgumentException expected){}
   }
  }
+ @Test public void eventReviewRejectsUnknownZoneAndKeepsDstOffsets()throws Exception{
+  java.util.Locale previous=java.util.Locale.getDefault();try{java.util.Locale.setDefault(java.util.Locale.US);
+  java.lang.reflect.Method describe=CalendarPlugin.class.getDeclaredMethod("eventTimeDescription",long.class,long.class,String.class);describe.setAccessible(true);
+  long start=java.time.Instant.parse("2026-11-01T08:30:00.000Z").toEpochMilli(),end=java.time.Instant.parse("2026-11-01T09:30:00.000Z").toEpochMilli();
+  String shown=(String)describe.invoke(null,start,end,"America/Los_Angeles");
+  assertTrue(shown.contains("1:30 AM PDT"));assertTrue(shown.contains("1:30 AM PST"));assertTrue(shown.contains("Time zone: America/Los_Angeles"));
+  for(String zone:new String[]{"Foo/Bar","America/Los_Angeles ","GMT+invalid"}){
+   try{describe.invoke(null,start,end,zone);fail("Unknown zone was displayed as GMT");}
+   catch(java.lang.reflect.InvocationTargetException expected){assertTrue(expected.getCause() instanceof java.time.DateTimeException);}
+  }
+  }finally{java.util.Locale.setDefault(previous);}
+ }
  @Test public void instancesShareJournalIdentityButSeparateJournalsRemainIndependent()throws Exception{
   Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
   String journal="calendar_test_"+UUID.randomUUID().toString().replace("-","");

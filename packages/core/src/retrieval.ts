@@ -1937,6 +1937,93 @@ function termTrigramSimilarity(queryTerms: string[], document: string): number {
 }
 
 /**
+ * Quotes, leading-minus terms and standalone ORs are `websearch_to_tsquery`
+ * syntax. Same classifier as plugin-sql's `usesWebsearchSyntax`: interior
+ * hyphens stay ordinary text.
+ */
+function usesWebsearchSyntax(value: string): boolean {
+	return (
+		value.includes('"') ||
+		/(^|\s)-(?=\S)/.test(value) ||
+		/(^|\s)or(?=\s|$)/i.test(value)
+	);
+}
+
+type WebsearchClause = { terms: string[]; negated: boolean };
+
+/**
+ * Search tokens without leading or trailing `_`, `:`, `/`, `.` or `-`, so a
+ * sentence-final `beta.` or a `note:` label reads as the word Postgres indexes.
+ * Interior punctuation (`abc-123`, `example.com`) stays part of the token.
+ */
+function websearchWords(text: string): string[] {
+	return messageSearchTokens(text)
+		.map((token) => token.replace(/^[_:/.-]+|[_:/.-]+$/g, ""))
+		.filter((word) => word.length > 0);
+}
+
+/**
+ * Reads a folded query like `websearch_to_tsquery`: quoted text is one phrase,
+ * a leading `-` negates the next term or phrase, a standalone `or` starts an
+ * alternative, and everything else is ANDed. Each clause's words are
+ * kept as tokens, so a phrase matches only adjacent whole words.
+ */
+function parseWebsearchQuery(foldedQuery: string): WebsearchClause[][] {
+	const groups: WebsearchClause[][] = [[]];
+	for (const match of foldedQuery.matchAll(/(-?)(?:"([^"]*)"?|([^\s"]+))/g)) {
+		const [, minus, quoted, bare] = match;
+		if (quoted === undefined && minus === "" && bare === "or") {
+			groups.push([]);
+			continue;
+		}
+		const terms = websearchWords(quoted ?? bare ?? "");
+		if (terms.length > 0) {
+			groups[groups.length - 1].push({ terms, negated: minus === "-" });
+		}
+	}
+	return groups.filter((group) => group.length > 0);
+}
+
+/**
+ * FTS analog for a structured query: the best rank over the alternatives whose
+ * positive clauses all appear and negated clauses do not, or `null` when none
+ * match. No trigram or substring fallback, matching the SQL adapters.
+ */
+function websearchRank(
+	groups: WebsearchClause[][],
+	document: string,
+): number | null {
+	const words = websearchWords(document);
+	const length = Math.max(document.length, 1);
+	let best: number | null = null;
+	for (const group of groups) {
+		let rank = 0;
+		let matched = true;
+		for (const clause of group) {
+			let count = 0;
+			for (
+				let index = 0;
+				index <= words.length - clause.terms.length;
+				index++
+			) {
+				if (
+					clause.terms.every((term, offset) => words[index + offset] === term)
+				) {
+					count++;
+				}
+			}
+			if (clause.negated ? count > 0 : count === 0) {
+				matched = false;
+				break;
+			}
+			if (!clause.negated) rank += count / length;
+		}
+		if (matched && (best === null || rank > best)) best = rank;
+	}
+	return best;
+}
+
+/**
  * Whether a message's `createdAt` falls inside an inclusive `[since, until]`
  * epoch-ms window. The in-memory twin of the SQL adapters' `created_at`
  * range conditions in `searchMessages`, so both store paths agree on window
@@ -1967,9 +2054,11 @@ export interface SearchableMessage {
  * folds the query and each message's document identically to Postgres, keeps a
  * row when every query term appears (FTS analog) or the whole folded query is a
  * substring (trigram/phrase analog), and ranks corpus-wide by `ftsRank` then
- * trigram similarity then recency then id. Returned fully sorted; the caller
- * applies its own offset/limit window. Used by the in-memory database adapters
- * so their results agree with the DB path.
+ * trigram similarity then recency then id. A query with quoted phrases, `-term`
+ * or a standalone `OR` keeps those semantics and skips both fallbacks, as the
+ * SQL adapters do. Returned fully sorted; the caller applies its own
+ * offset/limit window. Used by the in-memory database adapters so their results
+ * agree with the DB path.
  */
 export function rankMessageSearch<T extends SearchableMessage>(
 	items: T[],
@@ -1979,6 +2068,10 @@ export function rankMessageSearch<T extends SearchableMessage>(
 	if (foldedQuery.length === 0) return [];
 	const queryTerms = foldedQuery.split(/\s+/).filter((t) => t.length > 0);
 	const queryTrigrams = toTrigramSet(foldedQuery);
+	const websearchGroups = usesWebsearchSyntax(query)
+		? parseWebsearchQuery(foldedQuery)
+		: null;
+	if (websearchGroups?.length === 0) return [];
 
 	const hits: Array<{
 		item: T;
@@ -1987,16 +2080,21 @@ export function rankMessageSearch<T extends SearchableMessage>(
 	}> = [];
 	for (const item of items) {
 		const doc = foldForSearch(messageSearchDocument(item.content));
+		const trigramSimilarity = Math.max(
+			trigramSetSimilarity(queryTrigrams, toTrigramSet(doc)),
+			termTrigramSimilarity(queryTerms, doc),
+		);
+		if (websearchGroups) {
+			const ftsRank = websearchRank(websearchGroups, doc);
+			if (ftsRank !== null) hits.push({ item, ftsRank, trigramSimilarity });
+			continue;
+		}
 		const allTermsPresent = queryTerms.every((t) => doc.includes(t));
 		const phraseSubstring = doc.includes(foldedQuery);
 		const docLen = Math.max(doc.length, 1);
 		const ftsRank = allTermsPresent
 			? queryTerms.reduce((acc, t) => acc + occurrences(doc, t) / docLen, 0)
 			: 0;
-		const trigramSimilarity = Math.max(
-			trigramSetSimilarity(queryTrigrams, toTrigramSet(doc)),
-			termTrigramSimilarity(queryTerms, doc),
-		);
 		if (
 			!allTermsPresent &&
 			!phraseSubstring &&

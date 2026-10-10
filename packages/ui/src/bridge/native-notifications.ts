@@ -24,6 +24,17 @@ export interface NativeNotificationRequest {
   id: string;
   title: string;
   body?: string;
+  /** Server record identity and activation boundary for native-owned receipts. */
+  createdAt?: number;
+  nativeEpoch?: string;
+  nativeSequence?: number;
+  source?: string;
+  readAt?: number | null;
+  expiresAt?: number | null;
+  /** Captured producer authority, not a URL chosen by notification content. */
+  expectedBase?: string;
+  /** Native fingerprint captured with the producer's registration authority. */
+  expectedOwner?: string;
   /** App route / URL to open on tap. */
   deepLink?: string;
   /** Canonical, read-only chat destination from the notification producer. */
@@ -479,6 +490,51 @@ export function showWebNotification(req: NativeNotificationRequest): boolean {
 export async function showNativeNotification(
   req: NativeNotificationRequest,
 ): Promise<"local" | "intent" | "none"> {
+  if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android") {
+    const plugin =
+      getNativePlugin<PushNotificationsPluginLike>("PushNotifications");
+    if (typeof plugin.getNativeNotificationDeliveryStatus === "function") {
+      const native = await plugin.getNativeNotificationDeliveryStatus();
+      if (native.transport === "native") {
+        // A failed/offline native connection never hands this record to a
+        // second LocalNotifications receipt store. Both arrival paths share
+        // the native inbox, including first-activation buffering.
+        if (
+          !req.expectedOwner ||
+          native.owner !== req.expectedOwner ||
+          typeof req.createdAt !== "number" ||
+          typeof req.expectedBase !== "string" ||
+          typeof req.nativeEpoch !== "string" ||
+          typeof req.nativeSequence !== "number" ||
+          !Number.isSafeInteger(req.nativeSequence) ||
+          req.nativeSequence <= 0 ||
+          typeof plugin.presentNativeNotification !== "function"
+        )
+          return "none";
+        const result = await plugin.presentNativeNotification({
+          expectedOwner: req.expectedOwner,
+          expectedBase: req.expectedBase,
+          notification: {
+            id: req.id,
+            title: req.title,
+            body: req.body ?? "",
+            createdAt: req.createdAt,
+            nativeEpoch: req.nativeEpoch,
+            nativeSequence: req.nativeSequence,
+            source: req.source ?? "renderer",
+            category: req.category ?? "general",
+            priority: req.priority,
+            readAt: req.readAt ?? null,
+            expiresAt: req.expiresAt ?? null,
+            ...(req.deepLink ? { deepLink: req.deepLink } : {}),
+            ...(req.groupKey ? { groupKey: req.groupKey } : {}),
+            ...(req.data ? { data: req.data } : {}),
+          },
+        });
+        return result.presented ? "local" : "none";
+      }
+    }
+  }
   // error-policy:J4 documented first-that-succeeds channel chain; a failed
   // channel falls through and an all-failed dispatch returns "none" (the
   // dashboard notification center is the source of truth either way).

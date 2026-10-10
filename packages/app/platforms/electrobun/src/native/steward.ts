@@ -8,9 +8,9 @@
  * and manages its lifecycle from the Electrobun main process.
  *
  * When running in local mode (STEWARD_LOCAL=true), this module:
- *   1. Starts the steward sidecar before the the app agent
+ *   1. Starts the steward sidecar before the app agent
  *   2. After sidecar is healthy and credentials are available, sets env vars
- *      (STEWARD_API_URL, STEWARD_AGENT_TOKEN, etc.) so the the app agent's
+ *      (STEWARD_API_URL, STEWARD_AGENT_TOKEN, etc.) so the app agent's
  *      steward-bridge picks them up automatically
  *   3. Pushes steward status to the renderer via sendToWebview
  *   4. Stops the sidecar on app shutdown
@@ -155,10 +155,10 @@ export async function getStewardSidecar(): Promise<StewardSidecar> {
 }
 
 /**
- * Configure process.env with steward credentials so the the app agent's
+ * Configure process.env with steward credentials so the app agent's
  * steward-bridge.ts can discover steward automatically.
  *
- * This must be called BEFORE the the app agent starts so `createStewardClient()`
+ * This must be called BEFORE the app agent starts so `createStewardClient()`
  * in steward-bridge.ts picks up STEWARD_API_URL.
  */
 async function configureStewardEnvFromCredentials(): Promise<void> {
@@ -219,7 +219,7 @@ async function configureStewardEnvFromCredentials(): Promise<void> {
 /**
  * Start the Steward sidecar and wait for it to be healthy.
  * Handles first-launch wallet creation automatically.
- * Configures env vars for the the app agent's steward bridge.
+ * Configures env vars for the app agent's steward bridge.
  *
  * Returns the status after startup (running or error).
  */
@@ -253,7 +253,7 @@ export async function startSteward(): Promise<StewardSidecarStatus> {
 			`[Steward] Running on port ${result.port}, wallet: ${result.walletAddress ?? "none"}`,
 		);
 
-		// Configure env vars so the the app agent's steward bridge finds steward
+		// Configure env vars so the app agent's steward bridge finds steward
 		await configureStewardEnvFromCredentials();
 
 		return result;

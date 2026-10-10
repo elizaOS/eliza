@@ -1,3 +1,18 @@
+import {
+  isCanonicalPersonalSharedAgent,
+  personalSharedAgentId,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-identity";
+import { observeOwnerCapture } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-owner-model-capture";
+import {
+  cleanupDueOwnerCaptures,
+  listOwnerCaptureReservations,
+  parseOwnerCapturePolicy,
+  readEncryptedOwnerCapture,
+  reserveOwnerModelCapture,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-owner-model-capture-store";
+import { sharedRuntimeConversationRoomId } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-storage-identity";
+import { ChannelType } from "@elizaos/core";
+
 /**
  * Strongly ordered conversation state for shared-runtime agent turns.
  *
@@ -16,14 +31,23 @@ import {
   type MobilePushPlatform,
   type MobilePushTokenRecord,
 } from "@elizaos/cloud-shared/lib/mobile-push/types";
+import { acceptedNetworkGatewayReceipt } from "@elizaos/cloud-shared/lib/network/gateway-delivery-receipt";
 import type { BridgeRequest } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
 import {
   hydrationSettledWithin,
   SHARED_TURN_HYDRATION_WAIT_MS,
 } from "@elizaos/cloud-shared/lib/services/shared-runtime/bounded-hydration";
 import type { CachedAgentSandbox } from "@elizaos/cloud-shared/lib/services/shared-runtime/cached-agent-dates";
+import type {
+  SharedCutoverSeal,
+  SharedNetworkDelivery,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/conversation-coordinator";
+import {
+  networkSharedTurnMatches,
+  parseNetworkSharedTurnContext,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-context";
 import { parsePersonalSharedFallbackAccountState } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-fallback-account-state";
-import { isCanonicalPersonalSharedAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-identity";
+import { personalSharedProjectScope } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-identity";
 import type {
   SharedRuntimeChannel,
   SharedTurnMessage,
@@ -37,7 +61,10 @@ import type {
 } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
 import { SharedRuntimeTurnError } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-errors";
 import { mergeSharedRuntimeHistoryMessages } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-history-policy";
+import { sharedRuntimeRoomKey } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-room-identity";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { NetworkServiceClient } from "@elizaos/plugin-network/client";
+import { svcSign } from "@elizaos/plugin-network/svc-auth";
 
 const RELEASE_QUEUE_BEFORE_BODY_HEADER = "X-Eliza-Release-Coordinator-Queue";
 
@@ -45,6 +72,13 @@ const RELEASE_QUEUE_BEFORE_BODY_HEADER = "X-Eliza-Release-Coordinator-Queue";
 // `Date` columns arrive as ISO strings; `handle` rehydrates them before any
 // service consumes the row (the CONVERSATIONS-500 defect class).
 type ConversationRequest =
+  | {
+      operation: "network-delivery";
+      reconcileOnly?: true;
+      agentId: string;
+      roomId: string;
+      delivery: SharedNetworkDelivery;
+    }
   | {
       operation: "bridge";
       agent: CachedAgentSandbox;
@@ -67,6 +101,8 @@ type ConversationRequest =
       trustedUserUtterance?: string;
       channel?: SharedRuntimeChannel;
       trustedAccountState?: unknown;
+      trustedNetworkContext?: unknown;
+      trustedNetworkTurn?: unknown;
     }
   | {
       operation: "stream";
@@ -90,6 +126,8 @@ type ConversationRequest =
       trustedUserUtterance?: string;
       channel?: SharedRuntimeChannel;
       trustedAccountState?: unknown;
+      trustedNetworkContext?: unknown;
+      trustedNetworkTurn?: unknown;
     }
   | {
       operation: "prewarm";
@@ -115,6 +153,7 @@ type ConversationRequest =
   | { operation: "push-dispatch"; agentId: string; message: MobilePushMessage }
   | {
       operation: "cutover-seal";
+      fallback?: SharedCutoverSeal["fallback"];
       agentId: string;
       roomId: string;
       token: string;
@@ -162,6 +201,26 @@ type ConversationRequest =
       holderId: string;
     }
   | { operation: "delete"; agentId: string };
+
+interface NetworkDeliveryIntent {
+  hash: string;
+  providerKey: string;
+  state:
+    | "prepared"
+    | "dispatching"
+    | "unknown"
+    | "accepted"
+    | "complete"
+    | "rejected";
+  delivery: SharedNetworkDelivery;
+  inbound?: SharedNetworkDelivery["inbound"];
+  receipt?: { providerMessageIds: string[]; acceptedAt: string };
+  serviceReceiptPending?: boolean;
+  refusal?: { error: "opted_out" | "rejected"; retryable: boolean };
+}
+const NETWORK_DELIVERY_ACK_KEY = "network-delivery-ack-pending";
+const NETWORK_DELIVERY_ACTIVE_KEY = "network-delivery-active";
+const NETWORK_DELIVERY_PREFIX = "network-delivery:";
 
 interface StoredConversation {
   agentId: string;
@@ -241,8 +300,11 @@ const STREAM_STALL_TIMEOUT_MS = 120_000;
 const MAX_SNAPSHOT_MESSAGES = 40;
 
 interface StoredAlarmDeadlines {
+  networkDeliveryRetryAt?: number;
+  networkDeliveryAckRetryAt?: number;
   mirrorRetryAt?: number;
   idleExpiryAt?: number;
+  ownerCaptureCleanupAt?: number;
 }
 
 interface StoredDeletionTombstone {
@@ -251,6 +313,7 @@ interface StoredDeletionTombstone {
 }
 
 interface StoredCutoverSeal {
+  fallback?: SharedCutoverSeal["fallback"];
   token: string;
   expiresAt: number;
   committed: boolean;
@@ -632,19 +695,22 @@ export class SharedRuntimeConversation {
     await this.runAlarmMutation(async () => {
       // A deadline update that was queued before deletion must not recreate an
       // alarm or storage after the tombstone lands.
-      if (await this.deletionTombstone()) {
-        await this.state.storage.delete(ALARM_DEADLINES_KEY);
-        await this.state.storage.deleteAlarm();
-        return;
-      }
+      const deleted = await this.deletionTombstone();
       const current =
         (await this.state.storage.get<StoredAlarmDeadlines>(
           ALARM_DEADLINES_KEY,
         )) ?? {};
-      const next = mutate(current);
-      const times = [next.mirrorRetryAt, next.idleExpiryAt].filter(
-        (time): time is number => typeof time === "number",
-      );
+      const proposed = mutate(current);
+      const next = deleted
+        ? { ownerCaptureCleanupAt: proposed.ownerCaptureCleanupAt }
+        : proposed;
+      const times = [
+        next.mirrorRetryAt,
+        next.idleExpiryAt,
+        next.ownerCaptureCleanupAt,
+        next.networkDeliveryRetryAt,
+        next.networkDeliveryAckRetryAt,
+      ].filter((time): time is number => typeof time === "number");
       if (times.length === 0) {
         await this.state.storage.delete(ALARM_DEADLINES_KEY);
         await this.state.storage.deleteAlarm();
@@ -1248,6 +1314,46 @@ export class SharedRuntimeConversation {
     // a stale browser/native session resume the archived Shared transcript.
     if (!seal || seal.committed || seal.expiresAt > Date.now()) return seal;
 
+    if (seal.fallback) {
+      if (
+        !seal.organizationId ||
+        !seal.userId ||
+        !seal.sourceAgentId ||
+        !seal.dedicatedAgentId
+      ) {
+        return { ...seal, recoveryBlocked: true };
+      }
+      const scope = {
+        organizationId: seal.organizationId,
+        userId: seal.userId,
+        sourceAgentId: seal.sourceAgentId,
+        dedicatedAgentId: seal.dedicatedAgentId,
+        fallback: seal.fallback,
+      };
+      const outcome = await this.runWithBindings(async () => {
+        const { resolvePersonalFallbackCutoverRecovery } = await import(
+          "@elizaos/cloud-shared/lib/services/personal-dedicated-fallback"
+        );
+        return await resolvePersonalFallbackCutoverRecovery(scope);
+      });
+      if (outcome === "released") {
+        await this.state.storage.delete(CUTOVER_SEAL_KEY);
+        return null;
+      }
+      if (outcome === "committed") {
+        const recovered = {
+          ...seal,
+          committed: true,
+          recoveryBlocked: undefined,
+        };
+        await this.state.storage.put(CUTOVER_SEAL_KEY, recovered);
+        return recovered;
+      }
+      // Unlike the original upgrade marker, recovery_pending still owns this
+      // journal. Time alone cannot invalidate an in-flight import's snapshot.
+      return outcome === "pending" ? seal : { ...seal, recoveryBlocked: true };
+    }
+
     // The DB marker commits before the final DO transition. If the Worker
     // crashes or loses the acknowledgement between those two durable writes,
     // an expired lease must recover the server-owned marker rather than
@@ -1362,8 +1468,597 @@ export class SharedRuntimeConversation {
       });
   }
 
+  private async readOwnerCapture(request: Request): Promise<Response> {
+    const forbidden = () =>
+      Response.json(
+        { code: "owner_capture_read_forbidden" },
+        { status: 403, headers: { "Cache-Control": "no-store" } },
+      );
+    if (request.method !== "POST" || (await this.deletionTombstone()))
+      return forbidden();
+    const reader = request.body?.getReader();
+    if (!reader) return forbidden();
+    const chunks: Uint8Array[] = [];
+    let bytes = 0;
+    try {
+      while (true) {
+        const part = await reader.read();
+        if (part.done) break;
+        bytes += part.value.byteLength;
+        if (bytes > 4096) {
+          await reader.cancel();
+          return forbidden();
+        }
+        chunks.push(part.value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    const raw = new Uint8Array(bytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      raw.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    let body: unknown;
+    try {
+      body = JSON.parse(new TextDecoder().decode(raw));
+    } catch {
+      return forbidden();
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body))
+      return forbidden();
+    if (
+      ![
+        "readerUserId,sessionId",
+        "captureId,readerUserId,sessionId",
+        "readerUserId,sessionId,verifiedAdmin",
+        "captureId,readerUserId,sessionId,verifiedAdmin",
+      ].includes(Object.keys(body).sort().join(","))
+    )
+      return forbidden();
+    const locator = body as {
+      sessionId?: unknown;
+      captureId?: unknown;
+      readerUserId?: unknown;
+      verifiedAdmin?: unknown;
+    };
+    const policy = parseOwnerCapturePolicy(
+      this.env.SHARED_OWNER_MODEL_CAPTURE_POLICY,
+    );
+    if (
+      !policy ||
+      locator.sessionId !== policy.sessionId ||
+      locator.readerUserId !== policy.readerUserId ||
+      (locator.captureId !== undefined &&
+        typeof locator.captureId !== "string") ||
+      !this.env.BLOB
+    )
+      return forbidden();
+    if (
+      locator.verifiedAdmin !== undefined &&
+      typeof locator.verifiedAdmin !== "boolean"
+    )
+      return forbidden();
+    const authenticatedOwner = locator.readerUserId === policy.userId;
+    const verifiedAdmin = !authenticatedOwner && locator.verifiedAdmin === true;
+    if (!authenticatedOwner && !verifiedAdmin) return forbidden();
+    const principal = {
+      organizationId: policy.organizationId,
+      userId: policy.readerUserId,
+      authenticatedOwner,
+      verifiedAdmin,
+    };
+    const context = await this.state.storage.get<{
+      agentId: string;
+      channelId: string;
+      roomId: string;
+      organizationId: string;
+      userId: string;
+      channelType: string;
+    }>(`owner-capture-context:${policy.sessionId}`);
+    const conversation =
+      this.conversation ??
+      (await this.state.storage.get<StoredConversation>(CONVERSATION_KEY));
+    if (
+      !context ||
+      !conversation ||
+      context.channelType !== ChannelType.DM ||
+      context.organizationId !== policy.organizationId ||
+      context.userId !== policy.userId ||
+      context.roomId !== policy.roomId ||
+      context.agentId !==
+        personalSharedAgentId({
+          organizationId: policy.organizationId,
+          userId: policy.userId,
+        }) ||
+      conversation.agentId !== context.agentId ||
+      conversation.channelId !== context.channelId ||
+      sharedRuntimeConversationRoomId(context.channelId) !== policy.roomId
+    )
+      return forbidden();
+    try {
+      if (locator.captureId === undefined) {
+        const result = await listOwnerCaptureReservations({
+          storage: this.state.storage,
+          sessionId: policy.sessionId,
+          principal,
+          roomId: policy.roomId,
+        });
+        return Response.json(result, {
+          headers: { "Cache-Control": "no-store" },
+        });
+      }
+      const result = await this.runWithBindings(() =>
+        readEncryptedOwnerCapture({
+          bucket: this.env.BLOB!,
+          storage: this.state.storage,
+          locator: {
+            sessionId: policy.sessionId,
+            captureId: locator.captureId as string,
+          },
+          principal,
+          roomId: policy.roomId,
+        }),
+      );
+      return Response.json(result, {
+        headers: { "Cache-Control": "no-store" },
+      });
+    } catch {
+      return forbidden();
+    }
+  }
+
+  private async acknowledgeNetworkDelivery(
+    key: string,
+    intent: NetworkDeliveryIntent,
+  ): Promise<void> {
+    const handled = intent.delivery.handled;
+    if (!handled || !intent.receipt) return;
+    const pending =
+      (await this.state.storage.get<string[]>(NETWORK_DELIVERY_ACK_KEY)) ?? [];
+    await this.state.storage.put({
+      [key]: { ...intent, serviceReceiptPending: true },
+      [NETWORK_DELIVERY_ACK_KEY]: [...new Set([...pending, key])],
+    });
+    await this.updateAlarmDeadlines((current) => ({
+      ...current,
+      networkDeliveryAckRetryAt: Date.now() + RETRY_DELAY_MS,
+    }));
+    try {
+      const client = new NetworkServiceClient({
+        baseUrl: String(this.env.NETWORK_SERVICE_URL ?? ""),
+        secret: String(this.env.SERVICE_TURN_SECRET ?? ""),
+      });
+      await client.turnReceipt({
+        channel: intent.delivery.platform,
+        messageId: handled.messageId,
+        replyIds: handled.replyIds,
+        outcome: "accepted",
+        providerMessageIds: intent.receipt.providerMessageIds,
+        historyRecorded: true,
+      });
+      const remaining = (
+        (await this.state.storage.get<string[]>(NETWORK_DELIVERY_ACK_KEY)) ?? []
+      ).filter((value) => value !== key);
+      await this.state.storage.put({
+        [key]: { ...intent, serviceReceiptPending: false },
+        [NETWORK_DELIVERY_ACK_KEY]: remaining,
+      });
+      if (remaining.length === 0)
+        await this.updateAlarmDeadlines(
+          ({ networkDeliveryAckRetryAt: _due, ...rest }) => rest,
+        );
+    } catch (error) {
+      const { logger } = await import("@elizaos/cloud-shared/lib/utils/logger");
+      logger.warn("[Network delivery] service acknowledgement pending", {
+        errorName: error instanceof Error ? error.name : "UnknownError",
+      });
+      // Provider acceptance/history are already durable. Retry only this
+      // idempotent service acknowledgement, never the send.
+    }
+  }
+
+  private async networkDelivery(
+    payload: Extract<ConversationRequest, { operation: "network-delivery" }>,
+  ): Promise<Response> {
+    const d = payload.delivery;
+    const failure = (error: string, status = 422, retryable = false) =>
+      Response.json(
+        {
+          ok: false,
+          error:
+            error === "unknown" || error === "opted_out" || error === "invalid"
+              ? error
+              : "rejected",
+          ...(error === "unknown" ||
+          error === "opted_out" ||
+          error === "invalid"
+            ? {}
+            : { code: error }),
+          retryable,
+        },
+        { status },
+      );
+    if (this.env.NETWORK_PERSONAL_CONTINUITY_ENABLED !== "true")
+      return failure("network_personal_continuity_disabled", 503);
+    if (
+      d?.project !== "network" ||
+      typeof d.text !== "string" ||
+      (d.handled &&
+        (typeof d.handled.messageId !== "string" ||
+          !d.handled.messageId ||
+          !Array.isArray(d.handled.replyIds) ||
+          !d.handled.replyIds.every(
+            (value) => typeof value === "string" && value.trim(),
+          ) ||
+          new Set(d.handled.replyIds).size !== d.handled.replyIds.length ||
+          !d.inbound ||
+          d.inbound.id !== `${d.platform}:network:${d.handled.messageId}` ||
+          (d.text.trim()
+            ? d.handled.replyIds.length === 0
+            : d.handled.replyIds.length !== 0))) ||
+      (d.app !== undefined &&
+        !["ntwrk", "slop", "peon", "friends"].includes(d.app)) ||
+      typeof d.userId !== "string" ||
+      !d.userId.trim() ||
+      typeof d.organizationId !== "string" ||
+      !d.organizationId.trim() ||
+      (d.platform !== "blooio" && d.platform !== "twilio") ||
+      typeof d.phoneNumber !== "string" ||
+      !/^\+[1-9]\d{6,14}$/.test(d.phoneNumber) ||
+      typeof d.idempotencyKey !== "string" ||
+      !d.idempotencyKey.trim() ||
+      d.idempotencyKey.length > 200 ||
+      d.text.length > 1600 ||
+      (!d.text.trim() && !d.inbound) ||
+      payload.agentId !== personalSharedAgentId(d) ||
+      payload.roomId !== payload.agentId ||
+      (d.inbound &&
+        (typeof d.inbound.id !== "string" ||
+          !d.inbound.id.trim() ||
+          typeof d.inbound.text !== "string" ||
+          !d.inbound.text.trim() ||
+          !Number.isSafeInteger(d.inbound.createdAt) ||
+          d.inbound.createdAt <= 0)) ||
+      (d.compliance &&
+        (!d.inbound ||
+          !["stop", "help", "start"].includes(d.compliance.command) ||
+          d.compliance.messageId !== d.inbound.id ||
+          d.inbound.text.trim().toLowerCase() !== d.compliance.command))
+    )
+      return failure("invalid", 400);
+    const namespace = this.env.SHARED_RUNTIME_CONVERSATIONS as
+      | DurableObjectNamespace
+      | undefined;
+    if (
+      !namespace ||
+      !this.state.id.equals(
+        namespace.idFromName(`${payload.agentId}:${payload.agentId}`),
+      )
+    )
+      return failure("invalid_room", 400);
+    const digest = async (value: string) =>
+      [
+        ...new Uint8Array(
+          await crypto.subtle.digest(
+            "SHA-256",
+            new TextEncoder().encode(value),
+          ),
+        ),
+      ]
+        .map((x) => x.toString(16).padStart(2, "0"))
+        .join("");
+    const key = NETWORK_DELIVERY_PREFIX + (await digest(d.idempotencyKey));
+    const hash = await digest(
+      JSON.stringify([
+        payload.agentId,
+        d.project,
+        d.app ?? null,
+        d.userId,
+        d.organizationId,
+        d.phoneNumber,
+        d.platform,
+        d.idempotencyKey,
+        d.text,
+        d.inbound ? [d.inbound.id, d.inbound.text] : null,
+        d.handled ? [d.handled.messageId, d.handled.replyIds] : null,
+        d.compliance ? [d.compliance.command, d.compliance.messageId] : null,
+      ]),
+    );
+    let intent = await this.state.storage.get<NetworkDeliveryIntent>(key);
+    if (intent && intent.hash !== hash)
+      return failure("delivery_conflict", 409);
+    if (payload.reconcileOnly && (!intent || intent.state === "prepared"))
+      return failure("unknown", 202);
+    if (intent?.state === "complete" || intent?.state === "rejected") {
+      if ((await this.state.storage.get(NETWORK_DELIVERY_ACTIVE_KEY)) === key) {
+        await this.state.storage.delete(NETWORK_DELIVERY_ACTIVE_KEY);
+        await this.updateAlarmDeadlines(
+          ({ networkDeliveryRetryAt: _due, ...rest }) => rest,
+        );
+      }
+      if (intent.state === "complete" && intent.receipt) {
+        if (intent.serviceReceiptPending)
+          await this.acknowledgeNetworkDelivery(key, intent);
+        return Response.json({
+          ok: true,
+          replayed: true,
+          providerMessageIds: intent.receipt.providerMessageIds,
+          acceptedAt: intent.receipt.acceptedAt,
+          history: true,
+        });
+      }
+      return failure(
+        intent.refusal?.error ?? "rejected",
+        422,
+        intent.refusal?.retryable ?? false,
+      );
+    }
+    const active = await this.state.storage.get<string>(
+      NETWORK_DELIVERY_ACTIVE_KEY,
+    );
+    if (active && active !== key) return failure("delivery_pending", 423, true);
+    const base = String(this.env.ELIZA_APP_WEBHOOK_GATEWAY_URL ?? "").replace(
+      /\/+$/,
+      "",
+    );
+    const secret = this.env.GATEWAY_INTERNAL_SECRET;
+    if (!base || typeof secret !== "string" || !secret)
+      return failure("unavailable", 503, true);
+    if (
+      d.handled &&
+      (typeof this.env.NETWORK_SERVICE_URL !== "string" ||
+        !this.env.NETWORK_SERVICE_URL ||
+        typeof this.env.SERVICE_TURN_SECRET !== "string" ||
+        this.env.SERVICE_TURN_SECRET.length < 32)
+    )
+      return failure("service_receipt_unavailable", 503, true);
+    const replayed = Boolean(intent);
+    if (!intent || intent.state === "prepared") {
+      if (await this.activeCutoverSeal())
+        return failure("personal_eliza_dedicated", 409);
+      if (
+        (await this.activeProvisionalConvergenceSeal()) ||
+        (await this.activeProvisionalConvergenceReservation())
+      )
+        return failure("personal_convergence_in_progress", 423, true);
+      const allowed = await this.runWithBindings(async () => {
+        const [{ usersRepository }, { findActivePersonalDedicatedTarget }] =
+          await Promise.all([
+            import("@elizaos/cloud-shared/db/repositories/users"),
+            import(
+              "@elizaos/cloud-shared/lib/services/agent-tier-upgrade-target"
+            ),
+          ]);
+        const user = await usersRepository.findByPhoneNumberWithOrganization(
+          d.phoneNumber,
+        );
+        if (
+          !user ||
+          user.id !== d.userId ||
+          user.organization_id !== d.organizationId ||
+          user.phone_number !== d.phoneNumber ||
+          !user.phone_verified ||
+          !user.is_active ||
+          user.deleted_at ||
+          !user.organization?.is_active
+        )
+          return false;
+        return !(await findActivePersonalDedicatedTarget(
+          d.organizationId,
+          d.userId,
+          payload.agentId,
+        ));
+      });
+      if (!allowed) {
+        if (intent) {
+          await this.state.storage.put(key, {
+            ...intent,
+            state: "rejected",
+            refusal: { error: "rejected", retryable: false },
+          });
+          await this.state.storage.delete(NETWORK_DELIVERY_ACTIVE_KEY);
+        }
+        return failure("account_unavailable", 409);
+      }
+      intent ??= {
+        hash,
+        providerKey: `network:personal:${payload.agentId.slice(9)}:${await digest(d.idempotencyKey)}`,
+        state: "prepared",
+        delivery: d,
+        ...(d.inbound ? { inbound: d.inbound } : {}),
+      };
+      // This durable fence survives eviction. Cutover/deletion cannot overtake
+      // an unresolved send even after the in-memory room queue is lost.
+      await this.state.storage.put({
+        [key]: intent,
+        [NETWORK_DELIVERY_ACTIVE_KEY]: key,
+      });
+    }
+    // Reuse the room's existing multiplexed alarm for lossless receipt/history
+    // recovery. Dispatching/unknown intents can only perform a read-only query.
+    await this.updateAlarmDeadlines((current) => ({
+      ...current,
+      networkDeliveryRetryAt: Date.now() + RETRY_DELAY_MS,
+    }));
+    if (intent.state === "prepared" && intent.inbound)
+      await this.historyStore(true).merge(
+        payload.agentId,
+        sharedRuntimeRoomKey(payload.agentId, payload.roomId),
+        [
+          {
+            id: `network-inbound:${intent.inbound.id}`,
+            role: "user",
+            content: intent.inbound.text,
+            createdAt: intent.inbound.createdAt,
+          },
+        ],
+      );
+    if (!d.text.trim()) {
+      intent = {
+        ...intent,
+        state: "complete",
+        receipt: {
+          providerMessageIds: [],
+          acceptedAt: new Date().toISOString(),
+        },
+      };
+    } else if (!intent.receipt) {
+      const recovering = intent.state !== "prepared";
+      if (!recovering) {
+        await this.state.storage.put(key, { ...intent, state: "dispatching" });
+      }
+      const gatewayBody = JSON.stringify({
+        platform: d.platform,
+        project: "network",
+        ...(d.app ? { app: d.app } : {}),
+        phoneNumber: d.phoneNumber,
+        text: d.text,
+        idempotencyKey: intent.providerKey,
+        ...(d.compliance ? { networkCompliance: d.compliance } : {}),
+      });
+      const path = recovering
+        ? "/internal/deliver/receipt"
+        : "/internal/deliver";
+      let response: Response | undefined;
+      let receipt: Record<string, unknown> | null = null;
+      try {
+        const signed = d.compliance
+          ? await svcSign(String(this.env.SERVICE_TURN_SECRET ?? ""), {
+              method: "POST",
+              path,
+              id: intent.providerKey,
+              body: gatewayBody,
+            })
+          : {};
+        response = await fetch(`${base}${path}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Internal-Secret": secret,
+            ...signed,
+          },
+          body: gatewayBody,
+          signal: AbortSignal.timeout(10000),
+        });
+        receipt = (await response.json()) as Record<string, unknown>;
+      } catch {
+        // Any failure after a durable dispatch intent is ambiguous. A retry is
+        // read-only receipt recovery, never another provider send.
+      }
+      const accepted = acceptedNetworkGatewayReceipt(
+        response?.status ?? 0,
+        receipt,
+        intent.providerKey,
+      );
+      if (accepted) {
+        intent = {
+          ...intent,
+          state: "accepted",
+          receipt: {
+            acceptedAt: accepted.acceptedAt,
+            providerMessageIds: accepted.providerMessageIds,
+          },
+        };
+        await this.state.storage.put(key, intent);
+      } else if (
+        !recovering &&
+        receipt?.success === false &&
+        receipt.acceptance === "not_accepted"
+      ) {
+        intent = {
+          ...intent,
+          state: "rejected",
+          refusal: {
+            error:
+              receipt.code === "recipient_opted_out" ? "opted_out" : "rejected",
+            retryable: false,
+          },
+        };
+        await this.state.storage.put(key, intent);
+        await this.state.storage.delete(NETWORK_DELIVERY_ACTIVE_KEY);
+        return failure(intent.refusal?.error ?? "rejected", 422);
+      } else {
+        await this.state.storage.put(key, { ...intent, state: "unknown" });
+        return failure("unknown", 202);
+      }
+    }
+    if (intent.receipt && d.text.trim())
+      await this.historyStore(true).merge(
+        payload.agentId,
+        sharedRuntimeRoomKey(payload.agentId, payload.roomId),
+        [
+          {
+            id: `network-delivered:${intent.providerKey}`,
+            role: "assistant",
+            content: d.text,
+            createdAt: Date.parse(intent.receipt.acceptedAt),
+          },
+        ],
+      );
+    intent = {
+      ...intent,
+      state: "complete",
+      ...(d.handled ? { serviceReceiptPending: true } : {}),
+    };
+    const pendingAcknowledgements = d.handled
+      ? ((await this.state.storage.get<string[]>(NETWORK_DELIVERY_ACK_KEY)) ??
+        [])
+      : [];
+    await this.state.storage.put({
+      [key]: intent,
+      ...(d.handled
+        ? {
+            [NETWORK_DELIVERY_ACK_KEY]: [
+              ...new Set([...pendingAcknowledgements, key]),
+            ],
+          }
+        : {}),
+    });
+    if (d.handled)
+      await this.updateAlarmDeadlines((current) => ({
+        ...current,
+        networkDeliveryAckRetryAt: Date.now() + RETRY_DELAY_MS,
+      }));
+    await this.state.storage.delete(NETWORK_DELIVERY_ACTIVE_KEY);
+    await this.updateAlarmDeadlines(
+      ({ networkDeliveryRetryAt: _due, ...rest }) => rest,
+    );
+    if (d.handled) await this.acknowledgeNetworkDelivery(key, intent);
+    return Response.json({
+      ok: true,
+      replayed,
+      providerMessageIds: intent.receipt?.providerMessageIds ?? [],
+      acceptedAt: intent.receipt?.acceptedAt,
+      history: true,
+    });
+  }
   private async handle(request: Request): Promise<Response> {
+    if (new URL(request.url).pathname === "/owner-capture/read")
+      return this.readOwnerCapture(request);
     const payload = (await request.json()) as ConversationRequest;
+    if (
+      (payload.operation === "personal-bridge" ||
+        payload.operation === "personal-stream") &&
+      personalSharedProjectScope(payload.agent.project) === "network" &&
+      this.env.NETWORK_PERSONAL_CONTINUITY_ENABLED !== "true"
+    ) {
+      return Response.json(
+        { success: false, code: "network_personal_continuity_disabled" },
+        { status: 503 },
+      );
+    }
+    if (
+      payload.operation !== "network-delivery" &&
+      payload.operation !== "history" &&
+      (await this.state.storage.get(NETWORK_DELIVERY_ACTIVE_KEY))
+    ) {
+      return Response.json(
+        { success: false, code: "network_delivery_pending", retryable: false },
+        { status: 423 },
+      );
+    }
     const suppliedChannel = "channel" in payload ? payload.channel : undefined;
     const channel =
       suppliedChannel === undefined
@@ -1399,6 +2094,38 @@ export class SharedRuntimeConversation {
       );
     }
     const validatedAccountState = accountState ?? undefined;
+    const suppliedNetwork =
+      "trustedNetworkContext" in payload
+        ? payload.trustedNetworkContext
+        : undefined;
+    const networkContext =
+      suppliedNetwork === undefined
+        ? undefined
+        : parseNetworkSharedTurnContext(suppliedNetwork);
+    if (
+      suppliedNetwork !== undefined &&
+      (!networkContext ||
+        !(
+          payload.operation === "personal-bridge" ||
+          payload.operation === "personal-stream"
+        ) ||
+        !networkSharedTurnMatches(
+          payload.agent,
+          payload.rpc.params?.roomId,
+          networkContext,
+        ) ||
+        (validatedAccountState && "membership" in networkContext))
+    ) {
+      return Response.json(
+        {
+          success: false,
+          error: "Invalid Network conversation scope",
+          code: "invalid_network_scope",
+        },
+        { status: 400 },
+      );
+    }
+
     // Deletion fence: once the agent behind this room is purged, every later
     // operation (save, hydration, history read, forwarded turn) fails closed
     // instead of re-creating state for a deleted agent. The `delete` op stays
@@ -1414,6 +2141,8 @@ export class SharedRuntimeConversation {
         { status: 410 },
       );
     }
+    if (payload.operation === "network-delivery")
+      return await this.networkDelivery(payload);
     if (payload.operation === "push-list") {
       return Response.json({ tokens: await this.mobilePushTokens() });
     }
@@ -1839,8 +2568,28 @@ export class SharedRuntimeConversation {
       );
     }
     if (payload.operation === "cutover-seal") {
+      if (
+        payload.fallback !== undefined &&
+        (!payload.fallback ||
+          typeof payload.fallback !== "object" ||
+          typeof payload.fallback.id !== "string" ||
+          !payload.fallback.id ||
+          payload.fallback.roomId !== payload.roomId ||
+          !Number.isSafeInteger(payload.fallback.generation) ||
+          payload.fallback.generation < 1 ||
+          !Number.isSafeInteger(payload.fallback.revision) ||
+          payload.fallback.revision < 1)
+      ) {
+        return Response.json(
+          { success: false, code: "invalid_fallback_seal" },
+          { status: 400 },
+        );
+      }
       const existing = await this.activeCutoverSeal();
-      if (existing && existing.token !== payload.token) {
+      if (
+        existing &&
+        (existing.token !== payload.token || existing.recoveryBlocked)
+      ) {
         return Response.json(
           {
             success: false,
@@ -1859,6 +2608,7 @@ export class SharedRuntimeConversation {
         userId: payload.userId,
         sourceAgentId: payload.agentId,
         dedicatedAgentId: payload.dedicatedAgentId,
+        ...(payload.fallback ? { fallback: payload.fallback } : {}),
       };
       await this.state.storage.put(CUTOVER_SEAL_KEY, seal);
       try {
@@ -1875,7 +2625,11 @@ export class SharedRuntimeConversation {
         return Response.json({ success: true, history });
       } catch (error) {
         const current = await this.activeCutoverSeal();
-        if (current?.token === payload.token && !current.committed) {
+        if (
+          current?.token === payload.token &&
+          !current.committed &&
+          !current.fallback
+        ) {
           await this.state.storage.delete(CUTOVER_SEAL_KEY);
         }
         throw error;
@@ -1883,7 +2637,17 @@ export class SharedRuntimeConversation {
     }
     if (payload.operation === "cutover-release") {
       const existing = await this.activeCutoverSeal();
-      if (existing?.token === payload.token && !existing.committed) {
+      if (existing?.token === payload.token && existing.fallback) {
+        return Response.json(
+          { success: false, code: "fallback_recovery_seal_owned_by_revision" },
+          { status: 409 },
+        );
+      }
+      if (
+        existing?.token === payload.token &&
+        !existing.committed &&
+        !existing.fallback
+      ) {
         await this.state.storage.delete(CUTOVER_SEAL_KEY);
       }
       return Response.json({ success: true });
@@ -1931,16 +2695,35 @@ export class SharedRuntimeConversation {
         // that stale clients could hydrate again. DurableObjectTransaction has
         // no deleteAll, so delete its key snapshot in API-sized batches.
         await this.state.storage.transaction(async (txn) => {
-          const keys = [...(await txn.list()).keys()];
+          const cleanup =
+            await txn.get<StoredAlarmDeadlines>(ALARM_DEADLINES_KEY);
+          const keys = [...(await txn.list()).keys()].filter(
+            (key) =>
+              key !== "owner-model-capture-sessions" &&
+              !key.startsWith("owner-model-capture-budget:"),
+          );
           for (let offset = 0; offset < keys.length; offset += 128) {
             await txn.delete(keys.slice(offset, offset + 128));
+          }
+          if (cleanup?.ownerCaptureCleanupAt !== undefined) {
+            await txn.put(ALARM_DEADLINES_KEY, {
+              ownerCaptureCleanupAt: cleanup.ownerCaptureCleanupAt,
+            } satisfies StoredAlarmDeadlines);
           }
           await txn.put(DELETION_TOMBSTONE_KEY, {
             agentId: payload.agentId,
             deletedAt: Date.now(),
           } satisfies StoredDeletionTombstone);
         });
-        await this.state.storage.deleteAlarm();
+        const captureDeadline =
+          await this.state.storage.get<StoredAlarmDeadlines>(
+            ALARM_DEADLINES_KEY,
+          );
+        if (captureDeadline?.ownerCaptureCleanupAt !== undefined)
+          await this.state.storage.setAlarm(
+            captureDeadline.ownerCaptureCleanupAt,
+          );
+        else await this.state.storage.deleteAlarm();
         this.conversation = null;
       });
       // The caller deletes Postgres first, but an already-running mirror can
@@ -1976,7 +2759,7 @@ export class SharedRuntimeConversation {
     }
 
     return await this.runWithBindings(async () => {
-      const { sharedRuntimeChatService } = await import(
+      const { sharedRuntimeChatService, sharedRuntimeRoomKey } = await import(
         "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat"
       );
       const agent = personal
@@ -2006,6 +2789,10 @@ export class SharedRuntimeConversation {
           transientInput: payload.transientInput,
           trustedUserUtterance: payload.trustedUserUtterance,
           channel: validatedChannel,
+          ...(networkContext ? { trustedNetworkContext: networkContext } : {}),
+          ...(personal && "trustedNetworkTurn" in payload
+            ? { trustedNetworkTurn: payload.trustedNetworkTurn }
+            : {}),
           ...(personal && validatedAccountState
             ? { trustedAccountState: validatedAccountState }
             : {}),
@@ -2016,26 +2803,111 @@ export class SharedRuntimeConversation {
             : undefined,
         });
       }
-      const result = await sharedRuntimeChatService.bridge(agent, payload.rpc, {
-        traceId: payload.traceId,
-        executionCtx,
-        historyStore,
-        turnClaims,
-        funding: personal ? "platform" : "organization-credits",
-        trustedMessageRole: payload.trustedMessageRole,
-        trustedHistoryCutoffAt: payload.trustedHistoryCutoffAt,
-        transientInput: payload.transientInput,
-        trustedUserUtterance: payload.trustedUserUtterance,
-        channel: validatedChannel,
-        ...(personal && validatedAccountState
-          ? { trustedAccountState: validatedAccountState }
-          : {}),
-        mobilePushDispatch: personal
-          ? async (message: MobilePushMessage) => {
-              this.enqueueMobilePush(message);
+      let ownerCapture:
+        | Awaited<ReturnType<typeof reserveOwnerModelCapture>>
+        | undefined;
+      const capturePolicy = parseOwnerCapturePolicy(
+        this.env.SHARED_OWNER_MODEL_CAPTURE_POLICY,
+      );
+      if (
+        capturePolicy &&
+        payload.rpc.method === "message.send" &&
+        personal &&
+        isCanonicalPersonalSharedAgent(agent) &&
+        (validatedChannel?.type ?? ChannelType.DM) === ChannelType.DM &&
+        this.env.BLOB
+      ) {
+        const channelId = sharedRuntimeRoomKey(
+          agent.id,
+          payload.rpc.params?.roomId,
+          payload.rpc.params?.userId,
+        );
+        const roomId = sharedRuntimeConversationRoomId(channelId);
+        const { supportsCanonicalOwnerCapture } = await import(
+          "@elizaos/cloud-shared/lib/services/shared-runtime/shared-eliza-runtime"
+        );
+        if (supportsCanonicalOwnerCapture()) {
+          try {
+            ownerCapture = await reserveOwnerModelCapture({
+              policyValue: this.env.SHARED_OWNER_MODEL_CAPTURE_POLICY,
+              verifiedPersonalShared: true,
+              requiresSessionContext: true,
+              scope: {
+                organizationId: agent.organization_id,
+                userId: agent.user_id,
+                roomId,
+                traceId: payload.traceId ?? "",
+              },
+              storage: this.state.storage,
+              bucket: this.env.BLOB,
+              waitUntil: (work) => this.state.waitUntil(work),
+            });
+            if (
+              ownerCapture.capture &&
+              ownerCapture.cleanupAt &&
+              ownerCapture.sessionCreated
+            ) {
+              await this.updateAlarmDeadlines((deadlines) => ({
+                ...deadlines,
+                ownerCaptureCleanupAt: Math.min(
+                  deadlines.ownerCaptureCleanupAt ?? Infinity,
+                  ownerCapture!.cleanupAt!,
+                ),
+              }));
+              await this.state.storage.put(
+                `owner-capture-context:${capturePolicy.sessionId}`,
+                {
+                  agentId: agent.id,
+                  channelId,
+                  roomId,
+                  organizationId: agent.organization_id,
+                  userId: agent.user_id,
+                  channelType: ChannelType.DM,
+                },
+              );
             }
-          : undefined,
-      });
+          } catch {
+            ownerCapture = undefined;
+          }
+        }
+      }
+      let result: Awaited<ReturnType<typeof sharedRuntimeChatService.bridge>>;
+      try {
+        result = await sharedRuntimeChatService.bridge(agent, payload.rpc, {
+          ownerCapture: ownerCapture?.capture,
+          ...(networkContext ? { trustedNetworkContext: networkContext } : {}),
+          ...(personal && "trustedNetworkTurn" in payload
+            ? { trustedNetworkTurn: payload.trustedNetworkTurn }
+            : {}),
+          abortSignal: request.signal,
+          traceId: payload.traceId,
+          executionCtx,
+          historyStore,
+          turnClaims,
+          funding: personal ? "platform" : "organization-credits",
+          trustedMessageRole: payload.trustedMessageRole,
+          trustedHistoryCutoffAt: payload.trustedHistoryCutoffAt,
+          transientInput: payload.transientInput,
+          trustedUserUtterance: payload.trustedUserUtterance,
+          channel: validatedChannel,
+          ...(personal && validatedAccountState
+            ? { trustedAccountState: validatedAccountState }
+            : {}),
+          mobilePushDispatch: personal
+            ? async (message: MobilePushMessage) => {
+                this.enqueueMobilePush(message);
+              }
+            : undefined,
+        });
+      } catch (error) {
+        observeOwnerCapture(ownerCapture?.capture, (capture) =>
+          capture.finish({ boundary: "cloud-bridge", outcome: "failed" }),
+        );
+        throw error;
+      }
+      observeOwnerCapture(ownerCapture?.capture, (capture) =>
+        capture.finish({ boundary: "cloud-bridge-response-ready", result }),
+      );
       const response = Response.json(result);
       // A bridge result is complete before this response exists. Releasing the
       // room here avoids coupling later turns to whether a nested Worker fetch
@@ -2205,6 +3077,9 @@ export class SharedRuntimeConversation {
             code: "shared_runtime_turn_failed",
             failureName: error.failureName,
             retryable: error.retryable,
+            ...(error.failureDiagnostic
+              ? { failureDiagnostic: error.failureDiagnostic }
+              : {}),
           },
           { status: error.retryable ? 503 : 500 },
         );
@@ -2278,7 +3153,7 @@ export class SharedRuntimeConversation {
   }
 
   async alarm(): Promise<void> {
-    if (await this.deletionTombstone()) return;
+    const deleted = await this.deletionTombstone();
     const deadlines =
       await this.state.storage.get<StoredAlarmDeadlines>(ALARM_DEADLINES_KEY);
     if (!deadlines) {
@@ -2293,6 +3168,104 @@ export class SharedRuntimeConversation {
       return;
     }
     const now = Date.now();
+    if (
+      typeof deadlines.ownerCaptureCleanupAt === "number" &&
+      deadlines.ownerCaptureCleanupAt <= now &&
+      this.env.BLOB
+    ) {
+      const cleanup = await this.runWithBindings(() =>
+        cleanupDueOwnerCaptures({
+          storage: this.state.storage,
+          bucket: this.env.BLOB!,
+        }),
+      );
+      await this.updateAlarmDeadlines(
+        ({ ownerCaptureCleanupAt: _done, ...rest }) => ({
+          ...rest,
+          ...(cleanup.nextDeadline === undefined
+            ? {}
+            : { ownerCaptureCleanupAt: cleanup.nextDeadline }),
+        }),
+      );
+      if (cleanup.cleanupExhausted > 0) {
+        try {
+          const { logger } = await import(
+            "@elizaos/cloud-shared/lib/utils/logger"
+          );
+          logger.audit(
+            "[SharedRuntimeConversation] owner capture cleanup exhausted",
+            { count: cleanup.cleanupExhausted },
+          );
+        } catch {
+          /* Reporting never changes retention fencing or cleanup status. */
+        }
+      }
+    }
+    if (deleted) return;
+    if (
+      typeof deadlines.networkDeliveryRetryAt === "number" &&
+      deadlines.networkDeliveryRetryAt <= now
+    ) {
+      await this.updateAlarmDeadlines(
+        ({ networkDeliveryRetryAt: _due, ...rest }) => rest,
+      );
+      const key = await this.state.storage.get<string>(
+        NETWORK_DELIVERY_ACTIVE_KEY,
+      );
+      const intent = key
+        ? await this.state.storage.get<NetworkDeliveryIntent>(key)
+        : undefined;
+      if (intent) {
+        const agentId = personalSharedAgentId(intent.delivery);
+        const recovered = await this.fetch(
+          new Request(
+            "https://shared-runtime.internal/network-delivery-recovery",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                operation: "network-delivery",
+                agentId,
+                roomId: agentId,
+                delivery: intent.delivery,
+              }),
+            },
+          ),
+        );
+        await recovered.body?.cancel();
+      }
+    }
+    if (
+      typeof deadlines.networkDeliveryAckRetryAt === "number" &&
+      deadlines.networkDeliveryAckRetryAt <= now
+    ) {
+      await this.updateAlarmDeadlines(
+        ({ networkDeliveryAckRetryAt: _due, ...rest }) => rest,
+      );
+      for (const key of (await this.state.storage.get<string[]>(
+        NETWORK_DELIVERY_ACK_KEY,
+      )) ?? []) {
+        const intent = await this.state.storage.get<NetworkDeliveryIntent>(key);
+        if (intent?.state === "complete" && intent.serviceReceiptPending) {
+          const agentId = personalSharedAgentId(intent.delivery);
+          const response = await this.fetch(
+            new Request(
+              "https://shared-runtime.internal/network-service-receipt-recovery",
+              {
+                method: "POST",
+                body: JSON.stringify({
+                  operation: "network-delivery",
+                  agentId,
+                  roomId: agentId,
+                  delivery: intent.delivery,
+                  reconcileOnly: true,
+                }),
+              },
+            ),
+          );
+          await response.body?.cancel();
+        }
+      }
+    }
     if (
       typeof deadlines.mirrorRetryAt === "number" &&
       deadlines.mirrorRetryAt <= now

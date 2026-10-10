@@ -18,6 +18,7 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   MESSAGE_SOURCE_CODING_AGENT,
   type Media,
+  readReminderPresentation,
   requireConfirmedSendHandlerDelivery,
   type SwarmCoordinatorTaskContext,
   type SwarmEvent,
@@ -113,8 +114,9 @@ export async function routeAutonomyTextToUser(
     return;
   }
 
-  const normalizedText = responseText.trim();
-  if (!normalizedText) {
+  const presentation = readReminderPresentation(reminderPresentation);
+  const normalizedText = presentation ? responseText : responseText.trim();
+  if (!normalizedText.trim()) {
     await publishNotification?.();
     return;
   }
@@ -182,7 +184,7 @@ export async function routeAutonomyTextToUser(
     );
     agentVoiced = voiced.agentVoiced === true;
     if (typeof voiced.text === "string" && voiced.text.trim().length > 0) {
-      deliveredText = voiced.text.trim();
+      deliveredText = presentation ? voiced.text : voiced.text.trim();
     }
   }
 

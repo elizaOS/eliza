@@ -5,7 +5,11 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { stageAndroidRuntimeInventory } from "../../native-host/android-runtime-inventory.mjs";
+import {
+  ANDROID_RUNTIME_INVENTORY_ASSET,
+  DEFAULT_ANDROID_RUNTIME_INVENTORY_FORMAT,
+  stageAndroidRuntimeInventory,
+} from "../../native-host/android-runtime-inventory.mjs";
 
 const plugin = fileURLToPath(new URL("../..", import.meta.url));
 function fixture(t) {
@@ -152,4 +156,76 @@ test("archive names match Java admission and existing blob directories become pr
     /Invalid runtime archive destination/,
   );
   assert.deepEqual(fs.readFileSync(first.manifestPath), original);
+});
+
+test("host-supplied inventory formats are validated and written as the first line", (t) => {
+  const f = fixture(t),
+    result = stageAndroidRuntimeInventory({ ...f, format: "host-runtime-v2" });
+  assert.equal(
+    result.manifestPath,
+    path.join(f.assetsDirectory, ANDROID_RUNTIME_INVENTORY_ASSET),
+  );
+  assert.match(
+    fs.readFileSync(result.manifestPath, "utf8"),
+    /^host-runtime-v2\n/,
+  );
+  for (const format of ["", "bad\nheader", "../x", 1])
+    assert.throws(
+      () => stageAndroidRuntimeInventory({ ...f, format }),
+      /Invalid runtime inventory format/,
+    );
+});
+
+// The Go OTA verifier (packages/os/native/ota-trust) admits this packager output.
+// Regenerate its testdata with stageAndroidRuntimeInventory when the format changes.
+test("ota-trust verifier fixture is exactly what the packager writes", (t) => {
+  const golden = fileURLToPath(
+    new URL(
+      "../../../../packages/os/native/ota-trust/testdata/runtime-apk",
+      import.meta.url,
+    ),
+  );
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "runtime-inventory-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const assetsDirectory = path.join(root, "assets"),
+    nativeLibraryDirectory = path.join(root, "lib/arm64-v8a");
+  fs.cpSync(
+    path.join(golden, "assets/agent"),
+    path.join(assetsDirectory, "agent"),
+    {
+      recursive: true,
+    },
+  );
+  fs.cpSync(path.join(golden, "lib/arm64-v8a"), nativeLibraryDirectory, {
+    recursive: true,
+  });
+  const [blob] = fs.readdirSync(path.join(golden, "assets/runtime-blobs"));
+  // Ignored packager inputs that the Go fixture restores the same way.
+  fs.copyFileSync(
+    path.join(golden, "assets/runtime-blobs", blob),
+    path.join(assetsDirectory, "agent/extension.tar.gz"),
+  );
+  fs.mkdirSync(path.join(assetsDirectory, "agent/models"));
+  fs.writeFileSync(
+    path.join(assetsDirectory, "agent/models/model.bin"),
+    "excluded synthetic model read directly from assets\n",
+  );
+  const result = stageAndroidRuntimeInventory({
+    assetsDirectory,
+    nativeLibraryDirectory,
+    excludedAgentDirectories: ["models"],
+  });
+  const expected = fs.readFileSync(
+    path.join(golden, "assets", ANDROID_RUNTIME_INVENTORY_ASSET),
+  );
+  assert.deepEqual(fs.readFileSync(result.manifestPath), expected);
+  assert.ok(
+    expected
+      .toString("utf8")
+      .startsWith(`${DEFAULT_ANDROID_RUNTIME_INVENTORY_FORMAT}\n`),
+  );
+  assert.deepEqual(
+    fs.readdirSync(path.join(assetsDirectory, "runtime-blobs")),
+    [blob],
+  );
 });

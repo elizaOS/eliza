@@ -136,10 +136,7 @@ export function createWorkflowDispatchService(runtime: IAgentRuntime): WorkflowD
         return { ok: false, error: 'embedded workflow service not registered' };
       }
 
-      const triggerData =
-        options.triggerData && Object.keys(options.triggerData).length > 0
-          ? options.triggerData
-          : payload;
+      const triggerData = options.triggerData ?? payload;
       const idempotencyKey = options.idempotencyKey;
 
       if (idempotencyKey) {

@@ -141,6 +141,48 @@ afterAll(async () => {
 });
 
 describe("generated media and the storage quota (#20956)", () => {
+  test("audio reserves only the byte view and cleanup releases its receipt", async () => {
+    await quota.setBytesLimit(ORG, 3n, "admin:test");
+    const result = await media.storeGeneratedAudio(
+      bindings,
+      ORG,
+      {
+        source: "bytes",
+        bytes: new Uint8Array([9, 1, 2, 3, 9]).subarray(1, 4),
+        contentType: "audio/wav",
+      },
+      "music",
+      { source: "test" },
+    );
+    expect(result.stored.file_size).toBe(3);
+    expect(result.stored.file_name).toEndWith(".wav");
+    expect(await bytesUsed()).toBe(3n);
+    expect([...objects.values()]).toEqual([3]);
+    expect(result.storage).not.toBeNull();
+    await media.discardGeneratedMediaObject(bindings, { organizationId: ORG, ...result.storage! });
+    expect(await bytesUsed()).toBe(0n);
+    expect(objects.size).toBe(0);
+  });
+
+  test("provider-hosted audio consumes no Cloud storage reservation", async () => {
+    const result = await media.storeGeneratedAudio(
+      bindings,
+      ORG,
+      {
+        source: "hosted",
+        url: "https://audio.example/track.mp3",
+        fileSize: 10,
+      },
+      "sfx",
+      {},
+    );
+    expect(result.storage).toBeNull();
+    expect(result.stored.url).toBe("https://audio.example/track.mp3");
+    expect(result.stored.file_size).toBe(10);
+    expect(await bytesUsed()).toBe(0n);
+    expect(objects.size).toBe(0);
+  });
+
   test("generated images reserve their exact bytes in the one storage quota", async () => {
     await quota.setBytesLimit(ORG, 1_000n, "admin:test");
     const outcome = await run(2);

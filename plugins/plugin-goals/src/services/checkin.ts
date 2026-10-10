@@ -668,16 +668,27 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
       note: args.note ?? null,
       progress: args.progress ?? null,
     };
-    const checkinLog = [...readCheckinLog(goal.metadata), entry].slice(
+    // Completing the task above is async; build on the goal as stored now and
+    // write only the check-in's own fields, so an edit or review made in the
+    // meantime is not reverted by the earlier read.
+    const current = await this.repository().getGoal(agentId, goal.id);
+    if (!current) {
+      fail(404, "life-ops goal not found");
+    }
+    const checkinLog = [...readCheckinLog(current.metadata), entry].slice(
       -GOAL_CHECKIN_LOG_LIMIT,
     );
     const updated: LifeOpsGoalDefinition = {
-      ...goal,
-      reviewState: args.progress ?? goal.reviewState,
-      metadata: { ...goal.metadata, checkinLog },
+      ...current,
+      reviewState: args.progress ?? current.reviewState,
+      metadata: { ...current.metadata, checkinLog },
       updatedAt: atIso,
     };
-    await this.repository().updateGoal(updated);
+    await this.repository().updateGoalCheckin(agentId, goal.id, {
+      reviewState: updated.reviewState,
+      checkinLog,
+      updatedAt: atIso,
+    });
     await this.repository().createAuditEvent({
       id: crypto.randomUUID(),
       agentId,

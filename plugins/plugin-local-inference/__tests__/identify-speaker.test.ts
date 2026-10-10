@@ -107,11 +107,14 @@ describe("extractSpeakerName", () => {
     ["call her Alex", "Alex"],
     ["his name is Bob Smith", "Bob Smith"],
     ["the speaker was Dana", "Dana"],
+    ["That was Jill on the phone", "Jill"],
+    ["this is my friend Sam from work", "Sam"],
+    ["His name is Bob Smith and he works here", "Bob Smith"],
   ])("extracts %s → %s", (input, expected) => {
     expect(extractSpeakerName(input)).toBe(expected);
   });
 
-  it.each(["hello there", "what time is it", ""])(
+  it.each(["hello there", "what time is it", "", "That was my sister"])(
     "returns null for non-claim %s",
     (input) => {
       expect(extractSpeakerName(input)).toBeNull();

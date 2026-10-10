@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
+import { BillHostError } from "./errors.mjs";
 
 /** Configured native bill composition. Trusted host policy supplies authority and evidence schema. */
 export async function createConfiguredBillHelper({
@@ -18,7 +19,27 @@ export async function createConfiguredBillHelper({
   documentRuntime,
   documentImages,
 }) {
+  const readback =
+    hostPolicy.reconcileMethod != null ||
+    hostPolicy.reconciliationEvidenceRecord != null;
+  if (
+    readback &&
+    [hostPolicy.reconcileMethod, hostPolicy.reconciliationEvidenceRecord].some(
+      (value) => typeof value !== "function",
+    )
+  )
+    throw new BillHostError("Incomplete bill reconciliation policy");
   const config = hostPolicy.validateConfiguration(configuration);
+  // Optional emailed sign-in codes: the reviewed provider parser and
+  // challenge reader come from host policy; reads use the same Google port.
+  const googleCode = hostPolicy.googleCode;
+  if (
+    googleCode != null &&
+    (!config.googleSource ||
+      typeof googleCode.challengeForBill !== "function" ||
+      typeof googleCode.parse !== "function")
+  )
+    throw new BillHostError("Incomplete Google verification configuration");
   const controls = validateBillControls(config.controls);
   const extraction = config.googleSource?.extractionProfile
     ? createLabelledBillExtractor(config.googleSource.extractionProfile)
@@ -40,6 +61,7 @@ export async function createConfiguredBillHelper({
   const native = new runtimeModule.NativeSocketBrowserTarget(() =>
     onUnavailable(),
   );
+  const registrationAbort = new AbortController();
   const requireProfile = () => {
     if (native.getProfileId() !== config.profileId)
       throw new Error("Configured browser profile unavailable");
@@ -48,6 +70,18 @@ export async function createConfiguredBillHelper({
     ["bindTask", "guideTask", "execute"].map((method) => [
       method,
       async (...args) => {
+        // Wait only before a new binding, never before replaying an effect or
+        // revocation cleanup. The actuator fences task revisions around binding.
+        if (method === "bindTask" && !args[0]?.revoked) {
+          await native.waitForProfile(config.profileId, {
+            signal: registrationAbort.signal,
+          });
+          if (
+            (await credentialGate()) !== config.actorId ||
+            registrationAbort.signal.aborted
+          )
+            throw new BillHostError("Configured task authorization changed");
+        }
         requireProfile();
         return native[method](...args);
       },
@@ -60,10 +94,45 @@ export async function createConfiguredBillHelper({
     )
       throw new Error("Unconfigured bill task");
   };
+  // A configured grantId is fixed. Otherwise each task epoch reads the Google
+  // account that was connected when it first searched, and every read checks
+  // that this is still the connected account.
+  const grants = new Map();
+  const bindGrant = async (task) => {
+    requireTask(task);
+    const bound = grants.get(task.id);
+    if (bound?.epoch === task.epoch) return bound;
+    if (
+      typeof googleReadPort.currentAccount !== "function" &&
+      typeof googleReadPort.currentAccountId !== "function"
+    )
+      throw new BillHostError("Google account binding unavailable");
+    // The connected account's address, when the port reports it, lets bill
+    // search say that another account is connected.
+    const account =
+      typeof googleReadPort.currentAccount === "function"
+        ? await googleReadPort.currentAccount()
+        : { accountId: await googleReadPort.currentAccountId() };
+    const current = grants.get(task.id);
+    if (current?.epoch === task.epoch) return current;
+    const entry = {
+      epoch: task.epoch,
+      accountId: account.accountId,
+      ...(typeof account.email === "string" ? { email: account.email } : {}),
+    };
+    grants.set(task.id, entry);
+    return entry;
+  };
+  const grantForTask = async (task) => {
+    requireTask(task);
+    if (config.googleSource.grantId) return config.googleSource.grantId;
+    return (await bindGrant(task)).accountId;
+  };
   let host;
   let closing;
-  const close = () =>
-    (closing ??= (async () => {
+  const close = () => {
+    registrationAbort.abort();
+    closing ??= (async () => {
       const errors = [];
       try {
         await host?.close();
@@ -77,7 +146,9 @@ export async function createConfiguredBillHelper({
       }
       if (errors.length)
         throw new AggregateError(errors, "Configured helper cleanup failed");
-    })());
+    })();
+    return closing;
+  };
   try {
     host = createBillHelperHost({
       runtimeModule,
@@ -105,10 +176,14 @@ export async function createConfiguredBillHelper({
                   }
                 : {}),
               scopeForTask: async (task) => {
-                requireTask(task);
                 const source = config.googleSource;
+                const accountId = await grantForTask(task);
+                const email = source.grantId
+                  ? undefined
+                  : (await bindGrant(task)).email;
                 return {
-                  accountId: source.grantId,
+                  accountId,
+                  ...(email ? { accountEmail: email } : {}),
                   billingAccountRef: source.billingAccountRef,
                   recipient: source.recipient,
                   senders: source.senders,
@@ -123,12 +198,52 @@ export async function createConfiguredBillHelper({
             },
           }
         : {}),
+      ...(googleCode
+        ? {
+            google: {
+              service: googleReadPort,
+              parse: googleCode.parse,
+              challengeForBill: googleCode.challengeForBill,
+              accountForTask: grantForTask,
+              // Uncached, to name why a code search failed.
+              ...(typeof googleReadPort.currentAccountId === "function"
+                ? { checkAccount: () => googleReadPort.currentAccountId() }
+                : {}),
+            },
+          }
+        : {}),
       ...hostPolicy.hostOptions({
         config,
         controls,
         requireProfile,
         requireTask,
       }),
+      ...(readback
+        ? {
+            reconcileMethod: async (input) => {
+              requireTask(input.task);
+              const result = await hostPolicy.reconcileMethod(input);
+              requireTask(input.task);
+              if (result?.status === "unknown") return { status: "unknown" };
+              if (!["succeeded", "failed"].includes(result?.status))
+                throw new BillHostError("Invalid bill reconciliation result");
+              const id = randomUUID();
+              const record = hostPolicy.reconciliationEvidenceRecord({
+                ...input,
+                status: result.status,
+              });
+              await writeFile(
+                join(evidenceDirectory, `${id}.json`),
+                `${JSON.stringify(record)}\n`,
+                { mode: 0o600, flag: "wx" },
+              );
+              return {
+                status: result.status,
+                evidenceRef: `${hostPolicy.evidenceNamespace}:${id}`,
+              };
+            },
+          }
+        : {}),
       recordEvidence: async (task, proposal, before, after, status) => {
         requireTask(task);
         const id = randomUUID();

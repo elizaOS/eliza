@@ -71,6 +71,265 @@ describe("check-in source availability and generation failures", () => {
     vi.unstubAllEnvs();
   });
 
+  it("binds Calendar source identity and times before rendering one owner-local agenda entry", async () => {
+    await db.exec(`
+      CREATE SCHEMA app_calendar;
+      CREATE TABLE app_calendar.life_calendar_events (
+        id text PRIMARY KEY, agent_id text, side text, title text,
+        start_at text, end_at text, status text, html_link text, updated_at text,
+        is_all_day boolean NOT NULL DEFAULT false
+      );
+      INSERT INTO app_calendar.life_calendar_events VALUES (
+        'calendar-event', 'checkin-availability', 'owner', 'QA walkthrough',
+        '2026-10-06T18:00:00.000Z', '2026-10-06T18:15:00.000Z',
+        'confirmed', null, '2026-10-06T14:00:00.000Z', false
+      );
+    `);
+    const report = await new CheckinService(runtime).runMorningCheckin({
+      now: new Date("2026-10-06T15:00:32.103Z"),
+      timezone: "America/Los_Angeles",
+    });
+    const item = report.briefingSections.find(
+      (section) => section.key === "calendar_changes",
+    )?.items[0];
+    expect(item?.calendarEvent).toEqual({
+      id: "calendar-event",
+      startAt: "2026-10-06T18:00:00.000Z",
+      endAt: "2026-10-06T18:15:00.000Z",
+      status: "confirmed",
+      isAllDay: false,
+    });
+    expect(item?.detail).toBe(
+      "2026-10-06T18:00:00.000Z - 2026-10-06T18:15:00.000Z (confirmed)",
+    );
+    expect(report.summaryText.match(/QA walkthrough/g)).toHaveLength(1);
+    expect(report.summaryText).toContain(
+      "Oct 6, 2026, 11:00 AM – 11:15 AM PDT",
+    );
+    expect(report.summaryText).toContain("11:15 AM PDT");
+    expect(report.summaryText).toContain("added or updated");
+    expect(report.summaryText).not.toContain("confirmed");
+    expect(prompts).toHaveLength(0);
+    const stored = (
+      await db.query<{ payload_json: CheckinReport }>(
+        "SELECT payload_json FROM app_lifeops.life_checkin_reports WHERE id = $1",
+        [report.reportId],
+      )
+    ).rows[0].payload_json;
+    expect(stored.briefingSections).toEqual(report.briefingSections);
+  });
+
+  it.each(["UTC", "America/Los_Angeles"])(
+    "binds stored all-day classification without rendering midnight as a local hour in %s",
+    async (timezone) => {
+      await db.exec(`
+        CREATE SCHEMA app_calendar;
+        CREATE TABLE app_calendar.life_calendar_events (
+          id text PRIMARY KEY, agent_id text, side text, title text,
+          start_at text, end_at text, status text, html_link text, updated_at text,
+          is_all_day boolean NOT NULL DEFAULT false
+        );
+        INSERT INTO app_calendar.life_calendar_events VALUES (
+          'all-day-event', 'checkin-availability', 'owner', 'All-day source',
+          '2026-10-06T00:00:00.000Z', '2026-10-07T00:00:00.000Z',
+          'confirmed', null, '2026-10-06T14:00:00.000Z', true
+        );
+      `);
+      const before = await db.query(
+        "SELECT * FROM app_calendar.life_calendar_events",
+      );
+      const report = await new CheckinService(runtime).runMorningCheckin({
+        now: new Date("2026-10-06T15:00:00.000Z"),
+        timezone,
+      });
+      expect(
+        report.briefingSections.find(
+          (section) => section.key === "calendar_changes",
+        )?.items[0].calendarEvent,
+      ).toEqual({
+        id: "all-day-event",
+        startAt: "2026-10-06T00:00:00.000Z",
+        endAt: "2026-10-07T00:00:00.000Z",
+        status: "confirmed",
+        isAllDay: true,
+      });
+      expect(report.todaysMeetings[0]?.isAllDay).toBe(true);
+      expect(report.summaryText).toContain("Calendar today: 1.");
+      expect(report.summaryText).toContain("1 event on today's calendar");
+      expect(report.summaryText.match(/All-day source/g)).toHaveLength(1);
+      expect(report.summaryText).toContain("all day");
+      expect(report.summaryText).not.toContain("5:00 PM");
+      expect(report.summaryText).not.toContain("12:00 AM");
+      expect(prompts).toHaveLength(0);
+      const stored = (
+        await db.query<{ payload_json: CheckinReport }>(
+          "SELECT payload_json FROM app_lifeops.life_checkin_reports WHERE id = $1",
+          [report.reportId],
+        )
+      ).rows[0].payload_json;
+      expect(stored.briefingSections).toEqual(report.briefingSections);
+      expect(
+        (await db.query("SELECT * FROM app_calendar.life_calendar_events"))
+          .rows,
+      ).toEqual(before.rows);
+    },
+  );
+
+  it.each([
+    {
+      timezone: "America/Los_Angeles",
+      now: "2026-10-06T15:00:00.000Z",
+      previous: "2026-10-05",
+      day: "2026-10-06",
+      next: "2026-10-07",
+      after: "2026-10-08",
+      timed: "2026-10-07T06:30:00.000Z",
+      timedEnd: "2026-10-07T06:45:00.000Z",
+      boundary: "2026-10-07T07:00:00.000Z",
+    },
+    {
+      timezone: "Asia/Kolkata",
+      now: "2026-10-06T20:00:00.000Z",
+      previous: "2026-10-06",
+      day: "2026-10-07",
+      next: "2026-10-08",
+      after: "2026-10-09",
+      timed: "2026-10-07T18:00:00.000Z",
+      timedEnd: "2026-10-07T18:15:00.000Z",
+      boundary: "2026-10-07T18:30:00.000Z",
+    },
+    {
+      timezone: "America/New_York",
+      now: "2026-11-01T15:00:00.000Z",
+      previous: "2026-10-31",
+      day: "2026-11-01",
+      next: "2026-11-02",
+      after: "2026-11-03",
+      timed: "2026-11-02T04:30:00.000Z",
+      timedEnd: "2026-11-02T04:45:00.000Z",
+      boundary: "2026-11-02T05:00:00.000Z",
+    },
+  ])(
+    "keeps civil all-day overlap and timed owner-day membership distinct in $timezone",
+    async (fixture) => {
+      await db.exec(`CREATE SCHEMA app_calendar;
+        CREATE TABLE app_calendar.life_calendar_events (
+          id text PRIMARY KEY, agent_id text, side text, title text,
+          start_at text, end_at text, status text, html_link text, updated_at text,
+          is_all_day boolean NOT NULL DEFAULT false
+        );`);
+      const midnight = (date: string) => `${date}T00:00:00.000Z`;
+      const rows = [
+        [
+          "today",
+          "Single-day source",
+          midnight(fixture.day),
+          midnight(fixture.next),
+          "confirmed",
+          true,
+        ],
+        [
+          "multi",
+          "Spanning source",
+          midnight(fixture.previous),
+          midnight(fixture.after),
+          "confirmed",
+          true,
+        ],
+        [
+          "expired",
+          "Exclusive-end source",
+          midnight(fixture.previous),
+          midnight(fixture.day),
+          "confirmed",
+          true,
+        ],
+        [
+          "future",
+          "Future source",
+          midnight(fixture.next),
+          midnight(fixture.after),
+          "confirmed",
+          true,
+        ],
+        [
+          "cancelled",
+          "Cancelled source",
+          midnight(fixture.day),
+          midnight(fixture.next),
+          "cancelled",
+          true,
+        ],
+        [
+          "timed",
+          "Late timed source",
+          fixture.timed,
+          fixture.timedEnd,
+          "confirmed",
+          false,
+        ],
+        [
+          "boundary",
+          "Next-day timed source",
+          fixture.boundary,
+          fixture.boundary,
+          "confirmed",
+          false,
+        ],
+      ];
+      for (const [id, title, start, end, status, allDay] of rows)
+        await db.query(
+          `INSERT INTO app_calendar.life_calendar_events VALUES
+           ($1, 'checkin-availability', 'owner', $2, $3, $4, $5, NULL, $6, $7)`,
+          [
+            id,
+            title,
+            start,
+            end,
+            status,
+            id === "cancelled" ? fixture.now : "2025-01-01T00:00:00.000Z",
+            allDay,
+          ],
+        );
+      const before = await db.query(
+        "SELECT * FROM app_calendar.life_calendar_events ORDER BY id",
+      );
+      const report = await new CheckinService(runtime).runMorningCheckin({
+        now: new Date(fixture.now),
+        timezone: fixture.timezone,
+      });
+      expect(report.collectorErrors.todaysMeetings).toBeNull();
+      expect(report.todaysMeetings.map((row) => row.id).sort()).toEqual([
+        "cancelled",
+        "multi",
+        "timed",
+        "today",
+      ]);
+      const section = report.briefingSections.find(
+        (item) => item.key === "calendar_changes",
+      );
+      expect(section?.error).toBeNull();
+      expect(section?.summary).toContain("4 events on today's calendar");
+      expect(
+        section?.items.map((item) => item.calendarEvent?.id).sort(),
+      ).toEqual(["cancelled", "multi", "timed", "today"]);
+      expect(report.summaryText).toContain("Calendar today: 4.");
+      expect(report.summaryText).toContain("cancelled");
+      expect(report.summaryText).toContain("removed/cancelled");
+      expect(report.summaryText).not.toContain("Exclusive-end source");
+      expect(report.summaryText).not.toContain("Future source");
+      expect(report.summaryText).not.toContain("Next-day timed source");
+      expect(prompts).toHaveLength(0);
+      expect(
+        (
+          await db.query(
+            "SELECT * FROM app_calendar.life_calendar_events ORDER BY id",
+          )
+        ).rows,
+      ).toEqual(before.rows);
+    },
+  );
+
   it("keeps morning wins on their actual owner-local completion day despite refreshes", async () => {
     const now = new Date("2026-10-04T06:14:13.975Z");
     await db.exec(`
@@ -155,15 +414,16 @@ describe("check-in source availability and generation failures", () => {
       await db.exec(`CREATE SCHEMA app_calendar;
       CREATE TABLE app_calendar.life_calendar_events (
         id text, agent_id text, title text, start_at text, end_at text,
-        status text, html_link text, updated_at text
+        status text, html_link text, updated_at text,
+        is_all_day boolean NOT NULL DEFAULT false
       );
       INSERT INTO app_calendar.life_calendar_events VALUES
         ('owner-day', 'checkin-availability', 'Owner-zone meeting',
          '2026-10-03T05:00:00.000Z', '2026-10-03T06:00:00.000Z',
-         'confirmed', NULL, '2026-10-02T18:00:00.000Z'),
+         'confirmed', NULL, '2026-10-02T18:00:00.000Z', false),
         ('deployment-day', 'checkin-availability', 'Previous owner-day meeting',
          '2026-10-02T01:00:00.000Z', '2026-10-02T02:00:00.000Z',
-         'confirmed', NULL, '2026-10-01T18:00:00.000Z');
+         'confirmed', NULL, '2026-10-01T18:00:00.000Z', false);
       CREATE TABLE app_lifeops.life_inbox_messages (
         id text, agent_id text, channel text, external_id text,
         sender_id text, sender_display text, snippet text, received_at text,

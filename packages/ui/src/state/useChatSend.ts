@@ -50,6 +50,7 @@ import {
   type CloudHandoffPhaseDetail,
   dispatchChatPrefill,
 } from "../events";
+import { emitViewEvent, VIEW_EVENTS } from "../events/view-events";
 import { logger } from "../logger.ts";
 import type { Tab } from "../navigation";
 import { directCloudSharedAgentIdFromBase } from "../utils/cloud-agent-base";
@@ -57,8 +58,6 @@ import {
   dispatchViewActionHandoffDirect,
   findViewActionHandoff,
 } from "../view-action-handoff";
-import { emitViewEvent } from "../views/view-event-bus";
-import { VIEW_EVENTS } from "../views/view-event-types";
 import {
   type ChatReplyTarget,
   clearChatDraft,

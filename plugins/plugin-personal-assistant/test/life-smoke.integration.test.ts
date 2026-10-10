@@ -24,11 +24,9 @@ import {
   ModelType,
   NoModelProviderConfiguredError,
 } from "@elizaos/core";
-import { schedulingPlugin } from "@elizaos/plugin-scheduling";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createRealTestRuntime } from "../../../packages/app/test/helpers/real-runtime.ts";
 import { runLifeOperationHandler } from "../src/actions/life.js";
-import { personalAssistantPlugin } from "../src/plugin.js";
+import { createLifeOpsTestRuntime } from "./helpers/runtime.js";
 
 let runtime: AgentRuntime;
 let cleanup: () => Promise<void> = async () => {};
@@ -166,9 +164,7 @@ function sendFromOwnerChat(
 
 beforeAll(async () => {
   setIsolatedLifeSmokeEnv();
-  const result = await createRealTestRuntime({
-    plugins: [schedulingPlugin, personalAssistantPlugin],
-  });
+  const result = await createLifeOpsTestRuntime();
   runtime = result.runtime;
   runtime.registerModel(
     ModelType.TEXT_SMALL,
@@ -188,6 +184,8 @@ beforeAll(async () => {
       throw new NoModelProviderConfiguredError();
     },
     "life-smoke-no-large-model",
+    // Override the shared fixture's deterministic renderer for zero-key cases.
+    100,
   );
   cleanup = result.cleanup;
 }, 180_000);

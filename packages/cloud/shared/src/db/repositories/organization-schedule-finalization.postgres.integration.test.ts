@@ -50,6 +50,12 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
     await db.query(`CREATE SCHEMA ${schema}`);
     await db.query(`SET search_path TO ${schema},public`);
     await installOrganizationUpgradeTestSchema((q) => db.query(q));
+    const originalMigration = await readFile(
+      new URL("../migrations/0530_subscription_invoice_event_evidence.sql", import.meta.url),
+      "utf8",
+    );
+    for (const statement of originalMigration.split("--> statement-breakpoint"))
+      if (statement.trim()) await db.query(statement);
     const reconciliationMigration = await readFile(
       new URL("../migrations/0385_subscription_reconciliation.sql", import.meta.url),
       "utf8",
@@ -245,6 +251,143 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
     if (!source || !projection || !command) throw new Error("Fixture authority row missing");
     return { source, projection, allowance, periods, command };
   }
+  test("deferred target invoice resolves reviewed terms without a paid target revision or grant", async () => {
+    const f = await configured();
+    await f.finalize(f.input);
+    const { checkoutContractSchema, checkoutContractDigest } = await import(
+      "../../lib/services/subscription-checkout-contract"
+    );
+    const source = f.captured.source;
+    const metadata = {
+      app: "eliza-cloud",
+      organization_id: source.organization_id,
+      command_id: source.id,
+    };
+    const payload = checkoutContractSchema.parse({
+      version: 1,
+      catalogVersion: "v1",
+      planKey: "pro_monthly",
+      accountId: "acct_original",
+      expectedLivemode: false,
+      priceId: f.providerBinding.sourcePriceId,
+      productId: f.providerBinding.sourceProductId,
+      presentation: "embedded",
+      params: {
+        mode: "subscription",
+        currency: "usd",
+        customer: source.stripe_customer_id,
+        client_reference_id: source.id,
+        line_items: [{ price: f.providerBinding.sourcePriceId, quantity: 1 }],
+        payment_method_types: ["card"],
+        allow_promotion_codes: false,
+        automatic_tax: { enabled: false },
+        metadata,
+        subscription_data: { metadata },
+        ui_mode: "embedded",
+        redirect_on_completion: "never",
+        expires_at: 1800000000,
+      },
+    });
+    await db.query(
+      `INSERT INTO billing_subscription_commands(id,organization_id,requested_by_user_id,kind,target_plan_key,idempotency_key,provider_idempotency_key,request_digest,status,execution_generation,provider_started_at,provider_response_digest,completed_at,applied_at,result_subscription_id,checkout_contract)
+      VALUES($1,$2,$3,'checkout','pro_monthly',$4,$4,$5,'APPLIED',1,clock_timestamp(),$5,clock_timestamp(),clock_timestamp(),$1,$6::jsonb)`,
+      [
+        source.id,
+        source.organization_id,
+        f.identity.actorId,
+        randomUUID(),
+        "a".repeat(64),
+        JSON.stringify({ payload, digest: checkoutContractDigest(payload) }),
+      ],
+    );
+    const { invoiceEventFixture } = await import(
+      "../../lib/services/test-support/subscription-invoice-event-fixture"
+    );
+    const { createSubscriptionInvoiceEventEvidence } = await import(
+      "../../lib/services/subscription-invoice-event-evidence"
+    );
+    const { findOriginalInvoiceCommercialOrigin } = await import(
+      "./subscription-invoice-commercial-origin"
+    );
+    const original = invoiceEventFixture();
+    const scope = {
+      ...original.scope,
+      organizationId: source.organization_id,
+      subscriptionId: source.id,
+      providerAccountId: "acct_original",
+      customerId: source.stripe_customer_id,
+      providerSubscriptionId: source.stripe_subscription_id,
+    };
+    const phase = f.input.rawCurrentSchedule.phases[1]!;
+    Object.assign(original.invoice, {
+      customer: scope.customerId,
+      subscription: scope.providerSubscriptionId,
+      total: 3000,
+      subtotal: 3000,
+      ending_balance: 3000,
+    });
+    const line = original.invoice.lines.data[0]!;
+    Object.assign(line, {
+      subscription: scope.providerSubscriptionId,
+      subscription_item: source.stripe_subscription_item_id,
+      amount: 3000,
+      period: { start: phase.start_date, end: phase.end_date },
+      price: { id: f.providerBinding.targetPriceId, product: f.providerBinding.targetProductId },
+    });
+    original.event.created = phase.start_date + 1;
+    original.invoice.status_transitions.paid_at = original.event.created;
+    const retained = () => createSubscriptionInvoiceEventEvidence(original.event, scope);
+    const before = await state(f);
+    const terms = await findOriginalInvoiceCommercialOrigin(retained(), f.identity.commandId);
+    expect(terms.planKey).toBe("plus_monthly");
+    expect(terms.allowanceAmountUsd).toBe("25.000000");
+    expect(terms.originKind).toBe("downgrade");
+    expect(terms.periodStart).toBe(phase.start_date);
+    const { assertReceiptCommercialSelection } = await import(
+      "./test-support/subscription-commercial-selection"
+    );
+    await assertReceiptCommercialSelection({
+      query: (q, v) => db.query(q, v),
+      original: retained(),
+      commandId: f.identity.commandId,
+    });
+    expect(await findOriginalInvoiceCommercialOrigin(retained(), f.identity.commandId)).toEqual(
+      terms,
+    );
+    expect(await state(f)).toEqual(before);
+    expect(
+      (
+        await db.query(
+          "SELECT count(*)::int n FROM billing_subscription_revisions WHERE subscription_id=$1 AND plan_key='plus_monthly'",
+          [source.id],
+        )
+      ).rows,
+    ).toEqual([{ n: 0 }]);
+    for (const change of [
+      { price: { ...line.price, id: "price_foreign" } },
+      { subscription_item: "si_foreign" },
+      { period: { start: phase.start_date - 1, end: phase.end_date } },
+      { amount: 2999 },
+    ]) {
+      const saved = structuredClone(line);
+      Object.assign(line, change);
+      await expect(
+        findOriginalInvoiceCommercialOrigin(retained(), f.identity.commandId),
+      ).rejects.toMatchObject({ code: "SUBSCRIPTION_RENEWAL_UNAVAILABLE" });
+      Object.assign(line, saved);
+    }
+    await expect(findOriginalInvoiceCommercialOrigin(retained(), source.id)).rejects.toMatchObject({
+      code: "SUBSCRIPTION_RENEWAL_UNAVAILABLE",
+    });
+    const foreign = createSubscriptionInvoiceEventEvidence(original.event, {
+      ...scope,
+      providerAccountId: "acct_foreign",
+    });
+    await expect(
+      findOriginalInvoiceCommercialOrigin(foreign, f.identity.commandId),
+    ).rejects.toMatchObject({ code: "SUBSCRIPTION_RENEWAL_UNAVAILABLE" });
+    expect(await state(f)).toEqual(before);
+  });
   test("original configuration atomically publishes only a pending plan and immutable replay", async () => {
     const f = await configured();
     const before = await state(f);

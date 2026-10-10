@@ -2319,3 +2319,18 @@ class AdvertisingService {
 }
 
 export const advertisingService = new AdvertisingService();
+
+export function serializeCampaignTargeting(targeting: AdCampaign["targeting"]) {
+  return {
+    locations: targeting.locations,
+    ageMin: targeting.age_min,
+    ageMax: targeting.age_max,
+    genders: targeting.genders,
+    interests: targeting.interests,
+    behaviors: targeting.behaviors,
+    customAudiences: targeting.custom_audiences,
+    excludedAudiences: targeting.excluded_audiences,
+    placements: targeting.placements,
+    languages: targeting.languages,
+  };
+}

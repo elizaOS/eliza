@@ -6,6 +6,7 @@ import {
   calendarReadBindingEvaluator,
   calendarReadBindingField,
 } from "../../../plugin-calendar/src/read-binding.ts";
+import { createTrackedWorkRecapDirectRoutingRule } from "../../../plugin-personal-assistant/src/lifeops/briefing/direct-routing.ts";
 import { createAssistantPlugin } from "../index.ts";
 
 /**
@@ -36,6 +37,7 @@ import {
   EventType,
   ModelType,
   PROVIDER_CONTEXT_OVERFLOW,
+  registerDirectActionRoutingRule,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlannerToolResult } from "../runtime/planner-loop.ts";
@@ -254,6 +256,160 @@ function visibleTexts(contents: Content[]): string[] {
 }
 
 describe("planner-loop death after a completed tool", () => {
+  it.each([false, true])(
+    "keeps composite dossier coverage distinct from an explicit Calendar read (explicit=%s)",
+    async (explicitCalendar) => {
+      const h = await createHarness({ actionResult: { success: true } });
+      const world = await h.runtime.getWorld(h.runtime.agentId);
+      if (!world) throw new Error("Missing owner world");
+      await h.runtime.updateWorlds([
+        {
+          ...world,
+          metadata: {
+            ownership: { ownerId: USER_ID },
+            roles: { [USER_ID]: "OWNER" },
+          },
+        },
+      ]);
+      h.runtime.actions.length = 0;
+      const executed: string[] = [];
+      const dossierText =
+        "Your calendar is clear today. You have one open reminder.";
+      h.runtime.registerAction({
+        name: "BRIEF",
+        description:
+          "Compose the owner's daily dossier from available sources.",
+        contexts: ["productivity", "tasks"],
+        tags: ["domain:briefing", "resource:tracked-work", "capability:read"],
+        roleGate: { minRole: "OWNER" },
+        validate: async () => true,
+        handler: async () => {
+          executed.push("BRIEF");
+          return {
+            success: true,
+            text: dossierText,
+            userFacingText: dossierText,
+            turnComplete: true,
+            data: {
+              briefing: {
+                kind: "evening",
+                period: "today",
+                sections: { calendar: [], life: [{ title: "Stretch" }] },
+              },
+            },
+          };
+        },
+      });
+      for (const name of ["CALENDAR_FEED", "INBOX", "CONNECTOR"])
+        h.runtime.registerAction({
+          name,
+          description: name,
+          contexts:
+            name === "CALENDAR_FEED" ? ["calendar"] : ["email", "connectors"],
+          validate: async () => true,
+          handler: async () => {
+            executed.push(name);
+            throw new Error(
+              "This composite result must not invent extra reads",
+            );
+          },
+        });
+      registerDirectActionRoutingRule(
+        h.runtime,
+        createTrackedWorkRecapDirectRoutingRule(),
+      );
+      h.runtime.registerResponseHandlerFieldEvaluator(calendarReadBindingField);
+      h.runtime.responseHandlerEvaluators.push(calendarReadBindingEvaluator);
+      const intents = [
+        "Compile my daily dossier using connected sources available now",
+        ...(explicitCalendar ? ["Read today's Calendar agenda"] : []),
+      ];
+      let responseCalls = 0;
+      h.runtime.registerModel(
+        ModelType.RESPONSE_HANDLER,
+        async () => {
+          if (++responseCalls === 1) {
+            const result = stageOneToolTurn();
+            Object.assign(result.toolCalls[0].arguments, {
+              contexts: [
+                "productivity",
+                ...(explicitCalendar ? ["calendar"] : []),
+              ],
+              intents,
+              candidateActionNames: [],
+              calendarReadBindings: explicitCalendar
+                ? [
+                    {
+                      intentId: "intent:2",
+                      operation: "feed",
+                      execution: "required",
+                    },
+                  ]
+                : [],
+            });
+            return result;
+          }
+          return JSON.stringify({
+            thought:
+              "The composite briefing returned its selected source results.",
+            success: true,
+            decision: "FINISH",
+            requestFullyCovered: true,
+            outcomeCoverage: intents.map((_, index) => ({
+              intentId: `intent:${index + 1}`,
+              status: "completed",
+              evidenceStepIds: ["step:1"],
+            })),
+            messageToUser: dossierText,
+            replyEffectStatus: "none",
+          });
+        },
+        "dossier-coverage-test",
+        200,
+      );
+      h.runtime.registerModel(
+        ModelType.ACTION_PLANNER,
+        async (_runtime, params) => {
+          const tools = params.tools?.map((tool) => tool.name) ?? [];
+          expect(tools).toContain("BRIEF");
+          expect(tools.includes("CALENDAR_FEED")).toBe(explicitCalendar);
+          return {
+            text: "",
+            toolCalls: [{ id: "brief", name: "BRIEF", arguments: {} }],
+          };
+        },
+        "dossier-coverage-test",
+        200,
+      );
+      const message = {
+        ...makeMessage(
+          h.runtime,
+          `Give me my daily dossier using the connected sources available now.${explicitCalendar ? " Also read today's Calendar agenda." : ""}`,
+        ),
+        id: "00000000-0000-0000-0000-000000000095" as UUID,
+      };
+      const outcome = await runV5MessageRuntimeStage1({
+        runtime: h.runtime,
+        message,
+        state: await h.runtime.composeState(message),
+        responseId: "00000000-0000-0000-0000-000000000096" as UUID,
+        callback: h.callback,
+      });
+      expect(executed).toEqual(["BRIEF"]);
+      if (outcome.kind !== "planned_reply" && outcome.kind !== "direct_reply")
+        throw new Error("Missing dossier reply");
+      const text = outcome.result.responseContent?.text;
+      if (explicitCalendar) {
+        expect(text).toContain("couldn't confirm");
+        expect(text).not.toContain("calendar is clear");
+      } else {
+        expect(text).toBe(dossierText);
+        expect(text).not.toMatch(/Gmail|inbox|not connected/);
+      }
+      expect(responseCalls).toBe(2);
+    },
+  );
+
   it.each([false, true])(
     "preserves the conditional Calendar branch through the real field runner (note exists=%s)",
     async (exists) => {

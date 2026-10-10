@@ -144,7 +144,13 @@ export function embeddingBackoffMs(attempt: number, retryAfterSec?: number): num
       ? retryAfterSec * 1000
       : 0;
   const base = Math.min(EMBED_BACKOFF_CAP_MS, Math.max(exp, serverHint));
-  return Math.round(base * (1 + Math.random() * 0.25));
+  // Clamp after jitter, like the warming retry helper in text.ts: applying
+  // the cap only to the base lets the jitter push a capped wait to 1.25x
+  // the cap, breaking the "never longer than the cap" contract above.
+  return Math.min(
+    EMBED_BACKOFF_CAP_MS,
+    Math.round(base * (1 + Math.random() * 0.25)),
+  );
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -165,6 +171,14 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+function headerCount(value: string | null): number | undefined {
+  if (value == null || value.trim() === "") return undefined;
+  const parsed = Number.parseInt(value, 10);
+  // A recorded 0 is a real count. `parseInt(...) || undefined` dropped it,
+  // so an exhausted request bucket never reached the low-remaining warning.
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function extractRateLimitInfo(response: Response): {
   remainingRequests?: number;
   remainingTokens?: number;
@@ -175,16 +189,13 @@ function extractRateLimitInfo(response: Response): {
   retryAfter?: number;
 } {
   return {
-    remainingRequests:
-      parseInt(response.headers.get("x-ratelimit-remaining-requests") || "", 10) || undefined,
-    remainingTokens:
-      parseInt(response.headers.get("x-ratelimit-remaining-tokens") || "", 10) || undefined,
-    limitRequests:
-      parseInt(response.headers.get("x-ratelimit-limit-requests") || "", 10) || undefined,
-    limitTokens: parseInt(response.headers.get("x-ratelimit-limit-tokens") || "", 10) || undefined,
+    remainingRequests: headerCount(response.headers.get("x-ratelimit-remaining-requests")),
+    remainingTokens: headerCount(response.headers.get("x-ratelimit-remaining-tokens")),
+    limitRequests: headerCount(response.headers.get("x-ratelimit-limit-requests")),
+    limitTokens: headerCount(response.headers.get("x-ratelimit-limit-tokens")),
     resetRequests: response.headers.get("x-ratelimit-reset-requests") || undefined,
     resetTokens: response.headers.get("x-ratelimit-reset-tokens") || undefined,
-    retryAfter: parseInt(response.headers.get("retry-after") || "", 10) || undefined,
+    retryAfter: headerCount(response.headers.get("retry-after")),
   };
 }
 

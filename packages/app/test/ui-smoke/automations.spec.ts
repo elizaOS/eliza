@@ -17,10 +17,13 @@ type TriggerSummary = {
   createdBy: string;
   eventKind?: string;
   intervalMs?: number;
+  cronExpression?: string;
+  scheduledAtIso?: string;
+  timezone?: string;
   runCount: number;
   nextRunAtMs?: number;
   updatedAt?: number;
-  kind?: "text" | "workflow";
+  kind?: "text" | "prompt" | "workflow";
   workflowId?: string;
   workflowName?: string;
 };
@@ -461,12 +464,24 @@ async function installAutomationsApi(
           typeof createdTrigger.eventKind === "string"
             ? createdTrigger.eventKind
             : undefined,
+        cronExpression:
+          typeof createdTrigger.cronExpression === "string"
+            ? createdTrigger.cronExpression
+            : undefined,
+        scheduledAtIso:
+          typeof createdTrigger.scheduledAtIso === "string"
+            ? createdTrigger.scheduledAtIso
+            : undefined,
+        timezone:
+          typeof createdTrigger.timezone === "string"
+            ? createdTrigger.timezone
+            : undefined,
         enabled: true,
         wakeMode: "inject_now",
         createdBy: "playwright",
         runCount: 0,
         updatedAt: Date.parse(NOW_ISO),
-        kind: "text",
+        kind: "prompt",
       };
       automations = [
         ...automations,
@@ -843,13 +858,24 @@ test("automations can list tasks, create a task, and inspect Smithers source", a
   await page
     .getByTestId("task-editor-prompt")
     .fill("Summarize inbound messages and flag urgent ones.");
+  const future = new Date(Date.now() + HOUR_MS);
+  const localFuture = new Date(
+    future.getTime() - future.getTimezoneOffset() * 60_000,
+  )
+    .toISOString()
+    .slice(0, 16);
+  await page.getByLabel(/Run at/).fill(localFuture);
   await page.getByTestId("task-editor-save").click();
   await expect
-    .poll(() => api.getCreatedTask())
+    .poll(() => api.getCreatedTrigger())
     .toMatchObject({
-      name: "Escalate inbound messages",
-      description: "Summarize inbound messages and flag urgent ones.",
+      kind: "prompt",
+      displayName: "Escalate inbound messages",
+      instructions: "Summarize inbound messages and flag urgent ones.",
+      triggerType: "once",
+      scheduledAtIso: new Date(localFuture).toISOString(),
     });
+  expect(api.getCreatedTask()).toBeNull();
   await expect(page.getByText("Escalate inbound messages")).toBeVisible();
 });
 
@@ -860,17 +886,9 @@ test("automations can list tasks, create a task, and inspect Smithers source", a
 // gone; its mock seam (`getGeneratedWorkflow` / the `/generate` route) is left in
 // `installAutomationsApi` as a harmless no-op for any future re-introduction.
 
-// Event-triggered automation coverage.
-//
-// Wiring note: the automations surface creates simple automations through the
-// TaskEditor, which POSTs to `/api/workbench/tasks` and encodes the trigger in
-// the WorkbenchTask `tags` (`event:<kind>`). The `/api/triggers` POST mock
-// (whose captured body is now exposed via `api.getCreatedTrigger()`) is the
-// trigger-CRUD seam used by other surfaces; the automations page itself does
-// not call it, so `getCreatedTrigger()` stays null here. This test asserts the
-// real automations contract: an event trigger renders in the list, and a newly
-// created automation is persisted with the expected POST body.
-test("automations renders an event trigger and creates a new event automation", async ({
+// Legacy event rows remain readable, while new prompt automation creation uses
+// the canonical trigger owner and only schedules exposed by the editor.
+test("automations preserves event rows and creates a scheduled prompt through the trigger owner", async ({
   page,
 }) => {
   const api = await installAutomationsApi(page, [eventTaskItem()]);
@@ -883,25 +901,35 @@ test("automations renders an event trigger and creates a new event automation", 
   ).toBeVisible();
   await expect(page.getByText("On message.received")).toBeVisible();
 
-  // Create a fresh event-triage automation through the real editor flow. The
-  // chooser was removed; open the New TaskEditor directly via the hash deep-link.
+  // Without an event catalog, event creation stays disabled. Exercise the
+  // supported recurring schedule through the real editor instead.
   await page.evaluate(() => {
     window.location.hash = "#automations/task/__new__";
   });
-  await page.getByTestId("task-editor-name").fill("Triage new chat events");
+  await expect(page.getByRole("radio", { name: "On event" })).toBeDisabled();
+  await page.getByText("Recurring", { exact: true }).click();
+  await expect(
+    page.getByRole("radio", { name: "Recurring", exact: true }),
+  ).toBeChecked();
+  await page.getByTestId("task-editor-cron").fill("0 9 * * *");
+  await page.getByTestId("task-editor-name").fill("Review chat events");
   await page
     .getByTestId("task-editor-prompt")
-    .fill("When a chat message arrives, summarize and route it.");
+    .fill("Summarize and route recent chat messages.");
   await page.getByTestId("task-editor-save").click();
 
   await expect
-    .poll(() => api.getCreatedTask())
+    .poll(() => api.getCreatedTrigger())
     .toMatchObject({
-      name: "Triage new chat events",
-      description: "When a chat message arrives, summarize and route it.",
+      kind: "prompt",
+      displayName: "Review chat events",
+      instructions: "Summarize and route recent chat messages.",
+      triggerType: "cron",
+      cronExpression: "0 9 * * *",
     });
-  // The automations editor never reaches the trigger-CRUD endpoint.
-  expect(api.getCreatedTrigger()).toBeNull();
+  expect(api.getCreatedTask()).toBeNull();
 
-  await expect(page.getByText("Triage new chat events")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Open Review chat events", exact: true }),
+  ).toBeVisible();
 });

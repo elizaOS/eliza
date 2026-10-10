@@ -13,7 +13,7 @@ const baseSources = [
   "packages/agent/src/runtime/mobile-dns-decode-budget.ts",
   "packages/host/src/runtime-env.ts",
   "packages/host/src/config/boot-config-store.ts",
-  ...["errors.ts", "env-utils.ts", "security/bind-host.ts"].map(
+  ...["errors.ts", "security/bind-host.ts"].map(
     (name) => `packages/core/src/${name}`,
   ),
 ];
@@ -25,7 +25,7 @@ export function buildConsumerMobileDns(output, { sourceRoot, sourceCommit }) {
   try {
     exportCommittedSources(sourceRoot, sourceCommit, temporary, [
       ...baseSources,
-      "packages/core/src/utils",
+      "packages/core/src",
     ]);
     const envModule = ["utils/env-alias.ts", "utils/env.ts"].find((name) =>
       fs.existsSync(path.join(temporary, "packages/core/src", name)),
@@ -34,12 +34,27 @@ export function buildConsumerMobileDns(output, { sourceRoot, sourceCommit }) {
       throw new ConsumerSourceError(
         "Committed environment helpers are missing",
       );
-    const sources = [...baseSources, `packages/core/src/${envModule}`];
+    // Environment helpers moved into utils/env.ts; older reviewed commits retain
+    // env-utils.ts. Both layouts must resolve from exported immutable bytes.
+    const optionalCoreSources = ["env-utils.ts", "utils/errors.ts"].filter(
+      (name) => fs.existsSync(path.join(temporary, "packages/core/src", name)),
+    );
+    const sources = [
+      ...baseSources,
+      ...[envModule, ...optionalCoreSources].map(
+        (name) => `packages/core/src/${name}`,
+      ),
+    ];
     // Public imports resolve to these exact committed implementations. Keep this
     // entrypoint independent of unrelated exports in the full protocol barrels.
     fs.writeFileSync(
       path.join(temporary, "core.ts"),
-      ["errors.ts", "env-utils.ts", envModule, "security/bind-host.ts"]
+      [
+        "errors.ts",
+        ...optionalCoreSources.filter((name) => name === "env-utils.ts"),
+        envModule,
+        "security/bind-host.ts",
+      ]
         .map((name) => `export * from './packages/core/src/${name}';`)
         .join("\n"),
     );
@@ -95,7 +110,8 @@ export function verifyConsumerMobileDns(file, { sourceRoot, sourceCommit }) {
     spec?.schemaVersion !== 1 ||
     spec.sourceCommit !== sourceCommit ||
     !spec.sourceHashes ||
-    Object.keys(spec.sourceHashes).length !== baseSources.length + 1 ||
+    typeof spec.sourceHashes !== "object" ||
+    Array.isArray(spec.sourceHashes) ||
     spec.bundleSha256 !== digest(fs.readFileSync(file))
   )
     throw new ConsumerSourceError("Mobile DNS bundle provenance mismatch");
@@ -109,6 +125,11 @@ export function verifyConsumerMobileDns(file, { sourceRoot, sourceCommit }) {
       path.join(temporary, "resolver.mjs"),
       { sourceRoot, sourceCommit },
     );
+    if (
+      JSON.stringify(Object.keys(spec.sourceHashes).sort()) !==
+      JSON.stringify(Object.keys(expected.sourceHashes).sort())
+    )
+      throw new ConsumerSourceError("Mobile DNS source inventory mismatch");
     for (const name of Object.keys(expected.sourceHashes))
       if (spec.sourceHashes[name] !== expected.sourceHashes[name])
         throw new ConsumerSourceError(`Mobile DNS source mismatch: ${name}`);

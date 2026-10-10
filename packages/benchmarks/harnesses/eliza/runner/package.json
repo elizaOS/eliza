@@ -40,12 +40,13 @@
     "@elizaos/plugin-benchmarks": "workspace:*"
   },
   "devDependencies": {
+    "vite": "^8.3.0",
     "@elizaos/ui": "workspace:*",
     "@types/node": "25.6.2",
     "tsx": "^4.21.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.3"
   },
   "types": "./src/index.ts",
   "exports": {

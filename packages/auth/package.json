@@ -356,7 +356,7 @@
     "@electric-sql/pglite": "^0.4.2",
     "@napi-rs/keyring": "^1.1.6",
     "bs58": "^6.0.0",
-    "@simplewebauthn/browser": "^13.0.0",
+    "@simplewebauthn/browser": "^14.0.0",
     "drizzle-orm": "0.45.3",
     "postgres": "^3.4.7",
     "@upstash/redis": "^1.34.3",
@@ -374,7 +374,7 @@
     "jose": "^6.2.1",
     "siwe": "^3.0.0",
     "@node-saml/node-saml": "5.1.0",
-    "@simplewebauthn/server": "^13",
+    "@simplewebauthn/server": "^14.0.3",
     "resend": "^6.9.4",
     "@elizaos/host": "workspace:*",
     "@elizaos/contracts": "workspace:*"
@@ -383,7 +383,7 @@
     "@types/node": "^25.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2",
+    "vitest": "^5.0.3",
     "@types/bun": "1.4.2",
     "@playwright/test": "^1.63.0"
   },

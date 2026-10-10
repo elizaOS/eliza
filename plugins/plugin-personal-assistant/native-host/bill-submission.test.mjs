@@ -507,3 +507,435 @@ test("invalid stored review and failed review write clear guidance without offer
     db.close();
   }
 });
+
+test("a bill the website already shows paid is not saved as this task's payment", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "bill-prior-outcome-"));
+  const db = new DatabaseSync(join(dir, "db"));
+  const owner = {
+    actorId: "a",
+    agentId: "agent",
+    connector: { source: "test", accountId: "account" },
+  };
+  // A task store that keeps each task's status, so ending is visible.
+  const all = new Map();
+  const tasks = {
+    get: (id) => all.get(id) ?? null,
+    transition: (id, context, transition) => {
+      const task = all.get(id);
+      assert.equal(context.expectedRevision, task.revision);
+      assert.equal(transition.type, "complete");
+      task.status = "completed";
+      task.revision++;
+      task.epoch++;
+    },
+  };
+  const make = (id, page, observationId = "observed") => {
+    const task = {
+      id,
+      revision: 1,
+      epoch: 1,
+      status: "active",
+      operations: [],
+      allowedOrigins: [bill.origin],
+      observation: { id: observationId },
+    };
+    all.set(id, task);
+    const runtime = {
+      owner,
+      get: () => all.get(id),
+      observe: async () => {},
+    };
+    const outcomes = createBillOutcomeStore(db, tasks).forTask(runtime, id);
+    const workflow = new BillWorkflow({
+      deriveBillDecision,
+      controls,
+      runtime,
+      actuator: {
+        readObservation: () => ({
+          observation: { id: observationId },
+          snapshot: page.current,
+        }),
+        quiesce: async () => {},
+      },
+      bill,
+      taskId: id,
+      outcomes,
+    });
+    return { task, outcomes, workflow };
+  };
+  const count = (table) =>
+    db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n;
+  try {
+    for (const [id, status, text] of [
+      ["paid-task", "Paid", /already paid/],
+      ["scheduled-task", "Scheduled", /already scheduled/],
+    ]) {
+      const page = {
+        current: snapshot({ "Payment status": status, Confirmation: "OLD-1" }),
+      };
+      const { task, workflow } = make(id, page);
+      const result = await workflow.refresh();
+      assert.equal(result.kind, "prior-outcome");
+      assert.equal(result.status, status.toLowerCase());
+      assert.equal(result.reference, "OLD-1");
+      assert.match(result.message, text);
+      // The fact is kept and the task ends; it is not this task's payment.
+      assert.equal(result.ended, true);
+      assert.equal(task.status, "completed");
+      // A later look shows the kept fact, whatever the page shows now.
+      page.current = snapshot({ "Payment status": "Unpaid" });
+      const again = await workflow.refresh();
+      assert.equal(again.kind, "prior-outcome");
+      assert.equal(again.status, status.toLowerCase());
+      assert.equal(again.ended, true);
+    }
+    assert.equal(count("bill_outcomes_v1"), 0);
+    assert.equal(count("bill_prior_outcomes_v1"), 2);
+    // Once a task recorded a submission, the same observation is its outcome.
+    const page = { current: snapshot() };
+    const submitted = make("submitted", page);
+    submitted.outcomes.recordSubmission(
+      deriveBillDecision(bill, snapshot()),
+      "observed",
+    );
+    page.current = snapshot({
+      "Payment status": "Paid",
+      Confirmation: "NEW-1",
+    });
+    const outcome = await submitted.workflow.refresh();
+    assert.equal(outcome.kind, "outcome");
+    assert.equal(outcome.company, "Power");
+    assert.equal(count("bill_outcomes_v1"), 1);
+    // A later task for the same bill sees the paid page without reviewing
+    // anything. The earlier payment is not saved again as the later task's.
+    const later = make("later", page, "seen");
+    const seen = await later.workflow.refresh();
+    assert.equal(seen.kind, "prior-outcome");
+    assert.equal(seen.reference, "NEW-1");
+    assert.match(seen.message, /earlier task already recorded/);
+    assert.equal(count("bill_outcomes_v1"), 1);
+    // If the task cannot be ended, the kept fact still shows, and the next
+    // look ends it.
+    const failing = make("failing", {
+      current: snapshot({ "Payment status": "Paid", Confirmation: "OLD-2" }),
+    });
+    const transition = tasks.transition;
+    tasks.transition = () => {
+      throw new Error("task store unavailable");
+    };
+    const kept = await failing.workflow.refresh();
+    assert.equal(kept.kind, "prior-outcome");
+    assert.equal(kept.ended, false);
+    assert.equal(failing.task.status, "active");
+    tasks.transition = transition;
+    assert.equal((await failing.workflow.refresh()).ended, true);
+    assert.equal(failing.task.status, "completed");
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a form she sent while the website was hers, before any review, leads to a status check", async () => {
+  const db = new DatabaseSync(":memory:");
+  const owner = {
+    actorId: "a",
+    agentId: "agent",
+    connector: { source: "test", accountId: "account" },
+  };
+  // Epoch 2: the task was paused once and resumed.
+  const task = {
+    id: "task",
+    revision: 3,
+    epoch: 2,
+    status: "active",
+    operations: [],
+    allowedOrigins: [bill.origin],
+    observation: { id: "observed" },
+  };
+  const actions = [];
+  const runtime = {
+    owner,
+    get: () => task,
+    observe: async () => {},
+    control: (_id, _revision, action) => {
+      actions.push(action);
+      task.status = "paused";
+    },
+    settle: async () => {},
+  };
+  const outcomes = createBillOutcomeStore(db, { get: () => task }).forTask(
+    runtime,
+    task.id,
+  );
+  const current = {
+    ...snapshot({
+      "Payment status": "Unpaid",
+      Autopay: "Off",
+      "Existing method": "Visa ending 4242",
+      Fee: "USD 0.00",
+      Total: "USD 120.00",
+      "Payment date": "2026-10-01",
+      "Method selected": "Yes",
+    }),
+    documentId: "document",
+    inputRevision: 1,
+  };
+  const workflow = new BillWorkflow({
+    deriveBillDecision,
+    controls,
+    runtime,
+    bill,
+    taskId: task.id,
+    outcomes,
+    actuator: {
+      readObservation: () => ({
+        observation: task.observation,
+        snapshot: current,
+      }),
+      quiesce: async () => {},
+    },
+  });
+  const event = {
+    kind: "form-submit",
+    origin: bill.origin,
+    documentId: "earlier-page",
+    epoch: 1,
+    observedAt: Date.now(),
+  };
+  const activity = (events, extra = {}) => ({
+    events,
+    overflow: false,
+    captureGap: false,
+    ...extra,
+  });
+  try {
+    // A sign-in form, a form in this epoch, or one on another website is
+    // not a payment made while the website was hers.
+    for (const events of [
+      [{ ...event, credential: true }],
+      [{ ...event, epoch: 2 }],
+      [{ ...event, origin: "https://other.example" }],
+    ]) {
+      db.exec("DELETE FROM bill_reviews_v1");
+      current.manualActivity = activity(events);
+      assert.equal((await workflow.refresh()).kind, "human-submit");
+    }
+    db.exec("DELETE FROM bill_reviews_v1");
+    current.manualActivity = activity([event]);
+    const result = await workflow.refresh();
+    assert.equal(result.kind, "unknown-outcome");
+    assert.match(result.message, /while it was yours/);
+    const attempt = outcomes.loadAttempt();
+    assert.equal(attempt.evidenceKind, "manual-activity");
+    assert.equal(attempt.source, `${bill.origin}/bill`);
+    assert.equal(outcomes.loadReview(), null, "no new review is prepared");
+    current.manualActivity = activity([]);
+    assert.equal(
+      (await workflow.refresh()).kind,
+      "unknown-outcome",
+      "removing the event cannot erase persisted uncertainty",
+    );
+    // A page that tried to submit after a task action pauses the task.
+    current.effectViolation = "submit";
+    const paused = await workflow.refresh();
+    assert.equal(paused.kind, "paused");
+    assert.doesNotMatch(paused.message, /nothing was sent/i);
+    assert.deepEqual(actions, ["pause"]);
+  } finally {
+    db.close();
+  }
+});
+
+test("a saved outcome says its receipt is in email only after one receipt was found", async () => {
+  const db = new DatabaseSync(":memory:");
+  const owner = {
+    actorId: "a",
+    agentId: "agent",
+    connector: { source: "test", accountId: "account" },
+  };
+  const task = {
+    id: "task",
+    revision: 1,
+    epoch: 1,
+    status: "active",
+    operations: [],
+    allowedOrigins: [bill.origin],
+    observation: { id: "observed" },
+  };
+  const tasks = {
+    get: () => task,
+    transition: () => {
+      task.status = "completed";
+      task.revision++;
+    },
+  };
+  const runtime = { owner, get: () => task, observe: async () => {} };
+  const outcomes = createBillOutcomeStore(db, tasks).forTask(runtime, task.id);
+  const page = { current: snapshot() };
+  const looks = [];
+  let answer = false;
+  const workflow = new BillWorkflow({
+    deriveBillDecision,
+    controls,
+    runtime,
+    bill,
+    taskId: task.id,
+    outcomes,
+    receipts: {
+      find: async (outcome) => {
+        looks.push(outcome);
+        if (answer instanceof Error) throw answer;
+        return answer;
+      },
+    },
+    actuator: {
+      readObservation: () => ({
+        observation: task.observation,
+        snapshot: page.current,
+      }),
+      quiesce: async () => {},
+    },
+  });
+  try {
+    outcomes.recordSubmission(deriveBillDecision(bill, snapshot()), "observed");
+    page.current = snapshot({ "Payment status": "Paid", Confirmation: "R-77" });
+    const first = await workflow.refresh();
+    assert.equal(first.saveStatus, "saved");
+    assert.equal(first.receiptInEmail, undefined);
+    assert.deepEqual(
+      looks.map((o) => o.reference),
+      ["R-77"],
+    );
+    // Within a minute it does not search again.
+    await workflow.refresh();
+    assert.equal(looks.length, 1);
+    // A later look finds the receipt; it then stays found without searching.
+    db.prepare(
+      "UPDATE bill_receipt_checks_v1 SET document=json_set(document,'$.checkedAt',0)",
+    ).run();
+    answer = true;
+    assert.equal((await workflow.refresh()).receiptInEmail, true);
+    assert.equal((await workflow.refresh()).receiptInEmail, true);
+    assert.equal(looks.length, 2);
+    // A failed search never changes the saved outcome.
+    db.exec("DELETE FROM bill_receipt_checks_v1");
+    answer = new Error("Google unavailable");
+    const failed = await workflow.refresh();
+    assert.equal(failed.saveStatus, "saved");
+    assert.equal(failed.receiptInEmail, undefined);
+    const afterFailure = looks.length;
+    await workflow.refresh();
+    assert.equal(
+      looks.length,
+      afterFailure,
+      "failed searches obey the cooldown",
+    );
+    for (let i = 0; i < 5; i++) {
+      db.prepare(
+        "UPDATE bill_receipt_checks_v1 SET document=json_set(document,'$.checkedAt',0)",
+      ).run();
+      await workflow.refresh();
+    }
+    assert.equal(
+      looks.length,
+      afterFailure + 2,
+      "failures consume the three-attempt budget",
+    );
+    const restarted = createBillOutcomeStore(db, tasks).forTask(
+      runtime,
+      task.id,
+    );
+    assert.equal(restarted.loadReceiptCheck().checks, 3);
+    db.exec("DELETE FROM bill_receipt_checks_v1");
+    // At most three searches for one outcome.
+    answer = false;
+    for (let i = 0; i < 5; i++) {
+      db.prepare(
+        "UPDATE bill_receipt_checks_v1 SET document=json_set(document,'$.checkedAt',0)",
+      ).run();
+      await workflow.refresh();
+    }
+    assert.equal(outcomes.loadReceiptCheck().checks, 3);
+    // Concurrent looks reserve one attempt before either provider read completes.
+    db.exec("DELETE FROM bill_receipt_checks_v1");
+    let release;
+    answer = new Promise((resolve) => {
+      release = resolve;
+    });
+    const beforeConcurrent = looks.length;
+    const concurrent = [workflow.refresh(), workflow.refresh()];
+    await new Promise((resolve) => setImmediate(resolve));
+    release(false);
+    await Promise.all(concurrent);
+    assert.equal(looks.length, beforeConcurrent + 1);
+    // A restart after reservation cannot immediately replay that lookup.
+    const resumed = createBillOutcomeStore(db, tasks).forTask(runtime, task.id);
+    assert.equal(resumed.beginReceiptCheck(), null);
+    // If durable reservation fails, no provider request is made.
+    db.exec("DELETE FROM bill_receipt_checks_v1");
+    db.exec(
+      "CREATE TEMP TRIGGER reject_receipt_attempt BEFORE INSERT ON bill_receipt_checks_v1 BEGIN SELECT RAISE(ABORT, 'test storage unavailable'); END",
+    );
+    const beforeStorageFailure = looks.length;
+    assert.equal((await workflow.refresh()).saveStatus, "saved");
+    assert.equal(looks.length, beforeStorageFailure);
+  } finally {
+    db.close();
+  }
+});
+
+test("delayed bill policy is cancelled without saving review or outcome", async () => {
+  const controller = new AbortController();
+  let started;
+  const entered = new Promise((resolve) => {
+    started = resolve;
+  });
+  let clears = 0,
+    writes = 0;
+  const task = {
+    id: "task",
+    status: "active",
+    epoch: 1,
+    revision: 1,
+    operations: [],
+  };
+  const workflow = new BillWorkflow({
+    bill,
+    controls,
+    taskId: task.id,
+    signal: controller.signal,
+    runtime: { owner: {}, get: () => task, observe: async () => {} },
+    actuator: {
+      readObservation: () => ({
+        observation: { id: "observed" },
+        snapshot: snapshot(),
+      }),
+      quiesce: async () => {
+        clears++;
+      },
+    },
+    outcomes: {
+      load: () => null,
+      recordReview: () => {
+        writes++;
+      },
+      save: () => {
+        writes++;
+      },
+    },
+    deriveBillDecision: (_bill, _snapshot, context) => {
+      assert.equal(context.signal, controller.signal);
+      assert.equal(context.taskId, task.id);
+      assert.equal(context.epoch, task.epoch);
+      started();
+      return new Promise(() => {});
+    },
+  });
+  const pending = workflow.refresh();
+  await entered;
+  controller.abort();
+  await assert.rejects(pending, /Task authorization changed/);
+  assert.equal(writes, 0);
+  assert.equal(clears, 1);
+});

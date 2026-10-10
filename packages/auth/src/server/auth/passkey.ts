@@ -22,7 +22,7 @@
 
 import type {
   AuthenticationResponseJSON,
-  AuthenticatorTransportFuture,
+  AuthenticatorTransport,
   PublicKeyCredentialCreationOptionsJSON,
   PublicKeyCredentialRequestOptionsJSON,
   RegistrationResponseJSON,
@@ -40,13 +40,18 @@ export type {
 } from "@simplewebauthn/server";
 export type {
   AuthenticationResponseJSON,
-  AuthenticatorTransportFuture,
   PublicKeyCredentialCreationOptionsJSON,
   PublicKeyCredentialRequestOptionsJSON,
   RegistrationResponseJSON,
 };
 
 import { ChallengeStore } from "./challenge-store";
+
+/** Retain the v13 transport contract for stored credentials and existing consumers. */
+export type AuthenticatorTransportFuture =
+  | AuthenticatorTransport
+  | "cable"
+  | "smart-card";
 
 // ─── Config ────────────────────────────────────────────────────────────────
 

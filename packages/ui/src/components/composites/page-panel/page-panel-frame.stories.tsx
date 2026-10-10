@@ -7,7 +7,7 @@ import {
   PagePanelContentArea,
   PagePanelContentRail,
   PagePanelFrame,
-} from "./page-panel-frame";
+} from "./page-panel-layout";
 
 const SCROLL_ROWS = Array.from({ length: 30 }, (_, i) => ({
   id: `scroll-row-${i + 1}`,

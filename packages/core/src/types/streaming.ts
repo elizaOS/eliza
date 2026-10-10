@@ -19,8 +19,8 @@
  * - 3 (Full): Codes at start AND end, maximum safety.
  */
 
+import type { ContextEvent } from "../runtime/context-object";
 import type { EvaluationResult } from "./components";
-import type { ContextEvent } from "./context-object";
 import type { ToolCall } from "./model";
 
 type MaybePromise<T> = T | Promise<T>;

@@ -29,6 +29,7 @@ import type {
   LifeOpsScreenTimeSource,
   LifeOpsScreenTimeSummary,
 } from "../contracts/lifeops.js";
+import { hostnameFromValue } from "../screen-time/social-taxonomy.js";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,
@@ -135,6 +136,7 @@ type BrowserActivitySnapshot = {
 export interface ScreenTimeActionService {
   getScreenTimeDaily(opts: {
     date: string;
+    timeZone?: string;
     source?: LifeOpsScreenTimeSource;
     identifier?: string;
     limit?: number;
@@ -291,8 +293,10 @@ function localWindowStartIso(days: number, timeZone: string): string {
   }).toISOString();
 }
 
-function formatSeconds(seconds: number): string {
+export function formatSeconds(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));
+  // 45 seconds used to print "0m", which reads as no screen time.
+  if (s > 0 && s < 60) return `${s}s`;
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
@@ -317,18 +321,9 @@ function resolveWindowMs(windowHours: number | undefined): number {
   return Math.round(clamped * 60 * 60 * 1000);
 }
 
-function normalizeDomain(value: string): string {
-  const trimmed = value.trim().toLowerCase().replace(/\.+$/, "");
-  if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
-    return trimmed;
-  }
-  try {
-    return new URL(trimmed).hostname.toLowerCase();
-  } catch {
-    // error-policy:J3 untrusted domain input; an unparseable URL yields the
-    // empty invalid signal rather than a fabricated hostname.
-    return "";
-  }
+export function normalizeDomain(value: string): string {
+  if (value.trim().startsWith("/")) return "";
+  return hostnameFromValue(value) ?? "";
 }
 
 function buildReportSummary(
@@ -611,6 +606,7 @@ export function createScreenTimeActionRunner(
         const date = params.date ?? localTodayKey(timeZone);
         const daily = await service.getScreenTimeDaily({
           date,
+          timeZone,
           source: params.source,
           identifier: params.identifier,
         });

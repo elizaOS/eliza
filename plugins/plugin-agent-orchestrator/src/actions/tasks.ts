@@ -48,6 +48,7 @@ import type { TaskThreadDto } from "../services/orchestrator-task-mapper.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import type { OrchestratorTaskStatus } from "../services/orchestrator-task-types.js";
 import { resolveTaskSpawnWorkdir } from "../services/project-binding.js";
+import { recordedPromptDurationMs } from "../services/prompt-duration.js";
 import {
   extractRepositoryUrlFromText,
   normalizeRepositoryInput,
@@ -810,7 +811,10 @@ async function runPromptAndClose(
     if (service.emitsPromptTerminalEvents !== true) {
       emitSessionEvent(service, session.sessionId, "task_complete", {
         response: result.finalText || result.response,
-        durationMs: result.durationMs || Date.now() - startedAt,
+        durationMs: recordedPromptDurationMs(
+          result.durationMs,
+          Date.now() - startedAt,
+        ),
         stopReason: result.stopReason,
       });
     }

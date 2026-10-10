@@ -1,66 +1,23 @@
-/**
- * The `todo.items` widget, which serves two different surfaces from one
- * registration because the widget host renders it in both:
- *
- *  - Chat sidebar (`TodoSidebarWidget`): the agent's own workbench checklist,
- *    seeded from the app store's `workbench.todos`, refreshed on live workbench
- *    events and a visible-tab repair poll. This is "what the agent is working
- *    on" and is the store's to own.
- *  - Home grid (`TodayHomeCard`): the OWNER's "Today" resident (spec §B.3) —
- *    their due/overdue todos, which carry a `dueDate` the workbench checklist
- *    does not. These are a different domain read entirely, so the home card does
- *    NOT read a store: it renders the typed DTO from the `today-todos-data` read
- *    model (`GET /api/lifeops/todos`) and completes a row through that model's
- *    occurrence-complete write. Per §E item 5 it also absorbs the single most
- *    urgent goal as one flagged row and self-publishes the escalation weight so
- *    the merged card floats up on goal urgency.
- *
- * Exports `TODO_PLUGIN_WIDGETS`, the widget-registry entry the host consumes.
- */
+/** Agent workbench checklist for chat-side and inline widget surfaces. */
 
 import type { TranslateFn, WorkbenchTodo } from "@elizaos/contracts";
-import { Circle, ListTodo, Target } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ListTodo } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
 import { client } from "../../../api/client";
 
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
-import { useRole } from "../../../hooks/useRole";
 import { useAppSelectorShallow } from "../../../state/app-store";
-import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
-import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import { Badge } from "../../ui/badge";
-import { Button } from "../../ui/button";
-import {
-  type AttentionGoal,
-  GOALS_REFRESH_INTERVAL_MS,
-  goalsEqual,
-  loadGoalsForGlance,
-  mostUrgentGoal,
-} from "./goals-attention-data";
-import { useWidgetNavigation } from "./home-widget-card";
 import { EmptyWidgetState, WidgetSection } from "./shared";
-import {
-  completeTodayTodo,
-  dueOrOverdueToday,
-  isOverdue,
-  loadTodayTodosForGlance,
-  TODAY_TODOS_REFRESH_INTERVAL_MS,
-  type TodayTodo,
-  todosEqual,
-} from "./today-todos-data";
 import type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
 } from "./types";
 
-const TODO_WIDGET_KEY = "todo/todo.items";
-
 const TODO_REFRESH_INTERVAL_MS = 15_000;
 const MAX_VISIBLE_TODOS = 8;
-/** The Today glance shows at most three rows (spec §B.3). */
-const MAX_TODAY_ROWS = 3;
 
 const fallbackTranslate: TranslateFn = (key, vars) =>
   typeof vars?.defaultValue === "string" ? vars.defaultValue : key;
@@ -156,106 +113,6 @@ function TodoRow({ todo }: { todo: WorkbenchTodo }) {
 }
 
 /**
- * A single owner-todo row in the Today card. The whole row is the completion
- * affordance (a 44px tap target holds the home hit-area rule): tapping toggles
- * the todo done. Overdue todos carry the accent (spec §B.3 "overdue in the
- * accent color"); an on-time due-today todo is neutral white-family.
- */
-function TodayTodoRow({
-  todo,
-  now,
-  onComplete,
-}: {
-  todo: TodayTodo;
-  now: number;
-  onComplete: () => void;
-}) {
-  const overdue = isOverdue(todo, now);
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="row"
-      align="start"
-      data-testid="today-todo-row"
-      aria-label={`Complete todo "${todo.title}"`}
-      onClick={onComplete}
-    >
-      <Circle
-        className={`mt-0.5 size-4 shrink-0 ${overdue ? "text-accent" : "text-white/70"}`}
-      />
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="min-w-0 truncate text-xs font-semibold text-white">
-            {todo.title}
-          </span>
-          {overdue ? (
-            <Badge variant="secondary" tone="accent">
-              Overdue
-            </Badge>
-          ) : (
-            <Badge variant="secondary" size="micro" tone="muted">
-              Due today
-            </Badge>
-          )}
-        </div>
-      </div>
-    </Button>
-  );
-}
-
-/**
- * The merged goal-attention row (§E item 5): renders the single urgent goal
- * inline in the Today card. Whole-row button so the home 44px target rule holds;
- * tapping opens the Goals view.
- */
-function GoalAttentionRow({
-  goal,
-  onOpen,
-  tone = "default",
-}: {
-  goal: AttentionGoal;
-  onOpen: () => void;
-  tone?: "default" | "home";
-}) {
-  const atRisk = goal.reviewState === "at_risk";
-  const status = atRisk ? "at risk" : "needs attention";
-  const isHome = tone === "home";
-  return (
-    <Button
-      type="button"
-      data-testid="todo-goal-attention-row"
-      aria-label={`Goal "${goal.title}" ${status}. Open Goals.`}
-      onClick={onOpen}
-      variant={isHome ? "outline" : "transparent"}
-      size={isHome ? "row" : "eventRow"}
-      align="start"
-      className="w-full"
-    >
-      <Target
-        className={`mt-0.5 size-4 shrink-0 ${
-          isHome ? "text-white/75" : atRisk ? "text-danger" : "text-accent"
-        }`}
-      />
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span
-            className={`min-w-0 truncate text-xs font-semibold ${
-              isHome ? "text-white" : "text-txt"
-            }`}
-          >
-            {goal.title}
-          </span>
-          <Badge variant="secondary" tone={atRisk ? "danger" : "accent"}>
-            {atRisk ? "At risk" : "Needs attention"}
-          </Badge>
-        </div>
-      </div>
-    </Button>
-  );
-}
-
-/**
  * The chat-sidebar content: the agent's workbench checklist, grouped open-first.
  */
 function WorkbenchTodoItems({
@@ -299,234 +156,6 @@ function WorkbenchTodoItems({
           {hiddenCompletedCount === 1 ? "" : "s"} hidden
         </p>
       ) : null}
-    </div>
-  );
-}
-
-/**
- * Fetch the single urgent goal for the merged Today card (§E item 5). Polls at
- * the goals cadence, visibility-gated, and keeps its last-good value on a
- * transient failure (J4). Returns `null` when there is no at-risk or
- * needs-attention goal, so it contributes nothing to the card.
- */
-function useAtRiskGoal(): AttentionGoal | null {
-  const authenticated = useIsAuthenticated();
-  const { isOwner } = useRole();
-  const [goals, setGoals] = useState<AttentionGoal[] | null>(null);
-  const activeLoadRef = useRef<AbortController | null>(null);
-  const mountedRef = useRef(true);
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      activeLoadRef.current?.abort();
-    };
-  }, []);
-
-  const load = useCallback(
-    (background = false) => {
-      activeLoadRef.current?.abort();
-      const controller = new AbortController();
-      activeLoadRef.current = controller;
-      void loadGoalsForGlance(authenticated && isOwner, controller.signal)
-        .then((next) => {
-          if (controller.signal.aborted || !mountedRef.current) return;
-          if (next == null) {
-            if (!background) setGoals([]);
-            return;
-          }
-          setGoals((prev) => (goalsEqual(prev, next) ? prev : next));
-        })
-        .finally(() => {
-          if (activeLoadRef.current === controller) {
-            activeLoadRef.current = null;
-          }
-        });
-    },
-    [authenticated, isOwner],
-  );
-
-  useEffect(() => {
-    load();
-    return () => activeLoadRef.current?.abort();
-  }, [load]);
-  useIntervalWhenDocumentVisible(() => load(true), GOALS_REFRESH_INTERVAL_MS);
-
-  if (goals == null) return null;
-  return mostUrgentGoal(goals);
-}
-
-/**
- * The owner's Today todos read model, driving the home card. Loads through
- * `today-todos-data` (never a store), polls visibility-gated, keeps last-good on
- * a transient failure (J4), and completes a row optimistically: the tapped todo
- * disappears immediately, a successful write is confirmed by the reload, and a
- * failed write restores the row.
- *
- * `now` is state sampled inside the load/poll callbacks — never `Date.now()` in
- * render — so the due/overdue slice recomputes on each 15s tick (surfacing a
- * todo that crosses into overdue) while keeping renders deterministic.
- */
-function useTodayTodos(): {
-  glance: TodayTodo[] | null;
-  now: number;
-  hasOverdue: boolean;
-  complete: (id: string) => void;
-} {
-  const authenticated = useIsAuthenticated();
-  const { isOwner } = useRole();
-  const [todos, setTodos] = useState<TodayTodo[] | null>(null);
-  const [now, setNow] = useState(0);
-  const [completingIds, setCompletingIds] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
-  const activeLoadRef = useRef<AbortController | null>(null);
-  const mountedRef = useRef(true);
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      activeLoadRef.current?.abort();
-    };
-  }, []);
-
-  const load = useCallback(
-    (background = false) => {
-      activeLoadRef.current?.abort();
-      const controller = new AbortController();
-      activeLoadRef.current = controller;
-      void loadTodayTodosForGlance(authenticated && isOwner, controller.signal)
-        .then((next) => {
-          if (controller.signal.aborted || !mountedRef.current) return;
-          setNow(Date.now());
-          if (next == null) {
-            if (!background) setTodos([]);
-            return;
-          }
-          setTodos((prev) => (todosEqual(prev, next) ? prev : next));
-        })
-        .finally(() => {
-          if (activeLoadRef.current === controller) {
-            activeLoadRef.current = null;
-          }
-        });
-    },
-    [authenticated, isOwner],
-  );
-
-  useEffect(() => {
-    load();
-    return () => activeLoadRef.current?.abort();
-  }, [load]);
-  useIntervalWhenDocumentVisible(
-    () => load(true),
-    TODAY_TODOS_REFRESH_INTERVAL_MS,
-  );
-
-  const complete = useCallback(
-    (id: string) => {
-      setCompletingIds((prev) => new Set(prev).add(id));
-      completeTodayTodo(id)
-        .then(() => load())
-        .catch(() => {
-          // error-policy:J4 optimistic write failed - restore the row so the
-          // user sees it is still open rather than a silent drop.
-          if (!mountedRef.current) return;
-          setCompletingIds((prev) => {
-            const next = new Set(prev);
-            next.delete(id);
-            return next;
-          });
-        });
-    },
-    [load],
-  );
-
-  const glance = useMemo(() => {
-    if (todos == null) return null;
-    return dueOrOverdueToday(todos, now).filter(
-      (todo) => !completingIds.has(todo.id),
-    );
-  }, [todos, now, completingIds]);
-  const hasOverdue = useMemo(
-    () => (glance ?? []).some((todo) => isOverdue(todo, now)),
-    [glance, now],
-  );
-
-  return { glance, now, hasOverdue, complete };
-}
-
-/**
- * The home "Today" resident: the owner's due/overdue todos as a pure render over
- * the read model, plus the merged urgent-goal row. Publishes its home-attention
- * weight from the STRONGER of its two signals (an at-risk goal outranks an
- * overdue todo), and self-hides when it has nothing to show — the home surface
- * must not paint empty-state placeholders (#9143).
- */
-function TodayHomeCard({
-  spanClassName = "col-span-2 row-span-1",
-}: {
-  spanClassName?: string;
-}) {
-  const t = useAppSelectorShallow((s) => s.t) ?? fallbackTranslate;
-  const nav = useWidgetNavigation();
-  const { glance, now, hasOverdue, complete } = useTodayTodos();
-  const attentionGoal = useAtRiskGoal();
-
-  const rows = glance ?? [];
-  const visibleTodos = rows.slice(0, MAX_TODAY_ROWS);
-  const remainingCount = rows.length - visibleTodos.length;
-
-  // Float the merged Today card up on the STRONGER of its two signals: an
-  // at-risk goal contributes the goals escalation weight (higher than the todo
-  // reminder weight), so goal urgency dominates - matching the standalone goals
-  // card this absorbed (§E item 5). Both publish under the todo key because the
-  // ranker attributes a self-published weight to the declaration whose key
-  // matches, and the merged resident IS `todo/todo.items`.
-  const homeAttentionWeight = attentionGoal
-    ? HOME_SIGNAL_WEIGHTS.escalation
-    : hasOverdue
-      ? HOME_SIGNAL_WEIGHTS.reminder
-      : null;
-  usePublishHomeAttention(TODO_WIDGET_KEY, homeAttentionWeight);
-
-  // Nothing due/overdue AND no at-risk goal: the card has no reason to render.
-  if (rows.length === 0 && !attentionGoal) return null;
-
-  const goalRow = attentionGoal ? (
-    <GoalAttentionRow
-      goal={attentionGoal}
-      onOpen={() => nav.openView("/goals", "goals")}
-      tone="home"
-    />
-  ) : null;
-
-  return (
-    <div className={`min-w-0 ${spanClassName}`}>
-      <WidgetSection
-        title={t("taskseventspanel.Today", { defaultValue: "Today" })}
-        icon={<ListTodo className="size-4" />}
-        testId="chat-widget-todos"
-        tone="home"
-        onTitleClick={() => nav.openView("/todos", "todos")}
-      >
-        <div className="flex flex-col gap-2">
-          {goalRow}
-          {visibleTodos.map((todo) => (
-            <TodayTodoRow
-              key={todo.id}
-              todo={todo}
-              now={now}
-              onComplete={() => complete(todo.id)}
-            />
-          ))}
-          {remainingCount > 0 ? (
-            <p className="px-1 text-xs-tight text-white/70">
-              +{remainingCount} more due today
-            </p>
-          ) : null}
-        </div>
-      </WidgetSection>
     </div>
   );
 }
@@ -636,15 +265,9 @@ function WorkbenchTodoSidebar({ events }: ChatSidebarWidgetProps) {
   );
 }
 
-/**
- * Widget-host entry: dispatches to the home "Today" card (owner todos read
- * model) or the chat-sidebar workbench checklist by slot. They are separate
- * surfaces backed by separate reads; the host renders whichever the slot needs.
- */
+/** Stale/direct Home callers cannot restore the retired Today projection. */
 function TodoSidebarWidget(props: ChatSidebarWidgetProps) {
-  if (props.slot === "home") {
-    return <TodayHomeCard spanClassName={props.spanClassName} />;
-  }
+  if (props.slot === "home") return null;
   return <WorkbenchTodoSidebar {...props} />;
 }
 

@@ -155,6 +155,24 @@ function assertQuality(
   return numberValue / 100;
 }
 
+// Snapshot quality is a 0..1 fraction on every platform (both native
+// bridges default to 0.82 and treat values above 1 as invalid or
+// clamped). It must not go through assertQuality: that helper is the
+// 0..100 percent scale toImage uses, and dividing a fraction by 100
+// again hands the encoder ~1% quality for the contract value 0.82.
+function assertFractionQuality(
+  value: unknown,
+  label: string,
+  fallback: number,
+): number {
+  if (value === undefined) return fallback;
+  const numberValue = assertFiniteNumber(value, label);
+  if (numberValue < 0 || numberValue > 1) {
+    throw new Error(`${label} must be between 0 and 1`);
+  }
+  return numberValue;
+}
+
 function assertLayerInput(
   layer: Omit<CanvasLayer, "id">,
 ): Omit<CanvasLayer, "id"> {
@@ -781,11 +799,29 @@ export class CanvasWeb extends WebPlugin {
       width: managed.size.width,
       height: managed.size.height,
     };
+    // Pixel coordinates use integer truncation, as getImageData does. Check
+    // finite inputs first; otherwise Web IDL silently turns NaN into zero.
+    const x = assertFiniteNumber(rect.x, "rect.x");
+    const y = assertFiniteNumber(rect.y, "rect.y");
+    const requestedWidth = assertFiniteNumber(rect.width, "rect.width");
+    const requestedHeight = assertFiniteNumber(rect.height, "rect.height");
+    const width = Math.min(
+      Math.trunc(requestedWidth),
+      managed.canvas.width - Math.trunc(x),
+    );
+    const height = Math.min(
+      Math.trunc(requestedHeight),
+      managed.canvas.height - Math.trunc(y),
+    );
+    // Clip before allocation, matching the Android pixel-region contract.
+    if (x < 0 || y < 0 || width <= 0 || height <= 0) {
+      throw new Error("Invalid pixel region");
+    }
     const imageData = managed.ctx.getImageData(
-      rect.x,
-      rect.y,
-      rect.width,
-      rect.height,
+      Math.trunc(x),
+      Math.trunc(y),
+      width,
+      height,
     );
 
     return {
@@ -1029,7 +1065,7 @@ export class CanvasWeb extends WebPlugin {
     }
 
     const format: SnapshotFormat = options?.format || "png";
-    const quality = assertQuality(options?.quality, "quality", 0.85);
+    const quality = assertFractionQuality(options?.quality, "quality", 0.85);
 
     const iframeRect = this.webViewIframe.getBoundingClientRect();
     let width = Math.round(iframeRect.width) || 800;
@@ -1490,8 +1526,13 @@ export class CanvasWeb extends WebPlugin {
       ctx.scale(transform.scaleX ?? 1, transform.scaleY ?? 1);
     }
 
-    if (transform.skewX || transform.skewY) {
-      ctx.transform(1, transform.skewY || 0, transform.skewX || 0, 1, 0, 0);
+    // Native bridges compose the X shear before the Y shear. A single
+    // matrix with both tangents loses the product term when both are set.
+    if (transform.skewX) {
+      ctx.transform(1, 0, Math.tan(transform.skewX), 1, 0, 0);
+    }
+    if (transform.skewY) {
+      ctx.transform(1, Math.tan(transform.skewY), 0, 1, 0, 0);
     }
   }
 

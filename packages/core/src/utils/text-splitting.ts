@@ -4,6 +4,7 @@
  * semantics while keeping reply/TTS streaming work linear in appended input.
  */
 
+const TIME_ABBREVIATIONS = new Set(["a.m", "p.m"]);
 const ABBREVIATIONS = new Set([
 	"mr",
 	"mrs",
@@ -17,6 +18,7 @@ const ABBREVIATIONS = new Set([
 	"etc",
 	"e.g",
 	"i.e",
+	...TIME_ABBREVIATIONS,
 ]);
 
 const SENTENCE_END = new Set([".", "?", "!"]);
@@ -70,6 +72,8 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 	let lastWord = "";
 	let scanned = 0;
 	let completeAt: number | undefined;
+	// A time can end a reply, but only EOF proves it does not continue.
+	let terminalTimeBoundary: number | undefined;
 	let pendingBoundary:
 		| { boundary: number; normalizedWord: string; sawCloser: boolean }
 		| undefined;
@@ -109,6 +113,20 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 
 			for (let offset = 0; offset < chunk.length; offset += 1) {
 				const char = chunk[offset];
+				if (terminalTimeBoundary !== undefined) {
+					if (TRAILING_CLOSERS.includes(char)) {
+						terminalTimeBoundary = scanned + offset + 1;
+					} else if (!/\s/.test(char)) {
+						terminalTimeBoundary = undefined;
+					}
+				}
+				if (
+					char === "." &&
+					TIME_ABBREVIATIONS.has(lastWord.toLowerCase()) &&
+					isBoundaryFollower(chunk[offset + 1])
+				) {
+					terminalTimeBoundary = scanned + offset + 1;
+				}
 				if (
 					SENTENCE_END.has(char) &&
 					chunk[offset + 1] === undefined &&
@@ -157,7 +175,8 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 			}
 
 			scanned += chunk.length;
-			return undefined;
+			if (endOfInput) completeAt = terminalTimeBoundary;
+			return completeAt;
 		},
 	};
 }

@@ -3494,6 +3494,48 @@
       "when": 1796083200146,
       "tag": "0528_subscription_adjustment_observations",
       "breakpoints": true
+    },
+    {
+      "idx": 499,
+      "version": "7",
+      "when": 1796083200147,
+      "tag": "0529_subscription_adjustment_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 500,
+      "version": "7",
+      "when": 1796083200148,
+      "tag": "0530_subscription_invoice_event_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 501,
+      "version": "7",
+      "when": 1796083200149,
+      "tag": "0531_subscription_invoice_observations",
+      "breakpoints": true
+    },
+    {
+      "idx": 502,
+      "version": "7",
+      "when": 1796083200150,
+      "tag": "0532_subscription_invoice_capture_observations",
+      "breakpoints": true
+    },
+    {
+      "idx": 503,
+      "version": "7",
+      "when": 1796083200151,
+      "tag": "0533_subscription_invoice_debt_observations",
+      "breakpoints": true
+    },
+    {
+      "idx": 504,
+      "version": "7",
+      "when": 1796083200152,
+      "tag": "0534_subscription_allowance_invoice_authority",
+      "breakpoints": true
     }
   ]
 }

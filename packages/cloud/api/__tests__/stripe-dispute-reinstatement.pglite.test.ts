@@ -79,6 +79,7 @@ async function purchase(params: {
   credits: string;
   cents: number | null;
   balance: string;
+  metadata?: Record<string, string>;
 }): Promise<Purchase> {
   const org = randomUUID();
   const user = randomUUID();
@@ -92,9 +93,14 @@ async function purchase(params: {
     [user, org, `subject_${user}`],
   );
   const grant = await pg().query<{ id: string }>(
-    `INSERT INTO credit_transactions(organization_id,amount,type,description,stripe_payment_intent_id)
-     VALUES ($1,$2,'credit','Credit pack purchase',$3) RETURNING id`,
-    [org, params.credits, paymentIntentId],
+    `INSERT INTO credit_transactions(organization_id,amount,type,description,stripe_payment_intent_id,metadata)
+     VALUES ($1,$2,'credit','Credit pack purchase',$3,$4) RETURNING id`,
+    [
+      org,
+      params.credits,
+      paymentIntentId,
+      JSON.stringify(params.metadata ?? {}),
+    ],
   );
   if (params.cents !== null) {
     const pack = randomUUID();
@@ -246,6 +252,30 @@ test("a partially consumed pack restores only the applied clawback, never the sh
     [buyer.org],
   );
   expect(Number(shortfall.rows[0]?.unrecovered)).toBe(450);
+});
+
+test("a half dispute on a $15 fee-inclusive auto top-up claws back half of its 10 credits", async () => {
+  const buyer = await purchase({
+    credits: "10",
+    cents: null,
+    balance: "10",
+    metadata: {
+      type: "auto_top_up",
+      auto_top_up_attempt_id: randomUUID(),
+      base_amount: "10.00",
+      total_charged: "15.00",
+      platform_fee_amount: "2.00",
+      affiliate_fee_amount: "3.00",
+      fees_included: "true",
+    },
+  });
+  expect(await disputeRoundTrip(buyer, `dp_${randomUUID()}`, 750)).toBe(5);
+  expect(await balance(buyer.org)).toBe(10);
+  expect(await ledger(buyer.org)).toEqual([
+    ["credit", 10],
+    ["clawback", -5],
+    ["refund", 5],
+  ]);
 });
 
 test("a partial $3 dispute on a $10 / 500-credit pack restores 150 credits", async () => {

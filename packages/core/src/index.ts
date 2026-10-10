@@ -22,7 +22,24 @@ export {
 	isDiscoveryActionName,
 	SHOULD_RESPOND_SCHEMA_DESCRIPTION,
 } from "./actions/to-tool.ts";
-export * from "./capability-selection/account-selection";
+export * from "./capabilities/account-selection";
+export {
+	getApps,
+	getConnectors,
+	getEntry,
+	getEntryByNpmName,
+	getPlugins,
+	indexEntries,
+	type LoadedRegistry,
+	mergeWithRuntime,
+	normalizeConnectorAuth,
+	type RegistryValidationError,
+} from "./catalog/loader.js";
+export {
+	clearRegistryCacheForTests,
+	loadRegistry,
+	registerRegistryEntry,
+} from "./catalog/registry.js";
 export {
 	type AccountAuthKind,
 	type AccountConfig,
@@ -33,35 +50,22 @@ export {
 	appLaunchSchema,
 	type ConfigField,
 	type ConnectorEntry,
-	clearRegistryCacheForTests,
 	configFieldSchema,
 	connectorEntrySchema,
-	getApps,
-	getConnectors,
-	getEntry,
-	getEntryByNpmName,
-	getPlugins,
-	indexEntries,
-	type LoadedRegistry,
-	loadRegistry,
-	mergeWithRuntime,
-	normalizeConnectorAuth,
 	type PluginEntry,
 	pluginEntrySchema,
 	type RegistryEntry,
 	type RegistryKind,
 	type RegistryRuntimeOverlay,
-	type RegistryValidationError,
 	type RegistryView,
 	type RenderHints,
 	type Resources,
-	registerRegistryEntry,
 	registryEntrySchema,
 	registryRuntimeOverlaySchema,
 	renderSchema,
 	resourcesSchema,
 	type SecondarySurface,
-} from "./catalog/index.js";
+} from "./catalog/schema.js";
 // Connection management (ensureConnection/ensureConnections) - standalone batch helpers
 export * from "./connection";
 export * from "./connectors/account-manager";
@@ -75,24 +79,24 @@ export {
 export * from "./database/document-source-segments";
 export * from "./entities";
 export {
-	getValidationKeywordLocaleTerms,
-	getValidationKeywordTerms,
-} from "./i18n/keyword-matching.js";
-export {
 	collectKeywordTermMatches,
 	collectPreparedKeywordTermMatches,
 	findKeywordTermMatch,
-	getValidationKeywordLocaleTerms as getCatalogValidationKeywordLocaleTerms,
-	getValidationKeywordTerms as getCatalogValidationKeywordTerms,
+	getCatalogValidationKeywordLocaleTerms,
+	getCatalogValidationKeywordTerms,
+	getValidationKeywordLocaleTerms,
+	getValidationKeywordTerms,
 	hasPreparedKeywordTermMatch,
 	normalizeKeywordMatchText,
 	type PreparedKeywordTerm,
 	prepareKeywordTerms,
 	splitKeywordDoc,
 	textIncludesKeywordTerm,
+} from "./i18n/keyword-matching.js";
+export {
+	VALIDATION_KEYWORD_DOCS,
 	VALIDATION_KEYWORD_LOCALES,
-} from "./i18n/keyword-matching-core.js";
-export { VALIDATION_KEYWORD_DOCS } from "./i18n/keywords.js";
+} from "./i18n/keywords.js";
 export * from "./identity-clusters";
 export * from "./inference-timing";
 export {
@@ -129,9 +133,10 @@ export {
 	logResponse,
 	type PromptLogMetadata,
 	type ResponseLogMetadata,
+	RUNTIME_DEBUG_LOG_ENABLED,
 	recentLogs,
 	removeLogListener,
-} from "./logger";
+} from "./logger.js";
 
 // Shared media boundary: fetching, attachment decoding, MIME detection, and cache.
 export * from "./media/attachments.js";
@@ -172,27 +177,11 @@ export {
 	resolveFallbackOwnerEntityId,
 	resolveOwnerEntityId,
 } from "./owner-entity";
-export {
-	_resetBuildVariantForTests,
-	BUILD_VARIANTS,
-	buildStoreVariantBlockedMessage,
-	DEFAULT_BUILD_VARIANT,
-	getBuildVariant,
-	getDirectDownloadUrl,
-	isDirectBuild,
-	isLocalCodeExecutionAllowed,
-	isStoreBuild,
-} from "./platform/build-variant.js";
-export {
-	nativeLibraryPolicyInternalsForTest,
-	resolveNativeLibraryCandidate,
-} from "./platform/native-library-policy.js";
 export * from "./plugin";
 export * from "./protocol.js";
 // Provisioning (migrations, agent/entity/room, embedding dimension) - node only
 export * from "./provisioning";
 export * from "./roles";
-
 export * from "./runtime";
 export {
 	actionGateFailure,
@@ -201,15 +190,14 @@ export {
 	canActionRun,
 	resolveActionCallerRoles,
 	resolveActionGateFailure,
+	withActionGatePolicy,
 } from "./runtime/action-gate";
-
 export { settleActionHandler } from "./runtime/action-handler-settlement.ts";
 export { isLocalProvider } from "./runtime/action-model-routing";
 export {
 	resolveActionRolePolicyRole,
 	warnOnUnmatchedActionRolePolicyKeys,
 } from "./runtime/action-role-policy";
-
 export { runWithActionRoutingContext } from "./runtime/action-routing-context.ts";
 export {
 	COMPLETION_CONTEXT_SCHEMA,
@@ -231,7 +219,6 @@ export {
 export * from "./runtime/execute-planned-tool-call";
 export * from "./runtime/message-content-segments";
 export * from "./runtime/message-content-storage";
-export { RUNTIME_DEBUG_LOG_ENABLED } from "./runtime/model-diagnostics.ts";
 export {
 	projectDeferredProviders,
 	providerReviewSources,
@@ -380,8 +367,9 @@ export {
 	type ProcessingRequest,
 	type ProcessingScope,
 } from "./security/processing-policy.js";
+// Bounded owner capture shares the canonical credential redaction policy.
+export { isSensitiveKeyName, redactSensitiveText } from "./security/redact";
 export * from "./security/secret-swap";
-
 export {
 	attestAuthenticatedApiDeliveryAudience,
 	attestDeliveryAudienceFromCanonicalRoom,
@@ -472,7 +460,6 @@ export * from "./types/action-reply.js";
 export * from "./types/provider-integrations.js";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
-
 export {
 	readJsonFile,
 	writeJsonAtomic,
@@ -521,6 +508,7 @@ export {
 	shouldIncludeByContext,
 } from "./utils/context-routing";
 export { createHash } from "./utils/crypto-compat.ts";
+export { parseDurationMs } from "./utils/duration.ts";
 export {
 	isEnvDisabled,
 	isExactTrueEnvFlag,
@@ -551,15 +539,12 @@ export {
 	normalizeUserMessageText,
 	stripAugmentationForPersistence,
 } from "./utils/message-text";
-export { getLocalServerUrl } from "./utils/node";
 export {
 	getMacPermissionDeepLink,
 	openPermissionSettings,
 } from "./utils/permission-deep-links.js";
 // Export Node-specific utilities
 export * from "./utils/project-memory-scope";
-export * from "./utils/read-env";
-export * from "./utils/resolve-setting";
 // Eliza state-dir resolution (ELIZA_STATE_DIR → XDG state home)
 export * from "./utils/state-dir";
 export { stringToUuid } from "./utils/string-to-uuid.js";

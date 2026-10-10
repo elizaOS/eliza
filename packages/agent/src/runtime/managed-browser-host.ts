@@ -4,7 +4,6 @@ import {
   type HttpPlugin,
   registerHttpPluginRoutes,
 } from "@elizaos/host/protocol";
-import { resetHonoMountCache } from "../api/hono-mount.ts";
 
 /** Provisioning supplies owner identity; it never grants a browser profile. */
 export async function initializeManagedBrowserHost(
@@ -46,6 +45,5 @@ export async function initializeManagedBrowserHost(
     runtime,
     remoteHost.createRemoteBrowserControllerPlugin(ownerId),
   );
-  resetHonoMountCache();
   await remoteHost.restoreRemoteBrowserController(runtime, ownerId);
 }

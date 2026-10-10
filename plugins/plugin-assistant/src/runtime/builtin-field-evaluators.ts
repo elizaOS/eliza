@@ -131,18 +131,19 @@ export function readCompleteStringHints(raw: unknown): string[] | null {
   return [...raw];
 }
 
+const INTENTS_DESCRIPTION =
+  "One verb phrase per user-requested runtime outcome; keep explicit reads, navigation and record changes separate. A requested composite report, brief or dossier is one outcome with its source constraints. Let its composer choose supporting reads; do not invent separate domain requests or a connector inventory from possible report contents. Preserve separately requested operations. Omit work awaiting clarification; keep independent executable work. Empty for answers complete without execution.";
+
 export const intentsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
   name: "intents",
-  description:
-    "One verb phrase per requested runtime outcome, including useful prerequisite reads; keep navigation and record changes separate. Omit work awaiting clarification; keep independent executable work. Empty for answers complete without execution.",
+  description: INTENTS_DESCRIPTION,
   descriptionCompressed:
-    "One verb phrase per requested runtime outcome, including useful prerequisite reads; keep navigation and record changes separate. Omit work awaiting clarification; keep independent executable work. Empty for answers complete without execution.",
+    "One verb phrase per user-requested runtime outcome; keep explicit reads, navigation and record changes separate. A composite report, brief or dossier is one outcome with its source constraints, not invented supporting domain requests. Preserve separately requested operations. Empty for answers complete without execution.",
   priority: 15,
   schema: {
     type: "array",
     items: { type: "string" },
-    description:
-      "One verb phrase per requested runtime outcome, including useful prerequisite reads; keep navigation and record changes separate. Omit work awaiting clarification; keep independent executable work. Empty for answers complete without execution.",
+    description: INTENTS_DESCRIPTION,
   },
   parse: readCompleteStringHints,
 };

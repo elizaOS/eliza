@@ -30,7 +30,7 @@
  *
  * Run:
  *   bun run --cwd packages/ui test:chat-sheet-e2e
- *   bun run --cwd packages/ui test:chat-sheet-safari-e2e
+ *   bun run --cwd packages/ui test:chat-sheet-e2e --browser=webkit
  *   bun run --cwd packages/ui test:chat-sheet-e2e -- --only-autoscroll
  * Exits non-zero on any failed assertion / console error.
  */

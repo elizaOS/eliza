@@ -18,10 +18,12 @@ import {
   getDirectActionRoutingRules,
   getUserMessageText,
 } from "@elizaos/core";
+import { preferredOperationNames } from "../../runtime/action-retrieval.ts";
 import { SIMPLE_CONTEXT_ID } from "../../runtime/message-handler";
 import {
   mergeAgentContexts,
   messageHandlerStageOneReplyContexts,
+  retrieveContextualPlannerActions,
 } from "./action-surface.js";
 import {
   getActionInferenceMessageText,
@@ -275,6 +277,7 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
         ) {
           return matchingRules.some(
             (rule) =>
+              rule.wholeRequest?.matches(text, message) ||
               rule.unavailable !== undefined ||
               routeReplacesStage1Candidate(
                 rule,
@@ -326,6 +329,37 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
           state,
           userRoles,
         });
+        const wholeRequestRules = matchingRules.filter((rule) =>
+          rule.wholeRequest?.matches(text, message),
+        );
+        // Whole-request ownership comes from the original user text, never
+        // the model's invented decomposition. Ambiguity retains the old plan.
+        if (wholeRequestRules.length > 1) return undefined;
+        const wholeOwner = wholeRequestRules[0];
+        if (wholeOwner?.wholeRequest) {
+          const admittedOwners = routes.filter(
+            ({ rule }) => rule === wholeOwner,
+          );
+          if (admittedOwners.length === 0) return unavailablePatch(wholeOwner);
+          return {
+            requiresTool: true,
+            replaceIntentScope: {
+              intents: [text],
+              invalidateFields: wholeOwner.wholeRequest.invalidateFields,
+              owner: wholeOwner,
+            },
+            setContexts: mergeAgentContexts(wholeOwner.contexts),
+            clearCandidateActions: true,
+            addCandidateActions: uniqueActionNames(
+              admittedOwners.map(({ action }) => action.name),
+            ),
+            clearParentActionHints: true,
+            clearReply: true,
+            debug: [
+              `reconciled whole current request through admitted route: ${wholeOwner.id}`,
+            ],
+          };
+        }
         if (routes.length === 0) {
           const unavailableRule =
             [...authoritativeRules].find((rule) => rule.unavailable) ??
@@ -485,10 +519,9 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
       // A simple-path turn runs NO tools, so a reply asserting a completed
       // scheduling/save side effect is fabricated by construction. Reroute the
       // turn to the planner so a real action performs the work and the
-      // confirmation the user reads is grounded in a tool result. Candidate
-      // hints come from the plugin-registered backstop rules (matched against
-      // the fabricated claim's own vocabulary), so core stays free of
-      // plugin-specific action names.
+      // confirmation the user reads is grounded in a tool result. Recover
+      // candidates from the original request through ordinary action retrieval.
+      // A backstop protection list or fabricated reply does not select work.
       name: "core.simple_completed_side_effect_claim",
       description:
         "Blocks simple-path replies that claim an already-completed scheduling/save side effect no tool performed; reroutes the turn to the planner.",
@@ -517,18 +550,29 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
           replyClaimsCompletedSideEffect(reply)
         );
       },
-      evaluate: ({ messageHandler, runtime }) => {
-        const reply =
-          typeof messageHandler.plan.reply === "string"
-            ? messageHandler.plan.reply
-            : "";
-        const candidateActions = [
-          ...new Set(
-            getCandidateActionBackstopRules(runtime)
-              .filter((rule) => rule.matches(reply))
-              .flatMap((rule) => [...rule.actionNames]),
-          ),
-        ];
+      evaluate: ({ message, messageHandler, runtime, state }) => {
+        const query =
+          resolveContinuationInferenceMessageText(runtime, message, state) ??
+          getActionInferenceMessageText(message);
+        const inferred = inferDirectCurrentRequestCandidateInference(
+          runtime.actions ?? [],
+          query,
+        );
+        const retrieved = query.trim()
+          ? retrieveContextualPlannerActions({
+              actions: runtime.actions ?? [],
+              query,
+              intents: messageHandler.plan.intents,
+            }).actions.map((action) => action.name)
+          : [];
+        // Loose description overlap is discovery evidence, not an exact hint.
+        // Keep unresolved requests on the planner's normal discovery path.
+        const candidateActions = uniqueActionNames([
+          ...inferred.names,
+          ...(preferredOperationNames(query, retrieved).size > 0
+            ? retrieved
+            : []),
+        ]);
         return {
           requiresTool: true,
           addContexts: ["general"],

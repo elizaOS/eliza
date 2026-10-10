@@ -16,7 +16,9 @@ import type {
 import { logger } from "../../utils/logger";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox";
 import { coordinatorFetch, deadlineBoundCoordinatorStub } from "./coordinator-fetch";
+import type { NetworkSharedTurnObservation } from "./network-shared-context";
 import type { PersonalSharedFallbackAccountState } from "./personal-fallback-account-state";
+import { personalSharedAgentId } from "./personal-shared-identity";
 import type { SharedRuntimeChannel, SharedTurnMessage } from "./run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
@@ -48,6 +50,10 @@ export interface SharedConversationCoordinatorOptions {
   channel?: SharedRuntimeChannel;
   /** Server-resolved Dedicated fallback account state (#25146); never from RPC params. */
   trustedAccountState?: PersonalSharedFallbackAccountState;
+  /** Server-resolved per-turn Network context; never populated from RPC params. */
+  trustedNetworkContext?: NetworkSharedTurnObservation;
+  /** Authenticated Network service admission, carried outside caller RPC params. */
+  trustedNetworkTurn?: unknown;
 }
 
 export interface SharedConversationHistoryCoordinatorOptions {
@@ -129,6 +135,8 @@ export async function coordinateSharedPushDispatch(
 }
 
 export interface SharedCutoverSeal {
+  /** Exact fallback interval whose database revision fences recovery. */
+  fallback?: { id: string; generation: number; revision: number; roomId: string };
   token: string;
   leaseMs: number;
   organizationId: string;
@@ -217,15 +225,42 @@ export async function coordinateSharedLifecycleEvent(
   await response.arrayBuffer();
 }
 
-/**
- * One normalization for the Durable Object instance name. Turn dispatch and
- * history reads MUST agree — a whitespace/empty variant addressing a second
- * object would migrate the same Postgres row twice and serve a frozen copy.
- * The authenticated caller may select a logical room, but this normalization
- * is the server-owned boundary used by both Durable Object addressing and the
- * hashed runtime channel identity. A caller-provided storage uuid is never
- * accepted as the memory scope.
- */
+export interface SharedNetworkDelivery {
+  project: "network";
+  app?: "ntwrk" | "slop" | "peon" | "friends";
+  userId: string;
+  organizationId: string;
+  phoneNumber: string;
+  platform: "blooio" | "twilio";
+  idempotencyKey: string;
+  text: string;
+  handled?: { messageId: string; replyIds: string[] };
+  inbound?: { id: string; text: string; createdAt: number };
+  compliance?: { command: "stop" | "help" | "start"; messageId: string };
+}
+
+/** The canonical room owns admission, the durable send intent, receipt and transcript. */
+export async function coordinateNetworkDelivery(
+  delivery: SharedNetworkDelivery,
+  options: SharedConversationHistoryCoordinatorOptions & { reconcileOnly?: true },
+): Promise<Response> {
+  const agentId = personalSharedAgentId(delivery);
+  return await coordinatorStub(requireHistoryCoordinator(options), agentId, agentId).fetch(
+    "https://shared-runtime.internal/network-delivery",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        operation: "network-delivery",
+        ...(options.reconcileOnly ? { reconcileOnly: true } : {}),
+        agentId,
+        roomId: agentId,
+        delivery,
+      }),
+    },
+  );
+}
+
 function coordinatorRoom(roomId?: unknown, userId?: unknown): string {
   return normalizeSharedRuntimeRoom(roomId, userId);
 }
@@ -280,6 +315,7 @@ async function requireCoordinatorResponse(response: Response, surface: string): 
     error?: unknown;
     failureName?: unknown;
     retryable?: unknown;
+    failureDiagnostic?: unknown;
   } | null = null;
   try {
     const parsed: unknown = await response.clone().json();
@@ -295,7 +331,11 @@ async function requireCoordinatorResponse(response: Response, surface: string): 
     body?.code === "shared_runtime_turn_failed" &&
     (response.status === 500 || response.status === 503)
   ) {
-    const turnError = SharedRuntimeTurnError.fromClassification(body.failureName, body.retryable);
+    const turnError = SharedRuntimeTurnError.fromClassification(
+      body.failureName,
+      body.retryable,
+      body.failureDiagnostic,
+    );
     const statusMatchesDisposition =
       (response.status === 503 && turnError.retryable) ||
       (response.status === 500 && !turnError.retryable);
@@ -373,6 +413,12 @@ export async function coordinateSharedBridge(
         ...(options.trustedAccountState
           ? { trustedAccountState: options.trustedAccountState }
           : {}),
+        ...(options.trustedNetworkTurn !== undefined
+          ? { trustedNetworkTurn: options.trustedNetworkTurn }
+          : {}),
+        ...(options.trustedNetworkContext
+          ? { trustedNetworkContext: options.trustedNetworkContext }
+          : {}),
       }),
       ...(options.abortSignal ? { signal: options.abortSignal } : {}),
     },
@@ -409,6 +455,12 @@ export async function coordinateSharedStream(
         ...(options.channel ? { channel: options.channel } : {}),
         ...(options.trustedAccountState
           ? { trustedAccountState: options.trustedAccountState }
+          : {}),
+        ...(options.trustedNetworkTurn !== undefined
+          ? { trustedNetworkTurn: options.trustedNetworkTurn }
+          : {}),
+        ...(options.trustedNetworkContext
+          ? { trustedNetworkContext: options.trustedNetworkContext }
           : {}),
       }),
       ...(options.abortSignal ? { signal: options.abortSignal } : {}),
@@ -517,6 +569,7 @@ export async function coordinateSharedCutoverSeal(
         organizationId: seal.organizationId,
         userId: seal.userId,
         dedicatedAgentId: seal.dedicatedAgentId,
+        ...(seal.fallback ? { fallback: seal.fallback } : {}),
       }),
     },
   );

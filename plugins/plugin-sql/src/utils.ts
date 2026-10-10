@@ -70,6 +70,8 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
 }
 
 export {
+  assertJsonbStorable,
+  isUnsupportedJsonTextError,
   MAX_SQL_JSON_SANITIZE_BIGINT_DIGITS,
   MAX_SQL_JSON_SANITIZE_BYTES,
   MAX_SQL_JSON_SANITIZE_DEPTH,

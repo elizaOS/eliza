@@ -1,3 +1,5 @@
+import { isSharedGoogleContextRequest } from "./shared-google-context-plugin";
+import { type OwnerModelCapture, observeOwnerCapture } from "./shared-owner-model-capture";
 /**
  * Shared runtime — runs a single agent turn container-free.
  *
@@ -29,6 +31,8 @@ import {
   stableStringify,
   type UUID,
 } from "@elizaos/core";
+import type { NetworkRouting, NetworkStore } from "@elizaos/plugin-network";
+import { isNetworkStateIntent } from "@elizaos/plugin-network";
 import {
   isSharedGroupReminderDelivery,
   type ScheduledTaskRunner,
@@ -57,11 +61,17 @@ import {
   type SharedCapabilityResolution,
   type SharedCapabilityWall,
 } from "./shared-capability-wall";
+import {
+  isCurrentWeatherObservationRequest,
+  parseExplicitUsWeatherQuery,
+  runCurrentUsWeatherSearch,
+} from "./shared-current-weather";
 import type { SharedMemoryStore } from "./shared-memory-store";
 import {
   finalizeSharedRealtimeReply,
   hasSharedRealtimeIntent,
   requireTraceableRealtimeSearch,
+  resolveSharedPublicSearchIntent,
   resolveSharedRealtimeRequirement,
   sharedRealtimePromptPolicy,
 } from "./shared-realtime-grounding";
@@ -133,6 +143,8 @@ export interface SharedMediaGenerationPort {
 }
 
 export interface RunSharedAgentTurnInput {
+  /** Server-admitted private capture capability; never populated from RPC params. */
+  ownerCapture?: OwnerModelCapture;
   character: SharedAgentCharacter;
   /** Prior conversation (oldest first). The new user message is NOT included. */
   history: SharedTurnMessage[];
@@ -184,6 +196,10 @@ export interface RunSharedAgentTurnInput {
      * must never populate this grant.
      */
     authenticatedPersonalSharedUser?: true;
+    /** Verified owner profile preference; server execution only, never RPC params. */
+    participantName?: string;
+    /** Server-bound owner Google factory; never accepted from JSON RPC params. */
+    google?: () => Promise<import("./shared-google-context-plugin").SharedGoogleContextPort>;
     todos?: {
       scope: { agentId: UUID; entityId: UUID };
       store: TodoStore;
@@ -197,6 +213,16 @@ export interface RunSharedAgentTurnInput {
     };
     /** Present only when the server has a configured, billable Cloud image authority. */
     media?: SharedMediaGenerationPort;
+    /**
+     * SPIKE (The Network): server-resolved Network member authority and store.
+     * Present only for turns the host resolved to project "network".
+     */
+    network?: {
+      memberId: string;
+      store: NetworkStore;
+      /** Routing design; defaults to NETWORK_DEFAULT_ROUTING. */
+      routing?: NetworkRouting;
+    };
   };
 }
 
@@ -341,7 +367,21 @@ export function resolveSharedAgentTurnModel(preferred?: string): string | null {
  * from `@elizaos/core`'s prompt builder; the Shared runtime receives the
  * already-projected edge character, so this is the renderer on this side.
  */
-type RequiredSharedAction = "REMINDERS" | "TODO" | "GENERATE_MEDIA";
+/**
+ * Default routing design for Network availability changes when
+ * `execution.network.routing` is not set: "structured" (design B, one
+ * Stage-1 call proposes SET_STATE and deterministic code executes it) or
+ * "planner" (design A, Stage 1 routes to `network` and SET_STATE is a
+ * must-call). See RESULTS.md "Routing design comparison" for the measurements.
+ */
+export const NETWORK_DEFAULT_ROUTING: NetworkRouting = "structured";
+
+type RequiredSharedAction =
+  | "REMINDERS"
+  | "TODO"
+  | "GENERATE_MEDIA"
+  | "GOOGLE_CONTEXT"
+  | "SET_STATE";
 
 function buildSharedRuntimeSystem(
   character: SharedAgentCharacter,
@@ -378,7 +418,11 @@ function buildSharedRuntimeSystem(
         ? "reminder"
         : requiredAction === "TODO"
           ? "todo"
-          : "image or video generation";
+          : requiredAction === "GOOGLE_CONTEXT"
+            ? "private Google context"
+            : requiredAction === "SET_STATE"
+              ? "Network availability (pause, busy, traveling, or resume intros)"
+              : "image or video generation";
     const ungroundedClaim =
       requiredAction === "GENERATE_MEDIA"
         ? "A plain-text claim that generation was attempted, unavailable, or failed is not an execution result."
@@ -431,6 +475,19 @@ function requiredActionForTurn(
   const capabilityAction = requiredActionForResolution(resolution);
   if (capabilityAction) return capabilityAction;
   const intentText = input.capabilityText ?? input.message;
+  if (actionsEnabled && input.execution?.google && isSharedGoogleContextRequest(intentText)) {
+    return "GOOGLE_CONTEXT";
+  }
+  // Design A (The Network): a detected availability change must be executed
+  // by SET_STATE, exactly like an executable reminder or todo request.
+  if (
+    actionsEnabled &&
+    input.execution?.network &&
+    (input.execution.network.routing ?? NETWORK_DEFAULT_ROUTING) === "planner" &&
+    isNetworkStateIntent(intentText)
+  ) {
+    return "SET_STATE";
+  }
   if (
     actionsEnabled &&
     input.execution?.authenticatedPersonalSharedUser === true &&
@@ -615,7 +672,12 @@ export function appendSharedTurn(
   const sentAt = Date.now();
   return [
     ...history,
-    { id: messageIds?.user, role: messageRole, content: userMessage, createdAt: sentAt },
+    {
+      id: messageIds?.user,
+      role: messageRole,
+      content: userMessage,
+      createdAt: sentAt,
+    },
     {
       id: messageIds?.assistant,
       role: "assistant",
@@ -1046,7 +1108,7 @@ function isContextualReminderFollowup(input: RunSharedAgentTurnInput): boolean {
 
 function capabilityResolution(
   input: RunSharedAgentTurnInput,
-  capabilities: { reminders: boolean; todos: boolean },
+  capabilities: { reminders: boolean; todos: boolean; googleContext?: boolean },
   explicit: SharedCapabilityResolution | null,
 ): SharedCapabilityResolution | null {
   if (!isContextualReminderFollowup(input)) return explicit;
@@ -1098,7 +1160,9 @@ export async function runSharedAgentTurn(
   input: RunSharedAgentTurnInput,
 ): Promise<RunSharedAgentTurnResult> {
   const message = input.message.trim();
-  const publicSearchText = input.capabilityText?.trim();
+  const publicSearchText = isSharedGoogleContextRequest(input.capabilityText ?? input.message)
+    ? undefined
+    : input.capabilityText?.trim();
 
   const actionsEnabled = input.messageRole !== "system";
   const remindersEnabled = actionsEnabled && Boolean(input.execution?.reminders);
@@ -1106,6 +1170,7 @@ export async function runSharedAgentTurn(
   const capabilities = {
     reminders: remindersEnabled,
     todos: todosEnabled,
+    googleContext: actionsEnabled && Boolean(input.execution?.google),
   };
   const reminderIntentText = input.capabilityText ?? input.message;
   const explicitResolution = resolveSharedCapabilityIntent(reminderIntentText, capabilities);
@@ -1169,6 +1234,11 @@ export async function runSharedAgentTurn(
     actionsEnabled && publicSearchText
       ? resolveSharedRealtimeRequirement(publicSearchText, input.history)
       : undefined;
+  const publicSearchIntent = realtimeRequirement
+    ? { kind: "prefetched" as const, requirement: realtimeRequirement }
+    : actionsEnabled && publicSearchText && !resolution
+      ? resolveSharedPublicSearchIntent(publicSearchText, input.history)
+      : undefined;
   const trustedRealtimeIntent =
     actionsEnabled && publicSearchText
       ? hasSharedRealtimeIntent(publicSearchText, input.history)
@@ -1180,8 +1250,19 @@ export async function runSharedAgentTurn(
   if (realtimeRequirement) {
     let searchResult: ActionResult;
     try {
-      searchResult = await runWebSearchEdge(realtimeRequirement.query);
+      searchResult =
+        realtimeRequirement.domain === "weather" &&
+        parseExplicitUsWeatherQuery(realtimeRequirement.query)
+          ? await runCurrentUsWeatherSearch(realtimeRequirement.query, {
+              signal: input.abortSignal,
+              observationOnly: isCurrentWeatherObservationRequest(publicSearchText ?? message),
+            })
+          : await runWebSearchEdge(realtimeRequirement.query, {
+              signal: input.abortSignal,
+            });
+      input.abortSignal?.throwIfAborted();
     } catch (error) {
+      input.abortSignal?.throwIfAborted();
       // error-policy:J4 current-data lookup failures become an explicit,
       // visibly unavailable receipt; the model never receives fake success.
       logger.warn("[runSharedAgentTurn] current public-data preflight failed", {
@@ -1199,7 +1280,19 @@ export async function runSharedAgentTurn(
         },
       };
     }
-    const traceableResult = requireTraceableRealtimeSearch(searchResult, realtimeRequirement.query);
+    const traceableResult = requireTraceableRealtimeSearch(
+      searchResult,
+      realtimeRequirement.query,
+      Date.now(),
+      realtimeRequirement.domain,
+    );
+    observeOwnerCapture(input.ownerCapture, (capture) =>
+      capture.observe("preflight", {
+        query: realtimeRequirement.query,
+        domain: realtimeRequirement.domain,
+        result: traceableResult,
+      }),
+    );
     realtimeActionResults = [traceableResult];
     realtimeGrounding = sharedPublicWebGrounding(realtimeActionResults);
   }
@@ -1216,9 +1309,11 @@ export async function runSharedAgentTurn(
           system: buildSharedRuntimeSystem(
             input.character,
             {
-              webSearch: Boolean(realtimeRequirement),
+              webSearch: Boolean(publicSearchIntent),
               reminders: remindersEnabled,
               todos: todosEnabled,
+              googleContext:
+                actionsEnabled && !publicSearchIntent && Boolean(input.execution?.google),
               media:
                 actionsEnabled &&
                 execution.authenticatedPersonalSharedUser === true &&
@@ -1253,7 +1348,10 @@ export async function runSharedAgentTurn(
       const runtimeActionResults = (turn.actionResults ?? []).filter(
         (result) => !isWebSearchActionResult(result),
       );
-      turn = { ...turn, actionResults: [...realtimeActionResults, ...runtimeActionResults] };
+      turn = {
+        ...turn,
+        actionResults: [...realtimeActionResults, ...runtimeActionResults],
+      };
     }
     if (
       requiredAction &&
@@ -1275,8 +1373,20 @@ export async function runSharedAgentTurn(
       error,
     );
   }
-  if (realtimeRequirement) {
-    const groundedReply = finalizeSharedRealtimeReply(turn.reply, realtimeGrounding);
+  if (publicSearchIntent) {
+    realtimeGrounding ??= sharedPublicWebGrounding(turn.actionResults ?? []);
+    const groundedReply = finalizeSharedRealtimeReply(
+      turn.reply,
+      realtimeGrounding,
+      (diagnostic) => {
+        logger.audit("[shared-realtime] claim binding refused", {
+          ...(input.traceId && /^[0-9a-f]{32}$/.test(input.traceId)
+            ? { traceId: input.traceId }
+            : {}),
+          ...diagnostic,
+        });
+      },
+    );
     const history = [...turn.history];
     let replaced = false;
     for (let index = history.length - 1; index >= 0; index -= 1) {
@@ -1317,7 +1427,10 @@ export async function runSharedAgentTurn(
     const history = [...turn.history];
     const assistantIndex = history.findLastIndex((entry) => entry.role === "assistant");
     if (assistantIndex >= 0) {
-      history[assistantIndex] = { ...history[assistantIndex], content: groundedReply };
+      history[assistantIndex] = {
+        ...history[assistantIndex],
+        content: groundedReply,
+      };
     } else {
       history.push({
         id: input.messageIds?.assistant,
@@ -1346,7 +1459,9 @@ export async function runSharedAgentTurnStream(
   input: RunSharedAgentTurnStreamInput,
 ): Promise<RunSharedAgentTurnStreamResult> {
   const message = input.message.trim();
-  const publicSearchText = input.capabilityText?.trim();
+  const publicSearchText = isSharedGoogleContextRequest(input.capabilityText ?? input.message)
+    ? undefined
+    : input.capabilityText?.trim();
 
   const actionsEnabled = input.messageRole !== "system";
   const remindersEnabled = actionsEnabled && Boolean(input.execution?.reminders);
@@ -1354,6 +1469,7 @@ export async function runSharedAgentTurnStream(
   const capabilities = {
     reminders: remindersEnabled,
     todos: todosEnabled,
+    googleContext: actionsEnabled && Boolean(input.execution?.google),
   };
   const reminderIntentText = input.capabilityText ?? input.message;
   const explicitResolution = resolveSharedCapabilityIntent(reminderIntentText, capabilities);
@@ -1413,7 +1529,9 @@ export async function runSharedAgentTurnStream(
   if (
     requiredAction ||
     (actionsEnabled &&
-      ((publicSearchText && hasSharedRealtimeIntent(publicSearchText, input.history)) ||
+      ((publicSearchText &&
+        (resolveSharedPublicSearchIntent(publicSearchText, input.history) ||
+          hasSharedRealtimeIntent(publicSearchText, input.history))) ||
         (!publicSearchText && hasSharedRealtimeIntent(message, input.history))))
   ) {
     const turn = await runSharedAgentTurn(input);
@@ -1460,6 +1578,7 @@ export async function runSharedAgentTurnStream(
             webSearch: false,
             reminders: remindersEnabled,
             todos: todosEnabled,
+            googleContext: actionsEnabled && Boolean(input.execution?.google),
             media:
               actionsEnabled &&
               execution.authenticatedPersonalSharedUser === true &&

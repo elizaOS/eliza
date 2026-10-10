@@ -63,6 +63,7 @@ test("host rechecks task and account after asynchronous connector resolution", a
       },
     },
   });
+  assert.equal(host.reconcileTask, undefined);
   const actuator = host.actuatorFactory({ owner, getTask: () => task });
   host.workflowFactory({ runtime, task });
   const context = {
@@ -176,4 +177,114 @@ test("bill discovery is bound to current task epoch and Google account scope", a
   assert.equal(reads, before);
   host.close();
   await assert.rejects(host.discoverBills(args));
+});
+
+test("readback binds one saved selection, fences account changes and clears its temporary context", async () => {
+  let account = "owner",
+    reads = 0,
+    pending = false,
+    release;
+  class Actuator {
+    constructor(options) {
+      this.options = options;
+    }
+    async quiesce() {}
+  }
+  const owner = {
+    actorId: "owner",
+    agentId: "agent",
+    connector: { source: "app", accountId: "owner" },
+  };
+  const proposal = { id: "selection", taskId: "task" };
+  const task = {
+    id: "task",
+    owner,
+    revision: 3,
+    operations: [{ proposal, status: "unknown" }],
+    allowedOrigins: ["https://biller.example"],
+  };
+  const record = { operationId: proposal.id };
+  const host = createBillHelperHost({
+    deriveBillDecision,
+    controls,
+    runtimeModule: { NativeTaskActuator: Actuator },
+    target: {
+      bindTask() {},
+      execute() {
+        throw Error("Readback must not dispatch");
+      },
+      guideTask() {},
+    },
+    credentialGate: async () => account,
+    authorizeGoal: async () => ({}),
+    billForTask: () => ({ sourceRef: "mail:bill" }),
+    policyForTask: () => ({}),
+    verify: async () => {},
+    recordEvidence: async () => {},
+    reconcileMethod: async (input) => {
+      reads++;
+      assert.deepEqual(input.record, record);
+      assert.equal(input.bill.sourceRef, "mail:bill");
+      if (pending)
+        await new Promise((resolve) => {
+          release = resolve;
+        });
+      return { status: "succeeded", evidenceRef: "readback" };
+    },
+  });
+  const actuator = host.actuatorFactory({ owner, getTask: () => task });
+  const runtime = {
+    owner,
+    reconcile: async (id, revision, operationId, isCurrent) => {
+      assert.equal(id, task.id);
+      assert.equal(revision, 3);
+      assert.equal(operationId, proposal.id);
+      assert.equal(await isCurrent(), true);
+      return actuator.options.reconcile(task, proposal, {});
+    },
+  };
+  const input = {
+    runtime,
+    task,
+    outcomes: {
+      loadMethodSelection: (id) => {
+        assert.equal(id, proposal.id);
+        return record;
+      },
+    },
+    stillAuthorized: () => true,
+  };
+  await assert.rejects(
+    actuator.options.reconcile(task, proposal, {}),
+    /Unbound bill recovery/,
+  );
+  assert.equal((await host.reconcileTask(input)).status, "succeeded");
+  assert.equal(reads, 1);
+  await assert.rejects(
+    actuator.options.reconcile(task, proposal, {}),
+    /Unbound bill recovery/,
+  );
+  await assert.rejects(
+    host.reconcileTask({ ...input, task: { ...task, operations: [] } }),
+    /single unknown/,
+  );
+  await assert.rejects(
+    host.reconcileTask({
+      ...input,
+      task: { ...task, operations: [...task.operations, ...task.operations] },
+    }),
+    /single unknown/,
+  );
+  pending = true;
+  const inFlight = host.reconcileTask(input);
+  while (!release) await new Promise((resolve) => setImmediate(resolve));
+  await assert.rejects(host.reconcileTask(input), /recovery unavailable/);
+  account = "other";
+  release();
+  await assert.rejects(inFlight, /account unavailable/);
+  account = "owner";
+  pending = false;
+  assert.equal((await host.reconcileTask(input)).status, "succeeded");
+  host.close();
+  await assert.rejects(host.reconcileTask(input), /account unavailable/);
 });

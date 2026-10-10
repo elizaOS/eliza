@@ -4,6 +4,7 @@
  * geometry and scrolling rather than stylesheet source assertions.
  */
 
+import { Buffer } from "node:buffer";
 import { expect, type Page, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
@@ -114,6 +115,103 @@ test("database view loads tables and runs a SQL query", async ({ page }) => {
   await expect.poll(queryReqs).toBeGreaterThan(before);
 });
 
+test("media gallery includes media after the first database page", async ({
+  page,
+}, testInfo) => {
+  const requestedOffsets: number[] = [];
+  let failLaterPage = true;
+  await page.unroute("**/api/database/tables");
+  await page.route("**/api/database/tables", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        tables: [{ name: "memories", rowCount: 501 }],
+      }),
+    });
+  });
+  await page.route("**/api/database/tables/memories/rows?*", async (route) => {
+    const url = new URL(route.request().url());
+    const offset = Number(url.searchParams.get("offset") ?? "0");
+    const limit = Number(url.searchParams.get("limit") ?? "50");
+    requestedOffsets.push(offset);
+    if (offset > 0 && failLaterPage) {
+      failLaterPage = false;
+      await route.fulfill({
+        status: 503,
+        json: { error: "Later media page unavailable" },
+      });
+      return;
+    }
+    const rows =
+      offset === 0
+        ? Array.from({ length: 500 }, (_, index) => ({
+            content: `plain text ${index}`,
+          }))
+        : [
+            {
+              content: "https://example.test/after-first-page.png",
+              createdAt: "2026-10-06",
+            },
+          ];
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        table: "memories",
+        rows,
+        columns: ["content", "createdAt"],
+        total: 501,
+        offset,
+        limit,
+      }),
+    });
+  });
+  await page.route(
+    "https://example.test/after-first-page.png",
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "image/png",
+        body: Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+          "base64",
+        ),
+      });
+    },
+  );
+
+  await openAppPath(page, "/apps/database");
+  await page.getByRole("tab", { name: "Media" }).click();
+
+  await expect(page.getByRole("alert")).toContainText(
+    "Some media could not be loaded",
+  );
+  await page.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "after-first-page.png" }),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect(requestedOffsets).toEqual([0, 500, 0, 500]);
+  await testInfo.attach("media-pagination-desktop", {
+    body: await page.screenshot({ fullPage: false }),
+    contentType: "image/png",
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(
+    page.getByRole("heading", { name: "after-first-page.png" }),
+  ).toBeVisible();
+  const pageOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - window.innerWidth,
+  );
+  expect(pageOverflow).toBeLessThanOrEqual(2);
+  await testInfo.attach("media-pagination-mobile", {
+    body: await page.screenshot({ fullPage: false }),
+    contentType: "image/png",
+  });
+});
+
 test("skills view shows empty state and New Skill opens the create form", async ({
   page,
 }) => {
@@ -222,6 +320,63 @@ test("stream view renders the offline status surface", async ({ page }) => {
   await openAppPath(page, "/stream");
   await expect(page.locator("[data-stream-view]").first()).toBeVisible({
     timeout: 60_000,
+  });
+});
+
+test("stream view keeps a failed Go Live request visible and retryable", async ({
+  page,
+}, testInfo) => {
+  const statuses: number[] = [];
+  page.on("response", (response) => {
+    if (new URL(response.url()).pathname === "/api/stream/live") {
+      statuses.push(response.status());
+    }
+  });
+  await page.route("**/api/stream/live", async (route) => {
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "Encoder unavailable" }),
+    });
+  });
+
+  await openAppPath(page, "/stream");
+  const goLive = page.getByRole("button", { name: "Go Live" });
+  await expect(goLive).toBeVisible({ timeout: 60_000 });
+  await goLive.click();
+
+  await expect(page.getByRole("alert")).toContainText("Encoder unavailable");
+  await expect(goLive).toBeEnabled();
+  await expect.poll(() => statuses).toEqual([503]);
+
+  const desktopScreenshotPath = testInfo.outputPath(
+    "stream-action-error-desktop.jpg",
+  );
+  await page.screenshot({
+    path: desktopScreenshotPath,
+    type: "jpeg",
+    quality: 85,
+    fullPage: true,
+  });
+  await testInfo.attach("stream-action-error-desktop.jpg", {
+    path: desktopScreenshotPath,
+    contentType: "image/jpeg",
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("alert")).toBeVisible();
+  const mobileScreenshotPath = testInfo.outputPath(
+    "stream-action-error-mobile.jpg",
+  );
+  await page.screenshot({
+    path: mobileScreenshotPath,
+    type: "jpeg",
+    quality: 85,
+    fullPage: true,
+  });
+  await testInfo.attach("stream-action-error-mobile.jpg", {
+    path: mobileScreenshotPath,
+    contentType: "image/jpeg",
   });
 });
 

@@ -8,6 +8,7 @@
  * paths. Errors from the VFS and git services map to route status codes via
  * `sendVfsError`.
  */
+
 import crypto from "node:crypto";
 import {
   CLOUD_CONTAINER_SERVICE_TYPE,
@@ -23,12 +24,11 @@ import {
   type PromoteVfsToCloudContainerRequest,
   PutWorkbenchVfsFileRequestSchema,
 } from "@elizaos/contracts";
+import type { AgentRuntime } from "@elizaos/core";
 import {
-  type AgentRuntime,
   buildStoreVariantBlockedMessage,
   isLocalCodeExecutionAllowed,
-} from "@elizaos/core";
-
+} from "@elizaos/host";
 import {
   getLoadedVfsPluginViews,
   loadPluginFromVfs,

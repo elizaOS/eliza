@@ -358,3 +358,209 @@ test("concurrent same-account reads and planner access remain authorized", async
   release("account");
   assert.equal((await older).status, 200);
 });
+
+async function actuatorFixture(t, { leaseMs = 60000 } = {}) {
+  const directory = await mkdtemp(join(tmpdir(), "eliza-native-refusal-"));
+  const bundlePath = join(directory, "task-runtime.mjs");
+  buildTaskRuntime(bundlePath);
+  const { NativeTaskActuator } = await import(
+    (await import("node:url")).pathToFileURL(bundlePath).href
+  );
+  const state = { refusal: null, effects: 0, bindings: [] };
+  let sequence = 0;
+  const target = {
+    guideTask: async () => ({ visible: false }),
+    bindTask: async (binding) => {
+      state.bindings.push(binding);
+      return {
+        bound: true,
+        tabId: binding.tabId,
+        taskId: binding.taskId,
+        epoch: binding.epoch,
+        bindingRevision: binding.bindingRevision,
+      };
+    },
+    execute: async (command, options) => {
+      if (command.subaction !== "snapshot") {
+        if (state.refusal)
+          throw Object.assign(new Error("refused"), { kind: state.refusal });
+        state.effects++;
+        state.options = options;
+      }
+      const snapshotId = `00000000-0000-0000-0000-${String(++sequence).padStart(12, "0")}`;
+      return {
+        value: {
+          result:
+            command.subaction === "snapshot"
+              ? {
+                  snapshotId,
+                  frames: [
+                    {
+                      frameId: 0,
+                      documentId: "document",
+                      url: "https://example.org",
+                      complete: true,
+                      inputRevision: 0,
+                      elements: [{ selector: `${snapshotId}:0:0` }],
+                      ...(state.violation && state.effects
+                        ? { effectViolation: state.violation }
+                        : {}),
+                    },
+                  ],
+                }
+              : { dispatched: true },
+        },
+      };
+    },
+  };
+  let revision = 0;
+  const gateway = await createTaskGateway({
+    bundlePath,
+    databasePath: join(directory, "journal.sqlite"),
+    credentialGate: async () => "account",
+    authorizeGoal: async (goalRef) => ({
+      id: "task",
+      goalRef,
+      authorization: {
+        decisionId: "grant",
+        policyRevision: "policy",
+        state: "active",
+        decidedAt: new Date().toISOString(),
+        revokedAt: null,
+      },
+      allowedCapabilities: ["browser.click"],
+      allowedOrigins: ["https://example.org"],
+    }),
+    actuatorFactory: (host) =>
+      new NativeTaskActuator({
+        ...host,
+        target,
+        nextBindingRevision: () => ++revision,
+        policy: () => ({
+          tabId: "1",
+          origin: "https://example.org",
+          leaseMs,
+          targets: [{ selector: "#ordinary", action: "click" }],
+        }),
+        resolveValue: async () => {
+          throw new Error("No values used");
+        },
+        describeAction: () => {
+          state.beforeDispatch?.();
+          return undefined;
+        },
+        verify: async () => "succeeded",
+        recordEvidence: async () => "evidence:test",
+      }),
+  });
+  t.after(async () => {
+    await gateway.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  assert.equal(
+    (
+      await gateway.handle(
+        new Request("http://localhost/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: '{"goalRef":"bill"}',
+        }),
+      )
+    ).status,
+    201,
+  );
+  const runtime = await gateway.forCurrentOwner();
+  const click = async (id, extra = {}) => {
+    let current = runtime.current();
+    current = await runtime.observe(current.id, current.revision);
+    return runtime.execute(current.id, current.revision, {
+      ...extra,
+      id,
+      taskId: current.id,
+      epoch: current.epoch,
+      observationId: current.observation.id,
+      observationVersion: current.observation.version,
+      inputRevision: 0,
+      targetRef: `${current.observation.id}:0:0`,
+      capability: "browser.click",
+      authorizationId: "grant",
+      expiresAt: Date.now() + 10000,
+    });
+  };
+  return { state, runtime, click };
+}
+
+test("a browser refusal before the effect is a failed operation, not an unknown outcome", async (t) => {
+  const f = await actuatorFixture(t);
+  for (const kind of ["STALE_REF", "POLICY_BLOCKED"]) {
+    f.state.refusal = kind;
+    const task = await f.click(`refused-${kind}`);
+    const operation = task.operations.at(-1);
+    assert.equal(operation.status, "failed");
+    assert.equal(operation.evidenceRef, "not-dispatched");
+    // The task stays usable: it can observe and act again.
+    assert.equal(task.status, "active");
+  }
+  f.state.refusal = null;
+  assert.equal((await f.click("retry")).operations.at(-1).status, "succeeded");
+  assert.equal(f.state.effects, 1);
+  // A lost or uncertain reply is still unknown and blocks the task.
+  f.state.refusal = "UNCERTAIN_OUTCOME";
+  const uncertain = await f.click("uncertain");
+  assert.equal(uncertain.operations.at(-1).status, "unknown");
+  assert.equal(uncertain.status, "blocked");
+});
+
+test("observing after the browser lease expires renews it with a new binding revision", async (t) => {
+  const f = await actuatorFixture(t, { leaseMs: 300 });
+  let current = f.runtime.current();
+  current = await f.runtime.observe(current.id, current.revision);
+  // Within the lease, the binding is reused.
+  current = await f.runtime.observe(current.id, current.revision);
+  assert.equal(f.state.bindings.length, 1);
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  const renewedAt = Date.now();
+  current = await f.runtime.observe(current.id, current.revision);
+  assert.deepEqual(
+    f.state.bindings.map((binding) => binding.bindingRevision),
+    [1, 2],
+  );
+  assert.ok(f.state.bindings[1].expiresAt >= renewedAt + 300);
+  assert.equal(current.epoch, f.state.bindings[0].epoch);
+  assert.equal(
+    (await f.click("after-renewal")).operations.at(-1).status,
+    "succeeded",
+  );
+});
+
+test("a pause while preparing the action sentence prevents dispatch", async (t) => {
+  const f = await actuatorFixture(t);
+  f.state.beforeDispatch = () => {
+    const task = f.runtime.current();
+    f.runtime.control(task.id, task.revision, "pause");
+  };
+  const task = await f.click("paused-before-dispatch");
+  assert.equal(task.status, "paused");
+  assert.equal(f.state.effects, 0);
+});
+
+test("a host-chosen target must be a reviewed target, and a stopped page submit is an unknown outcome", async (t) => {
+  const f = await actuatorFixture(t);
+  const refused = await f.click("other-target", {
+    expectedSelector: "#unreviewed",
+  });
+  assert.equal(refused.operations.at(-1).status, "failed");
+  assert.equal(refused.operations.at(-1).evidenceRef, "not-dispatched");
+  assert.equal(f.state.effects, 0);
+  const sent = await f.click("reviewed-target", {
+    expectedSelector: "#ordinary",
+  });
+  assert.equal(sent.operations.at(-1).status, "succeeded");
+  assert.equal(f.state.options.expectedSelector, "#ordinary");
+  // The browser stopped a submit that the click set off. The page is not
+  // the reviewed page any more, so the result is not trusted.
+  f.state.violation = "submit";
+  const stopped = await f.click("set-off-submit");
+  assert.equal(stopped.operations.at(-1).status, "unknown");
+  assert.equal(stopped.status, "blocked");
+});

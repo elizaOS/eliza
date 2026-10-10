@@ -15,6 +15,7 @@ import {
   buildModelInputBudget,
   buildResponseGrammar,
   buildSpanSamplerPlan,
+  completionContextSources,
   computePrefixHashes,
   createHandleResponseTool,
   ElizaError,
@@ -66,6 +67,7 @@ import {
 } from "./dialogue-context.js";
 import { evaluatePlannedReplyEgress } from "./egress-policy.ts";
 import {
+  ALL_HISTORY_REFERENCE,
   canRepairHistoryIdentity,
   canRepairIncompleteHistorySelection,
   HISTORY_REFERENCE_PREFIX,
@@ -217,7 +219,7 @@ export async function generateStage1Decision(
       responseHandlerFieldContext,
       fieldSelection,
     );
-  const canonicalResponseHandlerSchema =
+  let canonicalResponseHandlerSchema =
     args.runtime.responseHandlerFieldRegistry.composeSchema(fieldSelection);
   const loadedContext = new Set<string>();
   const discoveryEnabled = progressiveContextChannel;
@@ -304,6 +306,7 @@ export async function generateStage1Decision(
   let repairHistoryIdentity = false;
   let repairHistorySourceIds: string[] | undefined;
   let nativeHistoryRead = false;
+  let restoredHistorySourceSetId: string | undefined;
   let sourceSelectionBinding: ReturnType<typeof createSourceSelectionBinding>;
   let sourceReplySnapshot: ReturnType<typeof createSourceReplySnapshot>;
   let sourceReplyRendering: SourceReplyRendering | undefined;
@@ -481,7 +484,7 @@ export async function generateStage1Decision(
     );
     // Only the registered native history contract supports request binding.
     sourceSelectionBinding =
-      (history || sourceReplySnapshot) &&
+      (history || restoredHistorySourceSetId || sourceReplySnapshot) &&
       !repairHistoryIdentity &&
       selectedResponseHandlerFields.includes(completionContextFieldEvaluator) &&
       selectedResponseHandlerFields.includes(contextRequestsFieldEvaluator) &&
@@ -933,7 +936,7 @@ export async function generateStage1Decision(
       invalidReadRepair = [
         "context_read_repair: The previous context read was invalid. Nothing from it was read, delivered or executed.",
         `Available provider reference IDs: ${JSON.stringify([...discovery.available].filter((name) => !name.startsWith(HISTORY_REFERENCE_PREFIX)))}.`,
-        "READ_CONTEXT reads only those advertised references or the advertised conversation-history syntax. Routing-context names, tools and filesystem paths are not provider references. For requested file/tool operations, use HANDLE_RESPONSE to select the appropriate available contexts and requested outcomes for the planner. Do not claim the capability is unavailable merely because it is not a readable context reference. Otherwise request only a needed authorized reference. Reconsider the original request and preserve its constraints; return one valid Stage-1 operation.",
+        "READ_CONTEXT reads only those advertised references or the advertised conversation-history syntax. Routing-context names, tools and filesystem paths are not provider references. For requested file/tool operations or current stored-record data unavailable from advertised providers, use HANDLE_RESPONSE to select the appropriate available contexts and requested outcomes for the planner. Do not use history:all as a fallback for an unknown routing-context or tool name; history does not establish current timestamps or state. Do not claim the capability is unavailable merely because it is not a readable context reference. Otherwise request only a needed authorized reference. Reconsider the original request and preserve its constraints; return one valid Stage-1 operation.",
       ].join("\n");
     }
     const historyRequested = invalidReadRepair
@@ -1137,6 +1140,44 @@ export async function generateStage1Decision(
         const read = loadHistoryReferences(context, history, historyRequested);
         history = read.projection;
         historyReadEvidence = read.evidence;
+        if (
+          nativeRead &&
+          nativeHistoryRead &&
+          historyRequested.includes(ALL_HISTORY_REFERENCE) &&
+          !read.projection &&
+          read.evidence
+        )
+          restoredHistorySourceSetId = read.evidence.sourceSetId;
+      }
+
+      // Only a successful native full read admits foreground review. A changed
+      // source set or role keeps the complete originals without this field.
+      const completionFieldIndex = selectedResponseHandlerFields.indexOf(
+        completionContextFieldEvaluator,
+      );
+      const restoredHistorySelection = Boolean(
+        restoredHistorySourceSetId &&
+          historyReadEvidence?.sourceSetId === restoredHistorySourceSetId &&
+          historyReadEvidence.scope.roles.length === 1 &&
+          historyReadEvidence.scope.roles[0] === refreshedRole &&
+          completionContextSources(context).sourceSetId ===
+            restoredHistorySourceSetId &&
+          args.runtime.responseHandlerFieldRegistry
+            .list()
+            .includes(completionContextFieldEvaluator),
+      );
+      // biome-ignore format: Compare the two boolean admission values explicitly.
+      if (restoredHistorySelection !== (completionFieldIndex >= 0)) {
+        if (restoredHistorySelection)
+          selectedResponseHandlerFields.push(completionContextFieldEvaluator);
+        else selectedResponseHandlerFields.splice(completionFieldIndex, 1);
+        fieldSelection.includeFieldNames = selectedResponseHandlerFields.map(
+          (field) => field.name,
+        );
+        canonicalResponseHandlerSchema =
+          args.runtime.responseHandlerFieldRegistry.composeSchema(
+            fieldSelection,
+          );
       }
 
       // Read progress follows fresh authorization and never enters final delivery.
@@ -1157,6 +1198,11 @@ export async function generateStage1Decision(
         if (
           progress.kind === "text" &&
           evaluatePlannedReplyEgress({
+            currentScope: {
+              agentId: args.runtime.agentId,
+              entityId: args.message.entityId,
+              id: args.message.id,
+            },
             pendingWork: true,
             providers: args.state.data.providers,
             request: getUserMessageText(args.message),
@@ -1241,6 +1287,7 @@ export async function generateStage1Decision(
           },
           fieldSelection,
         );
+      messageHandlerTools = createMessageHandlerTools();
       messageHandlerInput = renderMessageHandlerModelInput(
         args.runtime,
         discovery.context,
@@ -1254,6 +1301,7 @@ export async function generateStage1Decision(
           contextCatalog,
           history,
           historyReadEvidence,
+          completionContextSelection: sourceSelectionBinding !== undefined,
         },
       );
       const readContinuation = [
@@ -1288,18 +1336,19 @@ export async function generateStage1Decision(
       promptSegments: messageHandlerInput.promptSegments,
       conversationId: stage1ConversationId,
     });
-    // Full restoration returns to the ordinary selection contract. Keep the
-    // actual tool schema aligned with the newly rendered history policy.
-    // Reads and repairs refresh field admission before advertising native tools.
-    responseHandlerFieldPrompt =
-      await args.runtime.responseHandlerFieldRegistry.composePromptSlices(
-        {
-          ...responseHandlerFieldContext,
-          senderRole: senderRole as ResponseHandlerSenderRole,
-        },
-        fieldSelection,
-      );
-    messageHandlerTools = createMessageHandlerTools();
+    // Reads already bind the schema before rendering its labeled originals.
+    // Repairs keep those bodies and refresh the corresponding field schema.
+    if (decisionRepair) {
+      responseHandlerFieldPrompt =
+        await args.runtime.responseHandlerFieldRegistry.composePromptSlices(
+          {
+            ...responseHandlerFieldContext,
+            senderRole: senderRole as ResponseHandlerSenderRole,
+          },
+          fieldSelection,
+        );
+      messageHandlerTools = createMessageHandlerTools();
+    }
     responseGrammar = createResponseGrammar();
     stage1ModelParams = {
       ...stage1ModelParams,

@@ -3,6 +3,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { type Agent, type Entity, logger, type Memory, type UUID } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
+import { agentRecordedTime } from "../agent-recorded-time";
 import { BaseDrizzleAdapter } from "../base";
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "../schema/embedding";
 import type { PGliteClientManager, PgliteBoundedDataDirExport } from "./manager";
@@ -53,8 +54,8 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
         : agent.bio
           ? [agent.bio]
           : ["An AI agent"]) as string[],
-      createdAt: agent.createdAt || Date.now(),
-      updatedAt: agent.updatedAt || Date.now(),
+      createdAt: agentRecordedTime(agent.createdAt, Date.now()),
+      updatedAt: agentRecordedTime(agent.updatedAt, Date.now()),
     };
 
     await this.createAgent(newAgent);

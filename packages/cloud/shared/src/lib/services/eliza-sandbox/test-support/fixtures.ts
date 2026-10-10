@@ -1,4 +1,4 @@
-/** Provides explicit fixtures fixtures for deterministic sandbox orchestration tests. Importing this module installs no hooks, spies, or lifecycle simulation. */
+/** Provides explicit fixtures for deterministic sandbox orchestration tests. Importing this module installs no hooks, spies, or lifecycle simulation. */
 
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";

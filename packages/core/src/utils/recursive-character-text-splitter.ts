@@ -10,8 +10,9 @@
  * throws. Pieces that still exceed chunkSize are emitted and logged as a
  * warning.
  */
+
 import logger from "../logger";
-import { toWellFormedUnicode } from "./well-formed";
+import { toWellFormedUnicode } from "./unicode";
 
 /** Parameters for {@link RecursiveCharacterTextSplitter}. */
 export interface RecursiveCharacterTextSplitterParams {

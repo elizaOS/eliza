@@ -1370,6 +1370,9 @@ function formatOccurrenceDisambiguationLabel(
           day: "numeric",
           hour: "numeric",
           minute: "2-digit",
+          // The item's own zone: the host's zone (UTC on a cloud host) would
+          // show a 07:00 dose as 2:00 PM.
+          timeZone: explicitCadenceTimeZone(occurrence.timezone),
         }),
       );
     }
@@ -1826,7 +1829,9 @@ async function renderLifeActionReply(args: {
       "Never surface raw ISO timestamps unless the user used raw ISO timestamps.",
       "When confirming a saved reminder, use one short natural sentence with the saved message, timing, and notification destination. Use 'at' for an exact saved time, not 'around'; format that time in created.timezone without seconds or field labels. Do not invent a new reminder message.",
       "In ordinary reminder confirmations, describe in_app as 'here' or 'in this app' and sms as 'by text'; use ordinary names for other destinations. Do not add channel codes, internal IDs, definition/cadence labels, or storage/runtime/lifecycle status narration. Mention a real limitation only when it affects the owner's requested destination; never invent one.",
-      "Confirm only the saved reminder and channels in this reply's context. Never claim it was added to Apple Reminders or another native app unless created.nativeAppleReminderId is non-null. A saved notification plan does not mean a notification has already been delivered.",
+      "Confirm only the saved reminder and channels in this reply's context. Never claim it was added to Apple Reminders or another native app unless the saved created/updated record's nativeAppleReminderId is non-null. A saved notification plan does not mean a notification has already been delivered.",
+      "The in_app channel is this app's unified notification rail; it can also fan out OS notifications to registered devices through the host's configured push providers. nativeProjection=in_app_only excludes Apple Reminders record projection, not this app's Android or iOS notifications. Native record projection and Clock handoff capabilities do not establish push delivery availability.",
+      "A saved channel is not an observed push delivery status. Report an Android or iOS push limitation only from explicit platform delivery status or error evidence in the supplied context; unassessed readiness is unknown, not unavailable. Before a reminder is due, a missing delivery receipt is expected: confirm the saved schedule without adding a warning about unconfirmed push, asking the owner to check delivery, or treating the in_app rail as excluding Android notifications. Do not promise future OS delivery or infer its absence from in_app, nativeProjection, or a missing native record ID.",
       "If this is a preview, make clear it is not saved yet and the user can confirm or change it naturally.",
       "If this is reply-only, do not pretend you saved or changed anything.",
       // Live receipts behind the two rules below: a review turn reported
@@ -1835,6 +1840,7 @@ async function renderLifeActionReply(args: {
       // "don't know your favorite color" from this renderer even though the
       // assistant's own context knew it (the fact lives outside lifeops).
       "Ground every factual claim — counts, progress numbers, item names, schedules, states — in the structured context provided for THIS reply. Never carry numbers or outcomes in from the conversation that the records here do not show; if the records show nothing, say the records show nothing.",
+      "Compare requested reminder text against the persisted created or updated description and current effect record, not attempted tool arguments. Extraction can correct a proposed value before saving. An already matching saved field does not need another write.",
       "Answer only about the user's tracked items (todos, reminders, goals, routines, habits, alarms). If the user's message also asked about something outside these records — a personal fact, general knowledge, another tool — leave that part unaddressed rather than answering or denying it; the assistant covers it separately.",
     ],
   });
@@ -4871,13 +4877,6 @@ async function runLifeOperationHandlerInner(
         params.title && explicitCadenceDetail && detailString(details, "kind"),
       );
       const nativeCreatePlan = parseNativeTaskCreatePlan(params.createPlan);
-      const ownsSingleCreateRequest =
-        ownerSurfaceActionName === "OWNER_REMINDERS" &&
-        nativeCreatePlan?.mode === "create" &&
-        nativeCreatePlan.multiStep === false &&
-        !reuseDeferredDraft &&
-        validateUuid(currentMessageId) !== null &&
-        currentRequestIntents?.length === 1;
       const fallbackTitle = deferredDefinitionDraft?.request.title ?? null;
       let title: string | null = editingDeferredDefinitionDraft
         ? (params.title ?? fallbackTitle)
@@ -5369,11 +5368,16 @@ async function runLifeOperationHandlerInner(
               : deferredDefinitionDraft?.request.idempotencyKey,
           cadence: leadShaped.cadence,
           description:
-            explicitDescription ??
-            llmDescription ??
-            (editingDeferredDefinitionDraft
-              ? deferredDefinitionDraft.request.description
-              : undefined),
+            ownerSurfaceActionName === "OWNER_REMINDERS" &&
+            leadShaped.cadence.kind === "once" &&
+            typeof details?.description === "string" &&
+            details.description.trim().length > 0
+              ? details.description
+              : (explicitDescription ??
+                llmDescription ??
+                (editingDeferredDefinitionDraft
+                  ? deferredDefinitionDraft.request.description
+                  : undefined)),
           goalRef:
             detailString(details, "goalId") ??
             detailString(details, "goalTitle") ??
@@ -5616,10 +5620,14 @@ async function runLifeOperationHandlerInner(
         context: {
           created: {
             title: created.definition.title,
+            description: created.definition.description,
             cadence: created.definition.cadence,
             timezone: created.definition.timezone,
             notificationChannels:
               created.reminderPlan?.steps.map((step) => step.channel) ?? [],
+            nativeProjection:
+              detailString(created.definition.metadata, "nativeProjection") ??
+              null,
             nativeAppleReminderId:
               detailString(
                 detailObject(
@@ -5644,6 +5652,27 @@ async function runLifeOperationHandlerInner(
       // exactly the state the evaluator must not paraphrase — observed live
       // (#16941): the synthesized reply told the owner "nothing is saved yet"
       // after this branch had already persisted the definition.
+      const ownedCreatePlan =
+        nativeCreatePlan ??
+        (typeof params.createPlan === "object" &&
+        params.createPlan !== null &&
+        !Array.isArray(params.createPlan) &&
+        "nativeProjection" in params.createPlan &&
+        params.createPlan.nativeProjection === null &&
+        llmPlan?.mode === "create" &&
+        llmPlan.multiStep === false
+          ? parseNativeTaskCreatePlan({
+              ...params.createPlan,
+              nativeProjection: llmPlan.nativeProjection,
+            })
+          : null);
+      const ownsSingleCreateRequest =
+        ownerSurfaceActionName === "OWNER_REMINDERS" &&
+        ownedCreatePlan?.mode === "create" &&
+        ownedCreatePlan.multiStep === false &&
+        !reuseDeferredDraft &&
+        validateUuid(currentMessageId) !== null &&
+        currentRequestIntents?.length === 1;
       return {
         success: true as const,
         text: savedText,
@@ -6066,13 +6095,20 @@ async function runLifeOperationHandlerInner(
           text: `Which timezone should I use for ${requestedTime} on "${target.definition.title}"?`,
         };
       }
+      const cadence = normalizeCadenceDetail(detailObject(details, "cadence"));
       const request: UpdateLifeOpsDefinitionRequest = {
         ownership,
         title:
           params.title !== target.definition.title ? params.title : undefined,
         timezone: requestedTimeZone ?? undefined,
-        description: detailString(details, "description"),
-        cadence: normalizeCadenceDetail(detailObject(details, "cadence")),
+        description:
+          target.definition.metadata.ownerSurface === "OWNER_REMINDERS" &&
+          (cadence ?? target.definition.cadence).kind === "once" &&
+          typeof details?.description === "string" &&
+          details.description.trim().length > 0
+            ? details.description
+            : detailString(details, "description"),
+        cadence,
         priority: detailNumber(details, "priority"),
         // detailObject returns Record<string,unknown>; cast at validated boundary.
         windowPolicy: detailObject(
@@ -6089,8 +6125,14 @@ async function runLifeOperationHandlerInner(
         ) as UpdateLifeOpsDefinitionRequest["checkInPolicy"],
       };
 
-      // If no explicit changes from structured details, try LLM extraction
-      if (request.cadence == null && intent) {
+      const descriptionOnlyUpdate =
+        request.description !== undefined &&
+        requestedTime === undefined &&
+        !hasDefinitionUpdateChanges({ ...request, description: undefined }) &&
+        details !== undefined &&
+        Object.keys(details).every((key) => key === "description");
+      // A complete body-only patch must not reinterpret its original creation time.
+      if (!descriptionOnlyUpdate && request.cadence == null && intent) {
         const llmFields = await extractUpdateFieldsWithLlm({
           runtime,
           intent,
@@ -6194,6 +6236,22 @@ async function runLifeOperationHandlerInner(
           previousTitle: target.definition.title,
           updated: {
             title: updated.definition.title,
+            description: updated.definition.description,
+            cadence: updated.definition.cadence,
+            timezone: updated.definition.timezone,
+            notificationChannels:
+              updated.reminderPlan?.steps.map((step) => step.channel) ?? [],
+            nativeProjection:
+              detailString(updated.definition.metadata, "nativeProjection") ??
+              null,
+            nativeAppleReminderId:
+              detailString(
+                detailObject(
+                  updated.definition.metadata ?? undefined,
+                  "nativeAppleReminder",
+                ),
+                "reminderId",
+              ) ?? null,
           },
         },
       });

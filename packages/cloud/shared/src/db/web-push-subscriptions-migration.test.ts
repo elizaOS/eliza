@@ -51,6 +51,15 @@ test("subscriptions survive rotation and migration replay, then respect owner an
     expect(await repository.pruneEndpoints([])).toBe(0);
     expect(await repository.listForUserAgent(userId, otherAgentId)).toEqual([otherAgent]);
 
+    // A stale send result from the original keys must not delete the rotated
+    // subscription that now occupies the same row.
+    expect(
+      await repository.pruneStaleSubscriptions([
+        { id: first.id, p256dh: first.p256dh, auth: first.auth },
+      ]),
+    ).toBe(0);
+    expect(await repository.listForUserAgent(userId, agentId)).toEqual([rotated]);
+
     expect(await repository.pruneEndpoints([endpoint])).toBe(2);
     expect(await repository.listForUserAgent(userId, agentId)).toEqual([]);
     expect(await repository.listForUserAgent(userId, otherAgentId)).toEqual([]);

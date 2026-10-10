@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Runs exact-SHA staging latency certification while retaining only bounded,
+ * Runs exact-SHA environment latency certification while retaining only bounded,
  * privacy-safe evidence. Raw Worker Tail bytes remain in a private temporary
  * directory that is removed on every success or failure path.
  */
@@ -34,6 +34,7 @@ import {
   waitForInferenceAuthTail,
 } from "./inference-auth-latency.ts";
 import {
+  certificationTarget,
   readDeploymentPlacement,
   verifyCertificationSource,
   withVerifiedDeployment,
@@ -75,16 +76,24 @@ export function parseCertificationArgs(argv) {
   const { values } = parseArgs({
     args: argv,
     options: {
+      environment: { type: "string", default: "staging" },
       "deploy-sha": { type: "string" },
       "output-dir": { type: "string" },
       "acknowledged-contract-digest": { type: "string", default: "" },
-      "probe-case": { type: "string", default: "qwen-3.8-27b@none@512" },
+      "probe-case": { type: "string", default: "qwen-3.8-27b@high@max" },
       auth: { type: "boolean", default: false },
       suspended: { type: "boolean", default: false },
     },
     strict: true,
     allowPositionals: false,
   });
+  const target = certificationTarget(values.environment);
+  if (
+    target.environment === "production" &&
+    (values.auth || values.suspended)
+  ) {
+    throw new Error("Auth cache probes are supported only in staging");
+  }
   const deploySha = values["deploy-sha"]?.trim() ?? "";
   if (!SHA_PATTERN.test(deploySha)) {
     throw new Error("--deploy-sha must be a lowercase 40-character commit");
@@ -98,6 +107,7 @@ export function parseCertificationArgs(argv) {
   parseProbeCase(probeCase);
   return {
     deploySha,
+    environment: target.environment,
     probeCase,
     outputDir: resolve(outputDir),
     acknowledgedContractDigest: values["acknowledged-contract-digest"],
@@ -141,29 +151,34 @@ export function requireAuthSecrets(env, runSuspended = false) {
     : secrets;
 }
 
-export async function verifyExactDeployment(deploySha, fetchImpl = fetch) {
+export async function verifyExactDeployment(
+  deploySha,
+  fetchImpl = fetch,
+  environment = "staging",
+) {
+  const target = certificationTarget(environment);
   let response;
   try {
-    response = await fetchImpl(`${STAGING_BASE_URL}/api/health`, {
+    response = await fetchImpl(`${target.baseUrl}/api/health`, {
       headers: { "user-agent": "eliza-cloud-latency-certification/1.0" },
       signal: AbortSignal.timeout(30_000),
     });
   } catch (cause) {
     // error-policy:J2 keep network details out of the workflow boundary while
     // preserving the local cause for a debugger.
-    throw new Error("Staging health request failed", { cause });
+    throw new Error("Deployment health request failed", { cause });
   }
   if (!response.ok) {
-    throw new Error(`Staging health returned HTTP ${response.status}`);
+    throw new Error(`Deployment health returned HTTP ${response.status}`);
   }
   const body = await response.json();
   if (body?.commit !== deploySha) {
-    throw new Error("Staging Worker did not serve the expected commit");
+    throw new Error("Deployment Worker did not serve the expected commit");
   }
-  if (body?.environment !== "staging") {
-    throw new Error("Staging health returned the wrong environment");
+  if (body?.environment !== target.environment) {
+    throw new Error("Deployment health returned the wrong environment");
   }
-  return { kind: "deployment", deploySha, environment: "staging" };
+  return { kind: "deployment", deploySha, environment: target.environment };
 }
 
 export function validatePairedEvidence(
@@ -531,7 +546,8 @@ async function runPaired({
   placementPolicy,
   outputDir,
   env,
-  probeCase = "qwen-3.8-27b@none@512",
+  probeCase = "qwen-3.8-27b@high@max",
+  environment = "staging",
 }) {
   requirePairedSecrets(env);
   const outputPath = join(outputDir, "paired.jsonl");
@@ -545,7 +561,7 @@ async function runPaired({
         "--target",
         "paired",
         "--gateway-base-url",
-        STAGING_BASE_URL,
+        certificationTarget(environment).baseUrl,
         "--direct-base-url",
         CEREBRAS_BASE_URL,
         "--gateway-api-key-env",
@@ -561,7 +577,7 @@ async function runPaired({
         "--pair-interval-ms",
         "250",
         "--seed",
-        `staging-${deploySha}`,
+        `${environment}-${deploySha}`,
       ],
       stdoutPath: outputPath,
       stderrPath,
@@ -581,7 +597,7 @@ async function runPaired({
 
 /** Retain sanitized API denials even when raw capture cleanup precedes CLI failure. */
 export async function runTraces(
-  { deploySha, outputDir, env, pairedRecords },
+  { deploySha, outputDir, env, pairedRecords, environment = "staging" },
   { fetchImpl = fetch } = {},
 ) {
   const secrets = requireTraceSecrets(env);
@@ -591,6 +607,7 @@ export async function runTraces(
     try {
       evidence = await collectInferenceTraceEvidence({
         pairedRecords,
+        environment,
         deploySha,
         accountId: secrets.cloudflareAccountId,
         apiToken: secrets.cloudflareApiToken,
@@ -793,7 +810,15 @@ export async function runCertification(
   options,
   { env = process.env, fetchImpl = fetch } = {},
 ) {
+  const target = certificationTarget(options.environment);
+  if (
+    target.environment === "production" &&
+    (options.runAuth || options.runSuspended)
+  ) {
+    throw new Error("Auth cache probes are supported only in staging");
+  }
   const source = await verifyCertificationSource({
+    environment: target.environment,
     sourceRef: env.GITHUB_REF,
     sourceSha: env.GITHUB_SHA,
     deploySha: options.deploySha,
@@ -805,7 +830,9 @@ export async function runCertification(
     `${JSON.stringify(source)}\n`,
     { mode: 0o600, flag: "wx" },
   );
-  const placementPolicy = await readDeploymentPlacement(options.deploySha);
+  const placementPolicy = await readDeploymentPlacement(options.deploySha, {
+    environment: target.environment,
+  });
   await writeFile(
     join(options.outputDir, "placement.json"),
     `${JSON.stringify(placementPolicy)}\n`,
@@ -813,7 +840,7 @@ export async function runCertification(
   );
   const { paired, auth, traces } = await withVerifiedDeployment(
     options.deploySha,
-    (sha) => verifyExactDeployment(sha, fetchImpl),
+    (sha) => verifyExactDeployment(sha, fetchImpl, target.environment),
     async (deployment) => {
       await writeFile(
         join(options.outputDir, "deployment.json"),
@@ -883,7 +910,7 @@ export async function runCertification(
     kind: "cloud_latency_certification",
     deploySha: options.deploySha,
     source,
-    environment: "staging",
+    environment: target.environment,
     paired: {
       records: paired.records.length,
       counts: paired.counts,

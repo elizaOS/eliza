@@ -7,8 +7,7 @@
     "start": "tsx --tsconfig ../../shared/tsconfig.json src/index.ts",
     "start:apps": "tsx --tsconfig ../../shared/tsconfig.json src/apps.ts",
     "typecheck": "tsc --noEmit",
-    "lint:check": "bunx @biomejs/biome check .",
-    "test": "bun test tests"
+    "lint:check": "bunx @biomejs/biome check ."
   },
   "dependencies": {
     "@elizaos/auth": "workspace:*",

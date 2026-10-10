@@ -212,6 +212,7 @@ function getOpenRouterLanguageModel(model: string) {
 const CEREBRAS_OPENROUTER_FALLBACK_MODELS: Readonly<Record<string, string>> = {
   "gemma-4-31b": "google/gemma-4-31b-it",
   "gpt-oss-120b": "openai/gpt-oss-120b",
+  "qwen-3.8-27b": "qwen/qwen3.8-27b",
   "zai-glm-4.7": "z-ai/glm-4.7",
 };
 
@@ -544,13 +545,13 @@ function withRetryableFallback(
     model: string;
     primaryProvider: InteractiveLanguageModelSelection["provider"];
     /** OpenRouter catalog id to serve on fallback. */
-    alternateModel: string;
+    alternateModel: string | (() => string);
     logLabel: string;
     onProviderSelected?: (selection: InteractiveLanguageModelSelection) => void;
     fallbackPolicy?: ProviderFallbackPolicy;
   },
 ) {
-  const { model, primaryProvider, alternateModel, logLabel, onProviderSelected } = params;
+  const { model, primaryProvider, logLabel, onProviderSelected } = params;
   if (!getOpenRouterApiKey()) {
     return withSuccessfulProviderSelection(
       primaryModel,
@@ -560,19 +561,30 @@ function withRetryableFallback(
   }
 
   const fallbackPolicy = params.fallbackPolicy ?? allowAllProviderFallback;
-  const fallbackModel = getOpenRouterLanguageModel(alternateModel);
+  // Fixed alternate routes keep their existing construction-time validation.
+  const fixedFallbackModel =
+    typeof params.alternateModel === "string"
+      ? getOpenRouterLanguageModel(params.alternateModel)
+      : undefined;
 
   async function runWithFallback<T>(
     operation: "generate" | "stream",
     primary: () => PromiseLike<T>,
-    fallback: () => PromiseLike<T>,
+    fallback: (model: ReturnType<typeof getOpenRouterLanguageModel>) => PromiseLike<T>,
+    abortSignal?: AbortSignal,
   ): Promise<T> {
     try {
       const result = await primary();
       notifyProviderSelected(onProviderSelected, { provider: primaryProvider, fallback: false });
       return result;
     } catch (error) {
+      if (abortSignal?.aborted) throw error;
       if (!isRetryableAiSdkError(error)) throw error;
+      // A healthy native provider does not require an alternate catalog entry.
+      const alternateModel =
+        typeof params.alternateModel === "function"
+          ? params.alternateModel()
+          : params.alternateModel;
       const context: ProviderFallbackContext = {
         model,
         primary: primaryProvider,
@@ -599,7 +611,10 @@ function withRetryableFallback(
         model,
         context.status,
       );
-      const result = await invokeOpenRouterFallback(model, operation, fallback);
+      const fallbackModel = fixedFallbackModel ?? getOpenRouterLanguageModel(alternateModel);
+      const result = await invokeOpenRouterFallback(model, operation, () =>
+        fallback(fallbackModel),
+      );
       notifyProviderSelected(onProviderSelected, { provider: "openrouter", fallback: true });
       return result;
     }
@@ -608,9 +623,19 @@ function withRetryableFallback(
   const middleware: LanguageModelMiddleware = {
     specificationVersion: "v3",
     wrapGenerate: ({ doGenerate, params: callParams }) =>
-      runWithFallback("generate", doGenerate, () => fallbackModel.doGenerate(callParams)),
+      runWithFallback(
+        "generate",
+        doGenerate,
+        (fallbackModel) => fallbackModel.doGenerate(callParams),
+        callParams.abortSignal,
+      ),
     wrapStream: ({ doStream, params: callParams }) =>
-      runWithFallback("stream", doStream, () => fallbackModel.doStream(callParams)),
+      runWithFallback(
+        "stream",
+        doStream,
+        (fallbackModel) => fallbackModel.doStream(callParams),
+        callParams.abortSignal,
+      ),
   };
 
   return wrapLanguageModel({ model: primaryModel, middleware });
@@ -722,7 +747,7 @@ function withCerebrasInteractiveFailover(
   return withRetryableFallback(primaryModel, {
     model,
     primaryProvider: "cerebras",
-    alternateModel: getOpenRouterApiKey() ? resolveCerebrasOpenRouterFallbackModel(model) : model,
+    alternateModel: () => resolveCerebrasOpenRouterFallbackModel(model),
     logLabel: "Cerebras",
     onProviderSelected,
     fallbackPolicy,
@@ -766,14 +791,44 @@ export function getInteractiveCerebrasLanguageModel(
   model: string,
   onProviderSelected?: (selection: InteractiveLanguageModelSelection) => void,
   routing: LanguageModelRoutingOptions = {},
+  coreProviderOptions?: Record<string, unknown>,
 ) {
   if (isCerebrasNativeModel(model) && getProviderKey("CEREBRAS_API_KEY")) {
-    return withCerebrasInteractiveFailover(
-      withRateLimitFailFast(getCerebrasClient().chat(normalizeCerebrasModelId(model))),
+    const modelId = normalizeCerebrasModelId(model);
+    const interactive = withCerebrasInteractiveFailover(
+      withRateLimitFailFast(getCerebrasClient().chat(modelId)),
       model,
       onProviderSelected,
       routing.fallbackPolicy,
     );
+    let thinkingOff = false;
+    try {
+      const eliza = coreProviderOptions?.eliza;
+      thinkingOff =
+        modelId === "qwen-3.8-27b" &&
+        eliza !== null &&
+        typeof eliza === "object" &&
+        !Array.isArray(eliza) &&
+        (eliza as Record<string, unknown>).thinking === "off";
+    } catch {
+      // error-policy:J7 an unreadable optional Core hint preserves existing provider behavior.
+    }
+    if (!thinkingOff) return interactive;
+    // Both existing chat clients serialize this option to supported reasoning_effort:none.
+    // Consume only the Core control hint; restoring cache affinity remains separate work.
+    return wrapLanguageModel({
+      model: interactive,
+      middleware: {
+        specificationVersion: "v3",
+        transformParams: async ({ params }) => ({
+          ...params,
+          providerOptions: {
+            ...params.providerOptions,
+            openai: { ...params.providerOptions?.openai, reasoningEffort: "none" },
+          },
+        }),
+      },
+    });
   }
   return getLanguageModel(model, undefined, onProviderSelected, routing);
 }

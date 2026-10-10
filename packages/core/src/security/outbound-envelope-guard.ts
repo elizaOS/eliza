@@ -32,10 +32,7 @@
 
 import type { Media } from "../types/primitives.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
-import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../utils/well-formed.js";
+import { toWellFormedUnicode, truncateWellFormed } from "../utils/unicode.js";
 import { containsExternalEnvelopeMaterial } from "./external-content.js";
 
 /**

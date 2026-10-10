@@ -23,7 +23,14 @@ const properties = {
     ],
   },
   title: { type: "string" as const, minLength: 1 },
-  description: { type: "string" as const, minLength: 1 },
+  description: {
+    description:
+      "For reminders, copy the owner-requested alert body verbatim; use null when no separate body was requested. Do not put delivery or scheduling instructions in the body. For other task kinds, retain brief owner-provided context.",
+    anyOf: [
+      { type: "string" as const, minLength: 1 },
+      { type: "null" as const },
+    ],
+  },
   cadenceKind: {
     type: "string" as const,
     enum: [
@@ -97,6 +104,7 @@ const schema = {
         "multiStep",
         "requestKind",
         "title",
+        "description",
         "cadenceKind",
         "nativeProjection",
         "dueDate",
@@ -128,7 +136,7 @@ export const TASK_CREATE_PLAN_PARAMETER: ActionParameter = {
   requiredForSubactions: ["create"],
   description: [
     "For a definition create, supply the complete semantic plan here using the current owner request and relevant conversation already in context. This avoids a second interpretation call. Use intent for the owner's full request; do not duplicate this plan in title/details. The parent umbrella may omit createPlan when necessary context is unavailable; promoted CREATE requires it. Use the existing mode=respond plan for clarification when the title or timing cannot be established, without guessing. Unknown nativeProjection remains null and follows the existing safe extraction path. This plan never grants permission to save or confirm a pending draft; the handler applies owner consent and draft rules.",
-    "Always include mode, multiStep and requestKind. For mode=create include title and cadenceKind; for mode=respond include response. Use requestKind=unspecified only when neither alarm nor reminder is explicit. For mode=create, always include nativeProjection; use null for an unknown destination. For mode=create, always include dueDate, dueInDays, dueWeekday and dueInMinutes: fill the applicable selector from the owner's request and use null for the others. A relative minute/hour offset belongs in dueInMinutes. Omit other unknown/inapplicable fields. Use the current date/time in context for date grounding; retain relative date fields when applicable.",
+    "Always include mode, multiStep and requestKind. For mode=create include title, description and cadenceKind; for mode=respond include response. Use requestKind=unspecified only when neither alarm nor reminder is explicit. For mode=create, always include nativeProjection; use null for an unknown destination. For mode=create, always include dueDate, dueInDays, dueWeekday and dueInMinutes: fill the applicable selector from the owner's request and use null for the others. A relative minute/hour offset belongs in dueInMinutes. Always include description: copy an explicit requested reminder body exactly, independently of the title; use null when no separate alert body was requested. Do not silently reduce an explicit body to the title or put delivery instructions in it. Omit other unknown/inapplicable fields. Use the current date/time in context for date grounding; retain relative date fields when applicable.",
     taskCreatePlanGuidance(true),
   ].join("\n"),
   schema,

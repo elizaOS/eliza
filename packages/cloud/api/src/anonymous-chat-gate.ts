@@ -6,11 +6,7 @@
  * recovery snapshots to Postgres asynchronously by monotonic revision.
  */
 
-import { runWithDbCacheAsync } from "@elizaos/cloud-shared/db/client";
-import {
-  type AnonymousChatGateCounterSnapshot,
-  anonymousSessionsRepository,
-} from "@elizaos/cloud-shared/db/repositories/anonymous-sessions";
+import type { AnonymousChatGateCounterSnapshot } from "@elizaos/cloud-shared/db/repositories/anonymous-sessions";
 import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
@@ -598,6 +594,12 @@ export class AnonymousChatGate {
           : new Date(snapshotValue.hourlyResetAtMs),
       lastMessageAt: new Date(snapshotValue.lastMessageAtMs),
     };
+    // Load the existing mirror client only for claimed alarm work.
+    const [{ runWithDbCacheAsync }, { anonymousSessionsRepository }] =
+      await Promise.all([
+        import("@elizaos/cloud-shared/db/client"),
+        import("@elizaos/cloud-shared/db/repositories/anonymous-sessions"),
+      ]);
     await runWithCloudBindingsAsync(this.env as Record<string, unknown>, () =>
       runWithDbCacheAsync(() =>
         anonymousSessionsRepository.persistGateCounterSnapshot(dbSnapshot),

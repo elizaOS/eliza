@@ -46,12 +46,15 @@
  * pair; a marker-store failure fails CLOSED (503 → normal per-origin login).
  */
 
+import { usersRepository } from "@elizaos/cloud-shared/db/repositories/users";
+import { timingSafeEqualSecret } from "@elizaos/cloud-shared/lib/auth/cron";
 import {
   mintStewardTokenFromClaims,
   STEWARD_ACCESS_TOKEN_TTL_SECONDS,
   type StewardVerifyEnv,
   verifyStewardTokenCached,
 } from "@elizaos/cloud-shared/lib/auth/steward-client";
+import { readActiveVerifiedPhoneAccount } from "@elizaos/cloud-shared/lib/auth/verified-phone-account";
 import {
   getIpKey,
   RateLimitPresets,
@@ -63,6 +66,7 @@ import {
   issueSsoBridgeCode,
   looksLikeSsoBridgeChallenge,
   looksLikeSsoBridgeCode,
+  NETWORK_SSO_BRIDGE_CODE_PREFIX,
 } from "@elizaos/cloud-shared/lib/services/sso-bridge-codes";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
@@ -137,24 +141,125 @@ function errorBody(
 } {
   return { error: message, code };
 }
+/** Explicit staging authority; NODE_ENV and localhost mint origins grant nothing. */
+function networkBridgeConfig(c: { env: unknown; req: { url: string } }): {
+  destination: string;
+  serverToken: string;
+} | null {
+  const env = c.env as Record<string, unknown>;
+  if (
+    env.ENVIRONMENT !== "staging" ||
+    env.NETWORK_SITE_AUTH_ENABLED !== "true" ||
+    new URL(c.req.url).origin !==
+      ELIZA_DOMAIN_CONTRACTS.staging.cloudApiOrigin ||
+    typeof env.NETWORK_SITE_AUTH_ORIGIN !== "string" ||
+    typeof env.NETWORK_SITE_AUTH_SERVER_TOKEN !== "string" ||
+    env.NETWORK_SITE_AUTH_SERVER_TOKEN.length < 32
+  )
+    return null;
+  try {
+    const url = new URL(env.NETWORK_SITE_AUTH_ORIGIN);
+    if (
+      url.protocol !== "http:" ||
+      !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) ||
+      url.origin !== env.NETWORK_SITE_AUTH_ORIGIN
+    )
+      return null;
+    return {
+      destination: url.origin,
+      serverToken: env.NETWORK_SITE_AUTH_SERVER_TOKEN,
+    };
+  } catch {
+    // error-policy:J3 malformed server configuration enables no destination.
+    return null;
+  }
+}
+function networkServerAuthorized(
+  config: ReturnType<typeof networkBridgeConfig>,
+  origin: string | undefined,
+  authorization: string | undefined,
+): boolean {
+  const token = authorization?.match(/^Bearer (.+)$/)?.[1];
+  return (
+    !!config &&
+    origin === config.destination &&
+    !!token &&
+    timingSafeEqualSecret(token, config.serverToken)
+  );
+}
+async function networkPhoneAccount(stewardUserId: string) {
+  const subject =
+    await usersRepository.findByStewardIdWithOrganizationForWrite(
+      stewardUserId,
+    );
+  if (!subject?.organization_id) return null;
+  const account = await readActiveVerifiedPhoneAccount({
+    userId: subject.id,
+    organizationId: subject.organization_id,
+  });
+  if (
+    !account?.user.phone_number ||
+    !account.user.organization_id ||
+    account.user.steward_user_id !== stewardUserId
+  )
+    return null;
+  return {
+    ...account,
+    organizationId: account.user.organization_id,
+    e164: account.user.phone_number,
+  };
+}
 const app = new Hono<AppEnv>();
 // Handshake legs are single-shot per login; STRICT (10/min/IP) is generous.
 // Redis loss keeps login available but bounded per-isolate, mirroring the
 // steward-session mint route.
-app.use(
-  rateLimit({
-    ...RateLimitPresets.STRICT,
-    keyGenerator: getIpKey,
-    failClosed: true,
-    redisUnavailableFallback: {
-      namespace: "sso-bridge",
-    },
-  }),
-);
+const strictSsoLimit = rateLimit({
+  ...RateLimitPresets.STRICT,
+  keyGenerator: getIpKey,
+  failClosed: true,
+  redisUnavailableFallback: {
+    namespace: "sso-bridge",
+  },
+});
+const networkServerLimit = rateLimit({
+  ...RateLimitPresets.STANDARD,
+  keyGenerator: getIpKey,
+  failClosed: true,
+  redisUnavailableFallback: { namespace: "sso-network-server" },
+});
+app.use("*", async (c, next) => {
+  const serverLeg =
+    c.req.path.endsWith("/network-exchange") ||
+    c.req.path.endsWith("/network-validate");
+  if (
+    serverLeg &&
+    networkServerAuthorized(
+      networkBridgeConfig(c),
+      c.req.header("origin"),
+      c.req.header("authorization"),
+    )
+  ) {
+    return networkServerLimit(c, next);
+  }
+  return strictSsoLimit(c, next);
+});
 app.post("/mint", async (c) => {
   try {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      codeChallenge?: unknown;
+      destination?: unknown;
+    };
+    const destination = body.destination;
+    const network = destination === undefined ? null : networkBridgeConfig(c);
     const isProduction = c.env.NODE_ENV === "production";
-    if (!checkBridgeOrigin(c, MINT_ORIGIN_HOSTS, isProduction)) {
+    if (
+      destination === undefined
+        ? !checkBridgeOrigin(c, MINT_ORIGIN_HOSTS, isProduction)
+        : !network ||
+          destination !== network.destination ||
+          c.req.header("origin") !==
+            ELIZA_DOMAIN_CONTRACTS.staging.cloudAppOrigin
+    ) {
       return c.json(errorBody("Forbidden", "forbidden_origin"), 403);
     }
     if (!stewardSecretConfigured(c.env)) {
@@ -173,9 +278,6 @@ app.post("/mint", async (c) => {
     if (!token) {
       return c.json(errorBody("Authentication required", "missing_token"), 401);
     }
-    const body = (await c.req.json().catch(() => ({}))) as {
-      codeChallenge?: unknown;
-    };
     const codeChallenge =
       typeof body.codeChallenge === "string" ? body.codeChallenge : null;
     if (!looksLikeSsoBridgeChallenge(codeChallenge)) {
@@ -197,12 +299,38 @@ app.post("/mint", async (c) => {
     if (claims.stagingSessionBinding) {
       return c.json(errorBody("Invalid token", "invalid_token"), 401);
     }
+    const phoneAccount = network
+      ? await networkPhoneAccount(claims.userId)
+      : null;
+    if (
+      destination !== undefined &&
+      (claims.authMethod !== "sms" || !phoneAccount)
+    ) {
+      return c.json(
+        errorBody("Verified SMS account required", "account_unavailable"),
+        403,
+      );
+    }
     if (await isBlockedBySsoBridgeLogout(claims.userId, claims.issuedAt)) {
       // The user explicitly logged out after this token was issued: minting
       // would silently undo that logout on the app host.
       return c.json(errorBody("Session was signed out", "session_ended"), 401);
     }
-    const issued = await issueSsoBridgeCode({ claims, codeChallenge });
+    const issued = await issueSsoBridgeCode({
+      claims,
+      codeChallenge,
+      ...(network && phoneAccount
+        ? {
+            destination: network.destination,
+            phoneAccount: {
+              userId: phoneAccount.user.id,
+              organizationId: phoneAccount.organizationId,
+              e164: phoneAccount.e164,
+            },
+          }
+        : {}),
+    });
+    c.header("Cache-Control", "no-store");
     return c.json({ ok: true, code: issued.code, expiresIn: issued.expiresIn });
   } catch (error) {
     // error-policy:J1 route boundary — storage/verification failures become a
@@ -235,13 +363,23 @@ app.post("/burn", async (c) => {
           ? body.code
           : null
         : null;
-    if (!looksLikeSsoBridgeCode(code)) {
+    const network = code?.startsWith(NETWORK_SSO_BRIDGE_CODE_PREFIX)
+      ? networkBridgeConfig(c)
+      : null;
+    if (
+      code?.startsWith(NETWORK_SSO_BRIDGE_CODE_PREFIX) &&
+      (!network ||
+        c.req.header("origin") !==
+          ELIZA_DOMAIN_CONTRACTS.staging.cloudAppOrigin)
+    )
+      return c.json(errorBody("Forbidden", "forbidden_origin"), 403);
+    if (!looksLikeSsoBridgeCode(code, network?.destination)) {
       return c.json(errorBody("Code required", "missing_code"), 400);
     }
     // `consumeSsoBridgeCode` atomically deletes before checking the missing
     // verifier. Always return the same empty response so this destruction-only
     // endpoint cannot reveal whether the code existed or was already spent.
-    await consumeSsoBridgeCode(code, null);
+    await consumeSsoBridgeCode(code, null, network?.destination);
     return c.body(null, 204);
   } catch (error) {
     // error-policy:J1 route boundary — a failed best-effort burn remains a
@@ -329,6 +467,137 @@ app.post("/exchange", async (c) => {
     logger.error("[sso-bridge] exchange failed", {
       error: error instanceof Error ? error.message : String(error),
     });
+    return c.json(errorBody("SSO bridge unavailable", "sso_unavailable"), 503);
+  }
+});
+/** Confidential Network exchange returns primary identity, never a Cloud JWT. */
+app.post("/network-exchange", async (c) => {
+  c.header("Cache-Control", "no-store");
+  const config = networkBridgeConfig(c);
+  if (
+    !config ||
+    !networkServerAuthorized(
+      config,
+      c.req.header("origin"),
+      c.req.header("authorization"),
+    )
+  )
+    return c.json(
+      errorBody("Network handoff unavailable", "invalid_authority"),
+      403,
+    );
+  try {
+    const body = (await c.req.json()) as {
+      code?: unknown;
+      codeVerifier?: unknown;
+    };
+    if (typeof body.code !== "string" || typeof body.codeVerifier !== "string")
+      return c.json(
+        errorBody("Code and verifier required", "invalid_code"),
+        400,
+      );
+    const record = await consumeSsoBridgeCode(
+      body.code,
+      body.codeVerifier,
+      config.destination,
+    );
+    if (
+      !record ||
+      record.claims.stagingSessionBinding ||
+      record.claims.authMethod !== "sms" ||
+      (await isBlockedBySsoBridgeLogout(
+        record.stewardUserId,
+        record.tokenIssuedAt,
+      ))
+    )
+      return c.json(errorBody("Invalid or expired code", "invalid_code"), 401);
+    const expiresAt =
+      Math.min(
+        record.tokenExpiresAt,
+        record.tokenIssuedAt + STEWARD_ACCESS_TOKEN_TTL_SECONDS,
+      ) * 1000;
+    if (
+      expiresAt <= Date.now() ||
+      record.tokenIssuedAt > Math.floor(Date.now() / 1000)
+    )
+      return c.json(errorBody("Invalid or expired code", "invalid_code"), 401);
+    const account = await networkPhoneAccount(record.stewardUserId);
+    if (
+      !account ||
+      !record.phoneAccount ||
+      account.user.id !== record.phoneAccount.userId ||
+      account.user.organization_id !== record.phoneAccount.organizationId ||
+      account.user.phone_number !== record.phoneAccount.e164
+    )
+      return c.json(
+        errorBody("Verified phone account unavailable", "account_unavailable"),
+        403,
+      );
+    return c.json({
+      userId: account.user.id,
+      organizationId: account.organizationId,
+      e164: account.e164,
+      expiresAt,
+      stewardUserId: record.stewardUserId,
+      issuedAt: record.tokenIssuedAt,
+    });
+  } catch {
+    // error-policy:J1 identity/atomic-store failures disclose no private details.
+    return c.json(errorBody("SSO bridge unavailable", "sso_unavailable"), 503);
+  }
+});
+/** Revalidate the Network server's sealed original identity against primary owners. */
+app.post("/network-validate", async (c) => {
+  c.header("Cache-Control", "no-store");
+  if (
+    !networkServerAuthorized(
+      networkBridgeConfig(c),
+      c.req.header("origin"),
+      c.req.header("authorization"),
+    )
+  )
+    return c.json(
+      errorBody("Network handoff unavailable", "invalid_authority"),
+      403,
+    );
+  try {
+    const body = (await c.req.json()) as {
+      userId?: unknown;
+      organizationId?: unknown;
+      e164?: unknown;
+      stewardUserId?: unknown;
+      issuedAt?: unknown;
+      expiresAt?: unknown;
+    };
+    if (
+      typeof body.userId !== "string" ||
+      typeof body.organizationId !== "string" ||
+      typeof body.e164 !== "string" ||
+      typeof body.stewardUserId !== "string" ||
+      typeof body.issuedAt !== "number" ||
+      !Number.isSafeInteger(body.issuedAt) ||
+      body.issuedAt <= 0 ||
+      body.issuedAt > Math.floor(Date.now() / 1000) ||
+      typeof body.expiresAt !== "number" ||
+      !Number.isSafeInteger(body.expiresAt) ||
+      body.expiresAt <= Date.now() ||
+      body.expiresAt > (body.issuedAt + STEWARD_ACCESS_TOKEN_TTL_SECONDS) * 1000
+    )
+      return c.json({ ok: false }, 403);
+    const account = await readActiveVerifiedPhoneAccount({
+      userId: body.userId,
+      organizationId: body.organizationId,
+      phoneNumber: body.e164,
+    });
+    if (
+      !account ||
+      account.user.steward_user_id !== body.stewardUserId ||
+      (await isBlockedBySsoBridgeLogout(body.stewardUserId, body.issuedAt))
+    )
+      return c.json({ ok: false }, 403);
+    return c.json({ ok: true });
+  } catch {
+    // error-policy:J1 revalidation outages never become valid sessions.
     return c.json(errorBody("SSO bridge unavailable", "sso_unavailable"), 503);
   }
 });

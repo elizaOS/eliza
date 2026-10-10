@@ -15,11 +15,17 @@ test("Clock source and packed exports preserve the host receipt and cancellation
   const output = testOutputPath("clock-review-export");
   fs.mkdirSync(output, { recursive: true });
   const temp = fs.mkdtempSync(path.join(output, "case-"));
-  const proof = `import assert from 'node:assert/strict';import {createClockReviewExecutor} from '@elizaos/plugin-assistant/device-clock-review';
+  const proof = `import assert from 'node:assert/strict';import {createClockReviewExecutor,validateClockOperation,validateClockResult,validateClockAlarmContext,CLOCK_CAPABILITY,CLOCK_REPEAT_CAPABILITY,CLOCK_ALARMS_CAPABILITY} from '@elizaos/plugin-assistant/device-clock-review';
+assert.equal(CLOCK_CAPABILITY,'clock.handoff.v1');assert.equal(CLOCK_REPEAT_CAPABILITY,'clock.handoff.v2');
 const operation={type:'clock_handoff',action:'dismiss'},identity={scope:'a'.repeat(64),proposalId:'proposal'},result={kind:'clock-handoff',action:'dismiss',status:'opened'};let effects=0,saved=false,cancels=0,failCancel=false;
 const executor=createClockReviewExecutor({async reviewClock(input){assert.deepEqual(input.operation,operation);return saved?{result}:{reviewToken:'native-gesture'};},async confirmClock(input){assert.equal(input.reviewToken,'native-gesture');assert.equal(input.operationId,'operation');effects++;saved=true;return {result};},async cancelClock(){cancels++;if(failCancel)throw Error('unconfirmed');}});
 assert.deepEqual(await executor.review(operation,'operation',identity,new AbortController().signal,()=>{}),result);assert.equal(effects,1);assert.deepEqual(await executor.review(operation,'operation',identity,new AbortController().signal,()=>{}),result);assert.equal(effects,1);
-failCancel=true;await assert.rejects(executor.review(operation,'operation',identity,new AbortController().signal,()=>{}));const before=cancels;await assert.rejects(executor.retire());assert.equal(cancels,before+1);failCancel=false;await executor.retire();const after=cancels;await executor.retire();assert.equal(cancels,after);assert.equal(effects,1);console.log(JSON.stringify({publicExport:true,effects,cancellationLatch:true,duplicateDelegation:true}));`;
+failCancel=true;await assert.rejects(executor.review(operation,'operation',identity,new AbortController().signal,()=>{}));const before=cancels;await assert.rejects(executor.retire());assert.equal(cancels,before+1);failCancel=false;await executor.retire();const after=cancels;await executor.retire();assert.equal(cancels,after);assert.equal(effects,1);
+let reviewed=0;const setResult={kind:'clock-handoff',action:'set',status:'opened'};let expected;
+const repeatExecutor=createClockReviewExecutor({async reviewClock(input){reviewed++;assert.deepEqual(input.operation,expected);assert.notEqual(input.operation.days,expected.days);return {reviewToken:'repeat-consent'};},async confirmClock(){return {result:setResult};},async cancelClock(){}});
+for(const days of [[],[1,2,3,4,5,6,7],[2,3,4,5,6],[7,1]]){expected={type:'clock_handoff',action:'set',hour:9,minute:0,label:'Repeat fixture',timeZone:'UTC',days};assert.deepEqual(validateClockOperation(expected),expected);assert.deepEqual(validateClockResult(expected,setResult,'applied'),setResult);assert.deepEqual(await repeatExecutor.review(expected,'repeat',identity,new AbortController().signal,()=>{}),setResult);}
+for(const days of [undefined,null,'weekdays',['2'],[0],[8],[2,2],Array(1)]){await assert.rejects(repeatExecutor.review({...expected,days},'repeat',identity,new AbortController().signal,()=>{}));}assert.equal(reviewed,4);await repeatExecutor.retire();
+assert.equal(CLOCK_ALARMS_CAPABILITY,'clock.alarms.v1');const alarmId='12345678-1234-1234-1234-123456789abc',owned={type:'clock_alarm',action:'set',hour:9,minute:0,label:'Eliza owned',timeZone:'UTC',days:[2,3,4,5,6]},ownedResult={kind:'clock-alarm',action:'set',status:'scheduled',alarmId,nextAt:1791378000000};const ownedExecutor=createClockReviewExecutor({async reviewClock(input){assert.deepEqual(input.operation,owned);return {reviewToken:'owned-consent'};},async confirmClock(){return {result:ownedResult};},async cancelClock(){}});assert.deepEqual(await ownedExecutor.review(owned,alarmId,identity,new AbortController().signal,()=>{}),ownedResult);await ownedExecutor.retire();assert.throws(()=>validateClockResult(owned,{...ownedResult,alarmId:'87654321-1234-1234-1234-123456789abc'},'applied',alarmId));assert.throws(()=>validateClockResult(owned,{...ownedResult,nextAt:null},'applied',alarmId));assert.throws(()=>validateClockOperation({...owned,days:undefined}));assert.deepEqual(validateClockResult({...owned,action:'update',alarmId},{...ownedResult,action:'update',status:'updated',nextAt:null},'applied',alarmId),{...ownedResult,action:'update',status:'updated',nextAt:null});const snapshot={revision:2,sensitive:false,timeZone:'UTC',alarmsStatus:'available',alarmsObservedAt:1791377990000,alarmsRevision:1,alarms:[{id:alarmId,hour:9,minute:0,label:'Eliza owned',timeZone:'UTC',days:[2,3,4,5,6],enabled:true,nextAt:1791378000000,scheduleState:'scheduled',generation:1,lastOutcome:''}]};assert.deepEqual(validateClockAlarmContext(snapshot),snapshot);assert.throws(()=>validateClockAlarmContext({...snapshot,alarms:[snapshot.alarms[0],snapshot.alarms[0]]}));console.log(JSON.stringify({publicExport:true,effects,cancellationLatch:true,duplicateDelegation:true,repeatDays:true,malformedDaysRejected:true,ownedAlarm:true}));`;
   try {
     fs.writeFileSync(path.join(temp, "package.json"), JSON.stringify(manifest));
     fs.symlinkSync(path.join(source, "src"), path.join(temp, "src"), "dir");
@@ -47,6 +53,22 @@ failCancel=true;await assert.rejects(executor.review(operation,'operation',ident
           fs.statSync(path.join(temp, "dist/device-clock-review.d.ts")).size >
             0,
         );
+        const declarations = fs.readFileSync(
+          path.join(temp, "dist/device-clock-review.d.ts"),
+          "utf8",
+        );
+        for (const name of [
+          "ClockOperation",
+          "ClockResult",
+          "ClockAlarmOperation",
+          "ClockAlarmResult",
+          "ClockAlarmRecord",
+          "ClockAlarmContext",
+        ])
+          assert.match(
+            declarations,
+            new RegExp(`export\\s*\\{[^}]*\\b${name}\\b`),
+          );
       }
       let consumer = temp;
       if (compiled) {
@@ -87,6 +109,9 @@ failCancel=true;await assert.rejects(executor.review(operation,'operation',ident
         effects: 1,
         cancellationLatch: true,
         duplicateDelegation: true,
+        repeatDays: true,
+        malformedDaysRejected: true,
+        ownedAlarm: true,
       });
     }
   } finally {

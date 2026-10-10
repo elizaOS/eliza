@@ -4,10 +4,17 @@
  * response-skeleton/sampler structures. Defines the model-agnostic interface the
  * runtime calls through (`useModel`) and that model plugins implement.
  */
+
+import type { ContextObject } from "../runtime/context-object";
 import type { StreamChunkCallback } from "./components";
 import type { AgentContext } from "./contexts";
 import type { ContentValue, JsonValue } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
+
+/** Runtime-only canonical input binding. JSON/client/model fields cannot populate this symbol. */
+export const MODEL_CANONICAL_CONTEXT: unique symbol = Symbol.for(
+	"elizaos.modelCanonicalContext",
+);
 
 /**
  * Scheduling priority for a single-lane local inference request.
@@ -525,6 +532,7 @@ export interface SpanSamplerPlan {
  * request still works, just without forcing.
  */
 export interface GenerateTextParams {
+	[MODEL_CANONICAL_CONTEXT]?: ContextObject;
 	/** Non-enumerable runtime metadata; never part of the provider request body. */
 	[MODEL_PROVIDER_ATTEMPTS]?: ModelProviderAttempt[];
 	/** Runtime-only hook used to prepare request content for each resolved model attempt. */

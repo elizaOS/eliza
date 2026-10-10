@@ -476,8 +476,17 @@ export class StewardSidecar {
       `[StewardSidecar] Spawning steward on port ${this.config.port} (entryPoint=${entryPoint}, dataDir=${this.config.dataDir})`,
     );
     const bun = getBunRuntime();
+    // A source checkout resolves the entry point to its `.ts` file, which
+    // needs the `eliza-source` condition so the child loads workspace sources
+    // instead of requiring built `dist` files. A packaged build resolves the
+    // bundled `.js` entry, which must resolve its external dependencies from
+    // their built `dist` files, so the condition is not passed there.
+    // (Matches packages/app/src/api/standalone-kokoro-service.ts.)
+    const sourceConditions = entryPoint.endsWith(".ts")
+      ? ["--conditions=eliza-source"]
+      : [];
     if (bun) {
-      const proc = bun.spawn(["bun", "run", entryPoint], {
+      const proc = bun.spawn(["bun", "run", ...sourceConditions, entryPoint], {
         env,
         cwd: path.dirname(entryPoint),
         stdout: "pipe",
@@ -491,7 +500,9 @@ export class StewardSidecar {
     } else {
       const child = childProcess.spawn(
         this.config.stewardEntryPoint ? "node" : "bun",
-        this.config.stewardEntryPoint ? [entryPoint] : ["run", entryPoint],
+        this.config.stewardEntryPoint
+          ? [...sourceConditions, entryPoint]
+          : ["run", ...sourceConditions, entryPoint],
         {
           env,
           cwd: path.dirname(entryPoint),

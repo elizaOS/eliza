@@ -30,6 +30,11 @@ function escapeSlackMrkdwnSegment(text: string): string {
     .replace(/>/g, "&gt;");
 }
 
+/** Slack splits `<url|label>` on the first raw pipe, so a pipe in the URL must be encoded. */
+function escapeSlackLinkUrl(url: string): string {
+  return escapeSlackMrkdwnSegment(url.replaceAll("|", "%7C"));
+}
+
 /**
  * Checks if an angle-bracket token is an allowed Slack format
  */
@@ -94,8 +99,11 @@ export function escapeSlackMrkdwn(text: string): string {
   return text
     .split("\n")
     .map((line) => {
-      if (line.startsWith("> ")) {
-        return `> ${escapeSlackMrkdwnContent(line.slice(2))}`;
+      // Slack accepts a leading quote marker without a following space.
+      // Preserve the marker run and escape only the content that follows it.
+      const marker = /^>+/.exec(line)?.[0];
+      if (marker) {
+        return `${marker}${escapeSlackMrkdwnContent(line.slice(marker.length))}`;
       }
       return escapeSlackMrkdwnContent(line);
     })
@@ -147,13 +155,16 @@ function convertBold(text: string): string {
  * Converts markdown italic to Slack mrkdwn
  */
 function convertItalic(text: string): string {
-  // Markdown uses single * for italic, Slack uses _
-  // Then restore bold sentinels to actual asterisks
+  // Markdown uses single * for italic, Slack uses _.
+  // A * followed by whitespace cannot open italic, and one preceded by
+  // whitespace cannot close it, so "2 * 3 * 4" stays literal.
+  // Slack mrkdwn has no backslash escape. An unpaired * already renders
+  // literally, so do not prefix leftovers with \.
   const converted = text.replace(
-    /(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g,
+    /(?<!\*)\*(?!\*)(?!\s)(.+?)(?<!\s)(?<!\*)\*(?!\*)/g,
     "_$1_",
   );
-  return converted.replace(new RegExp(BOLD_SENTINEL, "g"), "*");
+  return converted.replaceAll(BOLD_SENTINEL, "*");
 }
 
 /**
@@ -173,18 +184,18 @@ function convertCodeBlocks(text: string, codeSink: string[]): string {
   while (cursor < text.length) {
     const opener = text.indexOf("```", cursor);
     if (opener < 0) break;
-    let bodyStart = opener + 3;
-    while (bodyStart < text.length) {
-      const code = text.charCodeAt(bodyStart);
-      const isWord =
-        (code >= 48 && code <= 57) ||
-        (code >= 65 && code <= 90) ||
-        code === 95 ||
-        (code >= 97 && code <= 122);
-      if (!isWord) break;
-      bodyStart += 1;
-    }
-    if (text[bodyStart] === "\n") bodyStart += 1;
+    const afterOpener = opener + 3;
+    const closerAt = text.indexOf("```", afterOpener);
+    // Limit the search to this fence so repeated one-line blocks are linear.
+    const newlineAt = text
+      .slice(afterOpener, closerAt < 0 ? undefined : closerAt)
+      .indexOf("\n");
+    // The info string is the whole opening line when a newline arrives before
+    // the closer. Scanning only [A-Za-z0-9_] left the rest of `c++`, `c#`,
+    // and `objective-c` in the body, and a one-line ```x``` was eaten as a
+    // language tag so the copied fence was empty.
+    const bodyStart =
+      newlineAt >= 0 ? afterOpener + newlineAt + 1 : afterOpener;
     const closer = text.indexOf("```", bodyStart);
     if (closer < 0) {
       // An unmatched opener is what a truncated or streamed message produces,
@@ -218,18 +229,24 @@ function convertCodeBlocks(text: string, codeSink: string[]): string {
  * Converts markdown links to Slack mrkdwn links
  */
 function convertLinks(text: string): string {
-  return text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, linkText, url) => {
-    const trimmedUrl = url.trim();
-    const trimmedText = linkText.trim();
-    // If link text matches URL, just use URL
-    if (
-      trimmedText === trimmedUrl ||
-      trimmedText === trimmedUrl.replace(/^mailto:/, "")
-    ) {
-      return `<${escapeSlackMrkdwnSegment(trimmedUrl)}>`;
-    }
-    return `<${escapeSlackMrkdwnSegment(trimmedUrl)}|${escapeSlackMrkdwnSegment(trimmedText)}>`;
-  });
+  // The URL group tolerates one level of balanced parentheses, as the
+  // Telegram converter does: a plain [^)]+ capture cuts a Wikipedia-style
+  // URL at its inner closing paren and leaves a malformed link token.
+  return text.replace(
+    /\[([^\]]+)\]\(((?:[^()]|\([^()]*\))+)\)/g,
+    (_, linkText, url) => {
+      const trimmedUrl = url.trim();
+      const trimmedText = linkText.trim();
+      // If link text matches URL, just use URL
+      if (
+        trimmedText === trimmedUrl ||
+        trimmedText === trimmedUrl.replace(/^mailto:/, "")
+      ) {
+        return `<${escapeSlackLinkUrl(trimmedUrl)}>`;
+      }
+      return `<${escapeSlackLinkUrl(trimmedUrl)}|${escapeSlackMrkdwnSegment(trimmedText)}>`;
+    },
+  );
 }
 
 /**
@@ -237,10 +254,13 @@ function convertLinks(text: string): string {
  * Uses a sentinel to prevent headings from being matched by italic converter
  */
 function convertHeadings(text: string): string {
-  return text.replace(
-    /^#{1,6}\s+(.+)$/gm,
-    `${BOLD_SENTINEL}$1${BOLD_SENTINEL}`,
-  );
+  return text.replace(/^#{1,6}\s+(.+)$/gm, (_match, content: string) => {
+    // A heading is one Slack bold span. Leaving ** inside that span lets the
+    // later bold pass insert more asterisks, so "## **Bold** header" is sent
+    // as "**Bold* header*".
+    const flattened = content.replace(/\*\*(.+?)\*\*/g, "$1");
+    return `${BOLD_SENTINEL}${flattened}${BOLD_SENTINEL}`;
+  });
 }
 
 /**
@@ -301,6 +321,7 @@ export interface ChunkSlackTextOpts {
 }
 
 const DEFAULT_MAX_CHARS = 40_000;
+const REOPEN_FENCE = "```\n";
 
 /**
  * A hard per-chunk cap can never be honored for arbitrary text unless it's a
@@ -329,9 +350,10 @@ function chunkLimitTooSmall(
   fnName: string,
   effectiveLimit: number,
   maxChars: number,
+  reason = "cannot hold the next well-formed character without splitting a surrogate pair",
 ): never {
   throw new ElizaError(
-    `${fnName}: a chunk limit of ${effectiveLimit} (from maxChars=${maxChars}) cannot hold the next well-formed character without splitting a surrogate pair`,
+    `${fnName}: a chunk limit of ${effectiveLimit} (from maxChars=${maxChars}) ${reason}`,
     {
       code: "SLACK_CHUNK_LIMIT_TOO_SMALL",
       context: { fnName, effectiveLimit, maxChars },
@@ -413,6 +435,7 @@ export function chunkSlackText(
   const chunks: string[] = [];
   let remaining = text;
   let inCodeBlock = false;
+  let reopenedFence = false;
 
   while (remaining.length > 0) {
     if (remaining.length <= maxChars) {
@@ -442,6 +465,13 @@ export function chunkSlackText(
     // fence budget is spent, pushing the emitted chunk to maxChars + 1.
     breakPoint = Math.min(breakPoint, hardLimit);
 
+    // Cutting through a ``` marker would leave "`" and "``" fragments that no
+    // longer count as fences, so the code-block state below would be wrong.
+    const straddledFence = fenceStraddling(remaining, breakPoint);
+    if (straddledFence > 0) {
+      breakPoint = straddledFence;
+    }
+
     // truncateWellFormed backs the cut off by one unit instead of splitting a
     // surrogate pair; consumedLength (not breakPoint) is how far `remaining`
     // must advance, since the fence suffix appended below isn't part of it.
@@ -449,7 +479,15 @@ export function chunkSlackText(
     if (chunk.length === 0) {
       chunkLimitTooSmall("chunkSlackText", breakPoint, maxChars);
     }
-    const consumedLength = chunk.length;
+    let consumedLength = chunk.length;
+    if (reopenedFence && consumedLength <= REOPEN_FENCE.length) {
+      chunkLimitTooSmall(
+        "chunkSlackText",
+        breakPoint,
+        maxChars,
+        "cannot hold a reopened code fence plus any of the code inside it",
+      );
+    }
 
     // Check if this chunk ends inside a code block — count fences in the
     // actual emitted chunk, not the max-size window, so a fence that sits
@@ -457,22 +495,63 @@ export function chunkSlackText(
     const codeBlockCount = (chunk.match(/```/g) || []).length;
     inCodeBlock = codeBlockCount % 2 !== 0;
 
-    // If we're breaking inside a code block, close it
+    // A block whose opener is followed only by whitespace in this chunk would
+    // be sent as an empty code block. Start it in the next chunk instead, or,
+    // when the chunk itself starts at the opener, skip that whitespace.
+    let emitChunk = true;
     if (inCodeBlock) {
-      chunk += "\n```";
+      const opener = chunk.lastIndexOf("```");
+      if (chunk.slice(opener + 3).trim() === "") {
+        if (opener === 0) {
+          emitChunk = consumedLength <= REOPEN_FENCE.length;
+        } else if (chunk.slice(0, opener).trim() === "") {
+          remaining = remaining.slice(opener);
+          reopenedFence = false;
+          continue;
+        } else {
+          chunk = chunk.slice(0, opener);
+          consumedLength = opener;
+          inCodeBlock = false;
+        }
+      }
     }
 
-    chunks.push(chunk);
+    if (emitChunk) {
+      // If we're breaking inside a code block, close it
+      if (inCodeBlock) {
+        chunk += "\n```";
+      }
+      chunks.push(chunk);
+    }
 
     remaining = remaining.slice(consumedLength);
 
-    // If we were in a code block, reopen it
+    // If we were in a code block, reopen it — unless only whitespace and the
+    // block's own closer are left, which would be sent as an empty code block.
     if (inCodeBlock) {
-      remaining = `\`\`\`\n${remaining}`;
+      const closer = remaining.match(/^\s*(?:```|$)/);
+      reopenedFence = !closer;
+      remaining = closer
+        ? remaining
+            .slice(closer[0].length)
+            .replace(/^\r?\n/, "")
+            .replace(/^\s+$/, "")
+        : `${REOPEN_FENCE}${remaining}`;
+    } else {
+      reopenedFence = false;
     }
   }
 
   return chunks;
+}
+
+function fenceStraddling(text: string, index: number): number {
+  for (let start = index - 2; start < index; start++) {
+    if (start >= 0 && text.startsWith("```", start)) {
+      return start;
+    }
+  }
+  return -1;
 }
 
 /**
@@ -519,7 +598,7 @@ export function formatSlackSpecialMention(
  * Formats a Slack link
  */
 export function formatSlackLink(url: string, text?: string): string {
-  const safeUrl = escapeSlackMrkdwnSegment(url);
+  const safeUrl = escapeSlackLinkUrl(url);
   if (text && text !== url) {
     return `<${safeUrl}|${escapeSlackMrkdwnSegment(text)}>`;
   }

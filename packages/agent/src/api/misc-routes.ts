@@ -10,6 +10,7 @@
  * runs and shell/code custom actions sit behind the local-code-execution gate
  * and terminal-authorization checks.
  */
+
 import crypto from "node:crypto";
 import type http from "node:http";
 import {
@@ -23,12 +24,12 @@ import {
   PutCustomActionRequestSchema,
 } from "@elizaos/contracts";
 import {
-  isLocalCodeExecutionAllowed,
   logger,
   ModelType,
   type StreamEventEnvelope,
   validateUuid,
 } from "@elizaos/core";
+import { isLocalCodeExecutionAllowed } from "@elizaos/host";
 import {
   isAndroidMobile,
   type ReadJsonBodyOptions,

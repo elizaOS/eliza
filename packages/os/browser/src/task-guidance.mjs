@@ -1,12 +1,72 @@
 /** Trusted native task annotations; never admitted as a model browser command. */
 
 import { pageCommand } from "./commands.mjs";
+import { guideFonts } from "./guide-font.mjs";
 import { pageGuidance } from "./page-guidance.mjs";
 import { BridgeError } from "./protocol.mjs";
+
+const optionalText = (value, max) =>
+  value === undefined ||
+  (typeof value === "string" && value.trim() !== "" && value.length <= max);
+const actionSentence = (value) =>
+  typeof value === "string" &&
+  value.trim() &&
+  value.length <= 200 &&
+  /^[^\p{Cc}\p{Cf}]+$/u.test(value)
+    ? value
+    : undefined;
+/** Label words and offer answers are trusted host data, never model or page text. */
+function validLabel(g) {
+  if (
+    !optionalText(g.detail, 300) ||
+    (g.tone !== undefined &&
+      !["instruction", "active", "offer", "success"].includes(g.tone))
+  )
+    return false;
+  if (g.answers === undefined) return g.tone !== "offer";
+  const answers = g.answers;
+  if (
+    g.tone !== "offer" ||
+    !Array.isArray(answers) ||
+    answers.length < 1 ||
+    answers.length > 5 ||
+    new Set(answers.map((answer) => answer?.id)).size !== answers.length ||
+    answers.some(
+      (answer) =>
+        !answer ||
+        typeof answer !== "object" ||
+        Object.keys(answer).some(
+          (key) => !["id", "kind", "text", "tag"].includes(key),
+        ) ||
+        typeof answer.id !== "string" ||
+        !/^[A-Za-z0-9._:-]{1,64}$/.test(answer.id) ||
+        !["card", "primary", "secondary"].includes(answer.kind) ||
+        typeof answer.text !== "string" ||
+        !optionalText(answer.text, 200) ||
+        !optionalText(answer.tag, 60) ||
+        (answer.tag !== undefined && answer.kind !== "card"),
+    )
+  )
+    return false;
+  // Value cards come in twos or threes; Yes (primary) is only for one value.
+  const count = (kind) =>
+    answers.filter((answer) => answer.kind === kind).length;
+  return (
+    [0, 2, 3].includes(count("card")) &&
+    count("primary") + count("secondary") <= 2 &&
+    count("primary") <= 1 &&
+    !(count("primary") && count("card"))
+  );
+}
 export function createTaskGuidance(api, authorize) {
   const active = new Map(),
     revisions = new Map(),
-    queues = new Map();
+    queues = new Map(),
+    // Steps the person dismissed, per tab, task and epoch. A reload of the
+    // page does not show them again; only an explicit restore does.
+    dismissals = new Map();
+  const dismissalKey = (taskContext, stepId) =>
+    JSON.stringify([taskContext.taskId, taskContext.epoch, stepId]);
   const stale = () =>
     new BridgeError(
       "STALE_REF",
@@ -133,11 +193,16 @@ export function createTaskGuidance(api, authorize) {
               origin: policy.origin,
               expiresAt,
               action: command.subaction,
-              text: {
-                click: "I will select this control.",
-                fill: "I will enter the approved information here.",
-                scroll: "I will scroll this area.",
-              }[command.subaction],
+              assistantName: policy.assistantName,
+              fonts: guideFonts,
+              // The trusted host may word the preview for this step.
+              text:
+                actionSentence(command.actionText) ??
+                {
+                  click: "I will select this control.",
+                  fill: "I will enter the approved information here.",
+                  scroll: "I will scroll this area.",
+                }[command.subaction],
             },
           ]);
           if (shown.accepted !== true) throw stale();
@@ -187,6 +252,61 @@ export function createTaskGuidance(api, authorize) {
       const entry = [...active].find(([, value]) => value.id === id);
       return entry ? clearTab(entry[0]) : Promise.resolve();
     },
+    /** The person's Dismiss on a shown step; value-free, kept for this tab. */
+    dismiss(message, sender) {
+      const tabId = String(sender?.tab?.id);
+      const shown = active.get(tabId)?.shown;
+      if (
+        !shown ||
+        !message ||
+        Object.keys(message).sort().join(",") !== "guideId,type" ||
+        message.guideId !== shown.guideId ||
+        sender.id !== api.runtime.id ||
+        sender.frameId !== 0 ||
+        typeof shown.documentId !== "string" ||
+        sender.documentId !== shown.documentId ||
+        new URL(sender.url).origin !== shown.origin ||
+        !shown.current()
+      )
+        throw stale();
+      const steps = dismissals.get(tabId) ?? new Set();
+      steps.add(shown.key);
+      dismissals.set(tabId, steps);
+      return { recorded: true };
+    },
+    /** One tap on a shown offer becomes a value-free answer event for the host. */
+    answer(message, sender) {
+      const tabId = String(sender?.tab?.id);
+      const ticket = active.get(tabId),
+        offer = ticket?.offer;
+      if (
+        !offer ||
+        offer.answered ||
+        !message ||
+        Object.keys(message).sort().join(",") !==
+          "answerId,answerKey,guideId,type" ||
+        message.guideId !== offer.guideId ||
+        message.answerKey !== offer.answerKey ||
+        !offer.answerIds.includes(message.answerId) ||
+        sender.id !== api.runtime.id ||
+        sender.frameId !== 0 ||
+        typeof offer.documentId !== "string" ||
+        sender.documentId !== offer.documentId ||
+        new URL(sender.url).origin !== offer.origin ||
+        offer.expiresAt <= Date.now() ||
+        !offer.current()
+      )
+        throw stale();
+      offer.answered = true;
+      return {
+        type: "task-guide-answer",
+        id: ticket.id,
+        tabId,
+        stepId: offer.stepId,
+        revision: offer.revision,
+        answerId: message.answerId,
+      };
+    },
     async handle(message, current) {
       const g = message.guidance;
       const allowed = [
@@ -199,6 +319,10 @@ export function createTaskGuidance(api, authorize) {
         "text",
         "expiresAt",
         "restore",
+        "detail",
+        "tone",
+        "answers",
+        "keepClear",
       ];
       if (
         !message ||
@@ -215,9 +339,15 @@ export function createTaskGuidance(api, authorize) {
         !Number.isSafeInteger(Number(g.tabId)) ||
         !Number.isSafeInteger(g.revision) ||
         g.revision < 1 ||
-        !["show", "hide"].includes(g.kind) ||
+        !["show", "hide", "pause"].includes(g.kind) ||
+        (g.kind !== "show" &&
+          Object.keys(g).some(
+            (key) =>
+              !["tabId", "taskContext", "revision", "kind"].includes(key),
+          )) ||
         (g.kind === "show" &&
-          (typeof g.stepId !== "string" ||
+          (!validLabel(g) ||
+            typeof g.stepId !== "string" ||
             !/^[A-Za-z0-9._:-]{1,128}$/.test(g.stepId) ||
             typeof g.selector !== "string" ||
             !/^[0-9a-f-]{36}:0:\d+$/.test(g.selector) ||
@@ -227,19 +357,32 @@ export function createTaskGuidance(api, authorize) {
             !Number.isSafeInteger(g.expiresAt) ||
             g.expiresAt <= Date.now() ||
             g.expiresAt > Date.now() + 300000 ||
-            (g.restore !== undefined && typeof g.restore !== "boolean")))
+            (g.restore !== undefined && typeof g.restore !== "boolean") ||
+            (g.keepClear !== undefined &&
+              (!Array.isArray(g.keepClear) ||
+                g.keepClear.length > 8 ||
+                g.keepClear.some(
+                  (ref) =>
+                    typeof ref !== "string" ||
+                    ref.split(":").length !== 3 ||
+                    ref.split(":")[0] !== g.selector.split(":")[0] ||
+                    ref.split(":")[1] !== "0" ||
+                    !/^\d+$/.test(ref.split(":")[2]),
+                )))))
       )
         throw new BridgeError(
           "INVALID_REQUEST",
           "Invalid task guidance request.",
         );
+      // Pause, like removal, only reduces what is drawn: owner-bound, and
+      // available after lease expiry or navigation.
       const scope = await authorize(
         {
           id: g.tabId,
           subaction: "snapshot",
           taskContext: g.taskContext,
         },
-        g.kind === "hide",
+        g.kind !== "show",
       );
       const valid = () => current() && scope.current();
       if (!valid() || !scope.command.taskPolicy) throw stale();
@@ -267,11 +410,28 @@ export function createTaskGuidance(api, authorize) {
           await track(g.tabId, true);
           if (!isCurrent()) throw stale();
           const match = g.selector?.split(":");
+          const answerKey = g.answers ? crypto.randomUUID() : undefined;
+          const key =
+            g.kind === "show" ? dismissalKey(g.taskContext, g.stepId) : null;
+          const steps = dismissals.get(g.tabId);
+          if (g.kind === "show") {
+            // Forget dismissals of other tasks or epochs in this tab.
+            for (const step of steps ?? [])
+              if (
+                JSON.stringify(JSON.parse(step).slice(0, 2)) !==
+                JSON.stringify([g.taskContext.taskId, g.taskContext.epoch])
+              )
+                steps.delete(step);
+            if (g.restore) steps?.delete(key);
+          }
           const request =
-            g.kind === "hide"
-              ? { kind: "hide" }
-              : {
+            g.kind === "show"
+              ? {
                   kind: "show",
+                  ...(steps?.has(key) ? { dismissed: true } : {}),
+                  ...(g.keepClear?.length
+                    ? { keepClear: g.keepClear.map((ref) => ref.split(":")[2]) }
+                    : {}),
                   id: `${policy.guidanceScope}:${g.stepId}`,
                   snapshotId: match[0],
                   nodeId: match[2],
@@ -279,7 +439,14 @@ export function createTaskGuidance(api, authorize) {
                   expiresAt: Math.min(g.expiresAt, policy.expiresAt),
                   text: g.text,
                   restore: g.restore,
-                };
+                  detail: g.detail,
+                  tone: g.tone,
+                  answers: g.answers,
+                  answerKey,
+                  assistantName: policy.assistantName,
+                  fonts: guideFonts,
+                }
+              : { kind: g.kind };
           const [result] =
             g.kind === "hide"
               ? [{ result: await hide(g.tabId) }]
@@ -299,7 +466,7 @@ export function createTaskGuidance(api, authorize) {
               "Guidance needs a fresh page observation.",
             );
           if (
-            (g.kind === "hide" && result.result.visible !== false) ||
+            (g.kind !== "show" && result.result.visible !== false) ||
             (g.kind === "show" && result.result.accepted !== true)
           )
             throw new BridgeError(
@@ -310,6 +477,28 @@ export function createTaskGuidance(api, authorize) {
             await track(g.tabId, false);
             if (active.get(g.tabId) === ticket) active.delete(g.tabId);
           }
+          if (g.kind === "show")
+            ticket.shown = {
+              guideId: request.id,
+              key,
+              documentId: result.documentId,
+              origin: policy.origin,
+              current: isCurrent,
+            };
+          // Answers are accepted only for this exact show: same ticket, binding,
+          // transport generation, document and per-show key.
+          if (answerKey)
+            ticket.offer = {
+              guideId: request.id,
+              answerKey,
+              answerIds: g.answers.map((answer) => answer.id),
+              documentId: result.documentId,
+              origin: policy.origin,
+              stepId: g.stepId,
+              revision: g.revision,
+              expiresAt: request.expiresAt,
+              current: isCurrent,
+            };
           return result.result;
         });
       } catch (error) {

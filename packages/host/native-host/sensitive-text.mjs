@@ -1,10 +1,40 @@
 import { NativeHostError } from "./errors.mjs";
+
+const DIGIT_WORDS = {
+  zero: "0",
+  oh: "0",
+  one: "1",
+  two: "2",
+  three: "3",
+  four: "4",
+  five: "5",
+  six: "6",
+  seven: "7",
+  eight: "8",
+  nine: "9",
+};
+const SPOKEN_DIGITS =
+  /\b(?:zero|oh|one|two|three|four|five|six|seven|eight|nine)(?:[\s,.-]+(?:zero|oh|one|two|three|four|five|six|seven|eight|nine)){3,}\b/gi;
+/** Speech recognition writes "one two three four" or "1 2 3 4" for a spoken code. */
+const spokenDigits = (text) =>
+  text.replace(SPOKEN_DIGITS, (run) =>
+    run
+      .split(/[\s,.-]+/)
+      .map((word) => DIGIT_WORDS[word.toLowerCase()])
+      .join(""),
+  );
 /** Conservative recognition, not a promise to identify every possible secret.
  * Reject the whole input rather than silently changing a user's instructions.
  * Never include the matched value in an error or a log.
  */
 export function containsSensitiveText(value) {
-  const text = value.normalize("NFKC").replace(/[\u200B-\u200D\uFEFF]/g, "");
+  const normalized = value
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "");
+  const spoken = spokenDigits(normalized);
+  return sensitive(normalized) || (spoken !== normalized && sensitive(spoken));
+}
+function sensitive(text) {
   if (
     /\b(?:csk-|sk-(?:proj-|live-)?|gh[pousr]_|github_pat_|AIza)[A-Za-z0-9_-]{16,}\b/.test(
       text,
@@ -30,8 +60,30 @@ export function containsSensitiveText(value) {
     return true;
   if (/\b(?:otp|pin|cvv|cvc)\s*(?:is\s+|[:=]\s*)\d{3,10}\b/i.test(text))
     return true;
+  // "my code is 4 8 2 9 1 7", "the code they sent is 482917" and
+  // "482917 is the code". A zip, postal or area code is not a secret.
+  if (
+    /(?<!\b(?:zip|postal|post|area|country|dialing)\s+)\b(?:pass)?code\b(?:\s+[a-z']+){0,4}?\s*(?:[:=]\s*)?\d(?:[\s-]?\d){3,7}(?!\d)/i.test(
+      text,
+    ) ||
+    /(?<!\d)\d(?:[\s-]?\d){3,7}\s+(?:is|was)\s+(?:the|my|your|our)\s+(?:[a-z]+\s+){0,2}?(?:pass)?code\b/i.test(
+      text,
+    )
+  )
+    return true;
   // Bare short codes are commonly pasted from verification messages.
-  if (/^\s*\d{4,8}\s*$/.test(text)) return true;
+  // Speech recognition may space the digits ("1 2 3 4"). Amounts such as
+  // "12.50" or "1,000", a phone number such as "555-1234" and a time such
+  // as "10 30" are not codes.
+  const bare = text.trim().replace(/[.!?]$/, "");
+  if (/^\d{4,8}$/.test(bare) || /^\d(?: \d){3,7}$/.test(bare)) return true;
+  if (
+    /^\d{2,}(?:[ -]\d{2,})+$/.test(bare) &&
+    bare.replace(/\D/g, "").length >= 6 &&
+    bare.replace(/\D/g, "").length <= 8 &&
+    !/^\d{3}[ -]\d{4}$/.test(bare)
+  )
+    return true;
   for (const candidate of text.matchAll(/(?<!\d)(?:\d[ -]?){12,18}\d(?!\d)/g)) {
     const digits = candidate[0].replace(/\D/g, "");
     if (/^(\d)\1+$/.test(digits)) continue;

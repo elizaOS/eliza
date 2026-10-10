@@ -1,4 +1,16 @@
 /// <reference types="bun-types" />
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import type { FeatureResult } from "@elizaos/contracts";
+import { type IAgentRuntime, logger, type Service } from "@elizaos/core";
+import type { IPermissionsRegistry } from "@elizaos/core/protocol";
+import { resolveNativeLibraryCandidate } from "@elizaos/host";
+import type { NativeLibraryCandidate } from "@elizaos/host/protocol";
+import {
+  APPLE_REMINDERS_MACOS_BRIDGE_DYLIB_BASENAME,
+  appleRemindersMacosBridgeCandidates,
+} from "@elizaos/macosreminders";
+import { isDarwin } from "../platform/host.js";
 
 /**
  * Maps LifeOps reminders and alarms onto the native macOS Apple Reminders
@@ -6,20 +18,6 @@
  * and resolves the platform-gated bridge dylib (Darwin only) via the
  * permissions registry. Bridge implementation lives in `@elizaos/macosreminders`.
  */
-import { dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import type { FeatureResult } from "@elizaos/contracts";
-import type { IAgentRuntime, Service } from "@elizaos/core";
-import { logger, resolveNativeLibraryCandidate } from "@elizaos/core";
-import type {
-  IPermissionsRegistry,
-  NativeLibraryCandidate,
-} from "@elizaos/core/protocol";
-import {
-  APPLE_REMINDERS_MACOS_BRIDGE_DYLIB_BASENAME,
-  appleRemindersMacosBridgeCandidates,
-} from "@elizaos/macosreminders";
-import { isDarwin } from "../platform/host.js";
 
 export const NATIVE_APPLE_REMINDER_METADATA_KEY = "nativeAppleReminder";
 const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";

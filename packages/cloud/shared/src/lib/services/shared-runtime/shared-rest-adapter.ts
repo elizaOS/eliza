@@ -15,6 +15,7 @@
  * agentId, bridge roomId === conversationId). The list always has exactly one
  * item, so no conversation index is needed.
  */
+
 import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
 import { type SharedReminderDelivery } from "@elizaos/plugin-scheduling";
 import { type RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
@@ -22,6 +23,7 @@ import { InsufficientCreditsError } from "../../api/errors";
 import { logger } from "../../utils/logger";
 import { type BridgeRequest } from "../eliza-sandbox";
 import { coordinateSharedBridge, coordinateSharedHistory } from "./conversation-coordinator";
+import type { NetworkSharedTurnObservation } from "./network-shared-context";
 import { type PersonalSharedFallbackAccountState } from "./personal-fallback-account-state";
 import { type SharedAgentCharacter } from "./run-shared-agent-turn";
 import { type SharedRuntimeAgent } from "./shared-runtime-agent";
@@ -585,6 +587,11 @@ export async function sharedRestMessageSend(
   trustedChannel?: SharedRuntimeChannel,
   /** Server-resolved Dedicated fallback account state (#25146); never from RPC params. */
   trustedAccountState?: PersonalSharedFallbackAccountState,
+  traceId?: string,
+  abortSignal?: AbortSignal,
+  trustedNetworkContext?: NetworkSharedTurnObservation,
+  /** The Network service's open-turn context (takeover); read only for personal shared turns. */
+  trustedNetworkTurn?: unknown,
 ): Promise<{
   text: string;
   agentName: string;
@@ -602,6 +609,7 @@ export async function sharedRestMessageSend(
     params: {
       text,
       roomId: conversationId,
+      ...(trustedNetworkContext ? { userId: agent.user_id } : {}),
       ...(clientMessageId ? { clientMessageId } : {}),
       ...(trustedDelivery ? { trustedDelivery } : {}),
     },
@@ -611,9 +619,13 @@ export async function sharedRestMessageSend(
   const response = await coordinateSharedBridge(agent, rpc, {
     executionCtx,
     namespace,
+    ...(traceId ? { traceId } : {}),
+    ...(abortSignal ? { abortSignal } : {}),
     ...(funding === "platform" ? { agentKind: "personal" as const } : {}),
     ...(trustedUserUtterance ? { trustedUserUtterance } : {}),
     ...(trustedAccountState ? { trustedAccountState } : {}),
+    ...(trustedNetworkContext ? { trustedNetworkContext } : {}),
+    ...(trustedNetworkTurn !== undefined ? { trustedNetworkTurn } : {}),
     channel: trustedChannel ?? {
       type: ChannelType.DM,
       source: trustedDelivery?.platform ?? MESSAGE_SOURCE_CLIENT_CHAT,

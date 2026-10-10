@@ -140,7 +140,7 @@ export function isHomeWidgetSunset(
   if (
     typeof sunset.afterSeen === "number" &&
     sunset.afterSeen > 0 &&
-    life.seen > sunset.afterSeen
+    life.seen - (seenThisSession.has(key) ? 1 : 0) >= sunset.afterSeen
   ) {
     return true;
   }

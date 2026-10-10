@@ -68,6 +68,10 @@ import type { SupportedChain, Transaction } from "./evm/types";
 import BigNumber from "./solana/bn";
 import { SOLANA_SERVICE_NAME } from "./solana/constants";
 import {
+  parseSolanaTokenBaseUnits,
+  SOLANA_SWAP_AMOUNT_INVALID,
+} from "./solana/exact-base-units.js";
+import {
   fetchJupiterJson,
   resolveJupiterApiBaseUrl,
 } from "./solana/jupiter-api";
@@ -820,6 +824,31 @@ async function getSolanaTokenDecimals(
   throw new Error(`Unable to fetch token decimals for ${mintAddress}`);
 }
 
+function parseSolanaTransferLamports(amount: string | undefined): number {
+  let lamports: InstanceType<typeof BigNumber>;
+  try {
+    lamports = new BigNumber(amount ?? "0").multipliedBy(LAMPORTS_PER_SOL);
+  } catch (cause) {
+    // error-policy:J2 Preserve malformed decimal input as a typed validation failure.
+    throw new ElizaError("SOL transfer amount is not a valid decimal value.", {
+      code: "SOLANA_TRANSFER_AMOUNT_INVALID",
+      cause,
+    });
+  }
+  if (
+    !lamports.isFinite() ||
+    lamports.lte(0) ||
+    !lamports.isInteger() ||
+    lamports.gt(Number.MAX_SAFE_INTEGER)
+  ) {
+    throw new ElizaError(
+      "SOL transfer amount must be a positive finite value exactly representable in safe integer lamports.",
+      { code: "SOLANA_TRANSFER_AMOUNT_INVALID" },
+    );
+  }
+  return lamports.toNumber();
+}
+
 async function executeSolanaTransfer(
   params: WalletRouterParams,
   context: WalletRouterContext,
@@ -827,32 +856,39 @@ async function executeSolanaTransfer(
   if (!params.recipient) {
     throw new Error("recipient is required for Solana transfer.");
   }
+  const tokenMint = resolveSolanaMint(params.fromToken);
+  let lamports: number | null = null;
+  let tokenBaseUnits: bigint | null = null;
+  let connection: Connection | null = null;
+  if (tokenMint === SOL_MINT) {
+    // Reject an inexact lamport amount before a signer or RPC lookup.
+    lamports = parseSolanaTransferLamports(params.amount);
+  } else {
+    connection = getSolanaConnection(context.runtime);
+    tokenBaseUnits = parseSolanaTokenBaseUnits(
+      params.amount,
+      await getSolanaTokenDecimals(connection, tokenMint),
+    );
+  }
   const { keypair: senderKeypair } = await getWalletKey(context.runtime, true);
   if (!senderKeypair) {
     throw new Error("Solana keypair is not available.");
   }
-  const connection = getSolanaConnection(context.runtime);
+  connection ??= getSolanaConnection(context.runtime);
   const recipientPubkey = new PublicKey(params.recipient);
-  const tokenMint = resolveSolanaMint(params.fromToken);
   const instructions: TransactionInstruction[] = [];
 
-  if (tokenMint === SOL_MINT) {
+  if (lamports !== null) {
     instructions.push(
       SystemProgram.transfer({
         fromPubkey: senderKeypair.publicKey,
         toPubkey: recipientPubkey,
-        lamports: Math.round(Number(params.amount) * LAMPORTS_PER_SOL),
+        lamports,
       }),
     );
-  } else {
+  } else if (tokenBaseUnits !== null) {
     const mintPubkey = new PublicKey(tokenMint);
-    const decimals = await getSolanaTokenDecimals(connection, tokenMint);
-    const adjustedAmount = BigInt(
-      new BigNumber(params.amount ?? "0")
-        .multipliedBy(new BigNumber(10).pow(decimals))
-        .integerValue()
-        .toFixed(0),
-    );
+    const adjustedAmount = tokenBaseUnits;
     const senderAta = getAssociatedTokenAddressSync(
       mintPubkey,
       senderKeypair.publicKey,
@@ -933,10 +969,13 @@ async function fetchJupiterSwapTransaction(
   const inputMint = resolveSolanaMint(params.fromToken);
   const outputMint = resolveSolanaMint(params.toToken);
   const decimals = await getSolanaTokenDecimals(connection, inputMint);
-  const adjustedAmount = new BigNumber(params.amount ?? "0")
-    .multipliedBy(new BigNumber(10).pow(decimals))
-    .integerValue()
-    .toFixed(0);
+  // Reject a fractional base unit before the quote so Jupiter cannot be asked
+  // for more tokens than the user named. integerValue() half-up did that.
+  const adjustedAmount = parseSolanaTokenBaseUnits(
+    params.amount,
+    decimals,
+    SOLANA_SWAP_AMOUNT_INVALID,
+  ).toString();
 
   const quoteParams = new URLSearchParams({
     inputMint,

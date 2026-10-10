@@ -149,7 +149,7 @@ export class RelationshipsDomain {
     const entities = await entityStore.list({
       type: "person",
       tag: LIFEOPS_CONTACT_TAG,
-      ...(opts?.limit ? { limit: opts.limit } : {}),
+      ...(opts?.limit === undefined ? {} : { limit: Math.max(0, opts.limit) }),
     });
     const result: LifeOpsRelationship[] = [];
     for (const entity of entities) {

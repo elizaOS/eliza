@@ -149,7 +149,7 @@ try {
   await page.evaluate(() => {
     document.body.insertAdjacentHTML(
       "beforeend",
-      '<input id="secret" type="password" aria-label="Secret"><input id="otp" autocomplete="one-time-code" aria-label="Code"><button id="signin" type="button">Sign in</button><button id="pay" type="button">Pay now</button><button id="verify" type="button">Verify</button>',
+      '<input id="secret" type="password" aria-label="Secret"><input id="otp" autocomplete="one-time-code" aria-label="Code"><button id="signin" type="button">Sign in</button><button id="pay" type="button">Pay now</button><button id="verify" type="button">Verify</button><button id="confirm" type="button">Confirm payment</button><div id="make" role="button" tabindex="0">Make a payment</div><a id="schedule" href="#scheduled">Schedule payment</a><input id="proceed" type="button" value="Continue to review"><span id="lbl-pay">Pay this bill</span><div id="lb-div" role="button" tabindex="0" aria-labelledby="lbl-pay">&rarr;</div><span id="lbl-send">Send my payment</span><button id="lb-btn" type="button" aria-labelledby="lbl-send"><svg aria-hidden="true" width="8" height="8"></svg></button>',
     );
     document.querySelector("#go").type = "button";
   });
@@ -163,6 +163,12 @@ try {
       { selector: "#pay", action: "click" },
       { selector: "#verify", action: "click" },
       { selector: "#go", action: "click" },
+      { selector: "#confirm", action: "click" },
+      { selector: "#make", action: "click" },
+      { selector: "#schedule", action: "click" },
+      { selector: "#proceed", action: "click" },
+      { selector: "#lb-div", action: "click" },
+      { selector: "#lb-btn", action: "click" },
     ],
   };
   for (const [label, subaction] of [
@@ -171,6 +177,14 @@ try {
     ["Sign in", "click"],
     ["Pay now", "click"],
     ["Verify", "click"],
+    // Commit words block a type=button, a role=button and a link alike.
+    ["Confirm payment", "click"],
+    ["Make a payment", "click"],
+    ["Schedule payment", "click"],
+    ["Continue to review", "click"],
+    // Named only by aria-labelledby: the guard uses the snapshot's name.
+    ["Pay this bill", "click"],
+    ["Send my payment", "click"],
   ]) {
     state = await snapshot();
     assert.equal(
@@ -222,8 +236,49 @@ try {
     ).error.kind,
     "POLICY_BLOCKED",
   );
+  assert.equal(await page.evaluate(() => location.hash), "");
   cases.push(
-    "native-reviewed targets allow a declared ordinary action and reject undeclared fields, passwords, OTP, sign-in, verification and payment controls",
+    "native-reviewed targets allow a declared ordinary action and reject undeclared fields, passwords, OTP, sign-in, verification, payment, confirm, continue and schedule controls on buttons, roles and links",
+  );
+  // Observation names fields the way assistive technology does and reports
+  // control state and secret fields without their values.
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      '<label for="full">Full name</label><input id="full" autocomplete="name" required aria-invalid="true" aria-describedby="hint" aria-errormessage="problem" value="private-name-value"><span id="hint">As shown on your bill</span><span id="problem">Enter your name</span><label>Card number <input id="card" autocomplete="cc-number" value="4242424242424242"></label><span id="pin-name">PIN</span><input id="pin" aria-labelledby="pin-name" autocomplete="current-password"><input id="agree" type="checkbox" checked aria-label="Paperless"><button id="more" type="button" aria-expanded="false" disabled>More</button>',
+    );
+    document.querySelector("#full").focus();
+  });
+  state = await snapshot();
+  const named = (label) =>
+    state.value.elements.find((element) => element.label === label);
+  assert.deepEqual(
+    (({ focused, required, invalid, description, sensitive, disabled }) => ({
+      focused,
+      required,
+      invalid,
+      description,
+      sensitive,
+      disabled,
+    }))(named("Full name")),
+    {
+      focused: true,
+      required: true,
+      invalid: true,
+      description: "As shown on your bill Enter your name",
+      sensitive: null,
+      disabled: false,
+    },
+  );
+  assert.equal(named("Card number").sensitive, "payment-card");
+  assert.equal(named("PIN").sensitive, "password");
+  assert.equal(named("Paperless").checked, true);
+  assert.equal(named("More").expanded, false);
+  assert.equal(named("More").disabled, true);
+  assert.ok(!JSON.stringify(state.value).includes("private-name-value"));
+  assert.ok(!JSON.stringify(state.value).includes("4242424242424242"));
+  cases.push(
+    "snapshots name fields from labels and report focus, state, field help and secret-field markers without values",
   );
   const out = testOutputPath("browser-page-freshness");
   await mkdir(out, { recursive: true });

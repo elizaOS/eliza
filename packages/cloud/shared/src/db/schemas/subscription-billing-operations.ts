@@ -18,7 +18,11 @@ import type {
   GenericBillingCommandPayload,
   GenericBillingCommandResult,
 } from "../../lib/services/generic-billing-command-types";
+import type { observeOriginalInvoiceDebt } from "../../lib/services/observed-invoice-debt";
+import type { observeRetainedCollectingInvoiceCapture } from "../../lib/services/retained-collecting-invoice-capture";
+import type { observeRetainedInvoiceBalance } from "../../lib/services/retained-invoice-balance-observation";
 import type { CheckoutContract } from "../../lib/services/subscription-checkout-contract";
+import type { SubscriptionInvoiceEventEvidence } from "../../lib/services/subscription-invoice-event-evidence";
 import type { SubscriptionRenewalReview } from "../../lib/services/subscription-renewal-review-contract";
 import { appBillingScopes, billingMerchants } from "./app-billing";
 import { appClientRegistrations } from "./app-delegations";
@@ -705,6 +709,66 @@ export const billingSubscriptionRenewalReviews = pgTable(
     payload_check: check(
       "billing_renewal_review_payload_check",
       sql`(jsonb_typeof(${table.payload})='object' AND ${table.payload}->>'kind'='renewal_estimate' AND ${table.payload}->>'termsDigest' ~ '^[a-f0-9]{64}$' AND ${table.payload}->>'expectedSubscriptionRevision' ~ '^[1-9][0-9]*$') IS TRUE`,
+    ),
+  }),
+);
+
+/** Original invoice observation retained atomically with its authenticated receipt. */
+export const subscriptionInvoiceEventEvidence = pgTable(
+  "subscription_invoice_event_evidence",
+  {
+    receipt_id: uuid("receipt_id").primaryKey(),
+    organization_id: uuid("organization_id").notNull(),
+    evidence: jsonb("evidence").$type<SubscriptionInvoiceEventEvidence>().notNull(),
+  },
+  (table) => ({
+    receipt_owner_fk: foreignKey({
+      columns: [table.receipt_id, table.organization_id],
+      foreignColumns: [
+        billingSubscriptionEventReceipts.id,
+        billingSubscriptionEventReceipts.organization_id,
+      ],
+    }).onDelete("restrict"),
+  }),
+);
+
+/** Append-only versions under the original receipt; these observations do not apply money. */
+export const subscriptionInvoiceObservations = pgTable(
+  "subscription_invoice_observations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organization_id: uuid("organization_id").notNull(),
+    receipt_id: uuid("receipt_id").notNull(),
+    request_id: uuid("request_id").notNull(),
+    version: integer("version").notNull(),
+    previous_id: uuid("previous_id"),
+    observation: jsonb("observation")
+      .$type<
+        | Awaited<ReturnType<typeof observeRetainedInvoiceBalance>>
+        | Awaited<
+            | ReturnType<typeof observeRetainedCollectingInvoiceCapture>
+            | ReturnType<typeof observeOriginalInvoiceDebt>
+          >
+      >()
+      .notNull(),
+    observed_at: timestamp("observed_at", { withTimezone: true }).notNull(),
+    recorded_at: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    receipt_owner_fk: foreignKey({
+      columns: [table.receipt_id, table.organization_id],
+      foreignColumns: [
+        billingSubscriptionEventReceipts.id,
+        billingSubscriptionEventReceipts.organization_id,
+      ],
+    }).onDelete("restrict"),
+    request_unique: uniqueIndex("subscription_invoice_observation_request_unique").on(
+      table.receipt_id,
+      table.request_id,
+    ),
+    version_unique: uniqueIndex("subscription_invoice_observation_version_unique").on(
+      table.receipt_id,
+      table.version,
     ),
   }),
 );

@@ -1,5 +1,5 @@
 # This builtins-only diagnostic does not replace normal-hook installation or
-# the full Windows/Smithers survivor acceptance in platform-smoke.yml.
+# platform-specific release qualification.
 name: Windows helper startup probe
 on:
   workflow_dispatch:

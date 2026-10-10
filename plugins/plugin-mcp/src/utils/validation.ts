@@ -1,8 +1,8 @@
 /**
  * Validators for model-produced tool/resource selections and the feedback prompts
- * used to re-prompt on failure. A selection must target a connected server and an
- * existing tool/resource, and tool arguments must satisfy the tool's own input
- * schema; an explicit noTool/noResourceAvailable signal is accepted as valid.
+ * used to re-prompt on failure. Selections target a connected server. Tools must
+ * exist and their arguments must satisfy the tool schema; resource URIs are
+ * resolved by the server. Explicit noTool/noResourceAvailable signals are valid.
  */
 
 import { createRequire } from "node:module";
@@ -38,6 +38,7 @@ const MAX_CONCURRENT_SCHEMA_VALIDATIONS = 4;
 let activeSchemaValidations = 0;
 const moduleRequire = createRequire(import.meta.url);
 const AJV_WORKER_MODULE_PATH = moduleRequire.resolve("ajv");
+const AJV_2020_WORKER_MODULE_PATH = moduleRequire.resolve("ajv/dist/2020");
 interface SchemaWorkerResult {
   readonly success: boolean;
   readonly error?: string;
@@ -45,14 +46,35 @@ interface SchemaWorkerResult {
 const SCHEMA_WORKER_SOURCE = `
   const { parentPort, workerData } = require("node:worker_threads");
   const AjvImport = require(workerData.ajvModulePath);
-  const Ajv = AjvImport.default ?? AjvImport;
+  const AjvLegacy = AjvImport.default ?? AjvImport;
+  const Ajv2020Import = require(workerData.ajv2020ModulePath);
+  const Ajv2020 = Ajv2020Import.default ?? Ajv2020Import;
 
   parentPort.postMessage({ ready: true });
   parentPort.once("message", ({ schemaJson, dataJson }) => {
     try {
       const schema = JSON.parse(schemaJson);
       const data = JSON.parse(dataJson);
-      const validate = new Ajv({ allErrors: true }).compile(schema);
+      const dialect = typeof schema.$schema === "string"
+        ? schema.$schema.replace(/#$/, "") : schema.$schema;
+      // MCP defaults to 2020-12. Keep draft-07 only when it is declared.
+      // Each request still has its own bounded worker and Ajv instance.
+      let Ajv = Ajv2020;
+      if (dialect !== undefined && dialect !== "https://json-schema.org/draft/2020-12/schema") {
+        if (dialect !== "http://json-schema.org/draft-07/schema") {
+          throw new Error("Unsupported MCP JSON Schema dialect: " + String(dialect));
+        }
+        Ajv = AjvLegacy;
+      }
+      let validate;
+      try {
+        validate = new Ajv({ allErrors: true }).compile(schema);
+      } catch (error) {
+        // error-policy:J3 undeclared legacy schemas keep their original constraints.
+        // Only compilation can fall back; failed argument validation never does.
+        if (dialect !== undefined) throw error;
+        validate = new AjvLegacy({ allErrors: true }).compile(schema);
+      }
       const valid = validate(data);
       parentPort.postMessage({ success: Boolean(valid), errors: validate.errors ?? [] });
     } catch (error) {
@@ -146,6 +168,7 @@ async function validateUntrustedToolArguments(
         },
         workerData: {
           ajvModulePath: AJV_WORKER_MODULE_PATH,
+          ajv2020ModulePath: AJV_2020_WORKER_MODULE_PATH,
         },
       });
       let settled = false;
@@ -288,8 +311,28 @@ export async function validateToolSelectionArgument(
   }
   return { success: true, data };
 }
-export function validateResourceSelection(selection: unknown): ValidationResult<ResourceSelection> {
-  return validateMcpResourceSelection(selection) as ValidationResult<ResourceSelection>;
+export function validateResourceSelection(
+  selection: unknown,
+  state: State
+): ValidationResult<ResourceSelection> {
+  const basicResult = validateMcpResourceSelection(
+    selection
+  ) as ValidationResult<ResourceSelection>;
+  if (basicResult.success === false || basicResult.data.noResourceAvailable) {
+    return basicResult;
+  }
+  const data = basicResult.data;
+  // Resource links and template-derived URIs need not appear in resources/list.
+  // Validate the selected connection here; the server resolves the resource.
+  const mcpData = (state.values.mcp ?? {}) as Record<string, McpServerInfo>;
+  const name = data.serverName ?? "";
+  if (!Object.hasOwn(mcpData, name) || mcpData[name]?.status !== "connected") {
+    return {
+      success: false,
+      error: `Server "${data.serverName}" not found or not connected`,
+    };
+  }
+  return basicResult;
 }
 interface ToolDescription {
   readonly description?: string;

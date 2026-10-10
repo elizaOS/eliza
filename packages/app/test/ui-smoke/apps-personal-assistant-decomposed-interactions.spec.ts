@@ -73,9 +73,7 @@ test.describe("calendar legacy appearance", () => {
   }) => {
     await openPopulatedCalendar(page);
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-    expect(
-      await page.evaluate(() => localStorage.getItem("eliza:ui-theme-mode")),
-    ).toBe("dark");
+    // The fixed dark shell ignores retired preference keys; it does not rewrite them.
     await page.getByRole("button", { name: "Month", exact: true }).click();
     const grid = page.getByTestId("calendar-month-grid");
     const current = grid.locator('button[aria-current="date"]');

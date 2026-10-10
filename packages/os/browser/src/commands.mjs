@@ -1,6 +1,14 @@
 /** Executes fixed browser operations against explicit tabs and isolated-world snapshot references. */
 import { BridgeError } from "./protocol.mjs";
 
+/**
+ * Words on a control that commits a payment, sign-in, submission or other
+ * irreversible step. A task policy can never click such a control; the person
+ * presses it. Products that plan clicks should use this same vocabulary.
+ */
+export const COMMIT_CONTROL =
+  /\b(pay|pays|paying|payments?|submit|confirm|sign\s*in|log\s*in|sign\s*up|verify|send|delete|remove|cancel|close\s+account|authori[sz]e|agree|accept|save|continue|proceed|buy|purchase|place\s+(?:my\s+|your\s+|the\s+)?order|order\s+now|check\s*out|schedule|transfer|donate|subscribe)\b/i;
+
 export function pageCommand(command, snapshotId, validateOnly = false) {
   const policy = command.taskPolicy;
   const denied = () => ({
@@ -19,6 +27,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     return denied();
   const key = "__elizaBrowserControlV1";
   const monitorKey = "__elizaBrowserObservationV1";
+  const watchKey = "__elizaTaskEffectWatchV1";
   let monitor = globalThis[monitorKey];
   if (!monitor || monitor.document !== document) {
     monitor = {
@@ -82,34 +91,138 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     offsetLeft: visualViewport?.offsetLeft ?? 0,
     offsetTop: visualViewport?.offsetTop ?? 0,
   });
-  if (command.subaction === "snapshot") {
-    const readVisibleText = (root) => {
-      const visibleText = [];
-      const collectText = (node) => {
-        if (node.nodeType === Node.TEXT_NODE) {
-          const visibility = node.parentElement
-            ? getComputedStyle(node.parentElement).visibility
-            : "visible";
-          if (
-            visibility !== "hidden" &&
-            visibility !== "collapse" &&
-            node.textContent.trim()
-          )
-            visibleText.push(node.textContent);
-          return;
-        }
-        if (!(node instanceof Element)) return;
+  // Shared by the snapshot and the commit guard so both name a node alike.
+  const readVisibleText = (root) => {
+    const visibleText = [];
+    const collectText = (node) => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const visibility = node.parentElement
+          ? getComputedStyle(node.parentElement).visibility
+          : "visible";
         if (
-          node.matches("input,textarea,select,script,style,noscript") ||
-          node.isContentEditable
+          visibility !== "hidden" &&
+          visibility !== "collapse" &&
+          node.textContent.trim()
         )
-          return;
-        const style = getComputedStyle(node);
-        if (style.display === "none") return;
-        for (const child of node.childNodes) collectText(child);
+          visibleText.push(node.textContent);
+        return;
+      }
+      if (!(node instanceof Element)) return;
+      if (
+        node.matches("input,textarea,select,script,style,noscript") ||
+        node.isContentEditable
+      )
+        return;
+      const style = getComputedStyle(node);
+      if (style.display === "none") return;
+      for (const child of node.childNodes) collectText(child);
+    };
+    collectText(root);
+    return visibleText.join("\n").trim();
+  };
+  // Accessible name in the usual order. Never reads a form control value
+  // except the visible caption of a button-type input.
+  const idText = (value) =>
+    (value || "")
+      .split(/\s+/)
+      .map((id) => id && document.getElementById(id))
+      .filter(Boolean)
+      .map((ref) => readVisibleText(ref) || ref.getAttribute("aria-label"))
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+  const accessibleName = (node) => {
+    const labelled = idText(node.getAttribute("aria-labelledby"));
+    if (labelled) return labelled;
+    const aria = node.getAttribute("aria-label")?.trim();
+    if (aria) return aria;
+    const labels = [...(node.labels ?? [])]
+      .map((label) => readVisibleText(label))
+      .filter(Boolean)
+      .join(" ");
+    if (labels) return labels;
+    if (
+      node instanceof HTMLInputElement &&
+      ["button", "submit", "reset"].includes(node.type)
+    )
+      return node.value || (node.type === "submit" ? "Submit" : "");
+    if (node instanceof HTMLInputElement && node.type === "image")
+      return node.alt || node.title || "";
+    if (node instanceof HTMLInputElement && node.type === "password")
+      return node.getAttribute("placeholder") || node.title || "Password";
+    if (
+      node instanceof HTMLInputElement ||
+      node instanceof HTMLTextAreaElement ||
+      node instanceof HTMLSelectElement ||
+      node.isContentEditable
+    )
+      return node.getAttribute("placeholder") || node.title || "";
+    return readVisibleText(node) || node.title || "";
+  };
+  if (command.subaction === "snapshot") {
+    // Marks fields whose value is a secret. The value itself is never read.
+    const sensitivity = (node) => {
+      const autocomplete = (node.getAttribute("autocomplete") || "")
+        .toLowerCase()
+        .split(/\s+/);
+      if (
+        (node instanceof HTMLInputElement && node.type === "password") ||
+        autocomplete.some((token) => token.endsWith("password"))
+      )
+        return "password";
+      if (autocomplete.includes("one-time-code")) return "one-time-code";
+      if (autocomplete.some((token) => token.startsWith("cc-")))
+        return "payment-card";
+      return null;
+    };
+    const controlState = (node) => {
+      const flag = (name) => node.getAttribute(name) === "true";
+      return {
+        focused: document.activeElement === node,
+        disabled: node.matches(":disabled") || flag("aria-disabled"),
+        ...(node instanceof HTMLInputElement &&
+        ["checkbox", "radio"].includes(node.type)
+          ? { checked: node.checked }
+          : node.hasAttribute("aria-checked")
+            ? { checked: flag("aria-checked") }
+            : {}),
+        ...(node.hasAttribute("aria-expanded")
+          ? { expanded: flag("aria-expanded") }
+          : {}),
+        required: node.required === true || flag("aria-required"),
+        invalid: flag("aria-invalid"),
+        // Field help and error text the page ties to this control.
+        description:
+          [
+            idText(node.getAttribute("aria-describedby")),
+            flag("aria-invalid")
+              ? idText(node.getAttribute("aria-errormessage"))
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" ") || null,
+        sensitive: sensitivity(node),
+        // Whether the person (or the page) already put text here. Only this
+        // boolean leaves the page; the text itself stays behind the boundary.
+        ...((node instanceof HTMLInputElement &&
+          ![
+            "button",
+            "submit",
+            "reset",
+            "image",
+            "checkbox",
+            "radio",
+            "file",
+            "hidden",
+            "range",
+            "color",
+          ].includes(node.type)) ||
+        node instanceof HTMLTextAreaElement
+          ? { hasInput: node.value !== "" }
+          : node.isContentEditable
+            ? { hasInput: (node.textContent ?? "").trim() !== "" }
+            : {}),
       };
-      collectText(root);
-      return visibleText.join("\n").trim();
     };
     const nodes = new Map();
     const elements = [];
@@ -130,17 +243,9 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         id,
         tag: node.tagName.toLowerCase(),
         role: node.getAttribute("role"),
-        label:
-          node.getAttribute("aria-label") ||
-          node.getAttribute("placeholder") ||
-          (node instanceof HTMLInputElement && node.type === "password"
-            ? "Password"
-            : node instanceof HTMLTextAreaElement ||
-                node instanceof HTMLSelectElement ||
-                node.isContentEditable
-              ? ""
-              : readVisibleText(node)),
+        label: accessibleName(node),
         type: node.getAttribute("type"),
+        ...controlState(node),
         heading: node.querySelector("h1,h2,h3,h4,h5,h6")
           ? readVisibleText(node.querySelector("h1,h2,h3,h4,h5,h6"))
           : null,
@@ -159,7 +264,13 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       inputRevision: monitor.inputRevision,
       viewport: viewport(),
     };
+    // A submit or page change that a task fill or click set off in this
+    // document, under this binding. The watch below stopped it.
+    const violation = globalThis[watchKey]?.violation;
     return {
+      ...(policy && violation && violation.scope === policy.guidanceScope
+        ? { effectViolation: violation.kind }
+        : {}),
       url: location.href,
       title: document.title,
       readyState: document.readyState,
@@ -208,6 +319,12 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     // grant an action. Re-check the actual node immediately before the effect.
     if (
       !policy.targets.some((target) => {
+        // A host can bind one action to the one reviewed control it chose.
+        if (
+          policy.expectedSelector !== undefined &&
+          target.selector !== policy.expectedSelector
+        )
+          return false;
         const permission =
           command.subaction === "fill" &&
           policy.protectedValueKind === "verification-code"
@@ -223,13 +340,23 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       })
     )
       return denied();
-    const label = `${node.getAttribute("aria-label") || ""} ${node.textContent || ""}`;
+    const label = [
+      accessibleName(node),
+      node.getAttribute("aria-label"),
+      node.textContent,
+      node.title,
+      node instanceof HTMLInputElement ? node.value : "",
+      ...[...(node.labels ?? [])].map((item) => item.textContent),
+    ].join(" ");
+    // A control that commits something stays with the person, whatever its
+    // element or role. Keep this literal equal to COMMIT_CONTROL above; the
+    // function runs in the page, so it cannot read a module constant.
     if (
       command.subaction === "click" &&
       (node.matches(
         "button:not([type=button]):not([type=reset]),input[type=submit],input[type=image],input[type=password]",
       ) ||
-        /\b(sign\s*in|log\s*in|verify|pay|purchase|place\s+order|submit)\b/i.test(
+        /\b(pay|pays|paying|payments?|submit|confirm|sign\s*in|log\s*in|sign\s*up|verify|send|delete|remove|cancel|close\s+account|authori[sz]e|agree|accept|save|continue|proceed|buy|purchase|place\s+(?:my\s+|your\s+|the\s+)?order|order\s+now|check\s*out|schedule|transfer|donate|subscribe)\b/i.test(
           label,
         ))
     )
@@ -242,9 +369,17 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         node instanceof HTMLSelectElement
       ) ||
         (node instanceof HTMLInputElement &&
-          !["text", "email", "tel", "number", "search", "url"].includes(
+          !["text", "email", "tel", "number", "search", "url", "date"].includes(
             node.type,
           )) ||
+        // A date field takes only a real calendar day, as YYYY-MM-DD.
+        (node instanceof HTMLInputElement &&
+          node.type === "date" &&
+          (!/^\d{4}-\d{2}-\d{2}$/.test(command.text) ||
+            command.text.startsWith("0000-") ||
+            Number.isNaN(Date.parse(`${command.text}T00:00:00Z`)) ||
+            new Date(`${command.text}T00:00:00Z`).toISOString().slice(0, 10) !==
+              command.text)) ||
         (policy.protectedValueKind === "verification-code"
           ? !(node instanceof HTMLInputElement) ||
             node.autocomplete !== "one-time-code" ||
@@ -270,6 +405,58 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     feedback.markActed();
   }
   delete globalThis[key];
+  if (policy && ["click", "fill"].includes(command.subaction)) {
+    // A task fill or click must not submit a form or leave the page, also
+    // not through the page's own script (an auto-submitting code field, or
+    // a button that calls form.submit()). For a short time, stop every
+    // submit and page change that recent input by the person did not start,
+    // except a click on a link that opens that link. The next snapshot
+    // reports what was stopped, so the host can pause the task.
+    globalThis[watchKey]?.stop();
+    const anchor =
+      command.subaction === "click" ? node.closest("a[href]") : null;
+    let personAt = Number.NEGATIVE_INFINITY;
+    const controller = new AbortController();
+    const watch = {
+      violation:
+        globalThis[watchKey]?.violation?.scope === policy.guidanceScope
+          ? (globalThis[watchKey]?.violation ?? null)
+          : null,
+      stop: () => controller.abort(),
+    };
+    const report = (kind, event) => {
+      if (performance.now() - personAt <= 1500) return;
+      if (event.cancelable) event.preventDefault();
+      event.stopImmediatePropagation();
+      watch.violation ??= { kind, scope: policy.guidanceScope };
+    };
+    const options = { capture: true, signal: controller.signal };
+    const person = (event) => {
+      if (event.isTrusted) personAt = performance.now();
+    };
+    window.addEventListener("pointerdown", person, options);
+    window.addEventListener("keydown", person, options);
+    window.addEventListener(
+      "submit",
+      (event) => report("submit", event),
+      options,
+    );
+    globalThis.navigation?.addEventListener(
+      "navigate",
+      (event) => {
+        if (
+          event.userInitiated ||
+          event.destination.sameDocument ||
+          (anchor && !event.formData && event.destination.url === anchor.href)
+        )
+          return;
+        report(event.formData ? "submit" : "navigation", event);
+      },
+      { signal: controller.signal },
+    );
+    setTimeout(() => controller.abort(), 3000);
+    globalThis[watchKey] = watch;
+  }
   if (command.subaction === "click") {
     node.click();
   } else if (command.subaction === "fill") {

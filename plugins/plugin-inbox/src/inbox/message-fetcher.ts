@@ -625,6 +625,7 @@ export async function fetchGmailMessages(
   }
 
   const limit = opts.limit;
+  const sinceMs = parseOptionalTimestamp(opts.sinceIso, "sinceIso");
 
   // When no grantId is supplied, the service-side getGmailTriage already
   // aggregates across every Google grant and tags each summary with grantId
@@ -634,7 +635,10 @@ export async function fetchGmailMessages(
   try {
     triageFeed = await source.getGmailTriage(INTERNAL_URL, {
       ...(opts.grantId ? { grantId: opts.grantId } : {}),
-      ...(limit === undefined ? {} : { maxResults: limit }),
+      // Triage orders by score, not recency, so a capped read can drop valid
+      // in-window rows before sinceIso is applied. Fetch uncapped when
+      // filtering by time, then filter first and slice to limit.
+      ...(limit === undefined || sinceMs > 0 ? {} : { maxResults: limit }),
     });
   } catch (error) {
     logger.warn(
@@ -643,14 +647,8 @@ export async function fetchGmailMessages(
     return { messages: [], status: fetchFailedStatus("gmail", error) };
   }
 
-  const sinceMs = parseOptionalTimestamp(opts.sinceIso, "sinceIso");
-
   const results: InboundMessage[] = [];
-  const messages =
-    limit === undefined
-      ? triageFeed.messages
-      : triageFeed.messages.slice(0, limit);
-  for (const msg of messages) {
+  for (const msg of triageFeed.messages) {
     const messageId = requireNonEmptyString(msg.id, "Gmail message id");
     const externalId = requireNonEmptyString(
       msg.externalId,
@@ -689,7 +687,10 @@ export async function fetchGmailMessages(
     });
   }
 
-  return { messages: results, status: sourceStatus };
+  return {
+    messages: limit === undefined ? results : results.slice(0, limit),
+    status: sourceStatus,
+  };
 }
 
 export async function fetchXDmMessages(
@@ -772,7 +773,11 @@ export async function fetchXDmMessages(
     });
   }
 
-  return { messages: results, status: sourceStatus };
+  return {
+    messages:
+      limit === undefined ? results : results.slice(0, Math.max(0, limit)),
+    status: sourceStatus,
+  };
 }
 
 /** The merged cross-source pull plus per-source health for that pull. */
@@ -872,7 +877,10 @@ export async function fetchAllMessages(
     return bTime - aTime;
   });
   return {
-    messages: opts.limit ? combined.slice(0, opts.limit) : combined,
+    messages:
+      opts.limit === undefined
+        ? combined
+        : combined.slice(0, Math.max(0, opts.limit)),
     sources: results.map((result) => result.status),
   };
 }

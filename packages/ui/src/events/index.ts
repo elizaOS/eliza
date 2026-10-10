@@ -82,8 +82,7 @@ export function dispatchElizaCloudStatusUpdated(
 }
 
 export { useEmitViewEvent, useViewEvent } from "../hooks/useViewEvent";
-export * from "../views/view-event-bus";
-export * from "../views/view-event-types";
+export * from "./view-events";
 // ── UI-only events (no server producer) ──────────────────────────────────
 export const FOCUS_CONNECTOR_EVENT = "eliza:focus-connector" as const;
 const FOCUS_CONNECTOR_STORAGE_KEY = "elizaos:focus-connector";

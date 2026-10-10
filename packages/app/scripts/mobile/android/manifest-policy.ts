@@ -1,8 +1,10 @@
 /** Owns android manifest policy using the shared build context and existing platform contracts. */
 import {
+  appendMissingAndroidManifestBlock,
   appendMissingApplicationBlock,
   removeApplicationComponentBlock,
   removeApplicationComponentClassBlock,
+  stripXmlComments,
 } from "../android-manifest.ts";
 
 // ── Phase 4: Android native overlay ─────────────────────────────────────
@@ -63,6 +65,73 @@ export function androidAospRoleLauncherIntentFilter({
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />${extraCategory}
             </intent-filter>`;
+}
+
+/** Clock is an app entry, not an implementation of Android alarm/timer intents. */
+export function ensureElizaClockActivityManifest(
+  xml,
+  androidPackage,
+  { templateXml = "", javaAvailable = true } = {},
+) {
+  const templateActivity = stripXmlComments(templateXml ?? "").match(
+    /<activity\b(?=[^>]*android:name="(?:\.|[^"]*\.)?ElizaClockActivity")[^>]*(?:\/>|>[\s\S]*?<\/activity>)/,
+  )?.[0];
+  const activityName = `${androidPackage}.ElizaClockActivity`;
+  let next = removeApplicationComponentClassBlock(xml, "ElizaClockActivity");
+  const clockActions = [
+    "SET_ALARM",
+    "SHOW_ALARMS",
+    "DISMISS_ALARM",
+    "SNOOZE_ALARM",
+  ];
+  const queries = next.match(/<queries\b[^>]*>[\s\S]*?<\/queries>/)?.[0];
+  const missingActions = clockActions.filter(
+    (action) =>
+      !stripXmlComments(queries ?? "").includes(
+        `android:name="android.intent.action.${action}"`,
+      ),
+  );
+  if (missingActions.length) {
+    const entries = missingActions
+      .map(
+        (action) =>
+          `        <intent><action android:name="android.intent.action.${action}" /></intent>`,
+      )
+      .join("\n");
+    next = queries
+      ? next.replace("</queries>", `${entries}\n    </queries>`)
+      : /<queries\b[^>]*\/>/.test(next)
+        ? next.replace(
+            /<queries\b[^>]*\/>/,
+            `<queries>\n${entries}\n    </queries>`,
+          )
+        : next.replace(
+            /<application\b/,
+            `<queries>\n${entries}\n    </queries>\n    <application`,
+          );
+  }
+  next = appendMissingAndroidManifestBlock(
+    next,
+    'android:name="com.android.alarm.permission.SET_ALARM"',
+    '    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />',
+  );
+  if (!javaAvailable) return next;
+  const block = templateActivity
+    ? `\n        ${templateActivity.replace(
+        /android:name="[^"]*ElizaClockActivity"/,
+        `android:name="${activityName}"`,
+      )}`
+    : `\n        <activity
+            android:name="${activityName}"
+            android:exported="true"
+            android:label="Clock"
+            android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>`;
+  return appendMissingApplicationBlock(next, activityName, block);
 }
 
 /**

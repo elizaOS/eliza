@@ -115,6 +115,31 @@ function normalizeVoiceConfigForSave(args: {
     elevenlabs: normalized,
   };
 }
+function applyVoiceSelectionToStoredConfig(
+  stored: VoiceConfig,
+  selected: VoiceConfig,
+): VoiceConfig {
+  if (selected.provider === "edge") {
+    return {
+      ...stored,
+      provider: "edge",
+      edge: {
+        ...(stored.edge ?? {}),
+        ...(selected.edge?.voice ? { voice: selected.edge.voice } : {}),
+      },
+    };
+  }
+  return {
+    ...stored,
+    provider: selected.provider ?? stored.provider,
+    elevenlabs: {
+      ...(stored.elevenlabs ?? {}),
+      ...(selected.elevenlabs?.voiceId
+        ? { voiceId: selected.elevenlabs.voiceId }
+        : {}),
+    },
+  };
+}
 /**
  * Canonical voice-preset editor. The legacy `identity` route wraps this in its
  * own SettingsStack, while the everyday Voice destination injects the same
@@ -292,10 +317,31 @@ export function VoicePresetSettingsContent() {
   }, [activeVoicePreset, stopVoicePreview, t]);
   const performSave = useCallback(async () => {
     if (!voiceDirty) return;
-    const config = await client.getConfig();
+    let config: Awaited<ReturnType<typeof client.getConfig>>;
+    try {
+      config = await client.getConfig();
+    } catch (error) {
+      // The in-memory selection is only the voice the operator just picked.
+      // Writing that over a failed read drops fields this panel never loaded,
+      // including an ElevenLabs key already stored on the server.
+      throw new Error(
+        "Voice settings could not be read, so the save was skipped and the existing key was left unchanged.",
+        { cause: error },
+      );
+    }
     const messages = (config.messages ?? {}) as Record<string, unknown>;
+    const storedVoiceConfig =
+      messages.tts && typeof messages.tts === "object"
+        ? (messages.tts as VoiceConfig)
+        : {};
     const normalizedVoiceConfig = normalizeVoiceConfigForSave({
-      voiceConfig,
+      // This editor owns only the provider/voice selection. Rebase that
+      // selection onto the fresh server config so a failed initial read or a
+      // concurrent settings change cannot erase hidden TTS fields.
+      voiceConfig: applyVoiceSelectionToStoredConfig(
+        storedVoiceConfig,
+        voiceConfig,
+      ),
       useElevenLabs,
     });
     await client.updateConfig({

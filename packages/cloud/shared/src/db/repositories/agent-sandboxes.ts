@@ -104,6 +104,116 @@ export type {
   NewAgentSandboxBackup,
 };
 
+export type LegacyBackupVerificationSource = {
+  agentId: string;
+  organizationId: string;
+  backupRowVersion: string;
+  backupCreatedAtNative: string;
+  backupVerifiedAtNative: string | null;
+  backupRecoveryExpiresAtNative: string | null;
+  agentRowVersion: string | null;
+  deletionStartedAtNative: string | null;
+  backupWithinDeletionIntent: boolean | null;
+  attached: Pick<
+    AgentSandbox,
+    | "id"
+    | "organization_id"
+    | "user_id"
+    | "status"
+    | "execution_tier"
+    | "pool_status"
+    | "deleted_at"
+    | "sandbox_id"
+    | "node_id"
+    | "container_name"
+    | "environment_revision"
+    | "lifecycle_revision"
+    | "image_digest"
+    | "deletion_attempt_id"
+    | "deletion_started_at"
+  > | null;
+};
+
+/**
+ * A driver's Date-only candidate loses PostgreSQL microseconds. Millisecond
+ * matching is only initial discovery; native timestamps and xmin captured
+ * from primary below are the exact publication fence.
+ */
+function legacyBackupVerificationRowPredicate(row: StoredAgentSandboxBackup): SQL {
+  const fields = [
+    [agentSandboxBackups.id, row.id],
+    [agentSandboxBackups.sandbox_record_id, row.sandbox_record_id],
+    [agentSandboxBackups.snapshot_type, row.snapshot_type],
+    [agentSandboxBackups.backup_kind, row.backup_kind],
+    [agentSandboxBackups.parent_backup_id, row.parent_backup_id],
+    [agentSandboxBackups.base_backup_id, row.base_backup_id],
+    [agentSandboxBackups.content_hash, row.content_hash],
+    [agentSandboxBackups.size_bytes, row.size_bytes],
+    [
+      sql`date_trunc('milliseconds', ${agentSandboxBackups.created_at})`,
+      row.created_at.toISOString(),
+    ],
+    [agentSandboxBackups.state_data_storage, row.state_data_storage],
+    [agentSandboxBackups.state_data_key, row.state_data_key],
+    [agentSandboxBackups.catalog_version, row.catalog_version],
+    [agentSandboxBackups.catalog_state, row.catalog_state],
+    [agentSandboxBackups.catalog_organization_id, row.catalog_organization_id],
+    [agentSandboxBackups.catalog_agent_id, row.catalog_agent_id],
+    [agentSandboxBackups.backup_operation_id, row.backup_operation_id],
+    [agentSandboxBackups.lifecycle_generation, row.lifecycle_generation],
+    [agentSandboxBackups.lifecycle_revision, row.lifecycle_revision],
+    [agentSandboxBackups.recovery_organization_id, row.recovery_organization_id],
+    [agentSandboxBackups.recovery_agent_id, row.recovery_agent_id],
+    [agentSandboxBackups.recovery_deletion_attempt_id, row.recovery_deletion_attempt_id],
+    [
+      sql`date_trunc('milliseconds', ${agentSandboxBackups.recovery_expires_at})`,
+      row.recovery_expires_at?.toISOString() ?? null,
+    ],
+    [agentSandboxBackups.verification_status, row.verification_status],
+    [
+      sql`date_trunc('milliseconds', ${agentSandboxBackups.verified_at})`,
+      row.verified_at?.toISOString() ?? null,
+    ],
+  ] as const;
+  return and(
+    backupVisibleToLegacyReaders(),
+    or(isNull(agentSandboxBackups.catalog_version), eq(agentSandboxBackups.catalog_version, 1)),
+    ...fields.map(([column, value]) => sql`${column} IS NOT DISTINCT FROM ${value}`),
+    sql`${agentSandboxBackups.state_data} IS NOT DISTINCT FROM ${JSON.stringify(row.state_data)}::jsonb`,
+  ) as SQL;
+}
+
+function legacyBackupVerificationAgentPredicate(
+  source: NonNullable<LegacyBackupVerificationSource["attached"]>,
+): SQL {
+  const fields = [
+    [agentSandboxes.id, source.id],
+    [agentSandboxes.organization_id, source.organization_id],
+    [agentSandboxes.user_id, source.user_id],
+    [agentSandboxes.status, source.status],
+    [agentSandboxes.execution_tier, source.execution_tier],
+    [agentSandboxes.pool_status, source.pool_status],
+    [
+      sql`date_trunc('milliseconds', ${agentSandboxes.deleted_at})`,
+      source.deleted_at?.toISOString() ?? null,
+    ],
+    [agentSandboxes.sandbox_id, source.sandbox_id],
+    [agentSandboxes.node_id, source.node_id],
+    [agentSandboxes.container_name, source.container_name],
+    [agentSandboxes.environment_revision, source.environment_revision],
+    [agentSandboxes.lifecycle_revision, source.lifecycle_revision],
+    [agentSandboxes.image_digest, source.image_digest],
+    [agentSandboxes.deletion_attempt_id, source.deletion_attempt_id],
+    [
+      sql`date_trunc('milliseconds', ${agentSandboxes.deletion_started_at})`,
+      source.deletion_started_at?.toISOString() ?? null,
+    ],
+  ] as const;
+  return and(
+    ...fields.map(([column, value]) => sql`${column} IS NOT DISTINCT FROM ${value}`),
+  ) as SQL;
+}
+
 const CANONICAL_SHA256_IMAGE_DIGEST_RE = /^sha256:[0-9a-f]{64}$/;
 /**
  * Lightweight legacy-list projection. Catalogue-v2 fields are intentionally
@@ -2656,6 +2766,8 @@ export class AgentSandboxesRepository {
           eq(agentSandboxBackups.snapshot_type, "pre-delete"),
           eq(agentSandboxBackups.backup_kind, "full"),
           isNull(agentSandboxBackups.parent_backup_id),
+          eq(agentSandboxBackups.verification_status, "verified"),
+          isNotNull(agentSandboxBackups.verified_at),
           gte(agentSandboxBackups.created_at, params.deletionStartedAt),
           isNull(agentSandboxBackups.recovery_organization_id),
           isNull(agentSandboxBackups.recovery_agent_id),
@@ -2900,6 +3012,151 @@ export class AgentSandboxesRepository {
       .limit(1);
     return row;
   }
+
+  /** Primary-only source proof before downloading or decrypting a persisted artifact. */
+  async getLegacyBackupVerificationSource(
+    row: StoredAgentSandboxBackup,
+  ): Promise<LegacyBackupVerificationSource | undefined> {
+    const [persisted] = await dbWrite
+      .select({
+        backupRowVersion: sql<string>`${agentSandboxBackups}.xmin::text`,
+        backupCreatedAtNative: sql<string>`${agentSandboxBackups.created_at}::text`,
+        backupVerifiedAtNative: sql<string | null>`${agentSandboxBackups.verified_at}::text`,
+        backupRecoveryExpiresAtNative: sql<
+          string | null
+        >`${agentSandboxBackups.recovery_expires_at}::text`,
+      })
+      .from(agentSandboxBackups)
+      .where(legacyBackupVerificationRowPredicate(row))
+      .limit(1);
+    if (!persisted) return undefined;
+    if (row.sandbox_record_id === null) {
+      if (
+        !row.recovery_agent_id ||
+        !row.recovery_organization_id ||
+        (row.catalog_organization_id !== null &&
+          row.catalog_organization_id !== row.recovery_organization_id) ||
+        (row.catalog_agent_id !== null && row.catalog_agent_id !== row.recovery_agent_id)
+      )
+        return undefined;
+      return {
+        ...persisted,
+        agentId: row.recovery_agent_id,
+        organizationId: row.recovery_organization_id,
+        agentRowVersion: null,
+        deletionStartedAtNative: null,
+        backupWithinDeletionIntent: null,
+        attached: null,
+      };
+    }
+    const [attached] = await dbWrite
+      .select({
+        id: agentSandboxes.id,
+        organization_id: agentSandboxes.organization_id,
+        user_id: agentSandboxes.user_id,
+        status: agentSandboxes.status,
+        execution_tier: agentSandboxes.execution_tier,
+        pool_status: agentSandboxes.pool_status,
+        deleted_at: agentSandboxes.deleted_at,
+        sandbox_id: agentSandboxes.sandbox_id,
+        node_id: agentSandboxes.node_id,
+        container_name: agentSandboxes.container_name,
+        environment_revision: agentSandboxes.environment_revision,
+        lifecycle_revision: agentSandboxes.lifecycle_revision,
+        image_digest: agentSandboxes.image_digest,
+        deletion_attempt_id: agentSandboxes.deletion_attempt_id,
+        deletion_started_at: agentSandboxes.deletion_started_at,
+        agentRowVersion: sql<string>`${agentSandboxes}.xmin::text`,
+        deletionStartedAtNative: sql<string | null>`${agentSandboxes.deletion_started_at}::text`,
+        backupWithinDeletionIntent: sql<
+          boolean | null
+        >`${agentSandboxBackups.created_at} >= ${agentSandboxes.deletion_started_at}`,
+      })
+      .from(agentSandboxes)
+      .innerJoin(
+        agentSandboxBackups,
+        and(
+          eq(agentSandboxBackups.id, row.id),
+          eq(agentSandboxBackups.sandbox_record_id, agentSandboxes.id),
+          sql`${agentSandboxBackups}.xmin::text = ${persisted.backupRowVersion}`,
+        ),
+      )
+      .where(eq(agentSandboxes.id, row.sandbox_record_id))
+      .limit(1);
+    if (
+      !attached ||
+      (row.catalog_organization_id !== null &&
+        row.catalog_organization_id !== attached.organization_id) ||
+      (row.catalog_agent_id !== null && row.catalog_agent_id !== attached.id)
+    )
+      return undefined;
+    const { agentRowVersion, deletionStartedAtNative, backupWithinDeletionIntent, ...agent } =
+      attached;
+    return {
+      ...persisted,
+      agentId: agent.id,
+      organizationId: agent.organization_id,
+      agentRowVersion,
+      deletionStartedAtNative,
+      backupWithinDeletionIntent,
+      attached: agent,
+    };
+  }
+
+  /** Publish a real verifier outcome only against the unchanged artifact and source. */
+  async stampBackupVerificationIfCurrent(
+    row: StoredAgentSandboxBackup,
+    source: LegacyBackupVerificationSource,
+    outcome: { status: "verified" | "failed" | "errored"; verifiedAt: Date; error: string | null },
+  ): Promise<boolean> {
+    return dbWrite.transaction(async (tx) => {
+      if (source.attached) {
+        if (
+          row.sandbox_record_id !== source.agentId ||
+          source.attached.id !== source.agentId ||
+          source.attached.organization_id !== source.organizationId
+        )
+          return false;
+        const [current] = await tx
+          .select({ id: agentSandboxes.id })
+          .from(agentSandboxes)
+          .where(
+            and(
+              legacyBackupVerificationAgentPredicate(source.attached),
+              sql`${agentSandboxes}.xmin::text = ${source.agentRowVersion}`,
+              sql`${agentSandboxes.deletion_started_at} IS NOT DISTINCT FROM ${source.deletionStartedAtNative}`,
+            ),
+          )
+          .for("update")
+          .limit(1);
+        if (!current) return false;
+      } else if (
+        row.sandbox_record_id !== null ||
+        row.recovery_agent_id !== source.agentId ||
+        row.recovery_organization_id !== source.organizationId
+      )
+        return false;
+      const [updated] = await tx
+        .update(agentSandboxBackups)
+        .set({
+          verification_status: outcome.status,
+          verified_at: outcome.verifiedAt,
+          verification_error: outcome.error,
+        })
+        .where(
+          and(
+            legacyBackupVerificationRowPredicate(row),
+            sql`${agentSandboxBackups}.xmin::text = ${source.backupRowVersion}`,
+            sql`${agentSandboxBackups.created_at} IS NOT DISTINCT FROM ${source.backupCreatedAtNative}`,
+            sql`${agentSandboxBackups.verified_at} IS NOT DISTINCT FROM ${source.backupVerifiedAtNative}`,
+            sql`${agentSandboxBackups.recovery_expires_at} IS NOT DISTINCT FROM ${source.backupRecoveryExpiresAtNative}`,
+          ),
+        )
+        .returning({ id: agentSandboxBackups.id });
+      return updated !== undefined;
+    });
+  }
+
   /**
    * Stamp a verification outcome on a backup row. Field semantics match the
    * continuous verifier cycle (`agent-backup-verifier.ts`): `verified_at`

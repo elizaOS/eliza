@@ -52,6 +52,7 @@ export interface LifeOpsScreenTimeServicePublic {
   }): Promise<ScreenTimeAggregateRow[]>;
   getScreenTimeDaily(opts: {
     date: string;
+    timeZone?: string;
     source?: LifeOpsScreenTimeSource;
     identifier?: string;
     limit?: number;

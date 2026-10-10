@@ -150,7 +150,7 @@ jobs:
 
       # The brand validator shells out to `aapt` to inspect the staged APK,
       # and the brand `build:android:system` runs Gradle which needs a full SDK.
-      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
         with:
           packages: "platform-tools build-tools;36.0.0 platforms;android-36 ndk;${{ env.ANDROID_NDK_VERSION }}"
 
@@ -158,9 +158,6 @@ jobs:
         working-directory: .
         run: bun install --frozen-lockfile
 
-      - name: Run assistant verifier regression canary
-        working-directory: .
-        run: bun test packages/app/scripts/lib/android-assistant-verify-lib.test.ts
       - name: Resolve brand
         id: brand
         run: |

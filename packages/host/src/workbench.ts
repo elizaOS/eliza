@@ -29,6 +29,10 @@ export function normalizeWorkbenchTags(value: unknown): string[] {
 
 function normalizeTimestamp(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "bigint") {
+    const numeric = Number(value);
+    return Number.isSafeInteger(numeric) ? numeric : undefined;
+  }
   if (value instanceof Date) return value.getTime();
   if (typeof value === "string") {
     const asNumber = Number(value);
@@ -37,6 +41,14 @@ function normalizeTimestamp(value: unknown): number | undefined {
     if (Number.isFinite(parsed)) return parsed;
   }
   return undefined;
+}
+
+function isoFromTimestamp(value: unknown): string | null {
+  if (typeof value === "string" && value.trim() === "") return null;
+  const ms = normalizeTimestamp(value);
+  if (ms === undefined) return null;
+  const date = new Date(ms);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
 export function parseWorkbenchTodoPriority(value: unknown): number | null {
@@ -101,12 +113,12 @@ export function toWorkbenchTodo(task: Task): WorkbenchTodo | null {
         ? todoMeta.type
         : "task",
     tags: normalizeWorkbenchTags(task.tags),
-    createdAt: task.createdAt
-      ? new Date(Number(task.createdAt)).toISOString()
-      : null,
-    updatedAt: task.updatedAt
-      ? new Date(Number(task.updatedAt)).toISOString()
-      : null,
+    // Route through the same helper the task projection uses: stored
+    // task data is runtime data, and its timestamps can be ISO strings.
+    // Number() on such a string is NaN, and toISOString() on the
+    // resulting invalid Date throws, taking down the whole projection.
+    createdAt: isoFromTimestamp(task.createdAt),
+    updatedAt: isoFromTimestamp(task.updatedAt),
   };
 }
 

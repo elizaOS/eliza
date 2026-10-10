@@ -649,6 +649,13 @@ function isFamilyMonthlyDispatch(record: ScheduledTaskDispatchRecord): boolean {
   return record.metadata?.systemOperation === FAMILY_MONTHLY_SYSTEM_OPERATION;
 }
 
+/**
+ * Retry backoff for a dispatch whose owner/contact target resolution failed on
+ * a transient storage error. Matches the render-failure backoff so both
+ * pre-send preparation failures retry on the same schedule.
+ */
+const TARGET_RESOLUTION_RETRY_MINUTES = 5;
+
 function targetNeedsOwnerResolution(
   channelKey: string,
   target: string | undefined,
@@ -1129,10 +1136,31 @@ export function createProductionScheduledTaskDispatcher(opts: {
         };
       }
 
-      const target = await resolveScheduledTaskChannelTarget(
-        opts.runtime,
-        record,
-      );
+      let target: string | null;
+      try {
+        target = await resolveScheduledTaskChannelTarget(opts.runtime, record);
+      } catch (error) {
+        // error-policy:J1 boundary translation — owner/contact target
+        // resolution runs outside the guarded render step, and its storage
+        // failures (e.g. OWNER_ENTITY_LOOKUP_FAILED) must surface as a typed
+        // retryable DispatchResult. A thrown error reaches the runner as a
+        // dispatch error with no metadata.lastDispatchResult, so the stored
+        // outcome leaves the typed DispatchResult contract.
+        opts.runtime.reportError(
+          "lifeops:scheduled-task:dispatch-target-resolve",
+          error,
+          { taskId: record.taskId, channelKey: record.channelKey },
+        );
+        return applyDispatchPolicy({
+          ok: false,
+          reason: "transport_error",
+          userActionable: false,
+          retryAfterMinutes: TARGET_RESOLUTION_RETRY_MINUTES,
+          message: `Scheduled dispatch target resolution failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        });
+      }
       if (!target) {
         return applyDispatchPolicy({
           ok: false,

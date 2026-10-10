@@ -10,7 +10,7 @@ import type {
   PermissionId,
   PermissionState,
 } from "@elizaos/core/protocol";
-import { isPermissionId } from "@elizaos/core/protocol";
+import { extractJsonObjects, isPermissionId } from "@elizaos/core/protocol";
 /**
  * Friendly human-readable labels per permission id. Used as the card title
  * (e.g. `reminders` → "Apple Reminders").
@@ -194,31 +194,66 @@ export interface PermissionCardPayload {
  * Returns `null` for any other action block (`respond`, `escalate`,
  * `ignore`, `complete`) so the caller can fall back to plain text rendering.
  */
+interface ActionSpan {
+  start: number;
+  end: number;
+  fenced: boolean;
+  value: Record<string, unknown> & { action: string };
+}
+
+function findActionSpans(text: string): ActionSpan[] {
+  const spans: ActionSpan[] = [];
+  let cursor = 0;
+  let coveredEnd = 0;
+  // Core owns quote/escape-aware top-level object boundaries. Never rescan
+  // inside a rejected object or reinterpret its nested data as an action.
+  for (const json of extractJsonObjects(text)) {
+    const start = text.indexOf(json, cursor);
+    const end = start + json.length;
+    cursor = end;
+    let value: unknown;
+    try {
+      value = JSON.parse(json);
+    } catch {
+      // error-policy:J3 malformed model JSON remains ordinary display text.
+      continue;
+    }
+    if (
+      !(
+        value &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        (value as { action?: unknown }).action === "permission_request"
+      )
+    )
+      continue;
+    const prefix = text.slice(Math.max(0, start - 40), start);
+    const opening = /```(?:json)?\s{0,33}$/.exec(prefix);
+    const closing = /^\s{0,33}```/.exec(text.slice(end, end + 36));
+    const fenceStart = start - (opening?.[0].length ?? 0);
+    const fenced = Boolean(opening && closing && fenceStart >= coveredEnd);
+    const span = {
+      start: fenced ? fenceStart : start,
+      end: fenced ? end + (closing?.[0].length ?? 0) : end,
+      fenced,
+      value: value as Record<string, unknown> & { action: string },
+    };
+    spans.push(span);
+    coveredEnd = span.end;
+  }
+  return spans;
+}
+
 export function parsePermissionRequestFromText(text: string): {
   display: string;
   payload: PermissionCardPayload;
 } | null {
   if (!text) return null;
-  const fenced = text.match(
-    /```(?:json)?\s{0,32}\n?(\{[\s\S]*?\})\s{0,32}\n?```/,
-  );
-  let jsonStr: string | undefined = fenced?.[1];
-  let display = text;
-  if (fenced) {
-    display = text.replace(fenced[0], "").trim();
-  } else {
-    const lastBrace = text.lastIndexOf("{");
-    if (lastBrace < 0) return null;
-    jsonStr = text.slice(lastBrace);
-    display = text.slice(0, lastBrace).trim();
-  }
-  if (!jsonStr) return null;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonStr);
-  } catch {
-    return null;
-  }
+  const spans = findActionSpans(text);
+  const span = spans.find((candidate) => candidate.fenced) ?? spans[0];
+  if (!span) return null;
+  const display = (text.slice(0, span.start) + text.slice(span.end)).trim();
+  const parsed = span.value;
   if (
     !parsed ||
     typeof parsed !== "object" ||

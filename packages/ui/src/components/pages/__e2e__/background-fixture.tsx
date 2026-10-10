@@ -22,7 +22,7 @@ import { applyBackgroundRedo } from "../../../state/background-history";
 import { applyBackgroundSet } from "../../../state/background-history";
 import { applyBackgroundUndo } from "../../../state/background-history";
 import { createRoot } from "react-dom/client";
-import { emitViewEvent } from "../../../views/view-event-bus";
+import { emitViewEvent } from "../../../events/view-events";
 import { fileToBackgroundDataUrl } from "../background-image";
 import { type BackgroundConfig } from "../../../state/ui-preferences";
 import { type BackgroundHistoryState } from "../../../state/background-history";

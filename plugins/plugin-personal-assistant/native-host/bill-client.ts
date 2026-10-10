@@ -60,6 +60,10 @@ export function validateBillSourceLinks(value: unknown): BillSourceReference[] {
 export type BillSourceCandidate = {
   candidateId: string;
   billId: string;
+  /** When the newest message for this bill arrived (ISO time). */
+  receivedAt?: string;
+  /** Set on the newest candidate only. */
+  mostRecent?: true;
   facts: {
     company: string;
     accountLabel: string;
@@ -67,15 +71,36 @@ export type BillSourceCandidate = {
     amountMinor: number;
     currency: string;
     currencyDigits: number;
-    dueDate: string;
+    dueDate?: string;
     serviceAddress?: string;
     servicePeriod?: { startsOn: string; endsOn: string };
   };
   sources: BillSourceReference[];
 };
+/**
+ * A look-alike bill email for another company, account or website. Only the
+ * facts that differ are named; the email's own values are never shown.
+ */
+export type BillSourceConflict = {
+  differs: Array<"company" | "accountLabel" | "origin">;
+};
+const CONFLICT_FIELDS = ["company", "accountLabel", "origin"];
 export type BillSourceOffer = {
-  status: "candidate" | "ambiguous" | "missing" | "incomplete";
-  reason?: "conflicting-invoice";
+  status:
+    | "candidate"
+    | "ambiguous"
+    | "missing"
+    | "incomplete"
+    | "conflicting-source";
+  /**
+   * conflicting-invoice: two versions of one invoice (ambiguous).
+   * newer-unreadable: a newer message from the biller could not be read, so
+   * no older bill is offered (incomplete).
+   */
+  reason?: "conflicting-invoice" | "newer-unreadable";
+  /** Messages from the bill sender that could not be read. */
+  unreadable?: number;
+  conflicts?: BillSourceConflict[];
   offerId: string;
   expectedRevision: number;
   expiresAt: number;
@@ -88,14 +113,40 @@ export function readBillSourceOffer(
   const v = value as BillSourceOffer;
   if (
     !v ||
-    !["candidate", "ambiguous", "missing", "incomplete"].includes(v.status) ||
+    ![
+      "candidate",
+      "ambiguous",
+      "missing",
+      "incomplete",
+      "conflicting-source",
+    ].includes(v.status) ||
     !/^[a-f0-9-]{36}$/.test(v.offerId) ||
     !Number.isSafeInteger(v.expectedRevision) ||
     v.expectedRevision < 0 ||
     !Number.isSafeInteger(v.expiresAt) ||
     !Array.isArray(v.candidates) ||
     v.candidates.length > 100 ||
-    (v.reason !== undefined && v.reason !== "conflicting-invoice")
+    (v.reason !== undefined &&
+      !(
+        (v.status === "ambiguous" && v.reason === "conflicting-invoice") ||
+        (v.status === "incomplete" && v.reason === "newer-unreadable")
+      )) ||
+    (v.unreadable !== undefined &&
+      (!Number.isSafeInteger(v.unreadable) || v.unreadable < 1)) ||
+    (v.conflicts !== undefined &&
+      (!Array.isArray(v.conflicts) ||
+        v.conflicts.length > 7 ||
+        v.conflicts.some(
+          (c) =>
+            !c ||
+            Object.keys(c).join(",") !== "differs" ||
+            !Array.isArray(c.differs) ||
+            !c.differs.length ||
+            c.differs.join(",") !==
+              CONFLICT_FIELDS.filter((key) =>
+                (c.differs as string[]).includes(key),
+              ).join(","),
+        )))
   )
     throw new BillClientResponseError("Unsupported source result");
   for (const c of v.candidates) {
@@ -110,9 +161,16 @@ export function readBillSourceOffer(
       f.currencyDigits < 0 ||
       f.currencyDigits > 4 ||
       !/^[A-Z]{3}$/.test(f.currency) ||
-      ![f.company, f.accountLabel, f.origin, f.dueDate].every(
+      ![f.company, f.accountLabel, f.origin].every(
         (x) => typeof x === "string" && x.length > 0 && x.length <= 300,
       ) ||
+      (f.dueDate !== undefined &&
+        (typeof f.dueDate !== "string" ||
+          !/^\d{4}-\d{2}-\d{2}$/.test(f.dueDate))) ||
+      (c.receivedAt !== undefined &&
+        (typeof c.receivedAt !== "string" ||
+          !Number.isFinite(Date.parse(c.receivedAt)))) ||
+      (c.mostRecent !== undefined && c.mostRecent !== true) ||
       !Array.isArray(c.sources) ||
       !c.sources.length
     )
@@ -155,14 +213,15 @@ export type BillReview = {
   totalMinor: number;
   currency: string;
   currencyDigits: number;
-  paymentDate: string;
+  paymentDate: string | null;
   method: string;
   servicePeriod: string | null;
   source: string;
 };
 export type BillDecision = {
   billSources?: BillSourceReference[];
-  guidance?: { instruction: string; available: boolean };
+  /** expiresAt: when the guide on the website ends unless it is renewed. */
+  guidance?: { instruction: string; available: boolean; expiresAt?: number };
   kind: string;
   conflict?: BillConflict;
   message?: string;
@@ -178,7 +237,30 @@ export type BillDecision = {
   paymentDate?: string | null;
   currency?: string;
   currencyDigits?: number;
+  /** The company named on the source bill, for an outcome. */
+  company?: string | null;
+  /** A prior outcome: the task ended with this fact kept. */
+  ended?: boolean;
+  /** One receipt email for this outcome was found in the connected Google account. */
+  receiptInEmail?: boolean;
+  /** Why the verification code was not filled, from the host's fixed list. */
+  codeReason?: BillCodeReason;
 };
+export type BillCodeReason =
+  | "typed"
+  | "reauth_required"
+  | "insufficient_scope"
+  | "account_changed"
+  | "cloud_sign_in_required"
+  | "timeout";
+const codeReasons: readonly BillCodeReason[] = [
+  "typed",
+  "reauth_required",
+  "insufficient_scope",
+  "account_changed",
+  "cloud_sign_in_required",
+  "timeout",
+];
 export function readBillDecision(
   value: unknown,
   taskId: string,
@@ -198,6 +280,7 @@ export function readBillDecision(
       "submission-pending",
       "human-submit",
       "outcome",
+      "prior-outcome",
       "paused",
       "unknown-outcome",
       "unavailable",
@@ -221,7 +304,10 @@ export function readBillDecision(
       typeof decision.guidance.instruction !== "string" ||
       !decision.guidance.instruction.trim() ||
       decision.guidance.instruction.length > 600 ||
-      typeof decision.guidance.available !== "boolean")
+      typeof decision.guidance.available !== "boolean" ||
+      (decision.guidance.expiresAt !== undefined &&
+        (!Number.isSafeInteger(decision.guidance.expiresAt) ||
+          decision.guidance.expiresAt < 0)))
   )
     throw new BillClientResponseError("Invalid guidance");
   if (
@@ -251,6 +337,15 @@ export function readBillDecision(
     !["saved", "pending"].includes(decision.saveStatus)
   )
     throw new BillClientResponseError("Invalid save status");
+  for (const flag of [decision.ended, decision.receiptInEmail])
+    if (flag !== undefined && typeof flag !== "boolean")
+      throw new BillClientResponseError("Invalid bill state");
+  if (
+    decision.codeReason !== undefined &&
+    (decision.kind !== "human-verification" ||
+      !codeReasons.includes(decision.codeReason))
+  )
+    throw new BillClientResponseError("Invalid code reason");
   for (const value of [
     decision.message,
     decision.reason,
@@ -263,6 +358,13 @@ export function readBillDecision(
       (typeof value !== "string" || value.length > 2000)
     )
       throw new BillClientResponseError("Invalid bill state");
+  if (
+    decision.company != null &&
+    (typeof decision.company !== "string" ||
+      !decision.company.trim() ||
+      decision.company.length > 300)
+  )
+    throw new BillClientResponseError("Invalid bill state");
   if (
     decision.review !== undefined ||
     ["choose-existing-method", "human-submit"].includes(decision.kind)
@@ -286,9 +388,18 @@ export function readBillDecision(
         currency: r.currency,
         currencyDigits: r.currencyDigits,
       });
-    for (const value of [r.company, r.accountLabel, r.paymentDate, r.method])
+    for (const value of [r.company, r.accountLabel, r.method])
       if (typeof value !== "string" || value.length > 300)
         throw new BillClientResponseError("Invalid bill detail");
+    if (
+      r.paymentDate !== null &&
+      (typeof r.paymentDate !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(r.paymentDate) ||
+        Number.isNaN(Date.parse(`${r.paymentDate}T00:00:00Z`)) ||
+        new Date(`${r.paymentDate}T00:00:00Z`).toISOString().slice(0, 10) !==
+          r.paymentDate)
+    )
+      throw new BillClientResponseError("Invalid bill payment date");
     if (r.servicePeriod !== null && typeof r.servicePeriod !== "string")
       throw new BillClientResponseError("Invalid service period");
   }
@@ -340,11 +451,32 @@ export interface BillDecisionState {
   pending: boolean;
   error: "load" | "save" | null;
 }
+/** Why a source search failed, from the host's fixed list. */
+export type BillSourceFailureReason =
+  | "reauth_required"
+  | "cloud_sign_in_required"
+  | "insufficient_scope"
+  | "account_changed"
+  /** The connected Google account is not the one that gets these bills. */
+  | "account_mismatch"
+  | "unavailable"
+  | "timeout";
+const sourceFailureReasons: readonly BillSourceFailureReason[] = [
+  "reauth_required",
+  "cloud_sign_in_required",
+  "insufficient_scope",
+  "account_changed",
+  "account_mismatch",
+  "unavailable",
+  "timeout",
+];
 export interface BillSourceState {
   offer: BillSourceOffer | null;
   pending: boolean;
   selected: boolean;
   error: "search" | "selection" | null;
+  /** Set with a search error when the request error carries a host reason. */
+  reason?: BillSourceFailureReason;
 }
 
 /** One active task and operation. Invalidating a request suppresses its replies;
@@ -385,17 +517,159 @@ class BillSession<S extends { pending: boolean }> {
   }
 }
 
+/** Check the website again this often while a guide is shown. */
+export const GUIDANCE_RECHECK_MS = 15000;
+/** Renew a guide this long before it expires. */
+const GUIDANCE_RENEW_BEFORE_MS = 5000;
+export interface BillTimers {
+  set(callback: () => void, ms: number): unknown;
+  clear(handle: unknown): void;
+}
 export class BillDecisionClient extends BillSession<BillDecisionState> {
   private readonly request: BillRequest;
   private readonly validators: BillClientValidators;
+  private readonly now: () => number;
+  private readonly timers: BillTimers;
+  private recheck: unknown = null;
+  /** In-flight checks remain tied to their task across task switches. */
+  private readonly background = new Map<string, Promise<unknown>>();
+  /** Set while a question is answered: nothing new is sent to the host. */
+  private hold_: { released: Promise<void>; release: () => void } | null = null;
   constructor(options: {
     request: BillRequest;
     validators: BillClientValidators;
     changed: (state: BillDecisionState) => void;
+    now?: () => number;
+    timers?: BillTimers;
   }) {
     super({ decision: null, pending: false, error: null }, options.changed);
     this.request = options.request;
     this.validators = options.validators;
+    this.now = options.now ?? Date.now;
+    this.timers = options.timers ?? {
+      set: (callback, ms) => setTimeout(callback, ms),
+      clear: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+    };
+  }
+  override stop() {
+    this.cancelRecheck();
+    super.stop();
+    this.hold_?.release();
+    this.hold_ = null;
+  }
+  /**
+   * A question interrupts the task while it is answered. Timed re-checks
+   * stop, and a command started meanwhile waits and is sent only after
+   * `release()`. A request already sent is not recalled.
+   */
+  hold() {
+    if (this.hold_) return;
+    this.cancelRecheck();
+    let release = () => {};
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.hold_ = { released, release };
+  }
+  /** Ends a hold: waiting commands are sent and re-checks resume. */
+  release() {
+    const hold = this.hold_;
+    if (!hold) return;
+    this.hold_ = null;
+    hold.release();
+    if (!this.state.pending) this.scheduleRecheck();
+  }
+  get held(): boolean {
+    return this.hold_ !== null;
+  }
+  private cancelRecheck() {
+    if (this.recheck !== null) this.timers.clear(this.recheck);
+    this.recheck = null;
+  }
+  /**
+   * While a guide is shown, look at the website again on a short interval and
+   * before the guide expires. A page change hides the guide in the page; the
+   * next check shows it on the current page, or reports it unavailable.
+   */
+  private scheduleRecheck() {
+    this.cancelRecheck();
+    const guidance = this.state.decision?.guidance;
+    if (!guidance?.available || this.taskId === null || this.hold_) return;
+    const ticket = this.generation;
+    const untilExpiry =
+      guidance.expiresAt === undefined
+        ? Number.POSITIVE_INFINITY
+        : guidance.expiresAt - this.now();
+    // After a failed renewal, try once more when the guide expires.
+    const delay =
+      untilExpiry - GUIDANCE_RENEW_BEFORE_MS > 0
+        ? Math.min(GUIDANCE_RECHECK_MS, untilExpiry - GUIDANCE_RENEW_BEFORE_MS)
+        : Math.max(1000, untilExpiry);
+    this.recheck = this.timers.set(() => {
+      this.recheck = null;
+      if (this.generation !== ticket || this.taskId === null) return;
+      const shown = this.state.decision?.guidance;
+      // The guide is gone once it expires, even if the check fails.
+      if (
+        shown?.expiresAt !== undefined &&
+        shown.expiresAt <= this.now() &&
+        this.state.decision
+      ) {
+        this.state.decision = {
+          ...this.state.decision,
+          guidance: { ...shown, available: false },
+        };
+        this.publish();
+      }
+      this.checkInBackground();
+    }, delay);
+  }
+  /**
+   * A timed re-check never makes the panel pending and never refuses a
+   * person's choice. A person's command started meanwhile supersedes it: its
+   * reply is dropped and the command waits only for the request to settle,
+   * so the host never sees two task requests at once.
+   */
+  private checkInBackground() {
+    const taskId = this.taskId;
+    if (taskId === null || this.background.has(taskId) || this.hold_) return;
+    if (this.state.pending) {
+      // The person's command reschedules the check when it finishes.
+      return;
+    }
+    const ticket = this.generation;
+    const settled = this.request(
+      `/tasks/${encodeURIComponent(taskId)}/bill`,
+      undefined,
+    ).then(
+      (reply) => {
+        if (!this.current(ticket) || this.state.pending) return;
+        try {
+          this.state.decision = readBillDecision(
+            reply,
+            taskId,
+            this.validators,
+          );
+          this.state.error = null;
+        } catch {
+          this.state.error = "load";
+        }
+      },
+      () => {
+        if (this.current(ticket) && !this.state.pending)
+          this.state.error = "load";
+      },
+    );
+    this.background.set(
+      taskId,
+      settled.finally(() => {
+        this.background.delete(taskId);
+        if (this.current(ticket) && !this.state.pending) {
+          this.scheduleRecheck();
+          this.publish();
+        }
+      }),
+    );
   }
   start(taskId: string) {
     this.stop();
@@ -434,9 +708,19 @@ export class BillDecisionClient extends BillSession<BillDecisionState> {
     const taskId = this.taskId,
       ticket = this.begin();
     if (ticket === null || taskId === null) return false;
+    this.cancelRecheck();
     this.state.error = null;
     this.publish();
     try {
+      // Let an already-sent background check settle before rechecking holds.
+      const background = this.background.get(taskId);
+      if (background) await background;
+      // While a question is answered, wait; then send under the same ticket.
+      while (this.hold_) {
+        await this.hold_.released;
+        if (!this.current(ticket)) return false;
+      }
+      if (!this.current(ticket)) return false;
       const reply = await this.request(
         `/tasks/${encodeURIComponent(taskId)}/bill`,
         body,
@@ -450,6 +734,7 @@ export class BillDecisionClient extends BillSession<BillDecisionState> {
           this.state.decision?.saveStatus === "pending" ? "save" : "load";
       return false;
     } finally {
+      if (this.current(ticket)) this.scheduleRecheck();
       this.finish(ticket);
     }
   }
@@ -507,6 +792,7 @@ export class BillSourceClient extends BillSession<BillSourceState> {
       ticket = this.begin();
     if (ticket === null || taskId === null) return false;
     this.state.error = null;
+    delete this.state.reason;
     this.state.selected = false;
     this.publish();
     try {
@@ -523,9 +809,15 @@ export class BillSourceClient extends BillSession<BillSourceState> {
         this.state.offer = readBillSourceOffer(reply, this.validators);
       }
       return true;
-    } catch {
+    } catch (error) {
       if (this.current(ticket)) {
         this.state.error = body ? "selection" : "search";
+        const reason = (error as { reason?: unknown } | null)?.reason;
+        if (
+          !body &&
+          sourceFailureReasons.includes(reason as BillSourceFailureReason)
+        )
+          this.state.reason = reason as BillSourceFailureReason;
         // An uncertain POST can have committed. Discard its offer and require an
         // explicit GET of authoritative state; never retry/replay that POST.
         if (body) this.state.offer = null;

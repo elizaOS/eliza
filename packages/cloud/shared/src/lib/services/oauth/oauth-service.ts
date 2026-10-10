@@ -1,3 +1,5 @@
+import { clearPersonalGoogleContextConsent } from "../../../db/repositories/personal-google-context-consent";
+import { usersService } from "../users";
 /**
  * OAuth Service
  *
@@ -36,12 +38,16 @@ const STATE_TTL = 600; // 10 minutes
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type PlatformCredential = typeof platformCredentials.$inferSelect;
 
+function connectionActivityMs(connection: OAuthConnection): number {
+  // A last-used time of epoch 0 is a real timestamp. `getTime() ||` treated it
+  // as missing and sorted the connection by when it was linked instead.
+  const lastUsed = connection.lastUsedAt?.getTime();
+  if (typeof lastUsed === "number" && Number.isFinite(lastUsed)) return lastUsed;
+  return connection.linkedAt.getTime();
+}
+
 export function sortConnectionsByRecency(connections: OAuthConnection[]): OAuthConnection[] {
-  return [...connections].sort((a, b) => {
-    const aTime = a.lastUsedAt?.getTime() || a.linkedAt.getTime();
-    const bTime = b.lastUsedAt?.getTime() || b.linkedAt.getTime();
-    return bTime - aTime;
-  });
+  return [...connections].sort((a, b) => connectionActivityMs(b) - connectionActivityMs(a));
 }
 
 export function getMostRecentActiveConnection(
@@ -49,11 +55,9 @@ export function getMostRecentActiveConnection(
 ): OAuthConnection | null {
   const active = connections.filter((c) => c.status === "active");
   if (active.length === 0) return null;
-  return active.reduce((most, conn) => {
-    const mostTime = most.lastUsedAt?.getTime() || most.linkedAt.getTime();
-    const connTime = conn.lastUsedAt?.getTime() || conn.linkedAt.getTime();
-    return connTime > mostTime ? conn : most;
-  });
+  return active.reduce((most, conn) =>
+    connectionActivityMs(conn) > connectionActivityMs(most) ? conn : most,
+  );
 }
 
 export function getPreferredActiveConnection(
@@ -155,7 +159,15 @@ class OAuthService {
 
   /** Initiate OAuth flow for a platform */
   async initiateAuth(params: InitiateAuthParams): Promise<InitiateAuthResult> {
-    const { organizationId, userId, platform, redirectUrl, scopes, connectionRole } = params;
+    const {
+      organizationId,
+      userId,
+      platform,
+      redirectUrl,
+      scopes,
+      connectionRole,
+      personalGoogleContext,
+    } = params;
     const role = normalizeOAuthConnectionRole(connectionRole);
 
     const provider = getProvider(platform);
@@ -178,6 +190,7 @@ class OAuthService {
         redirectUrl,
         scopes,
         connectionRole: role,
+        ...(platform === "google" && personalGoogleContext ? { personalGoogleContext } : {}),
       });
       return { authUrl: result.authUrl, state: result.state };
     }
@@ -305,6 +318,13 @@ class OAuthService {
 
     const version = await incrementOAuthVersion(organizationId, adapter.platform);
     await tokenCache.invalidate(organizationId, connectionId, version);
+    if (adapter.platform === "google") {
+      const owner = await clearPersonalGoogleContextConsent({
+        organizationId,
+        grantId: connectionId,
+      });
+      if (owner) await usersService.invalidateCache(owner);
+    }
 
     logger.info("[OAuthService] Connection revoked", {
       organizationId,

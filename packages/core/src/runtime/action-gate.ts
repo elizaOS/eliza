@@ -5,6 +5,7 @@
  * top-level role gate in a fixed precedence.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { audienceAdmissionGateFailure } from "../access-control/audience-disclosure";
 import { ElizaError } from "../errors";
 import { checkSenderRole } from "../roles";
@@ -18,7 +19,6 @@ import type { Memory } from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";
 import { resolveActionRolePolicyRole } from "./action-role-policy";
 import { satisfiesContextGate, satisfiesRoleGate } from "./context-gates";
-import { privateActionAllowedOnTurn } from "./private-action-gate";
 
 /**
  * The subset of {@link Action} fields the unified gate reads. Keeping the
@@ -28,6 +28,7 @@ import { privateActionAllowedOnTurn } from "./private-action-gate";
 export type GateableAction = Pick<
 	Action,
 	| "name"
+	| "tags"
 	| "private"
 	| "contextGate"
 	| "contexts"
@@ -64,6 +65,25 @@ export type ActionGateRejectionKind =
 export interface ActionGateRejection {
 	kind: ActionGateRejectionKind;
 	reason: string;
+}
+
+/** Host-established request restrictions apply to discovery and execution alike. */
+const requestPolicy = new AsyncLocalStorage<
+	(action: GateableAction, context: ActionGateContext) => string | undefined
+>();
+export function withActionGatePolicy<T>(
+	policy: (
+		action: GateableAction,
+		context: ActionGateContext,
+	) => string | undefined,
+	run: () => Promise<T>,
+): Promise<T> {
+	const inherited = requestPolicy.getStore();
+	return requestPolicy.run(
+		(action, context) =>
+			inherited?.(action, context) ?? policy(action, context),
+		run,
+	);
 }
 
 /**
@@ -111,6 +131,9 @@ export function actionGateRejection(
 			reason: `Action ${action.name} is not allowed: ${disclosureFailure}`,
 		};
 	}
+
+	const requestFailure = requestPolicy.getStore()?.(action, ctx);
+	if (requestFailure) return { kind: "context", reason: requestFailure };
 
 	const policyRole = resolveActionRolePolicyRole(action);
 	if (policyRole) {
@@ -236,6 +259,7 @@ export async function resolveActionGateFailure(
 		ctx.evaluateContexts === false
 			? {
 					name: action.name,
+					tags: action.tags,
 					private: action.private,
 					roleGate: action.roleGate,
 					disclosureGate: action.disclosureGate,
@@ -251,4 +275,49 @@ export async function resolveActionGateFailure(
 				? ctx.userRoles
 				: await resolveActionCallerRoles(runtime, ctx.message),
 	});
+}
+
+/**
+ * Gate that keeps `private` actions off any non-autonomous turn — exposing and
+ * executing them only when the triggering message is one of the autonomy
+ * service's own self-prompts.
+ */
+
+/**
+ * "Private" actions (see {@link Action.private}) may only run inside the
+ * agent's own autonomous loop, never in direct response to a user request.
+ *
+ * A turn is treated as autonomous when the triggering message carries
+ * `content.metadata.isAutonomous === true` — the marker the autonomy service
+ * stamps on its self-prompts. Any other message (a real user turn, a connector
+ * inbound, a sub-agent dispatch) is non-autonomous and a private action must be
+ * withheld.
+ *
+ * The marker is trustworthy here because inbound messages are stripped of a
+ * forged `isAutonomous` upstream: `hardenIncomingUserMessage`
+ * removes it from every
+ * message whose source is not the autonomy service, so a connector forwarding
+ * client-supplied metadata cannot use it to unlock private actions.
+ */
+function isAutonomousTurn(message: Memory | undefined): boolean {
+	const metadata = message?.content?.metadata;
+	if (typeof metadata !== "object" || metadata === null) {
+		return false;
+	}
+	return (metadata as { isAutonomous?: unknown }).isAutonomous === true;
+}
+
+/**
+ * Returns true when `action` is allowed to be exposed/executed on the current
+ * turn given its private-mode flag. Private actions are allowed only on
+ * autonomous turns; non-private actions are always allowed.
+ */
+function privateActionAllowedOnTurn(
+	action: Pick<Action, "private">,
+	message: Memory | undefined,
+): boolean {
+	if (!action.private) {
+		return true;
+	}
+	return isAutonomousTurn(message);
 }

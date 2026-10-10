@@ -176,7 +176,9 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "productivity",
       label: "Productivity",
-      description: "Work planning and prioritization.",
+      description:
+        "Work planning, prioritization and owner briefings or daily dossiers.",
+      aliases: ["briefing", "dossier"],
       parent: "tasks",
       sensitivity: "personal",
       cacheScope: "conversation",
