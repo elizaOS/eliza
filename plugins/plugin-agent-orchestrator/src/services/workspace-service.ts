@@ -1050,7 +1050,14 @@ export class CodingWorkspaceService {
       "ELIZA_CODING_DIFF_GATE_OVERSIZE_LINES",
     );
     if (threshold) {
-      const parsed = Number.parseInt(threshold, 10);
+      // Number.parseInt stops at the first non-digit ("1e3" -> 1), so a typo
+      // was silently accepted as the oversize-line threshold instead of
+      // leaving it unset. Require the whole trimmed value to be decimal,
+      // mirroring parseOutputLines in api/agent-routes.ts.
+      const thresholdText = threshold.trim();
+      const parsed = /^\+?\d+$/.test(thresholdText)
+        ? Number(thresholdText)
+        : Number.NaN;
       if (Number.isFinite(parsed) && parsed > 0) {
         config.oversizeLineThreshold = parsed;
       }
