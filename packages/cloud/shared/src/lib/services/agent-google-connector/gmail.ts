@@ -180,13 +180,14 @@ function normalizeSnippet(value: string | undefined): string {
 function decodeHtmlEntities(value: string): string {
   const namedEntities: Record<string, string> = {
     amp: "&",
+    apos: "'",
     gt: ">",
     lt: "<",
     nbsp: " ",
     quot: '"',
     "#39": "'",
   };
-  return value.replace(/&(nbsp|amp|lt|gt|quot|#x[0-9a-f]+|#\d+);/gi, (entity, name: string) => {
+  return value.replace(/&(nbsp|amp|apos|lt|gt|quot|#x[0-9a-f]+|#\d+);/gi, (entity, name: string) => {
     const key = name.toLowerCase();
     const named = namedEntities[key];
     if (named !== undefined) return named;
