@@ -6336,10 +6336,15 @@ export class RemindersDomain {
       "circadian_state",
       circadianFallback,
       async () => {
+        // Same owner-zone anchor as the reminder pass (#13509): the sleep
+        // cycle check-ins read `currentSchedule.timezone`.
+        const timezone = await resolveOwnerTimeZone(this.ctx.runtime, now);
         const previousSchedule = await this.readEffectiveScheduleState({
+          timezone,
           now,
         });
         const refreshedSchedule = await this.refreshEffectiveScheduleState({
+          timezone,
           now,
         });
         if (refreshedSchedule !== null) {
