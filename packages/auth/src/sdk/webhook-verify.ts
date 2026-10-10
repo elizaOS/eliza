@@ -114,14 +114,43 @@ export async function verifyWebhookSignature(
     return { valid: false, reason: "missing-signature" };
   }
 
+  // Fail closed on a blank secret instead of throwing from WebCrypto
+  // (a zero-length HMAC key raises DataError). The server-side verifier
+  // (server/webhooks/verify.ts) rejects a blank secret the same way.
+  if (typeof secret !== "string" || !secret.trim()) {
+    return { valid: false, reason: "bad-signature" };
+  }
+
   if (timestamp !== undefined && timestamp !== null) {
-    const tsNum = typeof timestamp === "number" ? timestamp : Number(timestamp);
-    if (!Number.isFinite(tsNum)) {
+    // The dispatcher emits canonical non-negative integer unix seconds
+    // (Math.floor(Date.now() / 1000).toString()) and signs that exact
+    // string. Accept only that form, as the server-side verifier does:
+    // a loose Number() parse also accepted decimals, exponents, padding,
+    // and leading zeros, widening the signed scheme.
+    const tsNum =
+      typeof timestamp === "number"
+        ? timestamp
+        : /^(?:0|[1-9]\d*)$/.test(timestamp)
+          ? Number(timestamp)
+          : Number.NaN;
+    if (!Number.isSafeInteger(tsNum) || tsNum < 0) {
       return { valid: false, reason: "bad-timestamp" };
     }
     const tolerance = options.toleranceSec ?? 300;
+    // Fail closed on an invalid tolerance: NaN previously made
+    // Number.isFinite skip the freshness check entirely, silently
+    // disabling replay protection. Infinity still skips by design.
+    if (
+      tolerance !== Number.POSITIVE_INFINITY &&
+      (!Number.isFinite(tolerance) || tolerance < 0)
+    ) {
+      return { valid: false, reason: "bad-timestamp" };
+    }
     if (Number.isFinite(tolerance)) {
       const now = options.nowSec ?? Math.floor(Date.now() / 1000);
+      if (!Number.isFinite(now) || now < 0) {
+        return { valid: false, reason: "bad-timestamp" };
+      }
       if (Math.abs(now - tsNum) > tolerance) {
         return { valid: false, reason: "stale-timestamp" };
       }
@@ -131,14 +160,19 @@ export async function verifyWebhookSignature(
   // A `v2=` prefix selects the versioned, nonce/event-bound scheme exclusively.
   const schemePrefix = `${SIGNATURE_SCHEME}=`;
   if (signature.startsWith(schemePrefix)) {
-    const provided = hexToBytes(signature.slice(schemePrefix.length));
-    if (provided.length === 0) return { valid: false, reason: "bad-signature" };
+    // The dispatcher emits exactly 64 lowercase hex chars (hmacSha256Hex).
+    // Match the server-side verifier: no 0x prefix, no uppercase, no
+    // other lengths.
+    const providedHex = signature.slice(schemePrefix.length);
+    if (!/^[0-9a-f]{64}$/.test(providedHex))
+      return { valid: false, reason: "bad-signature" };
+    const provided = hexToBytes(providedHex);
     if (timestamp === undefined || timestamp === null) {
       return { valid: false, reason: "bad-timestamp" };
     }
     const deliveryId = options.deliveryId;
     const eventType = options.eventType;
-    if (!deliveryId || !eventType)
+    if (!deliveryId?.trim() || !eventType?.trim())
       return { valid: false, reason: "bad-signature" };
     // Length-prefix deliveryId/eventType so field boundaries cannot be shifted
     // (event types and bodies contain '.'); must match dispatcher.canonicalSignedPayload.
