@@ -1,8 +1,8 @@
 /**
  * `registerDefaultWalletChainHandlers` builds and registers the default
  * `WalletChainHandler`s on the `WalletBackendService`: one EVM handler per
- * configured chain (transfer/swap/bridge, delegating swap to `SwapAction`
- * and bridge to `routeEvmBridge`), a Solana handler (native SOL transfer
+ * configured chain (transfer/swap/bridge/gov, delegating swap to `SwapAction`,
+ * bridge to `routeEvmBridge` and gov to `routeEvmGovernance`), a Solana handler (native SOL transfer
  * plus SPL transfer/swap via Jupiter, built by hand rather than through a
  * shared SDK), and a pump.fun handler that requests a serialized buy
  * transaction from PumpPortal's trade-local API, signs it through the
@@ -63,6 +63,7 @@ import { SwapAction } from "./evm/actions/swap";
 import { TransferAction } from "./evm/actions/transfer";
 import { routeEvmBridge } from "./evm/bridge-router";
 import { DEFAULT_CHAINS, NATIVE_TOKEN_ADDRESS } from "./evm/constants";
+import { routeEvmGovernance } from "./evm/gov-router";
 import { initWalletProvider } from "./evm/providers/wallet";
 import type { SupportedChain, Transaction } from "./evm/types";
 import BigNumber from "./solana/bn";
@@ -373,7 +374,7 @@ function createEvmHandler(key: string, chain: Chain): WalletChainHandler {
     chain: key,
     name: chain.name,
     aliases,
-    supportedActions: ["transfer", "swap", "bridge"],
+    supportedActions: ["transfer", "swap", "bridge", "gov"],
     tokens: [
       {
         symbol: chain.nativeCurrency.symbol,
@@ -390,7 +391,7 @@ function createEvmHandler(key: string, chain: Chain): WalletChainHandler {
     },
     dryRun: {
       supported: true,
-      supportedActions: ["transfer", "swap", "bridge"],
+      supportedActions: ["transfer", "swap", "bridge", "gov"],
       description:
         "Prepare mode and dry-run return route metadata without signing.",
     },
@@ -403,6 +404,9 @@ function createEvmHandler(key: string, chain: Chain): WalletChainHandler {
       }
       if (params.subaction === "bridge") {
         return routeEvmBridge(params, context, key, chain);
+      }
+      if (params.subaction === "gov") {
+        return routeEvmGovernance(params, context, key, chain);
       }
       throw new Error(`${chain.name} does not support ${params.subaction}.`);
     },

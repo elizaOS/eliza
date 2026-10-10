@@ -12,6 +12,7 @@ import type {
   WalletRouterExecution,
   WalletRouterParams,
 } from "../../types/wallet-router";
+import { registerDefaultWalletChainHandlers } from "../registry";
 import { walletRouterAction } from "../wallet-action";
 
 function createRuntime(): IAgentRuntime {
@@ -191,6 +192,41 @@ async function run(
 }
 
 describe("wallet router action", () => {
+  it("routes gov through the default EVM handler and discloses the vote before signing", async () => {
+    const { runtime, service } = createService();
+    runtime.character.settings = { chains: { evm: ["base"] } };
+    registerDefaultWalletChainHandlers(service, runtime);
+    const governor = "0x742d35Cc6634C0532925a3b844Bc454e4438f44e";
+    const vote = {
+      subaction: "gov",
+      chain: "base",
+      op: "vote",
+      governor,
+      proposalId: "12",
+      support: 1,
+    };
+
+    const dryRun = await run(runtime, { ...vote, dryRun: true });
+    expect(dryRun?.success).toBe(true);
+    expect(dryRun?.data?.status).toBe("prepared");
+    expect(dryRun?.data?.subaction).toBe("gov");
+
+    const missingGovernor = await run(runtime, {
+      ...vote,
+      governor: undefined,
+      mode: "execute",
+    });
+    expect(missingGovernor?.success).toBe(false);
+    expect(missingGovernor?.data?.error).toBe("INVALID_PARAMS");
+    expect(missingGovernor?.text).toBe("governor must be a valid EVM address.");
+
+    const pending = await run(runtime, { ...vote, mode: "execute" });
+    expect(pending?.data?.requiresConfirmation).toBe(true);
+    expect(pending?.text).toBe(
+      `Governance vote proposal 12 for at governor ${governor} on base? Reply yes to submit or no to cancel.`,
+    );
+  });
+
   it("routes EVM transfer through the selected chain handler", async () => {
     const { runtime, service } = createService();
     const base = handler("base", "Base", "8453", "evm");
