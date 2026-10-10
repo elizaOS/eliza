@@ -24,4 +24,40 @@ describe("SETTINGS updates parameter", () => {
       errors: [],
     });
   });
+
+  it("accepts boolean and number setting values", () => {
+    expect(
+      validateToolArgs(settingsAction, {
+        action: "set",
+        updates: [
+          { key: "FEATURE_X", value: true },
+          { key: "MAX_TOKENS", value: 4096 },
+        ],
+      }),
+    ).toEqual({
+      valid: true,
+      args: {
+        action: "set",
+        updates: [
+          { key: "FEATURE_X", value: true },
+          { key: "MAX_TOKENS", value: 4096 },
+        ],
+      },
+      errors: [],
+    });
+  });
+
+  it("rejects an entry without a value", () => {
+    expect(
+      validateToolArgs(settingsAction, {
+        action: "set",
+        updates: [{ key: "X" }],
+      }),
+    ).toEqual({
+      valid: false,
+      args: undefined,
+      errors: ["Missing required argument 'updates[0].value'"],
+      invalidParameterNames: ["updates"],
+    });
+  });
 });

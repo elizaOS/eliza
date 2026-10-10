@@ -822,7 +822,13 @@ export const settingsAction: Action = {
           type: "object" as const,
           properties: {
             key: { type: "string" as const },
-            value: { type: "string" as const },
+            value: {
+              anyOf: [
+                { type: "string" as const },
+                { type: "number" as const },
+                { type: "boolean" as const },
+              ],
+            },
           },
           required: ["key", "value"],
         },

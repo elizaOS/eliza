@@ -692,6 +692,7 @@ export const POST_PARAMETERS: ActionParameter[] = [
           description: { type: "string" },
           contentType: { type: "string" },
         },
+        required: ["url"],
       },
     },
   },

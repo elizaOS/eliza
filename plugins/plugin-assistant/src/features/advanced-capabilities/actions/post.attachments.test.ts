@@ -34,4 +34,20 @@ describe("POST attachments parameter", () => {
       errors: [],
     });
   });
+
+  it("rejects an attachment without a url", () => {
+    expect(
+      validateToolArgs(postAction, {
+        action: "send",
+        source: "x",
+        text: "shipping today",
+        attachments: [{}],
+      }),
+    ).toEqual({
+      valid: false,
+      args: undefined,
+      errors: ["Missing required argument 'attachments[0].url'"],
+      invalidParameterNames: ["attachments"],
+    });
+  });
 });
