@@ -74,6 +74,9 @@ export interface SharedModelCallDiagnostic {
   inputTokens: number | null;
   outputTokens: number | null;
   totalTokens: number | null;
+  promptCharacterCount: number | null;
+  messageCount: number | null;
+  contentPartCount: number | null;
 }
 
 function modelIdentifier(value: unknown): string | null {
@@ -377,6 +380,7 @@ export class SharedRuntimeTimingCollector {
     select: (selection: SharedModelCallSelection) => void;
     begin: () => void;
     setSdkModel: (model: unknown) => void;
+    setPromptShape: (input: { prompt?: unknown; messages?: unknown }) => void;
     complete: (
       outcome: SharedModelCallDiagnostic["outcome"],
       usage?: {
@@ -410,9 +414,45 @@ export class SharedRuntimeTimingCollector {
           inputTokens: null,
           outputTokens: null,
           totalTokens: null,
+          promptCharacterCount: null,
+          messageCount: null,
+          contentPartCount: null,
         }
       : undefined;
     return {
+      setPromptShape: (input) => {
+        if (finished || !diagnostic) return;
+        let characters = 0;
+        let parts = 0;
+        if (Array.isArray(input.messages)) {
+          for (const message of input.messages) {
+            if (!message || typeof message !== "object") return;
+            const content: unknown = message.content;
+            if (typeof content === "string") {
+              characters += content.length;
+              parts++;
+            } else if (Array.isArray(content)) {
+              parts += content.length;
+              for (const part of content) {
+                if (
+                  part &&
+                  typeof part === "object" &&
+                  part.type === "text" &&
+                  typeof part.text === "string"
+                )
+                  characters += part.text.length;
+              }
+            } else return;
+          }
+          diagnostic.messageCount = tokenCount(input.messages.length);
+        } else if (typeof input.prompt === "string") {
+          characters = input.prompt.length;
+          parts = 1;
+          diagnostic.messageCount = 0;
+        } else return;
+        diagnostic.promptCharacterCount = tokenCount(characters);
+        diagnostic.contentPartCount = tokenCount(parts);
+      },
       setSdkModel: (model) => {
         if (!finished && diagnostic) diagnostic.sdkModel = modelIdentifier(model);
       },
@@ -481,6 +521,9 @@ export class SharedRuntimeTimingCollector {
         inputTokens: null,
         outputTokens: null,
         totalTokens: null,
+        promptCharacterCount: null,
+        messageCount: null,
+        contentPartCount: null,
       }),
     }));
     return {

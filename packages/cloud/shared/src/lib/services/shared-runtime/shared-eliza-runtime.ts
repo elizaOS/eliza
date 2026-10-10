@@ -753,6 +753,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       ...(typeof params.topP === "number" ? { topP: params.topP } : {}),
       ...(params.signal ? { abortSignal: params.signal } : {}),
     };
+    modelCall.setPromptShape(generation);
     // This is the actual SDK input after current/persisted grounding injection.
     // Model/provider objects, signals, headers and auth never enter this projection.
     observeOwnerCapture(capture, (observer) => {
