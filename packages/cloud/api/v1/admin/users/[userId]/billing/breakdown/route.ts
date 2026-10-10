@@ -13,10 +13,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 
 /**
- * Month-to-date cost breakdown for a single user: rawCost (input+output
- * provider cost), markup (platform markup already captured in
- * `usage_records.markup`), and billedCost (rawCost + markup), grouped by
- * type/provider. Read-only endpoint for admin support / billing audits.
+ * Month-to-date cost breakdown for a single user: billedCost (input+output
+ * charge, which already includes the markup), markup (platform markup
+ * captured in `usage_records.markup`), and rawCost (billedCost - markup),
+ * grouped by type/provider. Read-only endpoint for admin support / billing audits.
  */
 
 const ParamsSchema = z.object({
@@ -81,14 +81,14 @@ async function __hono_GET(
     .orderBy(usageRecords.type, usageRecords.provider);
 
   const breakdown: BreakdownRow[] = rows.map((row) => {
-    const rawCost = Number(row.inputCost) + Number(row.outputCost);
+    const billedCost = Number(row.inputCost) + Number(row.outputCost);
     const markup = Number(row.markup);
     return {
       type: row.type,
       provider: row.provider,
-      rawCost,
+      rawCost: billedCost - markup,
       markup,
-      billedCost: rawCost + markup,
+      billedCost,
       recordCount: row.recordCount,
     };
   });
