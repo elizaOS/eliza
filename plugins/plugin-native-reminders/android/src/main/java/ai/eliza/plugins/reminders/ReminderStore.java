@@ -23,6 +23,7 @@ import java.util.UUID;
 /** Device-local reminder storage and Android OS scheduling; no agent workflow executor. */
 final class ReminderStore {
  private final String CHANNEL;
+ private final String DUE_CHANNEL;
  private final String OPEN_ID;
  private final String OCCURRENCE;
 
@@ -32,7 +33,7 @@ final class ReminderStore {
  final ReminderEnvelope.State persistence = new ReminderEnvelope.State();
  ReminderStore(ReminderConfiguration configuration, SecureStringStore secure) {
   this.configuration=configuration;this.secure=secure;
-  CHANNEL=configuration.channelId;OPEN_ID=configuration.idExtra;OCCURRENCE=configuration.occurrenceExtra;
+  CHANNEL=configuration.channelId;DUE_CHANNEL=configuration.dueChannelId();OPEN_ID=configuration.idExtra;OCCURRENCE=configuration.occurrenceExtra;
  }
  private ReminderEnvelope activeEnvelope;
  private ArrayList<Runnable> deferredEffects;
@@ -42,18 +43,33 @@ final class ReminderStore {
  private void cancelAlarm(Context context,String id,String occurrence){effect(()->context.getSystemService(AlarmManager.class).cancel(pending(context,id,occurrence)));}
  private void cancelNotification(Context context,String id){effect(()->context.getSystemService(NotificationManager.class).cancel(configuration.notificationTag(id),0));}
  static boolean validId(String id) { return id != null && id.matches("[A-Za-z0-9_-]{1,100}"); }
+ /** Refusal before any write: the reminder ID is absent unless it already existed. */
+ static final class StorageFull extends IllegalArgumentException { StorageFull() { super("Reminder storage is full. Complete or cancel an existing reminder before adding another."); } }
  void channel(Context context) {
-  NotificationChannel channel = new NotificationChannel(CHANNEL, configuration.channelName, NotificationManager.IMPORTANCE_DEFAULT);
-  channel.setDescription(configuration.channelDescription);
-  channel.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
-  context.getSystemService(NotificationManager.class).createNotificationChannel(channel);
+  NotificationManager manager = context.getSystemService(NotificationManager.class);
+  NotificationChannel legacy = new NotificationChannel(CHANNEL, configuration.channelName, NotificationManager.IMPORTANCE_DEFAULT);
+  legacy.setDescription(configuration.channelDescription);
+  legacy.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
+  NotificationChannel existing = manager.getNotificationChannel(CHANNEL);
+  manager.createNotificationChannel(legacy);
+  if (manager.getNotificationChannel(DUE_CHANNEL) != null) return;
+  // Channel importance is fixed at creation, so due reminders move to a separate
+  // high-importance channel. Keep explicit importance choices and private previews.
+  NotificationChannel due = new NotificationChannel(DUE_CHANNEL, configuration.channelName + " (due)",
+   existing != null && (existing.getImportance() < NotificationManager.IMPORTANCE_DEFAULT || (Build.VERSION.SDK_INT >= 29 && existing.hasUserSetImportance())) ? existing.getImportance() : NotificationManager.IMPORTANCE_HIGH);
+  due.setDescription(configuration.channelDescription);
+  due.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
+  if (existing != null) { due.setLockscreenVisibility(existing.getLockscreenVisibility()); due.setSound(existing.getSound(), existing.getAudioAttributes()); due.enableVibration(existing.shouldVibrate()); if (existing.getVibrationPattern() != null) due.setVibrationPattern(existing.getVibrationPattern()); due.setBypassDnd(false); }
+  manager.createNotificationChannel(due);
  }
  boolean allowed(Context context) {
   NotificationManager manager = context.getSystemService(NotificationManager.class);
   if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false;
-  NotificationChannel channel = manager.getNotificationChannel(CHANNEL);
+  NotificationChannel channel = manager.getNotificationChannel(DUE_CHANNEL);
+  if (channel == null) channel = manager.getNotificationChannel(CHANNEL);
   return manager.areNotificationsEnabled() && (channel == null || channel.getImportance() != NotificationManager.IMPORTANCE_NONE);
  }
+ String dueChannel() { return DUE_CHANNEL; }
  private PendingIntent pending(Context context, String id) { return pending(context,id,null); }
  private PendingIntent pending(Context context, String id, String occurrence) {
   Intent intent = new Intent(context, configuration.receiverClass).setAction(configuration.remindAction)
@@ -114,7 +130,7 @@ final class ReminderStore {
      }
     } catch (JSONException | ClassCastException invalid) { /* Preserve damaged neighbors. */ }
    }
-   if (reclaimedId == null) throw new IllegalArgumentException("Reminder storage is full. Complete or cancel an existing reminder before adding another.");
+   if (reclaimedId == null) throw new StorageFull();
   }
   JSONObject previous = read(context, id);
   if(previous!=null&&previous.has("alertMinutes")&&timing==null)throw new IllegalArgumentException("Explicit reminder timing must be preserved");
@@ -160,7 +176,8 @@ final class ReminderStore {
    try { JSONObject value=read(context,key);if(value!=null){value.put("target",selected(context,key));values.add(value); } }
    catch (JSONException | ClassCastException invalid) { /* Preserve damaged records, but do not hide healthy reminders. */ }
   }
-  values.sort(Comparator.comparingLong(value -> value.optLong("at")));
+  // Undated to-dos have no instant; they follow every dated reminder.
+  values.sort(Comparator.comparingLong(value -> value.optLong("at", Long.MAX_VALUE)));
   JSONArray result = new JSONArray(); for (JSONObject value : values) result.put(value); return result;
  }
  synchronized boolean cancel(Context context, String id) throws JSONException {
@@ -173,15 +190,34 @@ final class ReminderStore {
   cancelAlarm(context,id,null);
   cancelNotification(context,id); return true;
  }
- synchronized void restore(Context context) {
+ /** Stable for one device boot; changes after every reboot. */
+ static String bootId(Context context) {
+  int count = android.provider.Settings.Global.getInt(context.getContentResolver(), android.provider.Settings.Global.BOOT_COUNT, -1);
+  if (count >= 0) return "count:" + count;
+  return "wall:" + (System.currentTimeMillis() - android.os.SystemClock.elapsedRealtime()) / 60000L;
+ }
+ private SharedPreferences bootMarker(Context context) { return context.getSharedPreferences(configuration.bootMarkerName(), Context.MODE_PRIVATE); }
+ synchronized void restore(Context context) { restore(context, bootId(context)); }
+ synchronized void restore(Context context, String boot) {
   // Recover each record independently. A damaged record or one failed alarm must
   // not suppress other reminders. Permission-denied records require explicit rescheduling.
+  // Android clears notifications on reboot. Posted records are re-posted once per boot with
+  // the same occurrence, target and tap route; recurrence never advances here.
+  boolean repost = !boot.equals(bootMarker(context).getString("boot", null)), anyPosted = false, failed = false;
+  if (repost) { try { channel(context); } catch (RuntimeException unavailable) { failed = true; } }
+  boolean permitted = repost && !failed && allowed(context);
   for (String key : prefs(context).getAll().keySet()) {
    try {
     JSONObject value=read(context,key);
     if(value!=null && !noAlert(value) && "scheduled".equals(value.optString("status"))) arm(context,value.getString("id"),value.getLong("at"));
-   } catch (RuntimeException | JSONException ignored) { /* Keep this record for inspection; continue recovery. */ }
+    else if(repost && value!=null && !noAlert(value) && "posted".equals(value.optString("status"))) {
+     anyPosted = true;
+     if (permitted) postNotification(context, value.getString("id"), value, value.optString("occurrenceId", null)); else failed = true;
+    }
+   } catch (RuntimeException | JSONException ignored) { if (repost) failed = true; /* Keep this record for inspection; continue recovery. */ }
   }
+  // Retry on the next restore if any posted notice could not be re-posted.
+  if (repost && (!failed || !anyPosted)) bootMarker(context).edit().putString("boot", boot).commit();
  }
  synchronized void deliver(Context context, String id) { deliver(context,id,null); }
  synchronized void deliver(Context context, String id, String occurrence) {
@@ -216,9 +252,10 @@ final class ReminderStore {
    Intent open = new Intent(context, configuration.activityClass).setAction(configuration.openAction)
     .setData(Uri.parse(configuration.tapUriPrefix + token)).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
    PendingIntent tap = PendingIntent.getActivity(context, 0, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-   Notification publicVersion = new Notification.Builder(context, CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder)
+   channel(context);
+   Notification publicVersion = new Notification.Builder(context, DUE_CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder)
     .setContentTitle(configuration.publicTitle).build();
-   Notification.Builder builder = new Notification.Builder(context, CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder)
+   Notification.Builder builder = new Notification.Builder(context, DUE_CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder)
     .setContentTitle(value.getString("title")).setContentText(value.getString("body"))
     .setStyle(new Notification.BigTextStyle().bigText(value.getString("body")))
     .setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(publicVersion)
@@ -254,6 +291,8 @@ final class ReminderStore {
   JSONObject value=read(context,id);
   if(value==null||!occurrence.equals(value.optString("occurrenceId"))||"cancelled".equals(value.optString("status"))||"completed".equals(value.optString("status")))return new JSONObject().put("status","stale");
   if(!action.equals("done")&&!action.equals("snooze"))throw new IllegalArgumentException("Unknown reminder action");
+  // Undated to-dos have no instant or alert: Done/Snooze would arm an alarm. Use todoDecision.
+  if(value.optBoolean("undated"))throw new IllegalArgumentException("Change undated to-dos from the to-do list");
   if(action.equals("snooze")&&noAlert(value))throw new IllegalArgumentException("Edit this reminder to enable a reviewed alert before snoozing");
   if(action.equals("snooze")&&"scheduled".equals(value.optString("status"))&&value.has("snoozedAt"))return new JSONObject().put("status","unchanged");
   long now=System.currentTimeMillis();
@@ -292,6 +331,51 @@ final class ReminderStore {
   cancelAlarm(context,id,occurrence);cancelAlarm(context,id,null);cancelNotification(context,id);
   if("scheduled".equals(value.getString("status")))try{arm(context,id,value.getLong("at"));}catch(RuntimeException error){value.put("status","scheduling-failed");if(!prefs(context).edit().putString(id,value.toString()).commit())throw new IllegalStateException("Reminder failure state could not be saved");}
   return new JSONObject().put("status",value.getString("status"));
+ }
+ /** Undated to-do: no instant, no AlarmManager entry, no notification. */
+ synchronized JSONObject saveTodo(Context context,String id,String title,String body)throws JSONException{
+  if (!validId(id) || title == null || title.trim().isEmpty() || title.length() > 200 || body == null || body.length() > 4000 || title.indexOf(0)>=0 || body.indexOf(0)>=0) throw new IllegalArgumentException("Use a valid to-do ID, title up to 200 characters, and details up to 4000 characters");
+  JSONObject previous=read(context,id);
+  if(previous!=null){
+   // A retried save of the same to-do is idempotent; any other existing ID is refused.
+   if(previous.optBoolean("undated")&&previous.getString("title").equals(title.trim())&&previous.getString("body").equals(body))return previous;
+   throw new IllegalArgumentException("Reminder ID already exists");
+  }
+  SharedPreferences preferences=prefs(context);String reclaimedId=null;
+  if(preferences.getAll().size()>=LIMIT){
+   long oldestAt=Long.MAX_VALUE;
+   for(String key:preferences.getAll().keySet()){
+    try{JSONObject candidate=read(context,key);if(candidate!=null&&("cancelled".equals(candidate.optString("status"))||"completed".equals(candidate.optString("status")))&&candidate.optLong("cancelledAt",candidate.optLong("completedAt",Long.MAX_VALUE))<oldestAt){reclaimedId=key;oldestAt=candidate.optLong("cancelledAt",candidate.optLong("completedAt"));}}
+    catch(JSONException|ClassCastException invalid){/* Preserve damaged neighbors. */}
+   }
+   if(reclaimedId==null)throw new StorageFull();
+  }
+  JSONObject record=new JSONObject().put("id",id).put("title",title.trim()).put("body",body).put("status","todo").put("mode","none").put("undated",true)
+   .put("createdAt",System.currentTimeMillis()).put("occurrenceId",UUID.randomUUID().toString()).put("history",new JSONArray());
+  SharedPreferences.Editor write=preferences.edit().putString(id,record.toString());if(reclaimedId!=null)write.remove(reclaimedId);
+  if(!write.commit())throw new IllegalStateException("To-do could not be saved");
+  return record;
+ }
+ /** Exact reviewed target only: done, reopen or cancel one undated to-do. */
+ synchronized JSONObject todoDecision(Context context,JSONObject target,String action)throws JSONException{
+  if(target==null||action==null||!java.util.Arrays.asList("done","reopen","cancel").contains(action))throw new IllegalArgumentException("Unknown to-do action");
+  String id=target.getString("reminderId");JSONObject row=read(context,id);
+  if(row==null||!row.optBoolean("undated"))throw new IllegalArgumentException("To-do not found");
+  if(!canonical(target).equals(canonical(selected(context,id))))throw new IllegalArgumentException("Selected reminder changed");
+  String status=row.getString("status");long now=System.currentTimeMillis();
+  if("cancelled".equals(status))throw new IllegalArgumentException("To-do is no longer active");
+  if(action.equals("done")){
+   if(!"todo".equals(status))throw new IllegalArgumentException("To-do is not open");
+   JSONArray previous=row.optJSONArray("history"),history=new JSONArray();
+   if(previous!=null)for(int i=0;i<previous.length();i++)history.put(previous.get(i));
+   history.put(new JSONObject().put("occurrenceId",row.getString("occurrenceId")).put("completedAt",now));
+   row.put("history",history).put("status","completed").put("completedAt",now);
+  }else if(action.equals("reopen")){
+   if(!"completed".equals(status))throw new IllegalArgumentException("To-do is not completed");
+   row.put("status","todo").put("occurrenceId",UUID.randomUUID().toString());row.remove("completedAt");
+  }else row.put("status","cancelled").put("cancelledAt",now);
+  if(!prefs(context).edit().putString(id,row.toString()).commit())throw new IllegalStateException("To-do could not be saved");
+  return new JSONObject().put("status",row.getString("status")).put("id",id).put("target",selected(context,id));
  }
  static String digest(String value){try{byte[] bytes=java.security.MessageDigest.getInstance("SHA-256").digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));StringBuilder out=new StringBuilder();for(byte b:bytes)out.append(String.format(java.util.Locale.ROOT,"%02x",b&255));return out.toString();}catch(java.security.NoSuchAlgorithmException impossible){throw new IllegalStateException(impossible);}}
  private String canonical(Object value)throws JSONException{if(value instanceof JSONObject){JSONObject obj=(JSONObject)value;ArrayList<String> keys=new ArrayList<>();for(java.util.Iterator<String> it=obj.keys();it.hasNext();)keys.add(it.next());java.util.Collections.sort(keys);StringBuilder s=new StringBuilder("{");for(String key:keys){if(s.length()>1)s.append(',');s.append(JSONObject.quote(key)).append(':').append(canonical(obj.get(key)));}return s.append('}').toString();}if(value instanceof JSONArray){JSONArray a=(JSONArray)value;StringBuilder s=new StringBuilder("[");for(int i=0;i<a.length();i++){if(i>0)s.append(',');s.append(canonical(a.get(i)));}return s.append(']').toString();}return value instanceof String?JSONObject.quote((String)value):String.valueOf(value);}
@@ -332,6 +416,7 @@ final class ReminderStore {
   String id=creating?operationId:target.getString("reminderId");
   if(creating){if(store.value.getJSONObject("records").has(id))throw new IllegalArgumentException("Reminder creation ID already exists");}
   else if(!canonical(target).equals(canonical(selected(context,id))))throw new IllegalArgumentException("Selected reminder changed");
+  if(!creating&&read(context,id).optBoolean("undated"))throw new IllegalArgumentException("Change undated to-dos from the to-do list");
   activeEnvelope=store;store.begin();deferredEffects=new ArrayList<>();ArrayList<Runnable> effects;
   try{
    JSONObject row=read(context,id);

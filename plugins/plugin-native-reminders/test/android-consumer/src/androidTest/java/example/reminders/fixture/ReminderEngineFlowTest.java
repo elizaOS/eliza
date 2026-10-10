@@ -33,14 +33,27 @@ public final class ReminderEngineFlowTest {
   context=InstrumentationRegistry.getInstrumentation().getTargetContext();assertEquals("example.reminders.fixture.consumer",context.getPackageName());if(android.os.Build.VERSION.SDK_INT>=33)assertEquals(PackageManager.PERMISSION_GRANTED,context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS));
   for(String name:new String[]{"a","b"}){assertFalse("Fresh fixture storage required",context.getSharedPreferences("fixture-envelope-"+name,Context.MODE_PRIVATE).contains("envelope"));assertEquals(0,context.getSharedPreferences("fixture-legacy-"+name,Context.MODE_PRIVATE).getAll().size());}
   assertEquals(0,context.getSharedPreferences("fixture-taps",Context.MODE_PRIVATE).getAll().size());assertEquals(0,context.getSystemService(NotificationManager.class).getActiveNotifications().length);
+  NotificationManager manager=context.getSystemService(NotificationManager.class);
+  manager.createNotificationChannel(new NotificationChannel(FixtureHost.config("b").channelId,"Existing quiet reminders",NotificationManager.IMPORTANCE_LOW));
   ReminderEngine a=FixtureHost.engine(context,"a"),b=FixtureHost.engine(context,"b");assertSame(a,FixtureHost.engine(context,"a"));assertNotSame(a,b);assertTrue(a.notificationsAllowed());assertTrue(b.notificationsAllowed());
   String shared="shared_"+UUID.randomUUID(),quiet="quiet_"+UUID.randomUUID();
   try {
    // Same physical envelope with different configuration must never fork state.
    ReminderConfiguration original=FixtureHost.config("a");ReminderConfiguration conflict=new ReminderConfiguration(original.envelopeName,original.legacyName,original.tapSlot,original.channelId,original.channelName,original.channelDescription,"Changed label",original.remindAction,original.decisionAction,original.openAction,original.alarmUriPrefix,original.decisionUriPrefix,original.tapUriPrefix,original.idExtra,original.occurrenceExtra,original.decisionExtra,original.notificationTagPrefix,original.receiverClass,original.activityClass);
    try{ReminderEngine.get(context,conflict,FixtureHost.STORAGE);fail("Conflicting engine configuration accepted");}catch(IllegalStateException expected){}
+   String todo="todo_"+UUID.randomUUID();
+   JSONObject saved=a.saveTodo(todo,"Undated fixture","");
+   assertEquals("todo",saved.getString("status"));assertTrue(saved.getBoolean("undated"));assertFalse(saved.has("at"));assertFalse(saved.has("dueAt"));assertEquals("none",saved.getString("mode"));
+   assertEquals(saved.toString(),a.saveTodo(todo,"Undated fixture","").toString());
+   assertNull(alarm("a",todo,saved.getString("occurrenceId")));assertNull(notification("a:"+todo));
+   for(String action:new String[]{"done","snooze"})try{a.decide(todo,saved.getString("occurrenceId"),action);fail("Dated decision accepted an undated to-do");}catch(IllegalArgumentException expected){}
+   JSONObject todoTarget=a.selected(todo);
+   JSONObject done=a.todoDecision(todoTarget,"done");assertEquals("completed",done.getString("status"));
+   try{a.todoDecision(todoTarget,"reopen");fail("Stale to-do target accepted");}catch(IllegalArgumentException expected){}
+   JSONObject reopened=a.todoDecision(done.getJSONObject("target"),"reopen");assertEquals("todo",reopened.getString("status"));assertNotEquals(saved.getString("occurrenceId"),a.read(todo).getString("occurrenceId"));
+   a.todoDecision(reopened.getJSONObject("target"),"cancel");
    long due=System.currentTimeMillis()+3600000;JSONObject operation=createOperation(due),created=a.operate(quiet,"a".repeat(64),operation);assertEquals("succeeded",created.getString("status"));assertEquals("pending",a.read(quiet).getString("status"));assertEquals("none",a.read(quiet).getString("mode"));assertTrue(a.read(quiet).isNull("alertMinutes"));assertNull(alarm("a",quiet,a.read(quiet).getString("occurrenceId")));assertNull(alarm("a",quiet,null));
-   assertEquals(created.toString(),a.operate(quiet,"a".repeat(64),operation).toString());assertEquals(created.toString(),a.operationReceipt(quiet,"a".repeat(64),operation).toString());assertEquals(1,a.list().length());assertEquals(0,b.list().length());
+   assertEquals(created.toString(),a.operate(quiet,"a".repeat(64),operation).toString());assertEquals(created.toString(),a.operationReceipt(quiet,"a".repeat(64),operation).toString());assertEquals(2,a.list().length());assertEquals(0,b.list().length());
    try{a.operate(quiet,"b".repeat(64),operation);fail("Changed approval binding accepted");}catch(IllegalArgumentException expected){}
    JSONObject oldTarget=a.selected(quiet),edit=new JSONObject().put("type","reminder_update").put("target",oldTarget).put("fields",new JSONObject().put("title","Edited synthetic task").put("body","Still no alert"));a.operate(UUID.randomUUID().toString(),"a".repeat(64),edit);assertEquals("Edited synthetic task",a.read(quiet).getString("title"));
    try{a.operate(UUID.randomUUID().toString(),"a".repeat(64),edit);fail("Stale reviewed target accepted");}catch(IllegalArgumentException expected){}
@@ -48,6 +61,13 @@ public final class ReminderEngineFlowTest {
    long atA=System.currentTimeMillis()+9000;JSONObject rowA=a.schedule(shared,"Synthetic A","Owned",atA,null,null);long atB=System.currentTimeMillis()+9000;JSONObject rowB=b.schedule(shared,"Synthetic B","Owned",atB,null,null);assertNotEquals(a.selected(shared).getString("sourceId"),b.selected(shared).getString("sourceId"));assertNotNull(alarm("a",shared,rowA.getString("occurrenceId")));assertNotNull(alarm("b",shared,rowB.getString("occurrenceId")));
    until(()->System.currentTimeMillis()>=Math.max(atA,atB));context.sendBroadcast(delivery("a",shared,rowA.getString("occurrenceId")));context.sendBroadcast(delivery("b",shared,rowB.getString("occurrenceId")));until(()->notification("a:"+shared)!=null&&notification("b:"+shared)!=null);
    Notification noticeA=notification("a:"+shared).getNotification(),noticeB=notification("b:"+shared).getNotification();assertEquals("posted",a.read(shared).getString("status"));assertEquals("posted",b.read(shared).getString("status"));
+   assertEquals(a.dueChannelId(),noticeA.getChannelId());assertEquals(NotificationManager.IMPORTANCE_HIGH,manager.getNotificationChannel(a.dueChannelId()).getImportance());
+   assertEquals(NotificationManager.IMPORTANCE_LOW,manager.getNotificationChannel(b.dueChannelId()).getImportance());
+   String before=a.read(shared).toString();
+   manager.cancel("a:"+shared,0);
+   a.restore();until(()->notification("a:"+shared)!=null);
+   assertEquals(before,a.read(shared).toString());assertEquals(noticeA.contentIntent,notification("a:"+shared).getNotification().contentIntent);
+   manager.cancel("a:"+shared,0);a.restore();assertNull("Only re-post once during this boot",notification("a:"+shared));
    String opaque=token("a",shared);assertTrue(opaque.matches("[0-9a-f-]{36}"));a.captureTap(opaque);JSONObject route=a.pendingTap();assertTrue(route.getBoolean("retained"));assertEquals(shared,route.getJSONObject("target").getString("reminderId"));a.consumeTap(opaque);assertFalse(a.pendingTap().has("token"));until(()->notification("a:"+shared)==null);assertNotNull(notification("b:"+shared));assertEquals("posted",a.read(shared).getString("status"));
    // Actual notification action PendingIntents route through the manifest receiver.
    noticeB.actions[1].actionIntent.send();until(()->"scheduled".equals(b.read(shared).getString("status")));assertTrue(b.read(shared).has("snoozedAt"));assertNotNull(alarm("b",shared,rowB.getString("occurrenceId")));assertEquals("unchanged",b.decide(shared,rowB.getString("occurrenceId"),"snooze").getString("status"));
@@ -55,7 +75,7 @@ public final class ReminderEngineFlowTest {
   } finally {
    // This package/user was required empty. Cancel only this run's exact IDs, never global alarms.
    cancel(a,shared);cancel(b,shared);cancel(a,quiet);
-   for(String name:new String[]{"a","b"})context.getSystemService(NotificationManager.class).deleteNotificationChannel(FixtureHost.config(name).channelId);
+   for(String name:new String[]{"a","b"}){manager.deleteNotificationChannel(FixtureHost.config(name).channelId);manager.deleteNotificationChannel(FixtureHost.config(name).dueChannelId());}
   }
  }
 }
