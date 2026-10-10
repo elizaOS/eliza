@@ -78,7 +78,11 @@ function configuredDiscordDesktopCdpPort(
   if (!raw) {
     return DEFAULT_DISCORD_DESKTOP_CDP_PORT;
   }
-  const parsed = Number.parseInt(raw, 10);
+  // Number.parseInt stops at the first non-digit ("9229junk" -> 9229), so a
+  // malformed env value silently became a live CDP port ("1e3" -> port 1)
+  // instead of falling back to the default. Require the whole trimmed value
+  // to be decimal digits, mirroring the strict port parsing elsewhere.
+  const parsed = /^\d+$/.test(raw) ? Number.parseInt(raw, 10) : Number.NaN;
   return Number.isFinite(parsed) && parsed > 0 && parsed < 65_536
     ? parsed
     : DEFAULT_DISCORD_DESKTOP_CDP_PORT;
