@@ -268,6 +268,94 @@ class SystemPlugin : Plugin() {
         }
     }
 
+    /** Launchable apps other than the host, sorted by label; icons are opt-in PNG data URLs. */
+    @PluginMethod
+    fun listLauncherApps(call: PluginCall) {
+        val icons = call.getBoolean("icons", false) == true
+        val apps = JSArray()
+        for (app in SystemLauncherApps.list(context)) {
+            val item = JSObject()
+            item.put("packageName", app.packageName)
+            item.put("label", app.label)
+            if (icons) iconDataUrl(app.packageName)?.let { item.put("icon", it) }
+            apps.put(item)
+        }
+        val result = JSObject()
+        result.put("apps", apps)
+        call.resolve(result)
+    }
+
+    /** Launches one listed app from an explicit host call; the host owns the user-intent check. */
+    @PluginMethod
+    fun launchApp(call: PluginCall) {
+        val intent = try {
+            SystemLauncherApps.launchIntent(context, call.getString("packageName"))
+        } catch (error: IllegalArgumentException) {
+            call.reject("Choose an installed app")
+            return
+        }
+        if (intent == null) {
+            call.reject("App is unavailable")
+            return
+        }
+        startHandoff(call, intent)
+    }
+
+    /** Resolves, without launching, the handler for a default role (currently "dial"). */
+    @PluginMethod
+    fun resolveDefaultApp(call: PluginCall) {
+        val role = call.getString("role")
+        val handler = try {
+            SystemLauncherApps.resolveDefault(context, role)
+        } catch (error: IllegalArgumentException) {
+            call.reject("role must be dial")
+            return
+        }
+        val result = JSObject()
+        result.put("role", role)
+        result.put("available", handler.available)
+        handler.packageName?.let {
+            result.put("packageName", it)
+            result.put("label", handler.label)
+            iconDataUrl(it)?.let { icon -> result.put("icon", icon) }
+        }
+        call.resolve(result)
+    }
+
+    /** Opens the role's handler with no data (an empty dial pad for "dial"). */
+    @PluginMethod
+    fun openDefaultApp(call: PluginCall) {
+        val role = call.getString("role")
+        val intent = try {
+            SystemLauncherApps.defaultLaunchIntent(context, role)
+        } catch (error: IllegalArgumentException) {
+            call.reject("role must be dial")
+            return
+        }
+        if (intent == null) {
+            call.reject("No app on this device handles $role")
+            return
+        }
+        startHandoff(call, intent)
+    }
+
+    private fun startHandoff(call: PluginCall, intent: Intent) {
+        try {
+            // Launchers start other apps in their own tasks, like the settings hand-offs above.
+            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            call.resolve()
+        } catch (error: android.content.ActivityNotFoundException) {
+            call.reject("App could not be opened", error)
+        } catch (error: SecurityException) {
+            call.reject("App could not be opened", error)
+        }
+    }
+
+    private fun iconDataUrl(packageName: String): String? {
+        val png = SystemLauncherApps.iconPng(context.packageManager, packageName, LAUNCHER_ICON_PX) ?: return null
+        return "data:image/png;base64," + android.util.Base64.encodeToString(png, android.util.Base64.NO_WRAP)
+    }
+
     private fun statusToJs(status: SystemDeviceReader.SystemStatus): JSObject {
         val result = JSObject()
         result.put("packageName", status.packageName)
@@ -304,5 +392,9 @@ class SystemPlugin : Plugin() {
         result.put("current", volume.current)
         result.put("max", volume.max)
         return result
+    }
+
+    private companion object {
+        const val LAUNCHER_ICON_PX = 96
     }
 }

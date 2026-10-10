@@ -57,3 +57,11 @@ triggers the image-viewer fallback; permission denial never triggers another
 gallery destination. Results describe dispatch or failure, not user completion.
 Hosts retain foreground/user-intent policy and presentation. Instrumentation tests
 capture dispatch without opening apps, placing calls or sending messages.
+
+The `ElizaSystem` bridge also exposes `listLauncherApps`, `launchApp`,
+`resolveDefaultApp` and `openDefaultApp`. Icons are optional PNG data URLs.
+The default-app role is currently `dial`, with an empty dial pad. Hosts must
+also declare an `ACTION_DIAL` query with the `tel` scheme. Default handoffs use
+an explicit eligible activity or a chooser of eligible activities. The host,
+disabled apps and unexported activities cannot be destinations. Web fallback
+reports no handlers and rejects launch requests. Hosts retain user-intent policy.

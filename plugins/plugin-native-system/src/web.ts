@@ -3,8 +3,11 @@ import { WebPlugin } from "@capacitor/core";
 import type {
   AndroidRoleName,
   AndroidRoleRequestResult,
+  DefaultAppRole,
+  DefaultAppStatus,
   DeviceSettingsStatus,
   FlashlightStatus,
+  LauncherApp,
   SystemPlugin,
   SystemStatus,
   SystemVolumeStatus,
@@ -46,7 +49,35 @@ function validateVolumeStream(stream: unknown): SystemVolumeStream {
   return stream as SystemVolumeStream;
 }
 
+function validateDefaultRole(role: unknown): DefaultAppRole {
+  if (role !== "dial") throw new Error("role must be dial");
+  return role;
+}
+
 export class SystemWeb extends WebPlugin implements SystemPlugin {
+  async listLauncherApps(): Promise<{ apps: LauncherApp[] }> {
+    // A browser exposes no installed apps; an empty list is the honest answer.
+    return { apps: [] };
+  }
+
+  async launchApp(options: { packageName: string }): Promise<void> {
+    if (typeof options?.packageName !== "string" || !options.packageName) {
+      throw new Error("Choose an installed app");
+    }
+    throw new Error("Launching installed apps is only available on Android.");
+  }
+
+  async resolveDefaultApp(options: {
+    role: DefaultAppRole;
+  }): Promise<DefaultAppStatus> {
+    return { role: validateDefaultRole(options?.role), available: false };
+  }
+
+  async openDefaultApp(options: { role: DefaultAppRole }): Promise<void> {
+    const role = validateDefaultRole(options?.role);
+    throw new Error(`The default ${role} app is only available on Android.`);
+  }
+
   async getStatus(): Promise<SystemStatus> {
     return {
       packageName: "web",
