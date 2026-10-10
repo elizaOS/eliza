@@ -32,7 +32,12 @@ export const PS_SPAWN_TIMEOUT_ENV = "ELIZA_COMPUTERUSE_PS_TIMEOUT_MS";
 export function psSpawnTimeoutMs(baseMs: number): number {
   const raw = process.env[PS_SPAWN_TIMEOUT_ENV];
   if (!raw) return baseMs;
-  const floor = Number.parseInt(raw.trim(), 10);
+  // Number.parseInt stops at the first non-digit ("120000junk" -> 120000), so
+  // a typo was silently honored as the spawn-timeout floor instead of being
+  // ignored. Require the whole trimmed value to be a positive integer,
+  // mirroring parseComputerUseActionTimeoutMs in services/computer-use-service.ts.
+  const text = raw.trim();
+  const floor = /^[1-9]\d*$/.test(text) ? Number(text) : Number.NaN;
   if (!Number.isFinite(floor) || floor <= 0) return baseMs;
   return Math.max(baseMs, floor);
 }
