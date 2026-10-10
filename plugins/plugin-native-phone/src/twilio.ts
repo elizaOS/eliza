@@ -84,7 +84,15 @@ function twilioOperation(path: string): string {
 function resolveSmsCostPerSegment(): number {
   const raw = process.env.TWILIO_SMS_COST_PER_SEGMENT_USD;
   if (!raw) return DEFAULT_SMS_COST_PER_SEGMENT_USD;
-  const parsed = Number.parseFloat(raw);
+  // Number.parseFloat stops at the first non-digit ("0.01junk" -> 0.01), so a
+  // malformed value was silently honored as the billing rate instead of the
+  // default. Require the whole trimmed value to be decimal, mirroring the
+  // strict TWILIO_SMS_COST_PATTERN for the same env var in
+  // packages/cloud/sdk/src/browser-contracts/markup.ts.
+  const costText = raw.trim();
+  const parsed = /^\+?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(costText)
+    ? Number(costText)
+    : Number.NaN;
   if (!Number.isFinite(parsed) || parsed < 0) {
     logger.warn(
       { raw },
