@@ -492,22 +492,6 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
     type: "GET",
     path: "/api/lifeops/connectors/health/:provider/status",
   },
-  {
-    type: "GET",
-    path: "/api/lifeops/connectors/health/:provider/callback",
-    public: true,
-    name: "lifeops.health.callback",
-    publicReason:
-      "Health connector OAuth callbacks must accept provider redirects.",
-  },
-  {
-    type: "GET",
-    path: "/api/lifeops/connectors/health/:provider/success",
-    public: true,
-    name: "lifeops.health.success",
-    publicReason:
-      "Health connector OAuth success landing must render after provider redirects.",
-  },
   // /api/lifeops/calendar/events/:eventId
   { type: "PATCH", path: "/api/lifeops/calendar/events/:eventId" },
   { type: "DELETE", path: "/api/lifeops/calendar/events/:eventId" },

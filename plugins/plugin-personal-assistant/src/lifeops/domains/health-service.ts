@@ -10,23 +10,16 @@ import type {
   GetLifeOpsHealthSummaryRequest,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
-  LifeOpsHealthConnectorCapability,
   LifeOpsHealthConnectorProvider,
   LifeOpsHealthConnectorStatus,
   LifeOpsHealthDailySummary,
   LifeOpsHealthMetric,
   LifeOpsHealthMetricSample,
   LifeOpsHealthSummaryResponse,
-  StartLifeOpsHealthConnectorRequest,
-  StartLifeOpsHealthConnectorResponse,
   SyncLifeOpsHealthConnectorRequest,
 } from "@elizaos/contracts";
+import { LIFEOPS_HEALTH_CONNECTOR_PROVIDERS } from "@elizaos/contracts";
 import {
-  LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES,
-  LIFEOPS_HEALTH_CONNECTOR_PROVIDERS,
-} from "@elizaos/contracts";
-import {
-  completeHealthConnectorOAuth,
   deleteStoredHealthToken,
   detectHealthBackend,
   getDailySummary,
@@ -40,15 +33,11 @@ import {
   type HealthDataPoint,
   HealthOAuthError,
   refreshStoredHealthToken,
-  startHealthConnectorOAuth,
   syncHealthConnectorData,
 } from "@elizaos/plugin-health";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import { resolveOwnerTimeZone } from "../owner/fact-store.js";
-import {
-  createLifeOpsConnectorGrant,
-  createLifeOpsHealthSyncState,
-} from "../repository.js";
+import { createLifeOpsHealthSyncState } from "../repository.js";
 import {
   fail,
   normalizeEnumValue,
@@ -116,31 +105,6 @@ function normalizeOptionalHealthProvider(
     return undefined;
   }
   return normalizeHealthProvider(value);
-}
-
-function normalizeHealthCapabilities(
-  value: unknown,
-): LifeOpsHealthConnectorCapability[] | undefined {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-  if (!Array.isArray(value)) {
-    fail(400, "capabilities must be an array");
-  }
-  const capabilities: LifeOpsHealthConnectorCapability[] = [];
-  const seen = new Set<LifeOpsHealthConnectorCapability>();
-  for (const candidate of value) {
-    const capability = normalizeEnumValue(
-      candidate,
-      "capabilities[]",
-      LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES,
-    );
-    if (!seen.has(capability)) {
-      seen.add(capability);
-      capabilities.push(capability);
-    }
-  }
-  return capabilities;
 }
 
 function normalizeDateOnly(value: unknown, field: string): string | null {
@@ -400,124 +364,6 @@ export class HealthDomain {
       requestedMode,
       requestedSide,
     );
-  }
-
-  async startHealthConnector(
-    request: StartLifeOpsHealthConnectorRequest,
-    requestUrl: URL,
-  ): Promise<StartLifeOpsHealthConnectorResponse> {
-    const provider = normalizeHealthProvider(request.provider);
-    const mode = normalizeOptionalConnectorMode(request.mode, "mode");
-    if (mode === "cloud_managed") {
-      fail(
-        501,
-        "Cloud-managed health OAuth is not wired for this provider yet.",
-      );
-    }
-    const side =
-      normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
-    const capabilities = normalizeHealthCapabilities(request.capabilities);
-    try {
-      return startHealthConnectorOAuth({
-        provider,
-        agentId: this.ctx.agentId(),
-        side,
-        mode,
-        requestUrl,
-        redirectUrl: normalizeOptionalString(request.redirectUrl),
-        capabilities,
-      });
-    } catch (error) {
-      if (error instanceof HealthOAuthError) {
-        fail(error.status, error.message);
-      }
-      this.ctx.logLifeOpsError("health_connector_start", error, { provider });
-      throw error;
-    }
-  }
-
-  async completeHealthConnectorCallback(
-    callbackUrl: URL,
-  ): Promise<LifeOpsHealthConnectorStatus> {
-    try {
-      const result = await completeHealthConnectorOAuth(callbackUrl);
-      if (result.agentId !== this.ctx.agentId()) {
-        fail(
-          409,
-          "Health connector callback does not belong to the active agent.",
-        );
-      }
-      const existingGrant = await this.ctx.repository.getConnectorGrant(
-        this.ctx.agentId(),
-        result.provider,
-        result.mode,
-        result.side,
-      );
-      const nowIso = new Date().toISOString();
-      const grant = existingGrant
-        ? {
-            ...existingGrant,
-            identity: { ...result.identity },
-            grantedScopes: [...result.grantedScopes],
-            capabilities: [...result.grantedCapabilities],
-            tokenRef: result.tokenRef,
-            executionTarget: "local" as const,
-            sourceOfTruth: "local_storage" as const,
-            cloudConnectionId: null,
-            metadata: {
-              ...existingGrant.metadata,
-              authState: "connected",
-              expiresAt: result.expiresAt,
-              hasRefreshToken: result.hasRefreshToken,
-            },
-            lastRefreshAt: nowIso,
-            updatedAt: nowIso,
-          }
-        : createLifeOpsConnectorGrant({
-            agentId: this.ctx.agentId(),
-            provider: result.provider,
-            side: result.side,
-            identity: { ...result.identity },
-            grantedScopes: [...result.grantedScopes],
-            capabilities: [...result.grantedCapabilities],
-            tokenRef: result.tokenRef,
-            mode: result.mode,
-            executionTarget: "local",
-            sourceOfTruth: "local_storage",
-            metadata: {
-              authState: "connected",
-              expiresAt: result.expiresAt,
-              hasRefreshToken: result.hasRefreshToken,
-            },
-            lastRefreshAt: nowIso,
-          });
-      await this.ctx.repository.upsertConnectorGrant(grant);
-      await this.ctx.recordConnectorAudit(
-        `${result.provider}:${result.mode}`,
-        "health connector granted",
-        {
-          provider: result.provider,
-          side: result.side,
-          mode: result.mode,
-          capabilities: result.grantedCapabilities,
-        },
-        {
-          tokenRef: result.tokenRef,
-          expiresAt: result.expiresAt,
-        },
-      );
-      return this.getHealthDataConnectorStatus(
-        result.provider,
-        callbackUrl,
-        result.mode,
-        result.side,
-      );
-    } catch (error) {
-      if (error instanceof HealthOAuthError) {
-        fail(error.status, error.message);
-      }
-      throw error;
-    }
   }
 
   async disconnectHealthConnector(
