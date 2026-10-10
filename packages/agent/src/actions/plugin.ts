@@ -140,8 +140,9 @@ function mutationAcknowledged(data: PluginMutationResponse): boolean {
   );
 }
 
+// `telegram` is the bot connector. It has no entry here: the personal-account
+// cancel route does not stop the bot, so it takes the plugin-disable path.
 const CONNECTOR_DISCONNECT_PATHS: Record<string, string> = {
-  telegram: "/api/setup/telegram-account/cancel",
   "telegram-account": "/api/setup/telegram-account/cancel",
   whatsapp: "/api/whatsapp/disconnect",
   "discord-local": "/api/discord-local/disconnect",
