@@ -16,6 +16,9 @@ describe("extractUrls", () => {
     expect(
       extractUrls("Read https://en.wikipedia.org/wiki/Schindler's_List please"),
     ).toEqual(["https://en.wikipedia.org/wiki/Schindler's_List"]);
+    expect(extractUrls("Read https://example.com/l'été now")).toEqual([
+      "https://example.com/l'été",
+    ]);
   });
 
   it("still ends a URL at an unmatched bracket or a closing quote", () => {
