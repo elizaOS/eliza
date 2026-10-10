@@ -19,7 +19,15 @@ export async function getCreditBalanceResponse(
   // via string so null/undefined/garbage all land on the same non-finite guard,
   // and fail closed with a 500 rather than reporting a success-shaped, wrong
   // balance (#12268 fallback-slop sweep).
-  const balance = Number.parseFloat(String(organization.credit_balance ?? ""));
+  // Number.parseFloat stops at the first non-digit ("12.50junk" -> 12.5), so a
+  // corrupt credit_balance was reported as a success-shaped, wrong balance
+  // instead of failing closed with a 500. Require the whole trimmed value to
+  // be decimal, mirroring TWILIO_SMS_COST_PATTERN in
+  // packages/cloud/sdk/src/browser-contracts/markup.ts.
+  const balanceText = String(organization.credit_balance ?? "").trim();
+  const balance = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(balanceText)
+    ? Number(balanceText)
+    : Number.NaN;
   if (!Number.isFinite(balance)) {
     throw new ApiError(500, "internal_error", "Unable to read credit balance for organization");
   }
