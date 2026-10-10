@@ -29,6 +29,8 @@ export interface SetupErrorResponse {
 		code: string;
 		message: string;
 	};
+	/** Same text as `error.message`, for clients that read a top-level message. */
+	message: string;
 }
 
 /** Common error codes used across connector setup routes. */
@@ -47,13 +49,14 @@ export type SetupErrorCode =
  *
  * Use this on every error path in connector setup handlers so the UI
  * layer can branch on `error.code` rather than substring-matching
- * `error.message`.
+ * `error.message`. The message is repeated at the top level because the UI
+ * API client reads a string `error` or `message` for the text it shows.
  */
 export function buildSetupError(
 	code: SetupErrorCode | string,
 	message: string,
 ): SetupErrorResponse {
-	return { error: { code, message } };
+	return { error: { code, message }, message };
 }
 
 /**
