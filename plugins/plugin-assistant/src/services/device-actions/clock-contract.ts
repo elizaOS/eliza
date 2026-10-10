@@ -152,6 +152,7 @@ export function isClockOperation(value: unknown): value is ClockOperation {
   return (
     !!value &&
     typeof value === "object" &&
+    typeof (value as { type?: unknown }).type === "string" &&
     ["clock_handoff", "clock_alarm"].includes(
       String((value as { type?: unknown }).type),
     )
