@@ -873,7 +873,10 @@ export class SharedRuntimeConversation {
 
   private async mirrorConversation(
     snapshot: StoredConversation,
+    queuedAt: number,
   ): Promise<void> {
+    const startedAt = Date.now();
+    let outcome: "success" | "error" | "deleted" = "success";
     // A mirror queued before the agent's deletion must not run after it: the
     // Postgres rows were purged with the agent, and a late merge would
     // resurrect deleted conversation content.
@@ -903,7 +906,10 @@ export class SharedRuntimeConversation {
           await sharedRuntimeHistoryRepository.deleteByAgent(snapshot.agentId);
         }
       });
-      if (await this.deletionTombstone()) return;
+      if (await this.deletionTombstone()) {
+        outcome = "deleted";
+        return;
+      }
       const current =
         await this.state.storage.get<StoredConversation>(CONVERSATION_KEY);
       if (
@@ -919,6 +925,7 @@ export class SharedRuntimeConversation {
         ({ mirrorRetryAt: _settled, ...rest }) => rest,
       );
     } catch (error) {
+      outcome = "error";
       // error-policy:J7 the Durable Object copy is authoritative for active
       // chat; a failed reporting mirror is retried by alarm and must not kill
       // or delay the user-visible turn.
@@ -932,12 +939,30 @@ export class SharedRuntimeConversation {
         ...deadlines,
         mirrorRetryAt: Date.now() + RETRY_DELAY_MS,
       }));
+    } finally {
+      const finishedAt = Date.now();
+      try {
+        const { logger } = await import("@/lib/utils/logger");
+        logger.info("[SharedRuntimeConversation] history mirror timing", {
+          outcome,
+          queueWaitMs: Math.max(0, startedAt - queuedAt),
+          runMs: Math.max(0, finishedAt - startedAt),
+          totalMs: Math.max(0, finishedAt - queuedAt),
+          messageCount: snapshot.history.length,
+          serializedBytes: new TextEncoder().encode(
+            JSON.stringify(snapshot.history),
+          ).byteLength,
+        });
+      } catch {
+        /* Metrics cannot change mirror success or retry behavior. */
+      }
     }
   }
 
   private scheduleMirror(snapshot: StoredConversation): Promise<void> {
+    const queuedAt = Date.now();
     this.mirrorQueue = this.mirrorQueue.then(() =>
-      this.mirrorConversation(snapshot),
+      this.mirrorConversation(snapshot, queuedAt),
     );
     this.state.waitUntil(this.mirrorQueue);
     return this.mirrorQueue;
@@ -2141,12 +2166,14 @@ export class SharedRuntimeConversation {
   }
 
   async fetch(request: Request): Promise<Response> {
+    const receivedAt = Date.now();
     const previous = this.queue;
     let release = () => {};
     this.queue = new Promise<void>((resolve) => {
       release = resolve;
     });
     await previous;
+    const admittedAt = Date.now();
 
     try {
       const response = await this.handle(request);
@@ -2155,6 +2182,30 @@ export class SharedRuntimeConversation {
       ) {
         response.headers.delete(RELEASE_QUEUE_BEFORE_BODY_HEADER);
         release();
+        const responseReadyAt = Date.now();
+        this.state.waitUntil(
+          import("@/lib/utils/logger")
+            .then(({ logger }) => {
+              logger.info(
+                "[SharedRuntimeConversation] buffered response timing",
+                {
+                  queueWaitMs: Math.max(0, admittedAt - receivedAt),
+                  handleMs: Math.max(0, responseReadyAt - admittedAt),
+                  responseReadyOffsetMs: Math.max(
+                    0,
+                    responseReadyAt - receivedAt,
+                  ),
+                  queueReleasedOffsetMs: Math.max(
+                    0,
+                    responseReadyAt - receivedAt,
+                  ),
+                },
+              );
+            })
+            .catch(() => {
+              /* Metrics cannot change the completed response. */
+            }),
+        );
         return response;
       }
       return this.releaseWhenConsumed(response, release);

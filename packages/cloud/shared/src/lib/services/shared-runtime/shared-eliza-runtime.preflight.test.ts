@@ -1096,6 +1096,9 @@ test("numeric model audit records actual SDK usage and failures without content"
       inputTokens: number | null;
       outputTokens: number | null;
       totalTokens: number | null;
+      promptCharacterCount: number | null;
+      messageCount: number | null;
+      contentPartCount: number | null;
     }>;
   };
   const audits: Audit[] = [];
@@ -1119,6 +1122,17 @@ test("numeric model audit records actual SDK usage and failures without content"
       ),
     ).toBe(true);
     expect(audits[0].calls.every((call) => call.modelType !== "unknown")).toBe(true);
+    expect(
+      audits[0].calls.every(
+        (call) =>
+          Number.isSafeInteger(call.promptCharacterCount) &&
+          (call.promptCharacterCount ?? 0) > 0 &&
+          Number.isSafeInteger(call.messageCount) &&
+          (call.messageCount ?? -1) >= 0 &&
+          Number.isSafeInteger(call.contentPartCount) &&
+          (call.contentPartCount ?? 0) > 0,
+      ),
+    ).toBe(true);
     const failure = await exercise({ ordinary: true, sdkFailure: true });
     expect(failure.failed).toBe(true);
     expect(audits).toHaveLength(2);

@@ -438,6 +438,9 @@ describe("Shared model numeric diagnostics", () => {
       inputTokens: 8,
       outputTokens: 4,
       totalTokens: 12,
+      promptCharacterCount: null,
+      messageCount: null,
+      contentPartCount: null,
     });
     expect(JSON.stringify(diagnostics)).not.toContain("SYNTHETIC_");
     expect(Object.keys(timing.receipt("success").model.calls[0]).sort()).toEqual([
@@ -514,4 +517,35 @@ describe("Shared model numeric diagnostics", () => {
     expect(timing.receipt("error").model.calls).toHaveLength(18);
     expect(timing.receipt("error").model.callsTruncated).toBe(false);
   });
+});
+
+test("SDK prompt shape records numeric text counts without retaining content", () => {
+  const timing = new SharedRuntimeTimingCollector("shape", 0);
+  const call = timing.prepareModelCall({
+    modelType: "RESPONSE_HANDLER",
+    purpose: "response",
+    requestedModel: "qwen-3.8-27b",
+  });
+  call.setPromptShape({
+    messages: [
+      { role: "system", content: "PRIVATE_SYSTEM" },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "PRIVATE_USER" },
+          { type: "image", image: "PRIVATE_IMAGE" },
+        ],
+      },
+    ],
+  });
+  call.begin();
+  call.complete("sdk_completed");
+  call.finish();
+  const result = timing.modelDiagnostics();
+  expect(result.calls[0]).toMatchObject({
+    promptCharacterCount: 26,
+    messageCount: 2,
+    contentPartCount: 3,
+  });
+  expect(JSON.stringify(result)).not.toContain("PRIVATE_");
 });

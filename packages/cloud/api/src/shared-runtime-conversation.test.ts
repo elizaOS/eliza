@@ -489,10 +489,17 @@ test("buffered bridge releases the room before its response body is consumed", a
   repositoryReads = 0;
   repositoryWrites = 0;
   repositoryRow = [];
+  const background: Promise<unknown>[] = [];
   const object = new SharedRuntimeConversation(
-    makeState(new Map<string, unknown>(), []) as never,
+    makeState(new Map<string, unknown>(), background) as never,
     {} as never,
   );
+
+  expect(await makeInvoke(object)("buffered-warmup")).toMatchObject({
+    code: "conversation_cache_warming",
+    retryable: true,
+  });
+  await Promise.all(background.splice(0));
 
   const firstResponse = await object.fetch(
     new Request("https://shared-runtime.internal/bridge", {
@@ -510,6 +517,7 @@ test("buffered bridge releases the room before its response body is consumed", a
     }),
   );
 
+  expect(firstResponse.status).toBe(200);
   const second = makeInvoke(object)("buffered-second");
   await expect(
     Promise.race([
@@ -519,7 +527,28 @@ test("buffered bridge releases the room before its response body is consumed", a
       ),
     ]),
   ).resolves.not.toBe("queue-blocked");
-  await firstResponse.arrayBuffer();
+  expect(await second).toMatchObject({
+    jsonrpc: "2.0",
+    id: "buffered-second",
+    result: {},
+  });
+  expect(await firstResponse.json()).toMatchObject({
+    jsonrpc: "2.0",
+    id: "buffered-first",
+    result: {},
+  });
+  await Promise.all(background.splice(0));
+  const responseTimings = loggerInfo.mock.calls.filter(
+    ([event]) =>
+      event === "[SharedRuntimeConversation] buffered response timing",
+  );
+  expect(responseTimings).toHaveLength(2);
+  for (const [, context] of responseTimings) {
+    for (const value of Object.values(context as Record<string, unknown>))
+      expect(
+        typeof value === "number" && Number.isFinite(value) && value >= 0,
+      ).toBe(true);
+  }
 });
 
 test("serializes only safe turn failure classification across the object boundary", async () => {
@@ -1305,6 +1334,50 @@ test("warm coordinated turns use local history and mirror asynchronously", async
   expect(repositoryReads).toBe(1);
   expect(repositoryWrites).toBe(2);
   expect(repositoryHistoryLengths).toEqual([2, 3]);
+  const timings = loggerInfo.mock.calls.filter(
+    ([event]) => event === "[SharedRuntimeConversation] history mirror timing",
+  );
+  expect(timings).toHaveLength(2);
+  for (const [, context] of timings) {
+    expect(context).toMatchObject({ outcome: "success" });
+    for (const value of Object.values(context as Record<string, unknown>)) {
+      expect(
+        typeof value === "number"
+          ? Number.isFinite(value) && value >= 0
+          : value === "success",
+      ).toBe(true);
+    }
+  }
+  expect(JSON.stringify(timings)).not.toContain("migrated");
+});
+
+test("history mirror failure retains retry and emits numeric timing without content", async () => {
+  const background: Promise<unknown>[] = [];
+  const data = new Map<string, unknown>();
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    {} as never,
+  );
+  const invoke = makeInvoke(object);
+  await invoke("warmup");
+  await Promise.all(background.splice(0));
+  repositoryMergeError = new Error("private fixture error");
+  expect(await invoke("mirror-failure")).toHaveProperty("result");
+  await Promise.all(background.splice(0));
+  const timings = loggerInfo.mock.calls.filter(
+    ([event]) => event === "[SharedRuntimeConversation] history mirror timing",
+  );
+  expect(timings).toHaveLength(1);
+  const retained = data.get("conversation") as { history: unknown[] };
+  expect(timings[0]?.[1]).toMatchObject({
+    outcome: "error",
+    messageCount: retained.history.length,
+    serializedBytes: new TextEncoder().encode(JSON.stringify(retained.history))
+      .byteLength,
+  });
+  expect(JSON.stringify(timings)).not.toContain("private fixture error");
+  expect(JSON.stringify(timings)).not.toContain("content");
+  expect(data.get("alarm-deadlines")).toHaveProperty("mirrorRetryAt");
 });
 
 test("rowless personal turns use platform funding without sandbox rehydration", async () => {
