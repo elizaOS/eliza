@@ -434,10 +434,15 @@ function* generateOccurrences(args: {
         for (let step = 0; ; step += rule.interval) {
           const { year, month } = addMonthsToLocalMonth(anchorDate, step);
           const monthLength = daysInMonth(year, month);
-          const days = byMonthDay
-            .map((day) => (day < 0 ? monthLength + day + 1 : day))
-            .filter((day) => day >= 1 && day <= monthLength)
-            .sort((a, b) => a - b);
+          // A positive day and a negative day can name the same date
+          // (31 and -1 in a 31-day month); emit each date once.
+          const days = [
+            ...new Set(
+              byMonthDay
+                .map((day) => (day < 0 ? monthLength + day + 1 : day))
+                .filter((day) => day >= 1 && day <= monthLength),
+            ),
+          ].sort((a, b) => a - b);
           for (const day of days) {
             yield { year, month, day };
           }
