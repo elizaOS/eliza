@@ -2,9 +2,9 @@
  * No provider traffic; optional presentation and required recovery stay distinct. */
 import {
   ElizaError,
+  type Memory,
   ModelType,
   stringToUuid,
-  type Memory,
 } from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { expect, test } from "vitest";
