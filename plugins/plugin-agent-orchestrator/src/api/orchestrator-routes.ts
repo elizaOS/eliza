@@ -109,7 +109,12 @@ function asAgentOptions(value: unknown) {
 
 function parseLimit(value: string | null): number | undefined {
   if (!value) return undefined;
-  const parsed = Number.parseInt(value, 10);
+  // Number.parseInt stops at the first non-digit ("10junk" -> 10), so a
+  // malformed limit was silently accepted instead of falling back to the
+  // call sites' ?? 20 default. Require the whole trimmed value to be
+  // decimal, mirroring resolveGenerationTimeoutMs in the discord plugin.
+  const text = value.trim();
+  const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
