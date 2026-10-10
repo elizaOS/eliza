@@ -35,6 +35,8 @@ const callbackState = vi.hoisted(() => ({
 }));
 
 vi.mock("../../lib/steward-session", () => ({
+  resolveStewardAuthEndpoint: (path: string) =>
+    `https://api.example.test${path}`,
   hasStewardOAuthCallbackInUrl: () => callbackState.hasCallback,
   consumeStewardCodeFromQuery: () => "callback-code",
   consumeStewardOAuthStateFromCallback: () => callbackState.returnedState,
