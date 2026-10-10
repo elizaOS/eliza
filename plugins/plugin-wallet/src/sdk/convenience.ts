@@ -172,7 +172,9 @@ export function walletFromEnv(options?: {
         "Set it to the 0x-prefixed 32-byte hex private key of your agent EOA.",
     );
   }
-  const privateKey = (rawKey.startsWith("0x") ? rawKey : `0x${rawKey}`) as Hex;
+  // Accept the uppercase 0X prefix too, mirroring resolveEvmPrivateKey:
+// "0X…" used to become "0x0X…", which privateKeyToAccount rejects.
+  const privateKey = (/^0[xX]/.test(rawKey) ? `0x${rawKey.slice(2)}` : `0x${rawKey}`) as Hex;
 
   // ── Wallet (smart-contract) address ────────────────────────────────────
   const walletAddress = process.env.AGENT_WALLET_ADDRESS;
