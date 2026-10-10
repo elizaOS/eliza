@@ -285,7 +285,7 @@ try {
       contentType: "text/html",
       body: `<input id="otp3" aria-label="Code" autocomplete="one-time-code" maxlength="6">
 <input id="later" aria-label="Later" maxlength="6"><input id="xhr" aria-label="Xhr"><input id="ping" aria-label="Ping"><input id="route" aria-label="Route"><input id="note" aria-label="Note"><input id="search" aria-label="Search">
-<input id="slow" aria-label="Slow"><button id="person" type="button">Submit payment myself</button>
+<div role="button"><div contenteditable id="nested-editor">Edit note</div></div><input id="slow" aria-label="Slow"><button id="person" type="button">Submit payment myself</button>
 <script>
 document.getElementById('slow').addEventListener('input',()=>fetch('/api/slow',{method:'POST'}));
 document.getElementById('person').addEventListener('click',()=>setTimeout(()=>{history.pushState({},'','/receipt');fetch('/api/receipt')},2000));
@@ -379,6 +379,12 @@ document.getElementById('ping').addEventListener('input',()=>navigator.sendBeaco
   await page.waitForTimeout(4000);
   assert.ok(posted.includes("/api/later"));
   assert.equal(await fetchRead("22"), "request");
+  // Typing inside a control's descendant editor is not button activation.
+  await fetchAct("31", "Later", "#later", "123456");
+  await page.locator("#nested-editor").focus();
+  await page.keyboard.press("Space");
+  await page.waitForTimeout(4000);
+  assert.equal(await fetchRead("31"), "request");
   // A same-document address change (a script router) is reported.
   await fetchAct("23", "Route", "#route", "x");
   await page.waitForTimeout(300);

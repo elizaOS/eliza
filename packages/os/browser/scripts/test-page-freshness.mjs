@@ -15,8 +15,8 @@ if (!process.env.ELIZA_BROWSER_EXECUTABLE)
 const server = createServer((_req, res) => {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.end(`<!doctype html><style>body {height:3000px} input,button {display:block}</style>
-  <p>Visible source text</p><span style="visibility:hidden">Hidden<span style="visibility:visible">Visible child</span></span>
-  <input aria-label="Name"><select aria-label="Payment method"><option value="">Choose a method</option><option value="private-method-value">Checking</option></select><textarea>private-textarea-value</textarea><div contenteditable>private-editable-value</div>
+  <details><summary>New payment details</summary><label>Hidden bank field<input></label><p>Hidden payment instructions</p></details><p>Visible source text</p><span style="visibility:hidden">Hidden<span style="visibility:visible">Visible child</span></span>
+  <input aria-label="Name"><select aria-label="Payment method" required><option value="">Choose a method</option><option value="private-method-value">Checking</option></select><select aria-label="Optional method"><option value="">Choose a method</option><option value="private-optional-method">Checking</option></select><textarea>private-textarea-value</textarea><div contenteditable>private-editable-value</div>
   <div role="button"><div contenteditable>private-nested-value</div><span>Safe label</span></div><button id="go" onclick="document.querySelector('#count').textContent=Number(document.querySelector('#count').textContent)+1">Increment</button><span id="count">0</span>`);
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -76,11 +76,36 @@ try {
   );
   assert.ok(!JSON.stringify(state.value).includes("private-nested-value"));
   cases.push("isolated state and excluded editable values");
+  assert.ok(
+    !state.value.elements.some(
+      (element) => element.label === "Hidden bank field",
+    ),
+  );
+  assert.ok(!state.value.text.includes("Hidden payment instructions"));
+  assert.ok(
+    state.value.elements.some(
+      (element) => element.label === "New payment details",
+    ),
+  );
+  await page.click("summary");
+  state = await snapshot();
+  assert.ok(
+    state.value.elements.some(
+      (element) => element.label === "Hidden bank field",
+    ),
+  );
+  assert.ok(state.value.text.includes("Hidden payment instructions"));
+  cases.push("closed details hide fields until the person opens the summary");
   let method = state.value.elements.find(
     (element) => element.label === "Payment method",
   );
   assert.equal(method.hasInput, false);
   assert.equal(method.edited, false);
+  assert.equal(
+    state.value.elements.find((element) => element.label === "Optional method")
+      .hasInput,
+    false,
+  );
   await page.select("select", "private-method-value");
   state = await snapshot();
   method = state.value.elements.find(
@@ -90,26 +115,65 @@ try {
   assert.equal(method.edited, true);
   assert.ok(!JSON.stringify(state.value).includes("private-method-value"));
   cases.push("selected method and changed field are visible without the value");
+  await page.$eval("select", (node) => {
+    node.required = false;
+    node.options[0].textContent = "New checking account";
+  });
+  await page.select("select", "");
+  state = await snapshot();
+  method = state.value.elements.find(
+    (element) => element.label === "Payment method",
+  );
+  assert.equal(method.hasInput, true);
+  assert.equal(method.edited, true);
+  await page.$eval("select", (node) => {
+    node.options[0].disabled = true;
+  });
+  state = await snapshot();
+  assert.equal(
+    state.value.elements.find((element) => element.label === "Payment method")
+      .hasInput,
+    false,
+  );
+  await page.$eval("select", (node) => {
+    node.selectedIndex = -1;
+  });
+  state = await snapshot();
+  assert.equal(
+    state.value.elements.find((element) => element.label === "Payment method")
+      .hasInput,
+    false,
+  );
+  cases.push(
+    "valid empty-valued selection is occupied; disabled or absent selection is empty",
+  );
+
   assert.equal(
     (await act(state, "fill", "Name", { text: "agent" })).dispatched,
     true,
   );
-  assert.equal(await page.$eval("input", (node) => node.value), "agent");
+  assert.equal(
+    await page.$eval('input[aria-label="Name"]', (node) => node.value),
+    "agent",
+  );
   assert.equal(
     (await act(state, "fill", "Name", { text: "replay" })).error.kind,
     "STALE_REF",
   );
   cases.push("fresh fill and consume-once reference");
   state = await snapshot();
-  await page.type("input", "-manual");
+  await page.type('input[aria-label="Name"]', "-manual");
   assert.equal(
     (await act(state, "fill", "Name", { text: "stale" })).error.kind,
     "STALE_REF",
   );
-  assert.equal(await page.$eval("input", (node) => node.value), "agent-manual");
+  assert.equal(
+    await page.$eval('input[aria-label="Name"]', (node) => node.value),
+    "agent-manual",
+  );
   cases.push("manual input wins");
   state = await snapshot();
-  await page.$eval("input", (node) => {
+  await page.$eval('input[aria-label="Name"]', (node) => {
     node.value = "changed-without-event";
   });
   assert.equal(

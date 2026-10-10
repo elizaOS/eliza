@@ -121,6 +121,11 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         return;
       const style = getComputedStyle(node);
       if (style.display === "none") return;
+      if (node instanceof HTMLDetailsElement && !node.open) {
+        const summary = node.querySelector(":scope > summary");
+        if (summary) collectText(summary);
+        return;
+      }
       for (const child of node.childNodes) collectText(child);
     };
     collectText(root);
@@ -214,27 +219,34 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         node.isContentEditable
           ? { edited: monitor.editedFields.has(node) }
           : {}),
-        // Whether the person (or the page) already put text here. Only this
-        // boolean leaves the page; the text itself stays behind the boundary.
-        ...((node instanceof HTMLInputElement &&
-          ![
-            "button",
-            "submit",
-            "reset",
-            "image",
-            "checkbox",
-            "radio",
-            "file",
-            "hidden",
-            "range",
-            "color",
-          ].includes(node.type)) ||
-        node instanceof HTMLTextAreaElement ||
-        node instanceof HTMLSelectElement
-          ? { hasInput: node.value !== "" }
-          : node.isContentEditable
-            ? { hasInput: (node.textContent ?? "").trim() !== "" }
-            : {}),
+        // A select can have a valid choice whose internal value is empty.
+        // Only selection/occupancy leaves the page, never the field value.
+        ...(node instanceof HTMLSelectElement
+          ? {
+              hasInput:
+                node.selectedIndex >= 0 &&
+                !node.validity.valueMissing &&
+                !node.options[node.selectedIndex].disabled &&
+                (node.value !== "" || monitor.editedFields.has(node)),
+            }
+          : (node instanceof HTMLInputElement &&
+                ![
+                  "button",
+                  "submit",
+                  "reset",
+                  "image",
+                  "checkbox",
+                  "radio",
+                  "file",
+                  "hidden",
+                  "range",
+                  "color",
+                ].includes(node.type)) ||
+              node instanceof HTMLTextAreaElement
+            ? { hasInput: node.value !== "" }
+            : node.isContentEditable
+              ? { hasInput: (node.textContent ?? "").trim() !== "" }
+              : {}),
       };
     };
     const nodes = new Map();
@@ -243,6 +255,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       "a,button,input,textarea,select,[role=button],[role=textbox],[contenteditable=true],summary",
     );
     for (const node of candidates) {
+      if (!node.checkVisibility({ checkVisibilityCSS: true })) continue;
       const id = String(nodes.size);
       const geometry = bounds(node);
       // This equality sentinel never leaves the isolated page realm.
@@ -481,6 +494,10 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         target.form;
       const controlKey =
         control &&
+        !target.isContentEditable &&
+        !target.matches(
+          "textarea,select,input:not([type=submit]):not([type=button]):not([type=reset])",
+        ) &&
         (event.key === "Enter" ||
           (event.key === " " && !control.matches('a[href],[role="link"]')));
       if (keyboard ? !controlKey && !enterForm : !control) return;
