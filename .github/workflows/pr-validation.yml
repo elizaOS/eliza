@@ -175,15 +175,8 @@ jobs:
         if: steps.core_scope.outputs.core_bootstrap_required == 'true'
         run: bun run build:core
 
-      - name: Build selected workspace closure
-        if: steps.affected.outputs.source == 'true'
-        env:
-          RUN_TURBO_AFFECTED: ${{ steps.affected.outputs.full == 'false' && '1' || '0' }}
-          TURBO_SCM_BASE: ${{ steps.affected.outputs.base }}
-        run: node packages/scripts/run-turbo.ts run build --concurrency=4 --output-logs=errors-only
-
       # Opt in before a synchronize event; adding the label alone does not rerun CI.
-      # Reuse this job's already-built workspace closure, without deployment credentials.
+      # Reuse this job's core bootstrap; retain all existing build/type/test gates below.
       - name: Build matching staging API and frontend artifacts
         id: staging_artifacts
         if: >-
@@ -215,6 +208,9 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          # Host config imports Core's emitted protocol. Avoid waiting for unrelated workspaces.
+          test -s node_modules/@elizaos/core/dist/protocol.js
+          bun run --cwd packages/host build
           artifact_root="$RUNNER_TEMP/cloud-staging-artifacts"
           mkdir -p "$artifact_root/api" "$artifact_root/ui"
           # Same frontend command and staging origins as cloud-cf-release.yml.
@@ -282,6 +278,13 @@ jobs:
           path: ${{ steps.staging_artifacts.outputs.path }}
           if-no-files-found: error
           retention-days: 3
+
+      - name: Build selected workspace closure
+        if: steps.affected.outputs.source == 'true'
+        env:
+          RUN_TURBO_AFFECTED: ${{ steps.affected.outputs.full == 'false' && '1' || '0' }}
+          TURBO_SCM_BASE: ${{ steps.affected.outputs.base }}
+        run: node packages/scripts/run-turbo.ts run build --concurrency=4 --output-logs=errors-only
 
       - name: Verify personal Shared chat entry without paid activation
         if: steps.affected.outputs.app == 'true'
