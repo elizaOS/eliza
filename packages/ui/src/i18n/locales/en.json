@@ -6009,6 +6009,7 @@
   "voicesection.continuousChatDesc": "When on, the mic stays open and the agent decides when you finished speaking.",
   "voicesection.wakeWord": "Wake word",
   "voicesection.wakeWordDesc": "Listen for a phrase like 'Hey {{appName}}' before opening the mic.",
+  "voicesection.wakeWordUnavailable": "Wake word is not available on this device.",
   "voicesection.toggleWakeWord": "Toggle wake word",
   "voicesection.on": "On",
   "voicesection.off": "Off",

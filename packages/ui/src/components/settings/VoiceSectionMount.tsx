@@ -18,6 +18,7 @@ import * as React from "react";
 import { client } from "../../api/client";
 import type { DeviceTier } from "../../api/client-local-inference";
 import { createVoiceProfilesClient } from "../../api/client-voice-profiles";
+import { getElectrobunRendererRpc } from "../../bridge/electrobun-rpc";
 import { useBranding } from "../../config/branding-react.hooks";
 import { useViewEvent } from "../../hooks/useViewEvent";
 import {
@@ -119,6 +120,10 @@ export function VoiceSectionMount(): React.ReactElement {
   const [wakeWordEnabled, setWakeWordEnabled] = React.useState<boolean>(() =>
     loadWakeWordEnabled(),
   );
+  // The only wake detector the app starts is the desktop one, armed over the
+  // electrobun RPC at boot (registerDesktopFusedWake). On iOS, Android and web
+  // nothing starts a detector, so the switch must not look like it works.
+  const wakeWordAvailable = getElectrobunRendererRpc() !== undefined;
   const [tierError, setTierError] = React.useState(false);
   const [tier, setTier] = React.useState<DeviceTier | null>(null);
   const [tierSummary, setTierSummary] = React.useState<string | undefined>(
@@ -259,8 +264,8 @@ export function VoiceSectionMount(): React.ReactElement {
         onPrefsChange={(next) => void handlePrefsChange(next)}
         profilesClient={profilesClient}
         showModelsPanel={cloudOnly !== true}
-        wakeWordEnabled={wakeWordEnabled}
-        onWakeWordToggle={handleWakeWordToggle}
+        wakeWordEnabled={wakeWordAvailable && wakeWordEnabled}
+        onWakeWordToggle={wakeWordAvailable ? handleWakeWordToggle : undefined}
         leadingContent={
           <>
             <VoicePresetSettingsContent />
