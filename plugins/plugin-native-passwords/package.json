@@ -35,7 +35,7 @@
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "test": "node --test test/client.node.mjs test/native-host/policy.node.mjs"
+    "test": "node --test test/client.node.mjs test/native-host/policy.node.mjs test/native-host/transfer.node.mjs"
   },
   "capacitor": {
     "android": {

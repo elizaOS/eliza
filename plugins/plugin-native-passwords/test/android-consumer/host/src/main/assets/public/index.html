@@ -1,0 +1,5 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Password transfer test</title><style>body{font:20px sans-serif;padding:20px;background:#fff;color:#111}button{font:inherit;display:block;margin:16px 0;padding:16px}</style></head><body><h1>Password transfer test</h1><p>Offline fixture. Synthetic passwords only.</p><button onclick="transfer('exportVault')">Export synthetic vault</button><button onclick="transfer('importVault')">Import synthetic file</button><pre id="result">Ready</pre><script>
+window.results={};
+window.invoke=(key,plugin,method,args={})=>{window.results[key]={pending:true};Capacitor.nativePromise(plugin,method,args).then(value=>{window.results[key]={value};document.querySelector('#result').textContent=JSON.stringify(value)},error=>{window.results[key]={error:error.code};document.querySelector('#result').textContent=error.code||'unavailable'});};
+window.transfer=method=>invoke('transfer','ElizaPasswordTransfer',method);
+</script></body></html>
