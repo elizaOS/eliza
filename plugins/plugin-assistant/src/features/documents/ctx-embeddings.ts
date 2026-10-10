@@ -176,8 +176,12 @@ export function getContextualizationPrompt(
   }
 
   return promptTemplate
-    .replace("{doc_content}", docContent)
-    .replace("{chunk_content}", chunkContent);
+    // A raw string replacement interprets "$" patterns ("$&", "$'", "$`"),
+    // so document content like "a$'b" corrupted the LLM prompt instead of
+    // being inserted literally. A replacement function inserts the content
+    // verbatim.
+    .replace("{doc_content}", () => docContent)
+    .replace("{chunk_content}", () => chunkContent);
 }
 
 export function getCachingContextualizationPrompt(
