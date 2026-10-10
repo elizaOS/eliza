@@ -28,10 +28,13 @@ export function InlineWidgetText({
   content,
   messageId,
   producerScope,
+  streaming = false,
 }: {
   content: string;
   messageId?: string;
   producerScope?: string;
+  /** True only while this message's text is still arriving. */
+  streaming?: boolean;
 }): ReactNode {
   const { sendActionMessage } = useAppSelectorShallow((s) => ({
     sendActionMessage: s.sendActionMessage,
@@ -56,6 +59,7 @@ export function InlineWidgetText({
   const segments = useParsedSegments(
     stripUnclaimedInteractionMarkup(content),
     false,
+    streaming,
   );
 
   // Fast path: a single plain-text segment (most replies) renders as-is.
