@@ -75,7 +75,9 @@ export function normalizeOptionalIsoString(
   if (Number.isNaN(Date.parse(trimmed))) {
     fail(400, `${field} must be a valid ISO timestamp`);
   }
-  return trimmed;
+  // Match the canonical normalizer: return the UTC-normalized ISO string so
+  // the same instant always stores the same value regardless of input form.
+  return new Date(Date.parse(trimmed)).toISOString();
 }
 
 export function normalizeOptionalFiniteNumber(
