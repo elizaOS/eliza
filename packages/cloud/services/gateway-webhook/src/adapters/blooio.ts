@@ -8,6 +8,7 @@ import {
   blooioRecipientIsolationViolation,
   classifyBlooioEnvironment,
 } from "@elizaos/cloud-services-common/blooio-environment";
+import { telegramReplyWithMedia } from "@elizaos/cloud-services-common/telegram";
 import { z } from "zod";
 import { logger } from "../logger";
 import { boundedGatewayFetch } from "./bounded-fetch";
@@ -24,6 +25,9 @@ const BLOOIO_RESPONSE_MAX_BYTES = 64 * 1024;
 const BLOOIO_V2_API_BASE = "https://api.blooio.com/v2/api";
 const BLOOIO_V4_MESSAGES_URL = "https://api.blooio.com/v4/messages";
 const BLOOIO_V4_CHATS_URL = "https://api.blooio.com/v4/chats";
+// Replies have always carried at most this many attachments. Media past it
+// travels as HTTPS links in the text, so none is dropped.
+const BLOOIO_REPLY_ATTACHMENT_COUNT = 4;
 
 /**
  * The single bounded transport for every Blooio API hop — sends, read
@@ -599,12 +603,21 @@ export const blooioAdapter: PlatformAdapter = {
     await sendBlooioMessage(config, event, text);
   },
 
-  async sendReplyWithReceipt(config, event, text, _deliveryHooks, mediaUrls) {
+  async sendReplyWithReceipt(
+    config,
+    event,
+    text,
+    _deliveryHooks,
+    mediaUrls = [],
+  ) {
     const providerMessageIds = await sendBlooioMessage(
       config,
       event,
-      text,
-      mediaUrls,
+      telegramReplyWithMedia(
+        text,
+        mediaUrls.slice(BLOOIO_REPLY_ATTACHMENT_COUNT),
+      ),
+      mediaUrls.slice(0, BLOOIO_REPLY_ATTACHMENT_COUNT),
     );
     if (providerMessageIds.length === 0) {
       throw new Error("Blooio accepted delivery without a message receipt");
