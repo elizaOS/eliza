@@ -5571,8 +5571,10 @@ export class RemindersDomain {
       createdAt: new Date().toISOString(),
     });
 
+    const refreshedAt = new Date(occurredAt);
     const refreshed = await this.refreshEffectiveScheduleState({
-      now: new Date(occurredAt),
+      timezone: await resolveOwnerTimeZone(this.ctx.runtime, refreshedAt),
+      now: refreshedAt,
     });
     return {
       accepted: true,
