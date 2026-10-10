@@ -1536,9 +1536,13 @@ export async function runSharedAgentTurnStream(
           hasSharedRealtimeIntent(publicSearchText, input.history))) ||
         (!publicSearchText && hasSharedRealtimeIntent(message, input.history))))
   ) {
+    input.abortSignal?.throwIfAborted();
     const turn = await runSharedAgentTurn(input);
+    input.abortSignal?.throwIfAborted();
     const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
+      input.abortSignal?.throwIfAborted();
       if (turn.reply) yield { type: "text-delta", text: turn.reply };
+      input.abortSignal?.throwIfAborted();
       yield {
         type: "finish",
         text: turn.reply,

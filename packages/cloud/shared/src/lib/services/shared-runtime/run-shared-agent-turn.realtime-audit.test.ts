@@ -141,7 +141,7 @@ describe("runSharedAgentTurn quiet binding audit", () => {
       expect(JSON.stringify(records)).not.toContain("63,800");
       expect(JSON.stringify(records)).not.toContain("TradingView");
       expect(JSON.stringify(records)).not.toContain("https://");
-      expect(result.reply).toContain("couldn’t safely bind the requested claim");
+      expect(result.reply).toContain("couldn’t verify an answer");
     } finally {
       sink.mockRestore();
     }

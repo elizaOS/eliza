@@ -39,7 +39,7 @@ describe("Shared realtime binding refusal diagnostics", () => {
     const diagnostics: SharedRealtimeBindingDiagnostic[] = [];
     const draft = "PRIVATE_DRAFT_SENTINEL 12345";
     const reply = finalizeSharedRealtimeReply(draft, grounding, (value) => diagnostics.push(value));
-    expect(reply).toContain("couldn’t safely bind");
+    expect(reply).toContain("couldn’t verify an answer");
     expect(diagnostics).toEqual([
       {
         reason: "marker_missing",
