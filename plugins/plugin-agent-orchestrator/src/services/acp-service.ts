@@ -6627,7 +6627,12 @@ function errorMessage(err: unknown): string {
 
 function parsePositiveInt(value: string | undefined): number | undefined {
   if (!value) return undefined;
-  const parsed = Number.parseInt(value, 10);
+  // Number.parseInt stops at the first non-digit ("1e2" -> 1), so a typo was
+  // silently accepted as the session setting instead of falling back to the
+  // default. Require the whole trimmed value to be decimal, mirroring
+  // parseOutputLines in api/agent-routes.ts.
+  const text = value.trim();
+  const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
