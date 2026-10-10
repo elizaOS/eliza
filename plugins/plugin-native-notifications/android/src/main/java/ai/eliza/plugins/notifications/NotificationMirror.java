@@ -328,9 +328,14 @@ public final class NotificationMirror {
         if (!removed && !locked(service))
           entries.put(n.getKey(), new Entry(n));
         trim();
-        if (p.optBoolean("history"))
-          record
-        (service, app, n.getPostTime(), removed ? "Removed" : "Posted");
+        if (p.optBoolean("history")) {
+          try {
+            recordEvent(service, app, n.getPostTime(), removed ? "Removed" : "Posted");
+          } catch (Exception failure) {
+            historyFailures.add(service.getPackageName());
+            throw failure;
+          }
+        }
       } catch (Exception failure) {
         entries.clear();
       }
@@ -463,9 +468,12 @@ public final class NotificationMirror {
     }
     return (SecretKey) store.getKey(alias, null);
   }
+  private static boolean historyExists(AtomicFile file) {
+    return file.getBaseFile().exists() || new File(file.getBaseFile().getPath() + ".bak").exists();
+  }
   private JSONArray readHistory(Context c) throws Exception {
     AtomicFile f = historyFile(c);
-    if (!f.getBaseFile().exists())
+    if (!historyExists(f))
       return new JSONArray();
     byte[] data = f.readFully();
     if (data.length < 29 || data.length > 128 * 1024)
@@ -502,7 +510,7 @@ public final class NotificationMirror {
       throw fail;
     }
   }
-  private void record(Context c, JSONObject app, long posted, String state) throws Exception {
+  private void recordEvent(Context c, JSONObject app, long posted, String state) throws Exception {
     JSONArray old = readHistory(c), next = new JSONArray();
     next.put(new JSONObject()
             .put("id", UUID.randomUUID().toString())
@@ -522,7 +530,7 @@ public final class NotificationMirror {
       clearHistory(c);
       return;
     }
-    if (!historyFile(c).getBaseFile().exists())
+    if (!historyExists(historyFile(c)))
       return;
     try {
       JSONArray old = readHistory(c), kept = new JSONArray(), selected = p.getJSONArray("apps");

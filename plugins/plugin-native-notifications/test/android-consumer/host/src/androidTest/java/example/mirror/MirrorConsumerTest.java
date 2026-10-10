@@ -110,6 +110,16 @@ public final class MirrorConsumerTest {
       assertFalse(raw.contains(nonce));
       assertFalse(raw.contains(SELECTED));
       assertFalse(mirror.history(c).toString().contains(nonce));
+      synchronized (mirror.lock) {
+        int count = mirror.history(c).length();
+        File backup = new File(encrypted.getPath() + ".bak");
+        Files.move(encrypted.toPath(), backup.toPath());
+        assertEquals(
+            "AtomicFile restores its backup before pruning", count, mirror.history(c).length());
+        assertTrue(encrypted.isFile());
+        assertFalse(backup.exists());
+      }
+
       JSONObject row = mirror.list(c).getJSONObject(0);
       mirror.action(c, row.getString("id"), row.getString("revision"), false);
       await(() -> mirror.list(c).length() == 1, "Actual Android dismissal");
