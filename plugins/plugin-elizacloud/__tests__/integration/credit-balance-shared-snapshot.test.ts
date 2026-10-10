@@ -9,7 +9,7 @@
  */
 
 import type { Memory, State } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cloudAccountProvider } from "../../src/cloud-providers/cloud-account";
 import { creditBalanceProvider } from "../../src/cloud-providers/credit-balance";
 import { type CloudServer, makeRuntime, startCloudServer } from "./cloud-account-harness";
@@ -104,6 +104,33 @@ describe("creditBalanceProvider shared snapshot", () => {
     server.state.balance = 3;
     const next = await creditBalanceProvider.get(runtime, MESSAGE, STATE);
     expect(next.values?.cloudCredits).toBe(3);
+  });
+
+  it("does not return a cached balance after the org changes during a failed refresh", async () => {
+    let org = "org-A";
+    server.state.balance = 500;
+    const runtime = makeRuntime({ baseUrl: server.url, organizationId: () => org });
+    const clock = vi.spyOn(Date, "now").mockReturnValue(100_000);
+
+    try {
+      const initial = await creditBalanceProvider.get(runtime, MESSAGE, STATE);
+      expect(initial.values?.cloudCredits).toBe(500);
+
+      clock.mockReturnValue(160_001);
+      server.state.beforeBalanceReply = async () => {
+        org = "org-B";
+      };
+      server.state.failBalance = true;
+
+      const credits = await creditBalanceProvider.get(runtime, MESSAGE, STATE);
+
+      expect(credits.text).toBe("");
+      expect(credits.values?.cloudCreditsUnavailable).toBe(true);
+    } finally {
+      clock.mockRestore();
+      server.state.beforeBalanceReply = undefined;
+      server.state.failBalance = false;
+    }
   });
 
   it("flags low and critical balances with the top-up pointer", async () => {

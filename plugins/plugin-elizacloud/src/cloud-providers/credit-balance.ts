@@ -31,6 +31,8 @@ export const creditBalanceProvider: Provider = {
     const auth = runtime.getService("CLOUD_AUTH") as CloudAuthService | undefined;
     if (!auth?.isAuthenticated()) return { text: "" };
     const organizationId = auth.getOrganizationId();
+    const isCurrentOrganization = () =>
+      auth.isAuthenticated() && organizationId === auth.getOrganizationId();
     const topUpUrl = resolveCloudBillingUrl(getBaseURL(runtime));
 
     // CLOUD_ACCOUNT shares this contextGate and fetches the same balance in
@@ -56,7 +58,7 @@ export const creditBalanceProvider: Provider = {
       logger.warn(
         `[CloudCredits] Failed to fetch balance: ${err instanceof Error ? err.message : err}`
       );
-      if (cached) {
+      if (cached && isCurrentOrganization()) {
         const result = format(cached.value, topUpUrl);
         return result;
       }
@@ -64,7 +66,7 @@ export const creditBalanceProvider: Provider = {
     }
     // A sign-in to another org while the request ran: this balance is not the
     // current account's, so neither cache nor show it.
-    if (!auth.isAuthenticated() || organizationId !== auth.getOrganizationId()) {
+    if (!isCurrentOrganization()) {
       return { text: "", values: { cloudCreditsUnavailable: true }, data: {} };
     }
     creditCaches.set(runtime, { value: balance, at: Date.now(), organizationId });

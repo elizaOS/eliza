@@ -57,9 +57,9 @@ export async function startCloudServer(): Promise<CloudServer> {
     };
 
     if (req.method === "GET" && url.pathname === "/api/v1/credits/balance") {
-      if (state.failBalance) return json(500, { success: false, error: "boom" });
       const balance = state.balance;
       await state.beforeBalanceReply?.();
+      if (state.failBalance) return json(500, { success: false, error: "boom" });
       return json(200, { balance });
     }
     if (req.method === "GET" && url.pathname === "/api/v1/eliza/agents") {
