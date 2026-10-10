@@ -365,23 +365,13 @@ describe("Calendar attendee original-source contract", {
     "assistant",
     "wrong-turn",
     "missing-binding",
-  ])("clarifies without a write for %s evidence", async (mode) => {
-    const prepare = vi.spyOn(service, "prepareCalendarEventCreate");
-    const commit = vi.spyOn(service, "createCalendarEvent");
-    try {
-      const result = await execute(mode);
-      expect(result.success, JSON.stringify(result)).toBe(false);
-      expect(JSON.stringify(result)).toContain(
-        "CALENDAR_ATTENDEE_IDENTITY_REQUIRED",
-      );
-      expect(JSON.stringify(result)).toContain('"awaitingUserInput":true');
-      expect(prepare).not.toHaveBeenCalled();
-      expect(commit).not.toHaveBeenCalled();
-      expect((await service.getCalendarFeed(URL_, WINDOW)).events).toEqual([]);
-    } finally {
-      prepare.mockRestore();
-      commit.mockRestore();
-    }
+  ])("writes no unadmitted guest address for %s evidence", async (mode) => {
+    const result = await execute(mode);
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(result.data?.attendeesNotAdded).toEqual(["sam.taylor@acme.com"]);
+    const feed = await service.getCalendarFeed(URL_, WINDOW);
+    expect(feed.events).toHaveLength(1);
+    expect(feed.events[0].attendees).toEqual([]);
   });
   it("retains the current explicit request despite a reviewed empty history", async () => {
     expect(
@@ -409,7 +399,6 @@ describe("Calendar attendee original-source contract", {
       "Invite Sam Taylor",
     ],
     ["missing display name", { email: "sam.taylor@acme.com" }, "Invite Sam"],
-    ["missing mailbox", { displayName: "Sam Taylor" }, "Invite Sam"],
     [
       "reserved explicit",
       { email: "sam@example.com" },
@@ -421,34 +410,39 @@ describe("Calendar attendee original-source contract", {
       "Add a barber appointment",
     ],
   ])(
-    "does not omit %s before the actual Calendar write",
+    "reports %s instead of writing the unverified address",
     async (_label, attendee, request) => {
-      const prepare = vi.spyOn(service, "prepareCalendarEventCreate");
-      const commit = vi.spyOn(service, "createCalendarEvent");
-      try {
-        const result = await execute(
-          "empty",
-          attendee,
-          `${request} on 2050-08-04 at 3 PM UTC for an hour.`,
-        );
-        expect(result.success, JSON.stringify(result)).toBe(false);
-        if (_label === "missing mailbox")
-          expect(result.data).toMatchObject({
-            invalidParameterNames: ["details"],
-          });
-        else
-          expect(JSON.stringify(result)).toContain(
-            "CALENDAR_ATTENDEE_IDENTITY_REQUIRED",
-          );
-        expect(prepare).not.toHaveBeenCalled();
-        expect(commit).not.toHaveBeenCalled();
-        expect((await service.getCalendarFeed(URL_, WINDOW)).events).toEqual(
-          [],
-        );
-      } finally {
-        prepare.mockRestore();
-        commit.mockRestore();
-      }
+      const result = await execute(
+        "empty",
+        attendee,
+        `${request} on 2050-08-04 at 3 PM UTC for an hour.`,
+      );
+      expect(result.success, JSON.stringify(result)).toBe(true);
+      expect(result.data?.attendeesNotAdded).toEqual([attendee.email]);
+      const feed = await service.getCalendarFeed(URL_, WINDOW);
+      expect(feed.events).toHaveLength(1);
+      expect(feed.events[0].attendees).toEqual([]);
     },
   );
+  it("rejects a guest without a mailbox before the actual Calendar write", async () => {
+    const prepare = vi.spyOn(service, "prepareCalendarEventCreate");
+    const commit = vi.spyOn(service, "createCalendarEvent");
+    try {
+      const result = await execute(
+        "empty",
+        { displayName: "Sam Taylor" },
+        "Invite Sam on 2050-08-04 at 3 PM UTC for an hour.",
+      );
+      expect(result.success, JSON.stringify(result)).toBe(false);
+      expect(result.data).toMatchObject({
+        invalidParameterNames: ["details"],
+      });
+      expect(prepare).not.toHaveBeenCalled();
+      expect(commit).not.toHaveBeenCalled();
+      expect((await service.getCalendarFeed(URL_, WINDOW)).events).toEqual([]);
+    } finally {
+      prepare.mockRestore();
+      commit.mockRestore();
+    }
+  });
 });

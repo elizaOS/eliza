@@ -10,6 +10,7 @@ import type {
   HumanDelayConfig,
   IdentityConfig,
 } from "@elizaos/core/protocol";
+import type { CharacterFailureTemplates } from "../contracts/first-run-options.js";
 import type {
   AgentDefaultsConfig,
   SandboxBrowserSettings,
@@ -76,6 +77,11 @@ export type AgentConfig = {
   /** Example social media posts in Chinese (zh-CN) demonstrating the agent's voice. */
   postExamples_zhCN?: string[];
   messageExamples?: Array<Array<{ user: string; content: { text: string } }>>;
+  /**
+   * In-character failure replies; each key overrides the style preset's.
+   * Emitted verbatim, so `{{name}}` placeholders must not be used.
+   */
+  templates?: CharacterFailureTemplates;
   /** Per-character runtime settings passed through to @elizaos/core Character. */
   settings?: CharacterSettings;
   /** Per-character knowledge sources passed through for document ingestion. */

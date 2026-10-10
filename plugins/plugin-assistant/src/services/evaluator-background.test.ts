@@ -26,6 +26,8 @@ import {
   relationshipEvaluator,
   successEvaluator,
 } from "../features/advanced-capabilities/evaluators/reflection-items";
+import { ExperienceService } from "../features/advanced-capabilities/experience/service";
+import { advancedEvaluators } from "../features/advanced-capabilities/index";
 import { createAdvancedMemoryPlugin } from "../features/advanced-memory/index";
 import { createAssistantPlugin } from "../index.ts";
 import {
@@ -40,10 +42,10 @@ import {
   stageEvaluatorOutput,
 } from "./evaluator-progress.ts";
 import {
+  HISTORY_RETENTION_REVIEW_WINDOW,
   historyRetentionContext,
   historyRetentionEvaluator,
 } from "./history-retention.ts";
-import { resolveStage1SenderRole } from "./message/addressing.ts";
 import { createV5MessageContextObject } from "./message/context-assembly.ts";
 import { RelationshipsService } from "./relationships.ts";
 
@@ -52,7 +54,7 @@ const turn: Memory = {
   id: "00000000-0000-4000-8000-000000000001",
   roomId: "00000000-0000-4000-8000-000000000002",
   entityId: "00000000-0000-4000-8000-000000000003",
-  content: { text: "I live in Berlin." },
+  content: { text: "I live in Berlin.", channelType: ChannelType.DM },
   createdAt: 10,
 };
 function deferred<T>() {
@@ -145,6 +147,16 @@ async function execute(runtime: AgentRuntime, task: Task) {
     throw error;
   }
 }
+/** Run queued memory jobs until none remain. */
+async function drain(runtime: AgentRuntime) {
+  const results: unknown[] = [];
+  for (let round = 0; round < 64; round += 1) {
+    const [task] = await runtime.getTasksByName("POST_TURN_MEMORY");
+    if (!task) return results;
+    results.push(await execute(runtime, task));
+  }
+  throw new Error("Memory jobs did not settle");
+}
 
 function retentionAnswer(
   prompt: string,
@@ -175,13 +187,8 @@ function retentionPrompt(params: unknown): string {
   return input.messages.map((message) => message.content).join("\n");
 }
 
-async function retentionScope(runtime: AgentRuntime, message: Memory) {
-  return {
-    agentId: runtime.agentId,
-    roomId: message.roomId,
-    entityId: message.entityId,
-    roles: [await resolveStage1SenderRole(runtime, message)],
-  };
+function retentionScope(runtime: AgentRuntime, message: Memory) {
+  return { agentId: runtime.agentId, roomId: message.roomId };
 }
 
 describe("durable background memory", () => {
@@ -487,6 +494,78 @@ describe("durable background memory", () => {
     });
   });
 
+  it("parks a credit-exhausted memory job without auto-pausing and extracts after recovery", async () => {
+    const { runtime, service, message } = await setup();
+    // A one-message page budget gives the job two pages, so recovery must
+    // also restore the one-second job cadence for the remaining page.
+    await runtime.upsertMemory(
+      { ...message, id: stringToUuid("credit-outage-earlier"), createdAt: 5 },
+      "messages",
+    );
+    const stored = await runtime.getMemories({
+      tableName: "messages",
+      roomId: message.roomId,
+      unique: false,
+      includeEmbedding: false,
+    });
+    const budget =
+      Math.max(
+        ...stored.map(
+          (row) => new TextEncoder().encode(JSON.stringify(row)).byteLength,
+        ),
+      ) + 1;
+    vi.spyOn(runtime, "getSetting").mockImplementation((key) =>
+      key === "MEMORY_EVIDENCE_BATCH_BYTES" ? String(budget) : null,
+    );
+    const process = vi.fn(async () => undefined);
+    runtime.registerEvaluator(evaluator(process));
+    // One more than the worker's maxFailures: parking must not auto-pause.
+    const outages = 6;
+    let attempts = 0;
+    runtime.useModel = vi.fn(async () => {
+      if (++attempts <= outages)
+        throw Object.assign(new Error("Payment Required"), {
+          statusCode: 402,
+        });
+      return '{"memory":{"ok":true}}';
+    }) as AgentRuntime["useModel"];
+    let now = Date.now() + 10_000;
+    const scheduler = new TaskService(runtime, {
+      now: () => now,
+      setInterval: () => {
+        throw new Error("Manual ticks only");
+      },
+      clearInterval: () => undefined,
+    });
+    await service.enqueue(message, state, { phase: "post_turn" });
+    const initial = await job(runtime);
+    for (let outage = 1; outage <= outages; outage += 1) {
+      await scheduler.runDueTasks();
+      expect(attempts).toBe(outage);
+      const parked = await job(runtime);
+      expect(parked.metadata?.paused).not.toBe(true);
+      expect(parked.metadata?.failureCount).toBe(0);
+      // The job stays parked for the interval it recorded: a minute in it
+      // has not retried, and it retries once that interval has passed.
+      now += 60_000;
+      await scheduler.runDueTasks();
+      expect(attempts).toBe(outage);
+      now += Number(parked.metadata?.updateInterval) - 60_000;
+    }
+    expect(process).not.toHaveBeenCalled();
+    await scheduler.runDueTasks();
+    expect(attempts).toBe(outages + 1);
+    expect(process).toHaveBeenCalledTimes(1);
+    expect((await job(runtime)).metadata).toMatchObject({
+      failureCount: 0,
+      updateInterval: 1_000,
+    });
+    now += 1_000;
+    await scheduler.runDueTasks();
+    expect(process).toHaveBeenCalledTimes(2);
+    expect(await runtime.getTask(initial.id)).toBeNull();
+  });
+
   it.each(["headers", "cooldown"])(
     "waits for %s retry deadlines across scheduler restart and delivery replay",
     async (kind) => {
@@ -606,6 +685,94 @@ describe("durable background memory", () => {
     }
   });
 
+  it("re-reviews a small batch at once when a rename leaves the stored checkpoint stale", async () => {
+    const { runtime, service, message } = await setup();
+    runtime.registerEvaluator(historyRetentionEvaluator);
+    await runtime.upsertMemory(
+      {
+        ...message,
+        id: stringToUuid("rename-reply"),
+        entityId: runtime.agentId,
+        createdAt: 11,
+        content: { text: "Noted: Berlin." },
+      },
+      "messages",
+    );
+    runtime.useModel = vi.fn(async (_type, params) =>
+      retentionAnswer(retentionPrompt(params), ["h1"]),
+    ) as AgentRuntime["useModel"];
+    await service.enqueue(message, state, { phase: "post_turn" });
+    await drain(runtime);
+    const before = await getEvaluatorProgressState(
+      runtime,
+      message,
+      historyRetentionEvaluator.name,
+    );
+    expect(before).toMatchObject({ reviewedCount: 2 });
+    const next: Memory = {
+      ...message,
+      id: stringToUuid("rename-next"),
+      createdAt: 12,
+      content: { ...message.content, text: "capital of bhutan" },
+    };
+    await runtime.upsertMemory(next, "messages");
+    const rows = await runtime.getMemories({
+      tableName: "messages",
+      roomId: message.roomId,
+      unique: false,
+      orderDirection: "asc",
+    });
+    runtime.character.name = "Renamed Agent";
+    const scope = retentionScope(runtime, next);
+    const renamed = historyRetentionContext(runtime, next, rows);
+    await service.enqueue(next, state, { phase: "post_turn" });
+    await drain(runtime);
+    const after = await getEvaluatorProgressState(
+      runtime,
+      next,
+      historyRetentionEvaluator.name,
+    );
+    expect(after).toMatchObject({ reviewedCount: 3 });
+    expect(validateHistoryRetention(renamed, scope, after)).toEqual(after);
+    expect(runtime.useModel).toHaveBeenCalledTimes(2);
+  });
+
+  it("reviews one bounded window of a longer backlog per job", async () => {
+    const { runtime, service, message } = await setup();
+    // One evidence page per job keeps the window arithmetic exact.
+    vi.spyOn(runtime, "getSetting").mockImplementation((key) =>
+      key === "MEMORY_EVIDENCE_BATCH_BYTES" ? String(64 * 1024 * 1024) : null,
+    );
+    runtime.registerEvaluator(historyRetentionEvaluator);
+    for (let i = 0; i < HISTORY_RETENTION_REVIEW_WINDOW + 30; i++)
+      await runtime.upsertMemory(
+        {
+          ...message,
+          id: stringToUuid(`window-backlog-${i}`),
+          entityId: i % 2 ? runtime.agentId : message.entityId,
+          createdAt: 100 + i,
+          content: {
+            text: `backlog line ${i}.`,
+            channelType: ChannelType.GROUP,
+          },
+        },
+        "messages",
+      );
+    runtime.useModel = vi.fn(async (_type, params) =>
+      retentionAnswer(retentionPrompt(params), ["h1"]),
+    ) as AgentRuntime["useModel"];
+    await service.enqueue(message, state, { phase: "post_turn" });
+    await execute(runtime, await job(runtime));
+    expect(runtime.useModel).toHaveBeenCalledOnce();
+    expect(
+      await getEvaluatorProgressState(
+        runtime,
+        message,
+        historyRetentionEvaluator.name,
+      ),
+    ).toMatchObject({ reviewedCount: HISTORY_RETENTION_REVIEW_WINDOW });
+  });
+
   it.each([
     [ChannelType.DM, true],
     [ChannelType.API, true],
@@ -613,30 +780,52 @@ describe("durable background memory", () => {
     [ChannelType.GROUP, true],
     [ChannelType.VOICE_DM, true],
     [ChannelType.VOICE_GROUP, true],
+    // Stage 1 reads the checkpoint by the trigger's own channel, not its room's.
+    [undefined, false],
   ] as const)(
     "indexes supported progressive-context sources: %s",
     async (channelType, enabled) => {
       const { runtime, service, message } = await setup();
       await runtime.registerPlugin(createAdvancedMemoryPlugin());
+      // With the reflection, experience and an always-ready non-background lane
+      // live, a plain turn must leave the history review as its only model section.
+      runtime.services.set("EXPERIENCE", [new ExperienceService(runtime)]);
+      for (const entry of advancedEvaluators) runtime.registerEvaluator(entry);
+      runtime.registerEvaluator({
+        ...evaluator(),
+        name: "afterDelivery",
+        background: false,
+        incremental: false,
+      });
       const source = {
         ...message,
         content: { ...message.content, channelType },
       };
       await runtime.upsertMemory(source, "messages");
-      runtime.useModel = vi.fn(async (_type, params) =>
-        retentionAnswer(retentionPrompt(params), ["h1"]),
-      ) as AgentRuntime["useModel"];
+      const sections: string[][] = [];
+      runtime.useModel = vi.fn(async (_type, params) => {
+        const { responseSchema } = params as {
+          responseSchema: { required: string[] };
+        };
+        sections.push(responseSchema.required);
+        return retentionAnswer(retentionPrompt(params), ["h1"]);
+      }) as AgentRuntime["useModel"];
       if (
         channelType === ChannelType.DM ||
         channelType === ChannelType.VOICE_DM
       ) {
         vi.spyOn(runtime, "getServiceLoadPromise").mockResolvedValue(service);
-        await runPostTurnEvaluators(runtime, source, state);
+        await runPostTurnEvaluators(runtime, source, state, {
+          semanticSignal: false,
+        });
       } else {
-        await service.enqueue(source, state, { phase: "post_turn" });
+        await service.enqueue(source, state, {
+          phase: "post_turn",
+          semanticSignal: false,
+        });
       }
       await execute(runtime, await job(runtime));
-      expect(runtime.useModel).toHaveBeenCalledTimes(enabled ? 1 : 0);
+      expect(sections).toEqual(enabled ? [["historyRetention"]] : []);
       if (enabled) {
         expect(
           await getEvaluatorProgressState(runtime, source, "historyRetention"),
@@ -660,7 +849,10 @@ describe("durable background memory", () => {
       ...message,
       id: stringToUuid("retention-assent"),
       createdAt: 12,
-      content: { text: "Yes. Keep that rule for this conversation." },
+      content: {
+        ...message.content,
+        text: "Yes. Keep that rule for this conversation.",
+      },
     };
     await runtime.upsertMemory(proposal, "messages");
     await runtime.upsertMemory(assent, "messages");
@@ -686,7 +878,7 @@ describe("durable background memory", () => {
       ...message,
       id: stringToUuid("retention-hi"),
       createdAt: 13,
-      content: { text: "hello from retention fixture" },
+      content: { ...message.content, text: "hello from retention fixture" },
     };
     const reply: Memory = {
       ...message,
@@ -731,11 +923,19 @@ describe("durable background memory", () => {
         },
       },
     });
-    const scope = await retentionScope(runtime, greeting);
+    const scope = retentionScope(runtime, greeting);
     expect(validateHistoryRetention(foreground, scope, checkpoint)).toEqual(
       checkpoint,
     );
     expect(checkpoint).toEqual(first);
+    // One review serves the room: another speaker reads the same checkpoint.
+    expect(
+      await getEvaluatorProgressState(
+        runtime,
+        { ...next, entityId: stringToUuid("retention-other-speaker") },
+        historyRetentionEvaluator.name,
+      ),
+    ).toEqual(checkpoint);
     // All five originals remain inside the recent-ten continuity window,
     // independently of the background review's retained-source judgment.
     expect(visibleHistoryEventIds(foreground, scope, checkpoint)).toEqual(
@@ -824,7 +1024,10 @@ describe("durable background memory", () => {
         ...message,
         id: stringToUuid(`cadence-${i}`),
         createdAt: 20 + i,
-        content: { text: `New original ${i}: keep its exact body.` },
+        content: {
+          ...message.content,
+          text: `New original ${i}: keep its exact body.`,
+        },
       };
       await runtime.upsertMemory(next, "messages");
       await service.enqueue(next, state, { phase: "post_turn" });
@@ -848,7 +1051,7 @@ describe("durable background memory", () => {
       });
       const visible = visibleHistoryEventIds(
         historyRetentionContext(runtime, next, rows),
-        await retentionScope(runtime, next),
+        retentionScope(runtime, next),
         cp,
       );
       for (const row of rows)
@@ -879,7 +1082,7 @@ describe("durable background memory", () => {
       ...message,
       id: stringToUuid("linked-retention-next"),
       createdAt: 30,
-      content: { text: "hi" },
+      content: { ...message.content, text: "hi" },
     };
     await runtime.upsertMemory(reply, "messages");
     await runtime.upsertMemory(next, "messages");
@@ -906,7 +1109,7 @@ describe("durable background memory", () => {
     expect(
       validateHistoryRetention(
         historyRetentionContext(runtime, next, rows),
-        await retentionScope(runtime, next),
+        retentionScope(runtime, next),
         cp,
       ),
     ).toEqual(cp);
@@ -920,7 +1123,7 @@ describe("durable background memory", () => {
         ...message,
         id: stringToUuid(`retention-change-${change}`),
         createdAt: 20,
-        content: { text: "I prefer exact quotations." },
+        content: { ...message.content, text: "I prefer exact quotations." },
       };
       await runtime.upsertMemory(next, "messages");
       runtime.registerEvaluator(historyRetentionEvaluator);
@@ -970,7 +1173,7 @@ describe("durable background memory", () => {
       expect(
         validateHistoryRetention(
           historyRetentionContext(runtime, next, rows),
-          await retentionScope(runtime, next),
+          retentionScope(runtime, next),
           cp,
         ),
       ).toEqual(cp);
@@ -991,7 +1194,10 @@ describe("durable background memory", () => {
       ...message,
       id: stringToUuid("retention-reference"),
       createdAt: 20,
-      content: { text: "Keep following that earlier rule." },
+      content: {
+        ...message.content,
+        text: "Keep following that earlier rule.",
+      },
     };
     await runtime.upsertMemory(next, "messages");
     // Fill the existing continuity window so this exercises an actual review,
@@ -1002,7 +1208,7 @@ describe("durable background memory", () => {
         ...next,
         id: stringToUuid(`reference-batch-${i}`),
         createdAt: 20 + i,
-        content: { text: `Recent exchange ${i}` },
+        content: { ...next.content, text: `Recent exchange ${i}` },
       };
       await runtime.upsertMemory(latest, "messages");
     }
@@ -1649,6 +1855,138 @@ describe("durable background memory", () => {
       }),
     ).toHaveLength(1);
     expect(await runtime.getTask(task.id)).toBeNull();
+  });
+
+  it("reads a new speaker's group turn once through room-wide lanes and judges only trigger pages", async () => {
+    const { runtime, service, message } = await setup();
+    const other = stringToUuid("room-lane-other-speaker");
+    await runtime.createEntities([
+      { id: other, agentId: runtime.agentId, names: ["Other"] },
+    ]);
+    await runtime.createRoomParticipants([other], message.roomId);
+    const record = (id: string, createdAt: number) => ({
+      ...message,
+      id: stringToUuid(id),
+      entityId: other,
+      createdAt,
+      content: { text: `Group record ${id} ${"context ".repeat(20)}` },
+    });
+    for (let i = 0; i < 4; i++)
+      await runtime.upsertMemory(
+        record(`room-lane-history:${i}`, i),
+        "messages",
+      );
+    const stored = await runtime.getMemories({
+      tableName: "messages",
+      roomId: message.roomId,
+      unique: false,
+      includeEmbedding: false,
+    });
+    const budget =
+      Math.max(
+        ...stored.map(
+          (row) => new TextEncoder().encode(JSON.stringify(row)).byteLength,
+        ),
+      ) + 1;
+    vi.spyOn(runtime, "getSetting").mockImplementation((key) =>
+      key === "MEMORY_EVIDENCE_BATCH_BYTES" ? String(budget) : null,
+    );
+    runtime.registerEvaluator(relationshipEvaluator);
+    runtime.registerEvaluator(successEvaluator);
+    const prompts: string[] = [];
+    runtime.useModel = vi.fn(async (_type, params) => {
+      prompts.push(retentionPrompt(params));
+      return JSON.stringify({
+        relationships: { relationships: [] },
+        success: { completed: true, reason: "Answered." },
+      });
+    }) as AgentRuntime["useModel"];
+    const reflections = async () =>
+      (
+        await runtime.getMemories({
+          tableName: "memories",
+          roomId: message.roomId,
+          unique: false,
+        })
+      ).filter((row) => row.content.type === "task_completion_reflection");
+
+    await service.enqueue(message, state, {
+      phase: "post_turn",
+      didRespond: true,
+    });
+    // A room with no journal yet pages its stored history once through
+    // relationships; success judges only the page holding its trigger.
+    await drain(runtime);
+    expect(prompts).toHaveLength(5);
+    expect(prompts.slice(0, 4).every((p) => !p.includes("### success"))).toBe(
+      true,
+    );
+    expect(prompts[4]).toContain("### success");
+    expect(await reflections()).toHaveLength(1);
+
+    // Records the room journal has not read page through relationships at the
+    // job cadence; success judges only the page holding its trigger.
+    for (let i = 0; i < 2; i++)
+      await runtime.upsertMemory(
+        record(`room-lane-later:${i}`, 20 + i),
+        "messages",
+      );
+    const next = {
+      ...message,
+      id: stringToUuid("room-lane-next-turn"),
+      createdAt: 30,
+      content: { text: "One more thing." },
+    };
+    await runtime.upsertMemory(next, "messages");
+    await service.enqueue(next, state, {
+      phase: "post_turn",
+      didRespond: true,
+    });
+    const rounds = await drain(runtime);
+    expect(rounds.slice(0, 2)).toEqual([
+      { nextInterval: 1_000 },
+      { nextInterval: 1_000 },
+    ]);
+    expect(prompts).toHaveLength(8);
+    expect(prompts.slice(5, 7).every((p) => !p.includes("### success"))).toBe(
+      true,
+    );
+    expect(prompts[7]).toContain("### success");
+    expect(await reflections()).toHaveLength(2);
+  });
+
+  it("wakes only speakers with their own journal when a room-wide source changes", async () => {
+    const { runtime, service, message } = await setup();
+    runtime.services.set("evaluator", [service]);
+    const other = stringToUuid("room-lane-ambient-speaker");
+    await runtime.createEntities([
+      { id: other, agentId: runtime.agentId, names: ["Ambient"] },
+    ]);
+    await runtime.createRoomParticipants([other], message.roomId);
+    const ambient = {
+      ...message,
+      id: stringToUuid("room-lane-ambient-record"),
+      entityId: other,
+      createdAt: 1,
+      content: { text: "An ambient remark nobody answered." },
+    };
+    await runtime.upsertMemory(ambient, "messages");
+    runtime.registerEvaluator(factMemoryEvaluator);
+    runtime.registerEvaluator(successEvaluator);
+    runtime.useModel = vi.fn(async () =>
+      JSON.stringify({
+        factMemory: { ops: [] },
+        success: { completed: true, reason: "Answered." },
+      }),
+    ) as AgentRuntime["useModel"];
+    await service.enqueue(message, state, { phase: "post_turn" });
+    await drain(runtime);
+    await runtime.updateMemory({
+      id: ambient.id,
+      content: { text: "An edited ambient remark." },
+    });
+    const woken = await runtime.getTasksByName("POST_TURN_MEMORY");
+    expect(woken.map((task) => task.entityId)).toEqual([message.entityId]);
   });
 
   it.each([false, true])(
@@ -2520,5 +2858,61 @@ describe("durable background memory", () => {
     expect(await runtime.getTask(first.id)).toBeNull();
     expect(runtime.useModel).toHaveBeenCalledTimes(1);
     expect(process).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("source mutations past the evidence frontier", () => {
+  async function capturedRoom(before: Memory[] = []) {
+    const { runtime, service, message } = await setup();
+    runtime.services.set("evaluator", [service]);
+    runtime.registerEvaluator(evaluator());
+    for (const row of before) await runtime.upsertMemory(row, "messages");
+    runtime.useModel = vi.fn(
+      async () => '{"memory":{"ok":true}}',
+    ) as AgentRuntime["useModel"];
+    await service.enqueue(message, state, { phase: "post_turn" });
+    await drain(runtime);
+    const roomScans = vi.spyOn(runtime, "getMemories");
+    const scanned = () =>
+      roomScans.mock.calls.some(([params]) => params.roomId === turn.roomId);
+    return { runtime, message, scanned };
+  }
+  const later = (name: string, createdAt: number, agentId: Memory["agentId"]) =>
+    ({
+      ...turn,
+      agentId,
+      id: stringToUuid(`frontier-${name}`),
+      createdAt,
+      content: { text: `A ${name} message.` },
+    }) as Memory;
+
+  it("rewrites a source no background capture has seen without scanning the room", async () => {
+    const { runtime, scanned } = await capturedRoom();
+    const fresh = later("fresh", 20, runtime.agentId);
+    await runtime.upsertMemory(fresh, "messages");
+    await runtime.updateMemory({
+      id: fresh.id as NonNullable<Memory["id"]>,
+      content: { text: "<envelope>A fresh message.</envelope>" },
+    });
+    expect(scanned()).toBe(false);
+    expect(await runtime.getTasksByName("POST_TURN_MEMORY")).toHaveLength(0);
+    expect(
+      (await runtime.getMemoryById(fresh.id as NonNullable<Memory["id"]>))
+        ?.content.text,
+    ).toBe("<envelope>A fresh message.</envelope>");
+  });
+
+  it("wakes the owner of a newer source a capture already took into its journal", async () => {
+    const early = later("captured", 20, undefined);
+    const { runtime, message } = await capturedRoom([early]);
+    await runtime.updateMemory({
+      id: early.id as NonNullable<Memory["id"]>,
+      content: { text: "A rewritten captured message." },
+    });
+    expect(
+      (await runtime.getTasksByName("POST_TURN_MEMORY")).map(
+        (task) => task.entityId,
+      ),
+    ).toEqual([message.entityId]);
   });
 });

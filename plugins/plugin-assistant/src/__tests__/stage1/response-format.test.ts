@@ -156,6 +156,10 @@ describe("Stage 1 response format", () => {
       expect(
         calls[1]?.messages.find((message) => message.role === "user")?.content,
       ).toContain(full);
+      // The re-ask echoes the first decision without the read it fulfilled.
+      const echoed = calls[1]?.messages.at(-1)?.content;
+      expect(echoed).toContain('"contexts":["simple"]');
+      expect(echoed).not.toContain("userPersonalityPreferences");
     },
   );
 
@@ -2039,7 +2043,7 @@ describe("Stage 1 response format", () => {
     }
   });
 
-  it("includes the agent's own prior replies with speaker attribution", async () => {
+  it("includes the agent's own prior replies with speaker attribution and web source", async () => {
     // The current_turn_boundary contract tells the model the prior_message
     // blocks are its ONLY chat-recall window, but the agent's own replies
     // were structurally excluded from that window — so when asked "did you
@@ -2047,6 +2051,55 @@ describe("Stage 1 response format", () => {
     // ("I told you X" when it never did, or denying things it did say).
     // The agent's own turns must be visible, clearly role-tagged, while
     // non-dialogue agent artifacts (sub-agent transcripts) stay excluded.
+    // A reply based on a web fetch keeps that URL, so "where did you get
+    // that?" is answered from the record instead of an invented site.
+    const priceUrl =
+      "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd";
+    const lookup = makeRuntime([
+      stage1Response({
+        contexts: ["web"],
+        intents: ["Look up the current BTC price."],
+        candidateActionNames: ["WEB_FETCH"],
+        extra: { requiresTool: true },
+      }),
+      {
+        text: "",
+        toolCalls: [
+          { id: "fetch", name: "WEB_FETCH", arguments: { url: priceUrl } },
+        ],
+      },
+      JSON.stringify({
+        thought: "The fetched price answers the request.",
+        success: true,
+        decision: "FINISH",
+        messageToUser: "BTC is around $63,000 right now.",
+      }),
+    ]);
+    lookup.actions = [
+      {
+        name: "WEB_FETCH",
+        description: "Fetch a public URL.",
+        contexts: ["web"],
+        parameters: [{ name: "url", schema: { type: "string" } }],
+        validate: async () => true,
+        handler: async () => ({
+          success: true,
+          text: '{"bitcoin":{"usd":63000}}',
+          data: { url: priceUrl },
+        }),
+      },
+    ];
+    const looked = await runStage1({
+      runtime: lookup,
+      message: makeMessage({ text: "whats the btc price", source: "discord" }),
+    });
+    if (looked.kind !== "planned_reply")
+      throw new Error("Expected a planned reply");
+    const [storedReply] = looked.result.responseMessages;
+    expect(storedReply?.content).toMatchObject({
+      text: "BTC is around $63,000 right now.",
+      webSources: [{ url: priceUrl }],
+    });
     const runtime = makeRuntime([
       stage1Response({
         contexts: ["simple"],
@@ -2076,17 +2129,7 @@ describe("Stage 1 response format", () => {
                     sender: { id: "discord-1gig", name: "1gig" },
                   },
                 },
-                {
-                  id: "00000000-0000-0000-0000-00000000cc02" as UUID,
-                  entityId: runtime.agentId,
-                  agentId: runtime.agentId,
-                  roomId: "00000000-0000-0000-0000-000000001111" as UUID,
-                  createdAt: 2,
-                  content: {
-                    text: "BTC is around $63,000 right now.",
-                    source: "discord",
-                  },
-                },
+                { ...storedReply, createdAt: 2 },
                 {
                   id: "00000000-0000-0000-0000-00000000cc03" as UUID,
                   entityId: runtime.agentId,
@@ -2125,7 +2168,7 @@ describe("Stage 1 response format", () => {
     // and role-tagged with the character name so recall is grounded.
     expect(userContent).toContain("1gig: whats the btc price");
     expect(userContent).toContain(
-      "Test Agent: BTC is around $63,000 right now.",
+      `Test Agent: BTC is around $63,000 right now. [fetched ${priceUrl}]`,
     );
     // Chronological interleave: the agent reply follows the user turn.
     expect(userContent.indexOf("1gig: whats the btc price")).toBeLessThan(

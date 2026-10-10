@@ -25,6 +25,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import { webChatWorldId } from "@elizaos/host";
 import { sanitizeCompletionRelay } from "@elizaos/plugin-agent-orchestrator";
 import { generateChatResponse as generateChatResponseFromChatRoutes } from "./chat-routes.ts";
 import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
@@ -887,7 +888,7 @@ export function wireCoordinatorEventRouting(st: ServerState): boolean {
             st.chatRoomId =
               st.chatRoomId ??
               (stringToUuid(`${agentName}-web-chat-room`) as UUID);
-            const worldId = stringToUuid(`${agentName}-web-chat-world`) as UUID;
+            const worldId = webChatWorldId(runtime.agentId);
             const messageServerId = stringToUuid(
               `${agentName}-web-server`,
             ) as UUID;

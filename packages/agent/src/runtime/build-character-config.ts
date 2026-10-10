@@ -87,10 +87,10 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
   // `character.templates.{authFailed,insufficientCredits,noModelProvider,
   // rateLimited,transientFailure}Reply` only after every model call has already
   // failed, so without this the persona drops into voice-neutral framework text
-  // at the worst possible moment. Sourced from the preset alone: `AgentConfig`
-  // has no `templates` field (its Zod schema is `.strict()`), so there is no
-  // config-level spelling to prefer here.
-  const templates = bundledPreset?.templates;
+  // at the worst possible moment. The agent entry overrides the preset per key.
+  const templates = agentEntry?.templates
+    ? { ...bundledPreset?.templates, ...agentEntry.templates }
+    : bundledPreset?.templates;
   const messageExamples =
     agentEntry?.messageExamples ?? bundledPreset?.messageExamples;
   const advancedMemory =

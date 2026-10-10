@@ -1,12 +1,12 @@
 /**
  * Restore the in-memory web-chat conversation list from database truth.
  *
- * Web-chat rooms live in a deterministic per-agent world
- * (`{agentName}-web-chat-world`); each conversation is a room whose `channelId`
- * is `web-conv-{conversationId}`. On boot (or any "relaunch") the server has no
- * in-memory conversation list, so it rebuilds it by scanning that world and
- * reconstructing each `ConversationMeta` from the persisted room — this is the
- * server-truth source the client thread re-renders from after an app relaunch.
+ * Web-chat rooms live in the agent's web-chat worlds (`webChatWorldIds`); each
+ * conversation is a room whose `channelId` is `web-conv-{conversationId}`. On
+ * boot (or any "relaunch") the server has no in-memory conversation list, so it
+ * rebuilds it by scanning those worlds and reconstructing each
+ * `ConversationMeta` from the persisted room — this is the server-truth source
+ * the client thread re-renders from after an app relaunch.
  *
  * Extracted from `server.ts` (was an un-exported boot closure) so the relaunch
  * round-trip can be driven against a real database in tests (#13689): a sent
@@ -20,6 +20,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import { webChatWorldIds } from "@elizaos/host";
 import { extractConversationMetadataFromRoom } from "./conversation-metadata.ts";
 import type { ConversationMeta } from "./server-types.ts";
 
@@ -33,16 +34,11 @@ export interface ConversationRestoreTarget {
   log?: (message: string) => void;
 }
 
-/** Deterministic web-chat world id for an agent. */
-export function webChatWorldId(agentName: string): UUID {
-  return stringToUuid(`${agentName}-web-chat-world`);
-}
-
 /** The `channelId` prefix that marks a room as a web-chat conversation. */
 export const WEB_CONVERSATION_CHANNEL_PREFIX = "web-conv-";
 
 /**
- * Scan the agent's web-chat world and rebuild any not-yet-loaded, not-deleted
+ * Scan the agent's web-chat worlds and rebuild any not-yet-loaded, not-deleted
  * conversations from persisted rooms. Returns the number restored.
  */
 export async function restoreConversationsFromDb(
@@ -50,9 +46,7 @@ export async function restoreConversationsFromDb(
   target: ConversationRestoreTarget,
 ): Promise<number> {
   const { conversations, deletedConversationIds, log } = target;
-  const agentName = rt.character.name ?? "Eliza";
-  const worldId = webChatWorldId(agentName);
-  const rooms = await rt.getRoomsByWorld(worldId);
+  const rooms = await rt.getRoomsByWorlds(await webChatWorldIds(rt));
   if (!rooms.length) return 0;
 
   let restored = 0;
@@ -120,9 +114,9 @@ export async function restoreConversationFromDb(
     stringToUuid(`${WEB_CONVERSATION_CHANNEL_PREFIX}${convId}`),
   );
   if (
-    !room ||
-    room.worldId !== webChatWorldId(rt.character.name ?? "Eliza") ||
-    room.channelId !== `${WEB_CONVERSATION_CHANNEL_PREFIX}${convId}`
+    !room?.worldId ||
+    room.channelId !== `${WEB_CONVERSATION_CHANNEL_PREFIX}${convId}` ||
+    !(await webChatWorldIds(rt)).includes(room.worldId)
   ) {
     return undefined;
   }

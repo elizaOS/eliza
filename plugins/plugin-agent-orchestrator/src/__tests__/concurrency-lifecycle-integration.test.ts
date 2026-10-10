@@ -422,12 +422,23 @@ describe("real-engine concurrency lifecycle integration (#13778)", () => {
     const stalled = await watchdog.runOnce();
     expect(stalled.map((s) => s.id)).toEqual([wedged.id]);
     expect(watchdog.getStalledSessionIds()).toContain(wedged.id);
-    expect(sendSpy).toHaveBeenCalledWith(wedged.id, STALL_GRILL_PROMPT);
-    expect(sendSpy).not.toHaveBeenCalledWith(fresh.id, STALL_GRILL_PROMPT);
+    // The prod is the orchestrator's own prompt, not user input.
+    expect(sendSpy).toHaveBeenCalledWith(wedged.id, STALL_GRILL_PROMPT, {
+      internal: true,
+    });
+    expect(sendSpy).not.toHaveBeenCalledWith(
+      fresh.id,
+      STALL_GRILL_PROMPT,
+      expect.anything(),
+    );
     // A second tick does not re-prod the same still-stalled session (grill once).
     sendSpy.mockClear();
     await watchdog.runOnce();
-    expect(sendSpy).not.toHaveBeenCalledWith(wedged.id, STALL_GRILL_PROMPT);
+    expect(sendSpy).not.toHaveBeenCalledWith(
+      wedged.id,
+      STALL_GRILL_PROMPT,
+      expect.anything(),
+    );
 
     // ── Drive every task to a terminal state, draining the queue in order. ──
     // First 8 tasks complete successfully (→ validating → done); the last 2 to

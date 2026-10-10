@@ -80,12 +80,12 @@ export async function reconcileSuccessEvidence({
       const key = getTaskCompletionCacheKey(metadata.messageId as UUID);
       const cached = await runtime.getCache<TaskCompletionAssessment>(key);
       // Another batch may already have replaced the message's assessment.
+      // The row stores no reason prose; evaluatedAt identifies the assessment.
       if (
         cached?.source === "reflection" &&
         cached.evaluatedAt === metadata.evaluatedAt &&
         cached.assessed === metadata.taskAssessed &&
         cached?.completed === metadata.taskCompleted &&
-        cached?.reason === metadata.taskCompletionReason &&
         !(await runtime.deleteCache(key))
       )
         throw new ElizaError("Stale completion cache could not be retired", {

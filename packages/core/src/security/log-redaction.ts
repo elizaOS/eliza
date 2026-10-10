@@ -192,7 +192,9 @@ export const SENSITIVE_TEXT_PATTERNS: readonly string[] = [
 	String.raw`\b(AIza[0-9A-Za-z\-_]{20,})\b`,
 	String.raw`\b(pplx-[A-Za-z0-9_-]{10,})\b`,
 	String.raw`\b(npm_[A-Za-z0-9]{10,})\b`,
-	String.raw`\b(\d{6,}:[A-Za-z0-9_-]{20,})\b`,
+	// Bot tokens (`<bot id>:<secret>`). A digit run after `-` is the last group
+	// of a UUID, as in `<uuid>:<uuid>` receipt IDs, not a bot id.
+	String.raw`(?<![A-Za-z0-9_-])(\d{6,}:[A-Za-z0-9_-]{20,})\b`,
 	// Google OAuth refresh (`1//0…`) and access (`ya29.…`) tokens; neither shape
 	// survives a `\b`-anchored alphanumeric pattern.
 	String.raw`/(1\/\/[A-Za-z0-9_\-]{10,})/g`,

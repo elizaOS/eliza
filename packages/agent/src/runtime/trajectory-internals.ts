@@ -52,6 +52,10 @@ export type TrajectoryLoggerLike = {
   isEnabled?: () => boolean;
   setEnabled?: (enabled: boolean) => void;
   logLlmCall?: (params: Record<string, unknown>) => void;
+  updateLatestLlmCall?: (
+    stepId: string,
+    patch: Record<string, unknown>,
+  ) => void;
   logProviderAccess?: (params: Record<string, unknown>) => void;
   getLlmCallLogs?: () => readonly unknown[];
   getProviderAccessLogs?: () => readonly unknown[];

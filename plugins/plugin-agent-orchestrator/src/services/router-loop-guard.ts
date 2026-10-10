@@ -7,7 +7,9 @@
  *   - a per-lineage `session_state_lost` respawn cap that stops re-spawning a
  *     repeatedly-crashing task and reports one honest terminal failure, and
  *   - a per-completion-lineage compare-and-set that absorbs the cross-session
- *     retry cascade so the user sees one reply, not three.
+ *     retry cascade so the user sees one reply, not three, and
+ *   - a per-completion-lineage failure stamp, so a burst of failures for one
+ *     task reaches the user once.
  *
  * That accounting used to live as five separate mutable `Map`/`Set`s and inline
  * branches scattered through the awaited `handleEvent` body — the dominant
@@ -61,6 +63,8 @@ export interface RouterLoopState {
   readonly stateLostCapNotified: ReadonlySet<string>;
   /** Completion lineage key → the first session that claimed its post slot. */
   readonly completionFirstPostedSession: ReadonlyMap<string, string>;
+  /** Completion lineage key → event time of its one relayed failure. */
+  readonly failureRelayedAt: ReadonlyMap<string, number>;
 }
 
 /** One incoming loop-guard signal, derived from a classified ACP event. */
@@ -88,7 +92,18 @@ export type RouterLoopEvent =
    */
   | { type: "rollback_round_trip"; sessionId: string; expectedCount: number }
   /** Claim the post slot for a completion lineage, for `sessionId`. */
-  | { type: "claim_completion"; completionKey: string; sessionId: string };
+  | { type: "claim_completion"; completionKey: string; sessionId: string }
+  /**
+   * Claim the one failure relay of a completion lineage for a failure at
+   * `eventAt`. User input after the last relayed failure re-arms the lineage:
+   * that follow-up may fail and be reported again.
+   */
+  | {
+      type: "claim_failure";
+      lineageKey: string;
+      eventAt: number;
+      lastUserInputAt: number;
+    };
 
 /** What the service should do for a given event. */
 export type RouterLoopDecision =
@@ -110,9 +125,9 @@ export type RouterLoopDecision =
   | { kind: "rolled_back" }
   /** A later event already advanced the counter; nothing rolled back. */
   | { kind: "noop" }
-  /** This session holds the completion slot (newly, or a same-session re-claim): post. */
+  /** The slot is this event's (newly, or a same-session completion re-claim): post. */
   | { kind: "claimed" }
-  /** A different session already holds the slot: suppress this duplicate. */
+  /** The slot is already taken (another session's completion, an earlier failure): suppress. */
   | { kind: "already_claimed" };
 
 export interface RouterLoopTransition {
@@ -138,6 +153,7 @@ export function createRouterLoopState(opts?: {
     stateLostRespawnCounts: new Map(),
     stateLostCapNotified: new Set(),
     completionFirstPostedSession: new Map(),
+    failureRelayedAt: new Map(),
   };
 }
 
@@ -331,6 +347,22 @@ export function routerLoopTransition(
       );
       return {
         state: { ...state, completionFirstPostedSession },
+        decision: { kind: "claimed" },
+      };
+    }
+
+    case "claim_failure": {
+      const relayedAt = state.failureRelayedAt.get(event.lineageKey);
+      if (relayedAt !== undefined && !(event.lastUserInputAt > relayedAt)) {
+        return { state, decision: { kind: "already_claimed" } };
+      }
+      const failureRelayedAt = setBounded(
+        state.failureRelayedAt,
+        event.lineageKey,
+        event.eventAt,
+      );
+      return {
+        state: { ...state, failureRelayedAt },
         decision: { kind: "claimed" },
       };
     }

@@ -210,7 +210,7 @@ async function loadActiveFromCache(
         ...state,
         systemNotice: notice,
         ordinaryText,
-        text: [systemNoticeText(notice), ordinaryText]
+        text: [systemNoticeText(notice, runtime.character.name), ordinaryText]
           .filter((part) => part !== undefined)
           .join("\n---\n"),
       };
@@ -218,7 +218,7 @@ async function loadActiveFromCache(
     const legacy = state.reason
       .split("; ")
       .some((reason) => reason.startsWith("Systemic failure "))
-      ? projectLegacySystemNotice(state.text)
+      ? projectLegacySystemNotice(state.text, runtime.character.name)
       : undefined;
     return legacy
       ? {
@@ -432,7 +432,10 @@ async function sendToChannel(
 
     const messages = systemNotice
       ? [
-          { text: systemNoticeText(systemNotice), systemNotice },
+          {
+            text: systemNoticeText(systemNotice, runtime.character.name),
+            systemNotice,
+          },
           ...(ordinaryText !== undefined ? [{ text: ordinaryText }] : []),
         ]
       : [{ text }];
@@ -601,7 +604,7 @@ export class EscalationService {
             : `${existing.reason}; ${reason}`,
         text: combinedNotice
           ? [
-              systemNoticeText(combinedNotice),
+              systemNoticeText(combinedNotice, runtime.character.name),
               ...(ordinaryText ? [ordinaryText] : []),
             ].join("\n---\n")
           : ordinaryText,
@@ -641,7 +644,9 @@ export class EscalationService {
     const state: EscalationState = {
       id: escalationId,
       reason,
-      text: systemNotice ? systemNoticeText(systemNotice) : text,
+      text: systemNotice
+        ? systemNoticeText(systemNotice, runtime.character.name)
+        : text,
       ...(systemNotice ? { systemNotice } : {}),
       currentStep: 0,
       channelsSent: [],

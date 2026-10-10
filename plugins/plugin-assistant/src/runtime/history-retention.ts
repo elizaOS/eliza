@@ -15,8 +15,6 @@ export const HISTORY_CONTINUITY_SOURCE_COUNT = 10;
 export type HistoryRetentionScope = {
   agentId: string;
   roomId: string;
-  entityId: string;
-  roles: string[];
 };
 type Source = ReturnType<typeof collectCompletionContextSources>[number];
 export type HistoryRetentionCheckpoint = {
@@ -58,27 +56,21 @@ function requireValue(value: unknown, message: string): asserts value {
 function scopeHash(scope: HistoryRetentionScope): string {
   requireValue(
     scope &&
-      ["agentId", "roomId", "entityId"].every(
+      ["agentId", "roomId"].every(
         (k) =>
           typeof scope[k as keyof HistoryRetentionScope] === "string" &&
           scope[k as keyof HistoryRetentionScope].length > 0,
       ),
     "Invalid scope",
   );
-  requireValue(
-    Array.isArray(scope.roles) &&
-      scope.roles.every((r) => typeof r === "string") &&
-      new Set(scope.roles).size === scope.roles.length,
-    "Invalid roles",
-  );
-  return hashStableJson({ ...scope, roles: [...scope.roles].sort() });
+  return hashStableJson({ agentId: scope.agentId, roomId: scope.roomId });
 }
 function sourcePrefixHash(
   scope: HistoryRetentionScope,
   sources: Source[],
 ): string {
   // Turn IDs change on every request; only original source identities/bytes and
-  // the audience scope bind this reusable prefix. hN positions remain bound.
+  // the room scope bind this reusable prefix. hN positions remain bound.
   return hashStableJson({ scopeHash: scopeHash(scope), sources });
 }
 function stringIds(value: unknown): value is string[] {

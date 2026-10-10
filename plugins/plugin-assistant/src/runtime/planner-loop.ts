@@ -9,6 +9,7 @@ import { projectBackgroundHistory } from "../services/message/history-discovery.
  * thoughts out of the reply.
  */
 
+import { calendarReadBindingsRequireExecution } from "@elizaos/contracts";
 import type {
   Action,
   ActionParameterSchema,
@@ -69,6 +70,7 @@ import {
   hasReasoningResidue,
   inflectionTermKeys,
   isDiscoveryActionName,
+  isModelOutputLimitError,
   isModelProviderError,
   isObjectRecord,
   isPlainObject,
@@ -154,6 +156,7 @@ import {
 } from "../services/message/source-reply.ts";
 import {
   declaredIntentsFromContext,
+  evaluatorRestorableContext,
   repairFinishWithProgressPromise,
   runEvaluator,
   validatedOutcomeCoverage,
@@ -664,6 +667,7 @@ async function runPlannerLoopIterations(
   let lastCodingVerificationProgressCount = -1;
   let requiredToolMisses = 0;
   let unavailableToolCallRetries = 0;
+  let outputLimitRetries = 0;
   let silentFailedFinishRecoveries = 0;
   let repeatedNonTerminalToolCalls = 0;
   let memorySearchBudgetDeadRounds = 0;
@@ -673,22 +677,12 @@ async function runPlannerLoopIterations(
   // gate on (when real coding tools are exposed) so such a turn is re-prompted
   // into actually acting instead of being accepted as the final answer. A
   // genuinely blocking question still surfaces after the miss budget.
-  let stageOnePlan: unknown;
-  let undeliveredStageOneDraft: string | undefined;
-  for (let index = plannerContext.events.length - 1; index >= 0; index--) {
-    const event = plannerContext.events[index];
-    if (
-      event.type === "message_handler" &&
-      event.source === "message-service"
-    ) {
-      stageOnePlan = event.metadata?.plan;
-      const draft = event.metadata?.undeliveredDraft;
-      if (isPlainObject(draft)) {
-        undeliveredStageOneDraft = getNonEmptyString(draft.replyText);
-      }
-      break;
-    }
-  }
+  const stageOneMetadata = stageOneEventMetadata(plannerContext.events);
+  const stageOnePlan = stageOneMetadata?.plan;
+  const undeliveredDraft = stageOneMetadata?.undeliveredDraft;
+  const undeliveredStageOneDraft = isPlainObject(undeliveredDraft)
+    ? getNonEmptyString(undeliveredDraft.replyText)
+    : undefined;
   const discoveryWasRequested =
     !codingMode &&
     isPlainObject(stageOnePlan) &&
@@ -1307,6 +1301,10 @@ async function runPlannerLoopIterations(
         !postToolReplySeed &&
         requireNonTerminalToolCall &&
         canEvaluateUnexecutedReply &&
+        // A required read must run before its draft is judged.
+        !calendarReadBindingsRequireExecution(
+          plannerContext.metadata?.calendarReadBindings,
+        ) &&
         isPlainObject(stageOnePlan)
           ? getNonEmptyString(stageOnePlan.reply)
           : undefined;
@@ -1377,6 +1375,34 @@ async function runPlannerLoopIterations(
           err.code === PROVIDER_CONTEXT_OVERFLOW
         ) {
           throw err;
+        }
+        // error-policy:J4 An output-limit stop carried no executable call, so a
+        // replan cannot repeat an effect. Ask once for a compact response; a
+        // second stop propagates and the message boundary reports it as planner
+        // exhaustion. Coding turns keep their explicit no-retry settlement.
+        if (
+          !codingMode &&
+          outputLimitRetries === 0 &&
+          isModelOutputLimitError(err)
+        ) {
+          outputLimitRetries++;
+          params.runtime.logger?.warn?.(
+            { iteration },
+            "[planner-loop] planner response hit its output limit; replanning once with a compact-output instruction",
+          );
+          appendPlannerModelFeedbackEvent(trajectory, {
+            id: `planner-output-limit:${iteration}`,
+            type: "instruction",
+            source: "planner-loop",
+            createdAt: Date.now(),
+            metadata: {
+              code: "MODEL_OUTPUT_INCOMPLETE",
+              rejectedBeforeExecution: true,
+            },
+            content:
+              "Your previous response reached the output token limit before it was complete, so none of it was used and no call from it ran. Respond again compactly.",
+          });
+          continue;
         }
         // error-policy:J4 Post-effect replanning can fail just like evaluation.
         // Preserve pending scope and receipts before the outer message rescue
@@ -2087,6 +2113,24 @@ async function runPlannerLoopIterations(
               error,
             );
             if (unavailable) return unavailable;
+            // error-policy:J4 judging the unexecuted Stage-1 draft replaced
+            // only the first planner call. A judgment that failed before any
+            // output approves nothing, so plan the request instead of handing
+            // the caller a draft whose operation never ran.
+            if (
+              initialStageOneReply !== undefined &&
+              (error instanceof ElizaError || isModelProviderError(error))
+            ) {
+              getStreamingContext()?.abortSignal?.throwIfAborted();
+              params.runtime.logger?.warn?.(
+                {
+                  iteration,
+                  code: error instanceof ElizaError ? error.code : undefined,
+                },
+                "[planner-loop] Stage-1 draft evaluation failed before output; planning the request instead",
+              );
+              continue;
+            }
             throw error;
           }
           const pendingCompletionCorrection = correctPendingSuccessfulFinish(
@@ -2343,10 +2387,21 @@ async function runPlannerLoopIterations(
         const terminalReplyMessage = hasReplyCall
           ? terminalMessageWithFailureAuthority(trajectory, finalMessage)
           : undefined;
-        let terminalEvaluator = terminalToolCallFinish(
-          terminalReplyMessage,
-          !terminalFollowsFailedTool,
-        );
+        // A final REPLY selects its own receipts for the changes its text
+        // claims. Egress resolves that binding against this turn's committed
+        // receipts and rejects anything else.
+        let terminalEvaluator: EvaluatorOutput = {
+          ...terminalToolCallFinish(
+            terminalReplyMessage,
+            !terminalFollowsFailedTool,
+          ),
+          ...(suppliedReplyProof
+            ? {
+                effectReceiptIds: suppliedReplyProof.effectReceiptIds,
+                plannerReply: suppliedReplyProof,
+              }
+            : {}),
+        };
         const pendingCompletionCorrection = hasReplyCall
           ? correctPendingSuccessfulFinish(
               terminalEvaluator,
@@ -2813,6 +2868,19 @@ async function runPlannerLoopIterations(
       };
     }
     if (
+      typeof plannerContext.metadata?.subPlannerParentAction === "string" &&
+      plannerContext.metadata.subPlannerParentAction.length > 0 &&
+      latestResult?.success === false &&
+      latestResult.failureProvenance?.kind === "missing_capability" &&
+      !hasExecutionPrerequisite(latestResult)
+    ) {
+      // A nested planner sees only one umbrella's children. A missing
+      // capability means none of them can do this now and nothing ran, yet
+      // the narrowed surface left the model only those children. Return the
+      // failure unevaluated; the parent judges it with its full tool surface.
+      return { status: "finished", trajectory };
+    }
+    if (
       isDiscoveryActionName(toolCall.name) &&
       !discoveryWasRequested &&
       latestResult?.success === false &&
@@ -2827,15 +2895,22 @@ async function runPlannerLoopIterations(
 
     if (
       latestResult?.success === false &&
-      latestResult.failureProvenance?.retryable === true &&
-      latestResult.data?.acceptance === "rejected" &&
-      latestResult.data?.executionStatus === "not_started" &&
-      !latestResult.effectReceipts?.length &&
-      !hasExecutionPrerequisite(latestResult)
+      !isDiscoveryActionName(toolCall.name) &&
+      // A rejected failure receipt proves nothing ran, like having no receipt.
+      (latestResult.effectReceipts ?? []).every(
+        (receipt) =>
+          receipt.outcome === "failed" &&
+          receipt.failure.acceptance === "rejected",
+      ) &&
+      !hasExecutionPrerequisite(latestResult) &&
+      ((latestResult.failureProvenance?.retryable === true &&
+        latestResult.data?.acceptance === "rejected" &&
+        latestResult.data?.executionStatus === "not_started") ||
+        Array.isArray(latestResult.data?.parameterErrors) ||
+        latestResult.data?.coachingFailure === true)
     ) {
-      // A typed pre-execution rejection is safe to repair, not proof that an
-      // effect ran. Preserve the error and require the model to choose fresh
-      // arguments; never replay the original command or its dependent batch.
+      // Nothing ran, so the model repairs the recorded rejection without a
+      // replay or an evaluator call; discovery failures keep their policy above.
       trajectory.plannedQueue.length = 0;
       continue;
     }
@@ -3307,6 +3382,47 @@ const RESTORE_CONTEXT_TOOL: ToolDefinition = {
   },
 };
 
+/**
+ * Scopes that a restoration request can still read from this context. The
+ * restoration check rejects any other scope as repeated restoration, and the
+ * tool offers only these, so the model is never handed a scope whose call
+ * ends the turn.
+ *
+ * The check additionally accepts scope=providers while an owned request
+ * source is restorable (see callPlanner): that restoration is inserted by the
+ * runtime, not chosen by the model, so it is not part of the offered enum.
+ */
+function restorableContextScopes(original: ContextObject) {
+  const restorable = evaluatorRestorableContext(original);
+  return {
+    ...restorable,
+    history:
+      restorable.history || referencePlannerQueryTokens(original).applied,
+  };
+}
+
+function restoreContextToolFor(original: ContextObject): ToolDefinition {
+  const restorable = restorableContextScopes(original);
+  const parameters = RESTORE_CONTEXT_TOOL.parameters;
+  return {
+    ...RESTORE_CONTEXT_TOOL,
+    parameters: {
+      ...parameters,
+      properties: {
+        ...parameters?.properties,
+        scope: {
+          type: "string",
+          enum: [
+            ...(restorable.history ? ["history"] : []),
+            ...(restorable.providers ? ["providers"] : []),
+            "full",
+          ],
+        },
+      },
+    },
+  };
+}
+
 function renderPlannerModelInput(params: {
   context: ContextObject;
   trajectory: PlannerTrajectory;
@@ -3587,7 +3703,7 @@ export function buildInitialPlannerModelInputBudget(params: {
     messages: renderedInput.messages,
     promptSegments: renderedInput.promptSegments,
     tools: renderedInput.sourceSelectionApplied
-      ? [...(params.tools ?? []), RESTORE_CONTEXT_TOOL]
+      ? [...(params.tools ?? []), restoreContextToolFor(context)]
       : params.tools,
     modelName: config.contextWindowModelName,
     ...(config.contextWindowTokens
@@ -4398,7 +4514,12 @@ async function dispatchPlannerModelCall(params: {
     // strips it before dispatch.
     modelParams.tools = withTurnScopeToolArg(
       renderedInput.sourceSelectionApplied
-        ? [...(params.tools ?? []), RESTORE_CONTEXT_TOOL]
+        ? [
+            ...(params.tools ?? []),
+            restoreContextToolFor(
+              params.trajectory.modelBaseContext ?? params.context,
+            ),
+          ]
         : params.tools,
       renderedInput.messages[0]?.role === "system" &&
         typeof renderedInput.messages[0].content === "string"
@@ -5003,6 +5124,7 @@ async function callPlanner(
         : readHistory
           ? "history"
           : "providers";
+    const restorable = restorableContextScopes(original);
     if (
       params.trajectory.codingMode ||
       (!params.tools?.length && !params.allowReplyContextProjection) ||
@@ -5012,17 +5134,11 @@ async function callPlanner(
           typeof call.params?.reason !== "string" || !call.params.reason.trim(),
       ) ||
       (!readHistory && !readProviders) ||
-      (!(
-        readHistory &&
-        (selectCompletionContext(original).applied ||
-          projectBackgroundHistory(original).applied ||
-          referencePlannerQueryTokens(original).applied)
-      ) &&
-        !(
-          readProviders &&
-          (projectDeferredProviders(original).available.length ||
-            ownedSourcesRestorable)
-        ))
+      // An owned request source stays restorable while it is not loaded, even
+      // when no provider body is deferred any more: the runtime-inserted
+      // restoration above must be accepted, not end the turn.
+      (!(readHistory && restorable.history) &&
+        !(readProviders && (restorable.providers || ownedSourcesRestorable)))
     ) {
       throw new ElizaError(
         "Original planner context is already complete; repeated restoration is invalid",
@@ -5031,7 +5147,7 @@ async function callPlanner(
     }
     const restored =
       readProviders &&
-      projectDeferredProviders(original).available.length &&
+      restorable.providers &&
       params.runtime.restoreProviderContext
         ? await params.runtime.restoreProviderContext(original)
         : original;
@@ -5364,17 +5480,28 @@ async function evaluateTrajectory(
   trajectory: PlannerTrajectory,
   iteration: number,
 ): Promise<EvaluatorOutput> {
+  const hasUnresolvedToolFailure =
+    latestUnresolvedFailedNonTerminalToolStep(trajectory) !== undefined;
+  // Capability judgments need the planner's live tool list, including tools
+  // discovery loaded this turn; terminals are not capabilities.
+  const plannerToolNames = (params.tools ?? [])
+    .map((tool) => tool.name)
+    .filter((name) => !isTerminalPlannerToolName(name));
   if (params.evaluate) {
+    // Host evaluators get the same failure authority and tool list as the
+    // built-in evaluator.
     return params.evaluate({
       runtime: params.runtime,
       context: trajectory.context,
       trajectory,
+      hasUnresolvedToolFailure,
+      plannerToolNames,
     });
   }
 
   return runEvaluator({
-    hasUnresolvedToolFailure:
-      latestUnresolvedFailedNonTerminalToolStep(trajectory) !== undefined,
+    hasUnresolvedToolFailure,
+    plannerToolNames,
     runtime: params.runtime,
     context: trajectory.context,
     trajectory,
@@ -7893,22 +8020,25 @@ export function partitionRedundantSucceededCalls(
 } {
   const succeeded = new Set<string>();
   const failedNonRetryable = new Set<string>();
+  const settle = (call: PlannerToolCall, identity: string) => {
+    // A coding mutation can change the answer to any earlier inspection.
+    // Clear those settled identities before recording the mutation itself so
+    // READ-after-EDIT remains executable while an exact duplicate EDIT is
+    // still suppressed.
+    if (
+      trajectory.codingMode === true &&
+      ["WRITE", "EDIT"].includes(call.name.toUpperCase())
+    ) {
+      succeeded.clear();
+    }
+    succeeded.add(identity);
+  };
   for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
     if (!step.toolCall || !step.result) continue;
     const identity = toolCallIdentity(step.toolCall);
     if (step.result.success === true) {
       if (isRepeatableObservation(step.result)) continue;
-      // A successful coding mutation can change the answer to any earlier
-      // inspection. Clear those settled identities before recording the
-      // mutation itself so READ-after-EDIT remains executable while an exact
-      // duplicate EDIT is still suppressed.
-      if (
-        trajectory.codingMode === true &&
-        ["WRITE", "EDIT"].includes(step.toolCall.name.toUpperCase())
-      ) {
-        succeeded.clear();
-      }
-      succeeded.add(identity);
+      settle(step.toolCall, identity);
     } else if (
       step.result.failureProvenance?.retryable === false ||
       step.result.data?.retryable === false
@@ -7923,7 +8053,12 @@ export function partitionRedundantSucceededCalls(
     const identity = toolCallIdentity(call);
     if (succeeded.has(identity)) redundant.push(call);
     else if (failedNonRetryable.has(identity)) nonRetryable.push(call);
-    else fresh.push(call);
+    else {
+      fresh.push(call);
+      // A batch is written before any of its results exist, so an identical
+      // call later in it is a duplicate, not a deliberate repeat.
+      settle(call, identity);
+    }
   }
   return { fresh, redundant, nonRetryable };
 }
@@ -8425,6 +8560,53 @@ function hasSuccessfulNonTerminalToolStep(
   );
 }
 
+/** Metadata of Stage 1's latest message-handler event: its plan and held draft. */
+function stageOneEventMetadata(events: readonly ContextEvent[]) {
+  return events.findLast(
+    (event) =>
+      event.type === "message_handler" && event.source === "message-service",
+  )?.metadata;
+}
+
+/**
+ * Stage 1's held acknowledgement when every executed operation is an accepted
+ * async handoff: a successful call to an `asyncHandoff` action whose receipts
+ * are all applied. The handoff action held the draft until the launch was
+ * accepted; its result arrives later as a follow-up. Anything else (a read, a
+ * failed or previewed effect or a draft for applied work) returns undefined
+ * and keeps the ordinary path.
+ */
+function heldAsyncHandoffAck(
+  trajectory: PlannerTrajectory,
+): string | undefined {
+  const work = [...trajectory.archivedSteps, ...trajectory.steps].filter(
+    (step) =>
+      step.toolCall !== undefined &&
+      !isDiscoveryActionName(step.toolCall.name) &&
+      !isTerminalToolCall(step.toolCall),
+  );
+  const accepted = (step: PlannerStep) =>
+    step.result?.success === true &&
+    step.result.asyncHandoff === true &&
+    (step.result.effectReceipts?.length ?? 0) > 0 &&
+    step.result.effectReceipts?.every(
+      (receipt) =>
+        receipt.outcome === "applied" && receipt.commit.id.trim().length > 0,
+    ) === true;
+  if (work.length === 0 || !work.every(accepted)) return undefined;
+  const metadata = stageOneEventMetadata(trajectory.context.events ?? []);
+  const plan = metadata?.plan;
+  const held = metadata?.undeliveredDraft;
+  if (!isPlainObject(plan) || plan.replyEffectStatus !== "pending")
+    return undefined;
+  const draft = sanitizePlannerMessage(
+    (isPlainObject(held) ? getNonEmptyString(held.replyText) : undefined) ??
+      getNonEmptyString(plan.reply),
+  );
+  if (!draft || isUnsafeUserVisibleText(draft)) return undefined;
+  return draft;
+}
+
 /**
  * Tool-turn reply guarantee (post-pass of {@link runPlannerLoop}). A finished
  * turn that executed at least one successful non-terminal tool but carries no
@@ -8472,8 +8654,7 @@ async function ensureToolTurnFinalMessage(
   if (
     message &&
     message !== HANDLED_STEP_FALLBACK_MESSAGE &&
-    result.evaluator?.success === true &&
-    result.evaluator.decision === "FINISH" &&
+    result.evaluator?.decision === "FINISH" &&
     message === sanitizePlannerMessage(result.evaluator.messageToUser) &&
     repairFinishWithProgressPromise(result.evaluator, result.trajectory)
       .decision === "FINISH" &&
@@ -8491,6 +8672,11 @@ async function ensureToolTurnFinalMessage(
   // and pay for another model call without adding effect evidence.
   if (!unusable) return result;
   if (!hasSuccessfulNonTerminalToolStep(result.trajectory)) return result;
+  // An accepted handoff has nothing more to report this turn. Deliver Stage
+  // 1's held acknowledgement instead of a forced synthesis, a rescue and the
+  // host's reply recovery with its grounding review.
+  const heldAck = heldAsyncHandoffAck(result.trajectory);
+  if (heldAck) return { ...result, finalMessage: heldAck };
   if (
     params.deferInternalReplyRecoveryToCaller === true &&
     result.evaluator?.decision === "FINISH" &&
@@ -9613,8 +9799,17 @@ function shouldRecoverSilentFailedFinish(args: {
   if (args.recoveryCount >= 1) return false;
   if (args.evaluator.success !== false) return false;
   if (getNonEmptyString(args.evaluator.messageToUser)) return false;
+  const failedStep = latestUnresolvedFailedNonTerminalToolStep(args.trajectory);
+  if (failedStep === undefined) return false;
+  if (args.trajectory.codingMode === true) return true;
+  // Not silent in chat: the failed tool's own user-safe text, or a verified
+  // action reply after it, already is the final message
+  // (terminalMessageWithFailureAuthority). The evaluator sees
+  // hasUnresolvedToolFailure, so approving that text with an empty
+  // messageToUser ends success=false; it must not buy a retry round.
   return (
-    latestUnresolvedFailedNonTerminalToolStep(args.trajectory) !== undefined
+    failedToolOwnedUserSafeText(failedStep) === undefined &&
+    verifiedToolOwnedSuccessTextsAfter(args.trajectory, failedStep).length === 0
   );
 }
 

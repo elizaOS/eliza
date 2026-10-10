@@ -360,7 +360,10 @@ function defaultOwnerFactsProvider(
     // whether the owner is inside a booked/declared travel window at this
     // instant, which is exactly what the `during_travel` gate needs each tick.
     const view = ownerFactsToView(await store.read(), new Date());
-    const timezone = view.timezone ?? resolveDefaultTimeZone();
+    // Without an owner timezone fact the configured zone stands in, as it
+    // does for reminders (resolveOwnerTimeZone).
+    view.timezone ??= resolveConfiguredTimeZone(runtime);
+    const timezone = view.timezone;
     try {
       const repo = new LifeOpsRepository(runtime);
       const [local, cloud] = await Promise.all([

@@ -1768,14 +1768,18 @@ describe("identical-duplicate notes", () => {
     ]);
   });
 
-  it("still refuses genuinely differing matches as ambiguous", async () => {
+  it("still refuses genuinely differing matches as ambiguous, naming each complete note", async () => {
     const runtime = await harness();
-    await run(runtime, { action: "create", content: "buy milk at aldi" });
-    await run(runtime, { action: "create", content: "buy milk for the cat" });
+    await run(runtime, { action: "create", content: "buy milk" });
+    await run(runtime, { action: "create", content: "buy milk\nat aldi" });
 
-    await expect(
-      run(runtime, { action: "delete", content: "milk" }),
-    ).rejects.toMatchObject({ code: "NOTES_AMBIGUOUS_NOTE" });
+    const rejected = run(runtime, { action: "delete", content: "buy milk" });
+    await expect(rejected).rejects.toMatchObject({
+      code: "NOTES_AMBIGUOUS_NOTE",
+    });
+    await expect(rejected).rejects.toThrow(
+      '"buy milk" matches multiple sticky notes: "buy milk\\nat aldi" (yellow), "buy milk" (yellow).',
+    );
   });
 
   it("updates one logical note and consolidates its identical stored copies", async () => {
@@ -1962,7 +1966,7 @@ describe("literal Notes edits", () => {
     async (oldText, newText, body, code) => {
       const runtime = await executorHarness();
       const service = getNotesService(runtime);
-      await service.createNote({ title: "Exact title", body });
+      const note = await service.createNote({ title: "Exact title", body });
       const before = service.snapshot();
       const result = await execute(runtime, {
         name: "NOTES_UPDATE",
@@ -1976,6 +1980,39 @@ describe("literal Notes edits", () => {
       expect(result.data?.coachingFailure).toBe(true);
       expect(result.effectReceipts).toBeUndefined();
       expect(service.snapshot()).toEqual(before);
+      expect(result.promptData?.notes).toEqual([projectNoteForModel(note)]);
+      expect(result.promptData?.notesRevision).toBe(before.revision);
+    },
+  );
+
+  it.each(["noteId", "content"] as const)(
+    "answers a replacement without a revision with the %s target's note, so one retry applies",
+    async (selector) => {
+      const runtime = await executorHarness();
+      const service = getNotesService(runtime);
+      const note = await service.createNote({ content: "Pack lights" });
+      const replacement = {
+        [selector]: selector === "noteId" ? note.id : note.title,
+        replacementContent: "Pack lights\nBring a helmet",
+      };
+      const rejected = await execute(runtime, {
+        name: "NOTES_UPDATE",
+        params: replacement,
+      });
+      expect(rejected).toMatchObject({
+        success: false,
+        data: { error: "NOTES_EDIT_REVISION_REQUIRED", coachingFailure: true },
+      });
+      expect(rejected.promptData?.notes).toEqual([projectNoteForModel(note)]);
+      const retried = await execute(runtime, {
+        name: "NOTES_UPDATE",
+        params: {
+          ...replacement,
+          expectedRevision: rejected.promptData?.notesRevision,
+        },
+      });
+      expect(retried.success, JSON.stringify(retried)).toBe(true);
+      expect(service.getNote(note.id).body).toBe("\nBring a helmet");
     },
   );
 
@@ -2165,6 +2202,23 @@ describe("structured Notes field patches", () => {
       expect(result.effectReceipts).toBeUndefined();
       expect(service.snapshot()).toEqual(committed);
       expect(await fs.readFile(service.store.filePath, "utf8")).toBe(bytes);
+      const wire = projectToolResultForModel(
+        actionResultToPlannerToolResult(result),
+      );
+      expect(wire.data).toMatchObject({ error: "NOTES_EDIT_CONFLICT" });
+      expect(wire.promptData?.notes).toEqual([
+        projectNoteForModel(service.getNote(note.id)),
+      ]);
+      expect(wire.promptData?.notesRevision).toBe(committed.revision);
+      const retried = await execute(runtime, {
+        name: writeName,
+        params: {
+          ...replacement,
+          expectedRevision: wire.promptData?.notesRevision,
+        },
+      });
+      expect(retried.success, JSON.stringify(retried)).toBe(true);
+      expect(service.getNote(note.id).body).toBe("\nStale replacement");
     },
   );
 
@@ -2438,6 +2492,17 @@ describe("field patch literal alternative", () => {
     expect(
       (await execute(runtime, { name: "NOTES_PATCH", params })).success,
     ).toBe(false);
+    expect(
+      (
+        await execute(runtime, {
+          name: "NOTES",
+          params: { ...params, action: "patch", noteId: note.id },
+        })
+      ).data,
+    ).toMatchObject({
+      error: "NOTES_CONFLICTING_PATCH",
+      invalidParameterNames: ["noteId"],
+    });
     expect(service.getNote(note.id)).toEqual(before);
   });
 });

@@ -3,17 +3,26 @@
  * gates create/interact abilities per connector against the caller's role,
  * reading operator-declared policy over a conservative default that only lets
  * admins spawn or drive agents from third-party connectors.
+ * `ownerOnlyBackendRefusal` keeps owner-only coding backends for work the
+ * owner asked for.
  */
 import {
   checkSenderRole,
+  hasOwnerAccess,
   type IAgentRuntime,
+  isAgentSelf,
   MESSAGE_SOURCE_CLIENT_CHAT,
+  MESSAGE_SOURCE_SUB_AGENT,
+  MESSAGE_SOURCE_TRIGGER_PROMPT,
   type Memory,
   normalizeRole,
   ROLE_RANK,
   type RoleCheckResult,
   type RoleName,
 } from "@elizaos/core";
+import { readCodingRouting } from "./coding-backend-routing.js";
+import type { SubAgentRouter } from "./sub-agent-router.js";
+import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
 
 type TaskAgentAbility = "create" | "interact";
 type ConnectorPolicy = Partial<Record<TaskAgentAbility, RoleName>>;
@@ -292,4 +301,63 @@ export async function requireTaskAgentAccess(
     requiredRole,
     actualRole,
   };
+}
+
+/**
+ * Metadata key marking work the owner asked for, on a task record and on every
+ * session spawned for it. Written where work enters (TASKS from the sender,
+ * the authenticated REST routes as the owner) after any caller metadata, and
+ * inherited by every spawn that continues that work.
+ */
+export const OWNER_REQUESTED_METADATA_KEY = "ownerRequested";
+
+/**
+ * Whether the owner asked for the work `message` carries. The conversations
+ * API stores a client's source and metadata verbatim, so a sub_agent source
+ * speaks for its session only when the memory belongs to the router's shared
+ * entity; the router copies the session's stamp onto its relay. A trigger or
+ * the agent's own turn has no sender to vouch for it.
+ */
+export async function isOwnerRequest(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<boolean> {
+  const content = message.content as Record<string, unknown> | undefined;
+  if (content?.source === MESSAGE_SOURCE_SUB_AGENT) {
+    const router = runtime.getService(
+      "ACPX_SUB_AGENT_ROUTER",
+    ) as SubAgentRouter | null;
+    if (router && message.entityId === router.sharedSubAgentEntityId()) {
+      const metadata = content.metadata as Record<string, unknown> | undefined;
+      return metadata?.[OWNER_REQUESTED_METADATA_KEY] === true;
+    }
+  }
+  if (
+    content?.source === MESSAGE_SOURCE_TRIGGER_PROMPT ||
+    isAgentSelf(runtime, message)
+  ) {
+    return false;
+  }
+  return hasOwnerAccess(runtime, message);
+}
+
+/**
+ * The access rule for owner-only coding backends (`routing.coding.ownerOnly`,
+ * e.g. the owner's own subscription logins): such a backend runs only work the
+ * owner asked for. `ownerRequested` is read only for an owner-only backend.
+ * Returns the refusal, or undefined when `agentType` may run.
+ */
+export async function ownerOnlyBackendRefusal(
+  runtime: IAgentRuntime,
+  agentType: string,
+  ownerRequested: () => Promise<boolean>,
+): Promise<string | undefined> {
+  const backend = normalizeTaskAgentAdapter(agentType);
+  const ownerOnly = (readCodingRouting(runtime)?.ownerOnly ?? []).map((value) =>
+    normalizeTaskAgentAdapter(value),
+  );
+  if (!backend || !ownerOnly.includes(backend) || (await ownerRequested())) {
+    return undefined;
+  }
+  return `The ${backend} coding backend runs only work the owner asked for.`;
 }

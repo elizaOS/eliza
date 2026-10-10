@@ -468,13 +468,19 @@ export const experiencePatternEvaluator: Evaluator<
   reconcileEvidence: reconcileExperienceEvidence,
   incremental: true,
   background: true,
+  evidenceScope: "room",
   description:
     "Extracts reusable agent lessons from validated conversation events.",
   priority: EvaluatorPriority.EXPERIENCE,
   schema: experienceSchema,
   async shouldRun({ runtime, message, state, options }) {
     assertExtractionSourcesUnchanged(options.extraction);
-    if (!message.roomId || !message.content.text) return false;
+    if (
+      options.semanticSignal === false ||
+      !message.roomId ||
+      !message.content.text
+    )
+      return false;
     if (isSyntheticMemory(message)) return false;
     const experienceService = runtime.getService(
       "EXPERIENCE",
@@ -643,6 +649,7 @@ Rules:
 - Max 3. Do not duplicate existing.
 - Keep operational lessons grounded in tool outcomes, corrections, failed assumptions, discoveries, or explicit remember-this.
 - Skip ordinary chat, one-off requests, generic observations, stable user facts/preferences; other evaluators handle those.
+- Skip lessons that a tool, route, or capability is unavailable, or that the agent should refuse or state it cannot act. Availability differs by room and changes with deployments; one failed or missing call does not prove a capability is absent.
 - Skip synthetic summaries, benchmark scaffolding, agent-generated summaries.
 - Never store secrets/credentials/API keys/passwords/tokens/private keys.
 - Domain comes from conversation.

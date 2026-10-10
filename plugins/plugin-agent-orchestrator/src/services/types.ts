@@ -3,6 +3,8 @@
  * approval presets, session status and lifecycle events, spawn options, and the
  * `SessionStore` contract the persistence tiers implement.
  */
+import { asObjectRecordOrUndefined as asRecord } from "@elizaos/core";
+
 export type AgentType = "elizaos" | "pi-agent" | "claude" | "codex" | string;
 
 /** Declares whether a subscription coding-agent session has an active user. */
@@ -227,6 +229,19 @@ export class SessionCapError extends Error {
 }
 
 /**
+ * Thrown by `AcpService` when an operation names a session its store has no
+ * record of, e.g. a durable task session whose subprocess ended with an earlier
+ * runtime. Typed so the orchestrator can count stopping such a session as
+ * stopped without string-matching the message.
+ */
+export class SessionNotFoundError extends Error {
+  constructor(sessionId: string) {
+    super(`acpx session not found: ${sessionId}`);
+    this.name = "SessionNotFoundError";
+  }
+}
+
+/**
  * Thrown by the orchestrator's admission queue when a cap-parked spawn would
  * exceed `ELIZA_ACP_ADMISSION_QUEUE_DEPTH`. Distinct from `SessionCapError`: the
  * cap is transient (a slot will free), but a full queue is back-pressure the
@@ -316,7 +331,49 @@ export interface SendOptions {
   silent?: boolean;
   env?: Record<string, string>;
   model?: string;
+  /**
+   * The orchestrator sends this prompt on its own behalf and its turn
+   * restates the session's result (a stall prod, a restart resume, a re-report
+   * for an inconclusive check). It does not count as user input, so a result
+   * already relayed for the session is not relayed again (see
+   * SESSION_LAST_USER_INPUT_AT_KEY).
+   */
+  internal?: boolean;
 }
+
+/**
+ * Session-metadata stamps behind the router's one-relay-per-input rule.
+ * AcpService stamps the last-user-input time on every prompt that is not
+ * `internal`; the router stamps the relayed time when a clean completion reply
+ * reaches the user. A later relay needs user input after it.
+ */
+export const SESSION_LAST_USER_INPUT_AT_KEY = "lastUserInputAt";
+export const SESSION_RESULT_RELAYED_AT_KEY = "resultRelayedAt";
+
+/** Epoch ms of the session's latest user input (AcpService stamps every
+ *  prompt that is not orchestrator-internal), or 0 when none is recorded. */
+export function lastUserInputAt(
+  meta: Record<string, unknown> | undefined,
+): number {
+  const at = meta?.[SESSION_LAST_USER_INPUT_AT_KEY];
+  return typeof at === "number" ? at : 0;
+}
+
+/** The session's result already reached the user and no user input followed:
+ *  a further completion or failure answers the orchestrator, not the user. */
+export function relayedSinceUserInput(
+  meta: Record<string, unknown> | undefined,
+): boolean {
+  const relayedAt = meta?.[SESSION_RESULT_RELAYED_AT_KEY];
+  return typeof relayedAt === "number" && !(lastUserInputAt(meta) > relayedAt);
+}
+
+/**
+ * `stopped` event field AcpService sets when it closes a session between
+ * turns after the last turn already reported its outcome (task_complete or
+ * error): the close is teardown of a finished turn, not work that stopped.
+ */
+export const STOPPED_AFTER_REPORTED_TURN_KEY = "closedAfterReportedTurn";
 
 /** Authoritative failed-turn receipt carried by an ACP prompt result. */
 export interface AcpTerminalFailure {
@@ -327,9 +384,41 @@ export interface AcpTerminalFailure {
 }
 
 /**
- * Read the elizaOS terminal-failure extension from an ACP prompt result.
- * Presence is authoritative: malformed receipts fail the protocol boundary
- * instead of being dropped and allowing surrounding prose to imply success.
+ * codex-acp ends a failed turn with `stopReason: "end_turn"` and the failure
+ * under `_meta.jetbrains.air.sessionFailure`; an error-severity entry is the
+ * turn's terminal failure, and its `access` category is an auth failure.
+ */
+function readAirSessionFailure(
+  metadata: Record<string, unknown>,
+): AcpTerminalFailure | undefined {
+  const failure = asRecord(
+    asRecord(asRecord(metadata.jetbrains)?.air)?.sessionFailure,
+  );
+  if (
+    failure?.severity !== "error" ||
+    typeof failure.title !== "string" ||
+    !failure.title.trim()
+  ) {
+    return undefined;
+  }
+  const category =
+    typeof failure.category === "string" && failure.category.trim()
+      ? failure.category.trim()
+      : "unknown";
+  return {
+    kind: category === "access" ? "auth" : category,
+    transient: Array.isArray(failure.actions)
+      ? failure.actions.includes("retry")
+      : false,
+    message: failure.title,
+  };
+}
+
+/**
+ * Read the elizaOS terminal-failure extension (or an error-severity AIR
+ * session failure) from an ACP prompt result. Presence is authoritative:
+ * malformed receipts fail the protocol boundary instead of being dropped and
+ * allowing surrounding prose to imply success.
  */
 export function readAcpTerminalFailure(
   promptResult: unknown,
@@ -346,7 +435,9 @@ export function readAcpTerminalFailure(
     return undefined;
   }
   const candidate = (metadata as Record<string, unknown>).terminalFailure;
-  if (candidate === undefined) return undefined;
+  if (candidate === undefined) {
+    return readAirSessionFailure(metadata as Record<string, unknown>);
+  }
   if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
     throw new TypeError("ACP terminalFailure must be an object");
   }

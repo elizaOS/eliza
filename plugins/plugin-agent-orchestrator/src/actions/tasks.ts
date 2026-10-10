@@ -46,7 +46,10 @@ import {
 } from "../services/lane-planner.js";
 import type { TaskThreadDto } from "../services/orchestrator-task-mapper.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
-import type { OrchestratorTaskStatus } from "../services/orchestrator-task-types.js";
+import {
+  IN_FLIGHT_TASK_STATUSES,
+  type OrchestratorTaskStatus,
+} from "../services/orchestrator-task-types.js";
 import { resolveTaskSpawnWorkdir } from "../services/project-binding.js";
 import { recordedPromptDurationMs } from "../services/prompt-duration.js";
 import {
@@ -65,7 +68,12 @@ import {
   type ResolvedWorkdirRoute,
   resolveSpawnWorkdir,
 } from "../services/task-agent-routing.js";
-import { requireTaskAgentAccess } from "../services/task-policy.js";
+import {
+  isOwnerRequest,
+  OWNER_REQUESTED_METADATA_KEY,
+  ownerOnlyBackendRefusal,
+  requireTaskAgentAccess,
+} from "../services/task-policy.js";
 import {
   type AgentType,
   createSubscriptionExecutionAuthorization,
@@ -850,6 +858,11 @@ async function runCreateLegacy(
   params: Record<string, unknown>,
   content: Record<string, unknown>,
   callback: HandlerCallback | undefined,
+  /**
+   * A lane plan waits for each lane's first prompt: dependent lanes and
+   * maxParallel key off lane completion.
+   */
+  awaitFirstPrompt = false,
 ): Promise<ActionResult> {
   const service = getAcpService(runtime);
   if (!service) {
@@ -881,11 +894,13 @@ async function runCreateLegacy(
   // > operator pin > planner guess. Per-task `framework:` prefixes (e.g.
   // "claude: do X") still override this per-part in the parseAgentPrefix step
   // below — they are the most explicit per-subtask signal.
+  const ownerRequested = await isOwnerRequest(runtime, message);
   const routedBase = resolveCodingBackendLogged({
     runtime,
     explicit: pickString(params, content, "requestedBackend"),
     tag: pickString(params, content, "taskComplexity"),
     plannerGuess: pickString(params, content, "agentType"),
+    ownerRequested,
   });
   const baseAgentType =
     routedBase?.agentType ??
@@ -895,6 +910,14 @@ async function runCreateLegacy(
         subtaskCount: tasks.length,
       })) ?? "codex",
     );
+  for (const part of tasks) {
+    const refusal = await ownerOnlyBackendRefusal(
+      runtime,
+      parseAgentPrefix(part, baseAgentType).agentType,
+      async () => ownerRequested,
+    );
+    if (refusal) return errorResult("FORBIDDEN", refusal);
+  }
   const explicitWorkdir = pickString(params, content, "workdir");
   const fallbackWorkdir = explicitWorkdir ?? process.cwd();
   const model = pickString(params, content, "model");
@@ -950,9 +973,8 @@ async function runCreateLegacy(
   // owner recorded in every Smithers run link, so a host restart can discover
   // the task/session pair and resume the same graph without reconstructing the
   // action call from transient planner state.
-  // Planner-supplied title/goal is unbounded free text (it can be a whole
-  // blob); clamp at the persist/display seam — the stored task title and the
-  // [TASK:] widget block both render it. labelFrom's fallback is already
+  // Planner-supplied title/goal is free text; the stored task title keeps it
+  // whole, with whitespace collapsed for display.
   const plannerTitle =
     pickString(params, content, "title") ?? pickString(params, content, "goal");
   const taskTitle = plannerTitle
@@ -960,9 +982,8 @@ async function runCreateLegacy(
     : tasks[0]
       ? labelFrom(tasks[0], 0)
       : "Coding task";
-  // Goal is an instruction channel (goal-prompt first instruction, acceptance
-  // criteria, resume prompts), not display — it must never inherit the title's
-  // display clamp, or a long planner title silently truncates the instructions.
+  // Goal is an instruction channel (goal prompt, acceptance criteria, resume
+  // prompts), so it keeps the planner's raw text rather than the display title.
   const taskGoal =
     pickString(params, content, "goal") ?? plannerTitle ?? taskTitle;
   const taskPriority = (pickString(params, content, "priority") ?? "normal") as
@@ -1055,6 +1076,7 @@ async function runCreateLegacy(
           ...(objectValue(extraMetadata.lane)
             ? { waveId: extraMetadata.waveId, lane: extraMetadata.lane }
             : {}),
+          [OWNER_REQUESTED_METADATA_KEY]: ownerRequested,
         },
       });
       threadId = detail?.id ?? null;
@@ -1177,6 +1199,7 @@ async function runCreateLegacy(
           workdirRoute: route,
           keepAliveAfterComplete,
           ...(durableRun ? smithersDurableRunMetadata(durableRun) : {}),
+          [OWNER_REQUESTED_METADATA_KEY]: ownerRequested,
         },
       });
 
@@ -1237,11 +1260,10 @@ async function runCreateLegacy(
         }
       }
 
-      if (durableRun) {
-        const runningRun: SmithersDurableRunLink = {
-          ...durableRun,
-          state: "running",
-        };
+      const runningRun: SmithersDurableRunLink | undefined = durableRun
+        ? { ...durableRun, state: "running" }
+        : undefined;
+      if (runningRun) {
         const stateWrites: Promise<unknown>[] = [];
         if (service.updateSessionMetadata) {
           stateWrites.push(
@@ -1257,46 +1279,63 @@ async function runCreateLegacy(
           );
         }
         await Promise.all(stateWrites);
-        await runPromptViaSmithers(
-          service,
-          session,
-          taskWithRouteHints,
-          runningRun,
-          timeoutMs,
-          model,
-          keepAliveAfterComplete,
-        );
-        const completedRun: SmithersDurableRunLink = {
-          ...durableRun,
-          state: "completed",
-        };
-        const completionWrites: Promise<unknown>[] = [];
-        if (service.updateSessionMetadata) {
-          completionWrites.push(
-            service.updateSessionMetadata(
-              session.sessionId,
-              smithersDurableRunMetadata(completedRun),
-            ),
+      }
+      const promptRun = runningRun
+        ? runPromptViaSmithers(
+            service,
+            session,
+            taskWithRouteHints,
+            runningRun,
+            timeoutMs,
+            model,
+            keepAliveAfterComplete,
+          ).then(async () => {
+            const completedRun: SmithersDurableRunLink = {
+              ...runningRun,
+              state: "completed",
+            };
+            const completionWrites: Promise<unknown>[] = [];
+            if (service.updateSessionMetadata) {
+              completionWrites.push(
+                service.updateSessionMetadata(
+                  session.sessionId,
+                  smithersDurableRunMetadata(completedRun),
+                ),
+              );
+            }
+            if (threadId && taskService?.updateSmithersDurableRun) {
+              completionWrites.push(
+                taskService.updateSmithersDurableRun(
+                  session.sessionId,
+                  completedRun,
+                ),
+              );
+            }
+            await Promise.all(completionWrites);
+          })
+        : runPromptAndClose(
+            service,
+            session,
+            taskWithRouteHints,
+            timeoutMs,
+            model,
+            keepAliveAfterComplete,
           );
-        }
-        if (threadId && taskService?.updateSmithersDurableRun) {
-          completionWrites.push(
-            taskService.updateSmithersDurableRun(
-              session.sessionId,
-              completedRun,
-            ),
-          );
-        }
-        await Promise.all(completionWrites);
+      if (awaitFirstPrompt) {
+        await promptRun;
       } else {
-        await runPromptAndClose(
-          service,
-          session,
-          taskWithRouteHints,
-          timeoutMs,
-          model,
-          keepAliveAfterComplete,
-        );
+        // The first prompt runs until the sub-agent finishes, and the router
+        // relays that result as a follow-up: the contract this result states.
+        // Awaiting it here would hold the turn, and the model's ack, for the
+        // whole build.
+        promptRun.catch((error) => {
+          // error-policy:J5 fire-and-forget first prompt, like spawn_agent's
+          // initial task; the prompt helpers and AcpService surface the
+          // failure as the session's error event, which the router reports.
+          logger(runtime).warn(
+            `[TASKS:create] first prompt failed for ${session.sessionId}: ${failureMessage(error)}`,
+          );
+        });
       }
       return { session, label, agentType };
     }),
@@ -1315,7 +1354,7 @@ async function runCreateLegacy(
         name: session.name,
         workdir: session.workdir,
         label,
-        status: "completed",
+        status: awaitFirstPrompt ? "completed" : "running",
       });
       continue;
     }
@@ -1354,21 +1393,14 @@ async function runCreateLegacy(
     };
   }
 
-  const widgetBlock = threadId
-    ? `\n\n[TASK:${threadId}]${taskTitle}[/TASK]`
-    : "";
-  const proseText = `Created task agent${results.length > 1 ? "s" : ""}.${widgetBlock}`;
-  await callbackText(callback, proseText);
+  const createdText = `Created task agent${results.length > 1 ? "s" : ""}.`;
 
-  // The creation ack is the complete answer to a single-operation turn:
-  // verified + turnComplete make the callback the sole delivery instead of
-  // double-messaging with the evaluator's paraphrase.
+  // Planner-facing only, like spawn_agent's result: it states the async
+  // handoff and ends the planner loop; the model phrases the ack.
   return {
     success: true,
-    text: proseText,
-    userFacingText: proseText,
-    verifiedUserFacing: true,
-    turnComplete: true,
+    text: `${createdText} The delegated work continues asynchronously — its verified result is not available yet and will arrive as a follow-up message.`,
+    continueChain: false,
     data: {
       agents: results,
       taskId: threadId,
@@ -1584,6 +1616,7 @@ async function runLanePlan(
         },
         laneExecutionContent(content),
         callback,
+        true,
       );
     })()
       .then((result) => {
@@ -1846,11 +1879,13 @@ async function runSpawnAgent(
     // The pin does not unconditionally override: declared character routing or
     // an explicitly named backend takes precedence over it, while a bare
     // planner guess sits below the pin (it routinely guesses from context tokens).
+    const ownerRequested = await isOwnerRequest(runtime, message);
     const routed = resolveCodingBackendLogged({
       runtime,
       explicit: pickString(params, content, "requestedBackend"),
       tag: pickString(params, content, "taskComplexity"),
       plannerGuess: pickString(params, content, "agentType"),
+      ownerRequested,
     });
     const agentType = (routed?.agentType ??
       (await service.resolveAgentType?.({
@@ -1858,6 +1893,12 @@ async function runSpawnAgent(
         workdir: pickString(params, content, "workdir"),
       })) ??
       "codex") as AgentType;
+    const ownerOnlyRefusal = await ownerOnlyBackendRefusal(
+      runtime,
+      agentType,
+      async () => ownerRequested,
+    );
+    if (ownerOnlyRefusal) return errorResult("FORBIDDEN", ownerOnlyRefusal);
     // Resolve the spawn workdir. A matching `TASK_AGENT_WORKDIR_ROUTES`
     // route outranks the planner-supplied workdir — the planner just
     // guesses a path-shaped string from context, while a route is
@@ -2100,6 +2141,7 @@ async function runSpawnAgent(
         // sub-agent on a failed verification without reconstructing it.
         // SessionInfo itself doesn't carry initialTask; metadata does.
         initialTask: taskWithRouteHints,
+        [OWNER_REQUESTED_METADATA_KEY]: ownerRequested,
       },
     });
 
@@ -2150,6 +2192,7 @@ async function runSpawnAgent(
             metadata: {
               ...(resolvedSpawnSource ? { source: resolvedSpawnSource } : {}),
               spawnPath: "spawn_agent",
+              [OWNER_REQUESTED_METADATA_KEY]: ownerRequested,
             },
           });
           durableTaskId = detail?.id ?? null;
@@ -2272,7 +2315,7 @@ async function runSpawnAgent(
 
 async function runSend(
   runtime: IAgentRuntime,
-  _message: Memory,
+  message: Memory,
   state: State | undefined,
   params: Record<string, unknown>,
   content: Record<string, unknown>,
@@ -2307,6 +2350,14 @@ async function runSend(
         "No active task-agent sessions; spawn an agent first.",
       );
     }
+
+    // Input to an owner-only session is work on that backend.
+    const ownerOnlyRefusal = await ownerOnlyBackendRefusal(
+      runtime,
+      target.session.agentType,
+      () => isOwnerRequest(runtime, message),
+    );
+    if (ownerOnlyRefusal) return errorResult("FORBIDDEN", ownerOnlyRefusal);
 
     if (keys) {
       await service.sendKeysToSession(target.session.id, keys);
@@ -2943,17 +2994,6 @@ function sessionMatchesTaskStatus(
 export const DUPLICATE_SPAWN_FORCE_RE =
   /\b(?:again|another|fresh|new one|restart|retry|redo|re-?run|one more|from scratch)\b/i;
 
-/** Task statuses that mean the work is still in flight (or parked awaiting a
- * verdict/human) — a near-identical new spawn against one of these is a
- * duplicate, not a new request. */
-const IN_FLIGHT_TASK_STATUSES: ReadonlySet<string> = new Set([
-  "open",
-  "active",
-  "validating",
-  "waiting_on_user",
-  "blocked",
-]);
-
 function goalTokenSet(text: string): Set<string> {
   return new Set(
     text
@@ -3022,9 +3062,10 @@ async function findNearDuplicateInFlightWork(args: {
   if (DUPLICATE_SPAWN_FORCE_RE.test(userText)) return undefined;
   try {
     if (taskService && typeof taskService.listTasks === "function") {
-      const tasks = await taskService.listTasks({});
+      const tasks = await taskService.listTasks({
+        statuses: IN_FLIGHT_TASK_STATUSES,
+      });
       for (const task of tasks) {
-        if (!IN_FLIGHT_TASK_STATUSES.has(task.status)) continue;
         const existingText = `${task.title} ${task.originalRequest ?? ""}`;
         if (hasDistinctSlugIdentity(candidateText, existingText)) continue;
         if (
@@ -4920,6 +4961,7 @@ async function settleTasksOperation(args: {
   capturedCallbacks: CapturedCallback[];
   callback?: HandlerCallback;
 }): Promise<ActionResult> {
+  const { receipt, outcomeUnknown } = tasksEffectReceipt(args);
   // A read-only op's text is planner observation, never a user reply: keep it
   // out of the canonical callback so the planner composes the answer instead of
   // shipping the raw tool text. Covers the GitHub-issue reads (#18248) AND the
@@ -4927,27 +4969,32 @@ async function settleTasksOperation(args: {
   // list_agents/history/share — whose internal text otherwise leaks verbatim
   // (live 2026-08-10: a status-y ask routed to list_agents shipped
   // "No active task agents. Use TASKS { action: \"create\" }..." to chat).
-  const plannerOnlyRead =
+  // An accepted create or spawn_agent is an async handoff with the same
+  // contract: its text states the delegation to the planner, and the model
+  // phrases the turn's ack.
+  const plannerOnly =
     TASKS_READ_ONLY_OPERATIONS.has(args.operation) ||
-    isIssueReadOperation(args.operation, args.params, args.content);
-  const { receipt, outcomeUnknown } = tasksEffectReceipt(args);
+    isIssueReadOperation(args.operation, args.params, args.content) ||
+    ((args.operation === "create" || args.operation === "spawn_agent") &&
+      args.result.success &&
+      receipt.outcome === "applied");
   const {
     userFacingText: _readUserFacingText,
     verifiedUserFacing: _readVerifiedUserFacing,
     turnComplete: _readTurnComplete,
     ...plannerOnlyResult
   } = args.result;
-  let result = plannerOnlyRead ? plannerOnlyResult : args.result;
+  let result = plannerOnly ? plannerOnlyResult : args.result;
   const helperEmittedCallback =
-    !plannerOnlyRead && args.capturedCallbacks.length > 0;
+    !plannerOnly && args.capturedCallbacks.length > 0;
   let canonical = helperEmittedCallback
     ? args.capturedCallbacks.at(-1)
     : undefined;
-  if (!plannerOnlyRead && !canonical && effectString(result.text)) {
+  if (!plannerOnly && !canonical && effectString(result.text)) {
     canonical = { response: { text: effectString(result.text) } };
   }
   if (
-    !plannerOnlyRead &&
+    !plannerOnly &&
     args.capturedCallbacks.length > 1 &&
     effectString(result.text) !== undefined
   ) {
@@ -5224,17 +5271,17 @@ export const tasksAction: Action & {
     "Available operations (pick via `action`): create or spawn_agent (delegate new coding work), send (forward a message to an existing coding sub-agent), list_agents / history (read state), " +
     "control (pause | resume | continue | archive | reopen a task), share (surface task output), provision_workspace / submit_workspace (workspace setup and PR submission), manage_issues (GitHub issue operations), cancel / stop_agent (end a coding sub-agent run when the user asks to). " +
     "Choose this when the user asks to delegate coding work, use a coding adapter by name, or run multi-step development work — it is the canonical path for coding sub-agents and is preferred over inline FILE / BASH for delegated work. " +
-    "NOT for building a web app/page/site/interactive HTML the user wants hosted with a live link — that is APP action=create, which builds, verifies, AND publishes; a task workspace has no hosting path, so files built here never get a URL.",
+    "Also the path for a web app/page/site/interactive HTML the user wants built and hosted with a live link: use either create or spawn_agent — the same spawn contract publishes it to the configured host and reports the live URL.",
   descriptionCompressed:
     "ACP coding sub-agent elizaos|pi-agent|claude|codex: spawn|send|control|list|history",
   routingHint:
-    'delegate coding/software/dev work to a coding sub-agent, or drive a coding adapter by name (elizaos|pi-agent|claude|codex) -> TASKS; GitHub issue operations ("any new issues?", list/create/comment/close/reopen an issue) -> TASKS_MANAGE_ISSUES — this IS the github-issues tool; do NOT use for personal reminders, check-ins, follow-ups, alarms or recurring routines ("remind me...", "every day...") -> use the exposed reminder/scheduling tool instead (TRIGGER_CREATE, SCHEDULED_TASKS, or OWNER_REMINDERS — whichever is exposed this turn); do NOT use for building a web app/page/site/interactive HTML the user wants hosted at a live link ("make me a website", "teach me with an interactive page", "host it and give me the link") -> APP action=create, which builds AND publishes — a coding task workspace has no hosting path; not for one-off inline file edits or shell commands -> FILE / BASH',
+    'delegate coding/software/dev work to a coding sub-agent, or drive a coding adapter by name (elizaos|pi-agent|claude|codex) -> TASKS; GitHub issue operations ("any new issues?", list/create/comment/close/reopen an issue) -> TASKS_MANAGE_ISSUES — this IS the github-issues tool; do NOT use for personal reminders, check-ins, follow-ups, alarms or recurring routines ("remind me...", "every day...") -> use the exposed reminder/scheduling tool instead (TRIGGER_CREATE, SCHEDULED_TASKS, or OWNER_REMINDERS — whichever is exposed this turn); building a web app/page/site/interactive HTML the user wants hosted at a live link ("make me a website", "teach me with an interactive page", "host it and give me the link") -> TASKS action=create or spawn_agent (either one), whose spawn contract publishes it to the configured host and reports the live URL; not for one-off inline file edits or shell commands -> FILE / BASH',
   suppressPostActionContinuation: true,
   // When the planner picks any TASKS_* subaction (spawn_agent, send, etc.),
-  // suppress the response-handler's draft reply: the action's own callback
-  // emits the canonical ack ("On it — spawning…") and the sub-agent's real
-  // answer comes back asynchronously via the router. Shipping the draft
-  // alongside the ack duplicates the bot's voice and confuses the user.
+  // hold the response-handler's draft reply instead of sending it before the
+  // planner runs. An accepted create returns no user-facing text, so the
+  // model phrases the turn's ack (or keeps the held draft) once the launch is
+  // accepted; the sub-agent's real answer comes back via the router.
   suppressEarlyReply: true,
   // Sub-agent work continues after the turn returns and the real result
   // arrives later via the router — the structural signal that a pre-planner
@@ -5620,20 +5667,6 @@ export const tasksAction: Action & {
         "Additional metadata for action=create / action=spawn_agent.",
       required: false,
       schema: { type: "object" as const },
-    },
-    {
-      name: "taskRoomId",
-      description:
-        "Optional task-owner swarm room id for action=create / action=spawn_agent.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "worktreeRoomId",
-      description:
-        "Optional worktree coordination swarm room id for action=create / action=spawn_agent.",
-      required: false,
-      schema: { type: "string" as const },
     },
   ],
   validate: async (runtime, message) => {

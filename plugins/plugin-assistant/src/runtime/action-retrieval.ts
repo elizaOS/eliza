@@ -806,8 +806,12 @@ export function preferredOperationNames(
     list: ["list", "enumerate", "count"],
     search: ["search", "find", "lookup"],
     create: ["create", "add", "write", "save"],
-    update: ["update", "edit", "change", "modify", "replace"],
+    update: ["update", "edit", "change", "modify", "replace", "move"],
+    // Moving a record updates it, so the word names both: a family with its
+    // own MOVE operation keeps it, the rest resolve to their update.
+    move: ["move"],
     delete: ["delete", "remove", "erase"],
+    cancel: ["cancel"],
     get: ["get", "read", "retrieve"],
     next: ["next", "upcoming"],
     open: ["open", "navigate"],
@@ -832,6 +836,13 @@ export function preferredOperationNames(
     wanted.add(operation);
     if (operation === "search") wanted.add("list");
     if (operation === "update") wanted.add("patch");
+    // Families without a CANCEL operation cancel by deleting ("cancel the
+    // meeting" is CALENDAR_DELETE_EVENT); families with one keep both. One
+    // occurrence of a recurring item ("cancel tomorrow's alarm") is a skip.
+    if (operation === "cancel") {
+      wanted.add("delete");
+      wanted.add("skip");
+    }
     if (operation === "get") {
       wanted.add("read");
       wanted.add("list");
@@ -1088,15 +1099,21 @@ function buildCandidatePatterns(
   }
   return patterns;
 }
+// Equal scores share a rank, so a stage tie cannot become a fused difference
+// decided by the action name.
 function rankScores(scores: Map<string, number>): Map<string, number> {
   const ranked = new Map<string, number>();
+  let rank = 0;
+  let previousScore: number | undefined;
   Array.from(scores.entries())
     .filter(([, score]) => score > 0)
-    .sort(([leftName, leftScore], [rightName, rightScore]) => {
-      return rightScore - leftScore || leftName.localeCompare(rightName);
-    })
-    .forEach(([name], index) => {
-      ranked.set(name, index + 1);
+    .sort(([, leftScore], [, rightScore]) => rightScore - leftScore)
+    .forEach(([name, score], index) => {
+      if (score !== previousScore) {
+        rank = index + 1;
+        previousScore = score;
+      }
+      ranked.set(name, rank);
     });
   return ranked;
 }

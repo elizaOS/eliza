@@ -414,9 +414,11 @@ async function missResult(
   entityId: string,
 ): Promise<ActionResult> {
   if (miss?.kind !== "ambiguous") {
+    // Nothing was changed by a miss, so it never outranks a later successful call.
     return {
       ...failure("not_found", notFoundMessage(locator)),
       modelReplyRequired: true,
+      data: { actionName: "TODO", readOnlyOperation: true },
     };
   }
   const candidates = await Promise.all(

@@ -39,6 +39,11 @@ export function beginPendingHandoff(sessionId: string): string {
   return token;
 }
 
+/** True while a successor spawn for the session is in flight. */
+export function hasPendingHandoff(sessionId: string): boolean {
+  return inFlightHandoffTokens.has(sessionId);
+}
+
 /**
  * Retire a generation token once its spawn settled (success or failure).
  * Token-matched so a stale settle can never retire a newer handoff's token.

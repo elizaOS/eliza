@@ -8,6 +8,7 @@
  */
 
 import {
+  hardenIncomingUserMessage,
   type IAgentRuntime,
   type Memory,
   ModelType,
@@ -120,17 +121,27 @@ describe("attachmentsProvider", () => {
     // provider must not pay the conversation-history scan at all — that scan
     // was the largest composeState provider wall on text-only turns.
     let historyFetches = 0;
-    const result = await attachmentsProvider.get(
-      makeRuntime([attachmentMemory()], {
-        onHistoryFetch: () => {
-          historyFetches += 1;
-        },
-      }),
+    const runtime = makeRuntime([attachmentMemory()], {
+      onHistoryFetch: () => {
+        historyFetches += 1;
+      },
+    });
+    // A connector message's security envelope names documents and content;
+    // only the user's own words decide relevance.
+    const connectorMessage = makeMessage({
+      text: "can you try this?",
+      source: "discord",
+    });
+    hardenIncomingUserMessage(connectorMessage);
+    for (const message of [
       makeMessage({ text: "can you try this?" }),
-    );
+      connectorMessage,
+    ]) {
+      const result = await attachmentsProvider.get(runtime, message);
 
-    expect(result.text).toBe("");
-    expect(result.data?.visibleAttachments).toHaveLength(0);
+      expect(result.text).toBe("");
+      expect(result.data?.visibleAttachments).toHaveLength(0);
+    }
     expect(historyFetches).toBe(0);
   });
 

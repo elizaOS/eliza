@@ -9,7 +9,10 @@ import {
   type Plugin,
   promoteSubactionsToActions,
 } from "@elizaos/core";
-import { ownerRemindersAction } from "./actions/owner-surfaces.ts";
+import {
+  ownerRemindersAction,
+  ownerRemindersPromotionOptions,
+} from "./actions/owner-surfaces.ts";
 import { ownerPrivateAction } from "./lifeops/access.ts";
 import {
   activateLifeOpsActivitySignals,
@@ -34,8 +37,10 @@ export const personalAssistantRemindersPlugin: Plugin = {
     "@elizaos/plugin-goals",
   ],
   schema: lifeOpsSchema,
-  actions:
-    promoteSubactionsToActions(ownerRemindersAction).map(ownerPrivateAction),
+  actions: promoteSubactionsToActions(
+    ownerRemindersAction,
+    ownerRemindersPromotionOptions,
+  ).map(ownerPrivateAction),
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     if (!getChannelRegistry(runtime)) {
       const channels = createChannelRegistry();

@@ -950,6 +950,24 @@ describe("long progressive planner trajectories", () => {
     expect(partition.fresh).toEqual([]);
     expect(partition.nonRetryable).toEqual([call]);
   });
+  it("runs an inspection again after a coding mutation in the same response", () => {
+    const [read, edit] = ["READ", "EDIT"].map((name) => ({
+      id: name,
+      name,
+      params: { path: "/workspace/file" },
+    }));
+    expect(
+      partitionRedundantSucceededCalls([read, edit, edit, read], {
+        codingMode: true,
+        archivedSteps: [],
+        steps: [],
+      } as unknown as PlannerTrajectory),
+    ).toEqual({
+      fresh: [read, edit, read],
+      redundant: [edit],
+      nonRetryable: [],
+    });
+  });
   it("keeps native reply schemas identical throughout the trajectory", async () => {
     const h = harness(4);
     const schemas: string[] = [];
@@ -1181,8 +1199,9 @@ describe("long progressive planner trajectories", () => {
               );
             return {
               text: "",
-              toolCalls: ["WRITE", "READ"].map((name) => ({
-                id: `pending-${name}`,
+              // The response repeats its write; the queue runs it once.
+              toolCalls: ["WRITE", "WRITE", "READ"].map((name, index) => ({
+                id: `pending-${index}`,
                 name,
                 arguments: {
                   path: "/workspace/output",
@@ -1218,73 +1237,98 @@ describe("long progressive planner trajectories", () => {
     },
   );
 
-  it("repairs a typed pre-execution rejection before evaluating completion", async () => {
-    let rounds = 0;
-    const executed: string[] = [];
-    const result = await runPlannerLoop({
-      codingMode: false,
-      context: { id: "rejected-command" },
-      runtime: {
-        useModel: async () => {
-          if (++rounds > 2)
-            return {
-              text: JSON.stringify({
-                decision: "FINISH",
-                success: false,
-                thought:
-                  "Rejected attempt retained; corrected command completed.",
-                messageToUser: "The corrected command completed.",
-              }),
-            };
-          return {
-            text: "",
-            toolCalls: [
-              {
-                id: `repair-${rounds}`,
-                name: "TERMINAL_SHELL",
-                arguments: {
-                  command:
-                    rounds === 1
-                      ? "invalid multiline"
-                      : "corrected single line",
-                  eliza_turn_scope: "more_work_pending",
-                },
-              },
-            ],
-          };
+  it.each([
+    {
+      failureProvenance: {
+        kind: "handler_error",
+        boundary: "handler",
+        code: "TERMINAL_COMMAND_SINGLE_LINE_REQUIRED",
+        retryable: true,
+      },
+      data: { acceptance: "rejected", executionStatus: "not_started" },
+    },
+    { data: { parameterErrors: ["command must be a single line"] } },
+    {
+      data: { coachingFailure: true },
+      effectReceipts: [
+        {
+          receiptId: "rejected-command",
+          operation: "terminal.run",
+          resource: { kind: "terminal.command", id: "rejected-command" },
+          artifacts: [],
+          idempotency: { key: null, replayed: false },
+          observedAt: "2026-10-10T00:00:00.000Z",
+          outcome: "failed",
+          failure: {
+            code: "TERMINAL_COMMAND_SINGLE_LINE_REQUIRED",
+            retryable: false,
+            acceptance: "rejected",
+          },
         },
-      },
-      executeToolCall: async (call) => {
-        if (executed.length === 1) expect(rounds).toBe(2);
-        executed.push(String(call.params?.command));
-        return rounds === 1
-          ? {
-              success: false,
-              text: "Command must be a single line",
-              failureProvenance: {
-                kind: "handler_error",
-                boundary: "handler",
-                code: "TERMINAL_COMMAND_SINGLE_LINE_REQUIRED",
-                retryable: true,
-              },
-              data: { acceptance: "rejected", executionStatus: "not_started" },
-            }
-          : {
-              success: true,
-              text: "Created and verified",
-              continueChain: false,
+      ],
+    },
+  ] as const)(
+    "repairs a pre-execution rejection before evaluating completion (%o)",
+    async (rejection) => {
+      let rounds = 0;
+      const executed: string[] = [];
+      const result = await runPlannerLoop({
+        codingMode: false,
+        context: { id: "rejected-command" },
+        runtime: {
+          useModel: async () => {
+            if (++rounds > 2)
+              return {
+                text: JSON.stringify({
+                  decision: "FINISH",
+                  success: false,
+                  thought:
+                    "Rejected attempt retained; corrected command completed.",
+                  messageToUser: "The corrected command completed.",
+                }),
+              };
+            return {
+              text: "",
+              toolCalls: [
+                {
+                  id: `repair-${rounds}`,
+                  name: "TERMINAL_SHELL",
+                  arguments: {
+                    command:
+                      rounds === 1
+                        ? "invalid multiline"
+                        : "corrected single line",
+                    eliza_turn_scope: "more_work_pending",
+                  },
+                },
+              ],
             };
-      },
-    });
-    expect(executed).toEqual(["invalid multiline", "corrected single line"]);
-    expect(
-      result.trajectory.steps.some(
-        (step) =>
-          step.result?.failureProvenance?.code ===
-          "TERMINAL_COMMAND_SINGLE_LINE_REQUIRED",
-      ),
-    ).toBe(true);
-  });
+          },
+        },
+        executeToolCall: async (call) => {
+          if (executed.length === 1) expect(rounds).toBe(2);
+          executed.push(String(call.params?.command));
+          return rounds === 1
+            ? {
+                success: false,
+                text: "Command must be a single line",
+                ...rejection,
+              }
+            : {
+                success: true,
+                text: "Created and verified",
+                continueChain: false,
+              };
+        },
+      });
+      expect(executed).toEqual(["invalid multiline", "corrected single line"]);
+      expect(
+        result.trajectory.steps.some(
+          (step) => step.result?.text === "Command must be a single line",
+        ),
+      ).toBe(true);
+    },
+  );
 
   it("replans after a failed prerequisite without running its dependent queued write", async () => {
     let round = 0;

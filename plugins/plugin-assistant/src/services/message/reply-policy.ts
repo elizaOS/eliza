@@ -379,6 +379,8 @@ export function createV5ReplyStrategyResult(args: {
   transcriptVisibility?: "internal";
   /** Applied receipt IDs grounding this exact text at the final send boundary. */
   effectReceiptIds?: readonly string[];
+  /** Fetched URLs and web search queries this turn read; stored so later turns see them beside the reply. */
+  webSources?: readonly ({ url: string } | { query: string })[];
   sourceReplyRendering?: SourceReplyRendering;
   /**
    * Provenance for the humanness voice gate (#14873): `true` when `text` is
@@ -430,6 +432,7 @@ export function createV5ReplyStrategyResult(args: {
     ...(args.effectReceiptIds?.length
       ? { effectReceiptIds: [...args.effectReceiptIds] }
       : {}),
+    ...(args.webSources?.length ? { webSources: [...args.webSources] } : {}),
   };
   if (sourceReply)
     responseContent = bindSourceReplyContent(responseContent, sourceReply, {

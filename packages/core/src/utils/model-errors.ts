@@ -85,6 +85,17 @@ export function isModelOutputLimitFinishReason(reason: unknown): boolean {
 	return OUTPUT_LIMIT_FINISH_REASONS.has(normalized);
 }
 
+/**
+ * The provider stopped a response at its output-token ceiling. The partial
+ * response carried no executable call, so this is exhausted output budget
+ * rather than a failed action.
+ */
+export function isModelOutputLimitError(error: unknown): boolean {
+	return isModelOutputLimitFinishReason(
+		modelOutputIncompleteEvidence(error)?.finishReason,
+	);
+}
+
 /** Safe accounting evidence for a rejected model output. */
 export interface ModelOutputEvidence {
 	/** The gateway's wire reason need not be the underlying provider's reason. */

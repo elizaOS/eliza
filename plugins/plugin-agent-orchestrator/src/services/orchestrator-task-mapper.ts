@@ -71,6 +71,10 @@ export interface TaskThreadDto {
   /** Registered Project this task is bound to (null = unbound). Lets the task
    * list group by project without fetching each task's detail. */
   projectId: string | null;
+  /** Requesting room and swarm task room. Let a room-scoped listing read the
+   * list, which never rejects a task for a project binding that has since gone. */
+  roomId: string | null;
+  taskRoomId: string | null;
   latestActivityAt: number | null;
   decisionCount: number;
   usage: TaskUsageSummary;
@@ -449,6 +453,8 @@ export function toTaskThread(doc: OrchestratorTaskDocument): TaskThreadDto {
     latestWorkdir: doc.task.boundWorkdir ?? latest?.workdir ?? null,
     latestRepo,
     projectId: doc.task.projectId ?? null,
+    roomId: doc.task.roomId ?? null,
+    taskRoomId: doc.task.taskRoomId ?? null,
     latestActivityAt: doc.task.lastActivityAt,
     decisionCount: doc.decisions.length,
     usage: summarizeUsage(doc),

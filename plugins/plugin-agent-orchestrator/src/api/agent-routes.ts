@@ -20,6 +20,7 @@ import { assignAgentName } from "../services/agent-name-assignment.js";
 import { buildGoalFollowUp, buildGoalPrompt } from "../services/goal-prompt.js";
 import { isParentAgentBrokerWired } from "../services/parent-agent-broker.js";
 import { getTaskAgentFrameworkState } from "../services/task-agent-frameworks.js";
+import { OWNER_REQUESTED_METADATA_KEY } from "../services/task-policy.js";
 import {
   type AgentType,
   type ApprovalPreset,
@@ -689,6 +690,8 @@ export async function handleAgentRoutes(
           // Persist the bare goal so follow-up sends can re-anchor through
           // buildGoalFollowUp instead of parsing it out of the wrapped prompt.
           ...(taskText ? { goal: taskText } : {}),
+          // An authenticated API request is the owner's.
+          [OWNER_REQUESTED_METADATA_KEY]: true,
         },
       });
 

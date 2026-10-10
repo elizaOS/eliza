@@ -494,6 +494,37 @@ describe("group coordination on the real SQL path — latest-human-edge-wins", (
 		expect(slots[0]?.state).toBe("released");
 	});
 
+	it("a failed turn sends the character's own failure line", async () => {
+		const channelId = freshChannelId();
+		const sends: Sent[] = [];
+		const runtime = makeRuntime(AGENT_A, "instance-a", {
+			onGenerate: () => {
+				throw new Error("provider exploded");
+			},
+		});
+		runtime.character.templates = {
+			replyUnavailableFailureReply: () => "That one slipped away from me.",
+		};
+		const chan = makeGuildChannel(AGENT_A, CLIENT_A, channelId, sends);
+		const manager = new MessageManager(
+			makeService(runtime, CLIENT_A, channelId),
+			runtime,
+		);
+
+		await manager.handleMessage(
+			makeInbound({
+				channel: chan.channel,
+				guild: chan.guild,
+				channelId,
+				messageId: "222000000000000030",
+			}),
+		);
+
+		expect(sends.map((sent) => sent.content)).toEqual([
+			"That one slipped away from me.",
+		]);
+	});
+
 	it("explicit mention overrides edge staleness — addressed work still sends", async () => {
 		const channelId = freshChannelId();
 		const sends: Sent[] = [];

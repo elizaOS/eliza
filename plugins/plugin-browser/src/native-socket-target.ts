@@ -1,7 +1,7 @@
 /** Connects a user-owned native messaging socket to one exact Chromium profile without browser replay. */
 
 import { randomUUID } from "node:crypto";
-import { chmod, mkdir, rm, stat } from "node:fs/promises";
+import { chmod, lstat, mkdir, rm, stat } from "node:fs/promises";
 import {
   createConnection,
   createServer,
@@ -189,6 +189,31 @@ export function androidNativeBrowserSocketPath(
   return path;
 }
 
+/**
+ * Unlinks a socket file left by an unclean shutdown once a connect probe proves no
+ * listener owns it. A live socket or a non-socket file stays for listen() to reject.
+ */
+async function removeStaleSocket(path: string): Promise<void> {
+  const entry = await lstat(path).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return undefined;
+    throw error;
+  });
+  if (!entry?.isSocket()) return;
+  const stale = await new Promise<boolean>((resolve, reject) => {
+    const probe = createConnection({ path });
+    probe.once("connect", () => {
+      probe.destroy();
+      resolve(false);
+    });
+    probe.once("error", (error: NodeJS.ErrnoException) =>
+      error.code === "ECONNREFUSED" || error.code === "ENOENT"
+        ? resolve(true)
+        : reject(error),
+    );
+  });
+  if (stale) await rm(path, { force: true });
+}
+
 export class NativeSocketBrowserTarget implements BrowserTarget {
   readonly id = "chromium-device";
   readonly name = "This device's Chromium";
@@ -315,6 +340,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
       throw new Error(
         "Native browser socket directory must be private to the runtime user.",
       );
+    await removeStaleSocket(path);
     const server = createServer((socket) => this.attach(socket));
     this.server = server;
     await new Promise<void>((resolve, reject) => {

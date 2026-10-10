@@ -51,6 +51,12 @@ export interface MessageProcessingOptions {
 	/** Transient progress from existing inference; never a persisted or final reply. */
 	onPlanningAcknowledgment?: (text: string) => void;
 	/**
+	 * Called at most once when Stage 1 commits the turn to a response; never
+	 * for IGNORE/STOP or gated turns. Presence only: it carries no content and
+	 * persists nothing. Hosts may start a typing indicator.
+	 */
+	onResponseDecision?: () => void;
+	/**
 	 * When true, run a follow-up reasoning pass after actions complete so the
 	 * agent can decide whether to share results, run another action, or stop.
 	 * Defaults to enabled unless runtime.getSetting("CONTINUE_AFTER_ACTIONS")

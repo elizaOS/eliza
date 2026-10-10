@@ -20,6 +20,7 @@ import { providerOriginals } from "../../runtime/provider-originals.ts";
 import {
   priorDialogueContent,
   priorDialogueOriginalText,
+  quotableDialogue,
 } from "./dialogue-context";
 import type { HistoryDiscovery } from "./history-discovery";
 import {
@@ -327,8 +328,9 @@ export function createSourceReplySnapshot(
     const speaker =
       typeof meta?.speakerName === "string" ? meta.speakerName : undefined;
     if (
-      priorDialogueContent(raw, speaker) !== event.segment.content &&
-      priorDialogueContent(raw.trim(), speaker) !== event.segment.content
+      priorDialogueContent(raw, speaker) !== quotableDialogue(event.segment) &&
+      priorDialogueContent(raw.trim(), speaker) !==
+        quotableDialogue(event.segment)
     )
       continue;
     originals.set(id, raw);

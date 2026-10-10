@@ -136,6 +136,14 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
       description: "Events, appointments and availability.",
       sensitivity: "private",
       cacheScope: "turn",
+      aliases: [
+        "event",
+        "events",
+        "appointment",
+        "appointments",
+        "meeting",
+        "meetings",
+      ],
       roleGate: { minRole: "ADMIN" },
     },
     {
@@ -149,9 +157,13 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "tasks",
       label: "Tasks",
-      description: "Todos, reminders, habits, routines and tracked progress.",
+      description:
+        "Timed reminders and alarms, todos, habits, routines and tracked progress.",
       sensitivity: "personal",
       cacheScope: "agent",
+      // Domain words for intent inference; an action's own context id
+      // outranks an alias.
+      aliases: ["reminder", "reminders", "alarm", "alarms"],
       subcontexts: ["goals", "todos", "productivity"],
       roleGate: { minRole: "ADMIN" },
     },
@@ -167,7 +179,8 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "todos",
       label: "Todos",
-      description: "Task lists and reminders.",
+      description:
+        "Checklist items with no set time; timed reminders and alarms are under tasks.",
       parent: "tasks",
       sensitivity: "personal",
       cacheScope: "agent",

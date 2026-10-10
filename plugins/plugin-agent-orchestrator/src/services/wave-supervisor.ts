@@ -24,6 +24,7 @@ import {
 } from "@elizaos/core";
 import type { TaskThreadDetailDto } from "./orchestrator-task-mapper.js";
 import type { CreateTaskInput } from "./orchestrator-task-types.js";
+import { OWNER_REQUESTED_METADATA_KEY } from "./task-policy.js";
 import { parseOwnerRepo } from "./workspace-github.js";
 import { preserveRegisteredWorkspace } from "./workspace-lifecycle.js";
 import type { WorkspaceRegistry } from "./workspace-registry.js";
@@ -980,6 +981,9 @@ export class WaveSupervisor extends Service {
         ...(salvagePath
           ? { salvagePath, salvageChangedFiles: changedFiles }
           : {}),
+        // A refill continues the lane's work and its owner provenance.
+        [OWNER_REQUESTED_METADATA_KEY]:
+          terminalLane.metadata[OWNER_REQUESTED_METADATA_KEY] === true,
       },
     });
     // Creation is the durable idempotency boundary: mark the predecessor before

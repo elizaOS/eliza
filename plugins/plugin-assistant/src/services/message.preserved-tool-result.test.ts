@@ -39,7 +39,9 @@ import {
   PROVIDER_CONTEXT_OVERFLOW,
   registerDirectActionRoutingRule,
 } from "@elizaos/core";
+import type { CharacterFailureTemplates } from "@elizaos/host/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { modelOutputIncomplete } from "../runtime/__tests__/planner-fixtures.ts";
 import type { PlannerToolResult } from "../runtime/planner-loop.ts";
 import {
   answerlessToolTurnReport,
@@ -132,6 +134,7 @@ async function createHarness(options: {
   evaluatorFailure?: Error;
   onEvaluator?: () => void;
   plannerCall?: () => ReturnType<typeof plannerCalendarCall>;
+  templates?: Partial<CharacterFailureTemplates>;
 }): Promise<Harness> {
   const runtime = createSQLiteTestRuntime({
     plugins: [createAssistantPlugin()],
@@ -140,6 +143,7 @@ async function createHarness(options: {
       name: "Preserved Result Integration",
       bio: "Exercises the planner-loop failure rescue seam.",
       settings: {},
+      ...(options.templates ? { templates: options.templates } : {}),
     }),
 
     logLevel: "fatal",
@@ -1885,6 +1889,80 @@ describe("planner-loop death after a completed tool", () => {
     // The loop failure is still reported — the rescue is a degrade, not a
     // success mask.
     expect(harness.reportedScopes).toContain("MessageService.plannerLoop");
+  });
+
+  const FAILURE_TEMPLATES = {
+    transientFailureReply: "sentinel: transient",
+    plannerExhaustionFailureReply: "sentinel: exhausted",
+  } satisfies Partial<CharacterFailureTemplates>;
+
+  it.each([
+    {
+      failure: "an unexpected error",
+      error: EVALUATOR_FAILURE,
+      template: "transientFailureReply" as const,
+      kind: "handler_error",
+    },
+    {
+      failure: "an output-limit stop",
+      error: modelOutputIncomplete(),
+      template: "plannerExhaustionFailureReply" as const,
+      kind: "planner_exhaustion",
+    },
+  ])(
+    "voices $failure after a completed tool with the character's own line",
+    async ({ error, template, kind }) => {
+      const harness = await createHarness({
+        actionResult: {
+          success: true,
+          text: DIAGNOSTIC,
+          userFacingText: USER_FACING,
+          verifiedUserFacing: true,
+        },
+        evaluatorFailure: error,
+        templates: FAILURE_TEMPLATES,
+      });
+
+      const result = await new DefaultMessageService().handleMessage(
+        harness.runtime,
+        makeMessage(harness.runtime, "look up the eliza-test entry"),
+        harness.callback,
+      );
+
+      expect(result.responseContent?.text).toBe(
+        `${USER_FACING}\n\n${FAILURE_TEMPLATES[template]}`,
+      );
+      expect(result.requestFulfilled).toBe(false);
+      expect(result.outcome).toMatchObject({
+        status: "failed",
+        error: { kind, code: "PLANNER_INTERRUPTED_AFTER_ACTION" },
+      });
+      expect(visibleTexts(harness.callbacks)).toEqual([
+        result.responseContent?.text,
+      ]);
+    },
+  );
+
+  it("replans once after an output-limit stop, then fails as planner exhaustion", async () => {
+    let plans = 0;
+    const harness = await createHarness({
+      actionResult: { success: true },
+      plannerCall: () => {
+        plans++;
+        throw modelOutputIncomplete();
+      },
+    });
+
+    const result = await new DefaultMessageService().handleMessage(
+      harness.runtime,
+      makeMessage(harness.runtime, "look up the eliza-test entry"),
+      harness.callback,
+    );
+
+    expect(plans).toBe(2);
+    expect(result.responseContent).toMatchObject({
+      failureKind: "planner_exhaustion",
+    });
   });
 
   it.each([ChannelType.DM, ChannelType.VOICE_DM])(

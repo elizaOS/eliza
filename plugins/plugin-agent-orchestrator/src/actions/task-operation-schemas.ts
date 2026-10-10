@@ -17,8 +17,6 @@ const sessionCreation = [
   "validator",
   "maxRetries",
   "onVerificationFail",
-  "taskRoomId",
-  "worktreeRoomId",
 ] as const;
 
 const operationParameters = {

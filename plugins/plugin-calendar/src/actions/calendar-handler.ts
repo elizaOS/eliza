@@ -1183,6 +1183,9 @@ export function rejectedArgumentForCalendarServiceError(
       return "details.notifyAttendees";
     case "ELIZA_CALENDAR_RECURRENCE_UNSUPPORTED":
       return "details.recurrence";
+    case "CALENDAR_NOTE_SOURCE_CONFLICT":
+    case "CALENDAR_NOTE_SOURCE_INVALID":
+      return "details.sourceNote";
     default:
       return undefined;
   }
@@ -1195,7 +1198,6 @@ function buildCalendarServiceErrorFallback(
   if (
     error.code === "CALENDAR_SEARCH_QUERY_REQUIRED" ||
     error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
-    error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" ||
     error.code === "CALENDAR_TARGET_SELECTOR_INVALID"
   ) {
     return error.message;
@@ -2035,8 +2037,8 @@ export function resolveCalendarMutationCandidates(args: {
   titleHint: string | undefined;
   texts: (string | undefined)[];
   timeZone: string;
-  /** Model-authored `details.date`, so a contradiction only it causes can be told apart from one the user stated. */
-  explicitDate?: string;
+  /** The planner supplied a date, as `details.date` or inside a typed `targetKind: "query"` target, so a contradiction only it causes can be told apart from one the user stated. */
+  plannerAuthoredDate?: boolean;
   /** Target text with the planner's date field excluded by provenance. */
   nonPlannerDateTexts?: (string | undefined)[];
 }): LifeOpsCalendarEvent[] {
@@ -2092,14 +2094,14 @@ export function resolveCalendarMutationCandidates(args: {
     onDate.length === 0 &&
     byTitle.length === 1 &&
     titleHint?.trim() &&
-    args.explicitDate &&
+    args.plannerAuthoredDate &&
     args.nonPlannerDateTexts
   ) {
-    // The only date came from the planner's `details.date` and it contradicts
-    // the single event carrying the requested title. The user's own words name
-    // no day, so the title identifies the target and the detail was a
-    // mis-resolved weekday. A day the user
-    // stated, or several title matches, still take the strict paths above.
+    // The only date came from the planner (its `details.date`, or a day it
+    // folded into a typed query target) and it contradicts the single event
+    // carrying the requested title. The user's own words name no day, so the
+    // title identifies the target. A day the user stated, or several title
+    // matches, still take the strict paths above.
     const userStatedDate = resolveStatedTargetLocalDate({
       action: args.action,
       texts: args.nonPlannerDateTexts.map(dateText),
@@ -3751,6 +3753,8 @@ type CreateEventRequestBuildArgs = {
 
 type CreateEventRequestBuildResult = {
   title: string | undefined;
+  /** Proposed addresses not admitted as guests: left off the request and reported. */
+  attendeesNotAdded: string[];
   resolvedStartAt: string | undefined;
   resolvedWindowPreset:
     | "tomorrow_morning"
@@ -3917,12 +3921,17 @@ export function buildCreateEventRequest(
           args.fallbackRequest?.recurrence,
         ],
   );
+  const attendees = userAuthorizedCalendarAttendees(
+    normalizeCalendarAttendees(args.details) ?? args.fallbackRequest?.attendees,
+    args.authorizingUserTexts ?? [],
+  );
 
   return {
     title,
     resolvedStartAt,
     resolvedWindowPreset,
     travelIntent,
+    attendeesNotAdded: attendees.notAdded,
     request: {
       sourceNote: parseCalendarNoteSource(
         args.details?.sourceNote !== undefined
@@ -3954,23 +3963,45 @@ export function buildCreateEventRequest(
         args.fallbackRequest?.timeZone,
       durationMinutes: resolvedDurationMinutes,
       windowPreset: resolvedWindowPreset,
-      attendees: userAuthorizedCalendarAttendees(
-        normalizeCalendarAttendees(args.details) ??
-          args.fallbackRequest?.attendees,
-        args.authorizingUserTexts ?? [],
-      ),
+      attendees: attendees.attendees,
       recurrence,
     },
   };
 }
 
+/** The planner's selected originals, when the state carries their source array. */
+function selectedActionSources(state: State | undefined) {
+  const selected = state?.values?.selectedActionConversation;
+  if (typeof selected !== "string") return undefined;
+  let sources: unknown;
+  try {
+    sources = JSON.parse(selected);
+  } catch {
+    // error-policy:J3 A malformed optional value carries no sources.
+    return undefined;
+  }
+  return Array.isArray(sources) ? sources : undefined;
+}
+
 export function formatCreateEventRecentConversation(
   state: State | undefined,
 ): string {
-  // Keep the provider's complete source, including continuation lines and
-  // source metadata. Parsing line prefixes discards multi-line user evidence.
   const selected = state?.values?.selectedActionConversation;
-  if (typeof selected === "string") return selected;
+  if (typeof selected === "string") {
+    // The model reads each source complete: when it was said, by which side,
+    // and its whole text with continuation lines. Identifiers, room and entity
+    // bindings and hashes serve only the code-side authority check.
+    const sources = selectedActionSources(state);
+    return sources
+      ? JSON.stringify(
+          sources.map((source) => ({
+            createdAt: source.createdAt,
+            label: source.segment.label,
+            content: source.segment.content,
+          })),
+        )
+      : selected;
+  }
   const conversation = state?.values?.recentMessages;
   if (typeof conversation === "string" && conversation.length > 0)
     return conversation;
@@ -3984,16 +4015,8 @@ export function calendarAuthorizingUserTexts(
   message: Memory,
 ): string[] {
   const current = messageText(message);
-  const selected = state?.values?.selectedActionConversation;
-  if (typeof selected !== "string") return [current];
-  let sources: unknown;
-  try {
-    sources = JSON.parse(selected);
-  } catch {
-    // error-policy:J3 Malformed optional source evidence grants no authority.
-    return [current];
-  }
-  if (!Array.isArray(sources)) return [current];
+  const sources = selectedActionSources(state);
+  if (!sources) return [current];
   const originals: string[] = [];
   for (const source of sources) {
     if (
@@ -4633,23 +4656,9 @@ export function formatCalendarSearchResults(
   return lines.join("\n");
 }
 
-/** Validate address syntax without inferring whether a supplied recipient is intentional. */
-export function attendeeEmailAccepted(email: string): boolean {
-  return basicEmailValid(email);
-}
-
 /** RFC 2606 / RFC 6761 reserved names: documentation examples, never a mailbox. */
 const RESERVED_EXAMPLE_DOMAIN_PATTERN =
   /(?:^|\.)(?:example\.(?:com|net|org)|example|invalid|test|localhost)$/i;
-
-/** Reject unresolved attendees before any calendar write. */
-function calendarAttendeeIdentityRequired(): CalendarServiceError {
-  return new CalendarServiceError(
-    400,
-    "No event was created. A proposed attendee's email address is not verified. Ask whether that guest is intended and for their exact email address, or confirm that no guest should be included; do not guess an address or silently omit an attendee.",
-    "CALENDAR_ATTENDEE_IDENTITY_REQUIRED",
-  );
-}
 
 /** Malformed generated arguments can be repaired without inventing a user clarification. */
 function calendarAttendeeArgumentInvalid(): CalendarServiceError {
@@ -4660,12 +4669,19 @@ function calendarAttendeeArgumentInvalid(): CalendarServiceError {
   );
 }
 
-/** Every proposed attendee needs explicit address evidence before creating an event. */
+/**
+ * Only an address the user wrote is written as a guest. Any other proposed
+ * attendee is left off and reported; it never blocks the create.
+ */
 export function userAuthorizedCalendarAttendees(
   attendees: CreateLifeOpsCalendarEventAttendee[] | undefined,
   userTexts: ReadonlyArray<string | null | undefined>,
-): CreateLifeOpsCalendarEventAttendee[] | undefined {
-  if (!attendees?.length) return undefined;
+): {
+  attendees: CreateLifeOpsCalendarEventAttendee[] | undefined;
+  notAdded: string[];
+} {
+  const notAdded: string[] = [];
+  if (!attendees?.length) return { attendees: undefined, notAdded };
   const spoken = userTexts
     .filter((text): text is string => typeof text === "string")
     .join("\n")
@@ -4676,6 +4692,7 @@ export function userAuthorizedCalendarAttendees(
       .map((token) => token.replace(/^[._+-]+|[._+-]+$/g, ""))
       .filter((token) => token.length > 0),
   );
+  const kept: CreateLifeOpsCalendarEventAttendee[] = [];
   for (const attendee of attendees) {
     const email = attendee.email.trim().toLowerCase();
     const at = email.lastIndexOf("@");
@@ -4684,10 +4701,12 @@ export function userAuthorizedCalendarAttendees(
       !words.has(email) ||
       RESERVED_EXAMPLE_DOMAIN_PATTERN.test(email.slice(at + 1))
     ) {
-      throw calendarAttendeeIdentityRequired();
+      notAdded.push(attendee.email);
+    } else {
+      kept.push(attendee);
     }
   }
-  return attendees;
+  return { attendees: kept.length > 0 ? kept : undefined, notAdded };
 }
 
 export function normalizeCalendarAttendees(
@@ -4702,8 +4721,7 @@ export function normalizeCalendarAttendees(
     (attendee): CreateLifeOpsCalendarEventAttendee => {
       if (typeof attendee === "string") {
         const email = attendee.trim();
-        if (!attendeeEmailAccepted(email))
-          throw calendarAttendeeArgumentInvalid();
+        if (!basicEmailValid(email)) throw calendarAttendeeArgumentInvalid();
         return { email };
       }
       if (
@@ -4716,7 +4734,7 @@ export function normalizeCalendarAttendees(
       const record = attendee as Record<string, unknown>;
       if (
         typeof record.email !== "string" ||
-        !attendeeEmailAccepted(record.email.trim())
+        !basicEmailValid(record.email.trim())
       ) {
         throw calendarAttendeeArgumentInvalid();
       }
@@ -5863,6 +5881,7 @@ const calendarAction: CalendarHandlerAction = {
             throw error;
           }
         }
+        const { attendeesNotAdded } = createEventBuild;
         if (requestToApprove.grantId === ELIZA_CALENDAR_GRANT_ID) {
           const idempotencyKey = localCalendarOperationKey({
             message,
@@ -5908,9 +5927,7 @@ const calendarAction: CalendarHandlerAction = {
             )}.`;
           return respond({
             success: true,
-            text: await renderReply("create_event_completed", fallback, {
-              event: createdEvent,
-            }),
+            text: await renderReply("create_event_completed", fallback),
             effectReceipt: calendarEventMutationReceipt({
               event: createdEvent,
               idempotencyKey,
@@ -5921,6 +5938,7 @@ const calendarAction: CalendarHandlerAction = {
               subaction: "create_event",
               approvalRequired: false,
               event: createdEvent,
+              ...(attendeesNotAdded.length > 0 ? { attendeesNotAdded } : {}),
               ...(travelBuffer ? { travelBuffer } : {}),
             },
           });
@@ -5933,7 +5951,12 @@ const calendarAction: CalendarHandlerAction = {
         });
         return respond({
           success: true,
-          text: approval.text,
+          // The approval card is this path's whole reply, so it names the
+          // guests left off itself.
+          text:
+            attendeesNotAdded.length > 0
+              ? `${approval.text}\nNot added as a guest because the request did not give a usable address: ${attendeesNotAdded.join(", ")}.`
+              : approval.text,
           interaction: true,
           effectReceipt: calendarApprovalReceipt(approval),
           data: {
@@ -6026,9 +6049,9 @@ const calendarAction: CalendarHandlerAction = {
                   intent,
                   timeZone: planningTimeZone,
                 }),
-            explicitDate: explicitSourceQuery
-              ? undefined
-              : detailString(details, "date"),
+            plannerAuthoredDate:
+              explicitSourceQuery !== undefined ||
+              detailString(details, "date") !== undefined,
             nonPlannerDateTexts: mutationTargetTexts({
               details,
               currentMessage: messageText(message),
@@ -6430,9 +6453,7 @@ const calendarAction: CalendarHandlerAction = {
             )}.${builtInNotifyNote(details, targetEvent)}`;
           return respond({
             success: true,
-            text: await renderReply("update_event_completed", fallback, {
-              event: updatedEvent,
-            }),
+            text: await renderReply("update_event_completed", fallback),
             effectReceipt: calendarEventMutationReceipt({
               event: updatedEvent,
               idempotencyKey,
@@ -6546,7 +6567,10 @@ const calendarAction: CalendarHandlerAction = {
               intent,
               timeZone: planningTimeZone,
             }),
-            explicitDate: detailString(details, "date"),
+            plannerAuthoredDate:
+              (suppliedParams.targetKind === "query" &&
+                typeof suppliedParams.target === "string") ||
+              detailString(details, "date") !== undefined,
             nonPlannerDateTexts: mutationTargetTexts({
               details,
               currentMessage: messageText(message),
@@ -6721,9 +6745,7 @@ const calendarAction: CalendarHandlerAction = {
             `Deleted “${targetEvent.title}” from your calendar.${builtInNotifyNote(details, targetEvent)}`;
           return respond({
             success: true,
-            text: await renderReply("delete_event_completed", fallback, {
-              event: targetEvent,
-            }),
+            text: await renderReply("delete_event_completed", fallback),
             effectReceipt: calendarEventMutationReceipt({
               event: targetEvent,
               idempotencyKey,
@@ -7084,13 +7106,17 @@ const calendarAction: CalendarHandlerAction = {
         data: toActionData(feed),
       });
     } catch (error) {
-      // error-policy:J1 Source and local-time rejections require user input before dispatch.
+      // error-policy:J1 A local-time rejection needs the user's choice. A refused note
+      // reference is a planner argument that a fresh Notes read or its omission repairs.
       if (
         error instanceof ElizaError &&
         (error.code === "CALENDAR_NOTE_SOURCE_CONFLICT" ||
           error.code === "CALENDAR_NOTE_SOURCE_INVALID" ||
           error instanceof CalendarLocalTimeError)
       ) {
+        const rejectedArgument = rejectedArgumentForCalendarServiceError(
+          error.code,
+        );
         return respond({
           success: false,
           text: error.message,
@@ -7098,11 +7124,19 @@ const calendarAction: CalendarHandlerAction = {
             actionName: "CALENDAR",
             subaction,
             error: error.code,
-            ...(error instanceof CalendarLocalTimeError
-              ? { timeClarification: error.context }
-              : {}),
-            requiresInput: true,
-            awaitingUserInput: true,
+            ...(rejectedArgument
+              ? {
+                  coachingFailure: true,
+                  parameterErrors: [
+                    { path: rejectedArgument, message: error.message },
+                  ],
+                  invalidParameterNames: [rejectedArgument],
+                }
+              : {
+                  timeClarification: error.context,
+                  requiresInput: true,
+                  awaitingUserInput: true,
+                }),
             retryable: false,
           },
           effectReceipt: calendarFailedReceipt({
@@ -7134,11 +7168,9 @@ const calendarAction: CalendarHandlerAction = {
         // swallowed "mode must be one of ..." surfaced only as
         // CALENDAR_SERVICE_400).
         runtime.reportError("calendar:action", error, {
-          // The action owns this clarification; keep diagnostics without
-          // escalating repeated missing guest details into a second reply.
-          diagnosticOnly:
-            error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" ||
-            error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID",
+          // The planner repairs a malformed attendee argument on its next
+          // pass; keep diagnostics without escalating it into a second reply.
+          diagnosticOnly: error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID",
           subaction: subaction ?? "none",
           status: error.status,
           code: error.code ?? `CALENDAR_SERVICE_${error.status}`,
@@ -7186,14 +7218,6 @@ const calendarAction: CalendarHandlerAction = {
             actionName: "CALENDAR",
             subaction,
             error: error.code ?? `CALENDAR_SERVICE_${error.status}`,
-            ...(error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED"
-              ? {
-                  requiresInput: true,
-                  awaitingUserInput: true,
-                  retryable: false,
-                  missing: ["guest email address"],
-                }
-              : {}),
             ...(rejectedArgument
               ? {
                   parameterErrors: [
@@ -7211,7 +7235,6 @@ const calendarAction: CalendarHandlerAction = {
             acceptance:
               error.code !== "CALENDAR_TARGET_SELECTOR_INVALID" &&
               error.code !== "CALENDAR_ATTENDEE_ARGUMENT_INVALID" &&
-              error.code !== "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" &&
               (subaction === "create_event" ||
                 subaction === "update_event" ||
                 subaction === "delete_event")

@@ -135,6 +135,8 @@ export interface Evaluator<TOutput = JsonValue, TPrepared = unknown> {
 	 * declared providers still recompose normally. Existing evaluators default to
 	 * the complete turn context. Incremental evaluators use their evidence contract. */
 	inputScope?: "current_message";
+	/** One journal per room: the lane reads every speaker's records. */
+	evidenceScope?: "room";
 	shouldRun(context: EvaluatorRunContext): Promise<boolean>;
 	prepare?(context: EvaluatorRunContext & { state: State }): Promise<TPrepared>;
 	/**
@@ -199,6 +201,8 @@ export interface EvaluatorRunResult {
 		processorName?: string;
 		/** Provider retry deadline, retained without transporting raw errors/secrets. */
 		retryAt?: number;
+		/** The provider rejected credits or credentials; a prompt retry cannot succeed. */
+		providerUnavailable?: true;
 		error: string;
 	}>;
 }

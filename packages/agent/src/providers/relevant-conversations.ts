@@ -360,12 +360,7 @@ export const relevantConversationsProvider: Provider = {
               );
               const visible = visibleHistoryEventIds(
                 context,
-                {
-                  agentId: runtime.agentId,
-                  roomId,
-                  entityId: message.entityId,
-                  roles: ["OWNER"],
-                },
+                { agentId: runtime.agentId, roomId },
                 checkpoint,
               );
               if (!visible) return;

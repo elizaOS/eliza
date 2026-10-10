@@ -3,8 +3,9 @@ import { validateSchema } from "@elizaos/core";
 import {
   buildTaskCreatePlan,
   type ExtractedTaskCreatePlan,
-  taskCreatePlanGuidance,
+  NATIVE_PROJECTION_GUIDANCE,
 } from "./extract-task-plan.js";
+import { UNDATED_TODO_EXTRACTION_GUIDANCE } from "./undated-todo-intent.js";
 
 // The native planner and fallback extractor share the same semantic plan.
 // Omitted tool fields normalize to the extractor's unknown (null) values.
@@ -134,10 +135,24 @@ export const TASK_CREATE_PLAN_PARAMETER: ActionParameter = {
   required: false,
   subactions: ["create"],
   requiredForSubactions: ["create"],
+  // Semantics the field names, enums, patterns and required lists above do not
+  // already carry. Every OWNER_* definition tool offers this parameter, so its
+  // weight repeats per turn; restating the schema here only adds tokens.
   description: [
-    "For a definition create, supply the complete semantic plan here using the current owner request and relevant conversation already in context. This avoids a second interpretation call. Use intent for the owner's full request; do not duplicate this plan in title/details. The parent umbrella may omit createPlan when necessary context is unavailable; promoted CREATE requires it. Use the existing mode=respond plan for clarification when the title or timing cannot be established, without guessing. Unknown nativeProjection remains null and follows the existing safe extraction path. This plan never grants permission to save or confirm a pending draft; the handler applies owner consent and draft rules.",
-    "Always include mode, multiStep and requestKind. For mode=create include title, description and cadenceKind; for mode=respond include response. Use requestKind=unspecified only when neither alarm nor reminder is explicit. For mode=create, always include nativeProjection; use null for an unknown destination. For mode=create, always include dueDate, dueInDays, dueWeekday and dueInMinutes: fill the applicable selector from the owner's request and use null for the others. A relative minute/hour offset belongs in dueInMinutes. Always include description: copy an explicit requested reminder body exactly, independently of the title; use null when no separate alert body was requested. Do not silently reduce an explicit body to the title or put delivery instructions in it. Omit other unknown/inapplicable fields. Use the current date/time in context for date grounding; retain relative date fields when applicable.",
-    taskCreatePlanGuidance(true),
+    "Semantic plan for this definition create from the whole current owner request, any language; recent conversation only resolves short follow-ups. The owner's full request goes in intent, not duplicated in title/details. The umbrella may omit createPlan when context is unavailable.",
+    'mode=create whenever what to track and when are given, even for "preview the plan" or "don\'t save yet": the plan never grants permission to save or confirm a pending draft; the handler applies consent and draft rules. mode=respond (a short clarifying response; omit cadenceKind and every due/time field) only when what or when is missing or the owner says not to guess it; never invent a task or schedule. Omit other unknown fields.',
+    "- requestKind: alarm or reminder only when explicitly requested; otherwise unspecified. title: 2-5 words.",
+    // Required and nullable in the schema. Stated here as well because the
+    // body must stay independent of title, which the field text does not say.
+    "- description: always include it for mode=create. Copy an explicit requested reminder body exactly, independently of the title; use null when no separate alert body was requested. Do not silently reduce an explicit body to the title or put delivery instructions in it.",
+    `- nativeProjection: ${NATIVE_PROJECTION_GUIDANCE}`,
+    '- cadenceKind: once = a single date and/or clock time without a recurrence word; a deadline ("by the 20th", "before Friday") is once on that date, never a reason to ask for a time. weekly = named weekdays; times_per_day = only explicitly named clock times; count_per_day = a count quota without invented clock slots.',
+    UNDATED_TODO_EXTRACTION_GUIDANCE,
+    "- windows: wake up/before work -> morning, lunch -> afternoon, after work/dinner -> evening, before bed -> night. weekdays and dueWeekday: 0=Sun..6=Sat. timeZone: only an IANA zone the owner names.",
+    '- "25 pushups, 3 sets a day": quotaTargetCount 3, quotaUnit "set", perOccurrenceWork "25 pushups". checkInRequested: true only when asked to be nudged about remaining quota progress, false when declined; checkInWindows: windows allowed for those nudges.',
+    "- priority: 1 critical, 2 high, 3 medium, 4-5 low.",
+    '- Due selectors (mode=create): at most one, only for once, from the current date in context; null otherwise, all four for recurring or clock-only tasks. dueDate: a named date\'s next occurrence; dueInDays: today 0, tomorrow 1; dueWeekday: a named weekday; dueInMinutes: an offset ("in 2 hours" -> 120).',
+    "- multiStep: true when the request covers more than one distinct task or milestone.",
   ].join("\n"),
   schema,
 };

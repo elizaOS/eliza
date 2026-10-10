@@ -17,9 +17,15 @@ import {
   briefAction,
   briefDeliveredImpressionsAction,
 } from "../../../../plugin-personal-assistant/src/actions/brief.ts";
+import {
+  ownerAlarmsAction,
+  ownerRemindersAction,
+} from "../../../../plugin-personal-assistant/src/actions/owner-surfaces.ts";
 import { scheduledTaskAction } from "../../../../plugin-personal-assistant/src/actions/scheduled-task.ts";
 import { createHouseholdOperationsAction } from "../../../../plugin-personal-assistant/src/lifeops/household-operations/action.ts";
 import { createResourceCapacityAction } from "../../../../plugin-personal-assistant/src/lifeops/resource-capacity/action.ts";
+import { createContactActions } from "../../actions/contact.ts";
+import { memoryAction } from "../../actions/memories.ts";
 import { messageAction } from "../../features/advanced-capabilities/actions/message.ts";
 import { postAction } from "../../features/advanced-capabilities/actions/post.ts";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "../../runtime/default-contexts.ts";
@@ -416,6 +422,76 @@ describe("contextual native discovery", () => {
     }).actions;
     expect(selected).toContain(codingAction);
   });
+
+  it.each([
+    [
+      ["general"],
+      "cancel the stretch reminder",
+      [
+        "OWNER_REMINDERS_CANCEL",
+        "OWNER_REMINDERS_DELETE",
+        "OWNER_REMINDERS_SKIP",
+      ],
+    ],
+    [
+      ["general"],
+      "move the dentist appointment to noon",
+      ["CALENDAR_UPDATE_EVENT"],
+    ],
+    // CONTACT owns people, not stored facts, so it stays out of memory work.
+    [
+      ["memory"],
+      "delete the stored fact about the favorite color",
+      ["MEMORY_DELETE"],
+    ],
+  ])(
+    "bootstraps %j work from the domain its intent names: %s",
+    (contexts, intent, expected) => {
+      const { contactAction } = createContactActions({
+        resolveGraph: async () => null,
+        hasContextSignal: () => false,
+      });
+      const calendarAction: Action = {
+        name: "CALENDAR",
+        description: "Search, create, update or delete calendar events.",
+        contexts: ["calendar"],
+        parameters: [
+          {
+            name: "action",
+            description: "Calendar operation.",
+            required: true,
+            schema: {
+              type: "string",
+              enum: [
+                "search_events",
+                "create_event",
+                "update_event",
+                "delete_event",
+              ],
+            },
+          },
+        ],
+      };
+      const registry = new ContextRegistry([...DEFAULT_CONTEXT_DEFINITIONS]);
+      const selected = retrieveContextualPlannerActions({
+        actions: [
+          ownerRemindersAction,
+          ownerAlarmsAction,
+          scheduledTaskAction,
+          calendarAction,
+          contactAction,
+          memoryAction,
+        ].flatMap((action) => promoteSubactionsToActions(action)),
+        // The request names no domain; only the intent does.
+        query: "Take care of that one.",
+        intents: [intent],
+        contexts,
+        contextAliases: (context) => registry.get(context)?.aliases,
+        deferUnscopedBootstrap: true,
+      }).actions;
+      expect(selected.map((action) => action.name)).toEqual(expected);
+    },
+  );
 
   it("defers ambiguous initial routing but preserves explicit hints and global discovery", async () => {
     const actions: Action[] = [
@@ -832,10 +908,12 @@ describe("contextual native discovery", () => {
   });
   it("bounds broad query loads while keeping deferred operations exactly discoverable", async () => {
     const actions: Action[] = Array.from({ length: 24 }, (_, index) => ({
-      name: `RECORDS_READ_${index}`,
-      description: "Read saved records",
-      contexts: ["records"],
-      tags: ["domain:records"],
+      name: `RECORDS_READ_${String(index).padStart(2, "0")}`,
+      // All tie on the calendar keyword; the last name's shorter description
+      // is BM25 evidence that a name-ordered keyword tie must not push out.
+      description: index === 23 ? "Read records" : "Read saved records",
+      contexts: ["calendar"],
+      tags: ["domain:calendar"],
       parameters: [{ name: "id", required: true, schema: { type: "string" } }],
     }));
     let loaded: Action[] = [];
@@ -847,9 +925,10 @@ describe("contextual native discovery", () => {
       async () => actions,
     );
     const result = await discovery.handler?.(runtime, message, undefined, {
-      parameters: { query: "read records" },
+      parameters: { query: "read calendar records" },
     });
     expect(loaded).toHaveLength(10);
+    expect(loaded).toContain(actions[23]);
     expect(result?.data).toMatchObject({
       matchCount: 24,
       selectedCount: 10,
@@ -1894,7 +1973,7 @@ describe("contextual native discovery", () => {
     expect(executions).toBe(0);
     expect(discovery.description).not.toContain("NOTES_LIST");
     const invalid = await discovery.handler?.(runtime, message, undefined, {
-      parameters: { query: "notes", names: [] },
+      parameters: { query: "notes", names: [""] },
     });
     expect(invalid?.success).toBe(false);
     const denied = await discovery.handler?.(runtime, message, undefined, {

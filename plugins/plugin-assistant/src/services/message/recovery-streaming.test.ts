@@ -63,6 +63,11 @@ const cases = [
       }),
   },
 ];
+cases.push({
+  ...cases[0],
+  name: "rewrite followed by a stray closing brace",
+  raw: `${cases[0].raw}}`,
+});
 
 function makeRuntime() {
   return createSQLiteTestRuntime({

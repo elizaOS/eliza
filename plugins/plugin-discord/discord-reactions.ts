@@ -33,6 +33,7 @@ export interface ReactionServiceInternals {
 	accountId?: string;
 	runtime: DiscordService["runtime"];
 	resolveDiscordEntityId(userId: string): UUID;
+	isOwnerAliasedDiscordUser(userId: string): boolean;
 	getChannelType(channel: Channel): Promise<ChannelType>;
 }
 
@@ -115,22 +116,10 @@ export async function handleReaction(
 		const messageContent = reaction.message.content || "";
 		const reactionMessage = `*${actionText} <${emoji}> ${preposition}: \\"${messageContent}\\"*`;
 
-		// Get user info from the reacting user (not the message author)
-		const reactionMessageAuthor = reaction.message.author;
-		const userName =
-			("username" in user && (user as User).username) ||
-			reactionMessageAuthor?.username ||
-			"unknown";
-		const name =
-			("globalName" in user && typeof user.globalName === "string"
-				? user.globalName
-				: undefined) ||
-			(reactionMessageAuthor &&
-			"displayName" in reactionMessageAuthor &&
-			typeof reactionMessageAuthor.displayName === "string"
-				? reactionMessageAuthor.displayName
-				: undefined) ||
-			userName;
+		// Only the reactor's own identity; a partial user stays unnamed rather
+		// than borrowing the reacted-to author's name.
+		const userName = user.partial ? undefined : user.username;
+		const name = user.partial ? undefined : user.displayName;
 
 		// Get channel type once and reuse
 		const channelType = await service.getChannelType(
@@ -145,13 +134,16 @@ export async function handleReaction(
 				typeof reaction.message.channel.name === "string"
 					? reaction.message.channel.name
 					: name,
-			userName,
+			// An owner-aliased reactor resolves to the canonical owner entity and
+			// must not write its wire identity onto it.
+			...(userName && !service.isOwnerAliasedDiscordUser(user.id)
+				? { userName, name, userId: user.id as UUID }
+				: {}),
 			worldId: createUniqueUuid(
 				service.runtime,
 				reaction.message.guild?.id ?? roomId,
 			) as UUID,
 			worldName: reaction.message.guild?.name || undefined,
-			name,
 			source: "discord",
 			channelId: reaction.message.channel.id,
 			serverId: reaction.message.guild?.id,
@@ -159,7 +151,6 @@ export async function handleReaction(
 				? stringToUuid(reaction.message.guild.id)
 				: undefined,
 			type: channelType,
-			userId: user.id as UUID,
 			metadata: {
 				...buildDiscordWorldMetadata(
 					service.runtime,
@@ -186,8 +177,7 @@ export async function handleReaction(
 			},
 			metadata: {
 				accountId,
-				entityName: name,
-				entityUserName: userName,
+				...(userName ? { entityName: name, entityUserName: userName } : {}),
 				fromId: user.id,
 				discordReaction: {
 					action: type,

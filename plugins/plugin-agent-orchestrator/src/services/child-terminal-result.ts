@@ -82,6 +82,11 @@ const TERMINAL_EVENTS = new Set([
   "cancelled",
 ]);
 
+/** Whether an event of this type can carry a child terminal result. */
+export function isChildTerminalEvent(eventType: string): boolean {
+  return TERMINAL_EVENTS.has(eventType);
+}
+
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object"
     ? (value as Record<string, unknown>)

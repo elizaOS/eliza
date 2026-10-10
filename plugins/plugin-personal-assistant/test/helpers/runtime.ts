@@ -14,6 +14,7 @@ import {
   type RealTestRuntimeOptions,
   type RealTestRuntimeResult,
 } from "../../../../packages/app/test/helpers/real-runtime.ts";
+import type { LifeOpsService } from "../../src/lifeops/service.js";
 
 export type { RealTestRuntimeOptions, RealTestRuntimeResult };
 
@@ -147,4 +148,30 @@ export async function createLifeOpsTestRuntime(
       process.env.ELIZA_DISABLE_PROACTIVE_AGENT = previousDisableProactiveAgent;
     }
   }
+}
+
+/** Saves a one-off OWNER_REMINDERS item that notifies in the app when due. */
+export function seedOwnerReminder(
+  service: LifeOpsService,
+  title: string,
+  dueInMs = 3_600_000,
+) {
+  return service.createDefinition({
+    title,
+    description: "Original reminder description",
+    kind: "habit",
+    timezone: "UTC",
+    priority: 3,
+    cadence: {
+      kind: "once",
+      dueAt: new Date(Date.now() + dueInMs).toISOString(),
+    },
+    metadata: {
+      ownerSurface: "OWNER_REMINDERS",
+      nativeProjection: "in_app_only",
+    },
+    reminderPlan: {
+      steps: [{ channel: "in_app", offsetMinutes: 0, label: "Notify" }],
+    },
+  });
 }

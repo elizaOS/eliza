@@ -11,9 +11,7 @@
 import {
   MESSAGE_SOURCE_SUB_AGENT,
   type Memory,
-  type MessageHandlerResult,
   type ResponseHandlerEvaluator,
-  toWellFormedUnicode,
 } from "@elizaos/core";
 import { SIMPLE_CONTEXT_ID } from "@elizaos/plugin-assistant";
 import {
@@ -104,36 +102,6 @@ function isTerminalSubAgentFailure(message: Memory): boolean {
   );
 }
 
-// Trim the router's error narration to a single short, user-readable clause:
-// drop leading label/emoji/quote annotations and skip bare internal codes.
-export function extractFailureReason(errorOutput: string): string {
-  const lines = errorOutput.replace(/\r\n/g, "\n").split("\n");
-  const firstLine = lines
-    .map((line) =>
-      line
-        .replace(/^[\s>*•-]+/, "")
-        .replace(/^\[[^\]]*\]\s*/, "")
-        .trim(),
-    )
-    .find((line) => line.length > 0 && /\s/.test(line));
-  if (!firstLine) return "";
-  return toWellFormedUnicode(firstLine);
-}
-const shortReason = extractFailureReason;
-
-function buildFailureReply(label: string, reason: string): string {
-  const what = label ? `the "${label}" task` : "that task";
-  const normalizedReason = reason.replace(/[.!?]+$/u, "");
-  const because = normalizedReason ? ` — ${normalizedReason}` : "";
-  return `Couldn't finish ${what}${because}. Want me to retry?`;
-}
-
-function respondIfNeeded(messageHandler: MessageHandlerResult) {
-  return messageHandler.processMessage === "RESPOND"
-    ? {}
-    : { processMessage: "RESPOND" as const };
-}
-
 /**
  * Response-handler evaluator that guarantees a sub-agent terminal FAILURE never
  * lands as silence. The completion evaluator (`sub-agent-completion`) routes
@@ -141,13 +109,14 @@ function respondIfNeeded(messageHandler: MessageHandlerResult) {
  * `state_lost_exhausted` / `round_trip_cap_exceeded` synthetics the router
  * emits but nothing handled. When the planner is taking a concrete follow-up of
  * its own (feeding the still-running session input, or a real next step) we
- * defer to it; otherwise we relay one honest line so the user gets an outcome
- * instead of a dangling spawn ack.
+ * defer to it; otherwise the turn answers with one model-phrased failure
+ * message so the user gets an outcome instead of a dangling spawn ack. The
+ * router relays at most one failure per task lineage.
  */
 export const subAgentFailureResponseEvaluator: ResponseHandlerEvaluator = {
   name: "agent-orchestrator.sub-agent-failure",
   description:
-    "Routes terminal sub-agent failure synthetics (error / state-lost / round-trip-cap) to one honest user-facing message instead of silence.",
+    "Routes terminal sub-agent failure synthetics (error / state-lost / round-trip-cap) to one model-phrased user-facing message instead of silence.",
   priority: 10,
   shouldRun: ({ message, messageHandler }) => {
     if (!isTerminalSubAgentFailure(message)) return false;
@@ -166,20 +135,21 @@ export const subAgentFailureResponseEvaluator: ResponseHandlerEvaluator = {
     return true;
   },
   evaluate: ({ message, messageHandler }) => {
-    const metadata = metadataRecord(message) ?? {};
-    const label = textOf(metadata.subAgentLabel);
-    const reason = shortReason(textOf(contentRecord(message)?.text));
+    const event = textOf(metadataRecord(message)?.subAgentEvent);
+    // The model phrases the failure: Stage 1's reply ships when present,
+    // otherwise the planner composes it from the turn's own facts, without the
+    // orchestration tools a failure turn must not re-run.
+    const hasStageOneReply = textOf(messageHandler.plan.reply).length > 0;
     return {
-      ...respondIfNeeded(messageHandler),
+      processMessage: "RESPOND",
       requiresTool: false,
-      setContexts: [SIMPLE_CONTEXT_ID],
+      setContexts: [hasStageOneReply ? SIMPLE_CONTEXT_ID : "general"],
       clearCandidateActions: true,
       clearParentActionHints: true,
-      reply: buildFailureReply(label, reason),
       debug: [
-        `sub-agent terminal failure (${textOf(
-          metadata.subAgentEvent,
-        )}); relaying one honest failure message instead of leaving the spawn ack dangling`,
+        hasStageOneReply
+          ? `sub-agent terminal failure (${event}); relaying the model's reply as the one failure message`
+          : `sub-agent terminal failure (${event}) with no Stage-1 reply; the planner phrases the one failure message`,
       ],
     };
   },

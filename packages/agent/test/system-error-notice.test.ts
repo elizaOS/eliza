@@ -19,6 +19,8 @@ import { startApiServer } from "../src/api/server.ts";
 import { registerErrorEscalation } from "../src/runtime/error-escalation.ts";
 import { EscalationService } from "../src/services/escalation.ts";
 
+const AGENT_NAME = "Notice evidence";
+
 it("keeps diagnostics while delivering and restoring safe system notices without rewriting them", async () => {
   const directory = await mkdtemp(join(tmpdir(), "eliza-system-notice-"));
   const configPath = join(directory, "config.json");
@@ -38,7 +40,7 @@ it("keeps diagnostics while delivering and restoring safe system notices without
   const open = async () => {
     const next = new AgentRuntime({
       agentId,
-      character: { name: "Notice evidence", bio: [], settings: {} },
+      character: { name: AGENT_NAME, bio: [], settings: {} },
       logLevel: "fatal",
       enableAutonomy: false,
     });
@@ -121,7 +123,7 @@ it("keeps diagnostics while delivering and restoring safe system notices without
       });
       const notice = await EscalationService.getActiveEscalation(runtime);
       if (!notice) throw new Error("Capability notice was not persisted");
-      expect(notice.text).toBe(systemNoticeText("runtime-error"));
+      expect(notice.text).toBe(systemNoticeText("runtime-error", AGENT_NAME));
       const capabilityHistory = await fetch(
         `${base}/api/conversations/${conversation.id}/messages`,
         { headers },
@@ -131,13 +133,13 @@ it("keeps diagnostics while delivering and restoring safe system notices without
       expect(
         capabilityMessages.some(
           (message: { text: string }) =>
-            message.text === systemNoticeText("runtime-error"),
+            message.text === systemNoticeText("runtime-error", AGENT_NAME),
         ),
       ).toBe(true);
       expect(
         capabilityMessages.some(
           (message: { text: string }) =>
-            message.text === systemNoticeText("model-unavailable"),
+            message.text === systemNoticeText("model-unavailable", AGENT_NAME),
         ),
       ).toBe(false);
       await EscalationService.resolveEscalation(notice.id, runtime);
@@ -184,14 +186,18 @@ it("keeps diagnostics while delivering and restoring safe system notices without
     const combined = await EscalationService.startEscalation(
       runtime,
       "Systemic failure STORAGE_UNAVAILABLE reported 3 times within 10m",
-      systemNoticeText("runtime-error"),
+      systemNoticeText("runtime-error", AGENT_NAME),
       "runtime-error",
     );
     await EscalationService.checkEscalation(runtime, combined.id);
     expect(modelCalls).toBe(3);
     expect(combined.systemNotice).toBe("model-and-runtime-error");
-    expect(combined.text).toContain(systemNoticeText("model-unavailable"));
-    expect(combined.text).toContain(systemNoticeText("runtime-error"));
+    expect(combined.text).toContain(
+      systemNoticeText("model-unavailable", AGENT_NAME),
+    );
+    expect(combined.text).toContain(
+      systemNoticeText("runtime-error", AGENT_NAME),
+    );
     expect(
       await runtime.getCache<{ systemNotice?: string; text: string }>(
         `agent:escalation:active:${agentId}`,
@@ -350,7 +356,7 @@ it("keeps diagnostics while delivering and restoring safe system notices without
       ).toMatchObject({
         role: "assistant",
         text: record.systemNotice
-          ? systemNoticeText("runtime-error")
+          ? systemNoticeText("runtime-error", AGENT_NAME)
           : record.text,
         interrupted: true,
         failureKind: "planner_exhaustion",
@@ -367,7 +373,7 @@ it("keeps diagnostics while delivering and restoring safe system notices without
     }
     expect(
       history.messages.find((m: { id: string }) => m.id === checkinId).text,
-    ).toBe(systemNoticeText("runtime-error"));
+    ).toBe(systemNoticeText("runtime-error", AGENT_NAME));
     expect(
       history.messages.find((m: { id: string }) => m.id === realBriefId).text,
     ).toBe("Morning check-in: Your meeting starts at nine.");
@@ -380,7 +386,7 @@ it("keeps diagnostics while delivering and restoring safe system notices without
           (message: { id: string }) => message.id === record.id,
         ),
       ).toMatchObject({
-        text: systemNoticeText("model-unavailable"),
+        text: systemNoticeText("model-unavailable", AGENT_NAME),
         failureKind: "no_provider",
       });
       expect(
@@ -394,9 +400,9 @@ it("keeps diagnostics while delivering and restoring safe system notices without
     expect(
       history.messages.find((m: { id: string }) => m.id === mixedId).text,
     ).toBe(
-      `${systemNoticeText("model-unavailable")}\n---\nYour scheduled appointment still needs confirmation.`,
+      `${systemNoticeText("model-unavailable", AGENT_NAME)}\n---\nYour scheduled appointment still needs confirmation.`,
     );
-    expect(legacy.text).toBe(systemNoticeText("model-unavailable"));
+    expect(legacy.text).toBe(systemNoticeText("model-unavailable", AGENT_NAME));
     expect(legacy.failureKind).toBe("no_provider");
     expect(history.messages.some((m: { text: string }) => m.text === raw)).toBe(
       true,
@@ -431,7 +437,7 @@ it("keeps diagnostics while delivering and restoring safe system notices without
     expect(restored).toMatchObject({
       id: state.id,
       systemNotice: "model-unavailable",
-      text: systemNoticeText("model-unavailable"),
+      text: systemNoticeText("model-unavailable", AGENT_NAME),
     });
     expect(
       (
@@ -443,10 +449,12 @@ it("keeps diagnostics while delivering and restoring safe system notices without
     const coalesced = await EscalationService.startEscalation(
       runtime,
       "Systemic failure LOCAL_INFERENCE_UNAVAILABLE reported 3 times within 10m",
-      systemNoticeText("model-unavailable"),
+      systemNoticeText("model-unavailable", AGENT_NAME),
       "model-unavailable",
     );
-    expect(coalesced.text).toBe(systemNoticeText("model-unavailable"));
+    expect(coalesced.text).toBe(
+      systemNoticeText("model-unavailable", AGENT_NAME),
+    );
     expect(modelCalls).toBe(3);
     // Mixed alerts retain both parts on disk and deliver them as separate
     // messages so the system segment keeps its classification and bypass.
@@ -462,20 +470,24 @@ it("keeps diagnostics while delivering and restoring safe system notices without
       await EscalationService.startEscalation(
         runtime,
         "First mixed alert",
-        ordinaryFirst ? ordinaryText : systemNoticeText("model-unavailable"),
+        ordinaryFirst
+          ? ordinaryText
+          : systemNoticeText("model-unavailable", AGENT_NAME),
         ordinaryFirst ? undefined : "model-unavailable",
       );
       const mixed = await EscalationService.startEscalation(
         runtime,
         "Second mixed alert",
-        ordinaryFirst ? systemNoticeText("model-unavailable") : ordinaryText,
+        ordinaryFirst
+          ? systemNoticeText("model-unavailable", AGENT_NAME)
+          : ordinaryText,
         ordinaryFirst ? "model-unavailable" : undefined,
       );
       if (ordinaryFirst)
         await EscalationService.startEscalation(
           runtime,
           "Additional runtime failure",
-          systemNoticeText("runtime-error"),
+          systemNoticeText("runtime-error", AGENT_NAME),
           "runtime-error",
         );
       const expectedNotice = ordinaryFirst
@@ -486,7 +498,9 @@ it("keeps diagnostics while delivering and restoring safe system notices without
         ordinaryText,
       });
       expect(mixed.text).toContain(ordinaryText);
-      expect(mixed.text).toContain(systemNoticeText("model-unavailable"));
+      expect(mixed.text).toContain(
+        systemNoticeText("model-unavailable", AGENT_NAME),
+      );
       await EscalationService.stop(runtime);
       await server.close();
       server = undefined;
@@ -525,7 +539,7 @@ it("keeps diagnostics while delivering and restoring safe system notices without
       expect(delivered.map((message) => message.content)).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            text: systemNoticeText(expectedNotice),
+            text: systemNoticeText(expectedNotice, AGENT_NAME),
             systemNotice: expectedNotice,
             failureKind: "no_provider",
           }),

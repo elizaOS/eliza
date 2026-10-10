@@ -46,6 +46,7 @@ import {
   ElizaError,
   extractUserText,
   logger,
+  MESSAGE_SOURCE_CLIENT_CHAT,
   NoModelProviderConfiguredError,
   normalizeEffectReceipt,
   readTaskExtractionRequestIntents,
@@ -109,6 +110,10 @@ import {
   buildUtcDateFromLocalParts,
   getZonedDateParts,
 } from "../lifeops/time.js";
+import {
+  normalizeLifeInputText,
+  normalizeTitle,
+} from "../lifeops/title-match.js";
 import {
   extractGoalCreatePlanWithLlm,
   extractGoalUpdatePlanWithLlm,
@@ -829,17 +834,6 @@ function requestedOwnership(domain?: LifeOpsDomain) {
   return { domain: "user_lifeops" as const, subjectType: "owner" as const };
 }
 
-function normalizeIntentText(value: string): string {
-  return normalizeLifeInputText(value).toLowerCase();
-}
-
-function normalizeLifeInputText(value: string): string {
-  return value
-    .replace(/[\u00a0\u1680\u2000-\u200b\u202f\u205f\u3000]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function extractPrimaryLifeInputText(value: string): string {
   const startMarker = "<<<EXTERNAL_UNTRUSTED_CONTENT>>>";
   const endMarker = "<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>";
@@ -854,10 +848,6 @@ function extractPrimaryLifeInputText(value: string): string {
   const delimiter = block.lastIndexOf("\n---");
   const payload = (delimiter >= 0 ? block.slice(delimiter + 4) : block).trim();
   return payload.length > 0 ? payload : value;
-}
-
-function normalizeTitle(value: string): string {
-  return normalizeIntentText(value);
 }
 
 function goalSuccessCriteriaLooksConcrete(
@@ -878,7 +868,7 @@ function goalSuccessCriteriaLooksConcrete(
 }
 
 function ownerTextHasConcreteGoalCriteria(value: string): boolean {
-  const text = normalizeIntentText(value);
+  const text = normalizeLifeInputText(value).toLowerCase();
   return (
     /(?:\$|€|£)\s*\d/.test(text) ||
     /\b\d+\s*(?:x|times?|sessions?|blocks?|minutes?|mins?|hours?|days?|weeks?|months?|years?|percent|%)\b/.test(
@@ -1161,12 +1151,30 @@ async function resolveEnumeratedDeleteTargets(
   return targets.length > 1 ? targets : [];
 }
 
+/** Among records sharing one title, the single reminder not yet archived or completed. */
+function onlyOpenReminder(
+  entries: LifeOpsDefinitionRecord[],
+): LifeOpsDefinitionRecord | null {
+  const title = normalizeTitle(entries[0]?.definition.title ?? "");
+  if (entries.some((entry) => normalizeTitle(entry.definition.title) !== title))
+    return null;
+  const open = entries.filter(
+    ({ definition }) =>
+      definition.status !== "archived" && definition.status !== "completed",
+  );
+  return open.length === 1 &&
+    resolveOwnerDefinitionSurface(open[0].definition) === "OWNER_REMINDERS"
+    ? open[0]
+    : null;
+}
+
 async function resolveDefinitionForMutation(
   service: LifeOpsService,
   target: string | undefined,
   ownerText: string,
   domain?: LifeOpsDomain,
   destructive = false,
+  archiveOnly = false,
 ): Promise<DefinitionResult> {
   const allDefinitions = await listCallerDefinitions(service, domain);
   const normalizedOwnerText = normalizeTitle(ownerText);
@@ -1245,10 +1253,42 @@ async function resolveDefinitionForMutation(
       ambiguousCandidates: [],
     };
   }
+  const ownerTokens = new Set(tokenizeTitle(ownerText));
+  const ownerWordsIn = (entry: LifeOpsDefinitionRecord) =>
+    tokenizeTitle(entry.definition.title).filter((token) =>
+      ownerTokens.has(token),
+    );
+  // A clock time the owner states decides a tie, then the planner's exact title
+  // (for a cancel, its one open copy) when its words fit no other tied item,
+  // then a cancel's one open twin.
+  const breakTie = (tied: LifeOpsDefinitionRecord[]) => {
+    const exact = tied.filter((entry) => exactTitleTargets.includes(entry));
+    const pick =
+      exact.length === 1
+        ? exact[0]
+        : archiveOnly
+          ? onlyOpenReminder(exact)
+          : null;
+    const support = pick ? ownerWordsIn(pick) : [];
+    const plannerPick =
+      support.length > 0 &&
+      tied.every(
+        (entry) =>
+          exact.includes(entry) ||
+          !ownerWordsIn(entry).some((token) => support.includes(token)),
+      )
+        ? pick
+        : null;
+    return (
+      resolveDuplicateByTimeHint(tied, ownerText) ??
+      plannerPick ??
+      (archiveOnly ? onlyOpenReminder(tied) : null)
+    );
+  };
   if (explicitlyNamed.length > 1) {
-    const byTimeHint = resolveDuplicateByTimeHint(explicitlyNamed, ownerText);
-    if (byTimeHint) {
-      return { match: byTimeHint, ambiguousCandidates: [] };
+    const tieBreak = breakTie(explicitlyNamed);
+    if (tieBreak) {
+      return { match: tieBreak, ambiguousCandidates: [] };
     }
     return {
       match: null,
@@ -1256,14 +1296,8 @@ async function resolveDefinitionForMutation(
     };
   }
 
-  const ownerTokens = new Set(tokenizeTitle(ownerText));
   const scored = defs
-    .map((entry) => ({
-      entry,
-      score: tokenizeTitle(entry.definition.title).filter((token) =>
-        ownerTokens.has(token),
-      ).length,
-    }))
+    .map((entry) => ({ entry, score: ownerWordsIn(entry).length }))
     .filter(({ score }) => score > 0);
   const bestScore = Math.max(0, ...scored.map(({ score }) => score));
   const bestMatches = scored
@@ -1280,9 +1314,9 @@ async function resolveDefinitionForMutation(
     };
   }
   if (bestMatches.length >= 1) {
-    const byTimeHint = resolveDuplicateByTimeHint(bestMatches, ownerText);
-    if (byTimeHint) {
-      return { match: byTimeHint, ambiguousCandidates: [] };
+    const tieBreak = breakTie(bestMatches);
+    if (tieBreak) {
+      return { match: tieBreak, ambiguousCandidates: [] };
     }
     return {
       match: null,
@@ -1721,6 +1755,7 @@ type LifeReplyScenario =
   | "saved_goal"
   | "updated_definition"
   | "updated_goal"
+  | "cancelled_definition"
   | "deleted_definition"
   | "deleted_goal"
   | "completed_occurrence"
@@ -1813,6 +1848,12 @@ async function renderLifeActionReply(args: {
     fallback,
     context,
   });
+  // in_app delivers to the owner's app chat, which is the requesting room
+  // only for app-chat messages.
+  const inAppDestination =
+    message.content.source === MESSAGE_SOURCE_CLIENT_CHAT
+      ? "describe in_app as 'here' or 'in this app'"
+      : "describe in_app as 'in the app', never 'here': it reaches the owner's app chat, not this conversation";
   return renderGroundedActionReply({
     runtime,
     message,
@@ -1828,7 +1869,7 @@ async function renderLifeActionReply(args: {
       "Prefer phrases like tomorrow morning, every night, 7 am, or the user's own wording over robotic schedule language.",
       "Never surface raw ISO timestamps unless the user used raw ISO timestamps.",
       "When confirming a saved reminder, use one short natural sentence with the saved message, timing, and notification destination. Use 'at' for an exact saved time, not 'around'; format that time in created.timezone without seconds or field labels. Do not invent a new reminder message.",
-      "In ordinary reminder confirmations, describe in_app as 'here' or 'in this app' and sms as 'by text'; use ordinary names for other destinations. Do not add channel codes, internal IDs, definition/cadence labels, or storage/runtime/lifecycle status narration. Mention a real limitation only when it affects the owner's requested destination; never invent one.",
+      `In ordinary reminder confirmations, ${inAppDestination}, and describe sms as 'by text'; use ordinary names for other destinations. Do not add channel codes, internal IDs, definition/cadence labels, or storage/runtime/lifecycle status narration. Mention a real limitation only when it affects the owner's requested destination; never invent one.`,
       "Confirm only the saved reminder and channels in this reply's context. Never claim it was added to Apple Reminders or another native app unless the saved created/updated record's nativeAppleReminderId is non-null. A saved notification plan does not mean a notification has already been delivered.",
       "The in_app channel is this app's unified notification rail; it can also fan out OS notifications to registered devices through the host's configured push providers. nativeProjection=in_app_only excludes Apple Reminders record projection, not this app's Android or iOS notifications. Native record projection and Clock handoff capabilities do not establish push delivery availability.",
       "A saved channel is not an observed push delivery status. Report an Android or iOS push limitation only from explicit platform delivery status or error evidence in the supplied context; unassessed readiness is unknown, not unavailable. Before a reminder is due, a missing delivery receipt is expected: confirm the saved schedule without adding a warning about unconfirmed push, asking the owner to check delivery, or treating the in_app rail as excluding Android notifications. Do not promise future OS delivery or infer its absence from in_app, nativeProjection, or a missing native record ID.",
@@ -6041,6 +6082,74 @@ async function runLifeOperationHandlerInner(
       };
     }
 
+    // A missing update target is evidence for the turn's final reply, not a
+    // verbatim line: the persona voices it.
+    const updateTargetNotFound = async (
+      kind: LifeKind,
+    ): Promise<PendingLifeActionResult> => ({
+      success: false,
+      text: await renderLifeActionReply({
+        runtime,
+        message,
+        state,
+        intent,
+        scenario: "reply_only",
+        fallback:
+          kind === "goal"
+            ? "I could not find that goal to update."
+            : "I could not find that item to update.",
+        context: {
+          reason: "update_target_not_found",
+          target: targetName ?? null,
+        },
+      }),
+      values: {
+        success: false,
+        error: "LIFEOPS_TARGET_NOT_FOUND",
+      },
+      data: {
+        actionName: ownerSurfaceActionName,
+        error: "LIFEOPS_TARGET_NOT_FOUND",
+        target: targetName ?? null,
+      },
+    });
+
+    // Likewise a which-one question: the persona asks it from the candidates
+    // carried here as data.
+    const ambiguousTarget = async (
+      ambiguousCandidates: string[],
+      question = "which one?",
+      context: Record<string, unknown> = {},
+    ): Promise<PendingLifeActionResult> => ({
+      success: false,
+      text: await renderLifeActionReply({
+        runtime,
+        message,
+        state,
+        intent,
+        scenario: "reply_only",
+        fallback: `Multiple items match — ${question}\n${ambiguousCandidates.map((title) => `  - ${title}`).join("\n")}`,
+        context: {
+          reason: "ambiguous_target",
+          target: targetName ?? null,
+          candidates: ambiguousCandidates,
+          ...context,
+        },
+      }),
+      values: {
+        success: false,
+        error: "LIFEOPS_TARGET_AMBIGUOUS",
+      },
+      data: {
+        actionName: ownerSurfaceActionName,
+        error: "LIFEOPS_TARGET_AMBIGUOUS",
+        target: targetName ?? null,
+        ambiguousCandidates,
+        // A settled ambiguous lookup must not run again with the same arguments.
+        retryable: false,
+      },
+    });
+
     if (internalOp === "update_definition") {
       const requestedTime = detailString(details, "time");
       const requestedTimeZone = normalizeLifeTimeZoneToken(
@@ -6052,29 +6161,50 @@ async function runLifeOperationHandlerInner(
           targetName,
           messageText(message) || intent,
           domain,
+          false,
+          archiveOnlyReminder,
         );
+      if (!target && ambiguousCandidates.length === 0) {
+        return updateTargetNotFound("definition");
+      }
       if (!target)
-        return {
-          success: false,
-          text:
-            ambiguousCandidates.length > 0
-              ? ambiguousCandidates.some((title) =>
-                  /\b(?:landing|arrival|outbound|departure|flight|trip|travel)\b/i.test(
-                    title,
-                  ),
-                ) &&
-                requestedTime !== undefined &&
-                requestedTimeZone === null
-                ? `Multiple items match — which reminder do you mean, and what timezone should I use for ${requestedTime}?\n${ambiguousCandidates.map((title) => `  - ${title}`).join("\n")}`
-                : `Multiple items match — which one?\n${ambiguousCandidates.map((title) => `  - ${title}`).join("\n")}`
-              : "I could not find that item to update.",
-        };
+        return ambiguousCandidates.some((title) =>
+          /\b(?:landing|arrival|outbound|departure|flight|trip|travel)\b/i.test(
+            title,
+          ),
+        ) &&
+          requestedTime !== undefined &&
+          requestedTimeZone === null
+          ? ambiguousTarget(
+              ambiguousCandidates,
+              `which reminder do you mean, and what timezone should I use for ${requestedTime}?`,
+              { timeZoneNeededFor: requestedTime },
+            )
+          : ambiguousTarget(ambiguousCandidates);
       if (archiveOnlyReminder) {
         const updated = await service.updateDefinition(target.definition.id, {
           ownership,
           status: "archived",
         });
-        const text = `Cancelled "${updated.definition.title}".`;
+        // Same persona-voiced contract as the sibling update below: under the
+        // planner this is grounding for the final reply, not a verbatim line.
+        // Canonical cancel strips planner-authored edit fields, so its
+        // grounding carries the owner's own words, not the planner's intent.
+        const fallback = `Cancelled "${updated.definition.title}".`;
+        const text = await renderLifeActionReply({
+          runtime,
+          message,
+          state,
+          intent: currentText,
+          scenario: "cancelled_definition",
+          fallback,
+          context: {
+            cancelled: {
+              title: updated.definition.title,
+              status: updated.definition.status,
+            },
+          },
+        });
         return {
           success: true,
           text,
@@ -6266,11 +6396,7 @@ async function runLifeOperationHandlerInner(
 
     if (internalOp === "update_goal") {
       const target = await resolveGoal(service, targetName, domain);
-      if (!target)
-        return {
-          success: false,
-          text: "I could not find that goal to update.",
-        };
+      if (!target) return updateTargetNotFound("goal");
       const request: UpdateLifeOpsGoalRequest = {
         ownership,
         title: params.title !== target.goal.title ? params.title : undefined,
@@ -6591,10 +6717,7 @@ async function runLifeOperationHandlerInner(
           domain,
         );
       if (ambiguousCandidates.length > 0)
-        return {
-          success: false,
-          text: `Multiple items match — which one?\n${ambiguousCandidates.join("\n")}`,
-        };
+        return ambiguousTarget(ambiguousCandidates);
       if (target?.definition.cadence.kind === "unscheduled") {
         const transition =
           internalOp === "reopen_definition"
@@ -6637,10 +6760,7 @@ async function runLifeOperationHandlerInner(
           });
         if (!target) {
           if (ambiguousCandidates.length > 0) {
-            return {
-              success: false,
-              text: `Multiple items match — which one?\n${ambiguousCandidates.map((t) => `  - ${t}`).join("\n")}`,
-            };
+            return ambiguousTarget(ambiguousCandidates);
           }
           return {
             success: false,
@@ -6736,10 +6856,7 @@ async function runLifeOperationHandlerInner(
         });
       if (!target) {
         if (ambiguousCandidates.length > 0) {
-          return {
-            success: false,
-            text: `Multiple items match — which one?\n${ambiguousCandidates.map((t) => `  - ${t}`).join("\n")}`,
-          };
+          return ambiguousTarget(ambiguousCandidates);
         }
         return {
           success: false,
@@ -6787,10 +6904,7 @@ async function runLifeOperationHandlerInner(
           });
         if (!target) {
           if (ambiguousCandidates.length > 0) {
-            return {
-              success: false,
-              text: `Multiple items match — which one?\n${ambiguousCandidates.map((t) => `  - ${t}`).join("\n")}`,
-            };
+            return ambiguousTarget(ambiguousCandidates);
           }
           return {
             success: false,

@@ -15,6 +15,9 @@ import {
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_BYTES = 256 * 1024;
+// JSON is parsed whole, and an API answer such as a release list or a package
+// document runs to megabytes.
+const DEFAULT_MAX_JSON_BYTES = 8 * 1024 * 1024;
 const DEFAULT_MAX_REDIRECTS = 3;
 const DEFAULT_USER_AGENT = "ElizaCodingTools/1.0 (+https://elizaos.ai)";
 
@@ -63,12 +66,16 @@ export interface GuardedTextHttpResult {
   truncated: false;
 }
 
+function isJsonContentType(contentType: string): boolean {
+  const normalized = contentType.split(";")[0]?.trim().toLowerCase() ?? "";
+  return normalized === "application/json" || normalized.endsWith("+json");
+}
+
 function isTextualContentType(contentType: string): boolean {
   const normalized = contentType.split(";")[0]?.trim().toLowerCase() ?? "";
   if (!normalized) return true;
   if (normalized.startsWith("text/")) return true;
-  if (normalized === "application/json") return true;
-  if (normalized.endsWith("+json")) return true;
+  if (isJsonContentType(normalized)) return true;
   if (normalized === "application/xml" || normalized.endsWith("+xml")) {
     return true;
   }
@@ -208,7 +215,10 @@ export async function guardedTextHttpRequest(
     }
     const text = await readTextWithinLimit(
       guarded.response,
-      options.maxBytes ?? DEFAULT_MAX_BYTES,
+      options.maxBytes ??
+        (isJsonContentType(contentType)
+          ? DEFAULT_MAX_JSON_BYTES
+          : DEFAULT_MAX_BYTES),
     );
     return {
       ok: guarded.response.ok,

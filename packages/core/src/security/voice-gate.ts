@@ -173,7 +173,10 @@ export async function ensureAgentVoice(
 	const notice = readSystemNotice(content.systemNotice);
 	if (notice) {
 		const { agentVoiced: _provenance, ...status } = content;
-		return { ...status, text: systemNoticeText(notice) };
+		return {
+			...status,
+			text: systemNoticeText(notice, runtime.character.name),
+		};
 	}
 	const rewriteOverride = runtime.getSetting?.("OUTBOUND_VOICE_REWRITE");
 	if (

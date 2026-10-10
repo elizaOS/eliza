@@ -7,9 +7,11 @@
  * fallback path produces an in_app channel + warning.
  */
 
-import type {
-  ScheduledTask,
-  ScheduledTaskInput,
+import type { UUID } from "@elizaos/core";
+import {
+  OWNER_LOCAL_TZ,
+  type ScheduledTask,
+  type ScheduledTaskInput,
 } from "@elizaos/plugin-scheduling";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -36,6 +38,7 @@ import {
   createFirstRunStateStore,
   createOwnerFactStore,
 } from "../src/lifeops/first-run/state.ts";
+import { createRuntimeScheduledTaskRunner } from "../src/lifeops/scheduled-task/runtime-wiring.ts";
 import { createMinimalRuntimeStub } from "./first-run-helpers.ts";
 
 afterEach(() => setChannelInspector(null));
@@ -148,6 +151,13 @@ describe("first-run config validation", () => {
         "localBackup",
       ]),
     );
+    // The owner's pokes follow the owner's wall clock, not the seeding zone.
+    for (const slot of ["gm", "gn", "checkin"]) {
+      expect(
+        pack.find((p) => p.metadata?.slot === slot)?.trigger,
+        slot,
+      ).toMatchObject({ kind: "cron", tz: OWNER_LOCAL_TZ });
+    }
     const checkin = pack.find((p) => p.metadata?.slot === "checkin");
     expect(checkin?.completionCheck?.kind).toBe("user_replied_within");
     const morningBrief = pack.find((p) => p.metadata?.slot === "morningBrief");
@@ -418,5 +428,20 @@ describe("first-run config validation", () => {
     expect(done.scheduledTasks.length).toBe(6);
     expect(recorded.length).toBe(6);
     expect(done.facts.morningWindow?.startLocal).toBe("06:30");
+  });
+
+  it("resolves the owner's zone from the configured one when no timezone fact exists", async () => {
+    const runtime = createMinimalRuntimeStub({
+      agentId: "00000000-0000-4000-8000-0000000000a1" as UUID,
+      getSetting: (key: string) =>
+        key === "TIMEZONE" ? "Europe/Berlin" : undefined,
+    });
+
+    const facts = await createRuntimeScheduledTaskRunner({
+      runtime,
+      agentId: runtime.agentId,
+    }).resolveOwnerFacts();
+
+    expect(facts.timezone).toBe("Europe/Berlin");
   });
 });

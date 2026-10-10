@@ -110,6 +110,7 @@ export const webSearchAction: Action = {
 
       return successActionResult(result.text, {
         action: "WEB_SEARCH",
+        query,
         provider: result.provider,
         result_chars: result.text.length,
         truncated: result.truncated,

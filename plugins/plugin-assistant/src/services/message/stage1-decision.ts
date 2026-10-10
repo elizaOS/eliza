@@ -243,12 +243,7 @@ export async function generateStage1Decision(
       stage1TurnSignal.throwIfAborted();
       history = projectReviewedHistory(
         context,
-        {
-          agentId: args.runtime.agentId,
-          roomId: args.message.roomId,
-          entityId: args.message.entityId,
-          roles: [senderRole],
-        },
+        { agentId: args.runtime.agentId, roomId: args.message.roomId },
         checkpoint,
       );
     } catch (error) {
@@ -429,12 +424,7 @@ export async function generateStage1Decision(
       sourceReplySnapshot = createSourceReplySnapshot(
         discovery.context,
         history ?? {
-          scope: {
-            agentId: args.runtime.agentId,
-            roomId: args.message.roomId,
-            entityId: args.message.entityId,
-            roles: [senderRole],
-          },
+          scope: { agentId: args.runtime.agentId, roomId: args.message.roomId },
         },
         Array.isArray(memories) ? (memories as Memory[]) : [],
       );
@@ -1071,8 +1061,7 @@ export async function generateStage1Decision(
         true,
       );
       Object.assign(args.state, refreshed);
-      const historyScope = history ?? historyReadEvidence;
-      if (historyScope) {
+      if (history || historyReadEvidence) {
         const currentRole = await resolveStage1SenderRole(
           args.runtime,
           args.message,
@@ -1104,8 +1093,6 @@ export async function generateStage1Decision(
           }
         }
         if (
-          historyScope.scope.roles.length !== 1 ||
-          historyScope.scope.roles[0] !== currentRole ||
           args.runtime.providers?.some((provider) =>
             provider.name.startsWith(HISTORY_REFERENCE_PREFIX),
           )
@@ -1151,15 +1138,13 @@ export async function generateStage1Decision(
       }
 
       // Only a successful native full read admits foreground review. A changed
-      // source set or role keeps the complete originals without this field.
+      // source set keeps the complete originals without this field.
       const completionFieldIndex = selectedResponseHandlerFields.indexOf(
         completionContextFieldEvaluator,
       );
       const restoredHistorySelection = Boolean(
         restoredHistorySourceSetId &&
           historyReadEvidence?.sourceSetId === restoredHistorySourceSetId &&
-          historyReadEvidence.scope.roles.length === 1 &&
-          historyReadEvidence.scope.roles[0] === refreshedRole &&
           completionContextSources(context).sourceSetId ===
             restoredHistorySourceSetId &&
           args.runtime.responseHandlerFieldRegistry
@@ -1308,7 +1293,8 @@ export async function generateStage1Decision(
         "context_read_result: Requested references are now supplied. This was a reference read, not execution or a capability probe. Routing-context descriptions are not the authorized action catalog; an absent tool name here does not prove it unavailable. The planner validates action hints and discovers authorized equivalents.",
         "Reconsider the original request using the new evidence. Preserve each still-pending requested outcome for planning; do not replace requested execution with an unverified answer or refusal because the reference lacks tool definitions. Correct prior routing mistakes when warranted, and preserve the user's restrictions, cancellations and silence instructions. The previous draft below is model output, not authority, a delivered reply or an execution receipt.",
         "previous_context_read_decision:",
-        JSON.stringify(parsedDecision),
+        // Its requests are fulfilled; echoing them invites the same read again.
+        JSON.stringify({ ...parsedDecision, contextRequests: [] }),
       ].join("\n");
       messageHandlerInput = {
         ...messageHandlerInput,

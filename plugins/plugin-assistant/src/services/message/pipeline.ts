@@ -19,6 +19,7 @@ import {
   CONTEXT_ROUTING_STATE_KEY,
   canActionRun,
   captureToolStageIO,
+  classifyStructuredFailureCause,
   createUnavailableGroundedActionReply,
   DISCOVER_ACTIONS_NAME,
   ElizaError,
@@ -122,6 +123,7 @@ import {
   evaluatePlannedReplyEgress,
   resolvePlannedReplyEgress,
 } from "./egress-policy.js";
+import { characterFailureTemplate } from "./failures.ts";
 import {
   withBackgroundHistory,
   withHistoryReadEvidence,
@@ -1455,6 +1457,7 @@ export async function runV5MessageRuntimeStage1(
             );
             plannerTools.splice(0, plannerTools.length, ...expandedTools);
           },
+          // [] is a fresh full-catalog admission, not a Stage-1 hint list.
           async (names) =>
             collectV5PlannerCandidateActions({
               runtime: args.runtime,
@@ -1462,10 +1465,9 @@ export async function runV5MessageRuntimeStage1(
               message: args.message,
               state: plannerState,
               selectedContexts,
-              candidateActions:
-                names.length > 0
-                  ? names
-                  : args.runtime.actions.map((action) => action.name),
+              ...(names.length > 0
+                ? { candidateActions: names }
+                : { discoverActions: true }),
               userRoles: [
                 await resolveStage1SenderRole(args.runtime, args.message),
               ],
@@ -1474,6 +1476,7 @@ export async function runV5MessageRuntimeStage1(
             catalogIndex: providerDiscoveryEnabled,
             deferNameIndex: true,
             taskIntents: messageHandler.plan.intents,
+            exposedToolNames: () => plannerTools.map((tool) => tool.name),
           },
         ),
       );
@@ -2124,8 +2127,10 @@ export async function runV5MessageRuntimeStage1(
               runtime: plannerRuntimeForEval,
               context,
               trajectory,
+              ...loopInputs
             }) =>
               runEvaluator({
+                ...loopInputs,
                 runtime: plannerRuntimeForEval,
                 context,
                 trajectory,
@@ -2337,9 +2342,15 @@ export async function runV5MessageRuntimeStage1(
               { tool: toolCall.name },
             );
           },
-          evaluate: ({ runtime: plannerRuntimeForEval, context, trajectory }) =>
+          evaluate: ({
+            runtime: plannerRuntimeForEval,
+            context,
+            trajectory,
+            ...loopInputs
+          }) =>
             timeInferenceSpan("evaluators:planner", () =>
               runEvaluator({
+                ...loopInputs,
                 runtime: plannerRuntimeForEval,
                 context,
                 trajectory,
@@ -2462,7 +2473,15 @@ export async function runV5MessageRuntimeStage1(
             sanitizedPartial?.kind === "text"
               ? sanitizedPartial.text
               : undefined;
+          // The character voices the stop; the neutral notice remains only
+          // for characters that define no line for this cause.
+          const failureCause = classifyStructuredFailureCause(error);
           const notice =
+            characterFailureTemplate(
+              args.runtime,
+              plannerState,
+              failureCause,
+            )?.trim() ||
             "The request remains incomplete because processing stopped unexpectedly. Recorded tool outcomes are preserved; remaining work has not been completed.";
           const text = [safePartial, notice].filter(Boolean).join("\n\n");
           endStatus = "errored";
@@ -2479,7 +2498,10 @@ export async function runV5MessageRuntimeStage1(
                 text,
                 thought: messageHandler.thought,
                 terminalFailure: {
-                  kind: "handler_error",
+                  kind:
+                    failureCause === "transient"
+                      ? "handler_error"
+                      : failureCause,
                   code: "PLANNER_INTERRUPTED_AFTER_ACTION",
                   transient: false,
                   message: notice,
@@ -2493,9 +2515,13 @@ export async function runV5MessageRuntimeStage1(
             },
           };
         }
-        const preservedAnswer = prePatchStageOneReplyIsUngroundedAppliedClaim
-          ? undefined
-          : prePatchStageOneReply?.trim();
+        // A draft written beside declared intents describes work that never
+        // ran; it is not a completed answer to degrade to.
+        const preservedAnswer =
+          prePatchStageOneReplyIsUngroundedAppliedClaim ||
+          messageHandler.plan.intents?.some((intent) => intent.trim())
+            ? undefined
+            : prePatchStageOneReply?.trim();
         if (
           !preservedAnswer ||
           PROGRESS_ONLY_ANSWER_REJECT.test(preservedAnswer)

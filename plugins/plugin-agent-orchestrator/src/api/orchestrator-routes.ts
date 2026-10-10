@@ -33,6 +33,7 @@ import type {
   TaskProviderPolicy,
 } from "../services/orchestrator-task-types.js";
 import { buildOrchestratorWidgetSnapshot } from "../services/orchestrator-widget-contract.js";
+import { OWNER_REQUESTED_METADATA_KEY } from "../services/task-policy.js";
 import { AdmissionQueueFullError } from "../services/types.js";
 import type { RouteContext } from "./route-utils.js";
 import {
@@ -474,7 +475,11 @@ async function dispatchOrchestratorRoutes(
       taskRoomId: asString(body.taskRoomId),
       providerPolicy: asProviderPolicy(body.providerPolicy),
       currentPlan: isRecord(body.currentPlan) ? body.currentPlan : undefined,
-      metadata: isRecord(body.metadata) ? body.metadata : undefined,
+      // An authenticated API request is the owner's.
+      metadata: {
+        ...(isRecord(body.metadata) ? body.metadata : {}),
+        [OWNER_REQUESTED_METADATA_KEY]: true,
+      },
     };
     sendJson(res, await service.createTask(input), 201);
     return true;
@@ -674,6 +679,8 @@ async function dispatchOrchestratorRoutes(
         worldId: asString(body.worldId),
         projectId: asString(body.projectId),
         workdir: asString(body.workdir),
+        // An authenticated API request is the owner's.
+        metadata: { [OWNER_REQUESTED_METADATA_KEY]: true },
       });
       if (!forked) {
         sendError(res, "Task not found", 404);

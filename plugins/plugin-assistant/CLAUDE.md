@@ -50,7 +50,7 @@ Direct-conversation planning and READ_CONTEXT may publish a single model-authore
 
 Personal add_directive/remove_directive operations target only the requester; omission of scope cannot turn them into global changes. Removal requires the complete exact stored directive, preserving unrelated rules, traits and other slots. Exact removal resolves and mutates under the slot lock; absent rules produce no write or removal audit. Unknown legacy directive provenance remains unknown. Planner-owned directive changes return durable receipts and deferred reply grounding instead of a premature action callback.
 
-History review checkpoints preserve original correction/dependency groups with the reviewed-prefix hash and scope binding. Foreground reads expand the complete connected originals through the same graph helper; literal match receipts still report only actual matches. Old checkpoints remain valid, malformed/stale groups fall back to full context, and current review completeness requirements remain unchanged.
+History review checkpoints preserve original correction/dependency groups with the reviewed-prefix hash and scope binding. Foreground reads expand the complete connected originals through the same graph helper; literal match receipts still report only actual matches. One review per room serves every speaker; malformed/stale groups fall back to full context, and current review completeness requirements remain unchanged.
 
 Transient acknowledgements obey the normal owner-exclusive and outbound-envelope boundaries. Native context-read progress requires existing response admission and cannot trigger an extra adjudication; pending or blocked risk review withholds it. Final-response admission and recovery remain authoritative.
 

@@ -353,6 +353,35 @@ async function scenario(label: string, withApprovals = false) {
     // Reuse the exact Stage-1 and native planner wire fixtures, replacing only
     // their success-only evaluator with a receipt-aware scenario evaluator.
     harness.fixtures.register(...fixtures.slice(0, 2));
+    if (options.paused === "stale-source")
+      // A refused reference returns to the planner, which reports it here.
+      harness.fixtures.register({
+        name: `replan-${input}`,
+        match: {
+          modelType: ModelType.ACTION_PLANNER,
+          input: (text, call) =>
+            matchesScenarioInput(input)(text) &&
+            (call.params.messages ?? []).some(
+              (message) => message.role === "tool",
+            ),
+        },
+        response: {
+          text: "",
+          toolCalls: [
+            {
+              id: "reply-stale-source",
+              name: "REPLY",
+              type: "function",
+              arguments: {
+                text: reply,
+                effectReceiptIds: [],
+                eliza_turn_scope: "final",
+              },
+            },
+          ],
+        },
+        times: 1,
+      });
     if (options.extraction) {
       const extraction = options.extraction;
       harness.fixtures.register({
@@ -395,11 +424,13 @@ async function scenario(label: string, withApprovals = false) {
         if (options.paused) {
           expect(receipt.success).toBe(false);
           const data = record(receipt.data);
-          expect(data.awaitingUserInput).toBe(true);
-          expect(data.requiresInput).toBe(true);
           expect(committed).toHaveLength(0);
           if (options.paused === "stale-source") {
-            expect(data.error).toBe("CALENDAR_NOTE_SOURCE_CONFLICT");
+            expect(data).toMatchObject({
+              error: "CALENDAR_NOTE_SOURCE_CONFLICT",
+              invalidParameterNames: ["details.sourceNote"],
+            });
+            expect(data.awaitingUserInput).toBeUndefined();
             expect(
               effects.some(
                 (effect) =>
@@ -409,6 +440,8 @@ async function scenario(label: string, withApprovals = false) {
               ),
             ).toBe(true);
           } else {
+            expect(data.awaitingUserInput).toBe(true);
+            expect(data.requiresInput).toBe(true);
             expect(effects.some((effect) => effect.outcome === "noop")).toBe(
               true,
             );

@@ -12,6 +12,7 @@ import {
   TaskService,
   type UUID,
 } from "@elizaos/core";
+import * as assistant from "@elizaos/plugin-assistant";
 import {
   afterAll,
   afterEach,
@@ -24,7 +25,10 @@ import {
 import { collectV5PlannerCandidateActions } from "../../../plugin-assistant/src/services/message/action-surface.ts";
 import { runV5MessageRuntimeStage1 } from "../../../plugin-assistant/src/services/message/pipeline.ts";
 import { BUILTIN_RESPONSE_HANDLER_EVALUATORS } from "../../../plugin-assistant/src/services/message/stage1-evaluators.ts";
-import { createLifeOpsTestRuntime } from "../../test/helpers/runtime.js";
+import {
+  createLifeOpsTestRuntime,
+  seedOwnerReminder,
+} from "../../test/helpers/runtime.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import {
   readRecentLifeSaveCache,
@@ -83,27 +87,6 @@ afterAll(async () => {
   vi.useRealTimers();
 });
 
-async function seed(title: string) {
-  return service.createDefinition({
-    title,
-    description: "Original reminder description",
-    kind: "habit",
-    timezone: "UTC",
-    priority: 3,
-    cadence: {
-      kind: "once",
-      dueAt: new Date(Date.now() + 3_600_000).toISOString(),
-    },
-    metadata: {
-      ownerSurface: "OWNER_REMINDERS",
-      nativeProjection: "in_app_only",
-    },
-    reminderPlan: {
-      steps: [{ channel: "in_app", offsetMinutes: 0, label: "Notify" }],
-    },
-  });
-}
-
 async function invoke(
   params: Record<string, unknown>,
   text: string,
@@ -136,7 +119,10 @@ async function invoke(
 }
 
 it("archives the selected reminder and preserves its plan, occurrence history, and unrelated edit fields", async () => {
-  const original = await seed("Sapphire goal reminder");
+  const original = await seedOwnerReminder(service, "Sapphire goal reminder");
+  const render = vi
+    .spyOn(assistant, "renderGroundedActionReply")
+    .mockResolvedValue({ kind: "deferred", grounding: "grounding" });
   const occurrences = await service.repository.listOccurrencesForDefinition(
     fixture.runtime.agentId,
     original.definition.id,
@@ -190,11 +176,149 @@ it("archives the selected reminder and preserves its plan, occurrence history, a
       commit: expect.objectContaining({ kind: "durable" }),
     }),
   ]);
+  // With the reply left to the planner, the turn's final reply voices the
+  // cancellation from this grounding: the owner's words, not the planner's
+  // edit fields.
+  expect(result.transcriptVisibility).toBe("internal");
+  expect(result.userFacingText).toBeUndefined();
+  expect(render.mock.calls).toEqual([
+    [
+      expect.objectContaining({
+        scenario: "cancelled_definition",
+        intent: "Cancel my Sapphire goal reminder.",
+        context: {
+          cancelled: { title: "Sapphire goal reminder", status: "archived" },
+        },
+      }),
+    ],
+  ]);
+});
+
+/** A one-off reminder that was due an hour ago and has since been cancelled. */
+const seedCancelledReminder = async (title: string) =>
+  service.updateDefinition(
+    (await seedOwnerReminder(service, title, -3_600_000)).definition.id,
+    { status: "archived" },
+  );
+
+it("cancels the planner's exact title when other titles share only a filler word with the request and a cancelled copy shares its title", async () => {
+  const others = [
+    await seedOwnerReminder(service, "water the plants"),
+    await seedOwnerReminder(service, "Take the trash out"),
+    await seedCancelledReminder("Call dentist back"),
+  ];
+  const dentist = await seedOwnerReminder(service, "Call dentist back");
+  try {
+    const result = await invoke(
+      { action: "cancel", kind: "definition", title: "call dentist back" },
+      "pls cancel the dentist reminder",
+    );
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(
+      (await service.getDefinition(dentist.definition.id)).definition.status,
+    ).toBe("archived");
+    for (const untouched of others)
+      expect(
+        (await service.getDefinition(untouched.definition.id)).definition,
+      ).toEqual(untouched.definition);
+  } finally {
+    for (const entry of [...others, dentist])
+      await service.deleteDefinition(entry.definition.id);
+  }
+});
+
+it("cancels the one reminder that can still fire when a cancelled one carries the same title", async () => {
+  const cancelled = await seedCancelledReminder("Stretch break");
+  const upcoming = await seedOwnerReminder(service, "Stretch break");
+  try {
+    const result = await invoke(
+      { action: "cancel", title: "Stretch break" },
+      "cancel my stretch break reminder",
+    );
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(
+      (await service.getDefinition(upcoming.definition.id)).definition.status,
+    ).toBe("archived");
+    expect(
+      (await service.getDefinition(cancelled.definition.id)).definition,
+    ).toEqual(cancelled.definition);
+  } finally {
+    for (const entry of [cancelled, upcoming])
+      await service.deleteDefinition(entry.definition.id);
+  }
+});
+
+it.each([
+  [
+    "another title is named with it",
+    "Call mom about the trip",
+    async () => [
+      await seedOwnerReminder(service, "Call mom"),
+      await seedCancelledReminder("Call mom about the trip"),
+    ],
+  ],
+  [
+    "the only one still open is a todo",
+    "Call the vet",
+    async () => [
+      await service.createDefinition({
+        title: "Call the vet",
+        kind: "task",
+        timezone: "UTC",
+        cadence: { kind: "unscheduled" },
+        metadata: { ownerSurface: "OWNER_TODOS" },
+      }),
+      await seedCancelledReminder("Call the vet"),
+    ],
+  ],
+  [
+    "a past-due one is snoozed",
+    "Stretch break",
+    async () => {
+      const snoozed = await seedOwnerReminder(
+        service,
+        "Stretch break",
+        -60_000,
+      );
+      const [occurrence] =
+        await service.repository.listOccurrencesForDefinition(
+          fixture.runtime.agentId,
+          snoozed.definition.id,
+        );
+      await service.snoozeOccurrence(occurrence.id, { minutes: 30 });
+      return [
+        snoozed,
+        await seedOwnerReminder(service, "Stretch break", 86_400_000),
+      ];
+    },
+  ],
+])("asks which reminder to cancel when %s", async (_why, title, seed) => {
+  const seeded = await seed();
+  try {
+    const result = await invoke(
+      { action: "cancel", title, target: title },
+      `cancel my ${title.toLowerCase()} reminder`,
+    );
+    expect(result.data).toMatchObject({
+      error: "LIFEOPS_TARGET_AMBIGUOUS",
+      retryable: false,
+    });
+    for (const entry of seeded)
+      expect(
+        (await service.getDefinition(entry.definition.id)).definition,
+      ).toEqual(entry.definition);
+  } finally {
+    for (const entry of seeded)
+      await service.deleteDefinition(entry.definition.id);
+  }
 });
 
 it("keeps canonical cancel separate from the recent-save delete/undo path", async () => {
-  const selected = await seed("Selected cancellation reminder");
-  const recent = await seed("Unrelated recent save");
+  const selected = await seedOwnerReminder(
+    service,
+    "Selected cancellation reminder",
+  );
+  const recent = await seedOwnerReminder(service, "Unrelated recent save");
   let message: Memory | undefined;
   const recentSave = {
     definitionId: recent.definition.id,
@@ -227,7 +351,10 @@ it("keeps canonical cancel separate from the recent-save delete/undo path", asyn
 it.each(["archived", "paused", "completed"])(
   "ordinary update cannot acquire %s status authority",
   async (status) => {
-    const original = await seed(`Ordinary update ${status}`);
+    const original = await seedOwnerReminder(
+      service,
+      `Ordinary update ${status}`,
+    );
     const result = await invoke(
       {
         action: "update",
@@ -249,7 +376,7 @@ it.each(["archived", "paused", "completed"])(
 );
 
 it("does not let a non-owner cancellation write the stored reminder", async () => {
-  const original = await seed("Owner-only cancellation");
+  const original = await seedOwnerReminder(service, "Owner-only cancellation");
   const result = await invoke(
     { action: "cancel", target: original.definition.id },
     "Cancel this reminder.",
@@ -268,8 +395,14 @@ it.each([
 ] as const)(
   "%s resolves an exact reminder definition ID to its caller-owned occurrence",
   async (action, expectedState) => {
-    const original = await seed(`Definition-selected reminder ${action}`);
-    const unrelated = await seed(`Unrelated reminder ${action}`);
+    const original = await seedOwnerReminder(
+      service,
+      `Definition-selected reminder ${action}`,
+    );
+    const unrelated = await seedOwnerReminder(
+      service,
+      `Unrelated reminder ${action}`,
+    );
     const [occurrence] = await service.repository.listOccurrencesForDefinition(
       fixture.runtime.agentId,
       original.definition.id,
@@ -304,7 +437,10 @@ it.each([
 );
 
 it("does not let a non-owner complete a definition-selected reminder", async () => {
-  const original = await seed("Owner-only definition-selected completion");
+  const original = await seedOwnerReminder(
+    service,
+    "Owner-only definition-selected completion",
+  );
   const [occurrence] = await service.repository.listOccurrencesForDefinition(
     fixture.runtime.agentId,
     original.definition.id,
@@ -324,7 +460,10 @@ it("does not let a non-owner complete a definition-selected reminder", async () 
 });
 
 it("rejects an ambiguous definition without completing either occurrence", async () => {
-  const original = await seed("Ambiguous definition-selected completion");
+  const original = await seedOwnerReminder(
+    service,
+    "Ambiguous definition-selected completion",
+  );
   const [occurrence] = await service.repository.listOccurrencesForDefinition(
     fixture.runtime.agentId,
     original.definition.id,
@@ -340,7 +479,12 @@ it("rejects an ambiguous definition without completing either occurrence", async
     "done",
   );
   expect(result.success).toBe(false);
-  expect(result.text).toContain("Multiple items match");
+  // The which-one question is evidence for the planner's reply, not a line.
+  expect(result.userFacingText).toBeUndefined();
+  expect(result.data).toMatchObject({
+    error: "LIFEOPS_TARGET_AMBIGUOUS",
+    ambiguousCandidates: [expect.any(String), expect.any(String)],
+  });
   for (const selected of [occurrence, second]) {
     expect(
       (
@@ -354,7 +498,10 @@ it("rejects an ambiguous definition without completing either occurrence", async
 });
 
 it("does not substitute a title when the exact definition UUID is unknown", async () => {
-  const original = await seed("Known title with unknown definition target");
+  const original = await seedOwnerReminder(
+    service,
+    "Known title with unknown definition target",
+  );
   const result = await invoke(
     {
       action: "complete",
@@ -454,7 +601,10 @@ it("rejects another owner's exact reminder definition ID", async () => {
 });
 
 it("rejects an exact reminder reference outside the requested domain", async () => {
-  const original = await seed("Domain-bound definition-selected completion");
+  const original = await seedOwnerReminder(
+    service,
+    "Domain-bound definition-selected completion",
+  );
   const [occurrence] = await service.repository.listOccurrencesForDefinition(
     fixture.runtime.agentId,
     original.definition.id,
@@ -477,7 +627,7 @@ it("rejects an exact reminder reference outside the requested domain", async () 
 });
 
 async function reminderSource(
-  original: Awaited<ReturnType<typeof seed>>,
+  original: Awaited<ReturnType<typeof seedOwnerReminder>>,
   changes: Partial<Memory> = {},
 ) {
   if (changes.roomId && !(await fixture.runtime.getRoom(changes.roomId))) {
@@ -519,7 +669,10 @@ async function reminderSource(
 }
 
 it("executes source-bound Done through the promoted tool after API language augmentation", async () => {
-  const original = await seed("Actual promoted bound Done");
+  const original = await seedOwnerReminder(
+    service,
+    "Actual promoted bound Done",
+  );
   const { source, occurrence } = await reminderSource(original);
   const result = await invoke(
     { target: "Check the bound Done button" },
@@ -551,7 +704,10 @@ it.each([
 ] as const)(
   "routes typed %s from the captured tasks/household plan directly to %s",
   async (value, operation, state) => {
-    const original = await seed(`Stage-one typed choice ${value}`);
+    const original = await seedOwnerReminder(
+      service,
+      `Stage-one typed choice ${value}`,
+    );
     const { source, occurrence } = await reminderSource(original);
     const message = {
       id: crypto.randomUUID() as UUID,
@@ -676,7 +832,7 @@ it("does not fall back to household operations when the typed choice actor lacks
 });
 
 it("the message pipeline executes a typed Done without an ACTION_PLANNER or discovery call", async () => {
-  const original = await seed("Pipeline typed Done");
+  const original = await seedOwnerReminder(service, "Pipeline typed Done");
   const { source, occurrence } = await reminderSource(original);
   const message = {
     id: crypto.randomUUID() as UUID,
@@ -961,8 +1117,11 @@ it.each([
 ] as const)(
   "binds clicked %s to the canonical source occurrence despite an unrelated planner target",
   async (value, state) => {
-    const original = await seed(`Bound choice ${value}`);
-    const other = await seed(`Concurrent reminder ${value}`);
+    const original = await seedOwnerReminder(service, `Bound choice ${value}`);
+    const other = await seedOwnerReminder(
+      service,
+      `Concurrent reminder ${value}`,
+    );
     const { source, occurrence } = await reminderSource(original);
     const result = await invoke(
       { action: "complete", target: other.definition.id },
@@ -1001,8 +1160,14 @@ it.each([
 ])(
   "rejects %s reminder choice sources without falling back to the planner target",
   async (mode) => {
-    const original = await seed(`Rejected source ${mode}`);
-    const other = await seed(`Protected planner target ${mode}`);
+    const original = await seedOwnerReminder(
+      service,
+      `Rejected source ${mode}`,
+    );
+    const other = await seedOwnerReminder(
+      service,
+      `Protected planner target ${mode}`,
+    );
     const { source, occurrence } = await reminderSource(original, {
       ...(mode === "foreign_room"
         ? { roomId: crypto.randomUUID() as UUID }

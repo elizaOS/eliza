@@ -188,7 +188,11 @@ interface AcpServiceLike {
       metadata?: Record<string, unknown>;
     }>
   >;
-  sendToSession(sessionId: string, input: string): Promise<unknown>;
+  sendToSession(
+    sessionId: string,
+    input: string,
+    opts?: { internal?: boolean },
+  ): Promise<unknown>;
 }
 
 /** Read-only round-trip accounting exposed by the SubAgentRouter. */
@@ -293,7 +297,7 @@ export class TaskWatchdogService extends Service {
       if (this.prodded.has(s.id)) continue; // already prodded this stall
       this.prodded.add(s.id);
       try {
-        await acp.sendToSession(s.id, STALL_GRILL_PROMPT);
+        await acp.sendToSession(s.id, STALL_GRILL_PROMPT, { internal: true });
         logger.info(
           `[TaskWatchdogService] stalled session ${s.id} (idle ${Math.round(
             s.idleMs / 1000,

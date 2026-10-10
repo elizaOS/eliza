@@ -73,6 +73,7 @@ import {
   type UUID,
   withRoomDeliverySettlement,
 } from "@elizaos/core";
+import { webChatWorldId } from "@elizaos/host";
 import {
   type ElizaConfig,
   isLinkedAccountProviderId,
@@ -3588,7 +3589,7 @@ export async function ensureCompatChatConnection(
   const roomId = stringToUuid(
     `${agentName}-${channelIdPrefix}-room-${principalScopedRoomKey}`,
   ) as UUID;
-  const worldId = stringToUuid(`${agentName}-web-chat-world`) as UUID;
+  const worldId = webChatWorldId(runtime.agentId);
   const messageServerId = stringToUuid(`${agentName}-web-server`) as UUID;
   await runtime.ensureConnection({
     entityId: userId,

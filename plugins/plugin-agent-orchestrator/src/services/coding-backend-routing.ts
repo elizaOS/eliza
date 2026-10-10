@@ -12,7 +12,8 @@
  *                   which it only fills when the user explicitly asked).
  *   2. character  — the agent author DECLARED routing in
  *                   `character.settings.routing.coding` — `byTag[tag]` first
- *                   (an opaque difficulty tag the planner emits), then `default`.
+ *                   (an opaque difficulty tag the planner emits), then
+ *                   `ownerDefault` when the OWNER asked, then `default`.
  *   3. pin        — the operator's `ELIZA_ACP_DEFAULT_AGENT` deployment default.
  *   4. planner    — the planner's heuristic `agentType` guess (kept last because
  *                   it routinely guesses from context tokens — the reason the pin
@@ -52,14 +53,24 @@ export interface BackendAxisRouting {
    * request can otherwise override the pin.
    */
   allow?: string[];
+  /**
+   * Backends that run only work the OWNER asked for, e.g. claude/codex on the
+   * owner's own subscription login. Task policy enforces it
+   * (`ownerOnlyBackendRefusal`); selection does not skip them.
+   */
+  ownerOnly?: string[];
+  /** Backend chosen instead of `default` when the OWNER asked for the work. */
+  ownerDefault?: string;
 }
 
 /** Where a resolved backend came from — surfaced in logs/trajectories. */
 export type CodingBackendSource =
   | "explicit"
   | "character:byTag"
+  | "character:ownerDefault"
   | "character:default"
   | "env:byTag"
+  | "env:ownerDefault"
   | "env:default"
   | "pin"
   | "planner";
@@ -89,7 +100,21 @@ function parseAxis(value: unknown): BackendAxisRouting | undefined {
     const allow = value.allow.filter((v): v is string => typeof v === "string");
     axis.allow = allow;
   }
-  return axis.default || axis.byTag || axis.allow ? axis : undefined;
+  if (Array.isArray(value.ownerOnly)) {
+    axis.ownerOnly = value.ownerOnly.filter(
+      (v): v is string => typeof v === "string",
+    );
+  }
+  if (typeof value.ownerDefault === "string") {
+    axis.ownerDefault = value.ownerDefault;
+  }
+  return axis.default ||
+    axis.byTag ||
+    axis.allow ||
+    axis.ownerOnly ||
+    axis.ownerDefault
+    ? axis
+    : undefined;
 }
 
 /** Pull the `coding` axis out of a routing object (`{ coding: {...} }`). */
@@ -155,6 +180,7 @@ function asKnownAdapter(value: string | undefined): string | undefined {
  * When the operator declares an `allow` lock-list, every candidate (including an
  * explicit user ask) is constrained to it; a disallowed candidate is skipped so
  * resolution continues down the precedence chain instead of escaping the lock.
+ * An OWNER request takes `ownerDefault` ahead of `default`.
  */
 export function resolveCodingBackend(args: {
   runtime: IAgentRuntime | undefined;
@@ -164,6 +190,8 @@ export function resolveCodingBackend(args: {
   tag?: string;
   /** The planner's heuristic `agentType` guess (lowest precedence). */
   plannerGuess?: string;
+  /** Whether the owner asked for the work. */
+  ownerRequested?: boolean;
 }): CodingBackendResolution | undefined {
   const codingEntry = readCodingRoutingEntry(args.runtime);
   const coding = codingEntry?.routing;
@@ -193,6 +221,15 @@ export function resolveCodingBackend(args: {
         };
       }
     }
+    const ownerDefault = args.ownerRequested
+      ? allowed(asKnownAdapter(coding.ownerDefault))
+      : undefined;
+    if (ownerDefault) {
+      return {
+        agentType: ownerDefault,
+        source: `${codingEntry.source}:ownerDefault` as CodingBackendSource,
+      };
+    }
     const fallback = allowed(asKnownAdapter(coding.default));
     if (fallback) {
       return {
@@ -217,6 +254,7 @@ export function resolveCodingBackendLogged(args: {
   explicit?: string;
   tag?: string;
   plannerGuess?: string;
+  ownerRequested?: boolean;
 }): CodingBackendResolution | undefined {
   const resolved = resolveCodingBackend(args);
   if (resolved) {

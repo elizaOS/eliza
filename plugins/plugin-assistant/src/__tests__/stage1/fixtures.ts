@@ -30,7 +30,6 @@ import {
   historyRetentionContext,
   historyRetentionEvaluator,
 } from "../../services/history-retention.js";
-import { resolveStage1SenderRole } from "../../services/message/addressing.js";
 import { runV5MessageRuntimeStage1 } from "../../services/message.js";
 
 export const SCHEDULING_BACKSTOP_RULE: CandidateActionBackstopRule = {
@@ -342,12 +341,7 @@ export async function reviewedHistoryFixture(
   };
   runtime.getMemories = vi.fn(async () => structuredClone(rows));
   Object.assign(runtime, { evaluators: [historyRetentionEvaluator] });
-  const scope = {
-    agentId: runtime.agentId,
-    roomId: message.roomId,
-    entityId: message.entityId,
-    roles: [await resolveStage1SenderRole(runtime, message)],
-  };
+  const scope = { agentId: runtime.agentId, roomId: message.roomId };
   const prepared = prepareHistoryRetention(
     historyRetentionContext(runtime, message, rows),
     scope,

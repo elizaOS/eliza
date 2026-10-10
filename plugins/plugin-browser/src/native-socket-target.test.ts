@@ -1,3 +1,6 @@
+import { spawnSync } from "node:child_process";
+import { once } from "node:events";
+import { lstatSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createConnection, createServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
@@ -187,6 +190,50 @@ it("expires a socket that never registers a profile", async () => {
   } finally {
     socket?.destroy();
     await target.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("replaces a stale socket left by an owner that exited without cleanup", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "native-stale-"));
+  const socketPath = join(directory, "browser.sock");
+  const target = new NativeSocketBrowserTarget(() => {});
+  let socket: Socket | undefined;
+  try {
+    // Exiting skips server.close(), so the socket file outlives its listener.
+    const owner = spawnSync(process.execPath, [
+      "-e",
+      `require("node:net").createServer().listen(${JSON.stringify(socketPath)}, () => process.exit(0))`,
+    ]);
+    expect(owner.status).toBe(0);
+    expect(lstatSync(socketPath).isSocket()).toBe(true);
+    await target.start({ ELIZA_BROWSER_NATIVE_SOCKET: socketPath });
+    socket = createConnection(socketPath);
+    await once(socket, "connect");
+  } finally {
+    socket?.destroy();
+    await target.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("never takes over a socket that a live listener owns", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "native-live-owner-"));
+  const socketPath = join(directory, "browser.sock");
+  const owner = createServer((connection) => connection.destroy());
+  await new Promise<void>((resolve) => owner.listen(socketPath, resolve));
+  const target = new NativeSocketBrowserTarget(() => {});
+  let socket: Socket | undefined;
+  try {
+    await expect(
+      target.start({ ELIZA_BROWSER_NATIVE_SOCKET: socketPath }),
+    ).rejects.toMatchObject({ code: "EADDRINUSE" });
+    socket = createConnection(socketPath);
+    await once(socket, "connect");
+  } finally {
+    socket?.destroy();
+    await target.stop();
+    await new Promise<void>((resolve) => owner.close(() => resolve()));
     await rm(directory, { recursive: true, force: true });
   }
 });

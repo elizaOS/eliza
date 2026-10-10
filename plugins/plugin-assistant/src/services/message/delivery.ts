@@ -34,7 +34,10 @@ import {
   sanitizeOutboundTextWithLiterals,
   stripReasoningBlocks,
 } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/core/protocol";
+import {
+  parseJSONObjectFromText,
+  parseJsonObject,
+} from "@elizaos/core/protocol";
 import { v4 } from "uuid";
 import { PASSIVE_TURN_ACTIONS } from "./action-ownership.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics.ts";
@@ -554,11 +557,13 @@ export async function rewriteActionCallbackInCharacter(args: {
       }),
     )) as string | GenerateTextResult;
     const cleaned = stripReasoningBlocks(getV5ModelText(raw)).trim();
-    const parsed = parseJSONObjectFromText(cleaned) as {
+    // A complete envelope followed by stray output is still the model's
+    // reply; the receipt and grounding checks downstream judge its content.
+    const parsed = parseJsonObject<{
       response?: unknown;
       effectReceiptIds?: unknown;
       contextRequest?: unknown;
-    } | null;
+    }>(cleaned);
     if (parsed?.contextRequest !== undefined) {
       return args.allowFullContextRequest && parsed.contextRequest === "full"
         ? { text: "", effectReceiptIds: [], contextRequest: "full" }

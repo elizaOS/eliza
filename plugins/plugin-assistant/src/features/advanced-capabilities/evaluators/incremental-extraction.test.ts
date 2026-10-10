@@ -719,6 +719,33 @@ describe("incremental extractor evidence", () => {
     ).toHaveLength(1);
   });
 
+  it("stores the completion verdict and sources, not the model's reason prose", async () => {
+    const runtime = await makeRuntime();
+    const reason =
+      "The user asked which tea they like and the agent answered keemun.";
+    await process(
+      runtime,
+      successEvaluator,
+      { completed: true, reason, thought: "recalled keemun from memory" },
+      options("success:recall"),
+    );
+    const [reflection] = await runtime.getMemories({
+      tableName: "memories",
+      roomId: ROOM,
+      unique: false,
+    });
+    expect(reflection.content.type).toBe("task_completion_reflection");
+    expect(reflection.metadata).toMatchObject({
+      messageId: MESSAGE,
+      taskCompleted: true,
+      taskAssessed: true,
+      extractionEvidenceIds: ["success:recall"],
+      extractionSourceRevisions: { [MESSAGE]: "revision1" },
+    });
+    // A later forget deletes the fact; no stored reflection may keep its value.
+    expect(JSON.stringify(reflection)).not.toContain("keemun");
+  });
+
   it("retires an edited completion and its cache while retaining originals and other derived records", async () => {
     const runtime = await makeRuntime();
     await runtime.createMemory(

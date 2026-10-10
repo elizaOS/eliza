@@ -37,6 +37,7 @@ import {
 } from "../streaming-context";
 import { getTrajectoryContext } from "../trajectory-context";
 import {
+	activateDeferredChildStep,
 	ensureTaskTrajectory,
 	runInModelCallRecordingScope,
 	type TrajectoryRuntimeLlmCallLogger,
@@ -2390,6 +2391,7 @@ export class RuntimeModelDispatch {
 
 		try {
 			const trajCtx = getTrajectoryContext();
+			activateDeferredChildStep(trajCtx);
 			const stepId = trajCtx?.trajectoryStepId;
 			const trajLogger = (await this.host._ensureServiceStarted(
 				"trajectories",
@@ -2536,6 +2538,7 @@ export class RuntimeModelDispatch {
 		// a result, so its wire recorder did not run. We want this entry to land.
 		try {
 			const trajCtx = getTrajectoryContext();
+			activateDeferredChildStep(trajCtx);
 			const stepId = trajCtx?.trajectoryStepId;
 			if (!stepId) return;
 			const trajLogger = (await this.host._ensureServiceStarted(

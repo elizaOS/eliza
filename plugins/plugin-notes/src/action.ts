@@ -73,15 +73,18 @@ function readAlternatives(
   return { value, conflicts };
 }
 
-function conflictingAlternatives(names: string[]): ActionResult {
+// Names each rejected argument as core validation does, so the planner can
+// pair a corrected retry with this failure.
+function conflictingArguments(
+  names: string[],
+  text = "Pass matching note content alternatives or only the canonical field. Nothing changed.",
+  code = "NOTES_CONFLICTING_CONTENT",
+): ActionResult {
   return {
-    ...failure(
-      "Pass matching note content alternatives or only the canonical field. Nothing changed.",
-      "NOTES_CONFLICTING_CONTENT",
-    ),
+    ...failure(text, code),
     data: {
       actionName: "NOTES",
-      error: "NOTES_CONFLICTING_CONTENT",
+      error: code,
       invalidParameterNames: names,
       parameterErrors: names.map((name) => `Conflicting argument '${name}'`),
     },
@@ -133,6 +136,26 @@ function failure(
   };
 }
 
+/** The model's view of note records: projected parts and how to read them. */
+function notesPromptData(data: Record<string, unknown>) {
+  const modelData: Record<string, unknown> = { actionName: "NOTES", ...data };
+  const project = (value: unknown) =>
+    isObjectRecord(value) &&
+    typeof value.title === "string" &&
+    typeof value.body === "string"
+      ? projectNoteForModel(
+          value as Record<string, unknown> & Pick<StickyNote, "title" | "body">,
+        )
+      : value;
+  if (data.note) modelData.note = project(data.note);
+  if (Array.isArray(data.notes)) modelData.notes = data.notes.map(project);
+  return {
+    ...modelData,
+    noteContentFormat:
+      "Model note parts reconstruct exact content as title + bodySeparator + body. bodySeparator is the codec's framing LF, not an authored blank line. body excludes only that framing LF; any leading LF still in body is authored content and must remain. Compare body with a separately requested body and complete content with a requested complete note. An empty bodySeparator with a nonempty body is a continuation of a length-limited title prefix; preserve it through complete content or literal textEdit, not a structured body replacement. notesRevision comes from the same complete commit/read snapshot as these records; any later Notes mutation requires a fresh complete read and reconciliation before PATCH. Timestamp fields are UTC instants, not local calendar-date labels. Use noteTimestampDisplay or selection.display for local dates. If the user did not ask for a date, omit an extra date label; preserve the exact user-authored title.",
+  };
+}
+
 /**
  * Notes return structured facts, not prose that could be mistaken for the
  * model-authored closing reply. Durable receipts remain available if reply
@@ -176,17 +199,6 @@ function committed(data: Record<string, unknown>): ActionResult {
         }),
       ]
     : undefined;
-  const modelData: Record<string, unknown> = { actionName: "NOTES", ...data };
-  const project = (value: unknown) =>
-    isObjectRecord(value) &&
-    typeof value.title === "string" &&
-    typeof value.body === "string"
-      ? projectNoteForModel(
-          value as Record<string, unknown> & Pick<StickyNote, "title" | "body">,
-        )
-      : value;
-  if (data.note) modelData.note = project(data.note);
-  if (Array.isArray(data.notes)) modelData.notes = data.notes.map(project);
   return {
     success: true,
     transcriptVisibility: "internal",
@@ -199,11 +211,7 @@ function committed(data: Record<string, unknown>): ActionResult {
     data: { actionName: "NOTES", ...data },
     ...(data.note || Array.isArray(data.notes)
       ? {
-          promptData: {
-            ...modelData,
-            noteContentFormat:
-              "Model note parts reconstruct exact content as title + bodySeparator + body. bodySeparator is the codec's framing LF, not an authored blank line. body excludes only that framing LF; any leading LF still in body is authored content and must remain. Compare body with a separately requested body and complete content with a requested complete note. An empty bodySeparator with a nonempty body is a continuation of a length-limited title prefix; preserve it through complete content or literal textEdit, not a structured body replacement. notesRevision comes from the same complete commit/read snapshot as these records; any later Notes mutation requires a fresh complete read and reconciliation before PATCH. Timestamp fields are UTC instants, not local calendar-date labels. Use noteTimestampDisplay or selection.display for local dates. If the user did not ask for a date, omit an extra date label; preserve the exact user-authored title.",
-          },
+          promptData: notesPromptData(data),
           promptDataMode: "replace-data" as const,
         }
       : {}),
@@ -282,9 +290,16 @@ async function updateNoteResult(
       ].includes(error.code)
     ) {
       const rejected = failure(error.message, error.code);
+      // Correcting any of these needs the current note, so answer with the
+      // complete note and the revision of the same snapshot, beside the error.
+      const snapshot = service.snapshot();
       return {
         ...rejected,
         data: { ...rejected.data, coachingFailure: true },
+        promptData: notesPromptData({
+          notes: [service.getNote(error.context?.noteId, snapshot)],
+          notesRevision: snapshot.revision,
+        }),
       };
     }
     throw error;
@@ -359,7 +374,7 @@ export const notesAction: Action = {
       "query",
     ]);
     if (alternatives.conflicts.length > 0)
-      return conflictingAlternatives(alternatives.conflicts);
+      return conflictingArguments(alternatives.conflicts);
     const service = getNotesService(runtime);
     if (params.dateRange !== undefined && op !== "list") {
       return failure(
@@ -400,21 +415,21 @@ export const notesAction: Action = {
           ? uiZone
           : undefined;
     if (op === "patch") {
-      if (
-        Object.keys(params).some(
-          (key) =>
-            ![
-              "action",
-              "subaction",
-              "op",
-              "target",
-              "changes",
-              "expectedRevision",
-              "textEdit",
-            ].includes(key),
-        )
-      ) {
-        return failure(
+      const unexpected = Object.keys(params).filter(
+        (key) =>
+          ![
+            "action",
+            "subaction",
+            "op",
+            "target",
+            "changes",
+            "expectedRevision",
+            "textEdit",
+          ].includes(key),
+      );
+      if (unexpected.length > 0) {
+        return conflictingArguments(
+          unexpected,
           "Use target, changes, and optional textEdit for a patch.",
           "NOTES_CONFLICTING_PATCH",
         );
@@ -682,7 +697,7 @@ export const notesAction: Action = {
       "newText",
     ]);
     if (replacements.conflicts.length > 0)
-      return conflictingAlternatives(replacements.conflicts);
+      return conflictingArguments(replacements.conflicts);
     const replacement = replacements.value;
     const hasTextEdit =
       params.textEdit !== undefined && params.textEdit !== null;

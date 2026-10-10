@@ -8,8 +8,8 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { TrajectoryLlmCallRecord as TrajectoryLlmCall } from "@elizaos/core";
 import {
+  activateDeferredChildStep,
   type AgentRuntime,
   assertActiveTrajectoryForLlmCall,
   type ContextObject,
@@ -48,13 +48,8 @@ type CompactorMessage = {
 };
 
 import {
-  enrichTrajectoryLlmCall,
-  ensureTrajectoriesTable,
   isLegacyTrajectoryLogger,
-  loadTrajectoryByStepId,
-  saveTrajectory,
   toOptionalNumber,
-  toText,
 } from "./trajectory-internals.ts";
 import {
   applyActiveViewAwareness,
@@ -120,7 +115,7 @@ type TrajectoryLoggerLike = {
   updateLatestLlmCall?: (
     stepId: string,
     patch: Record<string, unknown>,
-  ) => Promise<void> | void;
+  ) => void;
 };
 
 type RuntimeWithTrajectoryService = AgentRuntime & {
@@ -287,214 +282,6 @@ function ensureTrajectoryLoggerTracking(
   const trajectoryLogger = resolveTrajectoryLogger(runtime);
   if (!trajectoryLogger) {
     return trajectoryLogger;
-  }
-
-  if (typeof trajectoryLogger.updateLatestLlmCall !== "function") {
-    trajectoryLogger.updateLatestLlmCall = async (
-      stepId: string,
-      patch: Record<string, unknown>,
-    ) => {
-      const normalizedStepId = stepId.trim();
-      if (!normalizedStepId) return;
-
-      const tableReady = await ensureTrajectoriesTable(runtime);
-      if (!tableReady) return;
-
-      const trajectory = await loadTrajectoryByStepId(
-        runtime,
-        normalizedStepId,
-      );
-      if (!trajectory || !Array.isArray(trajectory.steps)) return;
-
-      const step =
-        [...trajectory.steps]
-          .reverse()
-          .find((candidate) => candidate.stepId === normalizedStepId) ??
-        trajectory.steps[trajectory.steps.length - 1];
-      const calls = Array.isArray(step?.llmCalls) ? step.llmCalls : [];
-      const latestCall =
-        calls.length > 0
-          ? (calls[calls.length - 1] as TrajectoryLlmCall)
-          : null;
-      if (!latestCall) return;
-
-      let updated = false;
-      const nextModel = toText(patch.model, "").trim();
-      const currentModel = toText(latestCall.model, "").trim();
-      if (
-        nextModel &&
-        currentModel !== nextModel &&
-        (currentModel.length === 0 ||
-          isGenericTrajectoryModel(currentModel) ||
-          !isGenericTrajectoryModel(nextModel))
-      ) {
-        latestCall.model = nextModel;
-        updated = true;
-      }
-
-      const nextSystemPrompt = toText(patch.systemPrompt, "");
-      if (!toText(latestCall.systemPrompt, "") && nextSystemPrompt) {
-        latestCall.systemPrompt = nextSystemPrompt;
-        updated = true;
-      }
-
-      const nextUserPrompt = toText(patch.userPrompt, "");
-      if (!toText(latestCall.userPrompt, "") && nextUserPrompt) {
-        latestCall.userPrompt = nextUserPrompt;
-        updated = true;
-      }
-
-      const nextResponse = toText(patch.response, "");
-      if (!toText(latestCall.response, "") && nextResponse) {
-        latestCall.response = nextResponse;
-        updated = true;
-      }
-
-      type NumericLlmCallField =
-        | "temperature"
-        | "maxTokens"
-        | "latencyMs"
-        | "promptTokens"
-        | "completionTokens";
-
-      function readExistingNumeric(
-        call: TrajectoryLlmCall,
-        key: NumericLlmCallField,
-      ) {
-        switch (key) {
-          case "temperature":
-            return call.temperature;
-          case "maxTokens":
-            return call.maxTokens;
-          case "latencyMs":
-            return call.latencyMs;
-          case "promptTokens":
-            return call.promptTokens;
-          case "completionTokens":
-            return call.completionTokens;
-          default: {
-            const _exhaustive: never = key;
-            return _exhaustive;
-          }
-        }
-      }
-
-      function writeNumeric(
-        call: TrajectoryLlmCall,
-        key: NumericLlmCallField,
-        value: number,
-      ) {
-        switch (key) {
-          case "temperature":
-            call.temperature = value;
-            break;
-          case "maxTokens":
-            call.maxTokens = value;
-            break;
-          case "latencyMs":
-            call.latencyMs = value;
-            break;
-          case "promptTokens":
-            call.promptTokens = value;
-            break;
-          case "completionTokens":
-            call.completionTokens = value;
-            break;
-          default: {
-            const _exhaustive: never = key;
-            return _exhaustive;
-          }
-        }
-      }
-
-      const applyMissingNumber = (key: NumericLlmCallField): void => {
-        const rawPatch = (patch as Record<string, unknown>)[key];
-        const nextValue = toOptionalNumber(rawPatch);
-        if (nextValue === undefined) return;
-        const currentValue = toOptionalNumber(
-          readExistingNumeric(latestCall, key),
-        );
-        // Zero is a valid sampling setting, not a missing measurement.
-        if (
-          currentValue !== undefined &&
-          (key === "temperature" || currentValue > 0)
-        )
-          return;
-        writeNumeric(latestCall, key, nextValue);
-        updated = true;
-      };
-
-      applyMissingNumber("temperature");
-      applyMissingNumber("maxTokens");
-      applyMissingNumber("latencyMs");
-      applyMissingNumber("promptTokens");
-      applyMissingNumber("completionTokens");
-
-      if (typeof patch.tokenUsageEstimated === "boolean") {
-        const currentEstimated = latestCall.tokenUsageEstimated;
-        if (
-          typeof currentEstimated !== "boolean" ||
-          (currentEstimated && !patch.tokenUsageEstimated)
-        ) {
-          latestCall.tokenUsageEstimated = patch.tokenUsageEstimated;
-          updated = true;
-        }
-      }
-
-      const patchProviderMetadata = (patch as Record<string, unknown>)
-        .providerMetadata;
-      if (
-        patchProviderMetadata &&
-        typeof patchProviderMetadata === "object" &&
-        !Array.isArray(patchProviderMetadata)
-      ) {
-        const currentProviderMetadata =
-          latestCall.providerMetadata &&
-          typeof latestCall.providerMetadata === "object" &&
-          !Array.isArray(latestCall.providerMetadata)
-            ? (latestCall.providerMetadata as Record<string, unknown>)
-            : {};
-        latestCall.providerMetadata = {
-          ...currentProviderMetadata,
-          ...(patchProviderMetadata as Record<string, unknown>),
-        };
-        updated = true;
-      }
-
-      const enriched = enrichTrajectoryLlmCall(
-        latestCall as Record<string, unknown>,
-      );
-      const nextStepType = toText(enriched.stepType, "");
-      if (nextStepType && toText(latestCall.stepType, "") !== nextStepType) {
-        latestCall.stepType = nextStepType;
-        updated = true;
-      }
-
-      const nextTags = Array.isArray(enriched.tags)
-        ? enriched.tags.filter(
-            (tag): tag is string => typeof tag === "string" && tag.length > 0,
-          )
-        : [];
-      const currentTags = Array.isArray(latestCall.tags)
-        ? latestCall.tags.filter(
-            (tag): tag is string => typeof tag === "string" && tag.length > 0,
-          )
-        : [];
-      if (
-        nextTags.length > 0 &&
-        JSON.stringify(currentTags) !== JSON.stringify(nextTags)
-      ) {
-        latestCall.tags = nextTags;
-        updated = true;
-      }
-
-      if (!updated) return;
-
-      trajectory.updatedAt = new Date().toISOString();
-      await saveTrajectory(runtime, trajectory, {
-        changedStepIds: [step.stepId],
-      });
-    };
   }
 
   if (typeof trajectoryLogger.logLlmCall !== "function") {
@@ -1315,17 +1102,6 @@ function shouldApplyPromptBudget(modelType: string): boolean {
   return isTextGenerationModelType(modelType);
 }
 
-function isGenericTrajectoryModel(model: string): boolean {
-  const normalized = model.trim().toUpperCase();
-  return (
-    normalized.length === 0 ||
-    normalized === "UNKNOWN" ||
-    normalized.startsWith("TEXT_") ||
-    normalized.startsWith("REASONING_") ||
-    normalized.startsWith("OBJECT_")
-  );
-}
-
 function resolveTrajectoryModelLabel(
   runtime: AgentRuntime,
   modelType: string,
@@ -1385,6 +1161,8 @@ export function installPromptOptimizations(
       modelType === "ACTION_PLANNER" ? "planner" : "action",
     );
     if (isLlmGenerationModelType(modelType)) {
+      // Start a provider's deferred child step first, so the call and its capture check use the same step.
+      activateDeferredChildStep(getTrajectoryContext());
       assertActiveTrajectoryForLlmCall({
         actionType: "runtime.useModel",
         modelType,
@@ -1699,7 +1477,7 @@ export function installPromptOptimizations(
       typeof trajectoryLogger.updateLatestLlmCall === "function"
     ) {
       try {
-        await trajectoryLogger.updateLatestLlmCall(normalizedTrajectoryStepId, {
+        trajectoryLogger.updateLatestLlmCall(normalizedTrajectoryStepId, {
           ...fallbackCall,
           // The provider has already recorded its actual model. A runtime
           // configuration or plugin label is only a fallback for missing

@@ -323,7 +323,12 @@ export const longTermMemoryEvaluator: Evaluator<
   schema: longTermMemorySchema,
   async shouldRun({ runtime, message, options }) {
     assertExtractionSourcesUnchanged(options.extraction);
-    if (!message.content.text || !message.roomId || !message.entityId) {
+    if (
+      options.semanticSignal === false ||
+      !message.content.text ||
+      !message.roomId ||
+      !message.entityId
+    ) {
       return false;
     }
     const memoryService = runtime.getService("memory") as MemoryService | null;

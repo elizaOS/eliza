@@ -290,8 +290,7 @@ export function assertSemanticEffects(
       metadata.messageId === fixture.messageId &&
       (metadata.taskAssessed !== true ||
         metadata.taskCompleted !== fixture.completed ||
-        typeof metadata.taskCompletionReason !== "string" ||
-        !metadata.taskCompletionReason.trim())
+        typeof metadata.evaluatedAt !== "number")
     )
       throw new Error(
         `${fixture.id}: contradictory same-message completion row`,
@@ -374,8 +373,7 @@ export function assertSemanticEffects(
         memory.metadata.messageId === fixture.messageId &&
         memory.metadata.taskAssessed === true &&
         memory.metadata.taskCompleted === fixture.completed &&
-        typeof memory.metadata.taskCompletionReason === "string" &&
-        memory.metadata.taskCompletionReason.trim(),
+        typeof memory.metadata.evaluatedAt === "number",
     )
   )
     throw new Error(

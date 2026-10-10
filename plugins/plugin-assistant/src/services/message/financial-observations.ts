@@ -182,8 +182,9 @@ function holdingClaims(
           continue;
         claims.push({ symbol: match[1].toUpperCase(), amount: "0", personal });
       }
+      // A currency-symbol amount ("$0.01 usdc") is a price, never a quantity.
       for (const match of clause.matchAll(
-        /(?<![\w.+-])(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s+([A-Za-z][A-Za-z0-9]*)\b/g,
+        /(?<![\w.+$€£¥-])(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s+([A-Za-z][A-Za-z0-9]*)\b/g,
       )) {
         const prefix = clause.slice(0, match.index);
         if (

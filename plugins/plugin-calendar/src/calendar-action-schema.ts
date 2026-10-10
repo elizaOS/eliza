@@ -122,40 +122,20 @@ const stringSchema: ActionParameterSchema = { type: "string" };
 // Pacific owner; the runtime applies the owner's zone to offset-less values.
 const LOCAL_WALL_TIME_FORMAT =
   "local wall-clock time formatted YYYY-MM-DDTHH:mm:ss with NO trailing Z and NO UTC offset, paired with the intended IANA timeZone (normally the user's configured timezone); never fabricate a UTC instant";
-const CALENDAR_ID_DESCRIPTION =
-  "Optional; omit unless selecting an exact calendarId from a Calendar result. New events use the built-in calendar by default. Never invent a calendar ID or derive one from an event title.";
-const EVENT_ID_DESCRIPTION =
-  "For update_event/delete_event only: the exact externalId from a Calendar result. Omit for create_event. Never invent an event ID or derive it from a title; use query and date to find an existing event when its ID is unknown.";
+// Each field is described once, on one spelling; alias spellings stay
+// declared without text so validation accepts them.
 const CALENDAR_DETAIL_STRING_DESCRIPTIONS: Partial<
   Record<(typeof CALENDAR_DETAIL_STRING_KEYS)[number], string>
 > = {
   grantId:
     "Exact grantId from a Calendar result for the user-selected connected account. Omit only when using the default built-in Eliza calendar. If the user requests Google or another connected provider, read the Calendar feed to resolve its accounts first; ask which account when more than one matches, before creating an event. Never substitute the built-in calendar for an explicitly requested provider.",
-  ...Object.fromEntries(
-    ["calendarId", "calendarid", "calendar_id"].map((key) => [
-      key,
-      CALENDAR_ID_DESCRIPTION,
-    ]),
-  ),
-  ...Object.fromEntries(
-    [
-      "eventId",
-      "eventid",
-      "event_id",
-      "externaleventid",
-      "external_event_id",
-      "googleeventid",
-      "google_event_id",
-    ].map((key) => [key, EVENT_ID_DESCRIPTION]),
-  ),
+  calendarId:
+    "Optional; omit unless selecting an exact calendarId from a Calendar result. New events use the built-in calendar by default. Never invent a calendar ID or derive one from an event title.",
   description:
     "New description only when the user changes it. For updates, omit unchanged fields; to remove the description explicitly, use clearFields instead of an empty string.",
   location:
     "New location only when the user changes it. For updates, omit unchanged fields; to remove the location explicitly, use clearFields instead of an empty string.",
-  startAt: `Event start as ${LOCAL_WALL_TIME_FORMAT}.`,
   start: `Event start as ${LOCAL_WALL_TIME_FORMAT}.`,
-  endAt:
-    "Event end in the same local wall-clock format as startAt; omit it to use durationMinutes.",
   end: "Event end in the same local wall-clock format as start; omit it to use durationMinutes.",
   timeMin: `Window start as ${LOCAL_WALL_TIME_FORMAT}, or RFC 3339 with an explicit numeric offset.`,
   timeMax:
@@ -170,7 +150,7 @@ const CALENDAR_DETAIL_STRING_DESCRIPTIONS: Partial<
   newTitle:
     "Replacement event title for update_event, never a lookup selector. Identify the existing event with query, oldTitle, or eventId.",
   eventId:
-    "Existing provider event ID from the externalId field returned by the calendar feed or search, not the feed row's composite id; takes precedence over title or query lookup for update_event/delete_event.",
+    "For update_event/delete_event only: the exact externalId from a Calendar feed/search result, not the row's composite id; takes precedence over title/query lookup. Never invent it or derive it from a title; when unknown, use query and date.",
 };
 const CALENDAR_DETAIL_BOOLEAN_DESCRIPTIONS: Partial<
   Record<(typeof CALENDAR_DETAIL_BOOLEAN_KEYS)[number], string>
@@ -363,16 +343,11 @@ export const CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
         ([key]) => CALENDAR_READ_DETAIL_KEYS.some((name) => name === key),
       ),
     ),
-    ...Object.fromEntries(
-      ["calendarId", "calendarid", "calendar_id"].map((key) => [
-        key,
-        {
-          type: "string",
-          description:
-            "Optional exact calendar ID from a Calendar result. Omit unless restricting to that calendar; never invent an ID or derive it from a title.",
-        },
-      ]),
-    ),
+    calendarId: {
+      type: "string",
+      description:
+        "Optional exact calendar ID from a Calendar result. Omit unless restricting to that calendar; never invent an ID or derive it from a title.",
+    },
     timeZone: {
       type: "string",
       description:
@@ -421,6 +396,74 @@ export const CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
           ),
       ),
     ),
+  },
+  additionalProperties: false,
+};
+
+/** A promoted delete names its event with targetKind/target, so its details
+ * carry only the target's current day, the connector scope its lookup reads
+ * and the reach of the change. That lookup always refreshes every calendar,
+ * hidden ones included, so no window, refresh or visibility switch is offered. */
+export const CALENDAR_DELETE_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
+  type: "object",
+  properties: {
+    date: {
+      type: "string",
+      description:
+        "Local YYYY-MM-DD day the target event is on now, only when the user named it; never a move's destination day. A bare weekday means its next occurrence.",
+    },
+    ...Object.fromEntries(
+      Object.entries(CALENDAR_DETAILS_PARAMETER_SCHEMA.properties ?? {}).filter(
+        ([key]) => ["timeZone", "mode", "side"].includes(key),
+      ),
+    ),
+    recurrenceScope: {
+      type: "string",
+      description:
+        "Recurring target only: instance, this_and_following or series, as the user asked.",
+    },
+    notifyAttendees: {
+      type: "boolean",
+      description: "Set true only when the user asks to notify the guests.",
+    },
+    calendarId: {
+      type: "string",
+      description:
+        "Exact calendarId from the Calendar result that returned the target; otherwise omit.",
+    },
+    grantId: {
+      type: "string",
+      description:
+        "Exact grantId from the Calendar result that returned the target; otherwise omit.",
+    },
+  },
+  additionalProperties: false,
+};
+
+/** An update adds its requested replacements to the delete locator fields. */
+export const CALENDAR_UPDATE_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
+  type: "object",
+  properties: {
+    ...CALENDAR_DELETE_DETAILS_PARAMETER_SCHEMA.properties,
+    ...Object.fromEntries(
+      Object.entries(CALENDAR_DETAILS_PARAMETER_SCHEMA.properties ?? {}).filter(
+        ([key]) =>
+          [
+            "start",
+            "end",
+            "durationMinutes",
+            "description",
+            "location",
+            "clearFields",
+            "recurrence",
+          ].includes(key),
+      ),
+    ),
+    newTitle: {
+      type: "string",
+      description:
+        "Replacement event title for a rename, never a lookup selector.",
+    },
   },
   additionalProperties: false,
 };

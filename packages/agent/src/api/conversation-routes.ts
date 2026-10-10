@@ -85,6 +85,7 @@ import {
   validateUuid,
   withStandaloneTrajectory,
 } from "@elizaos/core";
+import { webChatWorldId } from "@elizaos/host";
 import {
   type ElizaConfig,
   LOCAL_VOICE_RUNTIME_AGENT_HEADER,
@@ -1330,7 +1331,8 @@ function captureConversationConnection(
 ): ConversationConnectionDescriptor {
   const agentName = runtime.character.name ?? "Eliza";
   const ownerId = ensureAdminEntityIdForRuntime(state, runtime);
-  const worldId = stringToUuid(`${agentName}-web-chat-world`);
+  // Connecting a room restored from a legacy name-keyed world moves it here.
+  const worldId = webChatWorldId(runtime.agentId);
   const messageServerId = stringToUuid(`${agentName}-web-server`) as UUID;
   const descriptor = captureConversationConnectionDescriptor({
     runtime,
@@ -3633,7 +3635,7 @@ async function listConversationMessages(
           "escalation" in content.metadata &&
           content.metadata.escalation === true &&
           typeof content.text === "string"
-            ? projectLegacySystemNotice(content.text)
+            ? projectLegacySystemNotice(content.text, runtime.character.name)
             : undefined;
         const systemNotice =
           m.entityId === agentId
@@ -3683,7 +3685,7 @@ async function listConversationMessages(
           transcriptVisibility === "internal"
             ? ""
             : systemNotice
-              ? systemNoticeText(systemNotice)
+              ? systemNoticeText(systemNotice, runtime.character.name)
               : legacyNotice
                 ? legacyNotice.text
                 : role === "assistant" &&

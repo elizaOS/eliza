@@ -24,13 +24,17 @@ import { NOTES_SURFACE } from "./surface.js";
  * itself advertises. Without this entry, "what notes do i have?" classified
  * into documents/contacts/memory and the NOTES action was never a candidate —
  * the read then honestly reported an absence from the wrong store.
+ *
+ * Stage 1 renders only descriptionCompressed, so it names the dictation verbs
+ * and the note/reminder boundary.
  */
 const NOTES_CONTEXT: ContextDefinition = {
   id: "notes",
   aliases: ["note"],
   label: "Notes",
   description: "Saved notes.",
-  descriptionCompressed: "Saved notes.",
+  descriptionCompressed:
+    "Jot/write down, read back notes; dates in notes are content, not reminders.",
   sensitivity: "personal",
   cacheScope: "agent",
   roleGate: { minRole: "OWNER" },

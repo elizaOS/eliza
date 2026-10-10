@@ -109,6 +109,7 @@ function makeRuntime(
       return undefined;
     },
     createEntity: vi.fn(async () => true),
+    getRoom: vi.fn(async () => null),
     addParticipant: vi.fn(async () => true),
     getEntitiesForRoom: vi.fn(async () => []),
     deleteParticipants: vi.fn(async () => true),
@@ -213,8 +214,17 @@ async function runFailedThenCleanLineage(
   process.env.ELIZA_APP_DEPLOY_CUSTOM_BASE_URL = new URL(host.url).origin;
   try {
     const meta = originMeta(msgId, host.url, connectorId);
+    // Attempt 1 is an orchestrator-internal turn after a relayed result: its
+    // dead URL must still hand off to a verify-retry.
     const sessions = new Map<string, Record<string, unknown>>([
-      ["sess-fail", sessionInfo("sess-fail", { ...meta })],
+      [
+        "sess-fail",
+        sessionInfo("sess-fail", {
+          ...meta,
+          lastUserInputAt: 1,
+          resultRelayedAt: 2,
+        }),
+      ],
     ]);
     const { router, internals, acp, runtime } = await startRouter(sessions, {
       ELIZA_URL_VERIFY_SETTLE_MS: "0",

@@ -8,9 +8,9 @@
  * resolved by availability.
  *
  * Built-in targets:
- *   - `workspace` — Eliza's electrobun-embedded BrowserView (with a JSDOM
- *     web-mode fallback when the desktop bridge isn't configured). Always
- *     registered by this plugin's `start`. Always available.
+ *   - `workspace` — Eliza's electrobun-embedded BrowserView. Always
+ *     registered by this plugin's `start`; available only when the desktop
+ *     bridge (`ELIZA_BROWSER_WORKSPACE_URL`) is configured.
  *
  * Optional targets registered by other plugins:
  *   - `computeruse` — registered by `@elizaos/plugin-computeruse` on plugin

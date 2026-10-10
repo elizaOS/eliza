@@ -461,6 +461,7 @@ export function parseNoteFieldPatch(
 export function parseNoteEditRevision(
   value: unknown,
   required: boolean,
+  noteId: string,
 ): number | undefined {
   if (value === undefined && !required) return undefined;
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
@@ -468,7 +469,7 @@ export function parseNoteEditRevision(
       "Read the current note and supply its notesRevision as expectedRevision before replacing fields.",
       {
         code: "NOTES_EDIT_REVISION_REQUIRED",
-        context: { field: "expectedRevision" },
+        context: { field: "expectedRevision", noteId },
         severity: "ephemeral",
       },
     );

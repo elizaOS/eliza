@@ -42,12 +42,7 @@ function fixture(owner = "owner") {
       },
     })),
   };
-  const scope = {
-    agentId: "agent",
-    roomId: "room",
-    entityId: owner,
-    roles: ["OWNER"],
-  };
+  const scope = { agentId: "agent", roomId: "room" };
   const prepared = prepareHistoryRetention(
     context,
     scope,

@@ -460,7 +460,8 @@ export interface SafeFetchOptions {
  * rebind.
  *
  * Throws `SsrfBlockedError` if any hop targets a blocked host; otherwise
- * behaves like `fetch` and returns the final `Response`.
+ * behaves like `fetch` and returns the final `Response`, whose `url` is the
+ * URL that response was served from after redirects.
  */
 export async function safeFetch(
   url: string,
@@ -477,12 +478,12 @@ export async function safeFetch(
       ? await pinnedTransport(current, init, pinned)
       : await fetch(current, { ...init, redirect: "manual" });
     if (res.status < 300 || res.status >= 400) {
-      return res;
+      return withServedUrl(res, current);
     }
     const location = res.headers.get("location");
     if (!location) {
       // A 3xx with no Location — nothing to follow; hand it back as-is.
-      return res;
+      return withServedUrl(res, current);
     }
     let next: URL;
     try {
@@ -501,4 +502,17 @@ export async function safeFetch(
     current = next.toString();
   }
   throw new SsrfBlockedError(url, `too many redirects (> ${MAX_REDIRECTS})`);
+}
+
+/**
+ * `fetch` reports the post-redirect URL on `Response.url`, but the pinned
+ * transport builds a bare `Response` whose `url` is empty. Stamp the hop the
+ * body was served from so callers resolve the body's relative references
+ * against it: `/apps/x` redirects to `/apps/x/`, and `script.js` on that page
+ * is `/apps/x/script.js`, not `/apps/script.js`.
+ */
+function withServedUrl(res: Response, servedUrl: string): Response {
+  if (res.url) return res;
+  Object.defineProperty(res, "url", { value: servedUrl });
+  return res;
 }

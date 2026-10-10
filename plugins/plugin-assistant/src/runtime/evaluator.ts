@@ -299,31 +299,36 @@ function finalizeEvaluatorOutput(
   trajectory: PlannerTrajectory,
   redactDiagnosticText: ToolDiagnosticTextRedactor,
 ): EvaluatorOutput {
-  let output = sanitizeOutputMessage(
-    repairFinishWithUnservedDeclaredIntents(
-      repairFinishWithProgressPromise(
-        repairFinishedToolTurnWithoutUserMessage(
-          repairMissingEvaluatorMessage(
-            repairMissingEvaluatorSuccess(
-              rejectEvaluatorInvocationMessage(
-                recoverEvaluatorTextOutput(
-                  parseEvaluatorOutput(raw),
-                  raw,
-                  trajectory,
+  let output = canonicalOutcomeCoverageIntentIds(
+    sanitizeOutputMessage(
+      repairFinishWithUnservedDeclaredIntents(
+        repairFinishWithProgressPromise(
+          repairFinishedToolTurnWithoutUserMessage(
+            repairMissingEvaluatorMessage(
+              repairMissingEvaluatorSuccess(
+                rejectEvaluatorInvocationMessage(
+                  recoverEvaluatorTextOutput(
+                    parseEvaluatorOutput(raw),
+                    raw,
+                    trajectory,
+                  ),
                 ),
+                trajectory,
               ),
+              context,
               trajectory,
             ),
-            context,
             trajectory,
           ),
           trajectory,
         ),
+        context,
         trajectory,
       ),
-      context,
-      trajectory,
     ),
+    context,
+    trajectory,
+    redactDiagnosticText,
   );
   const calendarCoverage = calendarReadCoverage(output, context, trajectory);
   if (!calendarCoverage.verified) {
@@ -389,6 +394,8 @@ type EvaluatorDecisionState = {
   hasUnresolvedToolFailure: boolean;
   intents: { id: string; text: string }[];
   evidenceSteps: { id: string; tool: string; success: boolean }[];
+  /** Tools the planner can call this turn, as the planner loop supplied them. */
+  plannerTools: readonly string[];
 };
 
 function renderEvaluatorDecisionState(state: EvaluatorDecisionState): string {
@@ -404,6 +411,12 @@ function renderEvaluatorDecisionState(state: EvaluatorDecisionState): string {
     `clipboardAvailable: ${state.clipboardAvailable}`,
     `requiresReplyField: ${state.requiresReplyField}`,
     `hasUnresolvedToolFailure: ${state.hasUnresolvedToolFailure}`,
+    ...(state.plannerTools.length
+      ? [
+          `Planner tools this turn: ${JSON.stringify(state.plannerTools)}`,
+          "A capability is unavailable only when none of these tools provides it. While one can do outstanding requested work, decide CONTINUE so the planner calls it; never report that capability as missing.",
+        ]
+      : []),
     "Intent sources (check the full original request as well):",
     ...state.intents.map((intent) => `${intent.id}: ${intent.text}`),
     "Evidence step sources (complete results remain above):",
@@ -564,6 +577,9 @@ async function runEvaluatorWithSelectedModel(
         success: step.result?.success === true,
       }),
     ),
+    // The evaluator judges capability against the planner's tool list, not
+    // only the steps that ran.
+    plannerTools: params.plannerToolNames ?? [],
   };
   const responseSchema = structuredClone(evaluatorSchema);
   const initialBudgetOptions = budgetResolution.contextWindowTokens
@@ -1137,7 +1153,7 @@ function reportEvaluatorUsage(
 }
 
 /** The deferred sources a restoration decision can actually bring back. */
-function evaluatorRestorableContext(
+export function evaluatorRestorableContext(
   original: ContextObject,
 ): EvaluatorRestorableContext {
   return {
@@ -1800,6 +1816,41 @@ function evaluatorEvidenceSteps(trajectory: PlannerTrajectory) {
   return [...(trajectory.archivedSteps ?? []), ...trajectory.steps].map(
     (step, index) => ({ id: `step:${index + 1}`, step }),
   );
+}
+
+/**
+ * The decision state renders each intent as `intent:N: <text>`. A model that
+ * cites the rendered text instead of its ID names exactly one intent, so
+ * resolve it to that ID. Ambiguous or unknown values stay as written and keep
+ * failing every exact-ID check.
+ */
+function canonicalOutcomeCoverageIntentIds(
+  output: EvaluatorOutput,
+  context: ContextObject,
+  trajectory: PlannerTrajectory,
+  redactText: ToolDiagnosticTextRedactor,
+): EvaluatorOutput {
+  if (!output.outcomeCoverage?.length) return output;
+  const intents = evaluatorIntentSources(
+    trajectory.modelBaseContext ?? context,
+    trajectory,
+  );
+  const resolve = (cited: string) => {
+    if (intents.some((intent) => intent.id === cited)) return cited;
+    const named = intents.filter((intent) =>
+      [intent.text.trim(), redactText(intent.text).trim()].includes(
+        cited.trim(),
+      ),
+    );
+    return named.length === 1 ? named[0].id : cited;
+  };
+  return {
+    ...output,
+    outcomeCoverage: output.outcomeCoverage.map((entry) => ({
+      ...entry,
+      intentId: resolve(entry.intentId),
+    })),
+  };
 }
 
 /** Validates source bindings for a semantic coverage judgment, not the truth of its interpretation. */

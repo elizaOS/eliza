@@ -18,7 +18,11 @@ import { markSessionAdministrativelyStopped } from "./admin-stop-marker.js";
 import { decideInterruptionWithModel } from "./interruption-decider.js";
 import { sessionBoundRoomIds } from "./session-room-binding.js";
 import type { SubAgentInbox } from "./sub-agent-inbox.js";
-import { requireTaskAgentAccess } from "./task-policy.js";
+import {
+  isOwnerRequest,
+  ownerOnlyBackendRefusal,
+  requireTaskAgentAccess,
+} from "./task-policy.js";
 import {
   isSessionPromptInFlight,
   type SessionInfo,
@@ -113,13 +117,28 @@ export function createActiveSessionForwardHandler(
       // access could inject prompts into another user's sub-agent.
       const access = await requireTaskAgentAccess(runtime, message, "interact");
       if (!access.allowed) return;
+      // Input to an owner-only session is work on that backend.
+      let ownerCheck: Promise<boolean> | undefined;
+      const reachable: SessionInfo[] = [];
+      for (const s of bound) {
+        const refusal = await ownerOnlyBackendRefusal(
+          runtime,
+          s.agentType,
+          () => (ownerCheck ??= isOwnerRequest(runtime, message)),
+        );
+        if (refusal) {
+          runtime.logger?.debug?.({ src: SRC, sessionId: s.id }, refusal);
+        } else {
+          reachable.push(s);
+        }
+      }
 
       // "Crowded room": more than one live sub-agent bound to this room.
       const multiParty = bound.length > 1;
       // Every bound live session gets its own interruption decision and its
       // own delivery/queue — a room with several live sub-agents must not
       // quietly forward the user's text to only the first in list order.
-      for (const active of bound) {
+      for (const active of reachable) {
         const label =
           typeof active.metadata?.label === "string"
             ? active.metadata.label
