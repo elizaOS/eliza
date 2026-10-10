@@ -46,7 +46,7 @@ automatically during local-inference warmup. Fetch archived artifact fixtures ex
 Common repository commands:
 
 ```bash
-bun run start       # run the standalone agent host
+bun run start       # run the standalone agent host (API only, no UI; use bun run dev for the app)
 bun run build       # build the workspace with Turbo
 bun run verify      # dependency, type, lint, and audit gates
 bun run test        # repository end-to-end test lane
