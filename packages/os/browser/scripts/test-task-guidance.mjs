@@ -526,6 +526,32 @@ try {
   await waitPointer();
   assert.equal((await boundTarget.pending).ok, true);
   assert.equal(await page.evaluate(() => window.clicks), 2);
+  // A reviewed control that the provider disabled is refused before any
+  // pointer or effect, and stays disabled.
+  for (const attribute of ["aria-disabled", "disabled"]) {
+    await page.$eval(
+      "#target",
+      (node, name) => node.setAttribute(name, "true"),
+      attribute,
+    );
+    const disabledAction = await startAction();
+    assert.equal((await disabledAction.pending).error.kind, "POLICY_BLOCKED");
+    assert.equal(await pointerVisible(), false);
+    assert.equal(await page.evaluate(() => window.clicks), 2);
+    assert.equal(
+      await page.$eval(
+        "#target",
+        (node, name) => node.getAttribute(name),
+        attribute,
+      ),
+      "true",
+    );
+    await page.$eval(
+      "#target",
+      (node, name) => node.removeAttribute(name),
+      attribute,
+    );
+  }
   // The person's Dismiss holds for the step after a reload of the page.
   const showStep = async (extra = {}) => {
     const read = await send({
