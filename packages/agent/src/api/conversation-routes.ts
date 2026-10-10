@@ -2660,7 +2660,12 @@ function parseBeforeCursor(raw: string | null): number | null {
  */
 function clampOlderPageLimit(raw: string | null): number {
   if (raw === null) return CONVERSATION_OLDER_PAGE_SIZE;
-  const parsed = Number(raw.trim());
+  const trimmed = raw.trim();
+  // Canonical decimal digits only, mirroring parseBeforeCursor in this file:
+  // Number("1e3") is 1000, Number("0x10") is 16, and Number("0.9") floors to
+  // 0 — all used to silently override the default page size.
+  if (!/^\d+$/.test(trimmed)) return CONVERSATION_OLDER_PAGE_SIZE;
+  const parsed = Number(trimmed);
   if (!Number.isFinite(parsed) || parsed <= 0) {
     return CONVERSATION_OLDER_PAGE_SIZE;
   }
