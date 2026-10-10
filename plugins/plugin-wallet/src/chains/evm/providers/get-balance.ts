@@ -53,7 +53,14 @@ export const tokenBalanceProvider: Provider = {
     }
 
     try {
-      const prompt = tokenBalanceTemplate.replace("{{userMessage}}", inputText);
+      // A raw string replacement interprets "$" patterns ("$&", "$'", "$`"),
+      // so a user message like "my $& balance" corrupted the intent prompt
+      // instead of being inserted literally. A replacement function inserts
+      // the message verbatim.
+      const prompt = tokenBalanceTemplate.replace(
+        "{{userMessage}}",
+        () => inputText,
+      );
 
       const response = await runIntentModel({
         runtime,
