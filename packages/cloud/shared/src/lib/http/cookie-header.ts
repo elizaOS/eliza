@@ -4,21 +4,33 @@
  */
 export function getCookieValueFromHeader(header: string | null, name: string): string | undefined {
   if (!header) return undefined;
-  const segments = header.split(";");
-  for (const segment of segments) {
-    const trimmed = segment.trim();
-    if (!trimmed.startsWith(`${name}=`)) continue;
-    const raw = trimmed.slice(name.length + 1).trimStart();
+  let found: string | undefined;
+  for (const segment of header.split(";")) {
+    const eq = segment.indexOf("=");
+    if (eq < 0) continue;
+    if (segment.slice(0, eq).trim() !== name) continue;
+    const raw = segment.slice(eq + 1).trim();
+    let decoded: string;
     try {
-      return decodeURIComponent(raw);
+      decoded = decodeURIComponent(raw);
     } catch {
       // error-policy:J3 untrusted-input sanitizing — a cookie value with
       // `%` / `%2` / `%ZZ` throws URIError. Malformed encoding is an
       // absent cookie, not a request crash on auth/admission paths.
       return undefined;
     }
+    // Fail closed on ambiguity, matching parseCookieHeader in
+    // packages/app/src/api/auth/sessions.ts: a name that appears more
+    // than once with differing values (e.g. a sibling-subdomain cookie
+    // shadowing ours), or with an empty value, is an absent cookie, so
+    // an auth/admission caller never acts on an attacker-chosen copy.
+    // Identical copies (host-only and domain variants of one credential)
+    // are unambiguous and still read as that value.
+    if (decoded.length === 0) return undefined;
+    if (found !== undefined && found !== decoded) return undefined;
+    found = decoded;
   }
-  return undefined;
+  return found;
 }
 
 export function getCookieValueFromRequest(request: Request, name: string): string | undefined {
