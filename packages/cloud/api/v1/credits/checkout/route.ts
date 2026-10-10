@@ -175,8 +175,8 @@ app.post("/", async (c) => {
     const stripeSuccessUrl = successUrl
       .toString()
       .replace(
-        "session_id=%7BCHECKOUT_SESSION_ID%7D",
-        "session_id={CHECKOUT_SESSION_ID}",
+        /([?&])session_id=%7BCHECKOUT_SESSION_ID%7D/,
+        "$1session_id={CHECKOUT_SESSION_ID}",
       );
 
     const requestDigest = createHash("sha256")
