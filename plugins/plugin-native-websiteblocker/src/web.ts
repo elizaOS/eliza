@@ -48,7 +48,22 @@ function normalizeHostname(value: unknown): string | null {
   }
   const withoutWildcard = trimmed.replace(/^\*\./, "");
   const withoutTrailingDot = withoutWildcard.replace(/\.$/, "");
-  const ascii = withoutTrailingDot.toLowerCase();
+  let ascii = withoutTrailingDot.toLowerCase();
+  const hasNonAscii = [...ascii].some(
+    (character) => (character.codePointAt(0) ?? 0) > 0x7f,
+  );
+  if (hasNonAscii) {
+    // The engine IDNA-encodes unicode hostnames (domainToASCII) before its
+    // label checks, so a unicode hostname the API accepts must not be
+    // rejected here. The URL parser punycode-encodes .hostname the same way.
+    try {
+      ascii = new URL(`https://${ascii}`).hostname;
+    } catch {
+      // error-policy:J3 untrusted hostname input — an unparseable hostname is
+      // reported as an explicit invalid (null), never a fake-valid default.
+      return null;
+    }
+  }
   return HOSTNAME_RE.test(ascii) ? ascii : null;
 }
 
