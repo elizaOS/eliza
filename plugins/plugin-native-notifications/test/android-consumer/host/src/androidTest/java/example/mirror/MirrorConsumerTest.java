@@ -125,8 +125,13 @@ public final class MirrorConsumerTest {
         assertFalse(backup.exists());
       }
 
-      JSONObject row = mirror.list(c).getJSONObject(0);
-      mirror.action(c, row.getString("id"), row.getString("revision"), false);
+      // Android may deliver another post callback while the encrypted-file checks
+      // run. Review a fresh row for this successful dismissal. The old-row refusal
+      // above remains a separate assertion.
+      synchronized (mirror.lock) {
+        JSONObject row = mirror.list(c).getJSONObject(0);
+        mirror.action(c, row.getString("id"), row.getString("revision"), false);
+      }
       await(() -> mirror.list(c).length() == 1, "Actual Android dismissal");
       await(() -> {
         JSONArray history = mirror.history(c);
