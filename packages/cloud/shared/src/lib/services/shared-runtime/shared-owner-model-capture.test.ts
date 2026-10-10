@@ -158,6 +158,72 @@ test("buffer retains realistic SDK context/schema and separates unknown from kno
   expect(encoded.includes('"outputTokens":null')).toBe(true);
 });
 
+test("buffer reasoning fields are excluded consistently from objects and encoded JSON", () => {
+  for (const [index, key] of ["reasoning_text", "Thought", "chain_of_thought"].entries()) {
+    const sentinel = `SYNTHETIC_REASONING_SENTINEL_${index}`;
+    const content =
+      index === 2
+        ? { nested: [{ [key]: sentinel, answer: "SYNTHETIC_SAFE_REPLY" }] }
+        : { [key]: sentinel, answer: "SYNTHETIC_SAFE_REPLY" };
+    const capture = createOwnerCaptureBuffer(
+      scope,
+      policyJson,
+      () => {},
+      () => 1000,
+    );
+    const call = capture.request({
+      direct: content,
+      messages: [{ role: "assistant", content: JSON.stringify(content) }],
+    });
+    capture.result(call, { visibleText: JSON.stringify(content) });
+    const snapshot = capture.snapshot();
+    const request = snapshot.events.find((event) => event.kind === "sdk-request")?.payload as {
+      input: { direct: unknown; messages: Array<{ content: unknown }> };
+    };
+    const result = snapshot.events.find((event) => event.kind === "sdk-result")?.payload as {
+      output: { visibleText: unknown };
+    };
+    expect(JSON.stringify(request.input.direct)).not.toContain(sentinel);
+    expect(JSON.stringify(request.input.messages[0].content)).not.toContain(sentinel);
+    expect(JSON.stringify(result.output.visibleText)).not.toContain(sentinel);
+    expect(result.output.visibleText).toMatchObject({
+      encoding: "structured-json",
+      rawTextOmittedForHiddenReasoning: true,
+    });
+    expect(JSON.stringify(snapshot)).toContain("SYNTHETIC_SAFE_REPLY");
+    expect(snapshot.coverage.redactedFields).toBeGreaterThan(0);
+    expect(snapshot.coverage.exactFull).toBe(false);
+  }
+  const safe = {
+    answer: "Ordinary content can discuss reasoning_text as a label.",
+    nested: [{ title: "Safe JSON" }],
+  };
+  const encoded = JSON.stringify(safe);
+  const capture = createOwnerCaptureBuffer(
+    scope,
+    policyJson,
+    () => {},
+    () => 1000,
+  );
+  const call = capture.request({
+    direct: safe,
+    messages: [{ role: "assistant", content: encoded }],
+  });
+  capture.result(call, { visibleText: encoded });
+  const snapshot = capture.snapshot();
+  const request = snapshot.events.find((event) => event.kind === "sdk-request")?.payload as {
+    input: { direct: unknown; messages: Array<{ content: unknown }> };
+  };
+  const result = snapshot.events.find((event) => event.kind === "sdk-result")?.payload as {
+    output: { visibleText: unknown };
+  };
+  expect(request.input.direct).toEqual(safe);
+  expect(request.input.messages[0].content).toBe(encoded);
+  expect(result.output.visibleText).toBe(encoded);
+  expect(snapshot.coverage.redactedFields).toBe(0);
+  expect(snapshot.coverage.omittedFields).toBe(0);
+});
+
 test("buffer excludes credentials/hidden reasoning and exposes bounded omissions", () => {
   const capture = createOwnerCaptureBuffer(
     scope,
