@@ -7,7 +7,15 @@
 export function recordedFeeFraction(raw: number | string | undefined): number {
   if (typeof raw === "number" && Number.isFinite(raw)) return raw;
   if (typeof raw === "string") {
-    const parsed = Number.parseFloat(raw);
+    // Number.parseFloat stops at the first non-digit ("1e" -> 1), so a
+    // malformed fee-tier string was silently kept as the fee fraction
+    // instead of falling back to the 0.3 default. Require the whole
+    // trimmed value to be decimal, mirroring TWILIO_SMS_COST_PATTERN in
+    // packages/cloud/sdk/src/browser-contracts/markup.ts.
+    const text = raw.trim();
+    const parsed = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(text)
+      ? Number(text)
+      : Number.NaN;
     if (Number.isFinite(parsed)) return parsed;
   }
   return 0.3;
