@@ -237,6 +237,11 @@ function positiveNumberOrUndefined(
   if (raw === undefined) return undefined;
   const trimmed = raw.trim();
   if (trimmed === "") return undefined;
+  // Canonical decimal strings only: Number("1e3") is 1000 and Number("0x10")
+  // is 16 — both used to silently become retention bounds instead of leaving
+  // the bound disabled per the documented contract. The integer variant
+  // (positiveIntegerOrUndefined) inherits this gate.
+  if (!/^\d+(\.\d+)?$/.test(trimmed)) return undefined;
   const n = Number(trimmed);
   if (!Number.isFinite(n) || n <= 0) return undefined;
   return n;
