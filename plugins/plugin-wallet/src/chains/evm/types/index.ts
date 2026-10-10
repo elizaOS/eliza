@@ -46,8 +46,8 @@ export const AddressSchema = z
 
 export const HashSchema = z
   .string()
-  .regex(/^0x[a-fA-F0-9]{64}$/, "Invalid transaction hash format")
-  .transform((hash) => hash as Hash);
+  .regex(/^0[xX][a-fA-F0-9]{64}$/, "Invalid transaction hash format")
+  .transform((hash) => `0x${hash.slice(2)}` as Hash);
 
 export const HexSchema = z
   .string()
