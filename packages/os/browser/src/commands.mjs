@@ -471,19 +471,15 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       },
       { signal: controller.signal },
     );
-    // The page's own site: the host name without its first labels, keeping
-    // two labels (three under a short second-level label such as co.uk).
-    const site = (host) => {
-      const labels = host.split(".");
-      const keep =
-        labels.length > 2 &&
-        labels.at(-1).length === 2 &&
-        labels.at(-2).length <= 3
-          ? 3
-          : 2;
-      return labels.slice(-keep).join(".");
-    };
-    const pageSite = site(location.hostname);
+    // The page's own site, without public-suffix data: a request host counts
+    // when its last two or its last three labels match the page's. This errs
+    // toward recording (a.co.uk and b.co.uk match), never toward missing a
+    // sibling host such as api.dkb.de for banking.dkb.de.
+    const tail = (host, count) => host.split(".").slice(-count).join(".");
+    const sameSite = (host) =>
+      host === location.hostname ||
+      tail(host, 2) === tail(location.hostname, 2) ||
+      tail(host, 3) === tail(location.hostname, 3);
     if (typeof PerformanceObserver === "function") {
       const requests = new PerformanceObserver((list) => {
         for (const entry of list.getEntries()) {
@@ -501,7 +497,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
           } catch {
             continue;
           }
-          if (host === location.hostname || site(host) === pageSite) {
+          if (sameSite(host)) {
             record("request");
             break;
           }

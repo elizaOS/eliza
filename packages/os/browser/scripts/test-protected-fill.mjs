@@ -368,6 +368,82 @@ document.getElementById('search').addEventListener('input',()=>fetch('/api/sugge
   await fetchAct("23", "Route", "#route", "x");
   await page.waitForTimeout(300);
   assert.equal(await fetchRead("23"), "navigation");
+  // A short brand under a country domain: banking.ab.de posting to
+  // api.ab.de is the same site.
+  await page.route("https://api.ab.de/**", (route) => {
+    posted.push(`api.ab.de${new URL(route.request().url()).pathname}`);
+    return route.fulfill({
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: "{}",
+    });
+  });
+  await page.route("https://banking.ab.de/**", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: `<input id="otp4" aria-label="Code" autocomplete="one-time-code" maxlength="6">
+<script>document.getElementById('otp4').addEventListener('input',e=>{if(e.target.value.length===6)fetch('https://api.ab.de/verify',{method:'POST',body:'x'})});</script>`,
+    }),
+  );
+  await page.goto("https://banking.ab.de/start");
+  const { frameTree: siblingTree } = await cdp.send("Page.getFrameTree");
+  const siblingWorld = await cdp.send("Page.createIsolatedWorld", {
+    frameId: siblingTree.frame.id,
+    worldName: "task-sibling-test",
+  });
+  const runSibling = async (command, id) => {
+    const result = await cdp.send("Runtime.evaluate", {
+      contextId: siblingWorld.executionContextId,
+      expression: `(${pageCommand.toString()})(${JSON.stringify(command)},${JSON.stringify(id)})`,
+      returnByValue: true,
+    });
+    assert.equal(result.exceptionDetails, undefined);
+    return result.result.value;
+  };
+  const siblingPolicy = (targets = [], extra = {}) => ({
+    origin: "https://banking.ab.de",
+    expiresAt: Date.now() + 60000,
+    guidanceScope: "24",
+    targets,
+    ...extra,
+  });
+  const codeTarget = [{ selector: "#otp4", action: "fill-code" }];
+  const siblingState = await runSibling(
+    { subaction: "snapshot", taskPolicy: siblingPolicy(codeTarget) },
+    "sibling-1",
+  );
+  const siblingNode = siblingState.elements.find(
+    (value) => value.label === "Code",
+  );
+  assert.ok(siblingNode);
+  assert.equal(
+    (
+      await runSibling(
+        {
+          subaction: "fill",
+          snapshotId: "sibling-1",
+          nodeId: siblingNode.id,
+          text: "123456",
+          taskPolicy: siblingPolicy(codeTarget, {
+            protectedValueKind: "verification-code",
+          }),
+        },
+        null,
+      )
+    ).dispatched,
+    true,
+  );
+  await page.waitForTimeout(500);
+  assert.ok(posted.includes("api.ab.de/verify"));
+  assert.equal(
+    (
+      await runSibling(
+        { subaction: "snapshot", taskPolicy: siblingPolicy() },
+        "sibling-2",
+      )
+    ).effectViolation,
+    "request",
+  );
   console.log(
     "PASS: OTP requires protected host marker and dedicated field permission; ordinary, password, non-OTP and Verify paths denied; code excluded from snapshot; task fills and clicks cannot submit or navigate (auto-submit code field, script form.submit()), a link click opens its link, same-site fetch/beacon requests (also delayed) and same-document address changes after a task fill are reported while the person's own and third-party requests are not, violations are reported per binding; date fields take only real days; an expected target admits only that control; field input is reported as a boolean only.",
   );
