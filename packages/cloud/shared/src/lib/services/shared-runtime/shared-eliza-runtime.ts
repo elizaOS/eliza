@@ -1845,6 +1845,23 @@ export async function runSharedElizaRuntimeTurnStream(
       once: true,
     });
 
+  const publicText = input.capabilityText?.trim() || input.message.trim();
+  const privateIntent = resolveSharedCapabilityIntent(publicText, {
+    reminders: Boolean(input.execution.reminders),
+    todos: Boolean(input.execution.todos),
+    googleContext: Boolean(input.execution.google),
+  });
+  // Public drafts can change after source binding or quote extraction. Their
+  // transport must expose only the complete validated reply, never Core chunks.
+  const atomicPublicReply = Boolean(
+    input.messageRole !== "system" &&
+      !isSharedGoogleContextRequest(publicText) &&
+      !privateIntent &&
+      (input.realtimeGrounding ||
+        resolveSharedRealtimeRequirement(publicText, input.history) ||
+        resolveSharedPublicSearchIntent(publicText, input.history)),
+  );
+
   const queued: SharedAgentTurnStreamPart[] = [];
   let wake: (() => void) | undefined;
   let terminalError: unknown;
@@ -1862,24 +1879,34 @@ export async function runSharedElizaRuntimeTurnStream(
 
   const completion = executeSharedElizaRuntimeTurn(
     { ...input, abortSignal: controller.signal },
-    async (chunk) => {
-      if (!controller.signal.aborted && !isRuntimeControlChunk(chunk)) {
-        emittedText += chunk;
-        push({ type: "text-delta", text: chunk });
-      }
-    },
+    atomicPublicReply
+      ? undefined
+      : async (chunk) => {
+          if (!controller.signal.aborted && !isRuntimeControlChunk(chunk)) {
+            emittedText += chunk;
+            push({ type: "text-delta", text: chunk });
+          }
+        },
   )
     .then((result) => {
+      if (atomicPublicReply) controller.signal.throwIfAborted();
+      const reply =
+        atomicPublicReply && result.responded !== false
+          ? finalizeSharedRealtimeReply(
+              result.reply,
+              input.realtimeGrounding ?? sharedPublicWebGrounding(result.actionResults ?? []),
+            )
+          : result.reply;
       if (!controller.signal.aborted) {
-        if (!result.reply.startsWith(emittedText)) {
+        if (!reply.startsWith(emittedText)) {
           throw new Error("Eliza Shared runtime reply diverged from streamed text");
         }
-        const remainingText = result.reply.slice(emittedText.length);
+        const remainingText = reply.slice(emittedText.length);
         if (remainingText) push({ type: "text-delta", text: remainingText });
       }
       push({
         type: "finish",
-        text: result.reply,
+        text: reply,
         ...(result.responded === false ? { responded: false } : {}),
         usage: result.usage,
         ...(result.timing ? { timing: result.timing } : {}),
@@ -1899,7 +1926,9 @@ export async function runSharedElizaRuntimeTurnStream(
 
   const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
     for (;;) {
+      if (atomicPublicReply) controller.signal.throwIfAborted();
       while (queued.length > 0) {
+        if (atomicPublicReply) controller.signal.throwIfAborted();
         const next = queued.shift();
         if (next) yield next;
       }
