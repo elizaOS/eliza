@@ -1,0 +1,36 @@
+{
+  "name": "@elizaos/capacitor-owned-media",
+  "version": "2.0.3-beta.7",
+  "description": "Android owned-media primitives for Eliza hosts: photo edit copies, filters and explicitly kept captures in the host's own MediaStore items.",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza.git",
+    "directory": "plugins/plugin-native-media"
+  },
+  "scripts": {
+    "test": "node --test test/native-host/*.node.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint:check": "bunx @biomejs/biome check .",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
+  },
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "homepage": "https://github.com/elizaOS/eliza",
+  "devDependencies": {
+    "@capacitor/android": "8.5.0",
+    "@types/node": "^25.6.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3"
+  }
+}

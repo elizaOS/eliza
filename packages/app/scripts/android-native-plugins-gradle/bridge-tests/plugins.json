@@ -42,6 +42,9 @@
     "name": "ElizaLocation",
     "class": "ai.eliza.plugins.location.LocationPlugin"
   },
+  "plugin-native-media": {
+    "kind": "host-configured-library"
+  },
   "plugin-native-messages": {
     "name": "ElizaMessages",
     "class": "ai.eliza.plugins.messages.MessagesPlugin"
