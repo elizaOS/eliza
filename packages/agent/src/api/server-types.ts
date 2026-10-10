@@ -151,6 +151,8 @@ export interface ServerState {
   chatUserId: UUID | null;
   chatConnectionReady: { userId: UUID; roomId: UUID; worldId: UUID } | null;
   chatConnectionPromise: Promise<void> | null;
+  /** Serializes host-owned runtime teardown against lifecycle routes. */
+  runtimeStopPromise: Promise<void> | null;
   adminEntityId: UUID | null;
   /** Conversation metadata by conversation id. */
   conversations: Map<string, ConversationMeta>;

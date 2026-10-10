@@ -64,6 +64,7 @@ export interface AgentAdminRouteState {
   chatUserId: UUID | null;
   chatConnectionReady: { userId: UUID; roomId: UUID; worldId: UUID } | null;
   chatConnectionPromise: Promise<void> | null;
+  runtimeStopPromise: Promise<void> | null;
   pendingRestartReasons: string[];
   conversations?: Map<string, unknown>;
   activeConversationId?: string | null;
@@ -128,6 +129,10 @@ export async function handleAgentAdminRoutes(
   } = ctx;
 
   if (method === "POST" && pathname === "/api/agent/restart") {
+    if (state.runtimeStopPromise) {
+      error(res, "Agent stop is still in progress", 409);
+      return true;
+    }
     if (!onRestart) {
       error(
         res,
@@ -196,6 +201,10 @@ export async function handleAgentAdminRoutes(
   }
 
   if (method === "POST" && pathname === "/api/agent/reset") {
+    if (state.runtimeStopPromise) {
+      error(res, "Agent stop is still in progress", 409);
+      return true;
+    }
     try {
       if (state.runtime) {
         await state.runtime.stop({ fast: true });

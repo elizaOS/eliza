@@ -500,6 +500,15 @@ async function main() {
   } = await startApiServer({
     port,
     initialAgentState: "starting",
+    onStop: async (runtimeToStop) => {
+      const { shutdownRuntime } = await loadElizaRuntimeModule();
+      await shutdownRuntime(runtimeToStop, "dev-server API stop", {
+        requireQuiescence: true,
+      });
+      if (currentRuntime === runtimeToStop) {
+        currentRuntime = null;
+      }
+    },
     onRestart: async () => {
       await handleRestart("api");
       return currentRuntime;

@@ -1528,7 +1528,13 @@ export async function shutdownRuntime(
   try {
     // Interactive/signal teardown asks for the capped fast path so Ctrl-C does
     // not block on a slow deferred service start or a long embedding drain.
-    await runtime.stop(options.fast ? options : undefined);
+    await runtime.stop(
+      options.fast ||
+        options.requireQuiescence ||
+        options.serviceStopTimeoutMs !== undefined
+        ? options
+        : undefined,
+    );
     logger.debug(`[eliza] ${context}: runtime services stopped`);
   } catch (err) {
     if (!firstError) firstError = err;
@@ -5925,6 +5931,11 @@ export async function startEliza(
       runtime,
       skipListen: skipApiListen,
       restartRequiresRuntimeDisposal: restoredGeneration !== undefined,
+      onStop: async (runtimeToStop) => {
+        await shutdownRuntime(runtimeToStop, "API stop", {
+          requireQuiescence: true,
+        });
+      },
       onRestart: async (restartOptions) => {
         logger.info("[eliza] Hot-reload: building replacement runtime...");
         try {
