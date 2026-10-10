@@ -315,7 +315,12 @@ async function fetchWithSafety(
 function readContentLengthHeader(response: Response): number | null {
   const raw = response.headers.get("content-length");
   if (!raw) return null;
-  const parsed = Number.parseInt(raw, 10);
+  // Number.parseInt stops at the first non-digit ("123junk" -> 123), so a
+  // malformed header value was accepted as the declared byte count instead
+  // of being treated as unknown. Require the whole trimmed value to be
+  // decimal, mirroring responseContentLength in server-helpers-fetch.ts.
+  const text = raw.trim();
+  const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
   if (!Number.isFinite(parsed) || parsed < 0) return null;
   return parsed;
 }
