@@ -63,12 +63,14 @@ public final class PasswordConsumerTest {
   assertTrue(node.performAction(AccessibilityNodeInfo.ACTION_CLICK));
  }
  private AccessibilityNodeInfo field(String label) { return find(node -> node.isEditable() && label.contentEquals(node.getContentDescription() == null ? "" : node.getContentDescription())); }
+ private void focus(String label) {
+  await(() -> { AccessibilityNodeInfo node = field(label); return node != null && node.performAction(AccessibilityNodeInfo.ACTION_FOCUS); }, "Synthetic field accepts focus: " + label);
+ }
  private void input(String label, String value) {
-  await(() -> field(label) != null, "Missing synthetic field");
-  AccessibilityNodeInfo node = field(label); node.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+  focus(label);
   await(() -> find(item -> "Fill with a saved password".equals(text(item))) != null, "Framework offer ready for focused field");
   Bundle args = new Bundle(); args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value);
-  assertTrue("Native field accepts user edit", node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args));
+  await(() -> { AccessibilityNodeInfo node = field(label); return node != null && node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args); }, "Native field accepts user edit");
  }
  private void credentialPrompt() {
   await(() -> find(node -> node.isPassword() && node.isEditable() && !"example.passwords.fixture".contentEquals(node.getPackageName() == null ? "" : node.getPackageName())) != null, "Device credential prompt");
@@ -105,8 +107,7 @@ public final class PasswordConsumerTest {
  }
  private void launch(Context context, String username, String password) {
   context.startActivity(new Intent().setClassName("example.passwords.fixture", "example.passwords.fixture.LoginActivity").putExtra("expectedUsername", username).putExtra("expectedPassword", password).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
-  await(() -> field("Test username") != null, "Synthetic form opened");
-  field("Test username").performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+  focus("Test username");
   await(() -> find(node -> "Fill with a saved password".equals(text(node))) != null, "Framework admitted the form before edits");
  }
  @Test public void saveAndFillRequireUserUnlockAndChoice() throws Exception {
@@ -143,7 +144,6 @@ public final class PasswordConsumerTest {
    await(() -> new File(access.config.directory, "vault.enc").isFile(), "Authenticated save wrote encrypted vault");
    await(() -> !access.unlocked(), "Save sheet closes its grant");
    launch(context, username, password);
-   field("Test username").performAction(AccessibilityNodeInfo.ACTION_FOCUS);
    press("Fill with a saved password"); credentialPrompt();
    assertTrue("Picker owns a pending challenge", access.pending());
    boolean[] destroyed = {false};
@@ -156,7 +156,6 @@ public final class PasswordConsumerTest {
    await(() -> !access.pending() && !access.unlocked(), "Abandoned picker cancels its challenge");
    await(() -> { AccessibilityNodeInfo userField = field("Test username"), passwordField = field("Test password"); return userField != null && passwordField != null && userField.isShowingHintText() && passwordField.isShowingHintText(); }, "Cancelled picker leaves both fields empty");
    launch(context, username, password);
-   field("Test username").performAction(AccessibilityNodeInfo.ACTION_FOCUS);
    press("Fill with a saved password"); pin(pin);
    await(() -> find(node -> text(node).contains(username)) != null, "Picker displays the captured account");
    captureSheet(PasswordFillActivity.class, "password-fill-sheet.png");
