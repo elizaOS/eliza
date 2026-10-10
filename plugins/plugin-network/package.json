@@ -48,7 +48,8 @@
   },
   "scripts": {
     "build": "tsc6 --noCheck -p tsconfig.build.json",
-    "test": "bun test src/routing/authz.test.ts",
+    "test": "bun test --conditions=eliza-source src/routing/authz.test.ts src/backend/contract-mirror.test.ts src/network-relay-voice.test.ts",
+    "check:mirror": "bun scripts/check-contract-mirror.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo",
     "lint": "bunx @biomejs/biome check --write --unsafe .",

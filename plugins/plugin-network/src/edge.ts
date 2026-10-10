@@ -1,8 +1,11 @@
 /** Worker-safe Network plugin bound to host-owned stores and turn authority. */
 import type { Plugin } from "@elizaos/core";
 import { createGetUpdatesAction } from "./actions/get-updates.js";
+import { createRelayAction } from "./actions/relay.js";
 import { createSetStateAction } from "./actions/set-state.js";
+import type { NetworkAppId } from "./backend/contract.js";
 import { createNetworkSignalsEvaluator } from "./evaluators/network-signals.js";
+import { createNetworkVoiceProvider } from "./providers/agent-voice.js";
 import { createMemberContextProvider } from "./providers/member-context.js";
 import { NETWORK_CONTEXT_DEFINITION } from "./routing/context.js";
 import { createNetworkActionFieldEvaluator } from "./routing/structured-field.js";
@@ -10,6 +13,7 @@ import type { NetworkStore, NetworkTurnAuthority } from "./types.js";
 
 type GetUpdatesStore = NetworkStore &
   Required<Pick<NetworkStore, "readUpdates">>;
+type RelayStore = NetworkStore & Required<Pick<NetworkStore, "relay">>;
 
 export const NETWORK_EDGE_COMPATIBILITY = {
   target: "edge",
@@ -41,6 +45,11 @@ export interface NetworkEdgePluginOptions {
   routing?: NetworkRouting;
   /** Clock for date resolution (tests and the simulator). Default: wall clock. */
   now?: () => Date;
+  /**
+   * The character flag: speak as The Network's agent with this app's voice (NETWORK_VOICE
+   * provider). Absent (the default) leaves the host character's voice untouched.
+   */
+  voice?: { app: NetworkAppId };
 }
 
 export function createNetworkEdgePlugin(
@@ -68,6 +77,7 @@ export function createNetworkEdgePlugin(
         }
       : {}),
     providers: [
+      ...(options.voice ? [createNetworkVoiceProvider(options.voice)] : []),
       createMemberContextProvider({
         store: options.store,
         authority: options.authority,
@@ -91,6 +101,16 @@ export function createNetworkEdgePlugin(
             ? [
                 createGetUpdatesAction({
                   store: options.store as GetUpdatesStore,
+                  authority: options.authority,
+                }),
+              ]
+            : []),
+          // RELAY only sends the member's own message to the service, which classifies it and
+          // sends its own wording; offered in both routing modes when the store can relay.
+          ...(options.store.relay
+            ? [
+                createRelayAction({
+                  store: options.store as RelayStore,
                   authority: options.authority,
                 }),
               ]

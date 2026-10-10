@@ -53,7 +53,9 @@ export function createMemberContextProvider(
       if (member.activeItems && member.activeItems.length > 0) {
         lines.push("Active items:");
         for (const item of member.activeItems) {
-          lines.push(`- [${item.kind}] ${item.summary}`);
+          lines.push(
+            `- [${item.kind}] ${item.summary}${item.id ? ` (itemId: ${item.id})` : ""}`,
+          );
         }
       }
       return {
