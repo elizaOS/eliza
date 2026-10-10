@@ -228,13 +228,22 @@ export class TaskWatchdogService extends Service {
 
   private stallMs(): number {
     const raw = this.runtime.getSetting("ELIZA_ORCHESTRATOR_STALL_MS");
-    const n = typeof raw === "string" ? Number.parseInt(raw, 10) : NaN;
+    // Number.parseInt stops at the first non-digit ("60000junk" -> 60000), so a
+    // typo was silently accepted as the stall threshold instead of the default.
+    // Require the whole trimmed value to be decimal, mirroring
+    // resolveGenerationTimeoutMs in the discord plugin.
+    const text = typeof raw === "string" ? raw.trim() : "";
+    const n = /^\+?\d+$/.test(text) ? Number(text) : NaN;
     return Number.isFinite(n) && n >= MIN_INTERVAL_MS ? n : DEFAULT_STALL_MS;
   }
 
   private warnRatio(): number {
     const raw = this.runtime.getSetting("ELIZA_ORCHESTRATOR_CAP_WARN_RATIO");
-    const n = typeof raw === "string" ? Number.parseFloat(raw) : NaN;
+    // Number.parseFloat stops at the first non-digit ("0.5junk" -> 0.5), so a
+    // typo was silently accepted as the warn ratio instead of the default 0.8.
+    // Require the whole trimmed value to be decimal.
+    const text = typeof raw === "string" ? raw.trim() : "";
+    const n = /^\+?\d+(?:\.\d+)?$/.test(text) ? Number(text) : NaN;
     return Number.isFinite(n) && n > 0 && n < 1 ? n : DEFAULT_CAP_WARN_RATIO;
   }
 
@@ -242,7 +251,11 @@ export class TaskWatchdogService extends Service {
     const raw = this.runtime.getSetting(
       "ELIZA_ORCHESTRATOR_WATCHDOG_INTERVAL_MS",
     );
-    const n = typeof raw === "string" ? Number.parseInt(raw, 10) : NaN;
+    // Number.parseInt stops at the first non-digit ("30000junk" -> 30000), so a
+    // typo was silently accepted as the tick interval instead of the default.
+    // Require the whole trimmed value to be decimal.
+    const text = typeof raw === "string" ? raw.trim() : "";
+    const n = /^\+?\d+$/.test(text) ? Number(text) : NaN;
     return Number.isFinite(n) && n >= MIN_INTERVAL_MS ? n : DEFAULT_INTERVAL_MS;
   }
 
