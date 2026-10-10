@@ -236,6 +236,17 @@ function holdAside(body: string, codeSink: string[]): string {
  * aside so the style passes cannot rewrite `*` in its URL (`a*b*c` became
  * `a_b_c`, a different address); the label gets the style passes here.
  */
+/**
+ * A held-aside link token skips escapeSlackMrkdwn, so it must pass the same
+ * scheme allowlist here: javascript:, data:, file:, relative URLs and tokens
+ * spanning a newline come out escaped as plain text.
+ */
+function guardLinkToken(token: string): string {
+  return isAllowedSlackAngleToken(token) && !token.includes("\n")
+    ? token
+    : escapeSlackMrkdwnSegment(token);
+}
+
 function convertLinks(text: string, codeSink: string[]): string {
   // The URL group tolerates one level of balanced parentheses, as the
   // Telegram converter does: a plain [^)]+ capture cuts a Wikipedia-style
@@ -250,13 +261,16 @@ function convertLinks(text: string, codeSink: string[]): string {
         trimmedText === trimmedUrl ||
         trimmedText === trimmedUrl.replace(/^mailto:/, "")
       ) {
-        return holdAside(`<${escapeSlackLinkUrl(trimmedUrl)}>`, codeSink);
+        return holdAside(
+          guardLinkToken(`<${escapeSlackLinkUrl(trimmedUrl)}>`),
+          codeSink,
+        );
       }
       const label = convertStrikethrough(
         convertItalic(convertBold(escapeSlackMrkdwnSegment(trimmedText))),
       );
       return holdAside(
-        `<${escapeSlackLinkUrl(trimmedUrl)}|${label}>`,
+        guardLinkToken(`<${escapeSlackLinkUrl(trimmedUrl)}|${label}>`),
         codeSink,
       );
     },
