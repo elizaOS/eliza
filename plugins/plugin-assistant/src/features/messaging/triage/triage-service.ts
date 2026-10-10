@@ -43,6 +43,7 @@ export interface TriageOptions {
   channelIds?: string[];
   sinceMs?: number;
   limit?: number;
+  unreadOnly?: boolean;
   nowMs?: number;
 }
 
@@ -222,6 +223,7 @@ export class TriageService {
         batch = await adapter.listMessages(runtime, {
           sinceMs: opts.sinceMs,
           limit: opts.limit,
+          unreadOnly: opts.unreadOnly,
           worldIds: opts.worldIds,
           channelIds: opts.channelIds,
         });
