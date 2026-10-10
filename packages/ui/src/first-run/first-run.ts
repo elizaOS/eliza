@@ -197,7 +197,11 @@ export function buildFirstRunSubmitPlan(args: {
     firstRunFeatureBrowser: true,
   });
   const systemPrompt =
-    style.system?.replace(/\{\{name\}\}/g, agentName) ??
+    // A raw string replacement interprets "$" patterns ("$&", "$'", "$`"),
+    // so an agent name like "a$'b" corrupted the system prompt instead of
+    // being inserted literally. A replacement function inserts the value
+    // verbatim, like every other template substitution in the repo.
+    style.system?.replace(/\{\{name\}\}/g, () => agentName) ??
     `You are ${agentName}, an autonomous AI agent powered by elizaOS.`;
   return {
     runtimeConfig,
