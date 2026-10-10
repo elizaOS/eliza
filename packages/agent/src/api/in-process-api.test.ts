@@ -1,13 +1,18 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { registerHttpPluginRoutes } from "@elizaos/host/protocol";
 import { expect, it } from "vitest";
-import { buildLegacyShim, capturedToResult } from "./dispatch-route";
+import {
+  buildLegacyShim,
+  capturedToResult,
+  dispatchRoute,
+} from "./dispatch-route";
 import { tryHandleHonoRuntimeRoute } from "./hono-mount";
 import { dispatchApiRoute, registerInProcessApi } from "./in-process-api";
 import type { RouteKernel } from "./route-kernel";
 
 function fixture() {
   const runtime = {} as IAgentRuntime;
+  const served: string[] = [];
   registerHttpPluginRoutes(runtime, {
     name: "native-probe",
     description: "Tests native request provenance",
@@ -24,6 +29,26 @@ function fixture() {
           },
         }),
       },
+      {
+        type: "GET",
+        path: "/api/paid-legacy",
+        rawPath: true,
+        x402: true,
+        handler: async (_req, res) => {
+          served.push("legacy");
+          res.json({ paidContent: true });
+        },
+      },
+      {
+        type: "GET",
+        path: "/api/paid-return-shape",
+        rawPath: true,
+        x402: true,
+        routeHandler: async () => {
+          served.push("return-shape");
+          return { status: 200, body: { paidContent: true } };
+        },
+      },
     ],
   });
   const kernel = {
@@ -37,7 +62,7 @@ function fixture() {
       });
     },
   } as RouteKernel;
-  return { runtime, kernel };
+  return { runtime, kernel, served };
 }
 
 it("preserves authenticated native provenance across the full kernel and Hono adapter", async () => {
@@ -92,5 +117,35 @@ it("overwrites an HTTP client's spoofed native-provenance header", async () => {
   } finally {
     req.destroy();
     req.socket.destroy();
+  }
+});
+
+it("refuses an x402 route when payment enforcement is unavailable", async () => {
+  // `@elizaos/plugin-x402` is an optional peer that is not installed here, so
+  // neither handler shape can be payment-gated.
+  const { runtime, kernel, served } = fixture();
+  const unregister = registerInProcessApi(runtime, kernel);
+  try {
+    const request = {
+      runtime,
+      method: "GET",
+      headers: { authorization: "Bearer native-token" },
+      inProcess: true,
+      isAuthorized: () => true,
+    };
+    const results = [
+      // Return-shape routes reach the dispatcher through the kernel and Hono.
+      await dispatchApiRoute({ ...request, path: "/api/paid-return-shape" }),
+      await dispatchRoute({ ...request, path: "/api/paid-legacy" }),
+    ];
+    for (const result of results) {
+      expect(result?.status).toBe(503);
+      expect(result?.body).toMatchObject({
+        code: "X402_ENFORCEMENT_UNAVAILABLE",
+      });
+    }
+    expect(served).toEqual([]);
+  } finally {
+    unregister();
   }
 });
