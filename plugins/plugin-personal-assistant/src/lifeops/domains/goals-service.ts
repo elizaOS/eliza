@@ -76,6 +76,12 @@ import {
 } from "./definition-authorization.js";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+// Occurrence refreshes create and expire rows; only an owner action is activity.
+const GOAL_OWNER_ACTIVITY_STATES: ReadonlySet<string> = new Set([
+  "completed",
+  "skipped",
+  "snoozed",
+]);
 /** Days of inactivity after which a daily / interval / times-per-day goal is
  *  considered stale enough to demote from "on_track". The cadences run at
  *  least every other day, so two days without activity is the earliest
@@ -728,6 +734,9 @@ export class GoalsDomain {
     );
     const lastActivityAt = allOccurrenceViews.reduce<string | null>(
       (latest, occurrence) => {
+        if (!GOAL_OWNER_ACTIVITY_STATES.has(occurrence.state)) {
+          return latest;
+        }
         const currentTime = new Date(occurrence.updatedAt).getTime();
         if (!Number.isFinite(currentTime)) {
           return latest;
@@ -747,7 +756,14 @@ export class GoalsDomain {
       activeOccurrences,
       overdueOccurrences,
       recentCompletions,
-      lastActivityAt,
+      // No owner action yet: the quiet period starts when the goal or its
+      // newest support routine was set up, so new goals get their grace days.
+      lastActivityAt ??
+        [goalRecord.goal, ...linkedDefinitions]
+          .map((record) => record.createdAt)
+          .reduce((latest, createdAt) =>
+            Date.parse(createdAt) > Date.parse(latest) ? createdAt : latest,
+          ),
       now,
     );
     const summary: LifeOpsGoalReview["summary"] = {
