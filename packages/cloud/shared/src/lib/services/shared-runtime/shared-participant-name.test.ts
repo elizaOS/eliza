@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { resolveSharedParticipantName, sharedOwnerProfileName } from "./shared-participant-name";
+import {
+  resolveSharedParticipantName,
+  sharedOwnerProfileName,
+} from "./shared-participant-name";
 
 describe("Shared participant name projection", () => {
   test("explicit self-identification wins without renaming the agent or account", () => {
@@ -40,11 +43,56 @@ describe("Shared participant name projection", () => {
   });
 
   test("canonical profile prefers a real nickname and omits generated phone labels", () => {
-    expect(sharedOwnerProfileName({ nickname: "Nubs42", name: "Account name" })).toBe("Nubs42");
-    expect(sharedOwnerProfileName({ nickname: "User", name: "Ana María" })).toBe("Ana María");
+    expect(
+      sharedOwnerProfileName({ nickname: "Nubs42", name: "Account name" }),
+    ).toBe("Nubs42");
+    expect(
+      sharedOwnerProfileName({ nickname: "User", name: "Ana María" }),
+    ).toBe("Ana María");
     expect(sharedOwnerProfileName({ name: "User ***1234" })).toBeUndefined();
     expect(sharedOwnerProfileName({ name: "Eliza user" })).toBeUndefined();
     expect(sharedOwnerProfileName({})).toBeUndefined();
+  });
+
+  test("technical profile placeholders fall back without overriding owner self-identification", () => {
+    expect(
+      sharedOwnerProfileName({ nickname: "Shared agent user", name: "Nubs" }),
+    ).toBe("Nubs");
+    expect(
+      sharedOwnerProfileName({ nickname: "Nubs", name: "Shared agent user" }),
+    ).toBe("Nubs");
+    expect(
+      sharedOwnerProfileName({ name: "SHARED AGENT USER" }),
+    ).toBeUndefined();
+    expect(
+      resolveSharedParticipantName({
+        message: "hello",
+        preferredName: "Shared agent user",
+        history: [{ role: "user", content: 'Please call me "Nubs".' }],
+      }),
+    ).toBe("Nubs");
+    expect(
+      resolveSharedParticipantName({
+        message: "hello",
+        preferredName: "Shared agent user",
+        history: [{ role: "assistant", content: 'My name is "Nubs".' }],
+      }),
+    ).toBeUndefined();
+    expect(
+      resolveSharedParticipantName({
+        message: 'Please call me "Shared agent user".',
+        preferredName: "Nubs",
+        history: [],
+      }),
+    ).toBe("Shared agent user");
+    expect(
+      resolveSharedParticipantName({
+        message: "hello",
+        history: [
+          { role: "user", content: 'Please call me "Shared agent user".' },
+        ],
+      }),
+    ).toBe("Shared agent user");
   });
 
   test("callback and ordinary commands are not self-identification", () => {
@@ -57,7 +105,9 @@ describe("Shared participant name projection", () => {
       "Call me Nubs",
       "I go by the office",
     ]) {
-      expect(resolveSharedParticipantName({ message, history: [] })).toBeUndefined();
+      expect(
+        resolveSharedParticipantName({ message, history: [] }),
+      ).toBeUndefined();
       expect(
         resolveSharedParticipantName({
           message: "hello",
@@ -68,7 +118,12 @@ describe("Shared participant name projection", () => {
   });
 
   test("verified preferences retain bounded digits and handles", () => {
-    for (const preferredName of ["Nubs42", "@nubs_42", "Jean-Luc 2", "Ana María"]) {
+    for (const preferredName of [
+      "Nubs42",
+      "@nubs_42",
+      "Jean-Luc 2",
+      "Ana María",
+    ]) {
       expect(
         resolveSharedParticipantName({
           message: "hello",
