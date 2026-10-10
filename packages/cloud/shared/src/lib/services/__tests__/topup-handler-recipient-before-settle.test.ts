@@ -9,6 +9,7 @@ const { x402FacilitatorService } = await import("../x402-facilitator");
 const { cache } = await import("../../cache/client");
 const { creditsService } = await import("../credits");
 const { referralsService } = await import("../referrals");
+const { usersService } = await import("../users");
 
 type Settlement = Awaited<ReturnType<typeof x402FacilitatorService.settle>>;
 
@@ -229,5 +230,70 @@ test("a valid wallet signature is verified once and the settled payment is credi
     nonceClaims: 1,
     creditedOrganization: organizationId,
     creditedAmount: 10,
+  });
+});
+
+test("a signed request credits the signer's organization and ignores a different body walletAddress", async () => {
+  const settle = stubSettlement();
+  const organizationId = "30000000-0000-4000-8000-000000000003";
+  const walletUser = {
+    id: "30000000-0000-4000-8000-000000000004",
+    organization_id: organizationId,
+    wallet_address: account.address,
+    is_active: true,
+    organization: { id: organizationId, is_active: true },
+  };
+  spyOn(cache, "isAvailable").mockReturnValue(true);
+  spyOn(cache, "setIfNotExists").mockResolvedValue(true);
+  spyOn(cache, "get").mockResolvedValue(walletUser as never);
+  const bodyLookup = spyOn(usersService, "getByWalletAddressWithOrganization");
+  const addCredits = spyOn(creditsService, "addCredits").mockResolvedValue({
+    transaction: { id: "credit-tx-2" },
+    newBalance: 10,
+  } as never);
+  spyOn(referralsService, "calculateRevenueSplits").mockResolvedValue({
+    splits: [],
+  } as never);
+  const otherWallet = "0x00000000000000000000000000000000000000dd";
+  const rawBody = JSON.stringify({ walletAddress: otherWallet });
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`\n${rawBody}`));
+  const payloadHash = Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  const timestamp = Date.now();
+  const signature = await account.signMessage({
+    message: `Eliza Cloud Authentication\nTimestamp: ${timestamp}\nMethod: POST\nPath: /api/v1/topup/10\nPayload-SHA256: ${payloadHash}`,
+  });
+
+  const response = await topup(
+    new Request("https://cloud.test/api/v1/topup/10", {
+      method: "POST",
+      headers: {
+        "X-PAYMENT": paymentHeader,
+        "X-Wallet-Address": account.address,
+        "X-Timestamp": String(timestamp),
+        "X-Wallet-Signature": signature,
+      },
+      body: rawBody,
+    }),
+  );
+  const body = (await response.json()) as Record<string, unknown>;
+
+  expect({
+    status: response.status,
+    organizationId: body.organizationId,
+    walletAddress: body.walletAddress,
+    settleCalls: settle.mock.calls.length,
+    bodyWalletLookups: bodyLookup.mock.calls.length,
+    creditedOrganization: addCredits.mock.calls[0]?.[0].organizationId,
+    creditedWallet: addCredits.mock.calls[0]?.[0].metadata?.wallet_address,
+  }).toEqual({
+    status: 200,
+    organizationId,
+    walletAddress: account.address,
+    settleCalls: 1,
+    bodyWalletLookups: 0,
+    creditedOrganization: organizationId,
+    creditedWallet: account.address,
   });
 });
