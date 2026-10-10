@@ -47,8 +47,8 @@ export interface TranscriptViewProps {
 }
 
 /** Render agent prose + code via the shared chat parser; drop widget markers. */
-function renderAgentBody(text: string): ReactNode {
-  const segments = parseSegments(text, false);
+function renderAgentBody(text: string, streaming: boolean): ReactNode {
+  const segments = parseSegments(text, false, streaming);
   return segments.map((segment, index) => {
     const key = `${segment.kind}-${index}`;
     if (segment.kind === "text") {
@@ -100,7 +100,7 @@ function TranscriptRow({ item }: { item: TranscriptItem }): ReactNode {
           data-role="agent"
           data-status={item.status}
         >
-          {renderAgentBody(item.text)}
+          {renderAgentBody(item.text, item.status === "streaming")}
         </div>
       );
     case "tool":

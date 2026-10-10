@@ -32,6 +32,8 @@ export interface ChatSurfaceProps {
   messages: readonly ShellMessage[];
   onSend: (text: string) => void;
   canSend: boolean;
+  /** True while a reply is in flight; the last assistant message may still grow. */
+  responding?: boolean;
   greeting?: string;
   recording?: boolean;
   onToggleRecording?: () => void;
@@ -60,6 +62,7 @@ export function ChatSurface({
   messages,
   onSend,
   canSend,
+  responding = false,
   greeting,
   recording = false,
   onToggleRecording,
@@ -168,6 +171,7 @@ export function ChatSurface({
                             content={message.content}
                             messageId={message.id}
                             producerScope={message.source}
+                            streaming={responding && message === lastMessage}
                           />
                         )}
                       </ChatBubble>
