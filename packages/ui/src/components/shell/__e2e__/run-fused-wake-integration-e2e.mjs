@@ -127,10 +127,12 @@ try {
     "RESTING: chromeless HomePill bar before wake",
   );
   assert((await p.getByTestId("shell-chat-surface").count()) === 0, "RESTING: no composer before wake");
-  assert(
-    await p.evaluate(() => window.__ELIZA_FUSED_WAKE__ === true),
-    "registerDesktopFusedWake set the capability flag",
-  );
+  // The flag is set only after the real FusedWakeManager.start() resolves
+  // (model load + mic spawn), so wait for it instead of sampling once.
+  await p.waitForFunction(() => window.__ELIZA_FUSED_WAKE__ === true, null, {
+    timeout: 10000,
+  });
+  assert(true, "fusedWakeStart reported started, so the capability flag is set");
   await snap(p, "resting-homepill");
 
   // The real native detector is now streaming the real clip; wait for the head
