@@ -305,7 +305,16 @@ export function getSupportedNetworks(): OxaPayNetwork[] {
  * Converts to milliseconds for consistency.
  */
 function parseTimestamp(value: number | string): number | undefined {
-  const parsed = typeof value === "number" ? value : Number.parseInt(value, 10);
+  // Number.parseInt stops at the first non-digit ("1728500000junk" ->
+  // 1728500000), so a malformed webhook timestamp was silently treated as
+  // valid instead of returning undefined. Require the whole trimmed value
+  // to be decimal, mirroring resolveGenerationTimeoutMs in the discord plugin.
+  const parsed =
+    typeof value === "number"
+      ? value
+      : /^\+?\d+$/.test(value.trim())
+        ? Number(value.trim())
+        : Number.NaN;
   if (Number.isNaN(parsed)) return undefined;
   // If it looks like seconds (before year 2100), convert to milliseconds
   return parsed < 10000000000 ? parsed * 1000 : parsed;
