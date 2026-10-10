@@ -51,6 +51,11 @@ public final class MirrorConsumerTest {
     assertTrue(
         "Synthetic producer completed", delivered.await(20, java.util.concurrent.TimeUnit.SECONDS));
   }
+  private String marker(String nonce) {
+    for (int digit = 0; digit < 10; digit++)
+      nonce = nonce.replace((char) ('0' + digit), (char) ('g' + digit));
+    return nonce;
+  }
   private void policy(boolean preview, boolean history) throws Exception {
     mirror.update(c,
         new JSONObject()
@@ -79,7 +84,7 @@ public final class MirrorConsumerTest {
       post(SELECTED, nonce, "post");
       post(EXCLUDED, excluded, "post");
       await(() -> mirror.list(c).length() == 2, "Only selected app notices");
-      assertFalse(mirror.list(c).toString().contains(nonce));
+      assertFalse(mirror.list(c).toString().contains(marker(nonce)));
       JSONObject old = mirror.list(c).getJSONObject(0);
       policy(true, true);
       try {
@@ -98,18 +103,18 @@ public final class MirrorConsumerTest {
           hidden++;
         else {
           shown++;
-          assertTrue(row.getString("text").contains(nonce));
+          assertTrue("Synthetic producer row: " + row, row.getString("text").contains(marker(nonce)));
         }
       }
       assertEquals(1, hidden);
       assertEquals(1, shown);
-      assertFalse(rows.toString().contains(excluded));
+      assertFalse(rows.toString().contains(marker(excluded)));
       assertTrue(encrypted.isFile());
       String raw = new String(Files.readAllBytes(encrypted.toPath()), StandardCharsets.ISO_8859_1);
       assertFalse(raw.contains("Synthetic"));
-      assertFalse(raw.contains(nonce));
+      assertFalse(raw.contains(marker(nonce)));
       assertFalse(raw.contains(SELECTED));
-      assertFalse(mirror.history(c).toString().contains(nonce));
+      assertFalse(mirror.history(c).toString().contains(marker(nonce)));
       synchronized (mirror.lock) {
         int count = mirror.history(c).length();
         File backup = new File(encrypted.getPath() + ".bak");
