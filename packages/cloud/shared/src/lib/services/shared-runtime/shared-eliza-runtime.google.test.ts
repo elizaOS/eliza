@@ -119,6 +119,7 @@ async function exercise(
     if (!url.startsWith("https://api.cerebras.ai/"))
       throw new Error("OFFLINE_NON_MODEL_NETWORK_BLOCKED");
     modelCalls += 1;
+    const currentReply = connecting && connects === 1 ? `Continue with Google: ${authUrl}` : reply;
     const text = input instanceof Request ? await input.clone().text() : String(init?.body ?? "");
     const body = JSON.parse(text) as {
       messages?: Array<{ role?: string; content?: unknown }>;
@@ -148,7 +149,7 @@ async function exercise(
               ? []
               : [compoundMissing ? "TODO" : publicRead ? "WEB_SEARCH" : "GOOGLE_CONTEXT"],
           requiresTool: kind !== "weather-missing" && !ordinary,
-          replyText: kind === "weather-missing" || ordinary ? reply : "",
+          replyText: kind === "weather-missing" || ordinary ? currentReply : "",
           replyEffectStatus: "none",
           facts: [],
           relationships: [],
@@ -166,7 +167,7 @@ async function exercise(
           success: true,
           decision: "FINISH",
           thought: "The private read is settled.",
-          messageToUser: reply,
+          messageToUser: currentReply,
         }),
       );
     if (
@@ -192,7 +193,7 @@ async function exercise(
         args: connecting ? { operation: "connect" } : { operation: "gmail_search", query: "invoices" },
       });
     }
-    return model(connecting && connects === 1 ? `Continue with Google: ${authUrl}` : reply);
+    return model(currentReply);
   }) as typeof fetch;
   let runtimeSpy: ReturnType<typeof spyOn> | undefined;
   try {
