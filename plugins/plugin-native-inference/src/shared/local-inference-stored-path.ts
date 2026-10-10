@@ -43,7 +43,8 @@ export function toStoredModelPath(
   const relative = path.relative(root, resolved);
   if (
     relative === "" ||
-    relative.startsWith("..") ||
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
     path.isAbsolute(relative)
   ) {
     return null;
