@@ -49,6 +49,12 @@ public final class PasswordVaultEntriesInstrumentedTest {
         JSONObject item = vault.entries().getJSONObject(i);
         if (item.getString("id").equals(legacy)) assertEquals(Arrays.asList("https://legacy.example.test"), PasswordVaultStore.bindings(item));
       }
+      JSONArray exported = vault.exportEntries();
+      assertEquals(2, exported.length());
+      assertEquals("Renamed", exported.getJSONObject(0).getString("label"));
+      assertEquals(secret, exported.getJSONObject(0).getString("password"));
+      assertEquals("https://legacy.example.test", exported.getJSONObject(1).getString("label"));
+      assertEquals("synthetic-legacy", exported.getJSONObject(1).getString("password"));
       // A readable vault is never reset.
       assertFalse(vault.unrecoverable());
       try { vault.resetUnrecoverable(); fail("Reset a readable vault"); } catch (java.io.IOException expected) { assertEquals("Saved passwords are not damaged", expected.getMessage()); }

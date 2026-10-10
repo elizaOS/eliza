@@ -26,6 +26,17 @@ public final class PasswordCsvTest {
   private static Import parse(String text) throws IOException { return PasswordCsv.parse(utf8(text), Collections.emptySet()); }
 
   public static void main(String[] args) throws Exception {
+    if (args.length > 0 && args[0].equals("large-export")) {
+      java.util.ArrayList<String> facets = new java.util.ArrayList<>();
+      for (int i = 0; i < 20; i++) facets.add("https://site" + i + ".example");
+      java.util.ArrayList<PasswordCsv.Entry> rows = new java.util.ArrayList<>();
+      for (int i = 0; i < 200; i++) rows.add(new PasswordCsv.Entry("Synthetic", "user" + i, facets, "x".repeat(16384)));
+      long[] bytes = {0};
+      PasswordCsv.export(rows, line -> bytes[0] += line.getBytes(StandardCharsets.UTF_8).length);
+      equal(65_707_833L, bytes[0]);
+      System.out.println("Bounded export passed: " + bytes[0] + " bytes");
+      return;
+    }
     // Exact-origin binding: scheme, host and non-default port only.
     equal("https://example.com", PasswordCsv.origin("https://example.com/login?next=/home#top"));
     equal("https://example.com", PasswordCsv.origin("HTTPS://EXAMPLE.COM:443/"));
@@ -102,9 +113,11 @@ public final class PasswordCsvTest {
     wiped.wipe(); check(!"wipe-me".equals(wiped.password()));
 
     // Export: one row per binding, RFC 4180 quoting, and a lossless round trip for web rows.
-    byte[] exported = PasswordCsv.export(Arrays.asList(
+    java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
+    PasswordCsv.export(Arrays.asList(
       new PasswordCsv.Entry("Example, Inc", "alice", Arrays.asList("https://example.com", "https://login.example.com"), "p\"a,ss\nword"),
-      new PasswordCsv.Entry("App", "dave", Collections.singletonList("android://" + "a".repeat(64) + "@com.example.app"), " spaced ")));
+      new PasswordCsv.Entry("App", "dave", Collections.singletonList("android://" + "a".repeat(64) + "@com.example.app"), " spaced ")), line -> output.write(line.getBytes(StandardCharsets.UTF_8)));
+    byte[] exported = output.toByteArray();
     String text = new String(exported, StandardCharsets.UTF_8);
     check(text.startsWith(PasswordCsv.HEADER + "\r\n"));
     check(text.contains("\"Example, Inc\",https://example.com,alice,\"p\"\"a,ss\nword\",\r\n"));

@@ -150,12 +150,24 @@ public class PasswordVaultStore {
     for (int i = 0; i < records.length(); i++) {
       JSONObject item = records.getJSONObject(i);
       List<String> facets = bindings(item);
-      String label = item.optString("label", "");
-      if (label.isEmpty()) label = facets.isEmpty() ? item.getString("username") : facets.get(0);
+      String label = entryLabel(item, facets);
       summaries.put(new JSONObject().put("id", item.getString("id")).put("label", label).put("username", item.getString("username"))
         .put("bindings", new JSONArray(facets)).put("updatedAt", item.optLong("updatedAt", 0)).put("createdAt", item.optLong("createdAt", item.optLong("updatedAt", 0))));
     }
     return summaries;
+  }
+  private static String entryLabel(JSONObject item, List<String> facets) throws Exception {
+    String label = item.optString("label", "");
+    return label.isEmpty() ? (facets.isEmpty() ? item.getString("username") : facets.get(0)) : label;
+  }
+  /** One native export snapshot. Contains passwords: never return it through a bridge or log it. */
+  public synchronized JSONArray exportEntries() throws Exception {
+    JSONArray records = load();
+    for (int i = 0; i < records.length(); i++) {
+      JSONObject item = records.getJSONObject(i);
+      item.put("label", entryLabel(item, bindings(item)));
+    }
+    return records;
   }
   /**
    * Creates (null id) or updates an entry with one or more normalized bindings. A null password

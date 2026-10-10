@@ -162,33 +162,37 @@ public class PasswordTransferPlugin extends Plugin {
   }
   @ActivityCallback private void exportDocument(PluginCall call, ActivityResult result) {
     returned(call, result, (op, target) -> work(op, () -> {
-      byte[] bytes = null;
+      List<PasswordCsv.Entry> rows = null;
       try {
-        List<PasswordCsv.Entry> rows = op.access.use(op.ticket, store -> {
+        rows = op.access.use(op.ticket, store -> {
           check(op);
           List<PasswordCsv.Entry> out = new ArrayList<>();
-          JSONArray entries = store.entries();
+          JSONArray entries = store.exportEntries();
           for (int i = 0; i < entries.length(); i++) {
-            JSONObject summary = entries.getJSONObject(i), record = store.get(summary.getString("id"));
-            out.add(new PasswordCsv.Entry(summary.getString("label"), summary.getString("username"), PasswordVaultStore.bindings(record), record.getString("password")));
+            JSONObject record = entries.getJSONObject(i);
+            out.add(new PasswordCsv.Entry(record.getString("label"), record.getString("username"), PasswordVaultStore.bindings(record), record.getString("password")));
           }
           return out;
         });
         int count = 0; for (PasswordCsv.Entry entry : rows) count += entry.facets.size();
         if (count == 0) { finish(op, null, "There are no saved passwords to export", "empty"); return; }
-        bytes = PasswordCsv.export(rows); rows.clear(); check(op);
+        check(op);
         try (AssetFileDescriptor descriptor = getContext().getContentResolver().openAssetFileDescriptor(target, "wt", op.cancellation)) {
           if (descriptor == null) throw new java.io.IOException();
           try (OutputStream out = descriptor.createOutputStream()) {
             op.attach(out);
-            for (int offset = 0; offset < bytes.length; offset += 16384) { check(op); out.write(bytes, offset, Math.min(16384, bytes.length - offset)); }
+            PasswordCsv.export(rows, line -> {
+              check(op);
+              byte[] chunk = line.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+              try { out.write(chunk); } finally { java.util.Arrays.fill(chunk, (byte) 0); }
+            });
             out.flush(); check(op);
           }
         }
         JSObject done = new JSObject(); done.put("exported", count); finish(op, done, null, null);
       } catch (Exception failure) {
         fail(op, failure, "Export did not complete. The selected file may contain passwords; delete it if you do not need it.", "write-failed");
-      } finally { if (bytes != null) java.util.Arrays.fill(bytes, (byte) 0); }
+      } finally { if (rows != null) rows.clear(); }
     }));
   }
 

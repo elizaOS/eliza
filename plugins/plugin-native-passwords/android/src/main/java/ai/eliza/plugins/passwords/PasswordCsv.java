@@ -69,18 +69,18 @@ public final class PasswordCsv {
     return needs ? '"' + text.replace("\"", "\"\"") + '"' : text;
   }
 
+  @FunctionalInterface public interface LineWriter { void write(String line) throws Exception; }
+
   /**
    * One row per binding, so every website and app keeps its own exact entry. Rows for app
    * bindings use the {@code android://<sha256>@<package>} form other managers also export.
+   * Write one bounded row at a time; bindings can expand a small vault into a large CSV.
    */
-  public static byte[] export(List<Entry> entries) {
-    StringBuilder out = new StringBuilder(HEADER).append("\r\n");
+  public static void export(List<Entry> entries, LineWriter writer) throws Exception {
+    writer.write(HEADER + "\r\n");
     for (Entry entry : entries) for (String facet : entry.facets)
-      out.append(quote(entry.label)).append(',').append(quote(facet)).append(',').append(quote(entry.username)).append(',')
-        .append(quote(entry.password)).append(',').append("\r\n");
-    byte[] bytes = out.toString().getBytes(StandardCharsets.UTF_8);
-    out.setLength(0);
-    return bytes;
+      writer.write(quote(entry.label) + ',' + quote(facet) + ',' + quote(entry.username) + ','
+        + quote(entry.password) + ",\r\n");
   }
 
   /** RFC 4180 records: quoted fields, doubled quotes, CRLF or LF, embedded newlines. */

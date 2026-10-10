@@ -97,7 +97,8 @@ replacement request revokes the picker before it can publish a result.
 The vault locks when the host Activity stops and when the unlock window ends. Hosts can separately register `PasswordTransferPlugin` (`ElizaPasswordTransfer`) for
 CSV export and import. Use `createTransferClient` for count-only results. Export requires
 an explicit plaintext-file warning, a user-picked document and fresh authentication after
-the picker returns. Import shows every exact HTTPS origin before one atomic vault update;
+the picker returns. Export reads one native vault snapshot and writes bounded CSV rows.
+Import shows every exact HTTPS origin before one atomic vault update;
 existing origin/username pairs are never overwritten. The native parser rejects malformed
 CSV and limits imports to 2 MB and 1,000 rows. App bindings cannot be imported.
 One transfer owns its picker, grant and I/O; overlapping calls return `busy`. Backgrounding

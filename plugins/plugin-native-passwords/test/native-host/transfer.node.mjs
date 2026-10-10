@@ -38,6 +38,12 @@ test("CSV export and import parsing, exact-origin binding and skip rules", (t) =
     { timeout: 60000, encoding: "utf8" },
   );
   assert.match(output, /^\d+ assertions passed/);
+  const large = execFileSync(
+    bin("java"),
+    ["-Xmx32m", "-cp", classes, "PasswordCsvTest", "large-export"],
+    { timeout: 60000, encoding: "utf8" },
+  );
+  assert.match(large, /^Bounded export passed:/);
 });
 
 test("CSV limits match the vault store", () => {
