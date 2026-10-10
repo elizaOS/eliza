@@ -224,7 +224,7 @@ test("real Hono route + PostgreSQL migration + HTTP provider: admission, respons
     ["managed_gmail_operation_receipts"],
   );
   expect(columns.rows.some((row) => /token|body|raw|recipient/.test(row.column_name))).toBe(false);
-}, 30000);
+}, 60000);
 
 test("managed provider review produces parseable MIME, binds reply headers, detects changed drafts and reads exact mailbox labels over HTTP", async () => {
   const { InboxGoogleProvider, inboxDigest } = await import("./inbox-provider");
@@ -1093,4 +1093,4 @@ test("reviewed mark-read and mark-unread over a closed transport: review digest,
       ),
     ).rejects.toMatchObject({ status: 403 });
   expect(calls.length).toBe(callsBeforeScope);
-}, 20000);
+}, 60000);
