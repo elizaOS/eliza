@@ -274,6 +274,19 @@ try {
   cases.push(
     "IME-sized viewport uses available side space without covering the field",
   );
+  // No label position is clear of the field here. The ring stays on the
+  // field and the label does not cover it.
+  await page.setViewport({ width: 400, height: 220 });
+  await settle();
+  assert.equal((await state()).visible, false);
+  assert.deepEqual(
+    await evaluate(
+      "(()=>{const s=globalThis.__elizaPageGuidanceV1.shadow,ring=s.querySelector('.ring'),r=ring.getBoundingClientRect(),t=document.querySelector('#target').getBoundingClientRect();return {ring:ring.hidden,label:s.querySelector('.label').hidden,onTarget:r.x===t.x&&r.y===t.y&&r.width===t.width&&r.height===t.height}})()",
+    ),
+    { ring: false, label: true, onTarget: true },
+  );
+  await page.screenshot({ path: `${output}/ring-without-label.png` });
+  cases.push("a step with no room for its label keeps the ring on the control");
   // ---- Labels, offers, answers, cursor travel, pause and font -------------
   await page.setViewport({ width: 1280, height: 800 });
   await page.goto(`${origin}/labels`);
