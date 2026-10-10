@@ -2439,7 +2439,14 @@ export class SubAgentRouter extends Service {
   ): Promise<boolean> {
     const maxRetriesRaw =
       readSetting(this.runtime, "ELIZA_BUILD_VERIFY_MAX_RETRIES") ?? "2";
-    const maxRetries = Number.parseInt(maxRetriesRaw, 10);
+    // Number.parseInt stops at the first non-digit ("1e2" -> 1), so a typo
+    // silently collapsed the retry budget to 1 instead of failing closed.
+    // Require the whole trimmed value to be a positive integer, mirroring
+    // parseOutputLines in api/agent-routes.ts.
+    const maxRetriesText = maxRetriesRaw.trim();
+    const maxRetries = /^[1-9]\d*$/.test(maxRetriesText)
+      ? Number(maxRetriesText)
+      : Number.NaN;
     if (!Number.isFinite(maxRetries) || maxRetries <= 0) return false;
 
     const meta = (session.metadata ?? {}) as Record<string, unknown>;
