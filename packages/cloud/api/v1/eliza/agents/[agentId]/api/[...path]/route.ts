@@ -166,6 +166,18 @@ function isPersonalSharedAgent(
   );
 }
 
+function androidPushUnsupported(c: Context<AppEnv>): Response {
+  return json(
+    c,
+    {
+      success: false,
+      error: "Android push is not available for Personal Shared agents",
+      code: "mobile_push_platform_unsupported",
+    },
+    422,
+  );
+}
+
 function personalPushUnavailable(c: Context<AppEnv>): Response {
   return json(
     c,
@@ -572,7 +584,7 @@ app.post("/", async (c) => {
     const platform = body?.platform;
     const token = typeof body?.token === "string" ? body.token.trim() : "";
     if (
-      platform !== "ios" ||
+      (platform !== "ios" && platform !== "android") ||
       !token ||
       token.length > MAX_MOBILE_PUSH_TOKEN_CHARACTERS
     ) {
@@ -582,6 +594,10 @@ app.post("/", async (c) => {
         400,
       );
     }
+    // The Shared tier sends through APNs only. A well-formed Android (FCM)
+    // registration is refused as unsupported, not as an invalid request, and
+    // is never stored as if it could be delivered.
+    if (platform === "android") return androidPushUnsupported(c);
     await coordinateSharedPushRegister(
       r.agentId,
       { platform, token },
