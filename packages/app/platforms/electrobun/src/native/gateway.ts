@@ -202,8 +202,13 @@ export class GatewayDiscovery extends EventEmitter {
 
 	private parseNumber(value: string | undefined): number | undefined {
 		if (!value) return undefined;
-		const parsed = Number(value);
-		return Number.isFinite(parsed) ? parsed : undefined;
+		const trimmed = value.trim();
+		// Canonical decimal digits only: Number(" ") is 0 and Number("0x10")
+		// is 16 — both used to silently become gateway/canvas ports instead
+		// of being treated as absent (which lets `?? service.port` apply).
+		if (!/^\d+$/.test(trimmed)) return undefined;
+		const parsed = Number(trimmed);
+		return Number.isSafeInteger(parsed) ? parsed : undefined;
 	}
 
 	dispose(): void {
