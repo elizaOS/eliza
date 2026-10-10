@@ -178,6 +178,7 @@ export function expandIcsCalendarEvents(args: {
       rule,
       startAt: new Date(startMs),
       timeZone: event.isAllDay ? "UTC" : (event.timezone ?? "UTC"),
+      rangeStart: new Date(minMs - Math.max(0, durationMs)),
       rangeEnd: new Date(maxMs),
     });
     if (starts.length >= 1000) complete = false;

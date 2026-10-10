@@ -376,6 +376,8 @@ function* generateOccurrences(args: {
   rule: ParsedCalendarRecurrenceRule;
   startAt: Date;
   timeZone: string;
+  rangeStart?: Date;
+  maxOccurrences?: number;
 }): Generator<Date> {
   const { rule, startAt, timeZone } = args;
   if (rule.beyondExpansionSubset) {
@@ -397,12 +399,21 @@ function* generateOccurrences(args: {
     second: anchor.second,
   };
   const startMs = startAt.getTime();
-
-  let emitted = 0;
-  const emitBudget = Math.min(
-    rule.count ?? MAX_GENERATED_OCCURRENCES,
+  const rangeStartMs = args.rangeStart?.getTime() ?? Number.NEGATIVE_INFINITY;
+  const generatedBudget =
+    args.rangeStart !== undefined
+      ? (rule.count ?? Number.POSITIVE_INFINITY)
+      : Math.min(
+          rule.count ?? MAX_GENERATED_OCCURRENCES,
+          args.maxOccurrences ?? MAX_GENERATED_OCCURRENCES,
+          MAX_GENERATED_OCCURRENCES,
+        );
+  const retainedBudget = Math.min(
+    args.maxOccurrences ?? MAX_GENERATED_OCCURRENCES,
     MAX_GENERATED_OCCURRENCES,
   );
+
+  let emitted = 0;
 
   function toInstant(date: LocalDateOnly): Date {
     return buildUtcDateFromLocalParts(timeZone, { ...date, ...timeOfDay });
@@ -456,30 +467,42 @@ function* generateOccurrences(args: {
 
   // DTSTART is always the first occurrence.
   if (rule.untilMs !== undefined && startMs > rule.untilMs) return;
-  yield new Date(startMs);
   emitted += 1;
-  if (emitted >= emitBudget) return;
+  let retained = 0;
+  if (startMs >= rangeStartMs) {
+    retained += 1;
+    if (retained > retainedBudget) return;
+    yield new Date(startMs);
+  }
+  if (retained >= retainedBudget || emitted >= generatedBudget) return;
 
   for (const date of localDates()) {
     if (daysBetweenLocalDates(anchorDate, date) < 0) continue;
     const instant = toInstant(date);
     if (instant.getTime() <= startMs) continue;
     if (rule.untilMs !== undefined && instant.getTime() > rule.untilMs) return;
-    yield instant;
     emitted += 1;
-    if (emitted >= emitBudget) return;
+    if (instant.getTime() >= rangeStartMs) {
+      retained += 1;
+      if (retained > retainedBudget) return;
+      yield instant;
+    }
+    if (emitted >= generatedBudget) return;
   }
 }
 
 /**
  * Expand a rule's occurrences from DTSTART up to `rangeEnd` (exclusive),
- * honoring COUNT/UNTIL termination. DST-correct: occurrences keep the DTSTART
- * wall-clock time in `timeZone` across transitions.
+ * honoring COUNT/UNTIL termination. When `rangeStart` is supplied, historical
+ * occurrences still count toward COUNT but do not consume the output cap.
+ * DST-correct: occurrences keep the DTSTART wall-clock time in `timeZone`
+ * across transitions.
  */
 export function expandRecurrenceOccurrences(args: {
   rule: ParsedCalendarRecurrenceRule;
   startAt: Date;
   timeZone: string;
+  rangeStart?: Date;
   rangeEnd: Date;
   maxOccurrences?: number;
 }): Date[] {
@@ -488,7 +511,13 @@ export function expandRecurrenceOccurrences(args: {
     MAX_GENERATED_OCCURRENCES,
   );
   const occurrences: Date[] = [];
-  for (const instant of generateOccurrences(args)) {
+  if (args.rangeStart && args.rangeStart.getTime() >= args.rangeEnd.getTime()) {
+    return occurrences;
+  }
+  for (const instant of generateOccurrences({
+    ...args,
+    maxOccurrences: cap,
+  })) {
     if (instant.getTime() >= args.rangeEnd.getTime()) break;
     occurrences.push(instant);
     if (occurrences.length >= cap) break;
