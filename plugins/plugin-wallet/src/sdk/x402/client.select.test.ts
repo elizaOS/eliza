@@ -35,6 +35,20 @@ describe("X402Client.selectPaymentOption with a spend cap", () => {
     expect(client.selectPaymentOption(offers)?.asset).toBe(USDC);
   });
 
+  it("pays nothing on a network with no known USDC", () => {
+    const token = "0x1111111111111111111111111111111111111111";
+    const client = new X402Client(wallet, {
+      globalPerRequestMax: 1_000_000n,
+      supportedNetworks: ["zora:7777777"],
+      supportedAssets: { "zora:7777777": [token] },
+    });
+    expect(
+      client.selectPaymentOption([
+        { ...offer(token, "900000"), network: "zora:7777777" },
+      ]),
+    ).toBeNull();
+  });
+
   it("keeps the lowest offer when no cap is set", () => {
     const client = new X402Client(wallet, {
       supportedAssets: { "base:8453": [USDC, WBTC] },

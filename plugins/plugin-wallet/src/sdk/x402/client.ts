@@ -265,10 +265,14 @@ export class X402Client {
         ? listed.some((a) => a.toLowerCase() === req.asset.toLowerCase())
         : resolveAssetAddress(req.asset, req.network) != null;
       if (!accepted) return false;
+      if (!this.usdcOnly) return true;
+      // A network with no known USDC has no offer a USDC cap can price.
+      const usdc = USDC_ADDRESSES[req.network]?.toLowerCase();
       return (
-        !this.usdcOnly ||
-        resolveAssetAddress(req.asset, req.network)?.toLowerCase() ===
-          USDC_ADDRESSES[req.network]?.toLowerCase()
+        usdc !== undefined &&
+        (
+          resolveAssetAddress(req.asset, req.network) ?? req.asset
+        ).toLowerCase() === usdc
       );
     });
 
