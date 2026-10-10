@@ -241,31 +241,55 @@ function isStringArray(value: unknown): value is string[] {
 async function readBoundedBody(
   response: Response,
   maxBytes = MAX_PROVIDERS_BODY_BYTES,
+  signal?: AbortSignal,
 ): Promise<string | null> {
   if (!response.body) return null;
   const reader = response.body.getReader();
+  let onAbort: (() => void) | undefined;
+  const aborted = signal
+    ? new Promise<null>((resolve) => {
+        onAbort = () => {
+          void reader.cancel().catch(() => undefined);
+          resolve(null);
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+        if (signal.aborted) onAbort();
+      })
+    : undefined;
   const chunks: Uint8Array[] = [];
   let total = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > maxBytes) {
-      await reader.cancel();
+  try {
+    while (true) {
+      const next = aborted
+        ? await Promise.race([reader.read(), aborted])
+        : await reader.read();
+      if (next === null || signal?.aborted) return null;
+      const { done, value } = next;
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        if (signal) void reader.cancel().catch(() => undefined);
+        else await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    try {
+      return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch {
       return null;
     }
-    chunks.push(value);
-  }
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    return null;
+  } finally {
+    if (signal && onAbort) {
+      signal.removeEventListener("abort", onAbort);
+      reader.releaseLock();
+    }
   }
 }
 
@@ -792,10 +816,24 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
   let bodyBytes: ArrayBuffer | null = null;
   if (isMutating) {
     if (isOwnerPhoneLogin) {
-      const personalBodyText = await readBoundedBody(
-        new Response(c.req.raw.clone().body),
-        16_384,
-      );
+      const deadline = new AbortController();
+      const timer = setTimeout(() => deadline.abort(), 5_000);
+      const bodySignal = AbortSignal.any([c.req.raw.signal, deadline.signal]);
+      let personalBodyText: string | null;
+      try {
+        personalBodyText = await readBoundedBody(
+          new Response(c.req.raw.body),
+          16_384,
+          bodySignal,
+        );
+      } finally {
+        clearTimeout(timer);
+      }
+      if (bodySignal.aborted)
+        return c.json(
+          { ok: false, error: "Phone sign-in request timed out" },
+          408,
+        );
       if (personalBodyText === null)
         return c.json(
           { ok: false, error: "Invalid phone sign-in request" },

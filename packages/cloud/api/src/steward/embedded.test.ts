@@ -1113,3 +1113,35 @@ describe("Cloud owner-phone personal issuance intent", () => {
     expect(calls).toHaveLength(1);
   });
 });
+
+it("bounds and cancels a stalled personal SMS body before any upstream request", async () => {
+  vi.useFakeTimers();
+  let canceled = false;
+  const calls = stubFetch(async () => Response.json({ ok: true }));
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('{"phone":"+14155552671"'));
+    },
+    cancel() {
+      canceled = true;
+      return new Promise<void>(() => undefined);
+    },
+  });
+  try {
+    const request = new Request(
+      "https://api.elizacloud.ai/steward/cloud-owner-phone/auth/sms/verify",
+      {
+        method: "POST",
+        body: stream,
+        duplex: "half",
+      } as RequestInit & { duplex: "half" },
+    );
+    const response = makeApp(baseEnv()).fetch(request);
+    await vi.advanceTimersByTimeAsync(5_001);
+    expect((await response).status).toBe(408);
+    expect(canceled).toBe(true);
+    expect(calls).toHaveLength(0);
+  } finally {
+    vi.useRealTimers();
+  }
+});
