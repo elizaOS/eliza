@@ -13,17 +13,41 @@ import { UsageRecordsRepository, usageRecordsRepository } from "../db/repositori
 import { UserSessionsRepository, userSessionsRepository } from "../db/repositories/user-sessions";
 
 describe("prewarm canonical repository identity", () => {
-  for (const [name, instance, constructor] of [
-    ["apiKeysRepository", apiKeysRepository, ApiKeysRepository],
-    ["appsRepository", appsRepository, AppsRepository],
-    ["creditTransactionsRepository", creditTransactionsRepository, CreditTransactionsRepository],
-    ["generationsRepository", generationsRepository, GenerationsRepository],
-    ["organizationsRepository", organizationsRepository, OrganizationsRepository],
-    ["usageRecordsRepository", usageRecordsRepository, UsageRecordsRepository],
-    ["userSessionsRepository", userSessionsRepository, UserSessionsRepository],
+  for (const [name, instance, constructor, original] of [
+    ["apiKeysRepository", apiKeysRepository, ApiKeysRepository, barrel.apiKeysRepository],
+    ["appsRepository", appsRepository, AppsRepository, barrel.appsRepository],
+    [
+      "creditTransactionsRepository",
+      creditTransactionsRepository,
+      CreditTransactionsRepository,
+      barrel.creditTransactionsRepository,
+    ],
+    [
+      "generationsRepository",
+      generationsRepository,
+      GenerationsRepository,
+      barrel.generationsRepository,
+    ],
+    [
+      "organizationsRepository",
+      organizationsRepository,
+      OrganizationsRepository,
+      barrel.organizationsRepository,
+    ],
+    [
+      "usageRecordsRepository",
+      usageRecordsRepository,
+      UsageRecordsRepository,
+      barrel.usageRecordsRepository,
+    ],
+    [
+      "userSessionsRepository",
+      userSessionsRepository,
+      UserSessionsRepository,
+      barrel.userSessionsRepository,
+    ],
   ] as const) {
     test(`${name} keeps singleton identity and its original method implementation`, () => {
-      const original = barrel[name];
       expect(instance).toBe(original);
       expect(Object.getPrototypeOf(instance)).toBe(constructor.prototype);
     });

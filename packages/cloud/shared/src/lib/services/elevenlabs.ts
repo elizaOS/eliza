@@ -118,9 +118,7 @@ function parseVoiceSetting(value: string | undefined, fallback: number): number 
   const text = (value ?? "").trim();
   if (text === "") return fallback;
   const parsed = Number(text);
-  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1
-    ? parsed
-    : fallback;
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1 ? parsed : fallback;
 }
 
 /**
