@@ -9,6 +9,8 @@
     "codename": "stallion",
     "marketingName": "Pixel 10a",
     "buildId": "CP3A.261005.005",
+    "releaseConfig": "cp2a",
+    "vendorApiLevel": "202604",
     "productBrand": "elizaOS",
     "productName": "eliza_stallion_phone",
     "expectedFingerprintPrefix": "elizaOS/eliza_stallion_phone/stallion:"

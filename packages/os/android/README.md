@@ -32,6 +32,18 @@ node packages/os/scripts/android/bootstrap-aosp.ts \
   --init-only --jobs 2
 ```
 
+After the pinned source sync, extraction-tool dependency installation, and
+locked source overlays are complete, build the Linux extraction tools with:
+
+```bash
+node packages/os/scripts/android/build-adevtool-host.ts \
+  --aosp-root /path/to/stallion --jobs 2
+```
+
+This selects executable output paths instead of broad module names, avoiding
+unneeded Windows and Android variants. It retains incremental outputs and
+writes adevtool's dependency revision stamp only after the tools build.
+
 The lock pins the AOSP manifest, device tooling, and matching Google factory
 archive. It is a source-preparation input, not a built Eliza product or a
 qualified rollback image. Do not use grizzly images or its preparation script
