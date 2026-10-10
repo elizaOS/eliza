@@ -41,12 +41,16 @@ export function normalizeTimeZone(timeZone?: string | null): string {
   if (UTC_ALIAS_RE.test(candidate)) {
     return "UTC";
   }
-  if (candidate && isValidTimeZone(candidate)) {
-    return candidate;
-  }
+  // The alias table must win over the validity check, in the same order as
+  // `normalizeValidTimeZone`. Some alias names are also legacy zone IDs with
+  // a fixed offset and no daylight saving (`EST`, `MST`), so a validity-first
+  // order returns those IDs unchanged and the two helpers disagree.
   const aliasKey = candidate.toLowerCase();
   if (Object.hasOwn(LIFEOPS_TIME_ZONE_ALIASES, aliasKey)) {
     return LIFEOPS_TIME_ZONE_ALIASES[aliasKey];
+  }
+  if (candidate && isValidTimeZone(candidate)) {
+    return candidate;
   }
   return resolveDefaultTimeZone();
 }
