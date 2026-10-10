@@ -334,7 +334,10 @@ describe("Shared Eliza Workerd runtime", () => {
     globalThis.fetch = (async () => {
       throw new Error("authoritative provider failure");
     }) as typeof fetch;
-    const baseline = await runTeardownTestTurn();
+    await expect(runTeardownTestTurn()).rejects.toMatchObject({
+      code: "SHARED_RUNTIME_TURN_FAILED",
+      failureName: "SharedRuntimeProviderUnavailableError",
+    });
     const stopSpy = spyOn(AgentRuntime.prototype, "stop").mockImplementation(async () => {
       throw new Error("stop teardown failed");
     });
@@ -342,11 +345,9 @@ describe("Shared Eliza Workerd runtime", () => {
       throw new Error("close teardown failed");
     });
     try {
-      await expect(runTeardownTestTurn()).resolves.toMatchObject({
-        reply: baseline.reply,
-        responded: baseline.responded,
-        degraded: baseline.degraded,
-        model: baseline.model,
+      await expect(runTeardownTestTurn()).rejects.toMatchObject({
+        code: "SHARED_RUNTIME_TURN_FAILED",
+        failureName: "SharedRuntimeProviderUnavailableError",
       });
       expect(stopSpy).toHaveBeenCalledTimes(1);
       expect(closeSpy).toHaveBeenCalledTimes(1);
@@ -1539,7 +1540,7 @@ describe("Shared Eliza Workerd runtime", () => {
       },
     });
 
-    expect(result.reply).toContain("can’t verify");
+    expect(result.reply).toContain("I couldn’t check that right now.");
     expect(modelRequests).toHaveLength(1);
     const encodedRequest = JSON.stringify(modelRequests[0]);
     expect(encodedRequest).toContain("untrusted_public_web_search_result");
@@ -1667,7 +1668,7 @@ describe("Shared Eliza Workerd runtime", () => {
       },
     });
 
-    expect(result.reply).toContain("can’t verify");
+    expect(result.reply).toContain("I couldn’t check that right now.");
     expect(modelRequests).toHaveLength(1);
     const encodedRequest = JSON.stringify(modelRequests[0]);
     expect(encodedRequest).not.toContain("untrusted_public_web_search_result");
@@ -1795,7 +1796,7 @@ describe("Shared Eliza Workerd runtime", () => {
       },
     });
 
-    expect(result.reply).toContain("can’t verify");
+    expect(result.reply).toContain("I couldn’t check that right now.");
     expect(modelRequests).toHaveLength(1);
     const encodedRequest = JSON.stringify(modelRequests[0]);
     expect(encodedRequest).toContain("untrusted_public_web_search_result");
@@ -1885,7 +1886,7 @@ describe("Shared Eliza Workerd runtime", () => {
       },
     });
 
-    expect(result.reply).toContain("can’t verify");
+    expect(result.reply).toContain("I couldn’t check that right now.");
     expect(modelRequests).toHaveLength(1);
     const encodedRequest = JSON.stringify(modelRequests[0]);
     expect(encodedRequest).not.toContain("untrusted_public_web_search_result");
@@ -2177,10 +2178,10 @@ describe("Shared Eliza Workerd runtime", () => {
         expect(lifecycleConnection).toMatchObject({
           roomId: sharedRuntimeConversationRoomId("trusted-voice-room"),
           worldId: sharedRuntimeWorldId("trusted-voice-room"),
-          userName: "Shared lifecycle",
           source: "shared-runtime-system",
           type: ChannelType.VOICE_DM,
         });
+        expect(lifecycleConnection?.userName).toBeUndefined();
         expect(lifecycleConnection?.metadata).toBeUndefined();
       } finally {
         connectionSpy.mockRestore();
