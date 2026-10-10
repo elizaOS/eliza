@@ -19,7 +19,6 @@ import {
 	resolveOutboundAttachmentBytes,
 	summarizeOutboundAttachmentUrl,
 	toWellFormedUnicode,
-	truncateWellFormed,
 } from "@elizaos/core";
 
 export { normalizeDiscordMessageText } from "./discord-structured-text";
@@ -36,6 +35,7 @@ import {
 	type TextChannel,
 	ThreadChannel,
 } from "discord.js";
+import { chunkDiscordText } from "./messaging";
 import type {
 	DiscordActionRow,
 	DiscordComponentOptions,
@@ -855,43 +855,12 @@ export function splitMessage(
 		});
 	}
 
-	let remaining = content;
-	if (!remaining) {
-		return [];
-	}
-	if (remaining.length <= maxLength) {
-		return [remaining];
-	}
-
-	const messages: string[] = [];
-	while (remaining.length > 0) {
-		if (remaining.length <= maxLength) {
-			messages.push(remaining);
-			break;
-		}
-
-		const window = truncateWellFormed(remaining, maxLength);
-		if (window.length === 0) {
-			throw new ElizaError(
-				"Discord message chunk limit cannot hold the next Unicode character",
-				{
-					code: "DISCORD_CHUNK_LIMIT_TOO_SMALL",
-					context: { maxLength },
-					severity: "fatal",
-				},
-			);
-		}
-
-		const boundary = Math.max(
-			window.lastIndexOf("\n"),
-			window.lastIndexOf(" "),
-		);
-		const cut = boundary > 0 ? boundary + 1 : window.length;
-		messages.push(remaining.slice(0, cut));
-		remaining = remaining.slice(cut);
-	}
-
-	return messages;
+	// Character-limited only (no line cap), with fenced code blocks closed and
+	// reopened at a cut, as on the DM path.
+	return chunkDiscordText(content, {
+		maxChars: maxLength,
+		maxLines: Number.POSITIVE_INFINITY,
+	});
 }
 
 export interface CanSendMessageResult {
