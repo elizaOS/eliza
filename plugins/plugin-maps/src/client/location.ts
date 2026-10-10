@@ -4,6 +4,9 @@ export type Position = Readonly<{
   accuracyMeters: number;
   timestamp: number;
   precision: "precise" | "approximate" | "unknown";
+  /** Direction of travel in degrees clockwise from true north, when the device reports one. */
+  headingDegrees?: number;
+  speedMetersPerSecond?: number;
 }>;
 /** Host-owned permission and lifecycle boundary; a controller never discovers a device. */
 export interface MapsLocation {
