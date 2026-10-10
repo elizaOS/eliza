@@ -31,10 +31,12 @@
  * Run:
  *   bun run --cwd packages/ui test:chat-sheet-e2e
  *   bun run --cwd packages/ui test:chat-sheet-e2e --browser=webkit
+ *   bun run --cwd packages/ui test:chat-sheet-e2e -- --only-continuum
  *   bun run --cwd packages/ui test:chat-sheet-e2e -- --only-autoscroll
  * Exits non-zero on any failed assertion / console error.
  */
 
+import { testOutputPath } from "../../../../../scripts/lib/test-output.ts";
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -53,9 +55,10 @@ const here = dirname(fileURLToPath(import.meta.url));
 const browserName = process.argv.includes("--browser=webkit")
   ? "webkit"
   : "chromium";
+const continuumOnly = process.argv.includes("--only-continuum");
 const smokeMode = process.argv.includes("--smoke");
 const browserType = browserName === "webkit" ? webkit : chromium;
-const outDir = join(here, browserName === "webkit" ? "output-webkit" : "output");
+const outDir = testOutputPath("chat-sheet-e2e", browserName);
 const videoDir = join(outDir, "video");
 const ONLY_AUTOSCROLL =
   process.argv.includes("--only-autoscroll") ||
@@ -2275,7 +2278,22 @@ if (process.env.FINGER_PROBE) {
 }
 
 try {
-  if (smokeMode) {
+  if (continuumOnly) {
+    for (const pointer of ["mouse", "touch"]) {
+      const context = await browser.newContext({
+        viewport: pointer === "touch" ? { width: 402, height: 874 } : { width: 1180, height: 820 },
+        hasTouch: pointer === "touch", isMobile: pointer === "touch",
+        recordVideo: { dir: videoDir },
+      });
+      const page = await context.newPage();
+      attachConsole(page, sink);
+      await gotoFixture(page);
+      await page.waitForSelector('[data-testid="chat-sheet"]');
+      await runContinuumSuite(page, pointer, pointer);
+      await page.close(); await context.close();
+      await renameRecordedVideo({ videoDir, outDir, name: `continuum-${pointer}.webm` });
+    }
+  } else if (smokeMode) {
     // Safari/WebKit smoke: focused cross-engine coverage for the state machine
     // without importing Chromium's full pixel/animation tolerance matrix. This
     // still mounts the real overlay, captures screenshots, and drives WebKit
@@ -4324,7 +4342,7 @@ assert(sink.errors.length === 0, `no uncaught page errors (${sink.errors.length}
 if (sink.errors.length) for (const e of sink.errors) console.error(`  ⚠ ${e}`);
 assert(errorLevel.length === 0, `no error-level console messages (${errorLevel.length})`);
 if (errorLevel.length) for (const e of errorLevel) console.error(`  ⚠ ${e}`);
-if (!ONLY_AUTOSCROLL && !smokeMode) {
+if (!ONLY_AUTOSCROLL && !smokeMode && !continuumOnly) {
   assert(
     sink.logs.some(
       (l) =>
