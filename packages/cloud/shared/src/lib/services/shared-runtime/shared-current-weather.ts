@@ -142,9 +142,7 @@ const STATES: Record<string, string> = {
   WY: "Wyoming",
 };
 // "Charleston West Virginia" must not end at "Virginia".
-const STATES_LONGEST_FIRST = Object.entries(STATES).sort(
-  ([, a], [, b]) => b.length - a.length,
-);
+const STATES_LONGEST_FIRST = Object.entries(STATES).sort(([, a], [, b]) => b.length - a.length);
 type Place = {
   city: string;
   state: string;
