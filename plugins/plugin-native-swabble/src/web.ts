@@ -238,6 +238,15 @@ class WakeWordGate {
     // Note: minPostTriggerGap cannot be enforced - Web Speech API lacks timing data
   }
 
+  /**
+   * The minCommandLength value this gate actually enforces. The stored plugin
+   * config mirrors this so getConfig() never describes a value the gate did
+   * not accept (non-positive inputs are ignored, positive ones floored).
+   */
+  get effectiveMinCommandLength(): number {
+    return this.minCommandLength;
+  }
+
   updateConfig(config: Partial<SwabbleConfig>): void {
     if (config.triggers) {
       this.matchers = normalizeConfig({
@@ -810,8 +819,21 @@ export class SwabbleWeb extends WebPlugin {
     config: Partial<SwabbleConfig>;
   }): Promise<void> {
     if (this.config) {
-      this.config = { ...this.config, ...options.config };
+      // Validate through the gate first: WakeWordGate.updateConfig throws on
+      // an empty triggers array, and the stored config must never describe a
+      // value the gate did not accept.
       this.wakeGate?.updateConfig(options.config);
+      this.config = { ...this.config, ...options.config };
+
+      // The web wake gate ignores non-positive minCommandLength values and
+      // floors positive ones (normalizeConfig's "> 0" rule). When the gate is
+      // the live consumer, report the value it actually enforces so getConfig()
+      // does not describe a config that is not in effect. On the native bridge
+      // path the gate is absent and the raw value is forwarded verbatim,
+      // matching the native side's own raw application.
+      if (this.wakeGate) {
+        this.config.minCommandLength = this.wakeGate.effectiveMinCommandLength;
+      }
 
       if (options.config.locale && this.recognition) {
         this.recognition.lang = options.config.locale;
