@@ -118,11 +118,14 @@ export function createRelayAction(options: RelayActionOptions): Action {
           data: { actionName: "RELAY", decision: "none" },
         };
       }
+      const delivered = result.decision === "pass" && result.delivered;
       return {
-        success: result.decision === "pass",
+        success: delivered,
         text:
-          result.senderNotice ||
-          (result.decision === "pass" ? "Passed on." : "That wasn't sent."),
+          result.decision === "pass" && !delivered
+            ? "The Network has not confirmed delivery."
+            : result.senderNotice ||
+              (delivered ? "Passed on." : "That wasn't sent."),
         modelReplyRequired: true,
         continueChain: false,
         data: {

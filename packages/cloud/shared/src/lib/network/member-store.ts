@@ -23,7 +23,10 @@ export function serviceNetworkStoreFactory(
   const secret = env.SERVICE_TURN_SECRET;
   if (!turn || !baseUrl || !secret) return undefined;
   const client = new NetworkServiceClient({ baseUrl, secret });
-  return () => createServiceNetworkStore(client, turn);
+  return () =>
+    createServiceNetworkStore(client, turn, {
+      relayEnabled: env.NETWORK_RELAY_ENABLED?.trim() === "1",
+    });
 }
 
 /**
