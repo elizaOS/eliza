@@ -39,10 +39,12 @@ import path from "node:path";
  *   1. `ELIZA_DEVICES_STATUS_DIR` — the device-status lane's explicit override
  *      (the reader honored this before consolidation; kept so a caller can pin
  *      both ends of the ledger at one dir for a test or a scoped run).
- *   2. `MILADY_STATE_DIR` — the repo-wide branded state prefix
- *      (`packages/core/src/utils/state-dir.ts` and every alias-aware reader
- *      honor it first; the device deploy lane inherits it).
- *   3. `ELIZA_STATE_DIR` — the unbranded state override.
+ *   2. `ELIZA_STATE_DIR` — the unbranded state override.
+ *   3. `MILADY_STATE_DIR` — the repo-wide branded state prefix, the alias
+ *      partner of `ELIZA_STATE_DIR`. Canonical alias resolution
+ *      (`resolveEnvAlias` in `packages/core/src/utils/env.ts`) returns the
+ *      canonical key first and the branded partner only when the canonical
+ *      key is unset or empty, so the branded value must not outrank it.
  *   4. `$XDG_STATE_HOME/<namespace>` — XDG base-dir, absolute or home-relative.
  *   5. `~/.local/state/<namespace>` — the default.
  * This is the superset of the two resolvers that previously disagreed; the
@@ -56,11 +58,16 @@ export function resolveLedgerStateDir({
   env = process.env,
   homedir = os.homedir,
 } = {}) {
-  const explicit = (
-    env.ELIZA_DEVICES_STATUS_DIR ??
-    env.MILADY_STATE_DIR ??
-    env.ELIZA_STATE_DIR
-  )?.trim();
+  // First non-empty value wins, in the precedence order above: an empty
+  // value is unset (the canonical `normalizeEnvValue` contract), so it must
+  // not shadow a lower-priority value that is set.
+  const explicit = [
+    env.ELIZA_DEVICES_STATUS_DIR,
+    env.ELIZA_STATE_DIR,
+    env.MILADY_STATE_DIR,
+  ]
+    .map((value) => value?.trim())
+    .find((value) => value);
   if (explicit) return path.resolve(explicit);
   const namespace = env.ELIZA_NAMESPACE?.trim() || "eliza";
   const xdg = env.XDG_STATE_HOME?.trim();
