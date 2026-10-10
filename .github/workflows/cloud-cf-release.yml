@@ -1793,33 +1793,9 @@ jobs:
             return 0
           }
 
-          # Reuse the atomic queue; never replace an opaque managed secret payload.
-          # Unset means preserve. Explicit false disables only the gate, leaving authority unchanged.
-          if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
-            case "${NETWORK_SITE_AUTH_ENABLED:-}" in
-              "") ;;
-              false) queue_secret NETWORK_SITE_AUTH_ENABLED || exit 1 ;;
-              true)
-                node --input-type=module - <<'NODE'
-          const origin = process.env.NETWORK_SITE_AUTH_ORIGIN;
-          const token = process.env.NETWORK_SITE_AUTH_SERVER_TOKEN;
-          let url;
-          try { url = new URL(origin); } catch {}
-          if (process.env.DEPLOY_ENVIRONMENT !== "staging" || !url || url.protocol !== "http:"
-            || !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) || url.origin !== origin
-            || url.pathname !== "/" || url.username || url.password || url.search || url.hash
-            || typeof token !== "string" || token.length < 32) {
-            console.error("::error::Staging Network site auth requires an exact HTTP loopback origin and a server token of at least 32 characters");
-            process.exit(1);
-          }
-          NODE
-                for name in NETWORK_SITE_AUTH_ENABLED NETWORK_SITE_AUTH_ORIGIN NETWORK_SITE_AUTH_SERVER_TOKEN; do
-                  queue_secret "$name" || exit 1
-                done
-                ;;
-              *) echo "::error::NETWORK_SITE_AUTH_ENABLED must be absent, true, or false"; exit 1 ;;
-            esac
-          fi
+          # Admit named staging candidates before the existing atomic queue; no values are printed.
+          network_site_auth_names="$(node "$CHECKOUT_DIR/packages/cloud/scripts/verify-network-site-auth-binding.ts")" || exit 1
+          for name in $network_site_auth_names; do queue_secret "$name" || exit 1; done
 
           # Build the next Worker version with the QA activation bit absent.
           # The served gate was already disabled above; version-aware updates
