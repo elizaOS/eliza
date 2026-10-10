@@ -271,7 +271,9 @@ export function validateReminderResult(
     "scheduling-failed",
     "pending",
   ];
-  if (!statuses.includes(String(v.status)))
+  // String() coercion would accept ["cancelled"], but the operation checks
+  // below compare the un-coerced value strictly. Require an actual string.
+  if (typeof v.status !== "string" || !statuses.includes(v.status))
     throw Error("Invalid reminder result status");
   const timing = checkedTiming(v);
   if (timing.alertMinutes !== undefined && !reminderRequiresV2(op))
