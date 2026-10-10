@@ -1264,9 +1264,10 @@ export function mapAcpSessionsToCodingAgentSessions(
     status:
       s.status === "ready" || s.status === "busy"
         ? ("active" as const)
-        : s.status === "error"
+        : s.status === "error" || s.status === "errored"
           ? ("error" as const)
           : s.status === "stopped" ||
+              s.status === "cancelled" ||
               s.status === "done" ||
               s.status === "completed" ||
               s.status === "exited"
