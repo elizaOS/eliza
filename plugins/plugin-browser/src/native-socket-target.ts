@@ -112,6 +112,46 @@ interface NativeReply {
   reject(error: Error): void;
   timer: ReturnType<typeof setTimeout>;
 }
+/** The page a person sees: its HTTPS origin and the complete title, nothing else. */
+export interface NativeCurrentPage {
+  tabId: string;
+  origin: string;
+  title: string;
+}
+/**
+ * Reduce a tab inventory to the one active HTTPS page, or null when it is
+ * unknown or ambiguous. Exported for hosts that read the inventory themselves.
+ */
+export function currentPageFromTabs(
+  tabs: readonly unknown[],
+): NativeCurrentPage | null {
+  const listed = tabs.filter(
+    (tab): tab is Record<string, unknown> =>
+      Boolean(tab) && typeof tab === "object",
+  );
+  const windows = new Set(listed.map((tab) => tab.windowId));
+  const active = listed.filter((tab) => tab.active === true);
+  // Two windows can each have an active tab; which one she sees is unknown.
+  if (windows.size !== 1 || active.length !== 1) return null;
+  const [tab] = active;
+  if (typeof tab.id !== "string" || !/^\d+$/.test(tab.id)) return null;
+  let url: URL;
+  try {
+    url = new URL(String(tab.url));
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" || url.username || url.password) return null;
+  const title = (typeof tab.title === "string" ? tab.title : "")
+    .replace(/[\p{Cc}\p{Cf}]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return {
+    tabId: tab.id,
+    origin: url.origin,
+    title,
+  };
+}
 /** One short sentence, no control or format characters. */
 export function validActionText(value: unknown): value is string {
   return (
@@ -510,6 +550,31 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
         );
       }
     }
+  }
+
+  /**
+   * Trusted host only: the page the person sees in this profile, reduced to its
+   * HTTPS origin and the complete title. The path, query, fragment and page content
+   * never leave. Returns null when no single active HTTPS page is known: no
+   * active web tab, active tabs in more than one window, or a non-HTTPS page.
+   * This is an observation for conversation context. It is not a task binding
+   * and grants no action on the page.
+   */
+  async currentPage(signal?: AbortSignal): Promise<NativeCurrentPage | null> {
+    if (!this.supports({ subaction: "list" } as BrowserWorkspaceCommand))
+      throw new BrowserDispatchFailure(
+        "UNSUPPORTED",
+        "This Chromium profile cannot list its tabs.",
+        { targetId: this.id },
+      );
+    const listing = await this.request(
+      { subaction: "list" } as BrowserWorkspaceCommand,
+      signal,
+    );
+    const tabs = (listing as { tabs?: unknown } | null)?.tabs;
+    if (!Array.isArray(tabs))
+      throw new Error("Invalid Chromium tab inventory.");
+    return currentPageFromTabs(tabs);
   }
 
   /** Trusted host only: receives value-free offer answers from the bound page. */

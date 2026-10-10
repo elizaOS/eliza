@@ -80,6 +80,32 @@ public final class NativeRuntimeSessionTest {
             until(() -> failed.snapshot().processes.values().stream().noneMatch(Process::isAlive));
             check(owned.get() != null && !owned.get().isAlive());
         }
+        // Test-build fault injection ends one named child; the supervisor's own retry restarts it.
+        AtomicInteger launches = new AtomicInteger();
+        try (NativeRuntimeSession faulted = new NativeRuntimeSession(scope -> {
+            launches.incrementAndGet();
+            scope.startReady("agent", child(), log, Arrays.asList("synthetic-private-token"), () -> true, 2000, 10);
+            scope.startReady("gateway", child(), log, Arrays.asList("synthetic-private-token"), () -> true, 2000, 10);
+        }, 10, 10, 1)) {
+            check(!faulted.injectChildExit("agent"));
+            faulted.start(); until(() -> faulted.snapshot().lifecycle.state == NativeProcessSupervisor.State.RUNNING);
+            NativeRuntimeSession.Snapshot before = faulted.snapshot();
+            check(!faulted.injectChildExit("missing") && !faulted.injectChildExit("") && !faulted.injectChildExit(null));
+            check(before.processes.values().stream().allMatch(Process::isAlive));
+            check(faulted.injectChildExit("agent"));
+            until(() -> !before.processes.get("agent").isAlive());
+            until(() -> faulted.snapshot().lifecycle.state == NativeProcessSupervisor.State.RUNNING &&
+                !before.instance.equals(faulted.snapshot().instance));
+            NativeRuntimeSession.Snapshot after = faulted.snapshot();
+            check(after.lifecycle.epoch > before.lifecycle.epoch && launches.get() == 2);
+            until(() -> !before.processes.get("gateway").isAlive());
+            check(after.processes.values().stream().allMatch(Process::isAlive));
+            // A retired capture is never a target, and the restart budget still applies.
+            check(faulted.injectChildExit("gateway"));
+            until(() -> faulted.snapshot().lifecycle.state == NativeProcessSupervisor.State.FAILED);
+            check(launches.get() == 2 && !faulted.injectChildExit("agent"));
+            until(() -> after.processes.values().stream().noneMatch(Process::isAlive));
+        }
         // The child emits the synthetic secret; both streams use the shared bounded redactor.
         check(!Files.readString(dir.resolve("runtime.log")).contains("synthetic-private-token"));
         try (var paths = Files.walk(dir)) { for (Path file : paths.sorted(java.util.Comparator.reverseOrder()).toList()) Files.delete(file); }
