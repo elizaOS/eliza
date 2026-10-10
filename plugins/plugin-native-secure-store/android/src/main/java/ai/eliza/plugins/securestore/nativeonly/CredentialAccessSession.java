@@ -48,6 +48,13 @@ public final class CredentialAccessSession {
 
   public boolean authenticated() { return remainingMillis() > 0; }
 
+  /** Bind queued work to this grant; a later unlock cannot revive it. */
+  public long currentTicket() { return authenticated() ? generation : 0; }
+  public boolean authenticated(long ticket) { return ticket != 0 && ticket == generation && authenticated(); }
+
+  /** Cancelling an old owner must not revoke a newer owner's challenge or grant. */
+  public void lock(long ticket) { if (ticket != 0 && ticket == generation) lock(); }
+
   /** Android stops the host while its device challenge is in front. Keep only that challenge. */
   public void stop() { grantedAt = -1; }
 

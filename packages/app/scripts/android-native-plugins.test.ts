@@ -136,7 +136,11 @@ test("host-configured libraries count real native tests without inventing a defa
       plugin.tests.reduce((sum, item) => sum + item.count, 0),
     );
   }
-  for (const name of ["plugin-native-media", "plugin-native-notifications"]) {
+  for (const name of [
+    "plugin-native-media",
+    "plugin-native-notifications",
+    "plugin-native-passwords",
+  ]) {
     const plugin = plugins.find((item) => item.directory === name);
     assert.ok(plugin.consumerTests.length > 0);
     assert.ok(plugin.consumerProject.endsWith("/test/android-consumer"));

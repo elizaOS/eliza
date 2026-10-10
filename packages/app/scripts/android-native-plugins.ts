@@ -337,6 +337,7 @@ async function main() {
           adb,
           build: !args.includes("--no-build"),
           parseInstrumentation,
+          parseNativeArtifacts,
         });
         console.log(
           `${entry.pass ? "PASS" : "FAIL"} ${plugin.directory}: consumer fixture`,
