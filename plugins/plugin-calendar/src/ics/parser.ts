@@ -622,6 +622,30 @@ function recurrenceLines(component: IcsComponent): string[] {
   return lines;
 }
 
+/**
+ * Instants named by the EXDATE lines of a stored recurrence line set, parsed
+ * like DTSTART (TZID, floating values in `timezone`, all-day at UTC midnight).
+ */
+export function icsExceptionDateInstants(
+  recurrence: readonly string[],
+  timezone: string | null,
+): Set<number> {
+  const instants = new Set<number>();
+  for (const line of recurrence) {
+    const property = parseContentLine(line);
+    if (property.name !== "EXDATE") continue;
+    for (const value of splitOutsideQuotes(property.value, ",")) {
+      const parsed = parseDateProperty(
+        { ...property, value: value.trim() },
+        timezone,
+        "EXDATE",
+      );
+      instants.add(Date.parse(parsed.instant));
+    }
+  }
+  return instants;
+}
+
 function parseEvent(
   component: IcsComponent,
   calendarTimezone: string | null,
@@ -654,6 +678,11 @@ function parseEvent(
     ? parseDateProperty(recurrenceIdProperty, calendarTimezone, "RECURRENCE-ID")
         .instant
     : null;
+  const recurrence = recurrenceLines(component);
+  // Validate EXDATE values while the untrusted feed is still at the sync
+  // boundary. A malformed exception must reject or quarantine this event
+  // before its recurrence lines can be stored and read later.
+  icsExceptionDateInstants(recurrence, start.timezone);
   const rawSequence = propertyValue(component, "SEQUENCE") ?? "0";
   if (!/^\d+$/.test(rawSequence)) {
     throw new Error("VEVENT SEQUENCE must be a non-negative integer.");
@@ -686,7 +715,7 @@ function parseEvent(
     attendees: (component.properties.get("ATTENDEE") ?? []).map((property) =>
       attendeeFromProperty(property, false),
     ),
-    recurrence: recurrenceLines(component),
+    recurrence,
     transparency:
       propertyValue(component, "TRANSP")?.toLowerCase() === "transparent"
         ? "transparent"

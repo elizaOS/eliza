@@ -713,6 +713,196 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     ]);
   });
 
+  it("expands a recurring series inside the window, minus EXDATE and overridden instances", async () => {
+    const source = await createSource();
+    await syncBody(
+      source.id,
+      calendar(
+        [
+          "BEGIN:VEVENT",
+          "UID:soccer",
+          "DTSTAMP:20260901T000000Z",
+          "DTSTART;TZID=America/New_York:20260901T160000",
+          "DTEND;TZID=America/New_York:20260901T170000",
+          "RRULE:FREQ=WEEKLY;BYDAY=TU;UNTIL=20261215T235959Z",
+          "EXDATE;TZID=America/New_York:20261020T160000",
+          "SUMMARY:Soccer practice",
+          "END:VEVENT",
+          "BEGIN:VEVENT",
+          "UID:soccer",
+          "DTSTAMP:20260901T000000Z",
+          "RECURRENCE-ID;TZID=America/New_York:20261027T160000",
+          "DTSTART;TZID=America/New_York:20261028T160000",
+          "DTEND;TZID=America/New_York:20261028T170000",
+          "SUMMARY:Soccer practice (moved)",
+          "END:VEVENT",
+        ].join("\r\n"),
+      ),
+    );
+    const feed = await service.getCalendarFeed(
+      new URL("http://internal.test/api/calendar"),
+      {
+        grantId: source.id,
+        timeMin: "2026-10-12T00:00:00.000Z",
+        timeMax: "2026-11-05T00:00:00.000Z",
+      },
+      new Date(),
+    );
+
+    expect(feed.state).toBe("complete");
+    // 16:00 New York each Tuesday: EDT until Nov 1, then EST.
+    expect(
+      feed.events.map((event) => [event.title, event.startAt, event.endAt]),
+    ).toEqual([
+      [
+        "Soccer practice",
+        "2026-10-13T20:00:00.000Z",
+        "2026-10-13T21:00:00.000Z",
+      ],
+      [
+        "Soccer practice (moved)",
+        "2026-10-28T20:00:00.000Z",
+        "2026-10-28T21:00:00.000Z",
+      ],
+      [
+        "Soccer practice",
+        "2026-11-03T21:00:00.000Z",
+        "2026-11-03T22:00:00.000Z",
+      ],
+    ]);
+  });
+
+  it("rejects malformed EXDATE values before replacing the stored snapshot", async () => {
+    const source = await createSource();
+    const validBody = calendar(
+      [
+        "BEGIN:VEVENT",
+        "UID:exdate-validation",
+        "DTSTAMP:20260901T000000Z",
+        "DTSTART:20261012T160000Z",
+        "DTEND:20261012T170000Z",
+        "RRULE:FREQ=DAILY",
+        "SUMMARY:Valid recurring event",
+        "END:VEVENT",
+      ].join("\r\n"),
+    );
+    await syncBody(source.id, validBody);
+
+    await expect(
+      syncBody(
+        source.id,
+        calendar(
+          [
+            "BEGIN:VEVENT",
+            "UID:exdate-validation",
+            "DTSTAMP:20260902T000000Z",
+            "DTSTART:20261012T160000Z",
+            "DTEND:20261012T170000Z",
+            "RRULE:FREQ=DAILY",
+            "EXDATE:not-a-date",
+            "SUMMARY:Malformed recurring event",
+            "END:VEVENT",
+          ].join("\r\n"),
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "ICS_FEED_PARSE_ERROR" });
+
+    const listed = await service.listIcsCalendarSources();
+    expect(listed[0]?.error?.code).toBe("ICS_FEED_PARSE_ERROR");
+
+    const feed = await service.getCalendarFeed(
+      new URL("http://internal.test/api/calendar"),
+      {
+        grantId: source.id,
+        timeMin: "2026-10-12T00:00:00.000Z",
+        timeMax: "2026-10-14T00:00:00.000Z",
+      },
+      new Date(),
+    );
+    expect(feed.events.map((event) => event.startAt)).toEqual([
+      "2026-10-12T16:00:00.000Z",
+      "2026-10-13T16:00:00.000Z",
+    ]);
+  });
+
+  it("seeks past more than 1000 historical daily occurrences", async () => {
+    const source = await createSource();
+    await syncBody(
+      source.id,
+      calendar(
+        [
+          "BEGIN:VEVENT",
+          "UID:old-daily",
+          "DTSTAMP:20230101T000000Z",
+          "DTSTART:20230102T160000Z",
+          "DTEND:20230102T170000Z",
+          ["RRULE:FREQ=DAILY", "COUNT=1386"].join(String.fromCharCode(59)),
+          "SUMMARY:Old daily series",
+          "END:VEVENT",
+        ].join("\r\n"),
+      ),
+    );
+    const feed = await service.getCalendarFeed(
+      new URL("http://internal.test/api/calendar"),
+      {
+        grantId: source.id,
+        timeMin: "2026-10-12T00:00:00.000Z",
+        timeMax: "2026-10-19T00:00:00.000Z",
+      },
+      new Date(),
+    );
+
+    expect(feed.state).toBe("complete");
+    expect(feed.events.map((event) => event.startAt)).toEqual([
+      "2026-10-12T16:00:00.000Z",
+      "2026-10-13T16:00:00.000Z",
+      "2026-10-14T16:00:00.000Z",
+      "2026-10-15T16:00:00.000Z",
+      "2026-10-16T16:00:00.000Z",
+      "2026-10-17T16:00:00.000Z",
+      "2026-10-18T16:00:00.000Z",
+    ]);
+  });
+
+  it("seeks an ancient unbounded daily series without walking its history", async () => {
+    const source = await createSource();
+    await syncBody(
+      source.id,
+      calendar(
+        [
+          "BEGIN:VEVENT",
+          "UID:ancient-daily",
+          "DTSTAMP:20260901T000000Z",
+          "DTSTART:00010101T160000Z",
+          "DTEND:00010101T170000Z",
+          "RRULE:FREQ=DAILY",
+          "SUMMARY:Ancient daily series",
+          "END:VEVENT",
+        ].join("\r\n"),
+      ),
+    );
+    const feed = await service.getCalendarFeed(
+      new URL("http://internal.test/api/calendar"),
+      {
+        grantId: source.id,
+        timeMin: "2026-10-12T00:00:00.000Z",
+        timeMax: "2026-10-19T00:00:00.000Z",
+      },
+      new Date(),
+    );
+
+    expect(feed.state).toBe("complete");
+    expect(feed.events.map((event) => event.startAt)).toEqual([
+      "2026-10-12T16:00:00.000Z",
+      "2026-10-13T16:00:00.000Z",
+      "2026-10-14T16:00:00.000Z",
+      "2026-10-15T16:00:00.000Z",
+      "2026-10-16T16:00:00.000Z",
+      "2026-10-17T16:00:00.000Z",
+      "2026-10-18T16:00:00.000Z",
+    ]);
+  });
+
   it("rejects an older SEQUENCE without overwriting the current event", async () => {
     const source = await createSource();
     await syncBody(
