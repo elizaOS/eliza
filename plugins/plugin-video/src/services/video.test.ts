@@ -615,18 +615,11 @@ it("keeps private media results out of the shared inbox while enforcing requeste
       content: { text: "Read my media result", source: "test" },
     });
     expect(
-      (
-        await documents.getDocumentById(
-          documentId as UUID,
-          message(requester),
-        )
-      )?.content.text,
+      (await documents.getDocumentById(documentId as UUID, message(requester)))
+        ?.content.text,
     ).toBe(transcript);
     expect(
-      await documents.getDocumentById(
-        documentId as UUID,
-        message(other),
-      ),
+      await documents.getDocumentById(documentId as UUID, message(other)),
     ).toBeNull();
     expect(
       await mediaStatusAction.handler(runtime, message(requester), undefined, {
