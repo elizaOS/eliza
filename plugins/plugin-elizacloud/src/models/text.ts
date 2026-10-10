@@ -1504,21 +1504,10 @@ async function generateTextWithModel(
     throw requestError;
   }
 
-	if (data.status === "incomplete") {
-		throw new ElizaError(
-			"elizaOS Cloud returned an incomplete Responses API output.",
-			{
-				code: "MODEL_OUTPUT_INCOMPLETE",
-				context: {
-					provider: "elizacloud",
-					model: modelName,
-					reason: data.incomplete_details?.reason,
-				},
-			},
-		);
-	}
 
+  // Billed tokens are reported before an incomplete output is rejected.
   const usage = convertNativeUsage(data.usage);
+  const costUsd = extractCostUsd(data.usage, response);
   if (usage) {
     emitModelUsageEvent(
       runtime,
@@ -1527,11 +1516,30 @@ async function generateTextWithModel(
       toUsageEventTokens(usage),
       {
         modelName: getModelNameForType(runtime, modelType),
-        ...(() => {
-          const costUsd = extractCostUsd(data.usage, response);
-          return typeof costUsd === "number" ? { costUsd } : {};
-        })(),
+        ...(typeof costUsd === "number" ? { costUsd } : {}),
       }
+    );
+  }
+
+  if (data.status === "incomplete") {
+    const reason = data.incomplete_details?.reason;
+    throw new ElizaError(
+      "elizaOS Cloud returned an incomplete Responses API output.",
+      {
+        code: "MODEL_OUTPUT_INCOMPLETE",
+        context: {
+          provider: "elizacloud",
+          model: modelName,
+          reason,
+          finishReason: reason,
+          maxTokens:
+            typeof requestBody.max_output_tokens === "number"
+              ? requestBody.max_output_tokens
+              : null,
+          usage,
+          costUsd,
+        },
+      },
     );
   }
 
@@ -2141,20 +2149,24 @@ export async function streamNativeChatCompletion(
     const text = extractChatCompletionText(data);
     const toolCalls = extractNativeToolCalls(data);
     const usage = convertNativeUsage(data.usage);
+    const costUsd = extractCostUsd(data.usage, response);
+    // Billed tokens are reported before an incomplete output is rejected.
+    if (usage) {
+      emitModelUsageEvent(runtime, modelType, context.prompt, toUsageEventTokens(usage), {
+        modelName: context.modelName,
+        ...(typeof costUsd === "number" ? { costUsd } : {}),
+      });
+    }
 		assertModelOutputComplete({
 			finishReason: data.choices?.[0]?.finish_reason,
 			provider: "elizacloud",
 			model: context.modelName,
+			maxTokens: typeof requestBody.max_tokens === "number" ? requestBody.max_tokens : null,
+			finishReasonSource: "cloud-chat-completions",
+			emptyVisibleOutput: !text.trim() && toolCalls.length === 0,
+			usage,
+			costUsd,
 		});
-    if (usage) {
-      emitModelUsageEvent(runtime, modelType, context.prompt, toUsageEventTokens(usage), {
-        modelName: context.modelName,
-        ...(() => {
-          const costUsd = extractCostUsd(data.usage, response);
-          return typeof costUsd === "number" ? { costUsd } : {};
-        })(),
-      });
-    }
     if (!text.trim() && toolCalls.length === 0) {
       throw new Error("elizaOS Cloud returned no text or tool calls");
     }
@@ -2314,10 +2326,17 @@ export async function streamNativeChatCompletion(
       if (!finishReason) {
         throw invalidNativeStream("stream ended without a terminal finish frame");
       }
+			// Before tool-call finalization: a truncated tool call is incomplete
+			// output, not an invalid one.
 			assertModelOutputComplete({
 				finishReason,
 				provider: "elizacloud",
 				model: context.modelName,
+				maxTokens: typeof requestBody.max_tokens === "number" ? requestBody.max_tokens : null,
+				finishReasonSource: "cloud-chat-completions",
+				emptyVisibleOutput: !accumulated.trim() && toolAcc.size === 0,
+				usage: nativeUsage,
+				costUsd: extractCostUsd(rawUsage, response),
 			});
       const toolCalls = finalizeStreamedToolCalls(toolAcc);
       if (!accumulated.trim() && toolCalls.length === 0) {
