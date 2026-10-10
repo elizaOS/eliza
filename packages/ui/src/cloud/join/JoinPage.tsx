@@ -14,6 +14,7 @@
  */
 
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
+import { STEWARD_SESSION_CHANGE_EVENT } from "@elizaos/shared/steward-session-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { client } from "../../api";
@@ -25,6 +26,7 @@ import {
 import { appModeNavigation } from "../app-mode/app-mode";
 import { publishPersonalEntryHandoff } from "../app-mode/use-personal-entry";
 import { openCloudBillingConsole } from "../billing-console";
+import { decodeJwtPayload } from "../lib/jwt";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import {
   redirectToSsoBridge,
@@ -54,6 +56,18 @@ function describeJoinError(err: unknown): JoinFailure {
   }
   return { kind: "generic", message };
 }
+
+/** Compare account identity, allowing an access-token refresh for the same owner. */
+function joinSessionIdentity(token: string | null): string | null {
+  if (!token) return null;
+  const subject = decodeJwtPayload(token)?.sub;
+  return typeof subject === "string" && subject
+    ? `sub:${subject}`
+    : `token:${token}`;
+}
+
+const SESSION_CHANGED_MESSAGE =
+  "Your Eliza Cloud sign-in changed while your agent was opening. Nothing was started. Try again.";
 
 export default function JoinPage(): React.JSX.Element {
   const t = useCloudT();
@@ -91,6 +105,24 @@ export default function JoinPage(): React.JSX.Element {
       new DOMException("Join attempt superseded", "AbortError"),
     );
     const controller = new AbortController();
+    const attemptIdentity = joinSessionIdentity(authToken);
+    let sessionChanged = false;
+    const revalidateSession = () => {
+      if (controller.signal.aborted) return;
+      if (joinSessionIdentity(resolveJoinAuthToken()) === attemptIdentity)
+        return;
+      sessionChanged = true;
+      controller.abort(
+        new DOMException("The signed-in session changed", "AbortError"),
+      );
+    };
+    const sessionEvents = [
+      STEWARD_SESSION_CHANGE_EVENT,
+      "steward-token-sync",
+      "storage",
+    ] as const;
+    for (const eventName of sessionEvents)
+      window.addEventListener(eventName, revalidateSession);
     const attempt = (async () => {
       try {
         const result = await runJoinFlow({
@@ -103,7 +135,9 @@ export default function JoinPage(): React.JSX.Element {
           authToken,
           signal: controller.signal,
           onProgress: (_status, progressDetail) => {
-            if (progressDetail) setDetail(progressDetail);
+            revalidateSession();
+            if (!controller.signal.aborted && progressDetail)
+              setDetail(progressDetail);
           },
         });
         controller.signal.throwIfAborted();
@@ -113,9 +147,18 @@ export default function JoinPage(): React.JSX.Element {
         // binding. Its session-bound handoff receipt lets app-mode consume the
         // same authoritative result without a duplicate identity request.
       } catch (err) {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted) {
+          if (sessionChanged) {
+            setError({ kind: "generic", message: SESSION_CHANGED_MESSAGE });
+            setPhase("error");
+          }
+          return;
+        }
         setError(describeJoinError(err));
         setPhase("error");
+      } finally {
+        for (const eventName of sessionEvents)
+          window.removeEventListener(eventName, revalidateSession);
       }
     })();
     activeAttemptRef.current = { controller, promise: attempt };

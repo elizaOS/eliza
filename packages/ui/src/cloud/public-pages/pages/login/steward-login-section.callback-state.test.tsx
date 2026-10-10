@@ -13,7 +13,7 @@
  * options again, so a real failure is never hidden behind the spinner.
  */
 
-import { StewardSessionError } from "@elizaos/plugin-elizacloud/steward-session-client";
+import { StewardSessionError } from "@elizaos/shared/steward-session-client";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { MemoryRouter } from "react-router-dom";
@@ -28,7 +28,9 @@ const callbackState = vi.hoisted(() => ({
   recover: vi.fn(),
   sync: vi.fn(),
   token: "old-account-token",
-  destination: vi.fn((_params: unknown, pending?: string | null) => pending ?? "/join"),
+  destination: vi.fn(
+    (_params: unknown, pending?: string | null) => pending ?? "/join",
+  ),
   exchange: (): Promise<{ token?: string }> => new Promise(() => {}),
 }));
 
@@ -46,20 +48,23 @@ vi.mock("../../lib/steward-session", () => ({
   syncStewardSessionCookie: callbackState.sync,
 }));
 
-vi.mock("@elizaos/plugin-elizacloud/steward-session-client", async () => {
+vi.mock("@elizaos/shared/steward-session-client", async () => {
   const actual = await vi.importActual<
-    typeof import("@elizaos/plugin-elizacloud/steward-session-client")
-  >("@elizaos/plugin-elizacloud/steward-session-client");
+    typeof import("@elizaos/shared/steward-session-client")
+  >("@elizaos/shared/steward-session-client");
   return {
     ...actual,
     hasStewardAuthedCookie: () => true,
     readStoredStewardToken: () => callbackState.token,
-    writeStoredStewardToken: async (token: string) => { callbackState.token = token; },
+    writeStoredStewardToken: async (token: string) => {
+      callbackState.token = token;
+    },
     peekStewardOAuthState: () => callbackState.expectedState,
   };
 });
 
-vi.mock("@elizaos/auth", () => ({
+vi.mock("@elizaos/login", async () => ({
+  ...(await vi.importActual<typeof import("@elizaos/login")>("@elizaos/login")),
   LoginAuth: class {
     getSession() {
       return null;
@@ -174,11 +179,14 @@ describe("StewardLoginSection — OAuth callback completion state (#13519)", () 
   });
 
   it("preserves the pending destination and the selected identity after a fragment exchange", async () => {
-    callbackState.exchange = async () => ({token: "selected-account-token"});
+    callbackState.exchange = async () => ({ token: "selected-account-token" });
     renderSection("/login#code=callback-code&state=state-1");
-    await waitFor(() => expect(callbackState.destination).toHaveBeenCalledWith(
-      expect.anything(), "/auth/cli-login?session=pending-attempt",
-    ));
+    await waitFor(() =>
+      expect(callbackState.destination).toHaveBeenCalledWith(
+        expect.anything(),
+        "/auth/cli-login?session=pending-attempt",
+      ),
+    );
     expect(callbackState.token).toBe("selected-account-token");
     expect(callbackState.sync).not.toHaveBeenCalled();
     expect(callbackState.recover).not.toHaveBeenCalled();
