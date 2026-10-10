@@ -66,7 +66,7 @@ import type { JsonValue } from "@elizaos/core";
 import { formatCalendarDate, parseCalendarDate } from "./calendar-date";
 import { basicEmailValid } from "./email";
 import type { ControlType, FormControl, ValidationResult } from "./types";
-import { testControlPattern } from "./validation";
+import { parseStrictNumber, testControlPattern } from "./validation";
 
 // ============================================================================
 // VALIDATION HELPERS
@@ -173,7 +173,13 @@ const numberType: ControlType = {
       return { valid: true }; // Empty is valid; required check is separate
     }
 
-    const num = typeof value === "number" ? value : parseFloat(String(value));
+    // parseFloat stops at the first non-digit ("50abc" -> 50), so malformed
+    // input passed validation instead of failing it. Require the whole value
+    // to be a strict number, mirroring parseStrictNumber in ./validation.ts,
+    // whose documented contract is: trailing garbage ("50abc", "0x10")
+    // must be rejected, not coerced.
+    const num =
+      typeof value === "number" ? value : parseStrictNumber(String(value));
 
     if (!Number.isFinite(num)) {
       return { valid: false, error: "Must be a valid number" };

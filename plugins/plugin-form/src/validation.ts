@@ -347,7 +347,7 @@ function validateEmail(
  * input returns NaN so callers treat it as an invalid number.
  */
 const STRICT_NUMBER_PATTERN = /^[+-]?(\d+(\.\d*)?|\.\d+)(e[+-]?\d+)?$/i;
-function parseStrictNumber(input: string): number {
+export function parseStrictNumber(input: string): number {
   // A dollar sign is a currency mark only at the start, after an optional
   // sign. Stripping every "$" turned "1$2" into 12. Anchoring on "^$" alone
   // rejected "-$50", which is a negative amount.
