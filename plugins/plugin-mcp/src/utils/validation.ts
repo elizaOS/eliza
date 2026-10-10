@@ -68,7 +68,13 @@ const SCHEMA_WORKER_SOURCE = `
       }
       // "format" is an annotation by default; without format definitions Ajv
       // refuses the whole schema ("unknown format"), so every call fails.
-      const options = { allErrors: true, validateFormats: false };
+      // Unknown keywords ("discriminator", vendor "x-*" keys) are ignored per
+      // JSON Schema; strict mode refused to compile such a tool schema at all.
+      const options = {
+        allErrors: true,
+        validateFormats: false,
+        strictSchema: false,
+      };
       let validate;
       try {
         validate = new Ajv(options).compile(schema);
