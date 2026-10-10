@@ -170,8 +170,13 @@ export async function fetchDexPrices(
 }
 
 export function computeValueUsd(balance: string, priceUsd: string): string {
-  const bal = Number.parseFloat(balance);
-  const price = Number.parseFloat(priceUsd);
+  // Number.parseFloat stops at the first non-digit ("100junk" -> 100), so a
+  // malformed balance/price string was silently booked as a fabricated USD
+  // value instead of falling back to "0". Require the whole trimmed value
+  // to be decimal, mirroring TWILIO_SMS_COST_PATTERN in
+  // packages/cloud/sdk/src/browser-contracts/markup.ts.
+  const bal = parseWholeDecimal(balance);
+  const price = parseWholeDecimal(priceUsd);
   if (
     !Number.isFinite(bal) ||
     !Number.isFinite(price) ||
@@ -181,4 +186,11 @@ export function computeValueUsd(balance: string, priceUsd: string): string {
     return "0";
   }
   return (bal * price).toFixed(2);
+}
+
+function parseWholeDecimal(value: string): number {
+  const text = value.trim();
+  return /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(text)
+    ? Number(text)
+    : Number.NaN;
 }
