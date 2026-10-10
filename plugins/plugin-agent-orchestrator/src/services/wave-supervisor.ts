@@ -541,6 +541,17 @@ function taskIsActive(task: TaskThreadDetailDto): boolean {
   return ACTIVE_TASK_STATUSES.has(task.status);
 }
 
+/**
+ * Strict decimal parse for operator-supplied numeric settings.
+ * Number.parseInt stops at the first non-digit ("1e3" -> 1), so a malformed
+ * value was silently accepted instead of falling back to the default.
+ * Requires the whole trimmed value to be decimal.
+ */
+function parseStrictPositiveInt(value: string): number {
+  const text = value.trim();
+  return /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
+}
+
 export class WaveSupervisor extends Service {
   static serviceType = WAVE_SUPERVISOR_SERVICE_TYPE;
   static dependencies = ["ORCHESTRATOR_TASK_SERVICE"];
@@ -586,9 +597,8 @@ export class WaveSupervisor extends Service {
   }
 
   private intervalMs(): number {
-    const parsed = Number.parseInt(
+    const parsed = parseStrictPositiveInt(
       this.setting("ELIZA_ORCHESTRATOR_WAVE_INTERVAL_MS") ?? "",
-      10,
     );
     return Number.isFinite(parsed) && parsed >= MIN_INTERVAL_MS
       ? parsed
@@ -596,9 +606,8 @@ export class WaveSupervisor extends Service {
   }
 
   private configuredCap(): number {
-    const parsed = Number.parseInt(
+    const parsed = parseStrictPositiveInt(
       this.setting("ELIZA_ORCHESTRATOR_WAVE_CONCURRENCY") ?? "",
-      10,
     );
     return Number.isFinite(parsed) && parsed > 0
       ? parsed
