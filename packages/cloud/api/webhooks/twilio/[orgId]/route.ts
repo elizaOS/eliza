@@ -67,7 +67,16 @@ function resolveTwilioVerificationUrl(c: AppContext): string {
 function resolveSmsCostPerSegment(env: AppContext["env"]): number {
   const raw = env.TWILIO_SMS_COST_PER_SEGMENT_USD;
   if (raw) {
-    const parsed = Number.parseFloat(raw);
+    // Number.parseFloat stops at the first non-digit ("0.01USD" -> 0.01) or
+    // coerces non-decimal literals ("0x10" -> 0), so malformed config passed
+    // this check silently and the operator was never warned that the value
+    // is ignored. Mirror the strict TWILIO_SMS_COST_PATTERN grammar that
+    // resolveTwilioSmsCostPerSegment enforces, so the warning fires exactly
+    // when the config falls back to the default.
+    const text = raw.trim();
+    const parsed = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(text)
+      ? Number(text)
+      : Number.NaN;
     if (!Number.isFinite(parsed) || parsed < 0) {
       logger.warn(
         "[TwilioWebhook] Invalid TWILIO_SMS_COST_PER_SEGMENT_USD; using default",
