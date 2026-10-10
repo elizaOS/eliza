@@ -23,6 +23,7 @@ const oauthState = vi.hoisted(() => ({
   pkceError: null as Error | null,
   storeVerifier: true,
   storedVerifierArgs: [] as Array<{ verifier: string; state?: string }>,
+  authorizeRedirectUris: [] as string[],
   authorizeUrlOptions: [] as Array<Record<string, unknown>>,
   telegramSignIns: [] as Array<{
     payload: Record<string, unknown>;
@@ -61,16 +62,18 @@ vi.mock("@elizaos/shared/steward-session-client", async () => {
     generateStewardOAuthState: () => "state-1",
     buildStewardOAuthAuthorizeUrl: (
       provider: string,
-      _redirectUri: string,
+      redirectUri: string,
       options: Record<string, unknown>,
     ) => {
+      oauthState.authorizeRedirectUris.push(redirectUri);
       oauthState.authorizeUrlOptions.push(options);
       return `https://api.example.test/steward/auth/oauth/${provider}/authorize`;
     },
   };
 });
 
-vi.mock("@elizaos/login", () => ({
+vi.mock("@elizaos/login", async () => ({
+  ...(await vi.importActual<typeof import("@elizaos/login")>("@elizaos/login")),
   LoginAuth: class {
     getSession() {
       return null;
@@ -144,11 +147,17 @@ vi.mock("./passkey-capability", () => ({
     Promise.resolve({ usable: false, reason: "native-without-bridge" }),
 }));
 
-vi.mock("../../../shell/steward-url", () => ({
+vi.mock("../../../shell/steward-url", async () => ({
+  ...(await vi.importActual<typeof import("../../../shell/steward-url")>(
+    "../../../shell/steward-url",
+  )),
   resolveBrowserStewardApiUrl: () => "https://api.example.test",
 }));
 
-vi.mock("../../../shell/steward-config", () => ({
+vi.mock("../../../shell/steward-config", async () => ({
+  ...(await vi.importActual<typeof import("../../../shell/steward-config")>(
+    "../../../shell/steward-config",
+  )),
   configuredStewardTenantId: () => "elizacloud",
   DEFAULT_STEWARD_TENANT_ID: "elizacloud",
 }));
@@ -158,7 +167,10 @@ vi.mock("../../../shell/CloudI18nProvider", () => ({
     opts?.defaultValue ?? _key,
 }));
 
-vi.mock("../../lib/steward-session", () => ({
+vi.mock("../../lib/steward-session", async () => ({
+  ...(await vi.importActual<typeof import("../../lib/steward-session")>(
+    "../../lib/steward-session",
+  )),
   hasStewardOAuthCallbackInUrl: () => false,
   consumeStewardCodeFromQuery: () => null,
   stripLegacyTokenHashFromAddressBar: () => false,
@@ -243,6 +255,7 @@ describe("StewardLoginSection OAuth launch", () => {
     oauthState.pkceError = null;
     oauthState.storeVerifier = true;
     oauthState.storedVerifierArgs = [];
+    oauthState.authorizeRedirectUris = [];
     oauthState.authorizeUrlOptions = [];
     oauthState.telegramSignIns = [];
     oauthState.syncedSessions = [];
@@ -279,6 +292,36 @@ describe("StewardLoginSection OAuth launch", () => {
         ),
       );
       expect(openSpy).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    "https://cloud.eliza.app",
+    "https://eliza.app",
+    "https://staging.eliza-app.pages.dev",
+    "http://localhost:5173",
+  ])(
+    "keeps OAuth callback and PKCE on the current origin %s",
+    async (origin) => {
+      stubHostedLoginLocation(`${origin}/login`);
+      renderSection();
+
+      fireEvent.click(await screen.findByRole("button", { name: "Google" }));
+
+      await waitFor(() =>
+        expect(oauthState.authorizeRedirectUris).toEqual([`${origin}/login`]),
+      );
+      expect(oauthState.storedVerifierArgs).toEqual([
+        { verifier: "verifier", state: "state-1" },
+      ]);
+      expect(oauthState.authorizeUrlOptions).toEqual([
+        expect.objectContaining({
+          stewardApiUrl: "https://api.example.test",
+          stewardTenantId: "elizacloud",
+          codeChallenge: "challenge",
+          state: "state-1",
+        }),
+      ]);
     },
   );
 

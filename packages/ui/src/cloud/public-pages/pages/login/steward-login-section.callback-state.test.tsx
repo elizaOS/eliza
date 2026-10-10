@@ -98,7 +98,10 @@ vi.mock("../../../shell/steward-url", async () => ({
   resolveBrowserStewardApiUrl: () => "https://api.example.test",
 }));
 
-vi.mock("../../../shell/steward-config", () => ({
+vi.mock("../../../shell/steward-config", async () => ({
+  ...(await vi.importActual<typeof import("../../../shell/steward-config")>(
+    "../../../shell/steward-config",
+  )),
   configuredStewardTenantId: () => "elizacloud",
   DEFAULT_STEWARD_TENANT_ID: "elizacloud",
 }));
