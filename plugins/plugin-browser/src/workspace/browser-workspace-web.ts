@@ -1320,8 +1320,24 @@ export async function executeWebBrowserWorkspaceDomCommand(
         const element = resolveTarget();
         const form = findClosestBrowserWorkspaceForm(element);
 
-        if (key === "Enter" && form) {
-          await submitWebBrowserWorkspaceForm(tab, form);
+        // HTML implicit submission: Enter submits only from an <input>,
+        // through the form's first submit button, and not when that button is
+        // disabled. Enter in a <textarea> adds a newline.
+        const implicitSubmit =
+          key === "Enter" && form !== null && element?.tagName === "INPUT";
+        const submitter = implicitSubmit
+          ? Array.from(form.elements).find(
+              (control): control is HTMLButtonElement | HTMLInputElement =>
+                (control.tagName === "BUTTON" &&
+                  (control as HTMLButtonElement).type === "submit") ||
+                (control.tagName === "INPUT" &&
+                  ["image", "submit"].includes(
+                    (control as HTMLInputElement).type,
+                  )),
+            )
+          : undefined;
+        if (implicitSubmit && !submitter?.matches(":disabled")) {
+          await submitWebBrowserWorkspaceForm(tab, form, submitter);
           return {
             mode: "web",
             subaction: command.subaction,
