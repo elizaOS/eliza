@@ -10,6 +10,10 @@ If an undeclared schema cannot compile as 2020-12, the same bounded worker
 tries draft-07 to support legacy tuple schemas. A failed argument validation
 never triggers this fallback. Declared schemas always use their stated dialect.
 
+Argument-generation retries retain the selected tool, complete input schema,
+conversation context and argument response format, with the latest validation
+error and rejected response. Retries do not select another tool.
+
 Discovery requests only the tools and resources that the server declares. Servers
 that provide resources without tools can connect and serve agent context. Stdio
 health checks use protocol `ping` with the configured timeout, not `tools/list`.
