@@ -181,9 +181,22 @@ export function resolveNextRelativeScheduleInstant(args: {
     // across local midnight onto the previous weekday; gating on `targetMs`
     // there fires on a day the owner did not request or silently drops a day
     // they did. This mirrors the anchor-day rule in `nextProjectedLocalInstant`.
+    // A bedtime is canonical in local hours [12, 36), so one before noon
+    // belongs to the previous civil day's sleep-day.
+    let anchorDayMs = anchorMs;
+    if (!isAnchorKind(args.schedule)) {
+      const local = getZonedDateParts(new Date(anchorMs), state.timezone);
+      const sleepDay = addDaysToLocalDate(local, local.hour < 12 ? -1 : 0);
+      anchorDayMs = buildUtcDateFromLocalParts(state.timezone, {
+        ...sleepDay,
+        hour: 12,
+        minute: 0,
+        second: 0,
+      }).getTime();
+    }
     if (
       targetMs > cursorMs &&
-      weekdayMatches(anchorMs, state.timezone, args.schedule.onDays)
+      weekdayMatches(anchorDayMs, state.timezone, args.schedule.onDays)
     ) {
       return new Date(targetMs).toISOString();
     }
