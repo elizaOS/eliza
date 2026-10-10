@@ -5104,16 +5104,18 @@ export class CalendarService extends Service {
     if (!hasSnapshot && !fresh) {
       return null;
     }
-    // Recurring series are stored once at DTSTART, which can precede timeMin;
-    // read every event that starts before timeMax and expand the series.
+    // Recurring series are stored once at DTSTART, which can precede timeMin.
+    // Read the requested window plus only recurrence masters and overrides that
+    // can affect it before expanding the series.
     const expansion = expandIcsCalendarEvents({
       events: await this.repo.listCalendarEvents(
         this.agentId(),
         "ics",
-        undefined,
+        args.timeMin,
         args.timeMax,
         "owner",
         args.source.id,
+        true,
       ),
       timeMin: args.timeMin,
       timeMax: args.timeMax,

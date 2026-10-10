@@ -632,11 +632,28 @@ export class CalendarRepository {
     timeMax?: string,
     side?: LifeOpsConnectorSide,
     grantId?: string,
+    includeRecurringIcsCandidates = false,
   ): Promise<LifeOpsCalendarEvent[]> {
     const timeMinClause = timeMin ? `AND end_at > ${sqlQuote(timeMin)}` : "";
     const timeMaxClause = timeMax ? `AND start_at < ${sqlQuote(timeMax)}` : "";
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
     const grantClause = grantId ? `AND grant_id = ${sqlQuote(grantId)}` : "";
+    const eventWindowClause =
+      includeRecurringIcsCandidates && timeMin && timeMax
+        ? `AND (
+            (end_at > ${sqlQuote(timeMin)} AND start_at < ${sqlQuote(timeMax)})
+            OR CASE
+              WHEN start_at < ${sqlQuote(timeMax)}
+                AND jsonb_typeof(metadata_json::jsonb -> 'recurrence') = 'array'
+                THEN jsonb_array_length(metadata_json::jsonb -> 'recurrence') > 0
+              ELSE false
+            END
+            OR (
+              metadata_json::jsonb ->> 'icsRecurrenceId' >= ${sqlQuote(timeMin)}
+              AND metadata_json::jsonb ->> 'icsRecurrenceId' < ${sqlQuote(timeMax)}
+            )
+          )`
+        : `${timeMinClause}${timeMaxClause}`;
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -645,8 +662,7 @@ export class CalendarRepository {
           AND provider = ${sqlQuote(provider)}
           ${sideClause}
           ${grantClause}
-          ${timeMinClause}
-          ${timeMaxClause}
+          ${eventWindowClause}
         ORDER BY start_at ASC`,
     );
     return rows.map(parseCalendarEvent);

@@ -91,6 +91,31 @@ function cachedOccurrence(args: {
   };
 }
 
+function cachedIcsEvent(args: {
+  externalId: string;
+  startAt: string;
+  endAt: string;
+  recurrence?: string[];
+  recurrenceId?: string;
+}): LifeOpsCalendarEvent {
+  return {
+    ...cachedOccurrence({
+      externalId: args.externalId,
+      grantId: "ics-grant",
+      startAt: args.startAt,
+    }),
+    id: `${AGENT_ID}:ics:owner:feed:${args.externalId}`,
+    provider: "ics",
+    calendarId: "feed",
+    endAt: args.endAt,
+    recurrence: args.recurrence ?? null,
+    metadata: {
+      ...(args.recurrence ? { recurrence: args.recurrence } : {}),
+      ...(args.recurrenceId ? { icsRecurrenceId: args.recurrenceId } : {}),
+    },
+  };
+}
+
 function googleWireEvent(args: {
   id: string;
   recurrence?: string[];
@@ -334,6 +359,60 @@ beforeEach(async () => {
   google.deleteEvent.mockClear();
   google.getEvent.mockClear();
   await resetCache();
+});
+
+describe("listCalendarEvents — recurring ICS window candidates", () => {
+  it("keeps old masters and overrides without scanning old one-off events", async () => {
+    await repo.deleteCalendarEventsForProvider(AGENT_ID, "ics");
+    await repo.upsertCalendarEvent(
+      cachedIcsEvent({
+        externalId: "old-one-off",
+        startAt: "2026-06-01T10:00:00.000Z",
+        endAt: "2026-06-01T11:00:00.000Z",
+      }),
+    );
+    await repo.upsertCalendarEvent(
+      cachedIcsEvent({
+        externalId: "old-series-master",
+        startAt: "2026-06-01T10:00:00.000Z",
+        endAt: "2026-06-01T11:00:00.000Z",
+        recurrence: [
+          ["RRULE:FREQ=DAILY", "COUNT=60"].join(String.fromCharCode(59)),
+        ],
+      }),
+    );
+    await repo.upsertCalendarEvent(
+      cachedIcsEvent({
+        externalId: "moved-override",
+        startAt: "2026-06-20T10:00:00.000Z",
+        endAt: "2026-06-20T11:00:00.000Z",
+        recurrenceId: "2026-07-08T10:00:00.000Z",
+      }),
+    );
+    await repo.upsertCalendarEvent(
+      cachedIcsEvent({
+        externalId: "in-window",
+        startAt: "2026-07-08T10:00:00.000Z",
+        endAt: "2026-07-08T11:00:00.000Z",
+      }),
+    );
+
+    const rows = await repo.listCalendarEvents(
+      AGENT_ID,
+      "ics",
+      "2026-07-08T00:00:00.000Z",
+      "2026-07-09T00:00:00.000Z",
+      "owner",
+      "ics-grant",
+      true,
+    );
+
+    expect(rows.map((row) => row.externalId)).toEqual([
+      "old-series-master",
+      "moved-override",
+      "in-window",
+    ]);
+  });
 });
 
 describe("createCalendarEvent — recurrence", () => {
