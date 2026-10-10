@@ -244,10 +244,19 @@ function booleanOrUndefined(value: unknown): boolean | undefined {
 }
 
 function numberOrUndefined(value: unknown): number | undefined {
-	if (typeof value === "number" && Number.isFinite(value)) return value;
+	// Canonical non-negative integers only: these feed integer-only Discord
+	// fields (durations, invite limits).
+	if (typeof value === "number") {
+		return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+	}
 	if (typeof value === "string" && value.trim()) {
-		const parsed = Number(value.trim());
-		if (Number.isFinite(parsed)) return parsed;
+		const trimmed = value.trim();
+		// Number("0x10") is 16, Number("1e3") is 1000, Number("5.5") is 5.5
+		// — all used to silently become guild-management params instead of
+		// being dropped.
+		if (!/^\d+$/.test(trimmed)) return undefined;
+		const parsed = Number(trimmed);
+		if (Number.isSafeInteger(parsed)) return parsed;
 	}
 	return undefined;
 }
