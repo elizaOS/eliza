@@ -4,7 +4,12 @@
  * idempotent resource shutdown without owning process signals or exit policy.
  */
 import process from "node:process";
-import { type AgentRuntime, formatError, logger } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  formatError,
+  logger,
+  type RuntimeStopOptions,
+} from "@elizaos/core";
 import {
   readAliasedEnv,
   resolveApiExposePort,
@@ -36,7 +41,11 @@ export interface StartServerOnlyHostOptions {
   bootRuntime: (
     onPostReadyPhase: (phase: PostReadyPhase) => void,
   ) => Promise<AgentRuntime | undefined>;
-  stopRuntime: (runtime: AgentRuntime, reason: string) => Promise<unknown>;
+  stopRuntime: (
+    runtime: AgentRuntime,
+    reason: string,
+    options?: RuntimeStopOptions,
+  ) => Promise<unknown>;
   stopWithoutRuntime: () => void;
 }
 export async function startServerOnlyHost({
@@ -164,6 +173,19 @@ export async function startServerOnlyHost({
       initialAgentState: deferRuntimeBootUntilOnboarding
         ? "not_started"
         : "starting",
+      onStop: async (runtimeToStop) => {
+        if (currentRuntime !== runtimeToStop) {
+          throw new Error("Server-only runtime ownership changed before stop");
+        }
+        await stopRuntime(runtimeToStop, "server-only API stop", {
+          requireQuiescence: true,
+        });
+        if (currentRuntime === runtimeToStop) {
+          currentRuntime = undefined;
+          runtimePublished = false;
+          postReadyPhase = "pending";
+        }
+      },
       onRestart: async () => {
         // Before the deferred first boot has succeeded, a restart request
         // IS the boot request — funnel it into the single-flight trigger so

@@ -14,8 +14,9 @@
  * runtime would be fake-ready: a host that cannot boot answers 503, and a
  * failed boot answers 500 with the reported state flipped to "error".
  * POST /api/agent/stop disposes the live runtime, so a stopped agent runs no
- * connectors, autonomy or scheduled tasks; a host with no `onRestart` answers
- * 501 because it could not start the agent again.
+ * connectors, autonomy or scheduled tasks. The host owns complete teardown,
+ * including its adapter and boot resources; a host without stop and restart
+ * handlers answers 501 because it cannot preserve the stop/start contract.
  */
 
 import { PostAgentAutonomyRequestSchema } from "@elizaos/contracts";
@@ -42,6 +43,7 @@ export interface AgentLifecycleRouteState {
   startedAt: number | undefined;
   chatConnectionReady: unknown;
   chatConnectionPromise: Promise<void> | null;
+  runtimeStopPromise: Promise<void> | null;
 }
 
 export interface AgentLifecycleRouteContext
@@ -54,6 +56,8 @@ export interface AgentLifecycleRouteContext
    * cannot boot, where a start request with no runtime must fail honestly.
    */
   onRestart?: (() => Promise<AgentRuntime | null>) | undefined;
+  /** Fully disposes a runtime, including host-owned adapters and boot resources. */
+  onStop?: ((runtime: AgentRuntime) => Promise<void>) | undefined;
   /** Post-swap rewiring (streams, model broadcast) — mirrors the restart route. */
   onRuntimeSwapped?: (() => void) | undefined;
   onRuntimeActivated?:
@@ -91,6 +95,10 @@ export async function handleAgentLifecycleRoutes(
     | null;
 
   if (method === "POST" && pathname === "/api/agent/start") {
+    if (state.runtimeStopPromise) {
+      error(res, "Agent stop is still in progress", 409);
+      return true;
+    }
     if (!state.runtime) {
       // A boot is already underway (parallel-bind warming window, an
       // in-flight restart, or the deferred fresh-install boot): starting is
@@ -169,19 +177,57 @@ export async function handleAgentLifecycleRoutes(
   }
 
   if (method === "POST" && pathname === "/api/agent/stop") {
+    if (state.runtimeStopPromise) {
+      error(res, "Agent stop is already in progress", 409);
+      return true;
+    }
+    if (state.agentState === "starting" || state.agentState === "restarting") {
+      error(
+        res,
+        "Agent cannot stop while a start or restart is in progress",
+        409,
+      );
+      return true;
+    }
     if (state.runtime) {
-      // Stopping only the reported state would leave connectors, autonomy and
-      // scheduled tasks running. Dispose the runtime like /api/agent/reset;
-      // POST /api/agent/start then boots a new one through onRestart.
-      if (!ctx.onRestart) {
+      // Core stop does not close the database adapter or host boot resources.
+      // The host must release everything it owns before this route publishes
+      // the runtime-less stopped state.
+      const stopRuntime = ctx.onStop;
+      if (!stopRuntime || !ctx.onRestart) {
         error(
           res,
-          "Stop is not supported in this mode: this server cannot start the agent again",
+          "Stop is not supported in this mode: this server cannot fully stop and start the agent",
           501,
         );
         return true;
       }
-      await state.runtime.stop({ fast: true });
+      const stoppedRuntime = state.runtime;
+      const stopPromise = Promise.resolve().then(() =>
+        stopRuntime(stoppedRuntime),
+      );
+      state.runtimeStopPromise = stopPromise;
+      try {
+        await stopPromise;
+      } catch (err) {
+        state.agentState = "error";
+        state.startedAt = undefined;
+        state.model = undefined;
+        error(
+          res,
+          `Agent stop failed: ${err instanceof Error ? err.message : String(err)}`,
+          500,
+        );
+        return true;
+      } finally {
+        if (state.runtimeStopPromise === stopPromise) {
+          state.runtimeStopPromise = null;
+        }
+      }
+      if (state.runtime !== stoppedRuntime) {
+        error(res, "Agent runtime changed while stop was in progress", 409);
+        return true;
+      }
       state.runtime = null;
       state.chatConnectionReady = null;
       state.chatConnectionPromise = null;

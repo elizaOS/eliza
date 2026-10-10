@@ -65,6 +65,7 @@ export function createServerState(
     chatUserId: null,
     chatConnectionReady: null,
     chatConnectionPromise: null,
+    runtimeStopPromise: null,
     adminEntityId: null,
     conversations: new Map(),
     activeChatTurnCount: 0,
