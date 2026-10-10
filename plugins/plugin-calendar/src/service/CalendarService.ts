@@ -176,7 +176,10 @@ import {
   recurrenceOriginalStartAtFrom,
   recurringEventIdFrom,
 } from "../internal/recurrence.js";
-import { getZonedDateParts } from "../internal/time.js";
+import {
+  buildUtcDateFromLocalParts,
+  getZonedDateParts,
+} from "../internal/time.js";
 import {
   cancelAllMeetingAutoJoinTasks,
   reconcileMeetingAutoJoin,
@@ -344,6 +347,36 @@ function googleEventIntersectsWindow(
     Number.isFinite(end) &&
     end > windowStart &&
     start < windowEnd
+  );
+}
+
+function allDayDateStartInTimeZone(value: string, timeZone: string): number {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (!match) {
+    fail(500, `All-day event date is not ISO: ${value}`);
+  }
+  return buildUtcDateFromLocalParts(timeZone, {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3]),
+    hour: 0,
+    minute: 0,
+    second: 0,
+  }).getTime();
+}
+
+function calendarEventIntersectsLocalWindow(
+  event: LifeOpsCalendarEvent,
+  timeMin: string,
+  timeMax: string,
+  timeZone: string,
+): boolean {
+  if (!event.isAllDay) {
+    return true;
+  }
+  return (
+    allDayDateStartInTimeZone(event.endAt, timeZone) > Date.parse(timeMin) &&
+    allDayDateStartInTimeZone(event.startAt, timeZone) < Date.parse(timeMax)
   );
 }
 
@@ -5599,7 +5632,10 @@ export class CalendarService extends Service {
       .sort();
     return {
       calendarId: calendars.length === 1 ? calendars[0].calendarId : "all",
-      events: mergeAggregatedCalendarFeedEvents(sources, links),
+      events: mergeAggregatedCalendarFeedEvents(sources, links).filter(
+        (event) =>
+          calendarEventIntersectsLocalWindow(event, timeMin, timeMax, timeZone),
+      ),
       source: sources.every((source) => source.feed.source === "synced")
         ? "synced"
         : "cache",
