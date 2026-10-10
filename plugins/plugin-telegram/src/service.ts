@@ -39,6 +39,7 @@ import {
   type World,
   type WorldPayload,
 } from "@elizaos/core";
+import { lifeOpsPassiveConnectorsEnabled } from "@elizaos/host/protocol";
 import { type Context, Telegraf } from "telegraf";
 import type {
   Chat,
@@ -692,6 +693,20 @@ export class TelegramService extends Service {
         "Service started without bot functionality",
       );
       return service;
+    }
+
+    const autoReplyRaw = runtime.getSetting("TELEGRAM_AUTO_REPLY");
+    const passiveConnectors = lifeOpsPassiveConnectorsEnabled(runtime);
+    if (
+      passiveConnectors ||
+      !(autoReplyRaw === true || autoReplyRaw === "true")
+    ) {
+      logger.warn(
+        { src: "plugin:telegram", agentId: runtime.agentId },
+        passiveConnectors
+          ? "Telegram will NOT auto-reply to messages: passive-connectors mode is ON. Inbound messages are stored only; slash commands still get a reply. Set ELIZA_LIFEOPS_PASSIVE_CONNECTORS=false and TELEGRAM_AUTO_REPLY=true to allow replies."
+          : "Telegram will NOT auto-reply to messages: TELEGRAM_AUTO_REPLY is not true. Inbound messages are stored only; slash commands still get a reply. Set TELEGRAM_AUTO_REPLY=true to allow replies.",
+      );
     }
 
     const maxRetries = 5;

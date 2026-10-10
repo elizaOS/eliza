@@ -751,6 +751,13 @@ export class IMessageService extends Service implements IIMessageService {
 
     service.connected = true;
     logger.info("iMessage service started");
+    if (!service.isAutoReplyEnabled()) {
+      logger.warn(
+        lifeOpsPassiveConnectorsEnabled(runtime)
+          ? "[imessage] Connected but will NOT reply or send pairing codes: passive-connectors mode is ON. Inbound messages are stored only. Set ELIZA_LIFEOPS_PASSIVE_CONNECTORS=false and IMESSAGE_AUTO_REPLY=true to allow replies."
+          : "[imessage] Connected but will NOT reply or send pairing codes: IMESSAGE_AUTO_REPLY is not true. Inbound messages are stored only. Set IMESSAGE_AUTO_REPLY=true to allow replies."
+      );
+    }
 
     // Emit connection ready event
     runtime.emitEvent(IMessageEventTypes.CONNECTION_READY, {
