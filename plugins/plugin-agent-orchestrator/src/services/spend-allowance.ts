@@ -105,7 +105,14 @@ function toNonNegativeNumber(value: unknown): number | null {
     return Number.isFinite(value) && value >= 0 ? value : null;
   }
   if (typeof value === "string" && value.trim().length > 0) {
-    const parsed = Number.parseFloat(value);
+    // Number.parseFloat stops at the first non-digit ("0.5junk" -> 0.5), so
+    // a malformed value was silently accepted instead of returning null.
+    // Require the whole trimmed value to be decimal, mirroring
+    // parseAndValidateCredits in stripe-event.ts.
+    const text = value.trim();
+    const parsed = /^\+?\d+(?:\.\d+)?$/.test(text)
+      ? Number(text)
+      : Number.NaN;
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
   }
   return null;
