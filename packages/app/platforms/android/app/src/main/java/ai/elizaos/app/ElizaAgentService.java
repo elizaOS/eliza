@@ -264,8 +264,8 @@ public class ElizaAgentService extends Service {
 
     /** Native credential writers must await this exact request and normal service/socket absence. */
     public static synchronized long stopForCredentialChange(Context context) {
-        if (credentialShutdownPending) return credentialShutdownEpoch;
-        long epoch = ++credentialShutdownEpoch;
+        // Retry the same fenced request if Android did not deliver its earlier stop intent.
+        long epoch = credentialShutdownPending ? credentialShutdownEpoch : ++credentialShutdownEpoch;
         credentialShutdownPending = true;
         credentialShutdownConfirmed = false;
         Intent intent = new Intent(context, ElizaAgentService.class);
