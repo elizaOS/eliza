@@ -184,10 +184,15 @@ function parseMessageLookupHints(
 function asTimestampMs(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
-    const n = Number(value);
-    if (Number.isFinite(n)) return n;
-    const parsed = Date.parse(value);
-    if (Number.isFinite(parsed)) return parsed;
+    const trimmed = value.trim();
+    // Canonical decimal strings only: Number("") is 0, Number("0x10") is 16,
+    // and Number("1e3") is 1000 — all used to silently become timestamps
+    // instead of being dropped or parsed as dates.
+    if (/^-?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
+    if (trimmed.length > 0) {
+      const parsed = Date.parse(trimmed);
+      if (Number.isFinite(parsed)) return parsed;
+    }
   }
   return undefined;
 }
