@@ -918,7 +918,7 @@ it("requires the guide-label capability for labels, offers, pause and a configur
   }
 });
 
-it("reduces the one active HTTPS page to its origin and a complete, redacted title", () => {
+it("reduces the one active HTTPS page to its origin and the complete title", () => {
   const tab = {
     id: "7",
     url: "https://pay.example.test/account/123?token=secret#review",
@@ -936,21 +936,10 @@ it("reduces the one active HTTPS page to its origin and a complete, redacted tit
     origin: "https://pay.example.test",
     title: "Pay your bill now",
   });
-  // Preserve the complete title while redacting obvious personal data.
-  const long = currentPageFromTabs([{ ...tab, title: "x".repeat(400) }], 1);
-  expect(long?.title).toBe("x".repeat(400));
-  expect(currentPageTitle(`${"a".repeat(119)}\u{1f600}`)).toBe(
-    `${"a".repeat(119)}\u{1f600}`,
-  );
-  expect(currentPageTitle("a".repeat(120))).toHaveLength(120);
-  expect(
-    currentPageTitle(
-      "Inbox (3) - margaret.smith@example.com - Mail · Account 1234 5678 9012",
-    ),
-  ).toBe("Inbox (3) - [email] - Mail · Account [number]");
-  expect(currentPageTitle("Call 555-123-4567 · Bill for March 2026")).toBe(
-    "Call [number] · Bill for March 2026",
-  );
+  // Model-facing context preserves the complete authorized title.
+  const title = `${"a".repeat(119)}😀 ${"x".repeat(400)} user@example.com 123456789`;
+  expect(currentPageFromTabs([{ ...tab, title }], 1)?.title).toBe(title);
+  expect(currentPageTitle(title)).toBe(title);
   expect(currentPageFromTabs([{ ...tab, title: undefined }], 1)?.title).toBe(
     "",
   );
