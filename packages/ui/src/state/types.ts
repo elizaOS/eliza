@@ -5,22 +5,9 @@
  */
 
 import type {
-  BscTradeExecuteRequest,
-  BscTradeExecuteResponse,
-  BscTradePreflightResponse,
-  BscTradeQuoteRequest,
-  BscTradeQuoteResponse,
-  BscTradeTxStatusResponse,
-  BscTransferExecuteRequest,
-  BscTransferExecuteResponse,
   DropStatus,
   MintResult,
   ReleaseChannel,
-  StewardBalanceResponse,
-  StewardTokenBalancesResponse,
-  StewardWalletAddressesResponse,
-  StewardWebhookEventsResponse,
-  StewardWebhookEventType,
   WalletAddresses,
   WalletBalancesResponse,
   WalletChainKind,
@@ -30,9 +17,6 @@ import type {
   WalletNftsResponse,
   WalletPrimaryMap,
   WalletSource,
-  WalletTradingProfileResponse,
-  WalletTradingProfileSourceFilter,
-  WalletTradingProfileWindow,
 } from "@elizaos/contracts";
 import type { TriggerRunRecord } from "@elizaos/core";
 import type {
@@ -776,27 +760,7 @@ export interface AppActions {
   loadWalletConfig: () => Promise<void>;
   loadBalances: () => Promise<void>;
   loadNfts: () => Promise<void>;
-  executeBscTrade: (
-    request: BscTradeExecuteRequest,
-  ) => Promise<BscTradeExecuteResponse>;
-  executeBscTransfer: (
-    request: BscTransferExecuteRequest,
-  ) => Promise<BscTransferExecuteResponse>;
-  getBscTradePreflight: (
-    tokenAddress?: string,
-  ) => Promise<BscTradePreflightResponse>;
-  getBscTradeQuote: (
-    request: BscTradeQuoteRequest,
-  ) => Promise<BscTradeQuoteResponse>;
-  getBscTradeTxStatus: (hash: string) => Promise<BscTradeTxStatusResponse>;
   getStewardStatus: () => Promise<StewardStatusResponse>;
-  getStewardAddresses: () => Promise<StewardWalletAddressesResponse>;
-  getStewardBalance: (chainId?: number) => Promise<StewardBalanceResponse>;
-  getStewardTokens: (chainId?: number) => Promise<StewardTokenBalancesResponse>;
-  getStewardWebhookEvents: (opts?: {
-    event?: StewardWebhookEventType;
-    since?: number;
-  }) => Promise<StewardWebhookEventsResponse>;
   getStewardHistory: (opts?: {
     status?: string;
     limit?: number;
@@ -813,10 +777,6 @@ export interface AppActions {
     txId: string,
     reason?: string,
   ) => Promise<StewardApprovalActionResponse>;
-  loadWalletTradingProfile: (
-    window?: WalletTradingProfileWindow,
-    source?: WalletTradingProfileSourceFilter,
-  ) => Promise<WalletTradingProfileResponse>;
   handleWalletApiKeySave: (
     config: WalletConfigUpdateRequest,
   ) => Promise<boolean>;
