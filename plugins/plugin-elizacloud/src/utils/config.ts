@@ -286,7 +286,13 @@ export function resolveCloudTimeoutMs(envKey: string, defaultMs: number): number
     const raw = typeof process !== "undefined" ? process.env[envKey] : undefined;
     if (raw === undefined || raw.trim() === "")
         return defaultMs;
-    const parsed = Number.parseInt(raw, 10);
+    // Number.parseInt stops at the first non-digit ("1e4" -> 1), so a typo was
+    // silently accepted as the timeout ceiling instead of falling back to
+    // defaultMs — and "0.5" silently opted out of the timeout entirely.
+    // Require the whole trimmed value to be decimal, mirroring getNumericSetting
+    // in plugins/plugin-embeddings/src/utils/config.ts.
+    const text = raw.trim();
+    const parsed = /^[+-]?\d+$/.test(text) ? Number(text) : Number.NaN;
     if (!Number.isFinite(parsed))
         return defaultMs;
     return parsed <= 0 ? undefined : parsed;
