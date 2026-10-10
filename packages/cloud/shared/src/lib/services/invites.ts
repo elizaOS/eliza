@@ -44,6 +44,9 @@ export interface InviteWithOrganization extends OrganizationInvite {
     name: string;
     slug: string;
   };
+  inviter?: {
+    name: string | null;
+  } | null;
 }
 
 /**
