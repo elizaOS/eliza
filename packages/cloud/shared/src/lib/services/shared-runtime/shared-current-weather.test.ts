@@ -194,6 +194,21 @@ describe("current US weather evidence", () => {
     expect(result.text).toContain("Fair");
     expect(result.text).toContain(value.timestamp);
   });
+  it("sends an accented city to the geocoder without accents", async () => {
+    // The USGS geocoder answers [] for "Española" and finds "Espanola".
+    const terms: string[] = [];
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      terms.push(url.searchParams.get("term") ?? "");
+      return Response.json([]);
+    }) as typeof fetch;
+    await runCurrentUsWeatherSearch("current public weather in Española, New Mexico", {
+      fetchImpl,
+      cache: false,
+    });
+    expect(terms[0]).toBe("Espanola");
+  });
+
   it("accepts named US states/abbreviations without city hardcoding", () => {
     expect(parseExplicitUsWeatherQuery("current public weather in Madison, Wisconsin")).toEqual({
       city: "Madison",

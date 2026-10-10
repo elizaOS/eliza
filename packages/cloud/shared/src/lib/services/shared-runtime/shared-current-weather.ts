@@ -542,7 +542,9 @@ export async function runCurrentUsWeatherSearch(
     if (cached && cached.expiresAt > now()) metadata = cached.value;
     if (!metadata) {
       const geo = new URL("https://dashboard.waterdata.usgs.gov/service/geocoder/get/location/1.0");
-      geo.searchParams.set("term", target.city);
+      // The USGS geocoder finds "Espanola" but returns nothing for "Española";
+      // the place filter below already compares accent-folded names.
+      geo.searchParams.set("term", target.city.normalize("NFKD").replace(/\p{M}/gu, ""));
       geo.searchParams.set("include", "gnis");
       geo.searchParams.set("states", target.state);
       geo.searchParams.set("maxSuggestions", "20");
