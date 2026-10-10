@@ -225,36 +225,6 @@ const cloudRoutes: Route[] = [
         handler: cloudRouteHandler,
     },
     {
-        type: "GET",
-        path: "/api/cloud/agents",
-        rawPath: true,
-        handler: cloudRouteHandler,
-    },
-    {
-        type: "POST",
-        path: "/api/cloud/agents",
-        rawPath: true,
-        handler: cloudRouteHandler,
-    },
-    {
-        type: "POST",
-        path: "/api/cloud/agents/:agentId/provision",
-        rawPath: true,
-        handler: cloudRouteHandler,
-    },
-    {
-        type: "POST",
-        path: "/api/cloud/agents/:agentId/connect",
-        rawPath: true,
-        handler: cloudRouteHandler,
-    },
-    {
-        type: "POST",
-        path: "/api/cloud/agents/:agentId/shutdown",
-        rawPath: true,
-        handler: cloudRouteHandler,
-    },
-    {
         type: "POST",
         path: "/api/cloud/coding-containers/promotions",
         rawPath: true,
