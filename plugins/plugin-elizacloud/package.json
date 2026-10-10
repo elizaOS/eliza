@@ -380,7 +380,7 @@
       },
       "ELIZAOS_CLOUD_ENABLED": {
         "type": "boolean",
-        "description": "Enable ElizaCloud container provisioning, device auth, bridge, and backup services. When false, only inference model handlers are active.",
+        "description": "Enable ElizaCloud container provisioning and bridge services. When false, only inference model handlers are active.",
         "required": false,
         "default": false,
         "sensitive": false

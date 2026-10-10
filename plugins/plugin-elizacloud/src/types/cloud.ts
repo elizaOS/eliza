@@ -2,7 +2,7 @@
  * Cloud-specific types for ElizaCloud integration.
  *
  * These types mirror the eliza-cloud-v2 database schemas and API contracts
- * for containers, auth, credits, bridge messaging, and agent state snapshots.
+ * for containers, auth, credits, and bridge messaging.
  */
 
 export { type CloudCodingContainerService, type CloudCodingAgent, type CloudCodingContainerSession, type CloudCodingContainerStatus, type CloudCodingPatch, type CloudCodingPatchFormat, type CloudCodingPromotion, type CloudCodingSyncDirection, type CloudCodingSyncResult, type CloudVfsBundle, type CloudVfsDeletedFile, type CloudVfsFile, type CloudVfsFileEncoding, type CloudVfsSourceKind, type PromoteVfsToCloudContainerRequest, type PromoteVfsToCloudContainerResponse, type RequestCodingAgentContainerRequest, type RequestCodingAgentContainerResponse, type SyncCloudCodingContainerRequest, type SyncCloudCodingContainerResponse } from "@elizaos/contracts";
@@ -58,36 +58,6 @@ export interface CloudContainer {
   updated_at: string;
 }
 
-export interface CreateContainerRequest {
-  name: string;
-  project_name: string;
-  description?: string;
-  port?: number;
-  desired_count?: number;
-  cpu?: number;
-  memory?: number;
-  environment_vars?: Record<string, string>;
-  health_check_path?: string;
-  ecr_image_uri: string;
-  ecr_repository_uri?: string;
-  image_tag?: string;
-  architecture?: ContainerArchitecture;
-}
-
-export interface CreateContainerResponse {
-  success: boolean;
-  data: CloudContainer;
-  message: string;
-  creditsDeducted: number;
-  creditsRemaining: number;
-  stackName: string;
-  polling: {
-    endpoint: string;
-    intervalMs: number;
-    expectedDurationMs: number;
-  };
-}
-
 export interface ContainerListResponse {
   success: boolean;
   data: CloudContainer[];
@@ -103,37 +73,7 @@ export interface ContainerDeleteResponse {
   message?: string;
 }
 
-export interface ContainerHealthResponse {
-  success: boolean;
-  data: {
-    status: string;
-    healthy: boolean;
-    lastCheck: string | null;
-    uptime: number | null;
-  };
-}
-
 // ─── Auth Types ─────────────────────────────────────────────────────────────
-
-export type DevicePlatform = "ios" | "android" | "macos" | "windows" | "linux" | "web";
-
-export interface DeviceAuthRequest {
-  deviceId: string;
-  platform: DevicePlatform;
-  appVersion: string;
-  deviceName?: string;
-}
-
-export interface DeviceAuthResponse {
-  success: boolean;
-  data: {
-    apiKey: string;
-    userId: string;
-    organizationId: string;
-    credits: number;
-    isNew: boolean;
-  };
-}
 
 export interface CloudCredentials {
   apiKey: string;
@@ -246,46 +186,6 @@ export interface PollGatewayRelayResponse {
   };
 }
 
-// ─── Snapshot / Backup Types ────────────────────────────────────────────────
-
-export type SnapshotType = "manual" | "auto" | "pre-eviction";
-
-export interface AgentSnapshot {
-  id: string;
-  containerId: string;
-  organizationId: string;
-  snapshotType: SnapshotType;
-  storageUrl: string;
-  sizeBytes: number;
-  agentConfig: Record<string, unknown>;
-  metadata: Record<string, unknown>;
-  created_at: string;
-}
-
-export interface CreateSnapshotRequest {
-  snapshotType?: SnapshotType;
-  metadata?: Record<string, unknown>;
-}
-
-export interface CreateSnapshotResponse {
-  success: boolean;
-  data: AgentSnapshot;
-}
-
-export interface SnapshotListResponse {
-  success: boolean;
-  data: AgentSnapshot[];
-}
-
-export interface RestoreSnapshotRequest {
-  snapshotId: string;
-}
-
-export interface RestoreSnapshotResponse {
-  success: boolean;
-  message: string;
-}
-
 // ─── Cloud Config Types ─────────────────────────────────────────────────────
 
 export type InferenceMode = "cloud" | "byok" | "local";
@@ -297,10 +197,6 @@ export interface CloudPluginConfig {
   baseUrl: string;
   /** Stored API key for authenticated requests. */
   apiKey?: string;
-  /** Device ID used for auto-signup authentication. */
-  deviceId?: string;
-  /** Platform identifier. */
-  platform?: DevicePlatform;
   /** Inference mode: cloud (ElizaCloud proxied), byok (user keys), local (no cloud). */
   inferenceMode: InferenceMode;
   /** Auto-deploy agents to cloud on creation. */
@@ -310,19 +206,6 @@ export interface CloudPluginConfig {
     reconnectIntervalMs: number;
     maxReconnectAttempts: number;
     heartbeatIntervalMs: number;
-  };
-  /** Auto-backup settings. */
-  backup: {
-    autoBackupIntervalMs: number;
-    maxSnapshots: number;
-  };
-  /** Default container settings for new deployments. */
-  container: {
-    defaultImage: string;
-    defaultArchitecture: ContainerArchitecture;
-    defaultCpu: number;
-    defaultMemory: number;
-    defaultPort: number;
   };
 }
 
@@ -335,17 +218,6 @@ export const DEFAULT_CLOUD_CONFIG: CloudPluginConfig = {
     reconnectIntervalMs: 3000,
     maxReconnectAttempts: 20,
     heartbeatIntervalMs: 30_000,
-  },
-  backup: {
-    autoBackupIntervalMs: 3_600_000, // 1 hour
-    maxSnapshots: 10,
-  },
-  container: {
-    defaultImage: "elizaos/agent:latest",
-    defaultArchitecture: "arm64",
-    defaultCpu: 1792,
-    defaultMemory: 1792,
-    defaultPort: 3000,
   },
 };
 

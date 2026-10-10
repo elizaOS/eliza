@@ -3,12 +3,9 @@
  *
  * Two distinct auth flows live here:
  *
- * 1. **Device auto-signup** (`authenticateWithDevice`) — convenience-only.
- *    Derives a hardware fingerprint and exchanges it for a free-tier API key
- *    against the cloud signup endpoint. The result is treated as opaque and
- *    is **never** trusted as inbound auth for the local Eliza dashboard.
- *    See `docs/security/remote-auth-hardening-plan.md` §7 for the explicit
- *    demotion rationale.
+ * 1. **Saved API key** (`ELIZAOS_CLOUD_API_KEY` / `authenticateWithApiKey`) —
+ *    the credential the agent uses for outbound Cloud calls. Without one the
+ *    service starts unauthenticated until the user signs in.
  *
  * 2. **Eliza Cloud SSO** (`getSsoRedirectUrl` / `exchangeCodeForSession`) —
  *    OAuth-style authorization-code flow against the cloud issuer. The
@@ -27,37 +24,9 @@ import { logger } from "@elizaos/core";
 import { resolveApiSecurityConfig } from "@elizaos/host/protocol";
 import { resolveDesktopApiPort } from "@elizaos/host/protocol";
 import { type CloudBootstrapService } from "./cloud-bootstrap";
-import { getSetting, isTruthyCloudFlag } from "../utils/config";
 import { type CloudCredentials } from "../types/cloud";
-import { type DeviceAuthResponse } from "../types/cloud";
-import { type DevicePlatform } from "../types/cloud";
 import { type IAgentRuntime } from "@elizaos/core";
 import { type RuntimeEnvRecord } from "@elizaos/host/protocol";
-/** SHA-256 hash of hostname + platform + arch + cpu + memory. */
-async function deriveDeviceId(): Promise<string> {
-    const os = await import("node:os");
-    const crypto = await import("node:crypto");
-    const cpus = os.cpus();
-    const raw = [
-        os.hostname(),
-        os.platform(),
-        os.arch(),
-        cpus[0]?.model ?? "?",
-        cpus.length,
-        os.totalmem(),
-    ].join(":");
-    return crypto.createHash("sha256").update(raw).digest("hex");
-}
-function detectPlatform(): DevicePlatform {
-    if (typeof process === "undefined")
-        return "web";
-    const map: Record<string, DevicePlatform> = {
-        darwin: "macos",
-        win32: "windows",
-        linux: "linux",
-    };
-    return map[process.platform] ?? "linux";
-}
 // ─── Eliza Cloud SSO ───────────────────────────────────────────────────────
 /**
  * Required ID-token claims for an Eliza Cloud SSO exchange.
@@ -504,22 +473,7 @@ export class CloudAuthService extends Service {
             this.scheduleRevalidation(0);
             return;
         }
-        // Device-based auto-signup when explicitly enabled. The runtime returns
-        // the flag as boolean `true` for "true", so read it through the
-        // stringifying helper rather than comparing against string literals.
-        if (isTruthyCloudFlag(getSetting(this.runtime, "ELIZAOS_CLOUD_ENABLED"))) {
-            try {
-                await this.authenticateWithDevice();
-            }
-            catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
-                logger.warn(`[CloudAuth] Device auth failed (cloud may be unreachable): ${msg}`);
-                logger.info("[CloudAuth] Service will start unauthenticated — cloud features disabled until connectivity is restored");
-            }
-        }
-        else {
-            logger.info("[CloudAuth] Cloud not enabled (set ELIZAOS_CLOUD_ENABLED=true)");
-        }
+        logger.info("[CloudAuth] No Eliza Cloud API key configured — sign in to Eliza Cloud to enable cloud features");
     }
     /**
      * Probe the saved key: `valid` when an authenticated `/models` call succeeds,
@@ -589,36 +543,6 @@ export class CloudAuthService extends Service {
      */
     isApiKeyInvalid(): boolean {
         return this.revalidationState.keyState === "invalid";
-    }
-    /**
-     * Free-tier device auto-signup. **Convenience only — not a security
-     * primitive.** The hardware fingerprint is treated as opaque material the
-     * cloud signup endpoint can use to mint a fresh API key + $5 free credit
-     * for new installs. The result is usable for outbound LLM calls; it never
-     * authorizes inbound dashboard access.
-     *
-     * See `docs/security/remote-auth-hardening-plan.md` §7.
-     */
-    async authenticateWithDevice(): Promise<CloudCredentials> {
-        const deviceId = await deriveDeviceId();
-        const platform = detectPlatform();
-        const appVersion = process.env.ELIZAOS_CLOUD_APP_VERSION ?? "2.0.0-beta.0";
-        const os = await import("node:os");
-        logger.info(`[CloudAuth] Authenticating device (platform=${platform})`);
-        const response = await this.client.requestData<DeviceAuthResponse>("POST", "/device-auth", {
-            skipAuth: true,
-            json: { deviceId, platform, appVersion, deviceName: os.hostname() },
-        });
-        this.credentials = {
-            apiKey: response.data.apiKey,
-            userId: response.data.userId,
-            organizationId: response.data.organizationId,
-            authenticatedAt: Date.now(),
-        };
-        this.client.setApiKey(response.data.apiKey);
-        const action = response.data.isNew ? "New account created" : "Authenticated";
-        logger.info(`[CloudAuth] ${action} (credits: $${response.data.credits.toFixed(2)})`);
-        return this.credentials;
     }
     authenticateWithApiKey(input: ApiKeyAuthInput): CloudCredentials {
         const apiKey = input.apiKey.trim();
