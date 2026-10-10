@@ -218,6 +218,35 @@ describe("wallet router action", () => {
     expect(result?.data?.transactionHash).toBe("0xtest");
   });
 
+  it("refuses a confirmed transfer when the selected Steward backend did not load", async () => {
+    const runtime = createRuntime();
+    vi.mocked(runtime.getSetting).mockImplementation((key: string) =>
+      key === "ELIZA_WALLET_BACKEND" ? "steward" : null,
+    );
+    const service = await WalletBackendService.start(runtime);
+    vi.mocked(runtime.getService).mockImplementation((name: string) =>
+      name === WalletBackendService.serviceType ? service : null,
+    );
+    const base = handler("base", "Base", "8453", "evm");
+    service.registerChainHandler(base);
+
+    const result = await runConfirmed(runtime, {
+      subaction: "transfer",
+      chain: "base",
+      fromToken: "ETH",
+      amount: "0.5",
+      recipient: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+      mode: "execute",
+    });
+
+    expect(result?.success).toBe(false);
+    expect(result?.data?.error).toBe("EXECUTION_FAILED");
+    expect(String(result?.text)).toContain(
+      "Steward is the selected wallet backend but it did not load",
+    );
+    expect(base.execute).not.toHaveBeenCalled();
+  });
+
   it("routes EVM swap through the selected chain handler", async () => {
     const { runtime, service } = createService();
     const base = handler("base", "Base", "8453", "evm");

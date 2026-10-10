@@ -1399,9 +1399,12 @@ export async function handleWalletRoutes(
       executionBlockedReason: capability.executionBlockedReason,
       evmSigningCapability: capability.evmSigningCapability,
       evmSigningReason: capability.evmSigningReason,
-      solanaSigningAvailable: primaryAddresses.solanaAddress
-        ? localSolanaSignerAvailable || primary.solana === "cloud"
-        : false,
+      // Solana signing in this process is local-key only; a cloud-primary
+      // Solana wallet has no signer here.
+      solanaSigningAvailable:
+        primary.solana !== "cloud" &&
+        Boolean(primaryAddresses.solanaAddress) &&
+        localSolanaSignerAvailable,
     };
     const dual = buildDualWalletShape(config, addresses, isCloudWalletEnabled);
     if (dual) {

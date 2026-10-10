@@ -14,7 +14,9 @@
  * Li.Fi/CCTP routing can surface a real quote). If backend resolution fails
  * at boot, the service still starts so metadata/dry-run stays available;
  * `getWalletBackend()` throws the captured error only when a caller actually
- * needs signing.
+ * needs signing. When Steward is the selected backend and it did not load,
+ * `execute` requests are refused: the chain handlers sign with the runtime's
+ * local keys, which belong to a different wallet than the Steward one.
  */
 import {
   type IAgentRuntime,
@@ -36,6 +38,7 @@ import type {
 } from "../types/wallet-router.js";
 import { normalizeWalletChainKey } from "../types/wallet-router.js";
 import type { WalletBackend } from "../wallet/backend.js";
+import { StewardUnavailableError } from "../wallet/errors.js";
 import { resolveWalletBackend } from "../wallet/select-backend.js";
 import "../core-augmentation.js";
 
@@ -237,6 +240,17 @@ export class WalletBackendService extends Service {
             tokens: handler.tokens,
           },
         },
+      };
+    }
+
+    // Chain handlers sign `execute` requests with the runtime's local keys.
+    // With Steward selected, the wallet the user sees and funds is the
+    // Steward one, so a local-key signature would spend from another address.
+    if (this.backendLoadError instanceof StewardUnavailableError) {
+      return {
+        ok: false,
+        error: "EXECUTION_FAILED",
+        detail: `Steward is the selected wallet backend but it did not load: ${this.backendLoadError.message}`,
       };
     }
 
