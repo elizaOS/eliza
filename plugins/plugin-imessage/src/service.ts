@@ -2521,15 +2521,26 @@ export class IMessageService extends Service implements IIMessageService {
         content,
         resolveInteractionAppBaseUrl(this.runtime)
       ).trim();
-      if (!replyText) {
+      const replyAttachments = content.attachments ?? [];
+      if (!replyText && replyAttachments.length === 0) {
         return [];
       }
 
-      const sendResult = await this.sendSingleMessage(replyTarget, replyText);
-      if (!sendResult.success) {
-        logger.error(`[imessage] Reply send failed for ROWID=${row.rowId}: ${sendResult.error}`);
-        return [];
-      }
+      const mediaUrls = replyAttachments.map((attachment) => attachment.url);
+      // Same send path as the connector send handler: it chunks long text and
+      // delivers attachments. Blooio refuses media sends, so there the text
+      // goes out first and the attachment refusal is still reported.
+      const textFirst =
+        this.settings?.transport === "blooio" && mediaUrls.length > 0 && replyText.length > 0;
+      const textResult = await this.sendMessage(replyTarget, replyText, {
+        ...(mediaUrls.length > 0 && !textFirst ? { mediaUrls } : {}),
+        accountId,
+      });
+      const mediaResult =
+        textFirst && textResult.success
+          ? await this.sendMessage(replyTarget, "", { mediaUrls, accountId })
+          : undefined;
+      const failed = [textResult, mediaResult].find((result) => result && !result.success);
 
       const responseMemory: Memory = {
         id: createUniqueUuid(this.runtime, `imessage-reply-${row.rowId}-${Date.now()}`),
@@ -2538,6 +2549,8 @@ export class IMessageService extends Service implements IIMessageService {
         roomId,
         content: {
           ...content,
+          // Record only what was delivered.
+          ...(failed ? { attachments: [] } : {}),
           text: replyText,
           source: "imessage",
           channelType,
@@ -2555,8 +2568,26 @@ export class IMessageService extends Service implements IIMessageService {
         },
         createdAt: Date.now(),
       };
-
-      await this.runtime.createMemory(responseMemory, "messages");
+      if (textResult.success) {
+        await this.runtime.createMemory(responseMemory, "messages");
+      }
+      // A failed send is thrown so the turn that asked for the reply sees the
+      // failure instead of an empty success.
+      if (failed) {
+        const error = new ElizaError("iMessage reply delivery failed", {
+          code: "IMESSAGE_REPLY_DELIVERY_FAILED",
+          context: {
+            accountId,
+            rowId: row.rowId,
+            detail: failed.error,
+            acceptedMessageIds: [textResult, mediaResult].flatMap(
+              (result) => result?.messageIds ?? []
+            ),
+          },
+        });
+        this.runtime.reportError("imessage.replyDelivery", error, { rowId: row.rowId });
+        throw error;
+      }
       return [responseMemory];
     };
 

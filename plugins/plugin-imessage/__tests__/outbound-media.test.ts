@@ -338,4 +338,80 @@ describe("iMessage service — media → AppleScript attachment build", () => {
     );
     expect(hasMediaCall).toBeDefined();
   });
+
+  it("sends reply attachments and throws when the reply send fails", async () => {
+    const replies: Content[] = [];
+    const runtime = {
+      agentId: "agent-1" as UUID,
+      plugins: [],
+      emitEvent: vi.fn(),
+      getSetting: vi.fn((key: string) => (key === "IMESSAGE_AUTO_REPLY" ? "true" : null)),
+      ensureConnection: vi.fn(async () => undefined),
+      createMemory: vi.fn(async () => undefined),
+      reportError: vi.fn(),
+      messageService: {
+        handleMessage: async (
+          _runtime: IAgentRuntime,
+          _memory: unknown,
+          callback: (content: Content) => Promise<unknown>
+        ) => callback(replies.shift() as Content),
+      },
+    } as unknown as IAgentRuntime;
+    const svc = new IMessageService(runtime);
+    (svc as unknown as { runtime: IAgentRuntime }).runtime = runtime;
+    (svc as unknown as { settings: unknown }).settings = {
+      pollIntervalMs: 0,
+      dmPolicy: "open",
+      groupPolicy: "open",
+    };
+    const scripts: string[] = [];
+    const runAppleScript = vi.fn(async (script: string) => {
+      scripts.push(script);
+      return "";
+    });
+    Object.assign(svc, {
+      runAppleScript,
+      ensureContactsLoaded: vi.fn(async () => undefined),
+    });
+    const dispatch = () =>
+      (
+        svc as unknown as { dispatchInboundMessage(row: unknown): Promise<void> }
+      ).dispatchInboundMessage({
+        rowId: 7,
+        guid: "guid-7",
+        text: "send the chart",
+        kind: "text",
+        handle: "+14155552671",
+        chatId: "+14155552671",
+        chatType: "direct",
+        displayName: null,
+        timestamp: 1,
+        isFromMe: false,
+        service: "iMessage",
+        attachments: [],
+      });
+
+    const fixtureDir = await mkdtemp(join(tmpdir(), "imessage-media-test-"));
+    const fixturePath = join(fixtureDir, "chart.png");
+    await writeFile(fixturePath, "media");
+    try {
+      replies.push({ text: "", attachments: [{ id: "chart", url: fixturePath }] });
+      await dispatch();
+      expect(scripts).toHaveLength(1);
+      expect(scripts[0]).toContain("POSIX file");
+
+      replies.push({ text: "here it is" });
+      runAppleScript.mockRejectedValueOnce(new Error("Messages is not running"));
+      await expect(dispatch()).rejects.toMatchObject({
+        code: "IMESSAGE_REPLY_DELIVERY_FAILED",
+      });
+      expect(runtime.reportError).toHaveBeenCalledWith(
+        "imessage.replyDelivery",
+        expect.objectContaining({ code: "IMESSAGE_REPLY_DELIVERY_FAILED" }),
+        { rowId: 7 }
+      );
+    } finally {
+      await rm(fixtureDir, { recursive: true, force: true });
+    }
+  });
 });

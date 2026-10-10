@@ -2150,7 +2150,8 @@ export class SlackService extends Service implements ISlackService {
       response: Content,
     ): Promise<Memory[]> => {
       const responseText = response.text || "";
-      if (!responseText.trim()) {
+      const responseAttachments = response.attachments ?? [];
+      if (!responseText.trim() && responseAttachments.length === 0) {
         this.runtime.logger.warn(
           { src: "plugin:slack", channelId, roomId: room.id },
           "Empty response from model, skipping sendMessage",
@@ -2158,20 +2159,33 @@ export class SlackService extends Service implements ISlackService {
         return [];
       }
 
-      const sent = await this.sendMessage(
-        channelId,
-        responseText,
-        {
-          threadTs,
-          replyBroadcast: undefined,
-          unfurlLinks: undefined,
-          unfurlMedia: undefined,
-          mrkdwn: undefined,
-          attachments: undefined,
-          blocks: undefined,
-        },
-        accountId,
-      );
+      const sent = responseText.trim()
+        ? await this.sendMessage(
+            channelId,
+            responseText,
+            {
+              threadTs,
+              replyBroadcast: undefined,
+              unfurlLinks: undefined,
+              unfurlMedia: undefined,
+              mrkdwn: undefined,
+              attachments: undefined,
+              blocks: undefined,
+            },
+            accountId,
+          )
+        : { messages: [] as Array<{ ts: string; text: string }> };
+      // Same upload path as handleSendMessage: fetch bytes through the SSRF
+      // guard and upload each file into the reply thread.
+      const attachmentDelivery =
+        responseAttachments.length > 0
+          ? await this.sendOutboundAttachments(
+              channelId,
+              responseAttachments,
+              threadTs,
+              accountId,
+            )
+          : null;
 
       const responseRoom = await this.ensureRoomExists(
         channelId,
@@ -2219,14 +2233,76 @@ export class SlackService extends Service implements ISlackService {
         }),
       );
 
+      const attachmentFailures = attachmentDelivery?.failures ?? [];
+      const firstFileId = attachmentDelivery?.delivered[0]?.fileId;
+      if (firstFileId && attachmentFailures.length === 0) {
+        responseMemories.push({
+          id: createUniqueUuid(
+            this.runtime,
+            this.scopedSlackKey(
+              "slack",
+              `${channelId}-file-${firstFileId}`,
+              accountId,
+            ),
+          ),
+          agentId: this.runtime.agentId,
+          roomId: responseRoom.id,
+          entityId: this.runtime.agentId,
+          content: {
+            text: "",
+            attachments: responseAttachments,
+            source: "slack",
+            inReplyTo: memory.id,
+            metadata: { accountId },
+          },
+          metadata: {
+            type: "message",
+            source: "slack",
+            provider: "slack",
+            accountId,
+            fromBot: true,
+            fromId: this.runtime.agentId,
+            sourceId: this.runtime.agentId,
+            slackChannelId: channelId,
+            slackThreadTs: threadTs,
+            slackFileIds: (attachmentDelivery?.delivered ?? []).map(
+              ({ fileId }) => fileId,
+            ),
+          } satisfies Memory["metadata"],
+          createdAt: Date.now(),
+        });
+      }
+
       for (const responseMemory of responseMemories) {
         await this.runtime.createMemory(responseMemory, "messages");
       }
 
-      await this.runtime.emitEvent(
-        SlackEventTypes.MESSAGE_SENT as string,
-        this.buildEventPayload(accountId),
-      );
+      if (responseMemories.length > 0) {
+        await this.runtime.emitEvent(
+          SlackEventTypes.MESSAGE_SENT as string,
+          this.buildEventPayload(accountId),
+        );
+      }
+
+      if (attachmentFailures.length > 0) {
+        const error = new ElizaError("Slack reply attachment delivery failed", {
+          code: "SLACK_REPLY_ATTACHMENT_DELIVERY_FAILED",
+          context: {
+            accountId,
+            channelId,
+            threadTs,
+            failures: attachmentFailures,
+            deliveredFileIds: (attachmentDelivery?.delivered ?? []).map(
+              ({ fileId }) => fileId,
+            ),
+          },
+        });
+        this.runtime.reportError("slack-reply-delivery", error, {
+          accountId,
+          channelId,
+        });
+        throw error;
+      }
 
       return responseMemories;
     };
