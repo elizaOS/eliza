@@ -703,10 +703,18 @@ export class AgentRuntime implements IAgentRuntime {
 		if (opts.conversationLength !== undefined) {
 			this.#conversationLength = opts.conversationLength;
 		} else if (opts.settings?.CONVERSATION_LENGTH) {
-			const parsedConversationLength = parseInt(
-				String(opts.settings.CONVERSATION_LENGTH),
-				10,
-			);
+			// parseInt stops at the first non-digit ("50junk" -> 50), so a
+			// typo was silently accepted instead of the default 100. Require
+			// the whole trimmed value to be decimal, mirroring getNumberEnv
+			// in the else branch below.
+			const conversationLengthText = String(
+				opts.settings.CONVERSATION_LENGTH,
+			).trim();
+			const parsedConversationLength = /^\+?\d+$/.test(
+				conversationLengthText,
+			)
+				? Number(conversationLengthText)
+				: Number.NaN;
 			this.#conversationLength = Number.isNaN(parsedConversationLength)
 				? 100
 				: parsedConversationLength;
