@@ -87,6 +87,7 @@ import { useInlineWidgetContext } from "./widgets/use-inline-widget-context";
 import "./widgets/inline-builtins";
 
 interface MessageContentProps {
+  isStreaming?: boolean;
   message: ConversationMessage;
   analysisMode?: boolean;
 }
@@ -1322,6 +1323,7 @@ function OAuthRequestPanel({
 export function MessageContent({
   message,
   analysisMode = false,
+  isStreaming = false,
 }: MessageContentProps) {
   useRenderGuard(`MessageContent:${message.id ?? "unknown"}`);
   const { sendActionMessage, setTab, handleChatRetry } = useAppSelectorShallow(
@@ -1348,7 +1350,7 @@ export function MessageContent({
     message.role === "assistant"
       ? stripUnclaimedInteractionMarkup(message.text)
       : message.text;
-  const segments = useParsedSegments(displayText, analysisMode);
+  const segments = useParsedSegments(displayText, analysisMode, isStreaming);
   // Handlers handed to every inline widget at render: the SAME shared contract
   // the overlay surface (InlineWidgetText) uses, so a CHOICE pick / FOLLOWUPS
   // chip / FORM submit behaves identically on both. Self-contained widgets (the

@@ -26,6 +26,7 @@ import { useInlineWidgetContext } from "./widgets/use-inline-widget-context";
 
 export function InlineWidgetText({
   content,
+  isStreaming = false,
   messageId,
   producerScope,
 }: {
@@ -56,6 +57,7 @@ export function InlineWidgetText({
   const segments = useParsedSegments(
     stripUnclaimedInteractionMarkup(content),
     false,
+    isStreaming,
   );
 
   // Fast path: a single plain-text segment (most replies) renders as-is.

@@ -148,6 +148,8 @@ export interface ChatMessageData {
 export interface ChatMessageRenderContext {
   /** Live phase status for the one in-flight (empty assistant) turn. */
   turnStatus?: ChatTurnStatus | null;
+  /** True while the assistant text is still arriving from the model. */
+  isStreaming?: boolean;
   /** Hide reasoning while this turn is still streaming. */
   suppressReasoning?: boolean;
 }

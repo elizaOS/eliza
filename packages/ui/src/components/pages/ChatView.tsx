@@ -96,7 +96,10 @@ import { ChatReplyPill } from "../composites/chat/chat-reply-pill";
 import { ChatSourceIcon } from "../composites/chat/chat-source";
 import { ChatThreadLayout } from "../composites/chat/chat-thread-layout";
 import { ChatTranscript } from "../composites/chat/chat-transcript";
-import type { ChatMessageData } from "../composites/chat/chat-types";
+import type {
+  ChatMessageData,
+  ChatMessageRenderContext,
+} from "../composites/chat/chat-types";
 import { TypingIndicator } from "../composites/chat/chat-typing-indicator";
 import { Input } from "../ui/input";
 import { pickProblemSessionToAutoFocus } from "./ChatView.terminal-focus";
@@ -828,10 +831,11 @@ export function ChatView({
     [setChatReplyTarget, agentName],
   );
   const renderChatMessageContent = useCallback(
-    (message: ChatMessageData) => (
+    (message: ChatMessageData, renderContext?: ChatMessageRenderContext) => (
       <MessageContent
         message={withoutTranscriptReasoning(message)}
         analysisMode={analysisMode}
+        isStreaming={renderContext?.isStreaming}
       />
     ),
     [analysisMode],
@@ -868,6 +872,7 @@ export function ChatView({
           onDismissSuggestion={handleDismissSuggestion}
           onAcceptSuggestion={handleAcceptSuggestion}
           renderMessageContent={renderChatMessageContent}
+          streamingMessageId={chatSending ? visibleMsgs.at(-1)?.id : undefined}
           typingIndicator={
             chatSending && !chatFirstTokenReceived && !typingStalled ? (
               isGameModal ? (

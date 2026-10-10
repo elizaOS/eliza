@@ -43,8 +43,10 @@ function ThreadLineText({ content }: { content: string }): React.ReactNode {
  */
 function OverlayAssistantTurnBody({
   message,
+  isStreaming,
   turnStatus,
 }: {
+  isStreaming?: boolean;
   message: ChatMessageData;
   turnStatus: ChatTurnStatus | null;
 }) {
@@ -87,6 +89,7 @@ function OverlayAssistantTurnBody({
         <div className="col-start-1 row-start-1 min-h-[1.4375rem] min-w-0">
           <InlineWidgetText
             content={message.text}
+            isStreaming={isStreaming}
             messageId={message.id}
             producerScope={message.source}
           />
@@ -192,6 +195,7 @@ export function renderOverlayMessageBody(
   return (
     <OverlayAssistantTurnBody
       message={message}
+      isStreaming={ctx?.isStreaming}
       turnStatus={ctx?.turnStatus ?? null}
     />
   );

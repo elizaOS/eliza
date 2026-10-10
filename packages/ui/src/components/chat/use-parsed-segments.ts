@@ -20,6 +20,7 @@ import {
 export function useParsedSegments(
   text: string,
   analysisMode = false,
+  isStreaming = false,
 ): Segment[] {
   const cacheRef = useRef<StreamingParseCache | null>(null);
   return useMemo(() => {
@@ -28,6 +29,7 @@ export function useParsedSegments(
         text,
         analysisMode,
         cacheRef.current,
+        isStreaming,
       );
       cacheRef.current = cache;
       return segments;
@@ -38,5 +40,5 @@ export function useParsedSegments(
       cacheRef.current = null;
       return [{ kind: "text", text }];
     }
-  }, [text, analysisMode]);
+  }, [text, analysisMode, isStreaming]);
 }

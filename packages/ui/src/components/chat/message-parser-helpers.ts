@@ -153,23 +153,36 @@ export const parserWork = {
  * concatenate it onto a stable prefix — trimming happens once on the joined
  * result, never on the stable prefix.
  */
-export function normalizeDisplayCore(text: string): string {
+export function normalizeDisplayCore(
+  text: string,
+  isStreaming = false,
+): string {
   parserWork.normalizedChars += text.length;
-  return stripAssistantStageDirections(stripHiddenDisplayContent(text));
+  return stripAssistantStageDirections(
+    stripHiddenDisplayContent(text, { isStreaming }),
+  );
 }
 /** Prepare identical visible input for full normalization and streaming stage-direction detection. */
-export function stripHiddenDisplayContent(text: string): string {
+export function stripHiddenDisplayContent(
+  text: string,
+  options: { isStreaming?: boolean } = {},
+): string {
   let normalized = text;
   // Hide hidden reasoning/tool blocks from chat bubbles.
   normalized = normalized.replace(HIDDEN_TAG_BLOCK_RE, " ");
-  // During streaming, a chunk may end mid-tag (e.g. "<thi").
-  // Strip any unterminated opening or closing tag at the very end so the
-  // user never sees hidden-tag fragments while tokens arrive.
-  normalized = normalized.replace(TRAILING_PARTIAL_TAG_RE, "");
+  // During streaming, a chunk may end mid-tag (e.g. "<thi"). Strip any
+  // unterminated opening or closing tag only while tokens are arriving. A
+  // finished message must keep ordinary text such as "use x<t" visible.
+  if (options.isStreaming) {
+    normalized = normalized.replace(TRAILING_PARTIAL_TAG_RE, "");
+  }
   return normalized;
 }
-export function normalizeDisplayText(text: string): string {
-  return normalizeDisplayCore(text).trim();
+export function normalizeDisplayText(
+  text: string,
+  isStreaming = false,
+): string {
+  return normalizeDisplayCore(text, isStreaming).trim();
 }
 export interface FormSubmitDisplay {
   formId: string;
@@ -606,11 +619,17 @@ export function interleaveSegments(
   }
   return segments;
 }
-export function parseSegments(text: string, analysisMode: boolean): Segment[] {
+export function parseSegments(
+  text: string,
+  analysisMode: boolean,
+  isStreaming = false,
+): Segment[] {
   parserWork.fullParses += 1;
   // If analysis mode is enabled, we parse the raw text to extract XML blocks,
   // otherwise we use the normalized text which strips them.
-  const targetText = analysisMode ? text : normalizeDisplayText(text);
+  const targetText = analysisMode
+    ? text
+    : normalizeDisplayText(text, isStreaming);
   if (!targetText) return [{ kind: "text", text: "" }];
   // Plain prose (no trigger character anywhere) → one text segment, no scans.
   if (!SEGMENT_TRIGGER_RE.test(targetText)) {

@@ -15,6 +15,7 @@ import { ChatMessage } from "./chat-message";
 import type {
   ChatMessageData,
   ChatMessageLabels,
+  ChatMessageRenderContext,
   ChatVariant,
 } from "./chat-types";
 
@@ -34,7 +35,12 @@ export interface ChatTranscriptProps {
   /** Reply to a message — sets the composer's reply target (→ REPLY_CONTEXT). */
   onReply?: (message: ChatMessageData) => void;
   onSpeak?: (messageId: string, text: string) => void;
-  renderMessageContent?: (message: ChatMessageData) => React.ReactNode;
+  renderMessageContent?: (
+    message: ChatMessageData,
+    context?: ChatMessageRenderContext,
+  ) => React.ReactNode;
+  /** Id of the assistant row whose text is still receiving tokens. */
+  streamingMessageId?: string;
   typingIndicator?: React.ReactNode;
   userMessagesOnRight?: boolean;
   variant?: ChatVariant;
@@ -152,6 +158,7 @@ export const ChatTranscript = memo(function ChatTranscript({
   onReply,
   onSpeak,
   renderMessageContent,
+  streamingMessageId,
   typingIndicator,
   userMessagesOnRight = true,
   variant = "default",
@@ -276,6 +283,11 @@ export const ChatTranscript = memo(function ChatTranscript({
             onSpeak={onSpeak}
             replyTarget={replyTarget}
             renderContent={renderMessageContent}
+            renderContext={
+              message.id === streamingMessageId
+                ? { isStreaming: true }
+                : undefined
+            }
             userMessagesOnRight={userMessagesOnRight}
           />
         );

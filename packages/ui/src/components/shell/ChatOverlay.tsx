@@ -1801,6 +1801,8 @@ export function ChatOverlay({
         isLastAssistant
           ? {
               turnStatus: isInFlight ? turnStatus : null,
+              isStreaming:
+                responding && turnStatus?.kind !== "speaking" && !m.interrupted,
             }
           : undefined;
       return (
