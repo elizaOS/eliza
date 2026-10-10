@@ -50,18 +50,19 @@ function normalizeHostname(value: unknown): string | null {
   }
   const withoutWildcard = trimmed.replace(/^\*\./, "");
   const withoutTrailingDot = withoutWildcard.replace(/\.$/, "");
-  // An internationalized name (bücher.de, яндекс.рф) is blocked by its ASCII
-  // (punycode) form, as a full https:// URL already is above and as the
-  // blocker engine does; the ASCII-only pattern below would drop it. Only a
-  // bare host is converted: a path, port or credentials stay invalid.
   let ascii = withoutTrailingDot.toLowerCase();
-  const nonAscii = [...ascii].some((char) => (char.codePointAt(0) ?? 0) > 0x7f);
-  if (nonAscii && !/[\s/\\:?#@]/.test(ascii)) {
+  const hasNonAscii = [...ascii].some(
+    (character) => (character.codePointAt(0) ?? 0) > 0x7f,
+  );
+  if (hasNonAscii) {
+    // The engine IDNA-encodes unicode hostnames (domainToASCII) before its
+    // label checks, so a unicode hostname the API accepts must not be
+    // rejected here. The URL parser punycode-encodes .hostname the same way.
     try {
       ascii = new URL(`https://${ascii}`).hostname;
     } catch {
-      // error-policy:J3 untrusted hostname input — a name the URL parser
-      // rejects is reported as an explicit invalid (null).
+      // error-policy:J3 untrusted hostname input — an unparseable hostname is
+      // reported as an explicit invalid (null), never a fake-valid default.
       return null;
     }
   }
