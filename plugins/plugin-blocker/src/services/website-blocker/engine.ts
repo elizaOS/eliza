@@ -567,11 +567,22 @@ export async function getCachedSelfControlStatus(
   }
 
   const promise = getSelfControlStatus(config);
-  statusCache = {
+  const entry: StatusCacheEntry = {
     expiresAt: Date.now() + ttlMs,
     promise,
   };
-  return await promise;
+  statusCache = entry;
+  try {
+    return await promise;
+  } catch (error) {
+    // A failed read must not be replayed to later callers until the TTL
+    // expires: drop the entry so the next call retries the read. The
+    // app-blocker engine caches only fulfilled statuses the same way.
+    if (statusCache === entry) {
+      statusCache = undefined;
+    }
+    throw error;
+  }
 }
 
 export async function getSelfControlPermissionState(
