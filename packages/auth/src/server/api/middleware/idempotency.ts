@@ -351,28 +351,35 @@ function serializeEntry(entry: IdempotencyEntry): string {
 
 function parseEntry(value: string | null): IdempotencyEntry | undefined {
   if (!value) return undefined;
-  const parsed = JSON.parse(value) as SerializedIdempotencyEntry;
-  if (
-    typeof parsed.fingerprint !== "string" ||
-    (parsed.status !== "processing" && parsed.status !== "completed") ||
-    typeof parsed.createdAt !== "number" ||
-    typeof parsed.expiresAt !== "number"
-  ) {
+  try {
+    const parsed = JSON.parse(value) as SerializedIdempotencyEntry;
+    if (
+      typeof parsed.fingerprint !== "string" ||
+      (parsed.status !== "processing" && parsed.status !== "completed") ||
+      typeof parsed.createdAt !== "number" ||
+      typeof parsed.expiresAt !== "number"
+    ) {
+      return undefined;
+    }
+    return {
+      fingerprint: parsed.fingerprint,
+      status: parsed.status,
+      createdAt: parsed.createdAt,
+      expiresAt: parsed.expiresAt,
+      response: parsed.response
+        ? {
+            status: parsed.response.status,
+            headers: parsed.response.headers,
+            body: base64ToBytes(parsed.response.bodyBase64),
+          }
+        : undefined,
+    };
+  } catch {
+    // A corrupt row is a cache miss, not a store outage: treating it as
+    // missing lets the request execute normally (and the reservation paths
+    // overwrite the row), instead of 503ing every retry for up to 24h.
     return undefined;
   }
-  return {
-    fingerprint: parsed.fingerprint,
-    status: parsed.status,
-    createdAt: parsed.createdAt,
-    expiresAt: parsed.expiresAt,
-    response: parsed.response
-      ? {
-          status: parsed.response.status,
-          headers: parsed.response.headers,
-          body: base64ToBytes(parsed.response.bodyBase64),
-        }
-      : undefined,
-  };
 }
 
 export class MemoryIdempotencyStore implements IdempotencyStore {
