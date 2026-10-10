@@ -56,8 +56,13 @@ export function normalizeOptionalIsoString(
   if (typeof value !== "string") {
     fail(400, `${field} must be an ISO string`);
   }
+  if (value === "") return undefined;
   const trimmed = (value as string).trim();
-  if (trimmed.length === 0) return undefined;
+  if (trimmed.length === 0) {
+    // A blank string is not absent: the canonical normalizer rejects it with
+    // 400 via requireNonEmptyString. Same defect class as #34687.
+    fail(400, `${field} must be a non-empty string`);
+  }
   if (Number.isNaN(Date.parse(trimmed))) {
     fail(400, `${field} must be a valid ISO timestamp`);
   }
