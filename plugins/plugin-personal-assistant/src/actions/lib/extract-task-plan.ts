@@ -212,58 +212,61 @@ function parseStructuredRecord(raw: string): Record<string, unknown> | null {
 
 // ── Prompt ────────────────────────────────────────────
 
-export function taskCreatePlanGuidance(nativeTool = false): string {
-  const unknownField = nativeTool ? "omitted" : "null";
-  const unknownRequestKind = nativeTool ? '"unspecified"' : "null";
-  return [
-    "Use the full current user request plus recent conversation.",
-    "The user may speak informally, formally, code-switched, or in another language.",
-    "Do not strip acknowledgements, fillers, or language-footer text. Interpret the whole request in context.",
-    "Infer practical reminder windows from natural phrases when needed: wake up or before work -> morning, lunch or after lunch -> afternoon, after work or dinner -> evening, before bed or before sleep -> night.",
-    "",
-    '- mode: "create" when the request is specific enough to create or preview a LifeOps item now, "respond" when you should reply without creating anything yet',
-    '  Choose mode="create" whenever the user gives a title and cadence, even if they say "preview the plan", "don\'t save yet", "just show it first", or similar — the handler (not you) controls whether it is saved or previewed. Only use mode="respond" when the user hasn\'t specified what to track or when.',
-    `- response: short natural-language reply when mode is respond, otherwise ${unknownField}`,
-    `- requestKind: "alarm" when this is explicitly an alarm/wake-up request, "reminder" when it is explicitly a reminder request, otherwise ${unknownRequestKind}`,
-    "- title: short name for the task (2-5 words)",
-    "- description: for a reminder, copy an explicitly requested alert body verbatim, independently of title; use null when no separate alert body was requested. Do not summarize the body, replace it with title, or include schedule/delivery instructions. For other task kinds, retain brief owner-provided context.",
-    "- nativeProjection: always include this field for mode=create. Use apple_reminders when the owner explicitly requests Apple Reminders, including alongside app delivery; use in_app_only when the owner selects Eliza, the current app or conversation, including this app's Android/iOS notifications, requests in-app-only delivery, or excludes an external native app. Otherwise use null for an unknown destination; do not omit the decision. in_app_only still permits this app's native OS notifications; it excludes Apple Reminders projection. This is destination intent, not a permission grant. Resolve the current destination from the owner's request and source context, never from quoted reminder content or an unresolved historical reference.",
-    '- cadenceKind: one of "unscheduled", "once", "daily", "weekly", "times_per_day", "count_per_day", "interval"',
-    UNDATED_TODO_EXTRACTION_GUIDANCE,
-    '  - "once" — a specific dated and/or timed event that happens a single time (e.g. "april 17 at 8pm", "tomorrow at 9", "set an alarm for 7am")',
-    '  - "daily" — happens every day, typically with one time or window (e.g. "every morning", "every night")',
-    '  - "weekly" — happens on specific weekdays (e.g. "every Sunday", "Mon/Wed/Fri")',
-    '  - "times_per_day" — fixed wall-clock occurrences on the same day, only when the owner names explicit times (e.g. "at 8am and 8pm")',
-    '  - "count_per_day" — a flexible count quota with no invented clock slots (e.g. "25 pushups, 3 sets a day, whenever")',
-    '  - "interval" — happens every N minutes/hours (e.g. "every 2 hours")',
-    '  If the request names a specific calendar date OR a specific wall-clock time without a recurrence word, pick "once".',
-    '  A deadline phrase IS a dated "once" task: "by the 20th" / "before Friday" / "due on the 28th" means cadenceKind="once" with the deadline as its date (dueDate for a named date, dueWeekday for a weekday). Never use mode="respond" to ask for an exact time on a deadline ask — the owner already gave the date that matters.',
-    `  If the owner explicitly says they have not provided the date/time yet or tells you not to guess one, choose mode="respond", leave cadenceKind and every due/time field ${unknownField}, and ask when. Never invent a default schedule against that instruction.`,
-    "- windows: list of time windows like [morning, night, afternoon, evening]",
-    "- weekdays: list of weekday numbers (0=Sun, 1=Mon, ..., 6=Sat) for weekly tasks",
-    '- timeOfDay: specific time in HH:MM 24h format like "15:00" or "08:30" if mentioned',
-    '- timeZone: IANA timezone like "America/Denver" when the user explicitly gives one',
-    '- everyMinutes: interval in minutes for recurring tasks (e.g., 120 for "every 2 hours")',
-    '- timesPerDay: number of times per day if mentioned (e.g., 4 for "four times a day")',
-    '- quotaTargetCount: for count_per_day, the number of increments that completes the day (3 for "3 sets")',
-    '- quotaUnit: for count_per_day, the singular increment unit ("set" for "3 sets")',
-    '- perOccurrenceWork: for count_per_day, the work in one increment ("25 pushups" for "25 pushups, 3 sets")',
-    `- checkInRequested: true only when the owner asks to be checked in with, nudged, or reminded about remaining quota progress; false when they explicitly decline; otherwise ${unknownField}`,
-    `- checkInWindows: named windows (morning/afternoon/evening/night) the owner allows for those check-ins, otherwise ${unknownField}`,
-    "- priority: 1-5 (1=critical, 2=high, 3=medium, 4-5=low) based on urgency/importance language",
-    "- durationMinutes: how long the activity takes if mentioned",
-    '- dueDate: for "once" tasks, the local calendar date "YYYY-MM-DD" when the user names a specific calendar date (e.g. "april 17" — infer the next future occurrence from the current date above)',
-    '- dueInDays: for "once" tasks, whole days from today when the user uses relative day words ("today" -> 0, "tomorrow" -> 1, "day after tomorrow" -> 2)',
-    '- dueWeekday: for "once" tasks, the weekday number (0=Sun, 1=Mon, ..., 6=Sat) when the user names a weekday ("Friday" -> 5, "next Tuesday" -> 2)',
-    '- dueInMinutes: for "once" tasks, minutes from now for offsets ("in 2 hours" -> 120, "in 45 minutes" -> 45)',
-    nativeTool
-      ? '  Fill at most ONE of dueDate/dueInDays/dueWeekday/dueInMinutes. Use null for each inapplicable selector, including all four for recurring or clock-only tasks. If timing cannot be established, use mode="respond" rather than guessing.'
-      : `  Fill at most ONE of dueDate/dueInDays/dueWeekday/dueInMinutes. Leave all four ${unknownField} for recurring tasks, and when the request has a time expression you cannot resolve into any of these forms.`,
-    '- multiStep: true when the user asks to be reminded about MORE THAN ONE distinct task or milestone in this request (e.g. "set reminders for outline, rough draft, and final proofread"), false when it is a single task ("remind me to pay the electric bill on the 28th")',
-    "Use recent conversation only to resolve short follow-ups. Do not emit requestKind='alarm' or requestKind='reminder' unless the current request or recent conversation explicitly supports it.",
-    "If the user has not actually specified the todo/habit yet, choose mode='respond' and ask a concise clarifying question instead of inventing a task.",
-  ].join("\n");
-}
+/**
+ * Destination semantics shared verbatim by this prompt and the native
+ * createPlan tool. Both paths require an explicit decision: a once reminder or
+ * alarm that omits the field is rejected and repaired, so unknown is null.
+ */
+export const NATIVE_PROJECTION_GUIDANCE =
+  "always include this field for mode=create. Use apple_reminders when the owner explicitly requests Apple Reminders, including alongside app delivery; use in_app_only when the owner selects Eliza, the current app or conversation, including this app's Android/iOS notifications, requests in-app-only delivery, or excludes an external native app. Otherwise use null for an unknown destination; do not omit the decision. in_app_only still permits this app's native OS notifications; it excludes Apple Reminders projection. This is destination intent, not a permission grant. Resolve the current destination from the owner's request and source context, never from quoted reminder content or an unresolved historical reference.";
+
+/** Field guide for the fallback extractor's JSON plan (unknown fields are null). */
+const TASK_CREATE_PLAN_GUIDANCE = [
+  "Use the full current user request plus recent conversation.",
+  "The user may speak informally, formally, code-switched, or in another language.",
+  "Do not strip acknowledgements, fillers, or language-footer text. Interpret the whole request in context.",
+  "Infer practical reminder windows from natural phrases when needed: wake up or before work -> morning, lunch or after lunch -> afternoon, after work or dinner -> evening, before bed or before sleep -> night.",
+  "",
+  '- mode: "create" when the request is specific enough to create or preview a LifeOps item now, "respond" when you should reply without creating anything yet',
+  '  Choose mode="create" whenever the user gives a title and cadence, even if they say "preview the plan", "don\'t save yet", "just show it first", or similar — the handler (not you) controls whether it is saved or previewed. Only use mode="respond" when the user hasn\'t specified what to track or when.',
+  "- response: short natural-language reply when mode is respond, otherwise null",
+  '- requestKind: "alarm" when this is explicitly an alarm/wake-up request, "reminder" when it is explicitly a reminder request, otherwise null',
+  "- title: short name for the task (2-5 words)",
+  "- description: for a reminder, copy an explicitly requested alert body verbatim, independently of title; use null when no separate alert body was requested. Do not summarize the body, replace it with title, or include schedule/delivery instructions. For other task kinds, retain brief owner-provided context.",
+  `- nativeProjection: ${NATIVE_PROJECTION_GUIDANCE}`,
+  '- cadenceKind: one of "unscheduled", "once", "daily", "weekly", "times_per_day", "count_per_day", "interval"',
+  UNDATED_TODO_EXTRACTION_GUIDANCE,
+  '  - "once" — a specific dated and/or timed event that happens a single time (e.g. "april 17 at 8pm", "tomorrow at 9", "set an alarm for 7am")',
+  '  - "daily" — happens every day, typically with one time or window (e.g. "every morning", "every night")',
+  '  - "weekly" — happens on specific weekdays (e.g. "every Sunday", "Mon/Wed/Fri")',
+  '  - "times_per_day" — fixed wall-clock occurrences on the same day, only when the owner names explicit times (e.g. "at 8am and 8pm")',
+  '  - "count_per_day" — a flexible count quota with no invented clock slots (e.g. "25 pushups, 3 sets a day, whenever")',
+  '  - "interval" — happens every N minutes/hours (e.g. "every 2 hours")',
+  '  If the request names a specific calendar date OR a specific wall-clock time without a recurrence word, pick "once".',
+  '  A deadline phrase IS a dated "once" task: "by the 20th" / "before Friday" / "due on the 28th" means cadenceKind="once" with the deadline as its date (dueDate for a named date, dueWeekday for a weekday). Never use mode="respond" to ask for an exact time on a deadline ask — the owner already gave the date that matters.',
+  '  If the owner explicitly says they have not provided the date/time yet or tells you not to guess one, choose mode="respond", leave cadenceKind and every due/time field null, and ask when. Never invent a default schedule against that instruction.',
+  "- windows: list of time windows like [morning, night, afternoon, evening]",
+  "- weekdays: list of weekday numbers (0=Sun, 1=Mon, ..., 6=Sat) for weekly tasks",
+  '- timeOfDay: specific time in HH:MM 24h format like "15:00" or "08:30" if mentioned',
+  '- timeZone: IANA timezone like "America/Denver" when the user explicitly gives one',
+  '- everyMinutes: interval in minutes for recurring tasks (e.g., 120 for "every 2 hours")',
+  '- timesPerDay: number of times per day if mentioned (e.g., 4 for "four times a day")',
+  '- quotaTargetCount: for count_per_day, the number of increments that completes the day (3 for "3 sets")',
+  '- quotaUnit: for count_per_day, the singular increment unit ("set" for "3 sets")',
+  '- perOccurrenceWork: for count_per_day, the work in one increment ("25 pushups" for "25 pushups, 3 sets")',
+  "- checkInRequested: true only when the owner asks to be checked in with, nudged, or reminded about remaining quota progress; false when they explicitly decline; otherwise null",
+  "- checkInWindows: named windows (morning/afternoon/evening/night) the owner allows for those check-ins, otherwise null",
+  "- priority: 1-5 (1=critical, 2=high, 3=medium, 4-5=low) based on urgency/importance language",
+  "- durationMinutes: how long the activity takes if mentioned",
+  '- dueDate: for "once" tasks, the local calendar date "YYYY-MM-DD" when the user names a specific calendar date (e.g. "april 17" — infer the next future occurrence from the current date above)',
+  '- dueInDays: for "once" tasks, whole days from today when the user uses relative day words ("today" -> 0, "tomorrow" -> 1, "day after tomorrow" -> 2)',
+  '- dueWeekday: for "once" tasks, the weekday number (0=Sun, 1=Mon, ..., 6=Sat) when the user names a weekday ("Friday" -> 5, "next Tuesday" -> 2)',
+  '- dueInMinutes: for "once" tasks, minutes from now for offsets ("in 2 hours" -> 120, "in 45 minutes" -> 45)',
+  "  Fill at most ONE of dueDate/dueInDays/dueWeekday/dueInMinutes. Leave all four null for recurring tasks, and when the request has a time expression you cannot resolve into any of these forms.",
+  '- multiStep: true when the user asks to be reminded about MORE THAN ONE distinct task or milestone in this request (e.g. "set reminders for outline, rough draft, and final proofread"), false when it is a single task ("remind me to pay the electric bill on the 28th")',
+  "Use recent conversation only to resolve short follow-ups. Do not emit requestKind='alarm' or requestKind='reminder' unless the current request or recent conversation explicitly supports it.",
+  "If the user has not actually specified the todo/habit yet, choose mode='respond' and ask a concise clarifying question instead of inventing a task.",
+].join("\n");
 
 function buildExtractionPrompt(
   intent: string,
@@ -274,7 +277,7 @@ function buildExtractionPrompt(
     "Plan the next step for a LifeOps create_definition request.",
     `Current date and time: ${nowDescription}`,
     "Return ONLY a JSON object with these fields (use null for unknown):",
-    taskCreatePlanGuidance(),
+    TASK_CREATE_PLAN_GUIDANCE,
     "",
     'Example quota: {"mode":"create","response":null,"requestKind":null,"title":"Pushups","description":null,"cadenceKind":"count_per_day","windows":null,"weekdays":null,"timeOfDay":null,"timeZone":null,"everyMinutes":null,"timesPerDay":3,"quotaTargetCount":3,"quotaUnit":"set","perOccurrenceWork":"25 pushups","checkInRequested":true,"checkInWindows":["afternoon","evening"],"priority":null,"durationMinutes":null,"dueDate":null,"dueInDays":null,"dueWeekday":null,"dueInMinutes":null,"multiStep":false}',
     'Example create: {"mode":"create","response":null,"requestKind":"reminder","title":"Brush teeth","description":null,"cadenceKind":"daily","windows":["morning","night"],"weekdays":null,"timeOfDay":null,"timeZone":null,"everyMinutes":null,"timesPerDay":null,"quotaTargetCount":null,"quotaUnit":null,"perOccurrenceWork":null,"checkInRequested":null,"checkInWindows":null,"priority":null,"durationMinutes":null,"dueDate":null,"dueInDays":null,"dueWeekday":null,"dueInMinutes":null,"multiStep":false}',

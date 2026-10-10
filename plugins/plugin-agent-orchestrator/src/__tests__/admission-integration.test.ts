@@ -668,4 +668,46 @@ describe("admission queue integration (#13772)", () => {
     expect(capacity?.activeWorkers).toBe(2);
     expect(capacity?.queueDepth).toBe(2);
   });
+
+  it("lists the room's in-flight tasks when one is bound to a project that is no longer registered", async () => {
+    const acp = new FakeAcp(2);
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const service = new OrchestratorTaskService(makeRuntime(acp) as never, {
+      store,
+    });
+    await service.start();
+    const runtime = makeRuntime(acp);
+    (runtime as { getService: (t: string) => unknown }).getService = (
+      t: string,
+    ) => {
+      if (t === AcpService.serviceType) return acp;
+      if (t === OrchestratorTaskService.serviceType) return service;
+      return null;
+    };
+
+    const roomId = "11111111-1111-4111-8111-111111111111";
+    const otherRoomId = "22222222-2222-4222-8222-222222222222";
+    await newTask(store, "requested here");
+    await store.createTask({
+      title: "removed project build",
+      goal: "goal",
+      projectId: "removed-project",
+      roomId: otherRoomId,
+      taskRoomId: roomId,
+    });
+    await store.createTask({
+      title: "other room build",
+      goal: "goal",
+      roomId: otherRoomId,
+    });
+
+    const result = await activeSubAgentsProvider.get(
+      runtime as never,
+      { roomId } as never,
+      {} as never,
+    );
+    expect(result.text).toContain('"requested here" — status=open');
+    expect(result.text).toContain('"removed project build" — status=open');
+    expect(result.text).not.toContain("other room build");
+  });
 });

@@ -106,8 +106,13 @@ function lookupError(
       ? `No sticky note matches "${target}".`
       : code === "NOTES_DELETE_NAME_MISMATCH"
         ? `The closest note is "${candidates[0]?.title ?? target}" — that isn't what you named, so nothing was deleted. Delete it?`
-        : `"${target}" matches multiple sticky notes: ${candidates
-            .map((note) => `${note.title} (${note.color})`)
+        : // Candidates may share a title, so each is named by its complete
+          // content: that is what the user can choose between.
+          `"${target}" matches multiple sticky notes: ${candidates
+            .map(
+              (note) =>
+                `${JSON.stringify(reconstructNoteContent(note))} (${note.color})`,
+            )
             .join(", ")}.`,
     {
       code,
@@ -179,16 +184,24 @@ function resolveNoteIndex(
   return candidate.index;
 }
 
+/** Runs after the target resolves so every rejection names the note to reread. */
 function assertEditRevision(
   current: number,
-  expected: number | undefined,
+  expectedRevision: unknown,
+  required: boolean,
+  noteId: string,
 ): void {
+  const expected = parseNoteEditRevision(expectedRevision, required, noteId);
   if (expected !== undefined && current !== expected)
     throw new ElizaError(
       "The notes changed since this edit was prepared. Read the note again and reconcile the requested edit; nothing changed.",
       {
         code: "NOTES_EDIT_CONFLICT",
-        context: { expectedRevision: expected, currentRevision: current },
+        context: {
+          expectedRevision: expected,
+          currentRevision: current,
+          noteId,
+        },
         severity: "ephemeral",
       },
     );
@@ -483,14 +496,18 @@ export class NotesService extends Service {
   }> {
     const id = parseEntityId(idValue);
     const patch = parseUpdateNoteInput(patchValue);
-    const revision = parseNoteEditRevision(expectedRevision, !patch.textEdit);
     const updatedAt = this.now().toISOString();
     let consolidatedIds: string[] = [];
     const transaction = await this.store.transact((draft) => {
-      assertEditRevision(draft.revision, revision);
       const index = draft.notes.findIndex((note) => note.id === id);
       const existing = draft.notes[index];
       if (index < 0 || !existing) throw notFound(id);
+      assertEditRevision(
+        draft.revision,
+        expectedRevision,
+        !patch.textEdit,
+        existing.id,
+      );
       const updated = applyNotePatch(existing, patch, updatedAt);
       const oldKey = noteContentKey(existing);
       const updatedKey = noteContentKey(updated);
@@ -541,11 +558,9 @@ export class NotesService extends Service {
     consolidatedIds: string[];
   }> {
     const patch = parseUpdateNoteInput(patchValue);
-    const revision = parseNoteEditRevision(expectedRevision, !patch.textEdit);
     const updatedAt = this.now().toISOString();
     const consolidatedIds: string[] = [];
     const transaction = await this.store.transact((draft) => {
-      assertEditRevision(draft.revision, revision);
       const index = resolveNoteIndex(draft.notes, selector, value);
       const existing = draft.notes[index];
       if (!existing) {
@@ -554,6 +569,12 @@ export class NotesService extends Service {
           severity: "fatal",
         });
       }
+      assertEditRevision(
+        draft.revision,
+        expectedRevision,
+        !patch.textEdit,
+        existing.id,
+      );
       const updated = applyNotePatch(existing, patch, updatedAt);
       const oldKey = noteContentKey(existing);
       const updatedKey = noteContentKey(updated);

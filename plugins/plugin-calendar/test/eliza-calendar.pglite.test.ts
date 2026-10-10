@@ -530,7 +530,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     ).toHaveLength(1);
   });
 
-  it("rejects an unverified proposed guest before creating an event", async () => {
+  it("creates without an unrequested proposed guest and reports it", async () => {
     const action = createCalendarActionRunner({
       runTextModel: vi.fn(async () => null),
       runJsonModel: vi.fn(async ({ actionType }) =>
@@ -577,16 +577,20 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
         },
       },
     );
-    expect(result?.success).toBe(false);
-    expect(JSON.stringify(result)).toContain(
-      "CALENDAR_ATTENDEE_IDENTITY_REQUIRED",
-    );
+    expect(result?.success, JSON.stringify(result)).toBe(true);
+    expect(result?.data?.attendeesNotAdded).toEqual([
+      "shawmakesmagic@example.invalid",
+    ]);
     expect(
-      (await pg.query("SELECT id FROM app_calendar.life_calendar_events")).rows,
-    ).toEqual([]);
+      (
+        await pg.query(
+          "SELECT attendees_json FROM app_calendar.life_calendar_events",
+        )
+      ).rows,
+    ).toEqual([{ attendees_json: "[]" }]);
   });
 
-  it("pauses a named guest with an unverified address before any calendar write", async () => {
+  it("creates without a named guest's unverified address and reports it", async () => {
     const reported = vi.spyOn(runtime, "reportError");
     const action = createCalendarActionRunner({
       runTextModel: vi.fn(async () => null),
@@ -636,27 +640,18 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
         },
       },
     );
-    expect(result?.success).toBe(false);
-    expect(reported).toHaveBeenCalledWith(
-      "calendar:action",
-      expect.any(Error),
-      expect.objectContaining({ diagnosticOnly: true }),
-    );
-    expect(result?.data).toMatchObject({
-      error: "CALENDAR_ATTENDEE_IDENTITY_REQUIRED",
-      requiresInput: true,
-      awaitingUserInput: true,
-      retryable: false,
-    });
-    expect(result?.effectReceipts?.[0]).toMatchObject({
-      outcome: "failed",
-      failure: { acceptance: "rejected" },
-    });
+    expect(result?.success, JSON.stringify(result)).toBe(true);
+    expect(result?.data?.attendeesNotAdded).toEqual([
+      "dana@unverified-mailbox.net",
+    ]);
+    expect(reported).not.toHaveBeenCalled();
+    expect(result?.effectReceipts?.[0]).toMatchObject({ outcome: "applied" });
     const feed = await service.getCalendarFeed(INTERNAL_URL, {
       timeMin: "2026-09-18T00:00:00Z",
       timeMax: "2026-09-19T00:00:00Z",
     });
-    expect(feed.events).toEqual([]);
+    expect(feed.events).toHaveLength(1);
+    expect(feed.events[0].attendees).toEqual([]);
   });
 
   it("preserves a guest from selected user history after a time-only follow-up", async () => {
@@ -855,6 +850,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     expect((echoed?.data?.replyContext as { facts: string })?.facts).toBe(
       "Created “Optometrist appointment” for Friday, Sep 18 at 3pm EDT.",
     );
+    expect(echoed?.data?.replyContext).not.toHaveProperty("context.event");
     // Keep the independent content case free of a deliberate scheduling conflict.
     const echoedEvent = echoed?.data?.event as LifeOpsCalendarEvent;
     await service.deleteCalendarEvent(INTERNAL_URL, {
@@ -1221,58 +1217,6 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       });
     },
   );
-
-  it("rejects an unverified proposed guest before creating an event", async () => {
-    const action = createCalendarActionRunner({
-      runTextModel: vi.fn(async () => null),
-      runJsonModel: vi.fn(async () => ({
-        rawResponse: "{}",
-        parsed: {
-          grantId: ELIZA_CALENDAR_GRANT_ID,
-          calendarId: ELIZA_CALENDAR_ID,
-          startAt: "2026-09-18T15:00:00",
-          endAt: "2026-09-18T16:00:00",
-          timeZone: "America/New_York",
-        },
-      })),
-      recentConversationTexts: vi.fn(async () => []),
-    });
-    const result = await action.handler(
-      runtime,
-      {
-        id: "00000000-0000-0000-0000-000000000301",
-        entityId: "00000000-0000-0000-0000-000000000102",
-        roomId: "00000000-0000-0000-0000-000000000103",
-        createdAt: Date.parse("2026-09-15T22:00:00.000Z"),
-        content: {
-          text: "add a barber appointment friday at 3pm to my calendar",
-        },
-      } as Memory,
-      undefined,
-      {
-        parameters: {
-          subaction: "create_event",
-          title: "Barber appointment",
-          details: {
-            grantId: ELIZA_CALENDAR_GRANT_ID,
-            calendarId: ELIZA_CALENDAR_ID,
-            timeZone: "America/New_York",
-            start: "2026-09-18T15:00:00",
-            end: "2026-09-18T16:00:00",
-            durationMinutes: 60,
-            attendees: [{ email: "shawmakesmagic@example.invalid" }],
-          },
-        },
-      },
-    );
-    expect(result?.success).toBe(false);
-    expect(JSON.stringify(result)).toContain(
-      "CALENDAR_ATTENDEE_IDENTITY_REQUIRED",
-    );
-    expect(
-      (await pg.query("SELECT id FROM app_calendar.life_calendar_events")).rows,
-    ).toEqual([]);
-  });
 
   it("does not mutate an event when the same update both replaces and clears a field", async () => {
     const created = await service.createCalendarEventMutation(

@@ -35,6 +35,7 @@
 
 import {
   type IAgentRuntime,
+  isProviderContextOverflowError,
   isTrajectoryRecordingEnabled,
   ModelType,
   type RecordedStage,
@@ -295,6 +296,10 @@ export interface GoalVerificationResult {
    *  retry/escalate infrastructure without charging the worker's correction
    *  budget. */
   inconclusive: boolean;
+  /** Set with `inconclusive` when the provider rejected the prompt at its
+   *  context limit. The same evidence builds the same prompt, so a retry
+   *  cannot succeed; callers escalate instead of retrying. */
+  contextOverflow?: true;
 }
 
 const EMPTY_CRITERIA_SUMMARY =
@@ -481,6 +486,16 @@ export async function verifyGoalCompletion(
     // becomes an explicit inconclusive verdict naming the error, never a fake
     // pass or a worker-attributed proof failure.
     const detail = err instanceof Error ? err.message : String(err);
+    if (isProviderContextOverflowError(err)) {
+      return {
+        passed: false,
+        summary: `Verifier prompt (${prompt.length} chars) exceeds the model's context window: ${toWellFormedUnicode(detail)}`,
+        missing: [...input.acceptanceCriteria],
+        rawResponse: "",
+        inconclusive: true,
+        contextOverflow: true,
+      };
+    }
     return {
       passed: false,
       summary: `Verifier model call failed: ${toWellFormedUnicode(detail)}`,

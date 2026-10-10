@@ -84,7 +84,7 @@ function fixture() {
   const context = contextFor([original]);
   const projection: HistoryDiscovery = {
     sourceSetId: completionContextSources(context).sourceSetId,
-    scope: { agentId: "agent", roomId: "room", entityId: "user", roles: [] },
+    scope: { agentId: "agent", roomId: "room" },
     visibleEventIds: new Set(),
     loadedSourceIds: new Set(["h1"]),
   };
@@ -159,12 +159,7 @@ describe("stored source-backed reply references", () => {
       content: { text: `Unrelated exchange ${i}` },
     })) as Memory[];
     const context = f.contextFor([f.original, ...fillers, f.reply]);
-    const scope = {
-      agentId: "agent",
-      roomId: "room",
-      entityId: "user",
-      roles: [],
-    };
+    const scope = { agentId: "agent", roomId: "room" };
     const prepared = prepareHistoryRetention(
       context,
       scope,
@@ -193,7 +188,7 @@ describe("stored source-backed reply references", () => {
     const context = f.contextFor([f.original, f.reply]);
     const projection: HistoryDiscovery = {
       sourceSetId: completionContextSources(context).sourceSetId,
-      scope: { agentId: "agent", roomId: "room", entityId: "user", roles: [] },
+      scope: { agentId: "agent", roomId: "room" },
       visibleEventIds: new Set(),
       loadedSourceIds: new Set(),
     };
@@ -254,7 +249,7 @@ describe("stored source-backed reply references", () => {
     ).id;
     const projection: HistoryDiscovery = {
       sourceSetId: sources.sourceSetId,
-      scope: { agentId: "agent", roomId: "room", entityId: "user", roles: [] },
+      scope: { agentId: "agent", roomId: "room" },
       visibleEventIds: new Set(),
       loadedSourceIds: new Set(),
     };
@@ -267,6 +262,8 @@ describe("stored source-backed reply references", () => {
   });
   it("follows an earlier quote chain once without relabeling its speakers", () => {
     const f = fixture();
+    // A quote copies the reply's text, never the web-read note shown after it.
+    f.reply.content.webSources = [{ url: "https://wttr.in/Oslo?format=j1" }];
     const first = completionContextSources(f.contextFor([f.original, f.reply]));
     const priorReply = must(
       first.sources.find((s) => s.event.id === "history:reply"),
@@ -293,7 +290,7 @@ describe("stored source-backed reply references", () => {
     const bound = completionContextSources(context);
     const projection: HistoryDiscovery = {
       sourceSetId: bound.sourceSetId,
-      scope: { agentId: "agent", roomId: "room", entityId: "user", roles: [] },
+      scope: { agentId: "agent", roomId: "room" },
       visibleEventIds: new Set(),
       loadedSourceIds: new Set(),
     };

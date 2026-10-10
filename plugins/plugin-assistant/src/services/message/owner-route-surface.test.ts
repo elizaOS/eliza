@@ -178,6 +178,29 @@ describe("owner route survives fallback candidate seeding", () => {
     );
   });
 
+  it("keeps replacement on a DISCOVER_ACTIONS catalog refresh", async () => {
+    const { runtime, message, state, selectedContexts, userRoles } = surface();
+    const fresh = (
+      await collectV5PlannerCandidateActions({
+        runtime,
+        message,
+        state,
+        selectedContexts,
+        userRoles,
+        discoverActions: true,
+      })
+    ).map((action) => action.name);
+    expect(fresh).toContain("OWNER_REMINDERS_CREATE");
+    expect(fresh).toContain("OTHER_WORK");
+    for (const name of [
+      "TRIGGER",
+      "TRIGGER_CREATE",
+      "TRIGGER_LIST",
+      "TRIGGER_UPDATE",
+    ])
+      expect(fresh).not.toContain(name);
+  });
+
   it("cannot use owner replacement to override actor gates", async () => {
     const args = surface();
     const names = toolNames(

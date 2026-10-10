@@ -37,6 +37,8 @@ export interface CharacterFailureTemplates {
   authFailedReply?: string;
   /** Provider is out of credits or quota; waiting will not clear it. */
   insufficientCreditsReply?: string;
+  /** The request needs more context than the model takes in one call. */
+  contextOverflowFailureReply?: string;
   /** No LLM provider plugin is registered at all. */
   noModelProviderReply?: string;
   /** A required capability is not registered in this runtime. */
@@ -45,6 +47,11 @@ export interface CharacterFailureTemplates {
   plannerExhaustionFailureReply?: string;
   /** Provider is throttling; retrying shortly should succeed. */
   rateLimitedReply?: string;
+  /**
+   * A turn failed without a reply. Its work may already be committed, so
+   * this line must not invite a retry.
+   */
+  replyUnavailableFailureReply?: string;
   /** Any other failure once every model call has already failed. */
   transientFailureReply?: string;
 }

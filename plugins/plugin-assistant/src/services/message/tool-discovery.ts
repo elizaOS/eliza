@@ -107,6 +107,8 @@ export function createPlannerToolDiscoveryAction(
     catalogIndex?: boolean;
     /** Current Stage-1 outcomes rank context-only loads, never explicit reads. */
     taskIntents?: readonly string[];
+    /** Names of the native tools currently exposed to the planner. */
+    exposedToolNames?: () => readonly string[];
   },
 ): Action {
   const catalogIndex = options?.catalogIndex === true;
@@ -187,9 +189,26 @@ export function createPlannerToolDiscoveryAction(
       let query = isObjectRecord(callOptions?.parameters)
         ? callOptions.parameters.query
         : undefined;
-      const contexts = isObjectRecord(callOptions?.parameters)
+      let contexts = isObjectRecord(callOptions?.parameters)
         ? callOptions.parameters.contexts
         : undefined;
+      // Exact names win over query/contexts; empty arrays count as omitted.
+      if (Array.isArray(contexts) && contexts.length === 0)
+        contexts = undefined;
+      if (
+        Array.isArray(names) &&
+        (query !== undefined || contexts !== undefined)
+      ) {
+        if (names.length === 0) names = undefined;
+        else if (
+          names.every(
+            (name) => typeof name === "string" && name.trim().length > 0,
+          )
+        ) {
+          query = undefined;
+          contexts = undefined;
+        }
+      }
       const emptyLoad =
         mode !== "describe" &&
         query === undefined &&
@@ -235,17 +254,6 @@ export function createPlannerToolDiscoveryAction(
         const freshActions = resolveAdditionalActions
           ? await resolveAdditionalActions([])
           : [...authorizedActions];
-        // A discovery query can name its domain without repeating `contexts`.
-        // Match whole registered domain phrases, not arbitrary description words;
-        // unknown domains keep global search and exact catalog loads stay available.
-        const inferredContexts =
-          contexts === undefined
-            ? inferActionSearchContexts(
-                freshActions,
-                query ?? "",
-                (context) => runtime.contexts?.get(context)?.aliases,
-              )
-            : [];
         const availableContexts = [
           ...new Set(
             freshActions
@@ -268,8 +276,35 @@ export function createPlannerToolDiscoveryAction(
           );
           return matching.length > 0 ? matching : [normalized];
         });
+        // Routing tiers are not domains: a ranked search drops them from an
+        // explicit scope; a query-less describe still lists the members of the
+        // contexts it names.
+        const domainContexts =
+          mode === "describe" && query === undefined
+            ? explicitContexts
+            : explicitContexts?.filter(
+                (context) => context !== "general" && context !== "simple",
+              );
+        const scopedContexts = domainContexts?.length
+          ? domainContexts
+          : undefined;
+        const searchesCurrentTask =
+          (query === undefined || emptyLoad) && mode !== "describe";
+        // A discovery query can name its domain without repeating `contexts`.
+        // Match whole registered domain phrases, not arbitrary description words;
+        // unknown domains keep global search and exact catalog loads stay available.
+        // The planner did not author a current-task search's text, so a domain
+        // word in it does not scope the search.
+        const inferredContexts =
+          scopedContexts === undefined && !searchesCurrentTask
+            ? inferActionSearchContexts(
+                freshActions,
+                query ?? "",
+                (context) => runtime.contexts?.get(context)?.aliases,
+              )
+            : [];
         const searchContexts =
-          explicitContexts ??
+          scopedContexts ??
           (inferredContexts.length > 0 ? inferredContexts : undefined);
         const scopedActions =
           searchContexts === undefined
@@ -289,15 +324,27 @@ export function createPlannerToolDiscoveryAction(
               options?.taskIntents?.join("\n") ||
               ""
             : "";
-        const selection = retrieveContextualPlannerActions({
+        const intents = searchesCurrentTask ? options?.taskIntents : undefined;
+        let selection = retrieveContextualPlannerActions({
           actions: scopedActions,
           query: query ?? taskQuery,
-          intents:
-            (query === undefined || emptyLoad) && mode !== "describe"
-              ? options?.taskIntents
-              : undefined,
+          intents,
           contexts: searchContexts,
         });
+        // A search without explicit contexts that selects only exposed tools
+        // ranks the whole catalog once by its full text, unless it already did.
+        const exposed = options?.exposedToolNames?.();
+        if (
+          scopedContexts === undefined &&
+          (inferredContexts.length > 0 || intents?.length) &&
+          exposed &&
+          selection.actions.length > 0 &&
+          selection.actions.every((action) => exposed.includes(action.name))
+        )
+          selection = retrieveContextualPlannerActions({
+            actions: freshActions,
+            query: [query ?? taskQuery, ...(intents ?? [])].join("\n"),
+          });
         const selected = selection.actions;
         if (mode !== "describe" && selected.length > 0)
           onDiscover(
@@ -447,7 +494,11 @@ export function createPlannerToolDiscoveryAction(
           : authorizedActions
         ).map((action) => [action.name, action]),
       );
-      if (!names.every((name) => admitted.has(name))) {
+      // One name that fails admission does not keep the admitted names from
+      // loading.
+      const loadable = names.filter((name) => admitted.has(name));
+      const notAdmitted = names.filter((name) => !admitted.has(name));
+      if (loadable.length === 0) {
         return {
           success: false,
           error:
@@ -460,18 +511,19 @@ export function createPlannerToolDiscoveryAction(
       }
       const selected = collectBudgetedStageOneCandidateActions({
         actions: [...admitted.values()],
-        candidateActions: names,
+        candidateActions: loadable,
         contexts: [],
         deferUnselectedContexts: true,
       });
-      onDiscover(selected, names);
+      onDiscover(selected, loadable);
       return {
         success: true,
         transcriptVisibility: "internal",
         modelReplyRequired: true,
-        text: "Named tools enabled for execution with complete schemas in the current tool surface. No domain work or data mutation ran. Use those tools to continue the requested work.",
+        text: `Named tools enabled for execution with complete schemas in the current tool surface.${notAdmitted.length > 0 ? " Names in notAdmitted were not admitted and not loaded." : ""} No domain work or data mutation ran. Use those tools to continue the requested work.`,
         data: {
           readOnlyOperation: true,
+          ...(notAdmitted.length > 0 ? { notAdmitted } : {}),
           // Operations may share a canonical parent on the native tool wire.
           loadedOperationCount: selected.length,
           loadedTools: selected.map((action) => action.name),

@@ -527,6 +527,7 @@ export { getLogPrefix } from "./utils/log-prefix.js";
 export { userRequestFromAugmentedText } from "./utils/message-text.js";
 export {
 	assertModelOutputComplete,
+	isModelOutputLimitError,
 	isModelOutputLimitFinishReason,
 	isModelProviderError,
 	isProviderContextOverflowError,

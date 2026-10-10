@@ -44,7 +44,7 @@ describe("notesPlugin", () => {
     const nonOwnerCatalog = formatAvailableContextsForPrompt(
       contexts.listAvailable(["USER"]),
     );
-    expect(ownerCatalog).toContain("notes: Saved notes.");
+    expect(ownerCatalog).toContain("- notes: ");
     expect(nonOwnerCatalog).not.toContain("notes");
     for (const action of notesPlugin.actions ?? []) {
       expect(ownerCatalog).not.toContain(action.name);

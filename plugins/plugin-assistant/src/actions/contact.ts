@@ -1670,7 +1670,7 @@ export function createContactActions(dependencies: ContactActionDependencies): {
 
   const contactAction: Action = {
     name: CONTACT_ACTION,
-    contexts: ["contacts", "messaging", "documents", "memory", "documents"],
+    contexts: ["contacts", "messaging", "documents"],
     tags: [FOLLOW_UP_CAPABLE_ACTION_TAG],
     roleGate: { minRole: "ADMIN" },
     similes: [

@@ -361,7 +361,11 @@ export async function executeV5PlannedToolCall(
       recorder: args.recorder,
       trajectoryId: args.trajectoryId,
     });
-    return subPlannerResultToPlannerToolResult(subResult);
+    const subPlannerResult = subPlannerResultToPlannerToolResult(subResult);
+    // The loop holds tool definitions, not actions: only the executor knows
+    // an async handoff ran.
+    if (action.asyncHandoff === true) subPlannerResult.asyncHandoff = true;
+    return subPlannerResult;
   }
 
   const dispatchCall = inferred?.toolCall ?? toolCall;
@@ -404,6 +408,7 @@ export async function executeV5PlannedToolCall(
       args.runtime,
     ),
   });
+  if (action?.asyncHandoff === true) plannerResult.asyncHandoff = true;
   const parentName = action ? promotedSubactionParent(action) : undefined;
   const parent = parentName
     ? args.runtime.actions.find((candidate) => candidate.name === parentName)

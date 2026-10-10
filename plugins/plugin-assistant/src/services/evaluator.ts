@@ -21,6 +21,8 @@ import {
   EventType,
   hashStableJson,
   type IAgentRuntime,
+  isAuthError,
+  isInsufficientCreditsError,
   isObjectRecord as isRecord,
   type JSONSchema,
   type JsonValue,
@@ -103,6 +105,15 @@ const EMPTY_STATE: State = {
   data: {},
   text: "",
 };
+const BACKGROUND_JOB_INTERVAL_MS = 1000;
+/** Poll cadence while the provider rejects credits or credentials. */
+const PROVIDER_UNAVAILABLE_INTERVAL_MS = 900_000;
+const EVIDENCE_FRONTIER_CAS_ATTEMPTS = 8;
+/** Newest source createdAt any background capture of a room has observed.
+ * Journals stage only captured sources, so a later source is in none of them. */
+function evidenceFrontierKey(agentId: UUID, roomId: UUID): string {
+  return `evaluator-evidence-frontier:${agentId}:${roomId}`;
+}
 function stringifyForPrompt(value: unknown): string {
   if (typeof value === "string") return value;
   return stringifyForModel(value);
@@ -331,6 +342,12 @@ function buildPrompt(params: {
                   providers: undefined,
                   responseId: undefined,
                   responseMessageId: undefined,
+                  // Prompts read text. The connector's raw payload and its
+                  // retained stamp are the copies that resolvers read.
+                  currentMessageText: undefined,
+                  metadata: isRecord(record.content.metadata)
+                    ? { ...record.content.metadata, userPayloadText: undefined }
+                    : record.content.metadata,
                   text:
                     typeof record.content.text === "string"
                       ? renderStoredEnvelopesForPrompt(record.content.text)
@@ -773,6 +790,9 @@ export class EvaluatorService extends BaseService {
   ): Promise<EvaluatorRunResult> {
     if (options.phase !== "post_turn") return this.run(message, state, options);
     await this.enqueueBackground(message, state, options);
+    // The run waits for the evaluators below, so a plain turn queues only the
+    // durable job and adds no model call after delivery.
+    if (options.semanticSignal === false) return this.skippedResult();
     return this.runSelected(
       this.runtime.evaluators.filter((entry) => !this.isBackground(entry)),
       message,
@@ -844,8 +864,8 @@ export class EvaluatorService extends BaseService {
             // Scheduling defaults belong to creation only. Delivery replay
             // must preserve the scheduler's retry delay and operator policy.
             metadata: {
-              updateInterval: 1000,
-              baseInterval: 1000,
+              updateInterval: BACKGROUND_JOB_INTERVAL_MS,
+              baseInterval: BACKGROUND_JOB_INTERVAL_MS,
               maxFailures: 5,
               ...task.metadata,
             },
@@ -907,6 +927,23 @@ export class EvaluatorService extends BaseService {
         if (!changed.length) return write();
         const intents: Task[] = [];
         for (const roomId of new Set(changed.map((row) => row.roomId))) {
+          const roomChanged = changed.filter((row) => row.roomId === roomId);
+          // A source newer than the room's newest background capture is in no
+          // journal, so it has no derived effects to reconcile. An edit that
+          // moves createdAt is always scanned.
+          const frontier = await this.runtime.getCache<unknown>(
+            evidenceFrontierKey(this.runtime.agentId, roomId),
+          );
+          if (
+            typeof frontier === "number" &&
+            roomChanged.every(
+              (row) =>
+                typeof row.createdAt === "number" &&
+                row.createdAt > frontier &&
+                !Object.hasOwn(patches.get(row.id as UUID) ?? {}, "createdAt"),
+            )
+          )
+            continue;
           const transcript = await this.runtime.getMemories({
             tableName: "messages",
             roomId,
@@ -924,16 +961,22 @@ export class EvaluatorService extends BaseService {
           for (const entityId of owners) {
             const trigger = transcript.find((row) => row.entityId === entityId);
             if (!trigger?.id) continue;
+            // Any owner job reconciles a room-wide journal, so only the room's
+            // latest speaker checks it: waking each ambient speaker would
+            // backfill their speaker lanes.
             if (
               !(await hasEvaluatorSourceProgress(
                 this.runtime,
                 trigger,
                 this.runtime.evaluators
-                  .filter((entry) => this.isBackground(entry))
+                  .filter(
+                    (entry) =>
+                      this.isBackground(entry) &&
+                      (entityId === owners[0] ||
+                        entry.evidenceScope !== "room"),
+                  )
                   .map((entry) => entry.name),
-                changed
-                  .filter((row) => row.roomId === roomId)
-                  .map((row) => row.id as UUID),
+                roomChanged.map((row) => row.id as UUID),
               ))
             )
               continue;
@@ -965,8 +1008,8 @@ export class EvaluatorService extends BaseService {
                 // Source reconciliation updates evidence without resetting
                 // backoff on an already pending extraction job.
                 metadata: {
-                  updateInterval: 1000,
-                  baseInterval: 1000,
+                  updateInterval: BACKGROUND_JOB_INTERVAL_MS,
+                  baseInterval: BACKGROUND_JOB_INTERVAL_MS,
                   maxFailures: 5,
                   ...task.metadata,
                 },
@@ -1020,12 +1063,9 @@ export class EvaluatorService extends BaseService {
       );
     }
   }
-  private async executeBackgroundTask(task: Task): Promise<
-    | {
-        preserveTask: boolean;
-      }
-    | undefined
-  > {
+  private async executeBackgroundTask(
+    task: Task,
+  ): Promise<{ preserveTask: boolean } | { nextInterval: number }> {
     if (
       this.backgroundRunning ||
       this.runtime.roomHandlerQueue.pendingTotal() > 0
@@ -1127,6 +1167,23 @@ export class EvaluatorService extends BaseService {
               },
               true,
             );
+            // Exhausted credits or rejected credentials outlast exponential
+            // backoff and would auto-pause the job, dropping its extraction.
+            // Keep the job pending at a slow cadence until the provider answers.
+            if (
+              result.errors.length &&
+              result.errors.every((entry) => entry.providerUnavailable)
+            ) {
+              this.runtime.logger.info(
+                {
+                  src: "service:evaluator",
+                  taskId: task.id,
+                  retryInMs: PROVIDER_UNAVAILABLE_INTERVAL_MS,
+                },
+                "Background memory waits for the model provider",
+              );
+              return { nextInterval: PROVIDER_UNAVAILABLE_INTERVAL_MS };
+            }
             if (result.errors.length)
               throw new ElizaError("Background memory remains pending", {
                 code: "EVALUATOR_JOB_PENDING",
@@ -1136,7 +1193,9 @@ export class EvaluatorService extends BaseService {
                   ...result.errors.map((entry) => entry.retryAt ?? 0),
                 ),
               });
-            if (result.hasMoreEvidence) return undefined;
+            // Name the cadence: a provider wait cleared the scheduler's base interval.
+            if (result.hasMoreEvidence)
+              return { nextInterval: BACKGROUND_JOB_INTERVAL_MS };
             return this.finishBackgroundTask(task);
           },
         ),
@@ -1168,6 +1227,31 @@ export class EvaluatorService extends BaseService {
         return { preserveTask: true };
       },
     );
+  }
+  /** Monotonic: compare-and-set keeps an unleased capture from lowering it. */
+  private async raiseEvidenceFrontier(
+    roomId: UUID,
+    transcript: readonly Memory[],
+  ): Promise<void> {
+    let newest = Number.NEGATIVE_INFINITY;
+    for (const row of transcript)
+      if (typeof row.createdAt === "number" && row.createdAt > newest)
+        newest = row.createdAt;
+    if (!Number.isFinite(newest)) return;
+    const key = evidenceFrontierKey(this.runtime.agentId, roomId);
+    for (
+      let attempt = 0;
+      attempt < EVIDENCE_FRONTIER_CAS_ATTEMPTS;
+      attempt += 1
+    ) {
+      const current = await this.runtime.getCache<unknown>(key);
+      if (typeof current === "number" && current >= newest) return;
+      if (await this.runtime.compareAndSetCache(key, current, newest)) return;
+    }
+    throw new ElizaError("Evidence frontier could not be recorded", {
+      code: "EVALUATOR_PROGRESS_WRITE_FAILED",
+      severity: "ephemeral",
+    });
   }
   private evidenceBatchBytes(): number {
     const configured = this.runtime.getSetting("MEMORY_EVIDENCE_BATCH_BYTES");
@@ -1392,6 +1476,7 @@ export class EvaluatorService extends BaseService {
     output: Record<string, unknown> | null;
     error?: string;
     retryAt?: number;
+    providerUnavailable?: true;
   }> {
     const { evaluatorId, rendered, schema } = params;
     try {
@@ -1425,7 +1510,13 @@ export class EvaluatorService extends BaseService {
         // owner recovery work after the chat/action already completed.
         diagnosticOnly: true,
       });
-      return { output: null, error: messageText, retryAt };
+      return {
+        output: null,
+        error: messageText,
+        retryAt,
+        providerUnavailable:
+          isInsufficientCreditsError(error) || isAuthError(error) || undefined,
+      };
     }
   }
   private async processPreparedEntries(params: {
@@ -1658,6 +1749,7 @@ export class EvaluatorService extends BaseService {
     errors: EvaluatorRunResult["errors"];
     error: string;
     retryAt?: number;
+    providerUnavailable?: true;
   }): EvaluatorRunResult {
     return {
       skipped: false,
@@ -1672,6 +1764,7 @@ export class EvaluatorService extends BaseService {
           evaluatorName: "post_turn",
           error: params.error,
           retryAt: params.retryAt,
+          providerUnavailable: params.providerUnavailable,
         },
       ],
     };
@@ -1771,6 +1864,10 @@ export class EvaluatorService extends BaseService {
             (left.createdAt ?? 0) - (right.createdAt ?? 0) ||
             String(left.id).localeCompare(String(right.id)),
         );
+        // Publish what this capture observed before any of it can be staged;
+        // source mutations skip their room scan only past this frontier.
+        if (incremental.some((entry) => this.isBackground(entry)))
+          await this.raiseEvidenceFrontier(message.roomId, transcript);
         const preparedSources = Promise.resolve().then(() =>
           prepareEvaluatorProgressForTranscript(
             this.runtime,
@@ -2074,13 +2171,18 @@ ${JSON.stringify(references.map(evaluatorEvidenceRecord))}`
           evaluatorId,
         }),
       );
-    let { output, error, retryAt } = rendered
+    let { output, error, retryAt, providerUnavailable } = rendered
       ? await this.readEvaluatorOutput({
           evaluatorId,
           rendered,
           schema,
         })
-      : { output: {}, error: undefined, retryAt: undefined };
+      : {
+          output: {},
+          error: undefined,
+          retryAt: undefined,
+          providerUnavailable: undefined,
+        };
     while (
       background &&
       output &&
@@ -2179,11 +2281,12 @@ ${JSON.stringify(references.map(evaluatorEvidenceRecord))}`
         options,
         schema,
       });
-      ({ output, error, retryAt } = await this.readEvaluatorOutput({
-        evaluatorId,
-        rendered,
-        schema,
-      }));
+      ({ output, error, retryAt, providerUnavailable } =
+        await this.readEvaluatorOutput({
+          evaluatorId,
+          rendered,
+          schema,
+        }));
     }
     if (
       !output &&
@@ -2198,6 +2301,7 @@ ${JSON.stringify(references.map(evaluatorEvidenceRecord))}`
         errors,
         error: error ?? "Evaluator model returned no output",
         retryAt,
+        providerUnavailable,
       });
     }
     if (!output)
@@ -2205,6 +2309,7 @@ ${JSON.stringify(references.map(evaluatorEvidenceRecord))}`
         evaluatorName: "post_turn",
         error: error ?? "Evaluator model returned no output",
         retryAt,
+        providerUnavailable,
       });
     const { processedEvaluators, results } = await this.inRoom(
       message,

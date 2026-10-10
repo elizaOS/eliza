@@ -10,6 +10,7 @@ import {
   type ProviderResult,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import { getActionInferenceMessageText } from "../../../services/message/dialogue-context.ts";
 import { listConversationAttachments } from "../../working-memory/attachmentContext.ts";
 
 const ATTACHMENT_REFERENCE_RE =
@@ -36,10 +37,10 @@ function contentString(message: Memory, key: string): string {
   const value = (message.content as Record<string, unknown> | undefined)?.[key];
   return typeof value === "string" ? value : "";
 }
+// The security envelope's own words ("document", "content") must not open the gate.
 function messageTextForAttachmentRelevance(message: Memory): string {
   return [
-    contentString(message, "currentMessageText"),
-    typeof message.content.text === "string" ? message.content.text : "",
+    getActionInferenceMessageText(message),
     contentString(message, "replyToMessageText"),
   ]
     .filter(Boolean)

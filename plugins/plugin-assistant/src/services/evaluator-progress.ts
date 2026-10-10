@@ -13,6 +13,7 @@
 
 import type {
   EvaluatorEvidenceReconciliation,
+  EvaluatorRunContext,
   EvaluatorRunOptions,
   IAgentRuntime,
   JsonValue,
@@ -42,6 +43,19 @@ export function assertExtractionSourcesUnchanged(
     );
 }
 
+/** The batch holds only history: its job's trigger turn is on a later page or
+ * already acknowledged. Lanes that judge the turn itself resolve such a batch
+ * without a model call instead of grading old records with this turn's results. */
+export function triggerOutsideEvidence({
+  message,
+  options,
+}: Pick<EvaluatorRunContext, "message" | "options">): boolean {
+  return (
+    options.extraction !== undefined &&
+    !options.extraction.messages.some((source) => source.id === message.id)
+  );
+}
+
 export interface EvaluatorProgressSnapshot {
   progressState?: JsonValue;
   messages: Memory[];
@@ -63,7 +77,8 @@ export interface EvaluatorProgressSnapshot {
 interface ProgressScope {
   agentId: UUID;
   roomId: UUID;
-  entityId: UUID;
+  /** Absent for room-wide lanes: one journal serves every speaker. */
+  entityId?: UUID;
   evaluatorName: string;
   version: number;
 }
@@ -111,7 +126,10 @@ function progressScope(
   return {
     agentId: runtime.agentId,
     roomId: message.roomId,
-    entityId: message.entityId,
+    ...(runtime.evaluators.find((entry) => entry.name === evaluatorName)
+      ?.evidenceScope === "room"
+      ? {}
+      : { entityId: message.entityId }),
     evaluatorName,
     version: EXTRACTION_VERSION,
   };
@@ -496,13 +514,7 @@ async function prepareProgressFromSources(
       throw new ElizaError("Invalid evaluator progress name", {
         code: "EVALUATOR_PROGRESS_INVALID_SCOPE",
       });
-    const scope: ProgressScope = {
-      agentId: runtime.agentId,
-      roomId: message.roomId,
-      entityId: message.entityId,
-      evaluatorName,
-      version: EXTRACTION_VERSION,
-    };
+    const scope = progressScope(runtime, message, evaluatorName);
     const key = `evaluator-progress:${hashStableJson(scope)}`;
     let record = readRecord(await runtime.getCache<unknown>(key), scope);
     if (record?.lastReconciliationId) {

@@ -1,5 +1,6 @@
 import type {
   ContextEvent,
+  ContextObjectPromptSegment,
   IAgentRuntime,
   Memory,
   ProviderResult,
@@ -105,6 +106,30 @@ export function priorDialogueContent(text: string, speaker?: string): string {
     return text;
   }
   return `${speaker}: ${text}`;
+}
+
+/** A reply based on web reads names them after its text, so a later turn can
+ * say where the answer came from instead of inventing a site. */
+export function webReadsNote(memory: Memory): string {
+  const reads = Array.isArray(memory.content.webSources)
+    ? memory.content.webSources
+    : [];
+  const named = reads.flatMap((read) => {
+    const { url, query } = asPlainRecord(read) ?? {};
+    if (typeof url === "string") return [`fetched ${url}`];
+    if (typeof query === "string")
+      return [`searched the web for ${JSON.stringify(query)}`];
+    return [];
+  });
+  return named.length > 0 ? ` [${named.join("; ")}]` : "";
+}
+
+/** Quotes copy a reply's dialogue text, never the web-read note shown after it. */
+export function quotableDialogue(segment: ContextObjectPromptSegment): string {
+  const note = segment.metadata?.webReadsNote;
+  return typeof note === "string" && note && segment.content.endsWith(note)
+    ? segment.content.slice(0, -note.length)
+    : segment.content;
 }
 
 export function verifiedCrossRoomContent(memory: Memory): string {
@@ -328,6 +353,7 @@ export function appendPriorDialogueEvents(
     const text =
       priorDialogueOriginalText(memory) ?? getUserMessageText(memory);
     if (!text || looksLikePriorDialogueArtifact(text)) continue;
+    const note = webReadsNote(memory);
     const isOwnReply = memory.entityId === runtime.agentId;
     const speakerName = isOwnReply
       ? (runtime.character?.name ?? priorDialogueSpeakerName(memory))
@@ -353,15 +379,17 @@ export function appendPriorDialogueEvents(
       segment: {
         id: `history:${memory.id}`,
         label: isOwnReply ? "prior_message:agent" : "prior_message:user",
-        content: priorDialogueContent(
-          text,
-          speakerName ?? (isOwnReply ? "assistant" : "user"),
-        ),
+        content:
+          priorDialogueContent(
+            text,
+            speakerName ?? (isOwnReply ? "assistant" : "user"),
+          ) + note,
         stable: false,
         metadata: {
           roomId: memory.roomId,
           entityId: memory.entityId,
           speakerName: speakerName ?? (isOwnReply ? "assistant" : "user"),
+          ...(note ? { webReadsNote: note } : {}),
           ...(sourceReplyReferences ? { sourceReplyReferences } : {}),
           ...(originalText !== undefined
             ? { originalTextSha256: sourceReplyTextHash(originalText) }

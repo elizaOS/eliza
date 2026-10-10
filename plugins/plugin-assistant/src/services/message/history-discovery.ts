@@ -24,6 +24,7 @@ import {
   visibleHistoryEventIds,
 } from "../../runtime/history-retention.ts";
 import { readContextRequests } from "./context-discovery.ts";
+import { quotableDialogue } from "./dialogue-context.ts";
 import { labelHistorySources } from "./history-wire.ts";
 
 import {
@@ -248,12 +249,7 @@ export function projectBackgroundHistory(context: ContextObject) {
     checkpoint: HistoryRetentionCheckpoint;
     loadedSourceIds: string[];
   };
-  if (
-    !view.scope ||
-    !Array.isArray(view.scope.roles) ||
-    !Array.isArray(view.loadedSourceIds)
-  )
-    return full;
+  if (!view.scope || !Array.isArray(view.loadedSourceIds)) return full;
   const bound = completionContextSources(context);
   if (view.sourceSetId !== bound.sourceSetId) return full;
   let history: HistoryDiscovery | undefined;
@@ -395,43 +391,16 @@ export function requestedHistory(
     ...bound.sources.flatMap((source, index) =>
       selected.includes(source.id) &&
       source.event.segment.label === "prior_message:agent"
-        ? [{ text: source.event.segment.content, beforeSourceIndex: index }]
+        ? [
+            {
+              text: quotableDialogue(source.event.segment),
+              beforeSourceIndex: index,
+            },
+          ]
         : [],
     ),
   ].filter(({ text }) => /["'“‘`«「]/.test(text));
-  const quoted =
-    quotationTexts.length > 0
-      ? bound.sources.filter(({ id, event }, index) => {
-          if (
-            projection.visibleEventIds.has(event.id) ||
-            projection.loadedSourceIds.has(id)
-          )
-            return false;
-          const { content, metadata } = event.segment;
-          if (
-            quotationTexts.some(
-              ({ text, beforeSourceIndex }) =>
-                index < beforeSourceIndex &&
-                quotesCompleteSource(text, content),
-            )
-          )
-            return true;
-          const speaker = metadata?.speakerName;
-          const prefix =
-            typeof speaker === "string" ? `${speaker}: ` : undefined;
-          // A displayed speaker prefix need not be quoted. This only finds
-          // a read candidate; load the complete original with its identity.
-          return (
-            !!prefix &&
-            content.startsWith(prefix) &&
-            quotationTexts.some(
-              ({ text, beforeSourceIndex }) =>
-                index < beforeSourceIndex &&
-                quotesCompleteSource(text, content.slice(prefix.length)),
-            )
-          );
-        })
-      : [];
+  const quoted = quotedHistorySources(bound, projection, quotationTexts);
   const linked = referencedHistorySources(bound, projection, new Set(selected));
   return [
     ...new Set([
@@ -474,9 +443,10 @@ function referencedHistorySources(
   const body = (segment: ContextObjectPromptSegment) => {
     const speaker = segment.metadata?.speakerName;
     const prefix = typeof speaker === "string" ? `${speaker}: ` : "";
-    return prefix && segment.content.startsWith(prefix)
-      ? segment.content.slice(prefix.length)
-      : segment.content;
+    const content = quotableDialogue(segment);
+    return prefix && content.startsWith(prefix)
+      ? content.slice(prefix.length)
+      : content;
   };
   const pending = new Set(sourceIds);
   includeLinkedSources(pending, projection.dependencySourceGroups ?? []);
@@ -491,7 +461,7 @@ function referencedHistorySources(
     const stored = reply.event.segment.metadata?.sourceReplyReferences;
     const references =
       readSourceReplyReferences(stored, text) ??
-      readSourceReplyReferences(stored, reply.event.segment.content);
+      readSourceReplyReferences(stored, quotableDialogue(reply.event.segment));
     for (const reference of references?.sources ?? []) {
       const target = byEvent.get(reference.eventId);
       if (
@@ -542,12 +512,12 @@ function quotedHistorySources(
         const earlierQuotes = quotationTexts.filter(
           ({ beforeSourceIndex }) => index < beforeSourceIndex,
         );
-        const { content, metadata } = event.segment;
+        const content = quotableDialogue(event.segment);
         if (
           earlierQuotes.some(({ text }) => quotesCompleteSource(text, content))
         )
           return true;
-        const speaker = metadata?.speakerName;
+        const speaker = event.segment.metadata?.speakerName;
         const prefix = typeof speaker === "string" ? `${speaker}: ` : undefined;
         // A displayed speaker prefix need not be quoted. This only finds
         // a read candidate; load the complete original with its identity.
@@ -721,9 +691,10 @@ export function repairableHistorySourceIds(
   return selected.every((id) => supplied.includes(id)) ? supplied : undefined;
 }
 
-/** Called only after ordinary context-request validation and fresh source/role
- * checks. An absent projection renders every current authorized original;
- * completed read evidence survives that restoration independently. */
+/** Called only after ordinary context-request validation and a context rebuilt
+ * for the freshly resolved role. An absent projection renders every current
+ * authorized original; completed read evidence survives that restoration
+ * independently. */
 export function loadHistoryReferences(
   context: ContextObject,
   projection: HistoryDiscovery | undefined,
@@ -774,7 +745,12 @@ export function loadHistoryReferences(
     loadedSourceIds.has(source.id) &&
     !projection.loadedSourceIds.has(source.id) &&
     source.event.segment.label === "prior_message:agent"
-      ? [{ text: source.event.segment.content, beforeSourceIndex: index }]
+      ? [
+          {
+            text: quotableDialogue(source.event.segment),
+            beforeSourceIndex: index,
+          },
+        ]
       : [],
   );
   for (const source of quotedHistorySources(

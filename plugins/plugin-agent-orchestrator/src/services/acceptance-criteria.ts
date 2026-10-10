@@ -8,6 +8,7 @@
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import { parseJsonObjectResponse } from "./json-model-output.js";
 import { stripInventedArtifactCriteria } from "./producible-evidence.js";
+import type { WorkdirRouteUrlMapping } from "./task-agent-routing.js";
 
 /** Coarse task classification driving which template set is applied. */
 export type OrchestratorTaskType =
@@ -160,12 +161,25 @@ function buildRefinePrompt(
   goal: string,
   type: OrchestratorTaskType,
   template: readonly string[],
+  urlMappings?: readonly WorkdirRouteUrlMapping[],
 ): string {
+  const servedAt = (urlMappings ?? []).map(
+    (mapping) =>
+      `- files under ${mapping.localPath} in the workdir are served at ${mapping.urlPrefix}; a directory's page URL ends with a slash (e.g. ${mapping.urlPrefix}<name>/)`,
+  );
   return [
     "You are setting the acceptance criteria a coding sub-agent must PROVE before its task is accepted.",
     "Turn the goal below into 3-5 concrete, measurable, independently-verifiable criteria.",
     "Each criterion must be checkable from concrete evidence (a passing build/test/typecheck line, a diff hunk, a reachable URL, a screenshot) — never a vague aspiration.",
     "NEVER invent concrete file paths, filenames, or directory names the goal does not state verbatim — the worker legitimately chooses its own layout. When the goal names no path, express the criterion as an observable outcome (a file exists in the workdir, a URL serves the requested content).",
+    "NEVER add a constraint the goal does not state. NEVER write a criterion that can only be met by changing something outside the workdir.",
+    ...(servedAt.length > 0
+      ? [
+          "",
+          "How this workdir is served (state any page URL in this canonical form):",
+          ...servedAt,
+        ]
+      : []),
     "",
     `Detected task type: ${type}`,
     "Goal:",
@@ -205,11 +219,15 @@ function extractCriteriaArray(parsed: Record<string, unknown>): string[] {
  *   deterministic path the unit tests pin).
  *
  * Always returns ≥{@link MIN_CRITERIA} criteria for a non-trivial goal.
+ *
+ * `urlMappings` are the URL mappings of the workdir route the task runs in:
+ * the refinement is told where the workdir is served.
  */
 export async function generateDefaultAcceptanceCriteria(
   goal: string,
   taskTypeHint?: OrchestratorTaskType,
   runtime?: IAgentRuntime,
+  urlMappings?: readonly WorkdirRouteUrlMapping[],
 ): Promise<string[]> {
   const type = taskTypeHint ?? detectTaskType(goal);
   const fallback = [...DEFAULT_CRITERIA_TEMPLATES[type]];
@@ -217,7 +235,7 @@ export async function generateDefaultAcceptanceCriteria(
   if (!runtime || typeof runtime.useModel !== "function") return fallback;
 
   try {
-    const prompt = buildRefinePrompt(goal, type, fallback);
+    const prompt = buildRefinePrompt(goal, type, fallback, urlMappings);
     const result = await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
       stopSequences: [],

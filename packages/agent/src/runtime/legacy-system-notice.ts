@@ -2,7 +2,10 @@
 import { type SystemNotice, systemNoticeText } from "@elizaos/core";
 
 /** The caller must first establish that this is an escalation owned by the host. */
-export function projectLegacySystemNotice(text: string):
+export function projectLegacySystemNotice(
+  text: string,
+  agentName: string | undefined,
+):
   | {
       text: string;
       systemNotice?: SystemNotice;
@@ -27,7 +30,7 @@ export function projectLegacySystemNotice(text: string):
       ? "model-unavailable"
       : "runtime-error";
     notices.add(notice);
-    return systemNoticeText(notice);
+    return systemNoticeText(notice, agentName);
   });
   if (!changed) return undefined;
   const escalationNotice: SystemNotice =

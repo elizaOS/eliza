@@ -9,6 +9,7 @@ import type {
 } from "@elizaos/core";
 import {
   addHeader,
+  buildCharacterStyleDirections,
   buildFailureReplyPrompt,
   conversationMessagesHeader,
   getRecentMessagesData,
@@ -27,6 +28,60 @@ import type { FailureReplyAttempt, StrategyResult } from "./contracts.js";
 import { labelHistorySources } from "./history-wire.ts";
 import { reportRejectedUserVisibleModelOutput } from "./stage1-output.ts";
 import { hasTextGenerationHandler } from "./trajectory-stages.ts";
+
+// Permanent causes never fall back to the retry-inviting transient line.
+const CHARACTER_FAILURE_TEMPLATES: Record<
+  StructuredFailureCause,
+  readonly string[]
+> = {
+  missing_capability: ["missingCapabilityFailureReply"],
+  planner_exhaustion: [
+    "plannerExhaustionFailureReply",
+    "transientFailureReply",
+  ],
+  context_overflow: ["contextOverflowFailureReply"],
+  handler_error: ["transientFailureReply"],
+  persistence_error: ["transientFailureReply"],
+  transient: ["transientFailureReply"],
+};
+
+// Voice-neutral lines for a character that defines no template for the cause.
+const GENERIC_FAILURE_REPLY =
+  "Something went wrong on my end. Please try again.";
+const DEFAULT_FAILURE_REPLY: Record<StructuredFailureCause, string> = {
+  missing_capability:
+    "I can't do that here right now - it needs a capability that isn't available in this setup.",
+  planner_exhaustion: "I ran out of attempts before I could finish that.",
+  // Retrying the identical request cannot succeed, so ask for a smaller one.
+  context_overflow:
+    "That needed more context than my model can take in one call - try a smaller range or a narrower request.",
+  handler_error: GENERIC_FAILURE_REPLY,
+  persistence_error: GENERIC_FAILURE_REPLY,
+  transient: GENERIC_FAILURE_REPLY,
+};
+
+/** A character template, authored as a string or as a function of state. */
+export function characterTemplate(
+  runtime: IAgentRuntime,
+  state: State,
+  name: string,
+): string | undefined {
+  const tmpl = runtime.character.templates?.[name];
+  return typeof tmpl === "function" ? tmpl({ state }) : tmpl;
+}
+
+/** The character's own line for a failure cause; undefined leaves the caller's built-in default. */
+export function characterFailureTemplate(
+  runtime: IAgentRuntime,
+  state: State,
+  cause: StructuredFailureCause,
+): string | undefined {
+  for (const name of CHARACTER_FAILURE_TEMPLATES[cause]) {
+    const text = characterTemplate(runtime, state, name);
+    if (text) return text;
+  }
+  return undefined;
+}
 
 /** An apology cannot repair provider rejection or an exhausted rate-limit window. */
 function terminalProviderFailure(
@@ -236,10 +291,18 @@ export class MessageFailures {
         : undefined) ??
       (await this.generateFailureReplyText(
         runtime,
-        buildFailureReplyPrompt(
-          this.resolveRecentMessagesForFailureReply(state, message),
-          cause,
-        ),
+        // The bare prompt gets only the character's system and bio. Carry the
+        // same chat directions every message-pipeline call has, so "stay in
+        // character" names a concrete voice instead of a default one.
+        [
+          buildCharacterStyleDirections({ character: runtime.character }),
+          buildFailureReplyPrompt(
+            this.resolveRecentMessagesForFailureReply(state, message),
+            cause,
+          ),
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
         stage,
       ));
     if (attempt.kind === "noProvider") {
@@ -261,58 +324,24 @@ export class MessageFailures {
       // rateLimitedReply / insufficientCreditsReply for the specific
       // cases).
       if (attempt.kind === "creditsExhausted") {
-        const tmpl = runtime.character.templates?.insufficientCreditsReply;
         replyText =
-          (typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
+          characterTemplate(runtime, state, "insufficientCreditsReply") ||
           INSUFFICIENT_CREDITS_REPLY;
       } else if (attempt.kind === "rateLimited") {
-        const tmpl = runtime.character.templates?.rateLimitedReply;
         replyText =
-          (typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
+          characterTemplate(runtime, state, "rateLimitedReply") ||
           "My model provider is rate-limiting me right now — give it a few seconds and try again.";
       } else if (attempt.kind === "authFailed") {
-        const tmpl = runtime.character.templates?.authFailedReply;
         replyText =
-          (typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
+          characterTemplate(runtime, state, "authFailedReply") ||
           "The configured AI provider rejected access. Check its API key and account permissions, then try again.";
       } else if (attempt.kind === "schemaRejected") {
         replyText =
           "The AI provider rejected the request format, so I couldn’t finish. This needs a configuration or code fix before retrying.";
-      } else if (cause === "missing_capability") {
-        // Permanent gap: never fall through to transientFailureReply
-        // ("try again in a moment") — that copy invites a retry that
-        // cannot succeed until the capability is enabled (#17027 AC6).
-        // Dedicated template when present; otherwise the built-in
-        // capability-unavailable default.
-        const tmpl = runtime.character.templates?.missingCapabilityFailureReply;
-        replyText =
-          (typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
-          "I can't do that here right now - it needs a capability that isn't available in this setup.";
-      } else if (cause === "planner_exhaustion") {
-        // Retryable budget exhaustion. Dedicated template first; the
-        // legacy transientFailureReply remains a voice-compatible
-        // fallback only for this recoverable class.
-        const tmpl = runtime.character.templates?.plannerExhaustionFailureReply;
-        const fallbackTmpl = runtime.character.templates?.transientFailureReply;
-        replyText =
-          (typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
-          (typeof fallbackTmpl === "function"
-            ? fallbackTmpl({ state })
-            : fallbackTmpl) ||
-          "I ran out of attempts before I could finish that.";
-      } else if (cause === "context_overflow") {
-        // The provider rejected the call at its context limit; retrying the
-        // identical request cannot succeed, so the honest reply asks for a
-        // smaller ask instead of the generic "try again".
-        const tmpl = runtime.character.templates?.contextOverflowFailureReply;
-        replyText =
-          (typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
-          "That needed more context than my model can take in one call - try a smaller range or a narrower request.";
       } else {
-        const tmpl = runtime.character.templates?.transientFailureReply;
         replyText =
-          (typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
-          "Something went wrong on my end. Please try again.";
+          characterFailureTemplate(runtime, state, cause) ||
+          DEFAULT_FAILURE_REPLY[cause];
       }
     }
 
@@ -384,11 +413,8 @@ export class MessageFailures {
     responseId: UUID,
     stage: string,
   ): StrategyResult {
-    const noProviderTmpl = runtime.character.templates?.noModelProviderReply;
     const replyText =
-      (typeof noProviderTmpl === "function"
-        ? noProviderTmpl({ state })
-        : noProviderTmpl) ||
+      characterTemplate(runtime, state, "noModelProviderReply") ||
       "This agent has no LLM provider configured. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OPENROUTER_API_KEY in your environment, or sign in to Eliza Cloud (ELIZAOS_CLOUD_API_KEY).";
 
     runtime.logger.warn(

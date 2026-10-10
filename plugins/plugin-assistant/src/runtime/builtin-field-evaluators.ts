@@ -132,13 +132,12 @@ export function readCompleteStringHints(raw: unknown): string[] | null {
 }
 
 const INTENTS_DESCRIPTION =
-  "One verb phrase per user-requested runtime outcome; keep explicit reads, navigation and record changes separate. A requested composite report, brief or dossier is one outcome with its source constraints. Let its composer choose supporting reads; do not invent separate domain requests or a connector inventory from possible report contents. Preserve separately requested operations. Omit work awaiting clarification; keep independent executable work. Empty for answers complete without execution.";
+  "One verb phrase per user-requested runtime outcome, including outcomes the reply would decline or defer; the planner checks availability. Keep explicit reads, navigation and record changes separate. A requested composite report, brief or dossier is one outcome with its source constraints. Let its composer choose supporting reads; do not invent separate domain requests or a connector inventory from possible report contents. Preserve separately requested operations. Omit work awaiting clarification the supplied context cannot answer; keep independent executable work. Empty for answers complete without execution.";
 
 export const intentsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
   name: "intents",
   description: INTENTS_DESCRIPTION,
-  descriptionCompressed:
-    "One verb phrase per user-requested runtime outcome; keep explicit reads, navigation and record changes separate. A composite report, brief or dossier is one outcome with its source constraints, not invented supporting domain requests. Preserve separately requested operations. Empty for answers complete without execution.",
+  descriptionCompressed: INTENTS_DESCRIPTION,
   priority: 15,
   schema: {
     type: "array",
@@ -224,20 +223,18 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 // an acknowledgement or a held navigation confirmation, never an early effect claim.
 // ---------------------------------------------------------------------------
 
+const REPLY_TEXT_DESCRIPTION =
+  ACKNOWLEDGMENT_RULE +
+  " Complete answer for simple; brief acknowledgment for planned work, without unsupported completion. Never state that a capability is unavailable; the planner checks availability. IGNORE is empty. Navigation-only replies confirm the destination is open, held until success; keep navigation intents pending. They never prove record reads or writes. Exact quotations preserve every character.";
+
 export const replyTextFieldEvaluator: ResponseHandlerFieldEvaluator<string> = {
   name: "replyText",
-  description:
-    ACKNOWLEDGMENT_RULE +
-    " Complete answer for simple; brief acknowledgment for planned work, without unsupported completion or capability refusal. IGNORE is empty. Navigation-only replies confirm the destination is open, held until success; keep navigation intents pending. They never prove record reads or writes. Exact quotations preserve every character.",
-  descriptionCompressed:
-    ACKNOWLEDGMENT_RULE +
-    " Complete answer for simple; brief acknowledgment for planned work, without unsupported completion or capability refusal. IGNORE is empty. Navigation-only replies confirm the destination is open, held until success; keep navigation intents pending. They never prove record reads or writes. Exact quotations preserve every character.",
+  description: REPLY_TEXT_DESCRIPTION,
+  descriptionCompressed: REPLY_TEXT_DESCRIPTION,
   priority: 20,
   schema: {
     type: "string",
-    description:
-      ACKNOWLEDGMENT_RULE +
-      " Complete answer for simple; brief acknowledgment for planned work, without unsupported completion or capability refusal. IGNORE is empty. Navigation-only replies confirm the destination is open, held until success; keep navigation intents pending. They never prove record reads or writes. Exact quotations preserve every character.",
+    description: REPLY_TEXT_DESCRIPTION,
   },
   parse(value) {
     if (typeof value !== "string") return "";
@@ -529,42 +526,3 @@ export const BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS: ReadonlyArray<ResponseHa
     addressedToFieldEvaluator,
     emotionFieldEvaluator,
   ];
-
-const DIRECT_TEXT_SCHEMA_DESCRIPTIONS = new Map<
-  ResponseHandlerFieldEvaluator,
-  string | undefined
->([
-  [shouldRespondFieldEvaluator, undefined],
-  [contextsFieldEvaluator, undefined],
-  [intentsFieldEvaluator, undefined],
-  [candidateActionNamesFieldEvaluator, undefined],
-  [replyTextFieldEvaluator, "Plain text unless channel supports markdown."],
-  [factsFieldEvaluator, "One plain-English fact per item."],
-  [relationshipsFieldEvaluator, undefined],
-  [topicsFieldEvaluator, undefined],
-  [addressedToFieldEvaluator, undefined],
-  [emotionFieldEvaluator, undefined],
-]);
-
-/** Direct-text discovery only: keep full system guidance and nested contracts.
- * Object identity excludes custom fields, including replacements of builtins.
- * Never mutate the registry's cached canonical schema or evaluator objects. */
-export function withDirectTextBuiltinSchemaDescriptions(
-  schema: JSONSchema,
-  registeredFields: readonly ResponseHandlerFieldEvaluator[],
-): JSONSchema {
-  let properties = schema.properties;
-  for (const field of registeredFields) {
-    if (
-      !DIRECT_TEXT_SCHEMA_DESCRIPTIONS.has(field) ||
-      properties?.[field.name] !== field.schema
-    )
-      continue;
-    const compact = { ...field.schema };
-    const description = DIRECT_TEXT_SCHEMA_DESCRIPTIONS.get(field);
-    if (description === undefined) delete compact.description;
-    else compact.description = description;
-    properties = { ...properties, [field.name]: compact };
-  }
-  return properties === schema.properties ? schema : { ...schema, properties };
-}

@@ -1213,6 +1213,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     source: string,
     roomId: `${string}-${string}-${string}-${string}-${string}`,
   ): void => {
+    if (progressPolicy.mode === "silent") return;
     if (heartbeatTimers.has(sessionId)) return;
     const intervalMs = resolveCanEdit(source)
       ? HEARTBEAT_INTERVAL_FAST_MS
@@ -1261,7 +1262,8 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
             : "";
         const filledPrompt = HEARTBEAT_SUMMARY_PROMPT.replace(
           "{tail}",
-          `${cleaned}${toolsLine}`.trim() || "(no narration captured yet)",
+          () =>
+            `${cleaned}${toolsLine}`.trim() || "(no narration captured yet)",
         );
         const summary = await runtime
           .useModel(ModelType.TEXT_SMALL, {

@@ -1081,7 +1081,16 @@ describe("planner tool discovery", () => {
         "NOT_REGISTERED",
       ]) {
         loaded = [];
-        expect((await invoke(["NOTES", name]))?.success).toBe(false);
+        const mixed = await invoke(["NOTES", name]);
+        expect(mixed?.success).toBe(role === "ADMIN");
+        expect(loaded.map((action) => action.name)).toEqual(
+          role === "ADMIN" ? ["NOTES", "NOTES_READ"] : [],
+        );
+        expect(mixed?.data?.notAdmitted).toEqual(
+          role === "ADMIN" ? [name] : undefined,
+        );
+        loaded = [];
+        expect((await invoke([name]))?.success).toBe(false);
         expect(loaded).toEqual([]);
       }
     },
@@ -1289,7 +1298,6 @@ describe("planner tool discovery", () => {
   });
 
   it.each([
-    { names: ["VIEWS", "UNAUTHORIZED"] },
     { names: [null] },
     { names: ["VIEWS"], mode: "unknown" },
     { names: ["views"] },

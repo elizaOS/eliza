@@ -444,26 +444,19 @@ describe("planner-owned BRIEF", () => {
     expect(fixture.runtime.useModel).not.toHaveBeenCalled();
   });
 
-  it("ignores invented JSON format for an ordinary brief but preserves explicit JSON requests", async () => {
-    const ordinary = await invoke("planner", "json", {
-      text: "Give me my daily dossier using the connected sources available now.",
+  it("leaves the reply to the planner when it passes JSON format", async () => {
+    const { result, callback } = await invoke("planner", "json", {
+      text: "Give me my daily dossier as JSON.",
     });
-    expect(ordinary.result).toMatchObject({
+    expect(result).toMatchObject({
       success: true,
       modelReplyRequired: true,
       turnComplete: false,
     });
-    expect(ordinary.result.verifiedUserFacing).toBeUndefined();
-    expect(ordinary.callback).not.toHaveBeenCalled();
-    const explicit = await invoke("planner", "json", {
-      text: "Give me my daily dossier as JSON.",
-    });
-    expect(explicit.result).toMatchObject({
-      success: true,
-      verifiedUserFacing: true,
-      turnComplete: true,
-    });
-    expect(explicit.result.modelReplyRequired).toBeUndefined();
+    expect(result.text).toBeUndefined();
+    expect(result.userFacingText).toBeUndefined();
+    expect(result.verifiedUserFacing).toBeUndefined();
+    expect(callback).not.toHaveBeenCalled();
     expect(fixture.runtime.useModel).not.toHaveBeenCalled();
   });
 
@@ -599,7 +592,7 @@ describe("planner-owned BRIEF", () => {
     expect(fixture.runtime.useModel).not.toHaveBeenCalled();
   });
 
-  it("defers complete local-time grounding once and leaves standalone JSON semantics intact", async () => {
+  it("defers complete local-time grounding once", async () => {
     const { result, callback } = await invoke();
     expect(result).toMatchObject({
       success: true,
@@ -669,12 +662,6 @@ describe("planner-owned BRIEF", () => {
       payload.sections.completedToday[0].timeContext.completedAt.localDate,
     ).toBe("2026-10-05");
     expect(JSON.stringify(projected).match(/Data:/g)).toHaveLength(1);
-    const json = await invoke("planner", "json");
-    expect(json.result).toMatchObject({
-      verifiedUserFacing: true,
-      turnComplete: true,
-    });
-    expect(json.result.modelReplyRequired).toBeUndefined();
     expect(fixture.runtime.useModel).not.toHaveBeenCalled();
   });
 

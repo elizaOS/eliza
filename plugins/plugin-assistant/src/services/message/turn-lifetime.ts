@@ -504,6 +504,7 @@ export class MessageTurnLifetime {
                 options.onPlanningAcknowledgment?.(text);
               }
             : undefined,
+          onResponseDecision: options?.onResponseDecision,
           keepExistingResponses:
             options?.keepExistingResponses ??
             parseBooleanFromText(

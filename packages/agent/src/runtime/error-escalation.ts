@@ -164,7 +164,7 @@ export function createErrorReportedEscalationHandler(
       await EscalationService.startEscalation(
         runtime,
         reason,
-        systemNoticeText(notice),
+        systemNoticeText(notice, runtime.character.name),
         notice,
       );
       logger.warn(

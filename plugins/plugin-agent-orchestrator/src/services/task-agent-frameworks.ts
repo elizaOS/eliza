@@ -12,6 +12,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { codexCliSubscriptionState } from "@elizaos/auth/auth";
 import {
   CODING_AGENT_BACKEND_PREFLIGHTS,
   CODING_AGENT_BACKENDS,
@@ -615,7 +616,10 @@ function hasCodexSubscriptionAuth(): boolean {
   const auth = readJsonFile(authPath);
   if (!auth || typeof auth !== "object" || Array.isArray(auth)) return false;
   const key = (auth as Record<string, unknown>).OPENAI_API_KEY;
-  return typeof key === "string" && key.trim().length > 0;
+  return (
+    (typeof key === "string" && key.trim().length > 0) ||
+    codexCliSubscriptionState() === "valid"
+  );
 }
 
 function hasCodexApiKey(runtime?: IAgentRuntime): boolean {

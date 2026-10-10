@@ -610,6 +610,21 @@ export type CalendarReadBinding = {
   requestedAt: number;
 };
 
+/** Whether a turn's Calendar read bindings name a read that must run. */
+export function calendarReadBindingsRequireExecution(
+  bindings: unknown,
+): boolean {
+  return (
+    Array.isArray(bindings) &&
+    bindings.some(
+      (binding) =>
+        typeof binding === "object" &&
+        binding !== null &&
+        (binding as CalendarReadBinding).execution === "required",
+    )
+  );
+}
+
 export interface LifeOpsNextCalendarEventContext {
   event: LifeOpsCalendarEvent | null;
   /** Exact service snapshot and requested display zone; older results may omit it. */

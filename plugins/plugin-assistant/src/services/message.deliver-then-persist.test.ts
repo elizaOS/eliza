@@ -19,6 +19,7 @@ import {
   authorizeOwnerExclusiveDisclosure,
   ChannelType,
   createCharacter,
+  drainPostDeliveryTasks,
   EventType,
   inferenceTimingRegistry,
   ModelType,
@@ -390,6 +391,14 @@ describe("simple-path deliver-then-persist ordering", () => {
       expect((await h.runtime.getMemoryById(message.id))?.content.text).toBe(
         text,
       );
+      await drainPostDeliveryTasks(h.runtime);
+      const jobs = await h.runtime.getTasksByName("POST_TURN_MEMORY");
+      expect(
+        jobs.map((job) => [
+          job.metadata?.messageId,
+          job.metadata?.semanticSignal,
+        ]),
+      ).toEqual([[message.id, false]]);
     },
   );
 

@@ -365,6 +365,13 @@ describe("auto goal verification on task_complete", () => {
     expect(lastSent?.text).toMatch(/did not confirm the task is complete/);
     expect(lastSent?.text).toMatch(/Evidence checklist/i);
     expect(lastSent?.text).not.toMatch(/FINAL ATTEMPT/);
+    // Not an internal send: the corrected result replaces the one the user
+    // was given, so the router relays it.
+    expect(fake.service.sendToSession).toHaveBeenLastCalledWith(
+      sessionId,
+      lastSent?.text,
+      undefined,
+    );
     const doc = await store.getTask(taskId);
     expect(doc?.task.status).toBe("active");
     expect(doc?.task.metadata.autoVerifyAttempts).toBe(1);
@@ -1447,6 +1454,50 @@ describe("deterministic completion-residuals gate", () => {
       )?.data,
     ).toMatchObject({ retryable: true, verifier: "llm-goal-verifier" });
     expect(fake.sent.at(-1)?.text).toContain("not counted as a failed attempt");
+  });
+
+  it("a provider context-length rejection parks the task without re-engaging the worker", async () => {
+    const fake = makeFakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId, sessionId } = await seedTaskWithSession(store, [
+      "tests pass",
+    ]);
+    const useModel = vi.fn(async () => {
+      throw Object.assign(new Error("context_length_exceeded"), {
+        statusCode: 400,
+      });
+    });
+    const runtime = {
+      ...makeRuntime(fake.service, () => ""),
+      useModel,
+    };
+    const service = createService(runtime as never, { store });
+    await service.start();
+
+    fake.emit(sessionId, "task_complete", { response: "done with evidence" });
+    await vi.waitFor(async () => {
+      expect((await store.getTask(taskId))?.task.status).toBe(
+        "waiting_on_user",
+      );
+    });
+
+    const doc = await store.getTask(taskId);
+    const overflow = doc?.events.find(
+      (event) => event.eventType === "goal_verify_context_overflow",
+    );
+    expect(overflow?.data).toMatchObject({
+      verifier: "llm-goal-verifier",
+      retryable: false,
+    });
+    expect(overflow?.summary).toContain("context_length_exceeded");
+    expect(
+      doc?.events.some(
+        (event) => event.eventType === "goal_verify_inconclusive",
+      ),
+    ).toBe(false);
+    expect(useModel).toHaveBeenCalledTimes(1);
+    expect(fake.service.sendToSession).not.toHaveBeenCalled();
+    expect(doc?.task.metadata.autoVerifyAttempts).toBeUndefined();
   });
 
   it("an unexpected auto-verifier exception cannot leave the task validating", async () => {

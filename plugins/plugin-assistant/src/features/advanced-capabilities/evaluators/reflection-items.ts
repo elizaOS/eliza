@@ -58,7 +58,10 @@ import z from "zod";
 import { getEntityDetails } from "../../../entities.ts";
 import { renderActionResultsForModel } from "../../../runtime/planner-rendering.ts";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
-import { assertExtractionSourcesUnchanged } from "../../../services/evaluator-progress.ts";
+import {
+  assertExtractionSourcesUnchanged,
+  triggerOutsideEvidence,
+} from "../../../services/evaluator-progress.ts";
 import {
   formatRecentMessages,
   getRoomTranscript,
@@ -1381,16 +1384,19 @@ function normalizeTaskCompletion(
   };
 }
 
+/** The stored row keeps the verdict and its sources, not the model's reason
+ * prose: that prose restates what the user said, and MEMORY_DELETE removes
+ * only the fact itself. The reason remains in this message's completion cache
+ * and the evaluator trajectory. */
 async function storeTaskCompletionReflection(
   runtime: IAgentRuntime,
   message: Memory,
-  task: SuccessOutput,
   taskCompletion: TaskCompletionAssessment,
   extraction: EvaluatorRunOptions["extraction"],
 ): Promise<void> {
   const summaryText = `Task completion reflection: ${
     taskCompletion.completed ? "completed" : "incomplete"
-  }. ${taskCompletion.reason}`;
+  }.`;
 
   const reflection: Memory = {
     id: extraction
@@ -1411,8 +1417,6 @@ async function storeTaskCompletionReflection(
       messageId: message.id,
       taskCompleted: taskCompletion.completed,
       taskAssessed: taskCompletion.assessed,
-      taskCompletionReason: taskCompletion.reason,
-      reflectionThought: task.thought ?? "",
       tags: ["reflection", "task_completion"],
       evaluatedAt: taskCompletion.evaluatedAt,
       ...extractionEvidenceMetadata(undefined, extraction),
@@ -1465,6 +1469,7 @@ Fact stores:
 Rules:
 - Fiction, examples, roleplay, and hypothetical stories are not personal facts about the speaker. Do not store them as personal memories.
 - Explicit requests to remember, edit, or forget a fact are owned by the MEMORY action; do not duplicate or undo that requested operation. Independently stated new facts can still be extracted.
+- A request the agent carried out this turn with an action that wrote a record (see Action results) is owned by that record, which can later change or be removed. Do not store the request, its timing, or the agent's action as a fact.
 - Only extract claims grounded in this speaker's own new messages. Other participants, historical reference messages, and stored facts are context, not new evidence to reinforce or new claims about this speaker.
 - In incremental extraction, EVERY operation must include sourceMessageIds citing selected new message IDs authored by this speaker. Never cite reference messages or other speakers. Omit unsupported operations.
 - No meaningful new/changed fact -> {"ops":[]}.
@@ -1662,6 +1667,7 @@ export const relationshipEvaluator: Evaluator<
   name: "relationships",
   incremental: true,
   background: true,
+  evidenceScope: "room",
   reconcileEvidence: reconcileRelationshipEvidence,
   description: "Extracts relationship updates between known room participants.",
   priority: EvaluatorPriority.REFLECTION_RELATIONSHIPS,
@@ -1751,6 +1757,7 @@ export const identityEvaluator: Evaluator<
   name: "identities",
   incremental: true,
   background: true,
+  evidenceScope: "room",
   reconcileEvidence: reconcileIdentityEvidence,
   description: "Extracts platform identities for known room participants.",
   priority: EvaluatorPriority.REFLECTION_IDENTITY,
@@ -1859,6 +1866,10 @@ export const successEvaluator: Evaluator<SuccessOutput, SuccessPrepared> = {
   name: "success",
   incremental: true,
   background: true,
+  evidenceScope: "room",
+  // History pages hold no verdict for this turn.
+  resolveOutputWhen: triggerOutsideEvidence,
+  resolveOutput: () => ({ completed: false, reason: "" }),
   reconcileEvidence: reconcileSuccessEvidence,
   description: "Evaluates whether user task is complete this turn.",
   priority: EvaluatorPriority.REFLECTION_SUCCESS,
@@ -1894,6 +1905,8 @@ export const successEvaluator: Evaluator<SuccessOutput, SuccessPrepared> = {
       name: "storeSuccessAssessment",
       async process({ runtime, message, output, options }) {
         await reviewChangedExtractionSources(runtime, [], options.extraction);
+        if (triggerOutsideEvidence({ message, options }))
+          return { success: true, data: { taskAssessed: false } };
         const taskCompletion = normalizeTaskCompletion(
           output,
           asUuidOrNull(message.id) ?? undefined,
@@ -1901,7 +1914,6 @@ export const successEvaluator: Evaluator<SuccessOutput, SuccessPrepared> = {
         await storeTaskCompletionReflection(
           runtime,
           message,
-          output,
           taskCompletion,
           options.extraction,
         );

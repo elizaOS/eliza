@@ -4,6 +4,7 @@
  * `DiscoveredSubscriptionCredential` types that model-provider plugins use to
  * describe a vendor's subscription product to the generic host `auth/` layer.
  */
+export { codexCliSubscriptionState } from "./builtin-providers.ts";
 export {
   getSubscriptionAuthProvider,
   hasSubscriptionAuthProvider,

@@ -11,10 +11,7 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import {
-  asObjectRecord as asRecord,
-  readViewInteractionClientId,
-} from "@elizaos/core/protocol";
+import { readViewInteractionClientId } from "@elizaos/core/protocol";
 import LinkifyIt from "linkify-it";
 import {
   BROWSER_SERVICE_TYPE,
@@ -24,11 +21,13 @@ import {
   type BrowserDispatchFailure,
   isBrowserDispatchFailure,
 } from "../dispatch-types.js";
+import { isNativeBrowserRequest } from "../providers/workspace.js";
 import {
   type BrowserWorkspaceCommand,
   type BrowserWorkspaceCommandResult,
   executeBrowserWorkspaceCommand,
   getBrowserWorkspaceMode,
+  isBrowserWorkspaceBridgeConfigured,
 } from "../workspace/browser-workspace.js";
 import {
   WAIT_FOR_URL_DEFAULT_POLL_INTERVAL_MS,
@@ -807,6 +806,12 @@ async function executeBrowserWaitForUrl(
   };
 }
 
+/**
+ * Target availability per message: the umbrella and every promoted BROWSER_*
+ * action validate the same message, and a target probe may cross the network.
+ */
+const targetAvailability = new WeakMap<Memory, Promise<boolean>>();
+
 export const browserAction: Action = {
   name: "BROWSER",
   contexts: ["browser", "web", "automation", "secrets"],
@@ -842,7 +847,19 @@ export const browserAction: Action = {
   // Wait for the browser result before the model writes its reply. A speculative
   // Stage-1 acknowledgement would race the result and duplicate text/voice.
   suppressEarlyReply: true,
-  validate: async () => true,
+  // Offered only when a browser can act: the requesting native Browser is its
+  // own target; otherwise a registered target must be available.
+  validate: async (runtime, message) => {
+    if (isNativeBrowserRequest(message)) return true;
+    const service = runtime.getService<BrowserService>(BROWSER_SERVICE_TYPE);
+    if (!service) return isBrowserWorkspaceBridgeConfigured();
+    let available = targetAvailability.get(message);
+    if (!available) {
+      available = service.resolveTarget().then((target) => target !== null);
+      targetAvailability.set(message, available);
+    }
+    return available;
+  },
   handler: async (
     runtime,
     message,
@@ -855,8 +872,7 @@ export const browserAction: Action = {
       | undefined;
     const messageText = getMessageText(message);
     const subaction = inferBrowserSubaction(params, messageText);
-    const nativePage =
-      asRecord(message.content.metadata)?.uiBrowserSurface === "native";
+    const nativePage = isNativeBrowserRequest(message);
 
     if (
       nativePage &&
@@ -874,6 +890,9 @@ export const browserAction: Action = {
         success: false,
         transcriptVisibility: "internal",
         text: "BROWSER action=get reads an element on the current page and does not accept url. No read was dispatched. First use action=navigate with the requested url, wait for its result, then use action=get with selector and no url.",
+        // A rejected read is a read miss, like the dispatch-failure path
+        // below, so it does not outrank a later successful read.
+        data: { actionName: "BROWSER", readOnlyOperation: true },
       };
     }
 

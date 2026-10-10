@@ -60,7 +60,10 @@ import {
   type SerializableSpawnOpts,
 } from "./admission-queue.js";
 import { assignAgentName } from "./agent-name-assignment.js";
-import { deriveChildTerminalResult } from "./child-terminal-result.js";
+import {
+  deriveChildTerminalResult,
+  isChildTerminalEvent,
+} from "./child-terminal-result.js";
 import {
   extractWriteLedger,
   verifyClaimedFiles,
@@ -166,6 +169,7 @@ import {
   type OrchestratorRoomRosterOverview,
   type OrchestratorTaskDocument,
   type OrchestratorTaskEvent,
+  type OrchestratorTaskMessage,
   type OrchestratorTaskPriority,
   type OrchestratorTaskRecord,
   type OrchestratorTaskSession,
@@ -177,8 +181,10 @@ import {
   readRetryBudgetFirstSessionId,
   resolveStateLostRespawnCap,
   resolveTaskTransition,
+  sessionEventTaskStatus,
   stateLostRespawnUnderCap,
   type TaskCompletionRole,
+  type TaskEventWrite,
   type TaskLifecycleTrigger,
   type TaskListFilter,
   type TaskMessageDirection,
@@ -223,7 +229,12 @@ import {
   configureSpendLedger,
   createTaskStoreSpendLedger,
 } from "./spend-allowance.js";
-import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
+import {
+  normalizeTaskAgentAdapter,
+  resolveRouteForWorkdir,
+  type WorkdirRouteUrlMapping,
+} from "./task-agent-routing.js";
+import { OWNER_REQUESTED_METADATA_KEY } from "./task-policy.js";
 import {
   TASK_SUPERVISOR_SERVICE_TYPE,
   type TaskSupervisorService,
@@ -232,8 +243,10 @@ import {
   AdmissionQueueFullError,
   type ApprovalPreset,
   isSessionPromptable,
+  type SendOptions,
   SessionCapError,
   type SessionInfo,
+  SessionNotFoundError,
   type SpawnResult,
   type SubscriptionExecutionAuthorization,
   subscriptionExecutionAuthorizationFromMetadata,
@@ -996,6 +1009,67 @@ function parseUsage(data: unknown): ParsedUsage | null {
   };
 }
 
+/** Streamed sub-agent text arrives a few tokens per event. It is buffered per
+ * session and written once per interval, so narration costs about one
+ * task-document write per second instead of one per chunk. Any other event of
+ * the session writes the buffer first, keeping the timeline in stream order. */
+const STREAM_WRITE_INTERVAL_MS = 1_000;
+
+interface StreamBuffer {
+  taskId: string;
+  sessionId: string;
+  eventType: "message" | "reasoning";
+  turnId?: string;
+  text: string;
+  timestamp: number;
+  createdAt: string;
+  timer?: ReturnType<typeof setTimeout>;
+}
+
+/** The session state a liveness event sets, written with the event row. */
+function liveSessionWrite(
+  sessionId: string,
+  event: string,
+  data: unknown,
+): Pick<TaskEventWrite, "session"> {
+  if (event === "ready" || event === "reconnected") {
+    return { session: { sessionId, patch: { status: "ready" } } };
+  }
+  if (event !== "tool_running") return {};
+  const record = isRecord(data) ? data : {};
+  const toolCall = isRecord(record.toolCall) ? record.toolCall : {};
+  return {
+    session: {
+      sessionId,
+      patch: {
+        status: "tool_running",
+        activeTool: str(toolCall.title) ?? str(toolCall.kind),
+      },
+    },
+  };
+}
+
+/** The stored row of one task message. */
+function messageRow(
+  taskId: string,
+  input: AddMessageInput,
+  timestamp: number,
+  createdAt: string,
+): OrchestratorTaskMessage {
+  return {
+    id: randomUUID(),
+    taskId,
+    sessionId: input.sessionId,
+    senderKind: input.senderKind,
+    direction: input.direction ?? "system",
+    content: input.content,
+    searchableText: input.content.toLowerCase(),
+    timestamp,
+    metadata: input.metadata ?? {},
+    createdAt,
+  };
+}
+
 function describeEvent(event: string, data: unknown): string {
   const record = isRecord(data) ? data : {};
   switch (event) {
@@ -1075,6 +1149,13 @@ export class OrchestratorTaskService extends Service {
   // EVERY session event (`ready`, `tool_running`, ...) forever — one line per
   // event, per session. We warn once per session and stay silent after.
   private readonly recordFailureWarned = new Set<string>();
+  // Per `${taskId}\0${sessionId}`: the session's attach check, shared by its
+  // events so a streamed chunk does not read the whole task document.
+  private readonly sessionAttachments = new Map<string, Promise<boolean>>();
+  // Streamed message/reasoning text not yet written, per session, and each
+  // session's write chain. See bufferStreamChunk.
+  private readonly streamBuffers = new Map<string, StreamBuffer>();
+  private readonly streamWrites = new Map<string, Promise<void>>();
   // Tasks with an auto-goal-verify pass in flight. ACP can emit `task_complete`
   // from two sites for one turn; without this guard both runs read the same
   // attempt counter across the model `await` and double-send a correction.
@@ -1309,10 +1390,14 @@ export class OrchestratorTaskService extends Service {
     }
     this.started = false;
     // An admitted event can enqueue verification while its own promise settles.
-    // Drain to a fixed point rather than taking a single stale snapshot.
-    while (this.backgroundWork.size > 0) {
+    // Drain to a fixed point rather than taking a single stale snapshot; an
+    // event still in flight may buffer streamed text, which is written now.
+    do {
+      for (const sessionId of [...this.streamBuffers.keys()]) {
+        void this.flushStreamChunks(sessionId);
+      }
       await Promise.allSettled([...this.backgroundWork]);
-    }
+    } while (this.backgroundWork.size > 0 || this.streamBuffers.size > 0);
   }
 
   private queueSmithersRecovery(acp: AcpService): void {
@@ -1659,14 +1744,11 @@ export class OrchestratorTaskService extends Service {
       await this.syncSmithersRunCopies(acp, completed, prepared.sessionId);
       if (!link.keepAliveAfterComplete) {
         try {
-          // Mark the stop administrative BEFORE stopping so the swarm
-          // coordinator's `stopped` synthesis reads it as lifecycle plumbing.
-          await markSessionAdministrativelyStopped(
+          await this.stopAcpSession(
             acp,
             prepared.sessionId,
             "smithers_recovery",
           );
-          await acp.stopSession(prepared.sessionId);
         } catch (err) {
           // error-policy:J6 the graph and both durable links are already
           // completed; transport teardown cannot turn committed work into a
@@ -1804,28 +1886,23 @@ export class OrchestratorTaskService extends Service {
           ? snapshotTaskId
           : await this.resolveTaskId(sessionId);
       if (!taskId) return;
-      if (
-        sessionSnapshot &&
-        !(await this.store.findSession(sessionId, taskId))
-      ) {
-        await this.attachSession(taskId, {
-          sessionId,
-          agentType: sessionSnapshot.agentType,
-          workdir: sessionSnapshot.workdir,
-          status: sessionSnapshot.status,
-          metadata: sessionSnapshot.metadata,
-          ...(typeof sessionSnapshot.metadata?.label === "string"
-            ? { label: sessionSnapshot.metadata.label }
-            : sessionSnapshot.name
-              ? { label: sessionSnapshot.name }
-              : {}),
-          ...(typeof sessionSnapshot.metadata?.initialTask === "string"
-            ? { originalTask: sessionSnapshot.metadata.initialTask }
-            : {}),
-        });
+      if (sessionSnapshot) {
+        await this.ensureSessionAttached(taskId, sessionId, sessionSnapshot);
       }
+      if (event === "message" || event === "reasoning") {
+        const text = isRecord(data) ? str(data.text) : undefined;
+        if (text !== undefined) {
+          this.bufferStreamChunk(taskId, sessionId, event, text, turnId);
+          return;
+        }
+      }
+      await this.flushStreamChunks(sessionId);
       const rawData = isRecord(data) ? data : { value: data };
-      const taskDoc = await this.store.getTask(taskId);
+      // Only a terminal event derives a child result; a streamed chunk must
+      // not re-read the whole task document.
+      const taskDoc = isChildTerminalEvent(event)
+        ? await this.store.getTask(taskId)
+        : null;
       const childTerminalResult = taskDoc
         ? deriveChildTerminalResult(taskDoc, {
             eventType: event,
@@ -1835,45 +1912,201 @@ export class OrchestratorTaskService extends Service {
             timestamp: Date.now(),
           })
         : undefined;
-      await this.store.addEvent({
-        id: randomUUID(),
+      // The event row and the session state it implies are one task write.
+      await this.store.recordSessionEvent({
         taskId,
-        sessionId,
-        ...(turnId ? { turnId } : {}),
-        eventType: event,
-        summary: describeEvent(event, data),
-        data: {
-          ...rawData,
-          ...(childTerminalResult ? { childTerminalResult } : {}),
-        },
-        timestamp: Date.now(),
-        createdAt: nowIso(),
+        events: [
+          {
+            id: randomUUID(),
+            taskId,
+            sessionId,
+            ...(turnId ? { turnId } : {}),
+            eventType: event,
+            summary: describeEvent(event, data),
+            data: {
+              ...rawData,
+              ...(childTerminalResult ? { childTerminalResult } : {}),
+            },
+            timestamp: Date.now(),
+            createdAt: nowIso(),
+          },
+        ],
+        ...liveSessionWrite(sessionId, event, data),
       });
       await this.applySessionEvent(taskId, sessionId, event, data);
       this.emitChange(taskId);
     } catch (err) {
-      // error-policy:J1 ACP event boundary translation — persistence failures
-      // are surfaced to the agent so it can retry or escalate the session.
-      this.runtime.reportError("OrchestratorTask.recordSessionEvent", err, {
-        sessionId,
-        event,
-      });
-      // Warn once per session, not once per event. A persistently degraded
-      // store would fire this on every `ready`/`tool_running`/... otherwise,
-      // flooding the log for the life of the session (#11641).
-      if (!this.recordFailureWarned.has(sessionId)) {
-        this.recordFailureWarned.add(sessionId);
-        this.log("warn", "failed to record session event", {
-          sessionId,
-          event,
-          error: err instanceof Error ? err.message : String(err),
-          note: "further event-record failures for this session are suppressed",
-        });
-      }
+      this.noteRecordFailure(sessionId, event, err);
       // Account identity is an authority boundary: its caller awaits this
       // consumer before exposing failover credentials to a child. Other
       // telemetry events retain their established diagnostics-only behavior.
       if (event === "account_switched") throw err;
+    }
+  }
+
+  /** Attach a prompt turn's session to its task once. The check reads the
+   * whole task document, so it is shared by every event of the session (a
+   * turn's chunks arrive in bursts) and skipped once it succeeded; a failed
+   * or negative check is retried by the session's next event. */
+  private ensureSessionAttached(
+    taskId: string,
+    sessionId: string,
+    snapshot: SessionInfo,
+  ): Promise<boolean> {
+    const key = `${taskId}\u0000${sessionId}`;
+    const known = this.sessionAttachments.get(key);
+    if (known) return known;
+    const check = (async () =>
+      (await this.store.findSession(sessionId, taskId)) !== null ||
+      this.attachSession(taskId, {
+        sessionId,
+        agentType: snapshot.agentType,
+        workdir: snapshot.workdir,
+        status: snapshot.status,
+        metadata: snapshot.metadata,
+        ...(typeof snapshot.metadata?.label === "string"
+          ? { label: snapshot.metadata.label }
+          : snapshot.name
+            ? { label: snapshot.name }
+            : {}),
+        ...(typeof snapshot.metadata?.initialTask === "string"
+          ? { originalTask: snapshot.metadata.initialTask }
+          : {}),
+      }))();
+    this.sessionAttachments.set(key, check);
+    const forget = () => {
+      if (this.sessionAttachments.get(key) === check) {
+        this.sessionAttachments.delete(key);
+      }
+    };
+    void check.then((attached) => attached || forget(), forget);
+    return check;
+  }
+
+  private noteRecordFailure(
+    sessionId: string,
+    event: string,
+    err: unknown,
+  ): void {
+    // error-policy:J1 ACP event boundary translation — persistence failures
+    // are surfaced to the agent so it can retry or escalate the session.
+    this.runtime.reportError("OrchestratorTask.recordSessionEvent", err, {
+      sessionId,
+      event,
+    });
+    // Warn once per session, not once per event. A persistently degraded
+    // store would fire this on every `ready`/`tool_running`/... otherwise,
+    // flooding the log for the life of the session (#11641).
+    if (!this.recordFailureWarned.has(sessionId)) {
+      this.recordFailureWarned.add(sessionId);
+      this.log("warn", "failed to record session event", {
+        sessionId,
+        event,
+        error: err instanceof Error ? err.message : String(err),
+        note: "further event-record failures for this session are suppressed",
+      });
+    }
+  }
+
+  /** Add a streamed chunk to its session's buffer (see STREAM_WRITE_INTERVAL_MS). */
+  private bufferStreamChunk(
+    taskId: string,
+    sessionId: string,
+    eventType: StreamBuffer["eventType"],
+    text: string,
+    turnId: string | undefined,
+  ): void {
+    const pending = this.streamBuffers.get(sessionId);
+    if (
+      pending &&
+      pending.taskId === taskId &&
+      pending.eventType === eventType &&
+      pending.turnId === turnId
+    ) {
+      pending.text += text;
+      return;
+    }
+    if (pending) void this.flushStreamChunks(sessionId);
+    const buffer: StreamBuffer = {
+      taskId,
+      sessionId,
+      eventType,
+      ...(turnId ? { turnId } : {}),
+      text,
+      timestamp: Date.now(),
+      createdAt: nowIso(),
+    };
+    this.streamBuffers.set(sessionId, buffer);
+    buffer.timer = setTimeout(
+      () => void this.flushStreamChunks(sessionId),
+      STREAM_WRITE_INTERVAL_MS,
+    );
+    buffer.timer.unref?.();
+  }
+
+  /** Write the session's buffered chunks; resolves once every write queued
+   * for the session so far has settled. Never rejects. */
+  private flushStreamChunks(sessionId: string): Promise<void> {
+    const buffer = this.streamBuffers.get(sessionId);
+    if (buffer) {
+      this.streamBuffers.delete(sessionId);
+      if (buffer.timer) clearTimeout(buffer.timer);
+      const write = (this.streamWrites.get(sessionId) ?? Promise.resolve())
+        .then(() => this.writeStreamBuffer(buffer))
+        .finally(() => {
+          if (this.streamWrites.get(sessionId) === write) {
+            this.streamWrites.delete(sessionId);
+          }
+        });
+      this.streamWrites.set(sessionId, write);
+      void this.trackBackgroundWork(write);
+    }
+    return this.streamWrites.get(sessionId) ?? Promise.resolve();
+  }
+
+  private async writeStreamBuffer(buffer: StreamBuffer): Promise<void> {
+    const { taskId, sessionId, eventType, turnId, text, timestamp, createdAt } =
+      buffer;
+    try {
+      await this.store.recordSessionEvent({
+        taskId,
+        events: [
+          {
+            id: randomUUID(),
+            taskId,
+            sessionId,
+            ...(turnId ? { turnId } : {}),
+            eventType,
+            summary: describeEvent(eventType, { text }),
+            data: { text },
+            timestamp,
+            createdAt,
+          },
+        ],
+        // Reasoning is not part of the deliverable transcript; only message
+        // text becomes a stdout message (the message DTO's direction union
+        // has no reasoning member).
+        ...(eventType === "message"
+          ? {
+              messages: [
+                messageRow(
+                  taskId,
+                  {
+                    content: text,
+                    senderKind: "sub_agent",
+                    sessionId,
+                    direction: "stdout",
+                  },
+                  timestamp,
+                  createdAt,
+                ),
+              ],
+            }
+          : {}),
+      });
+      this.emitChange(taskId);
+    } catch (err) {
+      this.noteRecordFailure(sessionId, eventType, err);
     }
   }
 
@@ -2118,13 +2351,12 @@ export class OrchestratorTaskService extends Service {
               taskId,
             );
           }
-          await this.store.addEvent({
-            id: randomUUID(),
+          await this.parkForOwner(
             taskId,
-            sessionId: coordinator.sessionId,
-            eventType: "completion_review_delivery_failed",
-            summary: `Could not deliver contributor receipts to the completion coordinator: ${message}`,
-            data: {
+            coordinator.sessionId,
+            "completion_review_delivery_failed",
+            `Could not deliver contributor receipts to the completion coordinator: ${message}`,
+            {
               coordinatorSessionId: coordinator.sessionId,
               contributorSessionIds: undelivered.map(
                 (session) => session.sessionId,
@@ -2133,11 +2365,7 @@ export class OrchestratorTaskService extends Service {
               retryMethod: "recoverCompletionBarriers",
               error: message,
             },
-            timestamp: Date.now(),
-            createdAt: nowIso(),
-          });
-          await this.advanceTaskStatus(taskId, "awaiting_user");
-          this.emitChange(taskId);
+          );
           this.runtime.reportError?.(
             "OrchestratorTask.dispatchContributionReview",
             err,
@@ -2158,45 +2386,6 @@ export class OrchestratorTaskService extends Service {
   ): Promise<void> {
     const record = isRecord(data) ? data : {};
     switch (event) {
-      case "ready":
-      case "reconnected":
-        await this.store.updateSession(sessionId, { status: "ready" }, taskId);
-        await this.advanceTaskStatus(taskId, "session_active");
-        break;
-      case "tool_running": {
-        const toolCall = isRecord(record.toolCall) ? record.toolCall : {};
-        await this.store.updateSession(
-          sessionId,
-          {
-            status: "tool_running",
-            activeTool: str(toolCall.title) ?? str(toolCall.kind),
-          },
-          taskId,
-        );
-        await this.advanceTaskStatus(taskId, "session_active");
-        break;
-      }
-      case "message": {
-        const text = str(record.text);
-        if (text) {
-          await this.recordMessage(taskId, {
-            content: text,
-            senderKind: "sub_agent",
-            sessionId,
-            direction: "stdout",
-          });
-        }
-        break;
-      }
-      case "reasoning": {
-        // Reasoning text rides the event stream (event.data.text), which the
-        // mapper forwards verbatim onto the task event record for the UI's
-        // ReasoningCell. It is intentionally NOT recorded as a message: the
-        // message DTO's `direction` is a closed union and reasoning is not part
-        // of the deliverable transcript. addEvent (in onSessionEvent) already
-        // persisted it; nothing further to apply to session/task state.
-        break;
-      }
       case "plan": {
         // The sub-agent's checklist/plan snapshot (already sanitized in AcpService)
         // becomes the task's durable currentPlan, which drives the plan/checklist
@@ -3283,9 +3472,10 @@ export class OrchestratorTaskService extends Service {
   }
 
   /**
-   * The single durable task-status write. Every status change on the event
-   * bridge, the verifier, and the crash producer routes a named
-   * {@link TaskLifecycleTrigger} through {@link resolveTaskTransition}, so the
+   * The durable task-status write for a named {@link TaskLifecycleTrigger}.
+   * Every status change on the event bridge, the verifier, and the crash
+   * producer routes its trigger through {@link sessionEventTaskStatus}, as the
+   * store's session-event write does for the liveness promotion, so the
    * legal-transition table — not scattered inline guards — decides the target.
    * An illegal `(from, trigger)` (a stale/out-of-order session event that no
    * longer applies, e.g. a late `session_active` after `validating`) is dropped
@@ -3301,8 +3491,7 @@ export class OrchestratorTaskService extends Service {
   ): Promise<void> {
     const doc = await this.store.getTask(taskId);
     if (!doc) return;
-    if (doc.task.paused) return;
-    const next = resolveTaskTransition(doc.task.status, trigger);
+    const next = sessionEventTaskStatus(doc.task, trigger);
     if (next === null || next === doc.task.status) return;
     await this.store.updateTask(taskId, {
       status: next,
@@ -3615,18 +3804,9 @@ export class OrchestratorTaskService extends Service {
     taskId: string,
     input: AddMessageInput,
   ): Promise<void> {
-    await this.store.addMessage({
-      id: randomUUID(),
-      taskId,
-      sessionId: input.sessionId,
-      senderKind: input.senderKind,
-      direction: input.direction ?? "system",
-      content: input.content,
-      searchableText: input.content.toLowerCase(),
-      timestamp: Date.now(),
-      metadata: input.metadata ?? {},
-      createdAt: nowIso(),
-    });
+    await this.store.addMessage(
+      messageRow(taskId, input, Date.now(), nowIso()),
+    );
     this.emitChange(taskId);
   }
 
@@ -3654,9 +3834,14 @@ export class OrchestratorTaskService extends Service {
   // ---- lifecycle ---------------------------------------------------------
 
   async createTask(input: CreateTaskInput): Promise<TaskThreadDetailDto> {
+    // The workdir hint is dropped by bindProject; read the served-URL facts
+    // of its route first so generated criteria name the URL the route serves.
+    const route = input.workdir
+      ? resolveRouteForWorkdir(this.runtime, input.workdir)
+      : undefined;
     const bound = this.bindProject(input);
     const doc = await this.store.createTask(
-      await this.withDefaultAcceptanceCriteria(bound),
+      await this.withDefaultAcceptanceCriteria(bound, route?.urlMappings),
     );
     if (input.originalRequest) {
       await this.recordMessage(doc.task.id, {
@@ -3710,6 +3895,7 @@ export class OrchestratorTaskService extends Service {
    */
   private async withDefaultAcceptanceCriteria(
     input: CreateTaskInput,
+    urlMappings?: readonly WorkdirRouteUrlMapping[],
   ): Promise<CreateTaskInput> {
     const supplied = input.acceptanceCriteria;
     // Caller-supplied criteria are authoritative — never overwrite them.
@@ -3725,11 +3911,18 @@ export class OrchestratorTaskService extends Service {
     if (!shouldRequireGoalContract()) return input;
     if (!isNonTrivialGoal(input.goal)) return input;
 
-    const hint = this.taskTypeHintFor(input);
+    // A workdir served at URLs makes a task of no specific kind (none, or the
+    // generic "coding" TASKS records) an app build; a specific kind stays.
+    const kindHint = this.taskTypeHintFor(input);
+    const hint =
+      urlMappings?.length && (!kindHint || kindHint === "coding")
+        ? "app-build"
+        : kindHint;
     const generated = await generateDefaultAcceptanceCriteria(
       input.goal,
       hint,
       this.runtime,
+      urlMappings,
     );
     if (generated.length === 0) return input;
     this.log(
@@ -3995,6 +4188,7 @@ export class OrchestratorTaskService extends Service {
     for (const session of doc.sessions) {
       this.sessionTaskIndex.delete(session.sessionId);
       this.recordFailureWarned.delete(session.sessionId);
+      this.sessionAttachments.delete(`${taskId}\u0000${session.sessionId}`);
     }
     return this.store.deleteTask(taskId);
   }
@@ -4922,6 +5116,25 @@ export class OrchestratorTaskService extends Service {
         },
       );
 
+      if (verdict.contextOverflow) {
+        // The provider refused the judge prompt at its context limit. This
+        // completion's evidence rebuilds the identical request, so neither a
+        // judge retry nor a worker re-report (which is asked for the same
+        // evidence) can pass it. Park it for a human with the classified
+        // reason instead of resending it.
+        await this.parkForOwner(
+          taskId,
+          sessionId,
+          "goal_verify_context_overflow",
+          verdict.summary,
+          {
+            verifier: LLM_GOAL_VERIFIER_NAME,
+            retryable: false,
+          },
+        );
+        return;
+      }
+
       if (verdict.inconclusive) {
         await this.retryInconclusiveVerification({
           taskId,
@@ -5002,33 +5215,54 @@ export class OrchestratorTaskService extends Service {
         taskDelivered: false,
         stoppedAt: undefined,
       });
+      // The worker re-reports the result it already gave; a result the router
+      // already relayed is not relayed again.
       await this.sendToTaskAgent(
         taskId,
         sessionId,
         correction,
         "validation_failed",
+        { internal: true },
       );
       await this.advanceTaskStatus(taskId, "validation_failed");
     } catch (sendErr) {
       // error-policy:J1 boundary — an inconclusive verifier plus an unavailable
       // worker is surfaced to a human instead of remaining stuck validating.
-      await this.store.addEvent({
-        id: randomUUID(),
+      await this.parkForOwner(
         taskId,
         sessionId,
-        eventType: "auto_verify_retry_failed",
-        summary:
-          "Verification was inconclusive and its retry could not be delivered; escalating to a human.",
-        data: {
+        "auto_verify_retry_failed",
+        "Verification was inconclusive and its retry could not be delivered; escalating to a human.",
+        {
           verifier,
           retryable: true,
           error: sendErr instanceof Error ? sendErr.message : String(sendErr),
         },
-        timestamp: Date.now(),
-        createdAt: nowIso(),
-      });
-      await this.advanceTaskStatus(taskId, "awaiting_user");
+      );
+      return;
     }
+    this.emitChange(taskId);
+  }
+
+  /** Record why automatic handling stopped and hand the task to a person. */
+  private async parkForOwner(
+    taskId: string,
+    sessionId: string,
+    eventType: string,
+    summary: string,
+    data: Record<string, unknown>,
+  ): Promise<void> {
+    await this.store.addEvent({
+      id: randomUUID(),
+      taskId,
+      sessionId,
+      eventType,
+      summary,
+      data,
+      timestamp: Date.now(),
+      createdAt: nowIso(),
+    });
+    await this.advanceTaskStatus(taskId, "awaiting_user");
     this.emitChange(taskId);
   }
 
@@ -5067,18 +5301,13 @@ export class OrchestratorTaskService extends Service {
     } = args;
     if (attempt >= MAX_AUTO_VERIFY_ATTEMPTS) {
       // Stop the loop: park for a human rather than re-prompting forever.
-      await this.store.addEvent({
-        id: randomUUID(),
+      await this.parkForOwner(
         taskId,
         sessionId,
-        eventType: "auto_verify_exhausted",
-        summary: `Automatic verification failed ${attempt} time(s); escalating to a human.`,
-        data: { verifier, missing, attempts: attempt },
-        timestamp: Date.now(),
-        createdAt: nowIso(),
-      });
-      await this.advanceTaskStatus(taskId, "awaiting_user");
-      this.emitChange(taskId);
+        "auto_verify_exhausted",
+        `Automatic verification failed ${attempt} time(s); escalating to a human.`,
+        { verifier, missing, attempts: attempt },
+      );
       return;
     }
     // Persist the bumped attempt counter + a reflexion post-mortem first, so a
@@ -5137,22 +5366,18 @@ export class OrchestratorTaskService extends Service {
       // escalation (event + waiting_on_user), never a silent stall.
       // The kept-alive session could not take the follow-up — escalate rather
       // than silently leaving the task stuck in `validating`.
-      await this.store.addEvent({
-        id: randomUUID(),
+      await this.parkForOwner(
         taskId,
         sessionId,
-        eventType: "auto_verify_resend_failed",
-        summary:
-          "Automatic verification failed and the corrective follow-up could not be delivered; escalating to a human.",
-        data: {
+        "auto_verify_resend_failed",
+        "Automatic verification failed and the corrective follow-up could not be delivered; escalating to a human.",
+        {
           verifier,
           missing,
           error: sendErr instanceof Error ? sendErr.message : String(sendErr),
         },
-        timestamp: Date.now(),
-        createdAt: nowIso(),
-      });
-      await this.advanceTaskStatus(taskId, "awaiting_user");
+      );
+      return;
     }
     this.emitChange(taskId);
   }
@@ -5255,6 +5480,8 @@ export class OrchestratorTaskService extends Service {
         source: "independent-verifier",
         keepAliveAfterComplete: false,
         nestingDepth: parentDepth + 1,
+        [OWNER_REQUESTED_METADATA_KEY]:
+          isRecord(meta) && meta[OWNER_REQUESTED_METADATA_KEY] === true,
       },
     });
     const verifierSessionId = spawn.sessionId;
@@ -5287,14 +5514,7 @@ export class OrchestratorTaskService extends Service {
     } finally {
       unsubscribe?.();
       try {
-        // Mark the stop administrative BEFORE stopping so the swarm
-        // coordinator's `stopped` synthesis reads it as lifecycle plumbing.
-        await markSessionAdministrativelyStopped(
-          acp,
-          verifierSessionId,
-          "verifier_teardown",
-        );
-        await acp.stopSession(verifierSessionId);
+        await this.stopAcpSession(acp, verifierSessionId, "verifier_teardown");
       } catch (stopErr) {
         // error-policy:J6 best-effort teardown of the ephemeral verifier session;
         // a failed stop is warned and must not mask the verdict.
@@ -6034,8 +6254,8 @@ export class OrchestratorTaskService extends Service {
     // the parent's trace, and point ELIZA_TRAJECTORY_DIR at a per-task child dir
     // this service scans on task_complete. When the gate is off we forward an
     // explicit ELIZA_TRAJECTORY_LOGGING="0": the broad ELIZA_ env forwarding
-    // (acp-service.forwardableSubAgentEnv) would otherwise leak the parent's
-    // ambiguous value to the child.
+    // (sub-agent-env-policy.forwardableSubAgentEnv) would otherwise leak the
+    // parent's ambiguous value to the child.
     const traceEnv = this.buildChildTraceEnv(taskId);
 
     const subscriptionExecutionAuthorization =
@@ -6133,6 +6353,9 @@ export class OrchestratorTaskService extends Service {
           // Orchestrator sessions outlive their first prompt so follow-ups and
           // validation re-dispatch can reuse them.
           keepAliveAfterComplete: true,
+          // Every session continuing the task carries its owner provenance.
+          [OWNER_REQUESTED_METADATA_KEY]:
+            doc.task.metadata?.[OWNER_REQUESTED_METADATA_KEY] === true,
           // Carried so a child this sub-agent spawns can compute its own depth
           // (parent depth + 1) and the nesting guard above can enforce the cap.
           nestingDepth,
@@ -6603,6 +6826,7 @@ export class OrchestratorTaskService extends Service {
     sessionId: string,
     message: string,
     reason: GoalFollowUpReason = "user_message",
+    opts?: SendOptions,
   ): Promise<boolean> {
     const doc = await this.store.getTask(taskId);
     if (!doc) return false;
@@ -6626,7 +6850,7 @@ export class OrchestratorTaskService extends Service {
     });
     await this.store.updateSession(sessionId, { lastInputSentAt: Date.now() });
     try {
-      await acp.sendToSession(sessionId, followUp);
+      await acp.sendToSession(sessionId, followUp, opts);
     } catch (err) {
       // error-policy:J2 mark the session send_failed for observability, then
       // rethrow the original failure so the caller sees it.
@@ -6653,10 +6877,7 @@ export class OrchestratorTaskService extends Service {
       throw new Error("ACP service unavailable; cannot stop active session");
     }
     try {
-      // Mark the stop administrative BEFORE stopping so the swarm
-      // coordinator's `stopped` synthesis reads it as lifecycle plumbing.
-      await markSessionAdministrativelyStopped(acp, sessionId, "user_stop");
-      await acp.stopSession(sessionId);
+      await this.stopAcpSession(acp, sessionId, "user_stop");
     } catch (err) {
       // error-policy:J2 mark the session stop_failed for observability, then
       // rethrow the original failure so the caller sees it.
@@ -6926,14 +7147,7 @@ export class OrchestratorTaskService extends Service {
     await Promise.all(
       active.map(async (session) => {
         try {
-          // Mark the stop administrative BEFORE stopping so the swarm
-          // coordinator's `stopped` synthesis reads it as lifecycle plumbing.
-          await markSessionAdministrativelyStopped(
-            acp,
-            session.sessionId,
-            "task_lifecycle",
-          );
-          await acp.stopSession(session.sessionId);
+          await this.stopAcpSession(acp, session.sessionId, "task_lifecycle");
         } catch (err) {
           // error-policy:J1 collect per-session stop failures; the loop throws a
           // structured RecoveryConflictError afterward when any session failed.
@@ -6962,6 +7176,31 @@ export class OrchestratorTaskService extends Service {
           failures.length === 1 ? "" : "s"
         }`,
       );
+    }
+  }
+
+  /**
+   * Stop one task session through ACP. A session ACP has no record of (its
+   * subprocess ended with an earlier runtime) has nothing left to stop, so it
+   * counts as stopped; every other stop failure propagates to the caller.
+   */
+  private async stopAcpSession(
+    acp: AcpService,
+    sessionId: string,
+    reason: string,
+  ): Promise<void> {
+    // Mark the stop administrative BEFORE stopping so the swarm
+    // coordinator's `stopped` synthesis reads it as lifecycle plumbing.
+    await markSessionAdministrativelyStopped(acp, sessionId, reason);
+    try {
+      await acp.stopSession(sessionId);
+    } catch (err) {
+      if (!(err instanceof SessionNotFoundError)) throw err;
+      // error-policy:J4 only an unknown session proves nothing is left to stop;
+      // the caller records it stopped instead of failing the task operation.
+      this.log("warn", "Unknown ACP session counted as stopped", {
+        sessionId,
+      });
     }
   }
 

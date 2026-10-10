@@ -36,11 +36,6 @@ import { getMessageConnectorsWithHook } from "../../advanced-capabilities/action
 export const PLATFORM_CHAT_CONTEXT_PROVIDER_NAME = "PLATFORM_CHAT_CONTEXT";
 export const PLATFORM_USER_CONTEXT_PROVIDER_NAME = "PLATFORM_USER_CONTEXT";
 
-/** Pretty-print a normalized provider payload as JSON. */
-function renderJson(payload: Record<string, ProviderValue>): string {
-  return JSON.stringify(payload, null, 2);
-}
-
 /** An empty (no prompt text) ProviderResult carrying only diagnostic values. */
 function emptyResult(data: Record<string, ProviderValue>): ProviderResult {
   return { text: "", values: data, data };
@@ -407,7 +402,7 @@ export const platformChatContextProvider: Provider = {
     };
 
     return {
-      text: renderJson({ platform_chat_context: promptData }),
+      text: JSON.stringify({ platform_chat_context: promptData }),
       values: {
         platformChatContextCount: contexts.length,
       },
@@ -522,7 +517,7 @@ export const platformUserContextProvider: Provider = {
     };
 
     return {
-      text: renderJson({ platform_user_context: data }),
+      text: JSON.stringify({ platform_user_context: data }),
       values: {
         platformUserContextCount: users.length,
       },

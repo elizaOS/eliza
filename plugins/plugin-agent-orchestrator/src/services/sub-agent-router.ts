@@ -26,6 +26,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
+  ChannelType,
   inspectSendHandlerResult,
   MESSAGE_SOURCE_SUB_AGENT,
   requireConfirmedSendHandlerDelivery,
@@ -46,6 +47,7 @@ import {
 } from "./coding-account-selection.js";
 import {
   beginPendingHandoff,
+  hasPendingHandoff,
   settlePendingHandoff,
 } from "./handoff-pending.js";
 import {
@@ -80,7 +82,14 @@ import {
   SsrfBlockedError,
   safeFetch,
 } from "./ssrf-guard.js";
-import type { SessionEventName, SessionInfo } from "./types.js";
+import { OWNER_REQUESTED_METADATA_KEY } from "./task-policy.js";
+import {
+  lastUserInputAt,
+  relayedSinceUserInput,
+  SESSION_RESULT_RELAYED_AT_KEY,
+  type SessionEventName,
+  type SessionInfo,
+} from "./types.js";
 import {
   captureChangeSet,
   getWorkspaceBranch,
@@ -660,12 +669,13 @@ export class SubAgentRouter extends Service {
   // Deterministic shared entityId, constant per runtime (agentId-derived).
   private sharedEntityIdMemo: UUID | undefined;
   // The two runaway-loop backstops (per-session round-trip cap + per-lineage
-  // state_lost respawn cap) and the cross-session completion-dedupe compare-
-  // and-set are consolidated into one pure, fuzz-tested reducer. Every counter
-  // lives in `loopState`; `handleEvent` drives `routerLoopTransition` once per
-  // decision point and executes the returned decision. See router-loop-guard.ts
-  // and the fuzz test (router-loop-guard.test.ts) for the invariants — no
-  // double-post, no early force-stop, no leaked session (#9960, #7967).
+  // state_lost respawn cap), the cross-session completion-dedupe compare-
+  // and-set and the one-failure-relay-per-lineage claim are consolidated into
+  // one pure, fuzz-tested reducer. Every counter lives in `loopState`;
+  // `handleEvent` drives `routerLoopTransition` once per decision point and
+  // executes the returned decision. See router-loop-guard.ts and the fuzz test
+  // (router-loop-guard.test.ts) for the invariants — no double-post, no early
+  // force-stop, no leaked session (#9960, #7967).
   private loopState: RouterLoopState = createRouterLoopState();
 
   // Per-root-origin spawn cap. The completion-dedupe slot above only
@@ -928,7 +938,7 @@ export class SubAgentRouter extends Service {
    * The `:shared` suffix guarantees no collision with any legacy per-session
    * id (those hashed a sessionId UUID in that position).
    */
-  private sharedSubAgentEntityId(): UUID {
+  sharedSubAgentEntityId(): UUID {
     this.sharedEntityIdMemo ??= deriveUuidFromString(
       `${this.runtime.agentId}:${SUB_AGENT_ENTITY_NAMESPACE}:shared`,
     );
@@ -1056,6 +1066,7 @@ export class SubAgentRouter extends Service {
       }
     }
     if (!shouldInject(event)) return;
+    const eventAt = Date.now();
     const acp = this.acp;
     if (!acp) return;
     const session =
@@ -1550,7 +1561,6 @@ export class SubAgentRouter extends Service {
     if (event === "task_complete" && deadUrls.length > 0) {
       const retried = await this.retryIncompleteBuild(session, deadUrls);
       if (retried) {
-        this.verifyRetryHandedOffSessions.add(sessionId);
         this.captureOriginResultForCompletion(
           origin,
           session,
@@ -1573,6 +1583,50 @@ export class SubAgentRouter extends Service {
           text,
           deliverable,
           deadUrls,
+        );
+        rollbackRoundTrip();
+        return;
+      }
+    }
+    // One relay per user input, read fresh from session metadata; checked after
+    // URL verification so an internal turn's dead URLs still hand off.
+    const isTerminal = event === "task_complete" || event === "error";
+    const relayMeta = isTerminal
+      ? (await acp.getSession(sessionId))?.metadata
+      : undefined;
+    const isStatusRelay =
+      isTerminal && routingKindForEvent(event, data, false) === "TASK_STATUS";
+    if (isStatusRelay && !capExceeded && relayedSinceUserInput(relayMeta)) {
+      this.log(
+        "info",
+        "suppressing relay: this session's result already reached the user and no user input followed",
+        { sessionId, event },
+      );
+      rollbackRoundTrip();
+      return;
+    }
+    // One failure relay per lineage; a burst of failures for one task reaches
+    // the user once.
+    const failureKey =
+      event === "error" ||
+      (event === "task_complete" &&
+        deadUrls.length > 0 &&
+        verifiedUrls.length === 0)
+        ? completionLineageKey(session, origin)
+        : null;
+    if (failureKey) {
+      const claim = routerLoopTransition(this.loopState, {
+        type: "claim_failure",
+        lineageKey: failureKey,
+        eventAt,
+        lastUserInputAt: lastUserInputAt(relayMeta),
+      });
+      this.loopState = claim.state;
+      if (claim.decision.kind === "already_claimed") {
+        this.log(
+          "info",
+          "suppressing failure relay: this task already reported a failure",
+          { sessionId, event },
         );
         rollbackRoundTrip();
         return;
@@ -1766,7 +1820,9 @@ export class SubAgentRouter extends Service {
           ? (sessionMeta.workdirRoute as Record<string, unknown>)
           : undefined;
       const sessionRouteId = pickPlainString(sessionMeta?.workdirRouteId);
-      const sessionInitialTask = pickPlainString(sessionMeta?.initialTask);
+      // The relay triggers a turn in the target room, and the turn reads the
+      // room's channel type from its trigger as it does from a connector post.
+      const targetRoom = await this.runtime.getRoom(target.roomId);
       const memory: Memory = {
         id: randomUUID() as UUID,
         entityId: subAgentEntityId,
@@ -1776,6 +1832,7 @@ export class SubAgentRouter extends Service {
         content: {
           text,
           source: ACPX_ROUTER_SOURCE,
+          ...(targetRoom?.type ? { channelType: targetRoom.type } : {}),
           ...(origin.parentMessageId
             ? { inReplyTo: origin.parentMessageId }
             : {}),
@@ -1829,7 +1886,8 @@ export class SubAgentRouter extends Service {
             ...(verifiedUrls.length > 0
               ? { subAgentVerifiedUrls: verifiedUrls }
               : {}),
-            ...(deliverable ? { subAgentDeliverable: deliverable } : {}),
+            // A flag, not a copy: the deliverable is this message's own text.
+            ...(deliverable ? { subAgentDeliverable: true } : {}),
             ...(finishReason ? { subAgentFinishReason: finishReason } : {}),
             ...(origin.userId ? { originUserId: origin.userId } : {}),
             ...(origin.parentMessageId
@@ -1847,12 +1905,40 @@ export class SubAgentRouter extends Service {
             ...(origin.source ? { originSource: origin.source } : {}),
             ...(sessionRouteId ? { workdirRouteId: sessionRouteId } : {}),
             ...(sessionRoute ? { workdirRoute: sessionRoute } : {}),
-            ...(sessionInitialTask ? { initialTask: sessionInitialTask } : {}),
+            // The relay speaks for its session's owner provenance.
+            ...(sessionMeta?.[OWNER_REQUESTED_METADATA_KEY] === true
+              ? { [OWNER_REQUESTED_METADATA_KEY]: true }
+              : {}),
           } as Content["metadata"],
         },
         createdAt: Date.now(),
       };
       const replyCallback = this.buildReplyCallback(origin, sessionId, target);
+      const relayCallback: HandlerCallback | undefined =
+        replyCallback &&
+        isStatusRelay &&
+        event === "task_complete" &&
+        deadUrls.length === 0
+          ? async (...args) => {
+              const delivered = await replyCallback(...args);
+              if (delivered.length > 0) {
+                await acp
+                  .updateSessionMetadata(sessionId, {
+                    [SESSION_RESULT_RELAYED_AT_KEY]: eventAt,
+                  })
+                  .catch((err: unknown) => {
+                    // error-policy:J7 the stamp only prevents a later duplicate
+                    // relay; the delivered reply stands, so the failure is
+                    // warned, not thrown.
+                    this.log("warn", "failed to stamp relayed result", {
+                      sessionId,
+                      error: err instanceof Error ? err.message : String(err),
+                    });
+                  });
+              }
+              return delivered;
+            }
+          : replyCallback;
       // messageService.handleMessage saves the memory itself ("Saving message
       // to memory" inside SERVICE:MESSAGE). When that path is available, skip
       // the explicit createMemory — otherwise we double-save with the same
@@ -1860,7 +1946,7 @@ export class SubAgentRouter extends Service {
       // violation, killing the planner trip and dropping the sub-agent answer.
       if (this.runtime.messageService?.handleMessage) {
         await this.runtime.messageService
-          .handleMessage(this.runtime, memory, replyCallback)
+          .handleMessage(this.runtime, memory, relayCallback)
           .catch((err) => {
             // error-policy:J7 per-target delivery: logs the failure at error level
             // and continues the target loop; the subscription .catch is the boundary.
@@ -1987,39 +2073,30 @@ export class SubAgentRouter extends Service {
         const text =
           typeof response.text === "string" ? response.text.trim() : "";
         if (!text) return [];
-        const memory: Memory = {
-          id: randomUUID() as UUID,
-          entityId: this.runtime.agentId,
-          agentId: this.runtime.agentId,
-          roomId: origin.roomId as UUID,
-          content: {
-            text,
-            source: ACPX_ROUTER_SOURCE,
-            ...(origin.parentMessageId
-              ? { inReplyTo: origin.parentMessageId }
-              : {}),
-          },
-          createdAt: Date.now(),
-        };
-        try {
-          await this.runtime.createMemory(memory, "messages");
-          return [memory];
-        } catch (err) {
-          // error-policy:J1 internal reply-delivery boundary: warns and
-          // returns an honest empty delivery, mirroring the connector leg.
-          this.log("warn", "nested sub-agent reply persistence failed", {
-            sessionId,
-            roomId: origin.roomId,
-            error: err instanceof Error ? err.message : String(err),
-          });
-          return [];
-        }
+        return this.persistReplyInOriginRoom(origin, sessionId, {
+          text,
+          source: ACPX_ROUTER_SOURCE,
+        });
       };
     }
     return async (response: Content): Promise<Memory[]> => {
       const text =
         typeof response.text === "string" ? response.text.trim() : "";
       if (!text) return [];
+      // An API room answers each turn in its HTTP response and no connector
+      // can push to it later: keep the reply in the room for the next turn.
+      if (
+        (await this.runtime.getRoom(origin.roomId as UUID))?.type ===
+        ChannelType.API
+      ) {
+        return this.persistReplyInOriginRoom(origin, sessionId, {
+          text,
+          source: "sub_agent_complete",
+          ...(response.attachments?.length
+            ? { attachments: response.attachments }
+            : {}),
+        });
+      }
       const originReplyTarget =
         origin.parentConnectorMessageId ?? origin.parentMessageId;
       const threadedResponse = originReplyTarget
@@ -2078,6 +2155,44 @@ export class SubAgentRouter extends Service {
       }
       return [...disposition.memories];
     };
+  }
+
+  /**
+   * Persist an agent reply into the origin room as an ordinary agent message.
+   * Used where no connector can deliver it: a nested swarm child's synthetic
+   * task room, and a request/response API room.
+   */
+  private async persistReplyInOriginRoom(
+    origin: OriginInfo,
+    sessionId: string,
+    content: Content,
+  ): Promise<Memory[]> {
+    const memory: Memory = {
+      id: randomUUID() as UUID,
+      entityId: this.runtime.agentId,
+      agentId: this.runtime.agentId,
+      roomId: origin.roomId as UUID,
+      content: {
+        ...content,
+        ...(origin.parentMessageId
+          ? { inReplyTo: origin.parentMessageId }
+          : {}),
+      },
+      createdAt: Date.now(),
+    };
+    try {
+      await this.runtime.createMemory(memory, "messages");
+      return [memory];
+    } catch (err) {
+      // error-policy:J1 internal reply-delivery boundary: warns and
+      // returns an honest empty delivery, mirroring the connector leg.
+      this.log("warn", "sub-agent reply persistence in origin room failed", {
+        sessionId,
+        roomId: origin.roomId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return [];
+    }
   }
 
   /**
@@ -2338,20 +2453,6 @@ export class SubAgentRouter extends Service {
   }
 
   /**
-   * Re-dispatch a sub-agent when its claimed URLs verify as unreachable —
-   * an incomplete build (missing or empty files). Returns true if a retry
-   * was spawned (the caller suppresses the parent post and lets the
-   * retry's own task_complete report the outcome). Returns false when
-   * retries are disabled, the budget is exhausted, the original task is
-   * unavailable, or no spawn service is registered — in which case the
-   * caller posts the honest "build incomplete" report instead.
-   *
-   * Bounded by ELIZA_BUILD_VERIFY_MAX_RETRIES (default 2; 0 disables).
-   * The retry count rides on the spawned session's metadata so a whole
-   * lineage of retries shares one budget. Mirrors the APP-create
-   * verification-retry pattern.
-   */
-  /**
    * Stamp `handedOffToSuccessorSessionId` on a session the router is about to
    * tear down after handing its work to a fresh successor (#11711), so
    * swarm-synthesis skips the teardown `stopped` — the successor posts the real
@@ -2433,6 +2534,23 @@ export class SubAgentRouter extends Service {
     }
   }
 
+  /**
+   * Re-dispatch a sub-agent when its claimed URLs verify as unreachable —
+   * an incomplete build (missing or empty files). Returns true if a retry
+   * was spawned (the session is marked handed off and the caller suppresses
+   * the parent post; the retry's own task_complete reports the outcome), or
+   * if another report from the same session already claimed the successor
+   * (this report posts nothing; the claimant settles the outcome). Returns
+   * false when retries are disabled, the budget is exhausted, the original
+   * task is unavailable, no spawn service is registered, or the spawn
+   * failed — in which case the caller posts the honest "build incomplete"
+   * report instead.
+   *
+   * Bounded by ELIZA_BUILD_VERIFY_MAX_RETRIES (default 2; 0 disables).
+   * The retry count rides on the spawned session's metadata so a whole
+   * lineage of retries shares one budget. Each session spawns at most one
+   * successor. Mirrors the APP-create verification-retry pattern.
+   */
   private async retryIncompleteBuild(
     session: SessionInfo,
     dead: DeadUrl[],
@@ -2522,11 +2640,28 @@ ${originalTask}
 
 Do not report done until every referenced URL in the final page resolves without verification errors.`;
 
+    // A session hands off to at most one successor: concurrent reports must
+    // not each spawn one. The pending handoff covers the spawn in flight, the
+    // handed-off mark every report after it.
+    if (
+      hasPendingHandoff(session.id) ||
+      this.verifyRetryHandedOffSessions.has(session.id)
+    ) {
+      this.log(
+        "info",
+        "verify-retry successor already dispatched for this session; suppressing duplicate report",
+        { sessionId: session.id, deadCount: dead.length },
+      );
+      return true;
+    }
+
     // Pre-stamp the retry decision BEFORE awaiting the spawn: the retry
     // subprocess can take seconds to become ready, and the original session's
     // teardown `stopped` fires inside that window — a post-spawn-only stamp
     // (the prior shape) let synthesis post a false "stopped before
-    // completion" for a build whose retry was already in flight.
+    // completion" for a build whose retry was already in flight. The pending
+    // handoff registers before the first await, so concurrent reports cannot
+    // both pass the guard above.
     const pendingToken = await this.markHandoffPending(session.id);
     try {
       const result = await service.spawnSession({
@@ -2550,6 +2685,10 @@ Do not report done until every referenced URL in the final page resolves without
             : {}),
         },
       });
+      // The successor exists: from here the original session's events are
+      // handoff residue. Marked only here, where the spawn is known to have
+      // succeeded.
+      this.verifyRetryHandedOffSessions.add(session.id);
       this.log("info", "re-dispatched sub-agent after failed verification", {
         sessionId: session.id,
         retrySessionId: result.sessionId,
@@ -2570,7 +2709,7 @@ Do not report done until every referenced URL in the final page resolves without
     } catch (err) {
       // The decision did not survive: clear the pending marker BEFORE
       // returning so the caller's surfaced verification failure and any later
-      // genuine stop synthesize normally.
+      // genuine stop synthesize normally, and a later report can retry.
       await this.clearHandoffPending(session.id, pendingToken);
       this.log(
         "warn",
@@ -3690,11 +3829,15 @@ export async function annotateUnverifiedUrls(
     `[verify] start @ ${new Date().toISOString()} — ${urls.length} url(s): ${urls.join(", ")}`,
   );
   // GET-probe a URL with a 4s timeout. On a 2xx HTML response also returns
-  // the body so the caller can follow the page's sub-resources. (GET, not
-  // HEAD: we need the body for HTML, and many static hosts reject HEAD.)
-  const probeOnce = async (
-    url: string,
-  ): Promise<{ status: string | null; html?: string; servedLive: boolean }> => {
+  // the body, and the URL it was served from after redirects, so the caller
+  // can follow the page's sub-resources. (GET, not HEAD: we need the body for
+  // HTML, and many static hosts reject HEAD.)
+  type ProbeResult = {
+    status: string | null;
+    page?: { html: string; url: string };
+    servedLive: boolean;
+  };
+  const probeOnce = async (url: string): Promise<ProbeResult> => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 4000);
     try {
@@ -3747,7 +3890,11 @@ export async function annotateUnverifiedUrls(
         `[verify] probe ${url} → ${res.status} (${contentType.split(";")[0] || "?"}) @ ${new Date().toISOString()}`,
       );
       if (contentType.includes("text/html")) {
-        return { status: null, html: await res.text(), servedLive: true };
+        return {
+          status: null,
+          page: { html: await res.text(), url: res.url },
+          servedLive: true,
+        };
       }
       return { status: null, servedLive: true };
     } catch (err) {
@@ -3779,9 +3926,7 @@ export async function annotateUnverifiedUrls(
   const settleParsed = settleRaw ? Number.parseInt(settleRaw, 10) : 2500;
   const settleMs =
     Number.isFinite(settleParsed) && settleParsed >= 0 ? settleParsed : 2500;
-  const probe = async (
-    url: string,
-  ): Promise<{ status: string | null; html?: string; servedLive: boolean }> => {
+  const probe = async (url: string): Promise<ProbeResult> => {
     let result = await probeOnce(url);
     if (result.status !== null && settleMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, settleMs));
@@ -3812,9 +3957,13 @@ export async function annotateUnverifiedUrls(
         return;
       }
       // Follow the page's own declared dependencies — a 200 index.html
-      // that <link>s a missing style.css is still a broken app.
-      if (result.html) {
-        const subResources = extractSubResources(result.html, url);
+      // that <link>s a missing style.css is still a broken app. Relative refs
+      // resolve against the URL the page was served from: a claimed
+      // `/apps/x` that redirects to `/apps/x/` serves `script.js` from
+      // `/apps/x/script.js`, which the claimed URL would misresolve.
+      if (result.page) {
+        const pageUrl = result.page.url;
+        const subResources = extractSubResources(result.page.html, pageUrl);
         await Promise.all(
           subResources.map(async (subUrl) => {
             const subResult = await probe(subUrl);
@@ -3824,7 +3973,7 @@ export async function annotateUnverifiedUrls(
               // IS a broken build. A cross-origin third party is not; keyed on
               // structured URL origins, never on narration text.
               const entry = { url: subUrl, status: subResult.status, via: url };
-              if (isThirdPartySubResource(subUrl, url, routeVerification)) {
+              if (isThirdPartySubResource(subUrl, pageUrl, routeVerification)) {
                 deadThirdParty.push(entry);
               } else {
                 dead.push(entry);

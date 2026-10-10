@@ -57,8 +57,10 @@ type CodexCliSubscriptionState = "absent" | "invalid" | "valid";
  * Classify the Codex CLI credential file without collapsing a present broken
  * login into the same state as an absent or direct-API-only configuration.
  */
-function codexCliSubscriptionState(): CodexCliSubscriptionState {
-  const authPath = path.join(os.homedir(), ".codex", "auth.json");
+export function codexCliSubscriptionState(
+  codexHome = path.join(os.homedir(), ".codex"),
+): CodexCliSubscriptionState {
+  const authPath = path.join(codexHome, "auth.json");
   let raw: string;
   try {
     raw = fs.readFileSync(authPath, "utf-8");

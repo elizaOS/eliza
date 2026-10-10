@@ -461,7 +461,7 @@ export async function runSubPlanner(
         rawResult,
         resolvedChildAction.name,
       );
-      return actionResultToPlannerToolResult(result, {
+      const plannerResult = actionResultToPlannerToolResult(result, {
         summary: summarizeActionResultForPlanner(
           resolvedChildAction,
           result,
@@ -469,6 +469,9 @@ export async function runSubPlanner(
           params.runtime,
         ),
       });
+      if (resolvedChildAction.asyncHandoff === true)
+        plannerResult.asyncHandoff = true;
+      return plannerResult;
     },
   });
 }

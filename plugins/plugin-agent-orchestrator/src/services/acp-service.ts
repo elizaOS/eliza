@@ -35,6 +35,7 @@ import {
 } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, delimiter, dirname, join, resolve, sep } from "node:path";
+import { codexCliSubscriptionState } from "@elizaos/auth/auth";
 import {
   CODING_AGENT_BACKEND_PREFLIGHTS,
   CODING_AGENT_BACKENDS,
@@ -130,8 +131,8 @@ import { buildSkillsManifest } from "./skill-manifest.js";
 import { SMITHERS_DURABLE_RUN_METADATA_KEY } from "./smithers-task-integration.js";
 import {
   applyDevCloudAuthorityToSubAgentEnv,
-  forwardableSubAgentEnv as applySubAgentEnvPolicy,
   canonicalForwardedEnvKey,
+  forwardableSubAgentEnv,
   isCloudKeyForwardingOptIn,
   isDeniedSubAgentEnvKey,
   SUB_AGENT_SYSTEM_ENV_KEYS,
@@ -153,6 +154,10 @@ import {
 } from "./subscription-coding-adapters.js";
 import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
 import {
+  OWNER_REQUESTED_METADATA_KEY,
+  ownerOnlyBackendRefusal,
+} from "./task-policy.js";
+import {
   type AcpCapacity,
   type AcpEventCallback,
   type AcpJsonRpcMessage,
@@ -163,15 +168,18 @@ import {
   type AvailableAgentInfo,
   type PromptResult,
   readAcpTerminalFailure,
+  SESSION_LAST_USER_INPUT_AT_KEY,
   type SendOptions,
   SessionCapError,
   type SessionEventCallback,
   type SessionEventName,
   type SessionInfo,
+  SessionNotFoundError,
   type SessionSlotClass,
   type SessionStore,
   type SpawnOptions,
   type SpawnResult,
+  STOPPED_AFTER_REPORTED_TURN_KEY,
   SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY,
   subscriptionExecutionAuthorizationFromMetadata,
   TERMINAL_SESSION_STATUSES,
@@ -200,14 +208,6 @@ export function isCloudKeyForwardingEnabled(): boolean {
   return isCloudKeyForwardingOptIn(
     readConfigEnvKey("ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS"),
   );
-}
-
-/** Preserve the public config-backed helper while delegating policy to a pure module. */
-export function forwardableSubAgentEnv(
-  source: Record<string, string | undefined>,
-  forwardCloudKey = isCloudKeyForwardingEnabled(),
-): Record<string, string> {
-  return applySubAgentEnvPolicy(source, forwardCloudKey);
 }
 
 type RuntimeLike = IAgentRuntime & {
@@ -891,6 +891,14 @@ const ORPHAN_RESUME_STATUSES: ReadonlySet<string> = new Set([
 ]);
 const ORPHAN_RESUME_PROMPT =
   "[System] Your previous turn was interrupted by a runtime restart. Continue where you left off on the original task and report results as usual.";
+/** A session spawned for a task (its metadata carries the task) whose process
+ *  is not kept alive for a validator once that task's turn finishes. */
+function closesAfterTaskWork(session: SessionInfo): boolean {
+  return (
+    typeof session.metadata?.initialTask === "string" &&
+    session.metadata.keepAliveAfterComplete !== true
+  );
+}
 // Background sub-agent initial tasks are fire-and-forget from the originating
 // chat turn. When no action-level timeout is explicit, do not bind the
 // session/prompt request to the ACP service default (often configured to the
@@ -990,6 +998,10 @@ export class AcpService extends Service {
     }
   >();
   private readonly reclaimingSessionIds = new Set<string>();
+  // Sessions whose latest prompt turn already reported its outcome (a
+  // task_complete or error event). Closing one between turns is teardown, and
+  // its `stopped` event says so (STOPPED_AFTER_REPORTED_TURN_KEY).
+  private readonly reportedTurnSessionIds = new Set<string>();
   private readonly acpCallbacks: AcpEventCallback[] = [];
   private readonly activeProcesses = new Map<string, ProcessRecord>();
   private readonly nativeClients = new Map<string, NativeAcpClient>();
@@ -1176,7 +1188,7 @@ export class AcpService extends Service {
   private async createWarmNativeClient(): Promise<void> {
     const bootstrapHome = await mkdtemp(join(tmpdir(), "eliza-acp-warm-"));
     const claimToken = randomBytes(32).toString("hex");
-    const projected = applySubAgentEnvPolicy(process.env);
+    const projected = forwardableSubAgentEnv(process.env);
     const allowedBootstrapKeys = new Set<string>(SUB_AGENT_SYSTEM_ENV_KEYS);
     const env: NodeJS.ProcessEnv = Object.fromEntries(
       Object.entries(projected).filter(([key]) =>
@@ -1988,6 +2000,20 @@ export class AcpService extends Service {
     const agentType =
       normalizeTaskAgentAdapter(opts.agentType ?? this.defaultAgent) ??
       this.defaultAgent;
+    // Every spawn path ends here, and work enters stamped with its owner
+    // provenance, so this is where an owner-only backend fails closed.
+    const ownerOnlyRefusal = await ownerOnlyBackendRefusal(
+      this.runtime,
+      agentType,
+      async () => opts.metadata?.[OWNER_REQUESTED_METADATA_KEY] === true,
+    );
+    if (ownerOnlyRefusal) {
+      throw new ElizaError(ownerOnlyRefusal, {
+        code: "OWNER_ONLY_CODING_BACKEND",
+        context: { agentType },
+        severity: "ephemeral",
+      });
+    }
     const subscriptionExecutionAuthorization =
       subscriptionExecutionAuthorizationFromMetadata(
         opts.subscriptionExecutionAuthorization
@@ -2289,7 +2315,7 @@ export class AcpService extends Service {
             })
             .finally(async () => {
               if (keepAliveAfterComplete) return;
-              await this.closeInitialTaskSession(id);
+              await this.closeTaskSessionAfterTurn(id);
             });
           this.trackInitialTaskRun(initialTaskRun, id);
         }
@@ -2370,7 +2396,7 @@ export class AcpService extends Service {
           })
           .finally(async () => {
             if (keepAliveAfterComplete) return;
-            await this.closeInitialTaskSession(id);
+            await this.closeTaskSessionAfterTurn(id);
           });
         this.trackInitialTaskRun(initialTaskRun, id);
       }
@@ -2503,14 +2529,46 @@ export class AcpService extends Service {
       resolveCancellationRequested,
     };
     this.promptTurns.set(sessionId, turn);
+    this.reportedTurnSessionIds.delete(sessionId);
+    const reopened =
+      TERMINAL_SESSION_STATUSES.has(session.status) &&
+      closesAfterTaskWork(session);
     try {
-      return await this.sendPromptTurn(session, text, opts);
+      if (!opts.internal) {
+        await this.updateSessionMetadata(sessionId, {
+          [SESSION_LAST_USER_INPUT_AT_KEY]: Date.now(),
+        });
+      }
+      const result = await this.sendPromptTurn(session, text, opts);
+      // The turn emitted its own task_complete or error.
+      if (
+        !isIncompletePromptStopReason(result.stopReason) &&
+        result.stopReason !== "cancelled" &&
+        result.stopReason !== "stopped"
+      ) {
+        this.reportedTurnSessionIds.add(sessionId);
+      }
+      return result;
     } finally {
       turn.resolveSettled();
       if (this.promptTurns.get(sessionId)?.id === turn.id) {
         this.promptTurns.delete(sessionId);
       }
+      if (reopened) await this.closeTaskSessionAfterTurn(sessionId);
     }
+  }
+
+  /** Close a task session after its turn. Only an idle session closes, so a
+   *  follow-up turn that already claimed the session keeps it. */
+  private async closeTaskSessionAfterTurn(sessionId: string): Promise<void> {
+    await this.stopPromptableSession(sessionId).catch((err: unknown) => {
+      // error-policy:J6 best-effort teardown after a finished turn; a close
+      // failure must not turn the completed prompt into an error.
+      this.log("warn", "task session close after turn failed", {
+        sessionId,
+        error: errorMessage(err),
+      });
+    });
   }
 
   private async sendPromptTurn(
@@ -2840,6 +2898,17 @@ export class AcpService extends Service {
 
   async closeSession(sessionId: string): Promise<void> {
     const session = await this.requireSession(sessionId);
+    // Read before teardown, while an in-flight turn still counts: closing a
+    // session between turns after its last turn reported its outcome (the
+    // close after a task's turn) ends no work, and the event says so.
+    const afterReportedTurn =
+      !this.promptTurns.has(sessionId) &&
+      this.reportedTurnSessionIds.has(sessionId);
+    const stoppedData = (): Record<string, unknown> => ({
+      sessionId,
+      response: this.lastOutput(sessionId),
+      ...(afterReportedTurn ? { [STOPPED_AFTER_REPORTED_TURN_KEY]: true } : {}),
+    });
     const transportMode = sessionTransportMode(session, this.transportMode);
     if (transportMode === "native") {
       this.nativeStoppingSessionIds.add(sessionId);
@@ -2851,10 +2920,7 @@ export class AcpService extends Service {
         // leased model credential is still live; the event-side revoke then
         // becomes an idempotent no-op.
         await this.revokeModelLease(sessionId, "closeSession:native");
-        this.emitSessionEvent(sessionId, "stopped", {
-          sessionId,
-          response: this.lastOutput(sessionId),
-        });
+        this.emitSessionEvent(sessionId, "stopped", stoppedData());
       } finally {
         if (!this.nativePromptSessionIds.has(sessionId)) {
           this.nativeStoppingSessionIds.delete(sessionId);
@@ -2904,10 +2970,7 @@ export class AcpService extends Service {
     await this.store.updateStatus(sessionId, "stopped");
     // Keep CLI close parity with the native awaited teardown contract.
     await this.revokeModelLease(sessionId, "closeSession:cli");
-    this.emitSessionEvent(sessionId, "stopped", {
-      sessionId,
-      response: this.lastOutput(sessionId),
-    });
+    this.emitSessionEvent(sessionId, "stopped", stoppedData());
     await this.removeOwnedScratchWorkdir(session);
     await this.removeOwnedGitIndex(session);
   }
@@ -2926,6 +2989,7 @@ export class AcpService extends Service {
     await this.removeOwnedGitIndex(session);
     await this.store.delete(sessionId);
     this.promptTurns.delete(sessionId);
+    this.reportedTurnSessionIds.delete(sessionId);
     this.outputBuffers.delete(sessionId);
     this.turnOutputBuffers.delete(sessionId);
     this.eventTrails.delete(sessionId);
@@ -3022,15 +3086,25 @@ export class AcpService extends Service {
             ? session.metadata.label
             : undefined,
       });
+      // The resumed turn continues the interrupted one: it answers what that
+      // turn answered, not a new user input, and that turn's own close died
+      // with the old process.
       // error-policy:J5 fire-and-forget resume; the real failure is surfaced by
       // sendPrompt (errored status + error event), this only logs the rejection.
-      void this.sendPrompt(session.id, ORPHAN_RESUME_PROMPT).catch(
-        (err: unknown) =>
+      void this.sendPrompt(session.id, ORPHAN_RESUME_PROMPT, {
+        internal: true,
+      })
+        .catch((err: unknown) =>
           this.log("warn", "orphan resume sendPrompt failed", {
             sessionId: session.id,
             err: err instanceof Error ? err.message : String(err),
           }),
-      );
+        )
+        .finally(() =>
+          closesAfterTaskWork(session)
+            ? this.closeTaskSessionAfterTurn(session.id)
+            : undefined,
+        );
       resumed += 1;
     }
     if (resumed > 0 || skipped > 0) {
@@ -3203,8 +3277,12 @@ export class AcpService extends Service {
     return String(this.defaultAgent);
   }
 
-  async sendToSession(sessionId: string, input: string): Promise<PromptResult> {
-    return this.sendPrompt(sessionId, input);
+  async sendToSession(
+    sessionId: string,
+    input: string,
+    opts?: SendOptions,
+  ): Promise<PromptResult> {
+    return this.sendPrompt(sessionId, input, opts);
   }
 
   async sendKeysToSession(sessionId: string): Promise<void> {
@@ -3256,24 +3334,6 @@ export class AcpService extends Service {
       });
     this.initialTaskRuns.add(tracked);
     void tracked.then(() => this.initialTaskRuns.delete(tracked));
-  }
-
-  private async closeInitialTaskSession(sessionId: string): Promise<void> {
-    const session = await this.store.get(sessionId);
-    if (!session) return;
-    if (
-      ["stopped", "errored", "completed", "cancelled"].includes(session.status)
-    ) {
-      return;
-    }
-    await this.closeSession(sessionId).catch((err: unknown) => {
-      // error-policy:J6 best-effort teardown of the initial-task session; a close
-      // failure must not abort the fire-and-forget completion path.
-      this.log("warn", "initial task session close failed", {
-        sessionId,
-        error: errorMessage(err),
-      });
-    });
   }
 
   subscribeToOutput(
@@ -4815,7 +4875,9 @@ export class AcpService extends Service {
         sessionUpdate === "tool_call_update"
       ) {
         const status = stringifyMaybe(updateBlock?.status);
-        const toolOutput = updateBlock?.rawOutput ?? updateBlock?.content;
+        const toolOutput = withoutInlineImageBytes(
+          updateBlock?.rawOutput ?? updateBlock?.content,
+        );
         const ub = (updateBlock ?? {}) as Record<string, unknown>;
         const rawInput =
           ub.rawInput &&
@@ -5085,7 +5147,7 @@ export class AcpService extends Service {
 
   private async requireSession(sessionId: string): Promise<SessionInfo> {
     const session = await this.store.get(sessionId);
-    if (!session) throw new Error(`acpx session not found: ${sessionId}`);
+    if (!session) throw new SessionNotFoundError(sessionId);
     return session;
   }
 
@@ -5405,7 +5467,10 @@ export class AcpService extends Service {
     // forwardableSubAgentEnv / canonicalForwardedEnvKey — Bun on Windows reports
     // OS vars like `Path` with native casing, which a child must not inherit
     // alongside an uppercase duplicate).
-    let env: NodeJS.ProcessEnv = forwardableSubAgentEnv(process.env);
+    let env: NodeJS.ProcessEnv = forwardableSubAgentEnv(
+      process.env,
+      isCloudKeyForwardingEnabled(),
+    );
     // #14118: the raw owner cloud key is broker-gated by default. When an
     // operator opts INTO forwarding it and a key actually landed in the child
     // env, surface it — an autonomous child now holds the owner's Cloud bearer,
@@ -5530,10 +5595,15 @@ export class AcpService extends Service {
     }
     if (
       agentType === "codex" &&
-      typeof env.CODEX_HOME === "string" &&
-      isCodexSubscriptionHome(env.CODEX_HOME)
+      ((typeof env.CODEX_HOME === "string" &&
+        isCodexSubscriptionHome(env.CODEX_HOME)) ||
+        codexCliSubscriptionState(env.CODEX_HOME || undefined) === "valid")
     ) {
-      // A Codex ChatGPT subscription login lives in the injected CODEX_HOME.
+      // A Codex ChatGPT subscription login lives in the injected CODEX_HOME,
+      // or in the ambient one (`codex login` → ~/.codex/auth.json).
+      // The parent's OpenAI-compatible endpoint is not where a ChatGPT
+      // login authenticates.
+      delete env.OPENAI_BASE_URL;
       if (env.OPENAI_API_KEY) {
         // Codex treats a present env OPENAI_API_KEY as api-key mode, which
         // OVERRIDES that subscription login — silently defeating multi-account
@@ -6397,6 +6467,29 @@ export function extractUsageUpdate(
     costUsd,
     state: "measured",
   };
+}
+
+/** Inline image bytes in tool output are replaced by a note: a text judge
+ *  cannot read them and they bloat every stored event. */
+function withoutInlineImageBytes(value: unknown): unknown {
+  if (value === null || typeof value !== "object") return value;
+  if (Array.isArray(value)) {
+    return value.map((entry) => withoutInlineImageBytes(entry));
+  }
+  const record = value as Record<string, unknown>;
+  if (record.type === "image" && typeof record.data === "string") {
+    const mime =
+      typeof record.mimeType === "string" ? record.mimeType : "image";
+    return {
+      ...record,
+      data: `[${mime} data omitted: ${record.data.length} base64 chars; the image is this tool call's source, named in its input]`,
+    };
+  }
+  const out: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(record)) {
+    out[key] = withoutInlineImageBytes(entry);
+  }
+  return out;
 }
 
 function stringifyMaybe(value: unknown): string {

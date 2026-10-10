@@ -113,7 +113,7 @@ export type EvaluatorOutput = EvaluationResult & {
 	replyEffectStatus?: Exclude<ReplyEffectStatus, "pending">;
 	/** Model-selected proof for messageToUser; egress resolves these against this turn's results. */
 	effectReceiptIds?: readonly string[];
-	/** Captured final REPLY text and its own model-selected proof during missing-reply recovery. */
+	/** Captured final REPLY text and its own model-selected proof. */
 	plannerReply?: { text: string; effectReceiptIds: readonly string[] };
 	nextTool?: PlannerToolCall;
 	/** The model response violated the evaluator protocol. */
@@ -283,6 +283,8 @@ export interface PlannerToolResult {
 	modelReplyFallback?: string;
 	/** An explicit false aborts the remaining planner queue, including failed and fire-and-forget results. This differs from the conservative turnComplete fast path. */
 	continueChain?: boolean;
+	/** The action that produced this result is an `asyncHandoff`. */
+	asyncHandoff?: true;
 }
 
 export interface PlannerStep {
@@ -417,6 +419,10 @@ export interface PlannerLoopParams {
 		runtime: PlannerRuntime;
 		context: ContextObject;
 		trajectory: PlannerTrajectory;
+		/** Loop-computed failure authority; forward it as RunEvaluatorParams.hasUnresolvedToolFailure. */
+		hasUnresolvedToolFailure?: boolean;
+		/** The planner's non-terminal tools; forward it as RunEvaluatorParams.plannerToolNames. */
+		plannerToolNames?: readonly string[];
 	}) => Promise<EvaluatorOutput> | EvaluatorOutput;
 	onToolCallEnqueued?: (
 		toolCall: PlannerToolCall,
@@ -493,6 +499,8 @@ export interface PlannerLoopParams {
 export interface RunEvaluatorParams {
 	/** Runtime failure authority; does not prevent continuation or recovery. */
 	hasUnresolvedToolFailure?: boolean;
+	/** Tools the planner can call this turn, for capability judgments. */
+	plannerToolNames?: readonly string[];
 	runtime: EvaluatorRuntime;
 	context: ContextObject;
 	trajectory: PlannerTrajectory;

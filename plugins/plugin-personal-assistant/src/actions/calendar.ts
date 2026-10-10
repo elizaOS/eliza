@@ -43,10 +43,12 @@ import {
 import { renderGroundedActionReply } from "@elizaos/plugin-assistant";
 import {
   CALENDAR_CREATE_DETAILS_PARAMETER_SCHEMA,
+  CALENDAR_DELETE_DETAILS_PARAMETER_SCHEMA,
   CALENDAR_DETAILS_PARAMETER_SCHEMA,
   CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA,
   CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
   CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA,
+  CALENDAR_UPDATE_DETAILS_PARAMETER_SCHEMA,
   type CalendarActionDeps,
   type CalendarMutationApprovalResult,
   type CalendarMutationGatewayDep,
@@ -687,6 +689,14 @@ const availabilityIntervalProperties = {
   },
 } satisfies Record<string, ActionParameterSchema>;
 
+// Branches restate only the constraints; field guidance stays on the shared
+// properties above so each description reaches the planner once.
+const availabilityIntervalBranchProperties = Object.fromEntries(
+  Object.entries(availabilityIntervalProperties).map(
+    ([key, { description: _description, ...schema }]) => [key, schema],
+  ),
+);
+
 const availabilityIntervalSchema: ActionParameterSchema = {
   type: "object",
   properties: availabilityIntervalProperties,
@@ -695,13 +705,13 @@ const availabilityIntervalSchema: ActionParameterSchema = {
   anyOf: [
     {
       type: "object",
-      properties: availabilityIntervalProperties,
+      properties: availabilityIntervalBranchProperties,
       required: ["startAt", "durationMinutes"],
       additionalProperties: false,
     },
     {
       type: "object",
-      properties: availabilityIntervalProperties,
+      properties: availabilityIntervalBranchProperties,
       required: ["startAt", "endAt"],
       additionalProperties: false,
     },
@@ -1787,8 +1797,7 @@ export const calendarAction: Action & {
     {
       name: "action",
       description:
-        "Calendar op. feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule, check_availability, propose_times, update_preferences. " +
-        "update_event and delete_event need a target in the same call: top-level query (the event in its own words) or details.eventId/details.oldTitle; without one the call fails with CALENDAR_TARGET_UNRESOLVED. create_event needs details.start.",
+        "Calendar op. update_event and delete_event need a target in the same call: top-level query (the event in its own words) or details.eventId/details.oldTitle; without one the call fails with CALENDAR_TARGET_UNRESOLVED. create_event needs details.start.",
       required: false,
       schema: {
         type: "string" as const,
@@ -1797,19 +1806,15 @@ export const calendarAction: Action & {
     },
     {
       name: "intent",
-      description:
-        'Natural-language request. Examples: "calendar today", "flights this week", "create meeting tomorrow 3pm".',
+      description: "Natural-language request.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "title",
       description:
-        "Event title for create_event, the NEW name when update_event renames an event, or the existing target title for delete_event when query and details.eventId are absent. " +
-        "For update_event identify the existing event with `query` (its own words, e.g. 'piano lesson'), `details.oldTitle`, or `details.eventId` from a search_events/feed result; title never selects an update target. TOP-LEVEL flat. " +
-        "NEVER inside `details`. " +
-        "Example: `{ subaction: 'create_event', title: 'Dentist', details: { start: '...', end: '...' } }`. " +
-        "Move example: `{ subaction: 'update_event', query: 'piano lesson', details: { start: '...', end: '...' } }`.",
+        "Top-level, never inside details. Event title for create_event, the NEW name when update_event renames an event, or the existing target title for delete_event when query and details.eventId are absent. " +
+        "For update_event identify the existing event with query (its own words, e.g. 'piano lesson'), details.oldTitle, or details.eventId from a search_events/feed result; title never selects an update target.",
       descriptionCompressed:
         "title TOP-LEVEL; NOT details. create_event: title; update_event: NEW name only, target = query/oldTitle/eventId; delete_event: target title when query/eventId absent",
       required: false,
@@ -1822,8 +1827,8 @@ export const calendarAction: Action & {
     {
       name: "query",
       description:
-        "Event-content search phrase for search_events/travel_itinerary: flight, dentist, Denver. Dates and agenda/schedule words are not content filters; for a full day agenda use feed and omit query/queries. " +
-        "update_event/delete_event: the TARGET event in its own words (e.g. 'piano lesson') whenever details.eventId is not known. An update may also identify its target with details.oldTitle; a delete may use the existing title when query and eventId are absent.",
+        "Event-content search phrase: flight, dentist, Denver. Dates and agenda/schedule words are not content filters; for a full day agenda use feed and omit query/queries. " +
+        "update_event/delete_event: the TARGET event in its own words whenever details.eventId is not known.",
       required: false,
       subactions: [
         "feed",
@@ -1847,14 +1852,9 @@ export const calendarAction: Action & {
     {
       name: "details",
       description:
-        "For feed/search_events: use details.date and optional inclusive endDate for whole dates; use timeMin/timeMax for partial days. details.timeZone supplies the IANA timezone. For a full agenda use feed without query/queries. " +
-        "Structured fields for create_event/update_event/delete_event. " +
-        "`start`/`end`: local wall-clock ISO-8601 WITHOUT any offset or Z (e.g. 2026-09-10T18:00:00 for 6pm); never convert to UTC. When supplying the owner's local new start/end, explicitly include `details.timeZone` with the owner's configured IANA timezone; an update otherwise interprets them in the existing event's timezone, which may differ. If the user names another timezone, use that IANA zone for these values. " +
-        "For a move or reschedule the time the user names ('to 6pm') is the new `start`; keep the event's previous duration for `end` unless the user gives a new end. " +
-        "`details.date` selects the target event's current day, never the destination day of a move. " +
-        "create_event: `{ subaction: 'create_event', title: 'Dentist', details: { calendarId: 'cal_primary', start: '...', end: '...', location: '...' } }`. " +
-        "update_event: `{ subaction: 'update_event', details: { eventId: 'event_00040', calendarId: 'cal_primary', start: '...', end: '...' } }`. " +
-        "check_availability/propose_times time-window fields TOP LEVEL, not `details`.",
+        "For feed/search_events: use details.date and optional inclusive endDate for whole dates; use timeMin/timeMax for partial days. " +
+        "Read-window and event fields; title and the check_availability/propose_times/update_preferences fields stay top-level. " +
+        "For a move or reschedule the time the user names ('to 6pm') is the new start (e.g. 2026-09-10T18:00:00 with timeZone); keep the event's previous duration for end unless the user gives a new end.",
       descriptionCompressed:
         "details create|update|delete: calendarId,start/end,eventId,location; owner-local start/end require owner's IANA timeZone; date = target's current day; title/window TOP",
       required: false,
@@ -1953,9 +1953,7 @@ export const calendarAction: Action & {
     {
       name: "startAt",
       description:
-        "TOP-LEVEL flat. check_availability start. ISO-8601. " +
-        "Example: `{ subaction: 'check_availability', startAt: '2026-05-14T09:00:00Z', endAt: '2026-05-14T10:00:00Z' }`. " +
-        "Do NOT wrap check_availability args in `details`.",
+        "check_availability start, ISO-8601; top-level, not inside details.",
       required: false,
       subactions: ["check_availability"],
       requiredForSubactions: ["check_availability"],
@@ -1980,9 +1978,7 @@ export const calendarAction: Action & {
     {
       name: "preferredStartLocal",
       description:
-        "TOP-LEVEL flat for update_preferences. Earliest start local HH:MM 24h. " +
-        "Example: `{ subaction: 'update_preferences', preferredStartLocal: '09:00', preferredEndLocal: '17:00', blackoutWindows: [...] }`. " +
-        "Do NOT wrap update_preferences args in `details`.",
+        "update_preferences earliest start, local HH:MM 24h; top-level, not inside details.",
       required: false,
       subactions: ["update_preferences"],
       schema: { type: "string" as const },
@@ -2166,14 +2162,41 @@ export const calendarAction: Action & {
 };
 
 /** Updates and deletions share one explicit event selector; legacy umbrella
- * parameters remain available for compatible domain callers. */
-const calendarMutationTargetParameters: NonNullable<Action["parameters"]> = [
-  ...(calendarAction.parameters ?? []),
+ * parameters remain available for compatible domain callers. Their umbrella
+ * text names lookup fields the selector replaces, so it is restated here. */
+const calendarMutationTargetParameters = (
+  detailsSchema: ActionParameterSchema,
+): NonNullable<Action["parameters"]> => [
+  ...(calendarAction.parameters ?? []).map((parameter) => {
+    if (parameter.name === "title")
+      return {
+        ...parameter,
+        description:
+          "Top-level, never inside details. Never selects the target; on update_event it is the new name of a rename.",
+        descriptionCompressed:
+          "title TOP-LEVEL; NOT details. Never the target; update_event: NEW name of a rename.",
+      };
+    if (parameter.name === "query")
+      return {
+        ...parameter,
+        description: "Superseded by targetKind/target; omit.",
+      };
+    return parameter.name === "details"
+      ? {
+          ...parameter,
+          schema: detailsSchema,
+          description:
+            "Optional fields for this change: replacement values (update only; for a move the time the user names is the new start and the previous duration is kept unless a new end is given), the target's current day, IANA timezone, exact connector/calendar scope copied from a Calendar result, recurrence scope and guest notification. Omit unknown values; the event itself goes in targetKind/target.",
+          descriptionCompressed:
+            "Replacement values (update), target day, IANA timeZone, exact connector/calendar scope, recurrenceScope, notifyAttendees. Event itself in targetKind/target.",
+        }
+      : parameter;
+  }),
   {
     name: "targetKind",
     required: true,
     description:
-      "How target identifies the existing event: query for its current title/subject, eventId for an exact externalId copied from a Calendar result. Do not supply a separate details.eventId for a query target.",
+      "How target identifies the existing event: query for its current title/subject, eventId for an exact externalId copied from a Calendar result.",
     schema: { type: "string", enum: ["query", "eventId"] },
   },
   {
@@ -2218,12 +2241,16 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
         "Read free/busy for one interval; never moves or creates events. Supply the required interval object with startAt plus either durationMinutes or endAt. When the user gives a duration, pass it directly in durationMinutes and omit endAt; code calculates the end. Use the requested local clock with its ISO offset, without also converting the clock to UTC. If inputs are rejected, correct the call from the original request; invalid arguments say nothing about calendar availability or working hours.",
     },
     update_event: {
-      parameters: calendarMutationTargetParameters,
+      parameters: calendarMutationTargetParameters(
+        CALENDAR_UPDATE_DETAILS_PARAMETER_SCHEMA,
+      ),
       description:
         "Apply a specified edit to an existing event. For a morning/afternoon window without an accepted clock time, use CALENDAR_PROPOSE_TIMES first to read current openings; this write tool is for the accepted time or another specified field change. Supply targetKind and target in this call, including follow-ups accepting a suggested time. No separate search is needed when the event is uniquely identified by query. Time changes check the proposed slot for conflicts before writing, excluding the event itself; conflicts or unknown availability pause the move. Use this tool directly for an authorized move conditional on the slot being free. title/details.newTitle are replacement names, not the target.",
     },
     delete_event: {
-      parameters: calendarMutationTargetParameters,
+      parameters: calendarMutationTargetParameters(
+        CALENDAR_DELETE_DETAILS_PARAMETER_SCHEMA,
+      ),
       description:
         "Delete the authorized existing event identified by targetKind and target. A query target resolves the current event within this action; a separate search is unnecessary for a unique title. An eventId target must be copied from a Calendar result. Missing or ambiguous matches never delete another event. Preserve any user-specified source date and recurring-event scope.",
     },

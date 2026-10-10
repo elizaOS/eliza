@@ -155,6 +155,7 @@ import {
 } from "./discord-reactions";
 import { DmChannelRegistry } from "./dm-channel-registry";
 import { getDiscordSettings } from "./environment";
+import { compareDiscordSnowflake } from "./group-coordination";
 import {
 	executeGuildManagement,
 	type GuildManagementReceipt,
@@ -3054,6 +3055,7 @@ export class DiscordService extends Service implements IDiscordService {
 			name?: string;
 			guild?: Guild;
 			messages: TextChannel["messages"];
+			lastMessageId?: TextChannel["lastMessageId"];
 			permissionsFor?: TextChannel["permissionsFor"];
 		}
 	> {
@@ -3180,6 +3182,17 @@ export class DiscordService extends Service implements IDiscordService {
 		}
 		if (afterBoundary && !/^\d+$/.test(afterBoundary)) {
 			throw new RangeError("Discord after must be a snowflake message id");
+		}
+		// The gateway keeps each cached channel's newest message id current, so
+		// a channel whose newest message is not after the boundary has nothing
+		// to return. Answering from the cache spares one history request per
+		// idle channel when a caller sweeps every channel for recent messages.
+		if (
+			afterBoundary &&
+			channel.lastMessageId &&
+			compareDiscordSnowflake(channel.lastMessageId, afterBoundary) <= 0
+		) {
+			return [];
 		}
 		const memories: Memory[] = [];
 		const seenCursors = new Set<string>();

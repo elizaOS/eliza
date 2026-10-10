@@ -2,7 +2,14 @@
 import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { actionToTool } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  actionToTool,
+  ModelType,
+  runWithTrajectoryContext,
+  withEvaluatorStep,
+  withProviderStep,
+} from "@elizaos/core";
 import { parseTrajectorySemanticStage } from "@elizaos/core/protocol";
 import {
   TrajectoriesService,
@@ -13,6 +20,7 @@ import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { proposeDeviceAction } from "../../../plugins/plugin-assistant/src/services/device-actions/action.ts";
 import { runtimeTrajectoriesEnabled } from "../src/runtime/native-runtime-features.ts";
+import { installPromptOptimizations } from "../src/runtime/prompt-optimization.ts";
 import {
   createBaseTrajectory,
   ensureStep,
@@ -694,4 +702,67 @@ it("validates deep semantic JSON without stack limits while retaining type, prot
   expect(safe.payload.model).toBe(ownProto);
   expect(Object.getPrototypeOf(ownProto)).toBe(Object.prototype);
   expect(Object.hasOwn(ownProto, "__proto__")).toBe(true);
+});
+
+it("records every planner and evaluator model call with its own usage and prompt telemetry", async () => {
+  installPromptOptimizations(fixture.runtime as AgentRuntime);
+  const usage = { promptTokens: 11, completionTokens: 5, totalTokens: 16 };
+  for (const modelType of [ModelType.ACTION_PLANNER, ModelType.TEXT_SMALL]) {
+    fixture.runtime.registerModel(
+      modelType,
+      async () => ({ text: "fixture reply", usage }),
+      "ledger-fixture",
+    );
+  }
+  const trajectoryId = await direct.startTrajectory(fixture.runtime.agentId, {
+    source: "model-call-ledger",
+    roomId: randomUUID(),
+  });
+  const stepId = direct.startStep(trajectoryId, { kind: "llm" });
+  await direct.flushWriteQueue(trajectoryId);
+  const prompts = [
+    "first planner request",
+    "second planner request, a little longer",
+    "evaluate the finished turn",
+    "summarize inside a provider",
+  ];
+  await runWithTrajectoryContext(
+    { trajectoryId, trajectoryStepId: stepId },
+    async () => {
+      for (const prompt of prompts.slice(0, 2)) {
+        // As in a real turn, a queued provider capture delays the call's write.
+        direct.logProviderAccess({
+          stepId,
+          providerName: "LEDGER_PROVIDER",
+          purpose: "compose",
+          data: { text: "provider output" },
+        });
+        await fixture.runtime.useModel(ModelType.ACTION_PLANNER, { prompt });
+      }
+      await withEvaluatorStep(fixture.runtime, "LEDGER_EVALUATOR", () =>
+        fixture.runtime.useModel(ModelType.TEXT_SMALL, { prompt: prompts[2] }),
+      );
+      // A provider's child step starts at its first model call; the call is recorded there once.
+      await withProviderStep(fixture.runtime, "LEDGER_PROVIDER", () =>
+        fixture.runtime.useModel(ModelType.TEXT_SMALL, { prompt: prompts[3] }),
+      );
+    },
+  );
+  await direct.flushWriteQueue(trajectoryId);
+  const calls = (
+    await direct.getTrajectoryDetail(trajectoryId)
+  )?.steps?.flatMap((step) => step.llmCalls ?? []);
+  expect(
+    calls?.map((call) => [
+      call.userPrompt,
+      call.promptTokens,
+      call.completionTokens,
+      (
+        call.providerMetadata as
+          | { promptOptimization?: { originalPromptChars?: number } }
+          | undefined
+      )?.promptOptimization?.originalPromptChars,
+    ]),
+  ).toEqual(prompts.map((prompt) => [prompt, 11, 5, prompt.length]));
+  await direct.endTrajectory(trajectoryId, "completed");
 });

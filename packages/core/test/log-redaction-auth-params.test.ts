@@ -45,3 +45,15 @@ console.log("completed");`,
 		expect(output).toBe("Authorization: Digest ***");
 	});
 });
+
+describe("log redaction bot tokens", () => {
+	it("masks a bot token but not a UUID pair whose first tail is all digits", () => {
+		const receiptId =
+			"00000000-0000-4000-8000-123456789012:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+		expect(
+			redactSensitiveLogText(
+				`id 123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw receipt ${receiptId}`,
+			),
+		).toBe(`id 123456…Dsaw receipt ${receiptId}`);
+	});
+});

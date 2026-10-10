@@ -243,6 +243,34 @@ it("does not restore a conversation from a room outside the web-chat world", asy
   }
 }, 120_000);
 
+it("restores a conversation stored in the world keyed by an earlier agent name", async () => {
+  const { adapter, dataDir, runtime, state } = await createFixture();
+  try {
+    const convId = "from-earlier-name";
+    const roomId = stringToUuid(`web-conv-${convId}`);
+    await runtime.createRooms([
+      {
+        id: roomId,
+        agentId: runtime.agentId,
+        name: "Earlier chat",
+        source: "client_chat",
+        type: "DM",
+        channelId: `web-conv-${convId}`,
+        // The fixture's agent entity is named "Agent"; its character is "Evict Agent".
+        worldId: stringToUuid("Agent-web-chat-world"),
+      } as never,
+    ]);
+    expect(await restoreConversationsFromDb(runtime, state)).toBe(1);
+    state.conversations.clear();
+    expect(
+      (await restoreConversationFromDb(runtime, state, convId))?.roomId,
+    ).toBe(roomId);
+  } finally {
+    await adapter.close();
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+}, 120_000);
+
 it.each(["lookup", "boot", "concurrent"] as const)(
   "preserves conversation identity across a delayed database restore (%s)",
   async (mode) => {

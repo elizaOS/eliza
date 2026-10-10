@@ -118,16 +118,16 @@ describe("initial-task spawn path applies the detached timeout (real AcpService 
   it("stop waits for initial-task terminal cleanup before releasing persistence", async () => {
     await service.start();
     const lifecycle = service as unknown as {
-      closeInitialTaskSession(id: string): Promise<void>;
+      closeTaskSessionAfterTurn(id: string): Promise<void>;
     };
-    const originalClose = lifecycle.closeInitialTaskSession.bind(service);
+    const originalClose = lifecycle.closeTaskSessionAfterTurn.bind(service);
     let release!: () => void;
     const barrier = new Promise<void>((resolve) => {
       release = resolve;
     });
     let closeStarted = false;
     const closeSpy = vi
-      .spyOn(lifecycle, "closeInitialTaskSession")
+      .spyOn(lifecycle, "closeTaskSessionAfterTurn")
       .mockImplementation(async (id) => {
         closeStarted = true;
         await barrier;
@@ -135,7 +135,7 @@ describe("initial-task spawn path applies the detached timeout (real AcpService 
       });
     let stopping: Promise<void> | undefined;
     try {
-      await service.spawnSession({
+      const spawned = await service.spawnSession({
         agentType: "elizaos",
         workdir,
         approvalPreset: "permissive",
@@ -153,6 +153,9 @@ describe("initial-task spawn path applies the detached timeout (real AcpService 
       release();
       await stopping;
       expect(closeSpy).toHaveResolvedTimes(1);
+      expect((await service.getSession(spawned.sessionId))?.status).toBe(
+        "stopped",
+      );
     } finally {
       release();
       await stopping;

@@ -398,9 +398,12 @@ export function verifiedUrlsExcludingDead(
   return verified.filter((url) => !dead.has(normalizedUrlKey(url)));
 }
 
-function deliverableFromMetadata(message: Memory): string | undefined {
-  const value = textOf(metadataRecord(message)?.subAgentDeliverable);
-  return value.length > 0 ? value : undefined;
+// The router flags a completion whose text body is the deliverable, so the
+// output is carried once and read back from the text here.
+function deliverableText(message: Memory): string | undefined {
+  return metadataRecord(message)?.subAgentDeliverable === true
+    ? stripRouterAnnotations(textOf(contentRecord(message)?.text))
+    : undefined;
 }
 
 // A DEGENERATE completion is one the sub-agent's model could not finish cleanly:
@@ -679,7 +682,7 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     ) {
       return true;
     }
-    if (deliverableFromMetadata(message) !== undefined) return true;
+    if (deliverableText(message) !== undefined) return true;
     if (hasVerifiedCompletionReply(currentReply, completionText, verifiedUrls))
       return true;
     if (hasCleanFinalProseAfterToolOutput(completionText)) return true;
@@ -746,7 +749,7 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     // The deliverable IS the sub-agent's printed/tool output (short, single
     // block; the router stripped it from the narration). Relay it verbatim
     // rather than letting the parent model re-summarize or truncate it.
-    const deliverable = deliverableFromMetadata(message);
+    const deliverable = deliverableText(message);
     if (deliverable !== undefined) {
       return {
         ...respondIfNeeded(messageHandler),

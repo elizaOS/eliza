@@ -23,6 +23,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import { webChatWorldId } from "@elizaos/host";
 
 export interface MessageCorpusOptions {
   /** Number of conversations to generate. */
@@ -482,7 +483,7 @@ export async function seedMessageCorpus(
   options: MessageCorpusSeedOptions = {},
 ): Promise<MessageCorpusSeedSummary> {
   const agentName = runtime.character.name ?? "Eliza";
-  const worldId = stringToUuid(`${agentName}-web-chat-world`);
+  const worldId = webChatWorldId(runtime.agentId);
   const messageServerId = stringToUuid(`${agentName}-web-server`) as UUID;
   const ownerEntityId =
     options.ownerEntityId ??

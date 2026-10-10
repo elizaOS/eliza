@@ -40,6 +40,7 @@ export {
   plannedReplyHasClaimGroundingReceipt,
   resolvePlannedReplyEgress,
 } from "./message/egress-policy.ts";
+export { characterTemplate } from "./message/failures.ts";
 export { persistInferenceTimingSummary } from "./message/inference-timing.ts";
 export { runV5MessageRuntimeStage1 } from "./message/pipeline.ts";
 export {

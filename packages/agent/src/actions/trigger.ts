@@ -75,6 +75,15 @@ function isAutonomyRoomService(
   return typeof service === "object" && service !== null;
 }
 
+const TRIGGER_SCOPE_NOTE =
+  "This covers TRIGGER tasks only; owner reminders, todos and alarms are kept by separate families this read does not see.";
+
+// With OWNER_REMINDERS registered, the owner's reminders are not triggers, so
+// an empty or missed trigger read says nothing about them.
+function ownerRemindersKeptElsewhere(runtime: IAgentRuntime): boolean {
+  return runtime.actions.some((action) => action.name === "OWNER_REMINDERS");
+}
+
 const TRIGGER_OPS = [
   "create",
   "update",
@@ -501,6 +510,7 @@ async function resolveTriggerRef(
   if (matches.length === 1) return matches[0];
 
   const names = all.map((c) => `"${c.trigger.displayName}"`).join(", ");
+  const ownerReminders = ownerRemindersKeptElsewhere(runtime);
   if (matches.length > 1) {
     const shown = matches.map((c) => `"${c.trigger.displayName}"`).join(", ");
     return failed(
@@ -508,12 +518,36 @@ async function resolveTriggerRef(
       `Several triggers match: ${shown}. Name one exactly.`,
       "TRIGGER_AMBIGUOUS",
       undefined,
-      `More than one reminder matches that: ${shown}. Which one?`,
+      `More than one ${ownerReminders ? "trigger" : "reminder"} matches that: ${shown}. Which one?`,
     );
   }
   // Nothing was changed by a miss, so the failure never outranks a later
   // successful call's reply (readOnlyOperation), and a call with no target
   // at all is a malformed call, not a lookup miss.
+  if (ownerReminders) {
+    // A trigger miss is no evidence about the owner's reminders, so it claims
+    // nothing to the user and tells the planner what this read covers.
+    const triggers = all.length
+      ? `Active triggers: ${names}.`
+      : "No triggers exist.";
+    if (!query && !rawId) {
+      return failed(
+        op,
+        `taskId or displayName is required. ${triggers} ${TRIGGER_SCOPE_NOTE}`,
+        "TRIGGER_MISSING_TARGET",
+        { readOnlyOperation: true },
+        all.length
+          ? `Which trigger do you mean? The ones set are: ${names}.`
+          : undefined,
+      );
+    }
+    return failed(
+      op,
+      `No trigger matched. ${triggers} ${TRIGGER_SCOPE_NOTE}`,
+      "TRIGGER_NOT_FOUND",
+      { readOnlyOperation: true },
+    );
+  }
   if (!query && !rawId) {
     return failed(
       op,
@@ -1119,12 +1153,17 @@ async function opList(
       )}${paused}`,
     );
   }
+  const ownerReminders = ownerRemindersKeptElsewhere(runtime);
+  const scheduled = ownerReminders
+    ? "agent triggers"
+    : "reminders or scheduled triggers";
+  const scopeNote = ownerReminders ? `\n${TRIGGER_SCOPE_NOTE}` : "";
   if (lines.length === 0) {
     return ok(
       "list",
       unreadable === 0
-        ? "No reminders or scheduled triggers are set."
-        : `No readable reminders or scheduled triggers. ${unreadable} tagged trigger task${unreadable === 1 ? "" : "s"} exist but their trigger config could not be read, so this is not proof that nothing is scheduled.`,
+        ? `No ${scheduled} are set.${scopeNote}`
+        : `No readable ${scheduled}. ${unreadable} tagged trigger task${unreadable === 1 ? "" : "s"} exist but their trigger config could not be read, so this is not proof that nothing is scheduled.${scopeNote}`,
       { count: 0, unreadable },
     );
   }
@@ -1134,7 +1173,7 @@ async function opList(
       : ` (${unreadable} more tagged trigger task${unreadable === 1 ? "" : "s"} could not be read and are not listed)`;
   return ok(
     "list",
-    `${lines.length} scheduled item${lines.length === 1 ? "" : "s"}${skippedNote}:\n${lines.join("\n")}`,
+    `${lines.length} scheduled item${lines.length === 1 ? "" : "s"}${skippedNote}:\n${lines.join("\n")}${scopeNote}`,
     { count: lines.length, unreadable },
   );
 }
@@ -1223,11 +1262,11 @@ export const triggerAction: Action = {
     "STOP_REMINDER",
   ],
   routingHint:
-    "reminders, alarms, timers, and one-off or recurring scheduled prompts ('remind me in N minutes / at TIME to …', 'every morning …') -> TRIGGER_CREATE; this is the core fallback when OWNER_REMINDERS is unavailable. When OWNER_REMINDERS is exposed, explicit owner-reminder creation belongs to OWNER_REMINDERS instead. For a one-off relative delay pass delaySeconds or delayMinutes only. For a RECURRING request ('every morning/day/week at …') pass cronExpression ALONE — no delaySeconds/delayMinutes/scheduledAtIso, those express a single fire. PAUSE/RESUME: 'pause the X reminder', 'stop reminding me about X', 'turn X back on' -> toggle (enabled:false to pause, enabled:true to resume) — pausing is NOT delete, the trigger is kept and can be resumed. Do NOT use TASKS_* (those spawn coding sub-agents) and do NOT declare reminders unavailable because OWNER_REMINDERS is absent.",
+    "agent automations and scheduled prompts ('every morning check X', a workflow on a schedule) -> TRIGGER_CREATE. Reminders, alarms and timers ('remind me in N minutes / at TIME to …') use TRIGGER only as the core fallback when OWNER_REMINDERS is unavailable; when OWNER_REMINDERS is exposed, the owner's reminders — create, cancel, delete, snooze, list — belong to OWNER_REMINDERS, whose items TRIGGER operations never see. For a one-off relative delay pass delaySeconds or delayMinutes only. For a RECURRING request ('every morning/day/week at …') pass cronExpression ALONE — no delaySeconds/delayMinutes/scheduledAtIso, those express a single fire. PAUSE/RESUME a trigger: 'pause the X trigger', 'turn X back on' -> toggle (enabled:false to pause, enabled:true to resume) — pausing is NOT delete, the trigger is kept and can be resumed. Do NOT use TASKS_* (those spawn coding sub-agents) and do NOT declare reminders unavailable because OWNER_REMINDERS is absent.",
   description:
-    "Recurring/scheduled trigger lifecycle AND user reminders. Action-based dispatch (create / update / delete / run / toggle / list). Use toggle to PAUSE or RESUME a reminder ('pause the X reminder', 'resume X', 'turn X back on', 'stop reminding me about X') — pausing keeps the trigger and is not a delete. Use create for 'remind me in N minutes/at TIME to …' and any scheduled prompt. Use list for 'what reminders do I have' / 'when does my next reminder fire' — reminders are NOT calendar events and never appear in the calendar feed. Supports relative delay (delaySeconds — one-off), a one-off time (scheduledAtIso), interval, and cron (recurring 'every …' schedules).",
+    "Agent automation triggers: scheduled prompts and workflow runs saved as triggers. Action-based dispatch (create / update / delete / run / toggle / list) over triggers only — owner reminders, todos and alarms kept by OWNER_REMINDERS / OWNER_TODOS / OWNER_ALARMS are separate items these operations never see, so manage those through their own family whenever it is available. Without OWNER_REMINDERS, triggers are also the user's reminders ('remind me in N minutes/at TIME to …', 'pause the X reminder'). Use toggle to PAUSE or RESUME a trigger — pausing keeps it and is not a delete. Use list for which triggers are scheduled and when the next one fires — triggers are NOT calendar events and never appear in the calendar feed. Supports relative delay (delaySeconds — one-off), a one-off time (scheduledAtIso), interval, and cron (recurring 'every …' schedules).",
   descriptionCompressed:
-    "reminders + scheduled prompts: create (remind me in N / at TIME; every X -> cron) update delete run toggle (pause/resume a reminder) list ('what reminders do i have' / 'when's my next reminder' -> list)",
+    "agent automation triggers + scheduled prompts (reminders only when OWNER_REMINDERS is unavailable; never sees owner reminders/todos/alarms): create (in N / at TIME; every X -> cron) update delete run toggle (pause/resume) list",
   suppressPostActionContinuation: true,
 
   validate: async (

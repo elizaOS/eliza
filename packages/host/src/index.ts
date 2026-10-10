@@ -73,3 +73,4 @@ export {
   upsertProject,
   writeProjectRegistry,
 } from "./utils/project-registry.js";
+export { webChatWorldId, webChatWorldIds } from "./web-chat-world.js";

@@ -270,8 +270,12 @@ describe("TASKS Smithers restart recovery", () => {
         },
         callback(),
       );
-      expect(firstResult?.success).toBe(false);
-      expect(simulatedCrash).toBe(true);
+      // The launch is accepted once the run is linked and marked running; the
+      // prompt and its completion write continue after the action returns.
+      expect(firstResult?.success).toBe(true);
+      await vi.waitFor(() => expect(simulatedCrash).toBe(true), {
+        timeout: 30_000,
+      });
       expect(persistedAcp.prompts).toEqual([
         expect.stringContaining("implement restart-safe work"),
       ]);

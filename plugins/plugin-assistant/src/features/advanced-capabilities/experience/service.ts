@@ -886,7 +886,7 @@ export class ExperienceService extends Service {
       results = limit === undefined ? candidates : candidates.slice(0, limit);
     }
 
-    // Include related experiences if requested
+    // Related experiences pass the same filters as direct matches.
     if (query.includeRelated) {
       const relatedIds = new Set<UUID>();
       for (const exp of results) {
@@ -897,15 +897,13 @@ export class ExperienceService extends Service {
         }
       }
 
-      const related = Array.from(relatedIds)
-        .map((id) => this.experiences.get(id))
-        .filter((exp): exp is Experience => exp !== undefined)
-        .filter(
-          (exp) =>
-            (query.includeInactive ||
-              exp.extractionStatus !== "source_invalidated") &&
-            !results.some((r) => r.id === exp.id),
-        );
+      const related = this.applyFilters(
+        Array.from(relatedIds)
+          .map((id) => this.experiences.get(id))
+          .filter((exp): exp is Experience => exp !== undefined)
+          .filter((exp) => !results.some((r) => r.id === exp.id)),
+        query,
+      );
 
       results.push(...related);
     }

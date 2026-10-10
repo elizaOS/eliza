@@ -34,6 +34,8 @@ import {
   type OrchestratorTaskRecord,
   type OrchestratorTaskSession,
   type OrchestratorTaskUsage,
+  sessionEventTaskStatus,
+  type TaskEventWrite,
   type TaskListFilter,
   TERMINAL_TASK_SESSION_STATUSES,
 } from "./orchestrator-task-types.js";
@@ -300,6 +302,18 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+/** Patch a stored session in place; its identity fields are not patchable. */
+function applySessionPatch(
+  session: OrchestratorTaskSession,
+  patch: Partial<OrchestratorTaskSession>,
+): void {
+  Object.assign(session, patch, {
+    sessionId: session.sessionId,
+    taskId: session.taskId,
+    updatedAt: nowIso(),
+  });
+}
+
 function buildSearchText(doc: OrchestratorTaskDocument): string {
   const t = doc.task;
   return [
@@ -381,6 +395,7 @@ function matchesFilter(
   if (!filter.includeArchived && task.archived) return false;
   if (filter.status && filter.status !== "all" && task.status !== filter.status)
     return false;
+  if (filter.statuses && !filter.statuses.includes(task.status)) return false;
   const projectId = filter.projectId?.trim();
   if (projectId && task.projectId !== projectId) return false;
   if (filter.search) {
@@ -590,11 +605,7 @@ export class InMemoryTaskStore {
       for (const doc of documents) {
         const session = doc.sessions.find((s) => s.sessionId === sessionId);
         if (!session) continue;
-        Object.assign(session, patch, {
-          sessionId: session.sessionId,
-          taskId: session.taskId,
-          updatedAt: nowIso(),
-        });
+        applySessionPatch(session, patch);
         doc.task.lastActivityAt = Date.now();
         doc.task.updatedAt = nowIso();
         this.noteMutated(doc.task.id);
@@ -687,6 +698,22 @@ export class InMemoryTaskStore {
       );
       if (idx >= 0) doc.planRevisions[idx] = stored;
       else doc.planRevisions.push(stored);
+    });
+  }
+
+  async recordSessionEvent(write: TaskEventWrite): Promise<void> {
+    await this.appendChild(write.taskId, (doc) => {
+      doc.events.push(...write.events);
+      doc.messages.push(...(write.messages ?? []));
+      const target = write.session;
+      if (target) {
+        const session = doc.sessions.find(
+          (s) => s.sessionId === target.sessionId,
+        );
+        if (session) applySessionPatch(session, target.patch);
+        const next = sessionEventTaskStatus(doc.task, "session_active");
+        if (next !== null) doc.task.status = next;
+      }
     });
   }
 
@@ -901,6 +928,10 @@ export class FileTaskStore extends InMemoryTaskStore {
   override async addPlanRevision(revision: OrchestratorTaskPlanRevision) {
     await this.ensureLoaded();
     return super.addPlanRevision(revision);
+  }
+  override async recordSessionEvent(write: TaskEventWrite) {
+    await this.ensureLoaded();
+    return super.recordSessionEvent(write);
   }
 
   protected override noteMutated(id: string): void {
@@ -1276,6 +1307,11 @@ export class RuntimeDbTaskStore {
       clauses.push("status = ?");
       params.push(filter.status);
     }
+    if (filter.statuses) {
+      if (filter.statuses.length === 0) return [];
+      clauses.push(`status IN (${filter.statuses.map(() => "?").join(", ")})`);
+      params.push(...filter.statuses);
+    }
     const projectId = filter.projectId?.trim();
     if (projectId) {
       clauses.push("project_id = ?");
@@ -1320,8 +1356,9 @@ export class RuntimeDbTaskStore {
       const current = await this.loadOne(id);
       this.cache.hydrate(current ? [current] : []);
       const result = await op(this.cache);
-      const next = await this.cache.getTask(id);
-      if (next) await this.persist(next);
+      // Every cache operation mutates the hydrated document in place, so it is
+      // already the next state; cloning a multi-MB document per write is waste.
+      if (current) await this.persist(current);
       return result;
     });
   }
@@ -1358,13 +1395,17 @@ export class RuntimeDbTaskStore {
   ): Promise<void> {
     return this.enqueue(async () => {
       await this.ensureInitialized();
-      const found = await this.findSession(sessionId, taskId);
-      if (!found) return;
-      const current = await this.loadOne(found.taskId);
-      this.cache.hydrate(current ? [current] : []);
-      await this.cache.updateSession(sessionId, patch, found.taskId);
-      const next = await this.cache.getTask(found.taskId);
-      if (next) await this.persist(next);
+      // With the owning task known, its one document read both locates the
+      // session and is the mutation base (no separate findSession read).
+      const current = taskId
+        ? await this.loadOne(taskId)
+        : await this.findSession(sessionId).then((found) =>
+            found ? this.loadOne(found.taskId) : null,
+          );
+      if (!current?.sessions.some((s) => s.sessionId === sessionId)) return;
+      this.cache.hydrate([current]);
+      await this.cache.updateSession(sessionId, patch, current.task.id);
+      await this.persist(current);
     });
   }
 
@@ -1498,6 +1539,9 @@ export class RuntimeDbTaskStore {
   async addPlanRevision(revision: OrchestratorTaskPlanRevision) {
     return this.mutate(revision.taskId, (c) => c.addPlanRevision(revision));
   }
+  async recordSessionEvent(write: TaskEventWrite) {
+    return this.mutate(write.taskId, (c) => c.recordSessionEvent(write));
+  }
 }
 
 export interface OrchestratorTaskStoreOptions {
@@ -1590,5 +1634,8 @@ export class OrchestratorTaskStore {
   }
   addPlanRevision(revision: OrchestratorTaskPlanRevision) {
     return this.delegate.addPlanRevision(revision);
+  }
+  recordSessionEvent(write: TaskEventWrite) {
+    return this.delegate.recordSessionEvent(write);
   }
 }

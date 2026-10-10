@@ -7,7 +7,7 @@
  * from the wallet provider instead of coupling it to browser workspace state.
  */
 
-import type { Provider } from "@elizaos/core";
+import type { Memory, Provider } from "@elizaos/core";
 import { asObjectRecord as asRecord } from "@elizaos/core/protocol";
 import {
   BROWSER_SERVICE_TYPE,
@@ -19,6 +19,11 @@ import {
 } from "../workspace/browser-workspace.js";
 
 const PROVIDER_NAME = "browser_workspace";
+
+/** Whether the message came from a client's own native Browser page. */
+export function isNativeBrowserRequest(message: Memory): boolean {
+  return asRecord(message.content.metadata)?.uiBrowserSurface === "native";
+}
 
 export const browserWorkspaceProvider: Provider = {
   name: PROVIDER_NAME,
@@ -34,7 +39,7 @@ export const browserWorkspaceProvider: Provider = {
   // silently drop it).
   roleGate: { minRole: "OWNER" },
   get: async (runtime, message) => {
-    if (asRecord(message.content?.metadata)?.uiBrowserSurface === "native") {
+    if (isNativeBrowserRequest(message)) {
       return {
         text: JSON.stringify({
           browser_workspace: {

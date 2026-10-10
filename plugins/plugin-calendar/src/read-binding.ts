@@ -3,6 +3,7 @@
 import {
   CALENDAR_READ_ACTIONS,
   type CalendarReadBinding,
+  calendarReadBindingsRequireExecution,
 } from "@elizaos/contracts";
 import {
   isObjectRecord,
@@ -20,7 +21,7 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
 > = {
   name: "calendarReadBindings",
   description:
-    "Bind each requested Calendar read to its one-based Stage-1 intent ID (intent:1, etc.): feed is a bounded agenda/date range, next_event is the single next ongoing or upcoming event relative to now, search_events is an event-content search. Execution is required only for an unconditional read; use conditional when it depends on a prerequisite or user condition, and preserve that condition for normal planning. A next-week agenda is feed; opening Calendar is navigation, not a read. Use [] for unrelated or unclear reads; preserve every other intent.",
+    "Bind each requested Calendar read to its one-based Stage-1 intent ID (intent:1, etc.): feed is a bounded agenda/date range, next_event is the single next ongoing or upcoming event relative to now, search_events is an event-content search. Bind only when the requested outcome is Calendar data itself. Finding an event to move, reschedule, rename, update, delete or cancel belongs to that change, which locates its own target: keep the change as its own intent, never restate it as a search, and use [] for it. A brief, rundown or digest and reminders, todos or tasks are not Calendar reads; use []. Execution is required only for an unconditional read; use conditional when it depends on a prerequisite or user condition, and preserve that condition for normal planning. A next-week agenda is feed; opening Calendar is navigation, not a read. Use [] for unrelated or unclear reads; preserve every other intent.",
   priority: 40,
   schema: {
     type: "array",
@@ -118,7 +119,7 @@ export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
         !Object.values(CALENDAR_READ_ACTIONS).some((read) => read === name),
     );
     return {
-      ...(bindings.some((binding) => binding.execution === "required")
+      ...(calendarReadBindingsRequireExecution(bindings)
         ? { requiresTool: true }
         : {}),
       addContexts: ["calendar"],

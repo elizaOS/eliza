@@ -18,6 +18,7 @@ import {
 } from "@elizaos/core";
 import { upsertProject } from "@elizaos/host";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { DEFAULT_CRITERIA_TEMPLATES } from "../services/acceptance-criteria.js";
 import { AcpService } from "../services/acp-service.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../services/orchestrator-task-store.js";
@@ -661,5 +662,42 @@ describe("resolveAllowedWorkdir — runtime-checkout guard", () => {
       process.chdir(savedCwd);
       rmSync(repoRoot, { recursive: true, force: true });
     }
+  });
+});
+
+describe("default acceptance criteria for a served workdir", () => {
+  it("gives generic coding work the app-build template and keeps a specific kind", async () => {
+    const routes = JSON.stringify([
+      {
+        id: "served-apps",
+        workdir: firstDir,
+        urlMappings: [
+          { urlPrefix: "https://apps.example.test/", localPath: "." },
+        ],
+      },
+    ]);
+    const runtime = {
+      ...(makeRuntime(makeWorkdirCapturingAcp().service) as object),
+      getSetting: (key: string) =>
+        key === "TASK_AGENT_WORKDIR_ROUTES" ? routes : undefined,
+    } as IAgentRuntime;
+    const service = new OrchestratorTaskService(runtime, {
+      store: new OrchestratorTaskStore({ backend: "memory" }),
+    });
+    const criteriaFor = async (kind: string) =>
+      (
+        await service.createTask({
+          title: "Tip calculator",
+          goal: "make a tip calculator page",
+          kind,
+          workdir: firstDir,
+        })
+      ).acceptanceCriteria;
+    expect(await criteriaFor("coding")).toEqual(
+      DEFAULT_CRITERIA_TEMPLATES["app-build"],
+    );
+    expect(await criteriaFor("deploy")).toEqual(
+      DEFAULT_CRITERIA_TEMPLATES.deploy,
+    );
   });
 });

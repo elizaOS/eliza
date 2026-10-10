@@ -44,6 +44,7 @@ import {
   getTrajectoryContext,
   logger,
   ModelType,
+  rejectAtDeadline,
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
   unwrapUserMessageText,
@@ -97,6 +98,26 @@ export {
 
 const ACTION_NAME = "BRIEF";
 const ENGAGEMENT_RECENCY_DAYS = 30;
+
+/**
+ * Longest one briefing source may hold the brief before it is composed from
+ * the others.
+ */
+const BRIEF_SOURCE_TIMEOUT_MS = 10_000;
+
+function withinSourceBound<T>(source: string, work: Promise<T>): Promise<T> {
+  return rejectAtDeadline(work, {
+    timeoutMs: BRIEF_SOURCE_TIMEOUT_MS,
+    onTimeout: () =>
+      new ElizaError(
+        `The briefing ${source} source did not answer within ${BRIEF_SOURCE_TIMEOUT_MS}ms.`,
+        {
+          code: "BRIEF_SOURCE_TIMED_OUT",
+          context: { source, timeoutMs: BRIEF_SOURCE_TIMEOUT_MS },
+        },
+      ),
+  });
+}
 
 function engagementSinceIso(now = new Date()): string {
   return new Date(
@@ -389,20 +410,27 @@ async function loadInboxFromTriage(args: {
     return args.explicit ? { items: [], coverage: "not_connected" } : undefined;
   }
   const { start } = await periodWindow(args.runtime, args.period);
-  const refs: MessageRef[] = [];
-  let succeeded = 0;
-  for (const read of reads) {
-    try {
-      refs.push(
-        ...(await triage.triage(args.runtime, {
+  // Each read is an independent connector or account, so they run together
+  // and one slow inbox costs its own time only.
+  const batches = await Promise.all(
+    reads.map(async (read) => {
+      try {
+        return await triage.triage(args.runtime, {
           ...read,
           sinceMs: start.getTime(),
-        })),
-      );
-      succeeded++;
-    } catch (error) {
-      reportFailure(error, read.sources?.[0] ?? "inbox", read.worldIds?.[0]);
-    }
+        });
+      } catch (error) {
+        reportFailure(error, read.sources?.[0] ?? "inbox", read.worldIds?.[0]);
+        return undefined;
+      }
+    }),
+  );
+  const refs: MessageRef[] = [];
+  let succeeded = 0;
+  for (const batch of batches) {
+    if (!batch) continue;
+    refs.push(...batch);
+    succeeded++;
   }
   return {
     items: rankScored(refs).map(mapMessageRefToBriefingItem),
@@ -538,28 +566,15 @@ async function loadCommitmentsFromLedger(args: {
 async function loadEngagementSummariesFromLifeOps(args: {
   runtime: IAgentRuntime;
 }): Promise<readonly LifeOpsBriefItemEngagementSummary[]> {
-  try {
-    const repository = new LifeOpsRepository(args.runtime);
-    await repository.finalizeExpiredBriefItemEngagements(args.runtime.agentId);
-    await retryBriefEngagementRewards({
-      runtime: args.runtime,
-      repository,
-    });
-    return await repository.summarizeBriefItemEngagements(
-      args.runtime.agentId,
-      {
-        sinceIso: engagementSinceIso(),
-      },
-    );
-  } catch (error) {
-    // error-policy:J4 engagement history improves editorial ranking but is not
-    // required to render a brief. Keep the degradation observable instead of
-    // presenting the missing history as a successful database read.
-    args.runtime.reportError("Brief.loadEngagementSummaries", error, {
-      surface: "brief-editorial-engagement",
-    });
-    return [];
-  }
+  const repository = new LifeOpsRepository(args.runtime);
+  await repository.finalizeExpiredBriefItemEngagements(args.runtime.agentId);
+  await retryBriefEngagementRewards({
+    runtime: args.runtime,
+    repository,
+  });
+  return repository.summarizeBriefItemEngagements(args.runtime.agentId, {
+    sinceIso: engagementSinceIso(),
+  });
 }
 
 /**
@@ -1114,7 +1129,7 @@ async function assembleBriefing(args: {
     collect: () => Promise<T>,
   ): Promise<T | readonly never[]> => {
     try {
-      return await collect();
+      return await withinSourceBound(source, collect());
     } catch (error) {
       // error-policy:J4 compose the remaining requested sources, while retaining
       // an explicit unavailable marker and the diagnostic cause.
@@ -1127,11 +1142,16 @@ async function assembleBriefing(args: {
       return [];
     }
   };
+  const kind = SUBACTION_TO_KIND[args.subaction];
   const [
     calendarItems,
     inboxCollection,
     lifeCollection,
     commitmentItems,
+    // The evening brief is the recap surface: it must know what got DONE today
+    // so the narrative can lead with wins instead of opening on open items
+    // (#16935). Morning/weekly briefs keep their forward-looking shape.
+    completedToday,
     engagementSummaries,
   ] = await Promise.all([
     args.include.calendar
@@ -1163,7 +1183,27 @@ async function assembleBriefing(args: {
           composers.loadCommitments({ runtime: args.runtime }),
         )
       : Promise.resolve([] as readonly LifeOpsBriefingCommitmentItem[]),
-    composers.loadEngagementSummaries({ runtime: args.runtime }),
+    kind === "evening" && args.include.life
+      ? collectSource("completedToday", () =>
+          composers.loadCompletedToday
+            ? composers.loadCompletedToday({ runtime: args.runtime })
+            : loadCompletedTodayFromService({
+                runtime: args.runtime,
+                loadDefinitions,
+              }),
+        )
+      : Promise.resolve([] as readonly LifeOpsBriefingLifeItem[]),
+    withinSourceBound(
+      "engagement",
+      composers.loadEngagementSummaries({ runtime: args.runtime }),
+    ).catch((error) => {
+      // error-policy:J4 engagement history only ranks the items; a brief
+      // without it is still complete, so it must not wait on or fail with it.
+      args.runtime.reportError("Brief.loadEngagementSummaries", error, {
+        surface: "brief-editorial-engagement",
+      });
+      return [] as readonly LifeOpsBriefItemEngagementSummary[];
+    }),
   ]);
 
   const inboxItems =
@@ -1183,22 +1223,6 @@ async function assembleBriefing(args: {
     "items" in lifeCollection ? lifeCollection.items : lifeCollection;
   const lifeSummary =
     "items" in lifeCollection ? lifeCollection.summary : undefined;
-
-  const kind = SUBACTION_TO_KIND[args.subaction];
-  // The evening brief is the recap surface: it must know what got DONE today
-  // so the narrative can lead with wins instead of opening on open items
-  // (#16935). Morning/weekly briefs keep their forward-looking shape.
-  const completedToday =
-    kind === "evening" && args.include.life
-      ? await collectSource("completedToday", () =>
-          composers.loadCompletedToday
-            ? composers.loadCompletedToday({ runtime: args.runtime })
-            : loadCompletedTodayFromService({
-                runtime: args.runtime,
-                loadDefinitions,
-              }),
-        )
-      : [];
 
   const sections: LifeOpsBriefingSections = {
     ...(args.include.calendar ? { calendar: calendarItems } : {}),
@@ -1537,16 +1561,17 @@ export const briefAction: Action & {
     );
     const period = genericRequest ? "today" : resolvePeriod(params, subaction);
     const format: "narrative" | "json" =
-      !genericRequest && params.format === "json" ? "json" : "narrative";
+      params.format === "json" ? "json" : "narrative";
     const optimizationTask = resolveBriefOptimizationTask({ params, message });
-    const deferReply = format === "narrative" && plannerOwned;
 
     const briefing = await assembleBriefing({
       runtime,
       subaction,
       period,
       include,
-      format: deferReply ? "json" : format,
+      // The planner writes its turn's reply from the grounding below whatever
+      // format it passed, so only a direct caller composes a narrative here.
+      format: plannerOwned ? "json" : format,
       optimizationTask,
       asOf,
     });
@@ -1564,7 +1589,7 @@ export const briefAction: Action & {
         },
       },
     };
-    if (deferReply) {
+    if (plannerOwned) {
       try {
         const prompt = buildNarrativePrompt({
           kind: briefing.kind,

@@ -464,6 +464,23 @@ describe("request-bound Calendar read coverage", () => {
     expect(result.messageToUser).toContain("couldn't confirm");
     expect(calls).toBe(1);
   });
+  it("resolves an intent cited by its rendered text to that intent's ID", async () => {
+    const f = fixture();
+    const [entry] = f.output.outcomeCoverage ?? [];
+    if (!entry) throw new Error("Missing coverage fixture");
+    f.output.outcomeCoverage = [
+      { ...entry, intentId: "Read the next calendar event" },
+    ];
+    f.output.messageToUser = "Your next event starts October 5 at 10:00.";
+    const result = await runEvaluator({
+      runtime: { useModel: async () => JSON.stringify(f.output) },
+      context: f.context,
+      trajectory: f.trajectory,
+    });
+    expect(result.success).toBe(true);
+    expect(result.outcomeCoverage?.[0]?.intentId).toBe("intent:1");
+    expect(result.messageToUser).toBe(f.output.messageToUser);
+  });
   it("leaves unrelated legacy requests without bindings unchanged", () => {
     const f = fixture();
     if (!f.context.metadata) throw new Error("Missing metadata fixture");

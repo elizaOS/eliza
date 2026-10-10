@@ -14,6 +14,11 @@ import {
   toWellFormedUnicode,
 } from "@elizaos/core";
 import { getAcpService } from "../actions/common.js";
+import type { TaskThreadDto } from "../services/orchestrator-task-mapper.js";
+import {
+  IN_FLIGHT_TASK_STATUSES,
+  type TaskListFilter,
+} from "../services/orchestrator-task-types.js";
 import { TASK_WATCHDOG_SERVICE_TYPE } from "../services/task-watchdog-service.js";
 import {
   type AcpCapacity,
@@ -122,10 +127,11 @@ const PROVIDER_NAME = "ACTIVE_SUB_AGENTS";
  * to route back to) are included — these are the sessions the SubAgentRouter
  * will post messages from.
  *
- * Cache strategy: text contains structural state only (id, label, agentType,
- * status, workdir-tail). Live message content is delivered via the synthetic
- * Memory the router posts, NOT through this provider, so prefix cache hits
- * stay high turn-over-turn.
+ * Cache strategy: the discovery text carries structural state only (id,
+ * label, agentType, status, workdir, live-output marker). Each session's
+ * complete captured output stays in the full provider reference, read on
+ * demand, so a growing buffer neither inflates nor invalidates every
+ * planner/evaluator prompt.
  */
 export const activeSubAgentsProvider: Provider = {
   name: PROVIDER_NAME,
@@ -144,9 +150,12 @@ export const activeSubAgentsProvider: Provider = {
   // narrow pin excluded this state from exactly the turns that ask about it.
   contexts: ["general", "tasks", "code", "automation"],
   position: 0,
-  get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
+  get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     const waves = readWaveStatuses(runtime);
-    const inFlightTaskLines = await readInFlightTaskLines(runtime);
+    const inFlightTaskLines = await readInFlightTaskLines(
+      runtime,
+      message.roomId,
+    );
     const service = getAcpService(runtime);
     if (!service || typeof service.listSessions !== "function") {
       return emptyResult(null, null, waves, inFlightTaskLines);
@@ -219,21 +228,32 @@ export const activeSubAgentsProvider: Provider = {
     const capacityLine = formatCapacityLine(capacity, admission);
     if (capacityLine) lines.push(capacityLine);
     lines.push(...formatWaveLines(waves));
+    const discoveryLines = [...lines];
     for (const session of routed) {
-      lines.push(
-        formatLine(
-          session,
-          liveByName.get(session.id),
-          stalled.has(session.id),
-          approaching.get(session.id),
-        ),
+      const live = liveByName.get(session.id);
+      const isStalled = stalled.has(session.id);
+      const cap = approaching.get(session.id);
+      lines.push(formatLine(session, live, isStalled, cap));
+      discoveryLines.push(
+        formatLine(session, undefined, isStalled, cap) +
+          (live ? " liveOutput=available" : ""),
       );
     }
     lines.push(...inFlightTaskLines);
     const text = lines.join("\n");
+    // Live buffers grow without bound, so the structural lines stay inline
+    // and the complete output is one provider read away.
+    if (liveByName.size > 0)
+      discoveryLines.push(
+        "Each session's complete captured output (liveOutput=available) is available through the ACTIVE_SUB_AGENTS provider reference. Read that reference when a progress answer or a send/stop decision needs the latest activity; omitted output is not empty or unavailable.",
+      );
+    discoveryLines.push(...inFlightTaskLines);
 
     return {
       text,
+      ...(liveByName.size > 0
+        ? { discoveryText: discoveryLines.join("\n") }
+        : {}),
       values: { activeSubAgents: text },
       data: {
         sessions: routed.map((s) => ({
@@ -282,48 +302,27 @@ interface AdmissionSnapshot {
   queuedTaskIds: string[];
 }
 
-/** Structural task rows the provider needs from the orchestrator task service
- * for the in-flight section. Read by serviceType like the admission snapshot. */
-interface InFlightTaskService {
-  listTasks?(filter: Record<string, unknown>): Promise<
-    Array<{
-      id: string;
-      title: string;
-      status: string;
-      activeSessionCount: number;
-    }>
-  >;
-}
-
-/** Task statuses that are CURRENT state even with no live session attached:
- * the work exists and has not reached a terminal verdict. Excluding these made
- * "is my build done?" turns answer from chat vibes (observed live: a task
- * parked `validating` was described as "stopped before shipping" while its
- * deliverable was live), because nothing in stage-1's context carried the
- * store's ground truth. */
-const IN_FLIGHT_TASK_STATUSES: ReadonlySet<string> = new Set([
-  "open",
-  "active",
-  "validating",
-  "waiting_on_user",
-  "blocked",
-]);
-
-/** Non-terminal tasks as compact structural lines (title — status — id).
- * No timestamps, so the provider segment stays cache-stable turn over turn. */
+/** Non-terminal tasks of this room (requested here, or in its swarm task room)
+ * as structural lines: the store's ground truth for a task-status question.
+ * No timestamps, so the segment stays cache-stable. */
 async function readInFlightTaskLines(
   runtime: IAgentRuntime,
+  roomId: string,
 ): Promise<string[]> {
-  const orchestrator = runtime.getService<Service & InFlightTaskService>(
-    ORCHESTRATOR_TASK_SERVICE_TYPE,
-  );
+  const orchestrator = runtime.getService<
+    Service & {
+      listTasks?(filter: TaskListFilter): Promise<TaskThreadDto[]>;
+    }
+  >(ORCHESTRATOR_TASK_SERVICE_TYPE);
   if (!orchestrator || typeof orchestrator.listTasks !== "function") {
     return [];
   }
   try {
-    const tasks = await orchestrator.listTasks({});
+    const tasks = await orchestrator.listTasks({
+      statuses: IN_FLIGHT_TASK_STATUSES,
+    });
     const inFlight = tasks
-      .filter((task) => IN_FLIGHT_TASK_STATUSES.has(task.status))
+      .filter((task) => task.roomId === roomId || task.taskRoomId === roomId)
       .sort((a, b) => a.id.localeCompare(b.id));
     if (inFlight.length === 0) return [];
     return [

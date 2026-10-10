@@ -392,6 +392,7 @@ describe("task_complete → registry record (real router path)", () => {
         return true;
       },
       createEntity: vi.fn(async () => true),
+      getRoom: vi.fn(async () => null),
       addParticipant: vi.fn(async () => true),
       getEntitiesForRoom: vi.fn(async () => []),
       deleteParticipants: vi.fn(async () => true),

@@ -14,6 +14,7 @@ import { readActionFailureProvenance } from "../types/action-failure.ts";
 import { ModelType } from "../types/model.ts";
 import {
 	isModelFundingAuthorityError,
+	isModelOutputLimitError,
 	isProviderContextOverflowFailure,
 	modelProviderErrorStatus,
 } from "../utils/model-errors.ts";
@@ -396,6 +397,9 @@ export function classifyStructuredFailureCause(
 			}
 		}
 	}
+	// A response stopped at its output ceiling exhausted budget; it is not a
+	// transient outage.
+	if (isModelOutputLimitError(error)) return "planner_exhaustion";
 	// A provider context-length rejection — raw, or wrapped in the planner
 	// loop's typed PROVIDER_CONTEXT_OVERFLOW error — is a designed protocol
 	// boundary, not a generic transient flake.

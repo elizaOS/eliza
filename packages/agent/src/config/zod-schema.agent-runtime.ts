@@ -10,6 +10,7 @@
  */
 
 import { parseDurationMs } from "@elizaos/core";
+import type { CharacterFailureTemplates } from "@elizaos/host/protocol";
 import * as zod from "zod";
 import {
   BlockStreamingChunkSchema,
@@ -495,6 +496,23 @@ export const AgentEntrySchema = z
     heartbeat: HeartbeatSchema,
     identity: IdentitySchema,
     groupChat: GroupChatSchema,
+    templates: z
+      .object({
+        authFailedReply: z.string().optional(),
+        contextOverflowFailureReply: z.string().optional(),
+        insufficientCreditsReply: z.string().optional(),
+        missingCapabilityFailureReply: z.string().optional(),
+        noModelProviderReply: z.string().optional(),
+        plannerExhaustionFailureReply: z.string().optional(),
+        rateLimitedReply: z.string().optional(),
+        replyUnavailableFailureReply: z.string().optional(),
+        transientFailureReply: z.string().optional(),
+      } satisfies Record<
+        keyof CharacterFailureTemplates,
+        zod.ZodOptional<zod.ZodString>
+      >)
+      .strict()
+      .optional(),
     subagents: z
       .object({
         allowAgents: z.array(z.string()).optional(),

@@ -26,8 +26,11 @@ import {
   withActiveRoutingContexts,
 } from "@elizaos/core";
 import {
+  type ActionCatalog,
+  type ActionCatalogParent,
   buildActionCatalog,
   normalizeActionName,
+  type RuntimeActionLike,
 } from "../../runtime/action-catalog";
 import {
   parentAliasesForCandidateAction,
@@ -138,10 +141,12 @@ const GENERIC_OPERATION_WORDS = new Set([
   "change",
   "modify",
   "replace",
+  "move",
   "patch",
   "delete",
   "remove",
   "erase",
+  "cancel",
   "get",
   "read",
   "retrieve",
@@ -262,6 +267,44 @@ function positiveIntentText(intent: string): string {
     : unquoted.trim();
 }
 
+/** An entry is reused while every own value of its action is unchanged;
+ * validate() may reassign a description. */
+const searchEntries = new WeakMap<
+  Action,
+  { fields: readonly unknown[]; entry: ActionCatalogParent }
+>();
+
+/** The catalog `buildActionCatalog` makes of `actions` without sub-actions. */
+function flatSearchCatalog(actions: readonly Action[]): ActionCatalog {
+  const flat = actions.map((action) => ({ ...action, subActions: undefined }));
+  // Grouping, order and warnings come from the ordinary build without the
+  // search index; only the indexed entries are reused.
+  const structure = buildActionCatalog(flat, { includeSearchMetadata: false });
+  const sources = new Map<RuntimeActionLike, Action>(
+    flat.map((copy, index) => [copy, actions[index]]),
+  );
+  const parents = structure.parents.map((parent) => {
+    const action = sources.get(parent.source) as Action;
+    const fields = Object.values(action);
+    const cached = searchEntries.get(action);
+    if (
+      cached?.fields.length === fields.length &&
+      cached.fields.every((value, index) => Object.is(value, fields[index]))
+    )
+      return cached.entry;
+    const [entry] = buildActionCatalog([parent.source]).parents;
+    searchEntries.set(action, { fields, entry });
+    return entry;
+  });
+  return {
+    ...structure,
+    parents,
+    parentByName: new Map(
+      parents.map((parent) => [parent.normalizedName, parent]),
+    ),
+  };
+}
+
 /**
  * Retrieve complete operation definitions from an already authorized registry.
  * Search operates on individual operations rather than expanding every matched
@@ -292,9 +335,7 @@ export function retrieveContextualPlannerActions(args: {
 } {
   const retrieval = args.query.trim()
     ? retrieveActions({
-        catalog: buildActionCatalog(
-          args.actions.map((action) => ({ ...action, subActions: undefined })),
-        ),
+        catalog: flatSearchCatalog(args.actions),
         messageText: args.query,
         intents: args.intents,
         selectedContexts: args.contexts,

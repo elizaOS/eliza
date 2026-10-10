@@ -175,7 +175,7 @@ export function renderMessageHandlerModelInput(
       id: "background-history-notice",
       stable: false,
       content:
-        "Earlier originals were deferred by a complete, source-bound background review. This is not a review of the current request. Read missing constraints, corrections, referents or exact historical evidence before replying or planning. For a specific saved-fact lookup, first use advertised stored-memory references, known history IDs or literal searches of the fact's subject; inspect matched originals and their corrections. Use history:all when targeted reads leave dependencies unresolved, for exhaustive coverage, or before claiming something was never discussed." +
+        "Earlier originals were deferred by a complete, source-bound background review. This is not a review of the current request. Read missing constraints, corrections, referents or exact historical evidence before replying or planning." +
         historyReferenceNotice(context, options?.history),
     });
   const instructions = renderMessageHandlerInstructions(

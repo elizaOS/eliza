@@ -497,6 +497,27 @@ export async function finalizePlannerReply(
   // asynchronous handoff). Preserve that settled failure as an unfulfilled
   // request, while leaving successful handoffs unassessed until completion.
   const terminalToolResult = plannerResult.trajectory.steps.at(-1)?.result;
+  // Later turns see only stored dialogue; without the source they invent one.
+  // The tool's result names what it actually read, whatever arguments it took.
+  const webSources = [
+    ...new Map(
+      [
+        ...plannerResult.trajectory.archivedSteps,
+        ...plannerResult.trajectory.steps,
+      ].flatMap(({ toolCall, result }) => {
+        const name = toolCall?.name.toUpperCase();
+        const { url, query } =
+          result?.success === true ? (result.data ?? {}) : {};
+        const read =
+          name === "WEB_FETCH" && typeof url === "string"
+            ? { url }
+            : name === "WEB_SEARCH" && typeof query === "string"
+              ? { query }
+              : undefined;
+        return read ? [[JSON.stringify(read), read] as const] : [];
+      }),
+    ).values(),
+  ];
   const requestFulfilled =
     (plannerResult.evaluator?.requestFullyCovered === false
       ? false
@@ -526,6 +547,7 @@ export async function finalizePlannerReply(
             ...(effectiveReplyReceiptIds.length > 0
               ? { effectReceiptIds: effectiveReplyReceiptIds }
               : {}),
+            webSources,
             ...(transcriptVisibility ? { transcriptVisibility } : {}),
             ...(terminalFailure ? { terminalFailure } : {}),
           }),

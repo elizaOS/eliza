@@ -15,6 +15,7 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  PromoteSubactionsOptions,
 } from "@elizaos/core";
 import { FOLLOW_UP_CAPABLE_ACTION_TAG } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
@@ -146,7 +147,7 @@ function makeOwnerLifeAction(args: {
     parameters: [
       {
         name: "action",
-        description: `Owner item op: ${allowedActions.join("|")}.`,
+        description: "Owner item op.",
         required: true,
         schema: { type: "string" as const, enum: [...allowedActions] },
       },
@@ -158,7 +159,7 @@ function makeOwnerLifeAction(args: {
         // OWNER_ROUTINES and silently rerouted a habit save into the goals
         // store, so the definitionCountDelta contract never saw the save.
         name: "kind",
-        description: `Backing kind (fixed to "${args.defaultKind}" for this surface; do not change).`,
+        description: "Fixed backing kind; do not change.",
         required: false,
         schema: {
           type: "string" as const,
@@ -332,6 +333,17 @@ export const ownerRemindersAction: Action = {
     'Owner reminders: create/update/cancel/delete/complete/skip/snooze/review one-off, date-only, deadline ("by the 20th"), and recurring reminders. Cancel archives the reminder and retains its history; delete permanently removes it.',
   descriptionCompressed:
     "owner reminders/deadlines: action=create|update|cancel|delete|complete|skip|snooze|review; cancel archives, delete removes",
+};
+
+// A promoted child is ranked by its own text; without an operation
+// description the cancel child has only its name.
+export const ownerRemindersPromotionOptions: PromoteSubactionsOptions = {
+  overrides: {
+    cancel: {
+      description:
+        "Cancel a reminder the owner no longer wants, including one just set. Archives it so it stops firing and keeps its history.",
+    },
+  },
 };
 
 export const ownerAlarmsAction: Action = {
@@ -568,8 +580,7 @@ export const ownerRoutinesAction: Action = {
   parameters: [
     {
       name: "action",
-      description:
-        "Routine op: create|update|delete|complete|skip|snooze|review|schedule_summary|schedule_inspect.",
+      description: "Routine op.",
       required: true,
       schema: { type: "string" as const, enum: [...OWNER_ROUTINE_ACTIONS] },
     },

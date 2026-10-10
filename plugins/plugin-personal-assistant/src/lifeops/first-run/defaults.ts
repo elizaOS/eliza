@@ -33,7 +33,10 @@
  * remains testable.
  */
 
-import type { ScheduledTaskInput } from "@elizaos/plugin-scheduling";
+import {
+  OWNER_LOCAL_TZ,
+  type ScheduledTaskInput,
+} from "@elizaos/plugin-scheduling";
 import { DOSSIER_ACTIVITY_ANCHOR_KEY } from "../scheduled-task/dossier-activity-policy.js";
 import type { OwnerFactWindow } from "./state.js";
 
@@ -106,6 +109,7 @@ export function deriveMorningWindow(wakeHHMM: string): OwnerFactWindow {
 
 export interface DefaultsPackContext {
   morningWindow: OwnerFactWindow;
+  /** Zone of the system backup cadence; owner pokes follow the owner zone. */
   timezone: string;
   agentId: string;
   channel?: string;
@@ -124,12 +128,16 @@ export const DEFAULT_PACK_IDEMPOTENCY_KEYS = {
   localBackup: "lifeops:first-run:default:local-backup",
 } as const;
 
-function cronAtLocal(hhmm: string, tz: string): ScheduledTaskInput["trigger"] {
+/**
+ * Owner-facing daily pokes fire at owner-local wall time resolved when they
+ * fire, not in a zone fixed at first run.
+ */
+function cronAtOwnerLocal(hhmm: string): ScheduledTaskInput["trigger"] {
   const [h, m] = hhmm.split(":").map((part) => Number.parseInt(part, 10));
   return {
     kind: "cron",
     expression: `${m} ${h} * * *`,
-    tz,
+    tz: OWNER_LOCAL_TZ,
   };
 }
 
@@ -154,7 +162,7 @@ export function buildDefaultsPack(
       kind: "reminder",
       promptInstructions:
         "Wish the owner a warm good morning and surface anything pressing for the day.",
-      trigger: cronAtLocal(morningWindow.startLocal, timezone),
+      trigger: cronAtOwnerLocal(morningWindow.startLocal),
       priority: "low",
       shouldFire: MOMENT_JUDGED,
       respectsGlobalPause: true,
@@ -174,7 +182,7 @@ export function buildDefaultsPack(
     {
       kind: "reminder",
       promptInstructions: "Wish the owner good night before they wind down.",
-      trigger: cronAtLocal("22:00", timezone),
+      trigger: cronAtOwnerLocal("22:00"),
       priority: "low",
       shouldFire: MOMENT_JUDGED,
       respectsGlobalPause: true,
@@ -195,7 +203,7 @@ export function buildDefaultsPack(
       kind: "checkin",
       promptInstructions:
         "Run the daily check-in: ask the owner how they're feeling and what's on their plate today.",
-      trigger: cronAtLocal("09:00", timezone),
+      trigger: cronAtOwnerLocal("09:00"),
       priority: "medium",
       shouldFire: MOMENT_JUDGED,
       respectsGlobalPause: true,

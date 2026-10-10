@@ -13,15 +13,9 @@
  */
 
 import type { ConversationMetadata, ConversationScope, WorkbenchTask } from '@elizaos/contracts';
-import {
-  type AgentRuntime,
-  ElizaError,
-  type Room,
-  stringToUuid,
-  type Task,
-  type UUID,
-} from '@elizaos/core';
+import { type AgentRuntime, ElizaError, type Room, type Task } from '@elizaos/core';
 
+import { webChatWorldIds } from '@elizaos/host';
 import { toWorkbenchTask } from '@elizaos/host/protocol';
 import { getRouteOwnerEntityId } from '../routes/_helpers';
 import { EMBEDDED_WORKFLOW_SERVICE_TYPE } from '../services/embedded-workflow-service';
@@ -98,10 +92,6 @@ function normalizeDateValue(value: unknown): string | null {
     return value.toISOString();
   }
   return null;
-}
-
-function resolveAgentName(runtime: AgentRuntime): string {
-  return runtime.character.name?.trim() || 'Eliza';
 }
 
 function isSystemTask(task: WorkbenchTask): boolean {
@@ -260,11 +250,9 @@ function readAutomationRoomRecord(
 
 async function listAutomationRooms(
   runtime: AgentRuntime,
-  agentName: string,
   ownerEntityId: string
 ): Promise<AutomationRoomRecord[]> {
-  const worldId = stringToUuid(`${agentName}-web-chat-world`) as UUID;
-  const rooms = await runtime.getRooms(worldId);
+  const rooms = await runtime.getRoomsByWorlds(await webChatWorldIds(runtime));
   return rooms
     .map((room) => readAutomationRoomRecord(room))
     .filter(
@@ -552,8 +540,7 @@ export async function buildAutomationListResponse(
   runtime: AgentRuntime,
   ownerEntityId = getRouteOwnerEntityId(runtime)
 ): Promise<AutomationListResponse> {
-  const agentName = resolveAgentName(runtime);
-  const rooms = await listAutomationRooms(runtime, agentName, ownerEntityId);
+  const rooms = await listAutomationRooms(runtime, ownerEntityId);
   const taskRooms = new Map(
     rooms
       .filter((room) => room.metadata.taskId)

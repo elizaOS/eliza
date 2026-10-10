@@ -69,6 +69,7 @@ import { sanitizeAttachmentsForStorage } from "./attachment-input.js";
 import type { MessageAttachments } from "./attachments.js";
 import { runBotGroupAddressGate, runBotLoopGate } from "./bot-loop-gate";
 import { runBotNoiseTriage } from "./bot-noise-triage";
+import { isProgressiveContextChannel } from "./channel-protocol.ts";
 import { createV5MessageContextObject } from "./context-assembly.js";
 import type {
   ResolvedMessageOptions,
@@ -592,19 +593,23 @@ export class MessageProcessor {
     const responseRole =
       getTrajectoryContext()?.userRole ??
       (await resolveStage1SenderRole(runtime, message));
-    const originalReplyRecovery = captureMessageReplyRecovery(
-      runtime,
-      message,
-      await createV5MessageContextObject({
+    // Only a delivery regrounded before Stage 1 publishes its own capture
+    // reads this view, so it is captured on first use from a snapshot of its
+    // inputs.
+    const recoveryMessage = { ...message, content: { ...message.content } };
+    const recoveryState = { ...state };
+    let originalReplyRecovery: Promise<MessageReplyRecoveryContext> | undefined;
+    opts.prepareReplyRecovery = () =>
+      (originalReplyRecovery ??= createV5MessageContextObject({
         runtime,
-        message,
-        state,
+        message: recoveryMessage,
+        state: recoveryState,
         userRoles: [responseRole],
         includeTools: false,
         providerPhase: "completion",
-      }),
-    );
-    opts.prepareReplyRecovery = async () => originalReplyRecovery;
+      }).then((context) =>
+        captureMessageReplyRecovery(runtime, recoveryMessage, context),
+      ));
 
     const metadata =
       typeof message.content.metadata === "object" &&
@@ -844,6 +849,7 @@ export class MessageProcessor {
               },
               onStage1RespondDecision: () => {
                 stage1DecidedRespond = true;
+                opts.onResponseDecision?.();
               },
             }),
           ),
@@ -1577,7 +1583,12 @@ export class MessageProcessor {
         return;
       }
       await withEvaluatorStep(runtime, "post_turn", async () => {
-        if (semanticSignal) {
+        // Stage 1 reads the history review of every progressive-channel turn;
+        // extraction lanes skip a plain reply through the false semantic signal.
+        if (
+          semanticSignal ||
+          isProgressiveContextChannel(message.content.channelType)
+        ) {
           await runPostTurnEvaluators(runtime, message, state, {
             didRespond: didRespondGate,
             responses: responseMessages,

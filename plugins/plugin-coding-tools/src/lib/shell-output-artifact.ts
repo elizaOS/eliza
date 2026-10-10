@@ -15,12 +15,16 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { logger, resolveStateDir, toWellFormedUnicode } from "@elizaos/core";
 import { resolveShellJobTtlMs } from "../shell/utils/config.js";
+import {
+  DEFAULT_PAGE_CHARS,
+  normalizePageEnd,
+  normalizePageStart,
+} from "./text-boundary.js";
 
 const ARTIFACT_ROOT_SEGMENTS = ["coding-tools", "shell-output"] as const;
 const ARTIFACT_PREFIX = "shell_";
 const ARTIFACT_KEY_FILE = ".artifact-key";
 const SEGMENT_MAX_BYTES = 16 * 1024;
-const ARTIFACT_PAGE_DEFAULT_CHARS = 12_000;
 const ARTIFACT_PAGE_MAX_CHARS = 20_000;
 const ARTIFACT_HANDLE_PATTERN =
   /^shell_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -581,36 +585,6 @@ async function readRegularFile(
 
 async function readLegacyUtf8(filePath: string): Promise<string> {
   return (await readRegularFile(filePath)).toString("utf8");
-}
-
-function normalizePageStart(text: string, requested: number): number {
-  let start = Math.max(0, Math.min(text.length, Math.floor(requested)));
-  if (
-    start > 0 &&
-    start < text.length &&
-    text.charCodeAt(start) >= 0xdc00 &&
-    text.charCodeAt(start) <= 0xdfff &&
-    text.charCodeAt(start - 1) >= 0xd800 &&
-    text.charCodeAt(start - 1) <= 0xdbff
-  )
-    start -= 1;
-  return start;
-}
-
-function normalizePageEnd(text: string, start: number, limit: number): number {
-  let end = Math.min(text.length, start + limit);
-  if (
-    end > start &&
-    end < text.length &&
-    text.charCodeAt(end - 1) >= 0xd800 &&
-    text.charCodeAt(end - 1) <= 0xdbff &&
-    text.charCodeAt(end) >= 0xdc00 &&
-    text.charCodeAt(end) <= 0xdfff
-  )
-    end -= 1;
-  if (end === start && start < text.length)
-    end = Math.min(text.length, start + 2);
-  return end;
 }
 
 async function readV2Page(
@@ -1410,7 +1384,7 @@ export async function readShellOutputArtifactPage(options: {
     const requestedLimit =
       options.limit !== undefined && Number.isFinite(options.limit)
         ? options.limit
-        : ARTIFACT_PAGE_DEFAULT_CHARS;
+        : DEFAULT_PAGE_CHARS;
     const limit = Math.max(
       2,
       Math.min(ARTIFACT_PAGE_MAX_CHARS, Math.floor(requestedLimit)),

@@ -486,12 +486,29 @@ export interface OrchestratorTaskDocument {
 
 export interface TaskListFilter {
   status?: string;
+  /** Restrict to any of these statuses (indexed column on the SQL backend). */
+  statuses?: readonly string[];
   search?: string;
   includeArchived?: boolean;
   limit?: number;
   /** Restrict to tasks bound to this project (indexed column on the SQL
    * backend; structural filter elsewhere). */
   projectId?: string;
+}
+
+/** One durable write for a session event: its timeline rows plus the session
+ * patch and liveness promotion it implies, applied to a single read of the
+ * task document instead of one read-and-rewrite per piece. */
+export interface TaskEventWrite {
+  taskId: string;
+  events: readonly OrchestratorTaskEvent[];
+  messages?: readonly OrchestratorTaskMessage[];
+  /** A liveness event's session state, which also promotes the task through
+   *  {@link sessionEventTaskStatus}. Skipped when the task has no such session. */
+  session?: {
+    sessionId: string;
+    patch: Partial<OrchestratorTaskSession>;
+  };
 }
 
 export interface CreateTaskInput {
@@ -554,6 +571,16 @@ export const TERMINAL_TASK_SESSION_STATUSES: ReadonlySet<string> = new Set([
 
 export const TERMINAL_TASK_STATUSES: ReadonlySet<OrchestratorTaskStatus> =
   new Set(["done", "failed", "archived"]);
+
+/** Statuses whose work is still in flight, or parked awaiting a verdict or a
+ * person: current state even with no live session attached. */
+export const IN_FLIGHT_TASK_STATUSES: readonly OrchestratorTaskStatus[] = [
+  "open",
+  "active",
+  "validating",
+  "waiting_on_user",
+  "blocked",
+];
 
 /**
  * The named lifecycle triggers that drive a task's status. Every durable
@@ -735,4 +762,16 @@ export function resolveTaskTransition(
   trigger: TaskLifecycleTrigger,
 ): OrchestratorTaskStatus | null {
   return TASK_STATUS_TRANSITIONS[from][trigger] ?? null;
+}
+
+/**
+ * The status a session event's trigger moves a task to, or `null` when it
+ * does not apply: a paused task never advances from a session event, and an
+ * illegal transition is dropped as in {@link resolveTaskTransition}.
+ */
+export function sessionEventTaskStatus(
+  task: Pick<OrchestratorTaskRecord, "status" | "paused">,
+  trigger: TaskLifecycleTrigger,
+): OrchestratorTaskStatus | null {
+  return task.paused ? null : resolveTaskTransition(task.status, trigger);
 }

@@ -28,7 +28,11 @@ import { isPendingHandoffCurrent } from "./handoff-pending.js";
 import { OrchestratorTaskService } from "./orchestrator-task-service.js";
 import { isSessionBusyError } from "./parent-agent-dispatch.js";
 import { sanitizeCompletionRelay } from "./transcript-sanitizer.js";
-import { type PromptResult, TERMINAL_SESSION_STATUSES } from "./types.js";
+import {
+  type PromptResult,
+  STOPPED_AFTER_REPORTED_TURN_KEY,
+  TERMINAL_SESSION_STATUSES,
+} from "./types.js";
 
 export { SWARM_COORDINATOR_SERVICE_TYPE } from "@elizaos/core";
 
@@ -1001,6 +1005,14 @@ export class SwarmCoordinatorService
 
     if (event === "stopped") {
       if (this.validatorPassSessions.has(sessionId)) {
+        return;
+      }
+      // AcpService closed the session between turns after its last turn
+      // reported a completion or failure (the close after a task's turn, e.g.
+      // a verifier re-engage). That turn's own terminal is the outcome; this
+      // close ended no work. Read from the event, so it holds however late the
+      // stop is handled.
+      if (record[STOPPED_AFTER_REPORTED_TURN_KEY] === true) {
         return;
       }
       // One store re-read serves every stopped-guard below (the fresh read
