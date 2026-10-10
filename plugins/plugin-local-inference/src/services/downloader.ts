@@ -626,6 +626,20 @@ async function promoteCompletePartial(
 	return { path: finalPath, sizeBytes, sha256 };
 }
 
+/** Parses a `content-length` header into a positive byte count.
+ * Number.parseInt stops at the first non-digit ("123junk" -> 123), so a
+ * malformed header value was accepted as a declared byte count instead of
+ * being treated as unknown. Requires the whole trimmed value to be decimal,
+ * mirroring responseContentLength in the agent fetch helpers. */
+const parseStrictContentLength = (
+	header: string | string[] | undefined,
+): number | null => {
+	const text = (Array.isArray(header) ? header[0] : header) ?? "";
+	const trimmed = text.trim();
+	const parsed = /^\+?\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN;
+	return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
 export class Downloader {
 	private readonly active = new Map<string, ActiveJob>();
 	private readonly terminal = new Map<string, DownloadJob>();
@@ -1274,10 +1288,8 @@ export class Downloader {
 				record.job.received = effectiveStartByte;
 
 				const contentLengthHeader = response.headers["content-length"];
-				const contentLength = Array.isArray(contentLengthHeader)
-					? Number.parseInt(contentLengthHeader[0] ?? "0", 10)
-					: Number.parseInt(contentLengthHeader ?? "0", 10);
-				if (Number.isFinite(contentLength) && contentLength > 0) {
+				const contentLength = parseStrictContentLength(contentLengthHeader);
+				if (contentLength !== null) {
 					record.job.total = effectiveStartByte + contentLength;
 				}
 
@@ -1703,10 +1715,8 @@ export class Downloader {
 				record.job.received = baseBytes + startByte;
 
 				const contentLengthHeader = response.headers["content-length"];
-				const contentLength = Array.isArray(contentLengthHeader)
-					? Number.parseInt(contentLengthHeader[0] ?? "0", 10)
-					: Number.parseInt(contentLengthHeader ?? "0", 10);
-				if (Number.isFinite(contentLength) && contentLength > 0) {
+				const contentLength = parseStrictContentLength(contentLengthHeader);
+				if (contentLength !== null) {
 					record.job.total = Math.max(
 						record.job.total,
 						baseBytes + startByte + contentLength,
