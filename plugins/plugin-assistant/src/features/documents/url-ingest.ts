@@ -530,9 +530,10 @@ function decodeBasicHtmlEntities(value: string): string {
     lt: "<",
     nbsp: " ",
     quot: '"',
+    apos: "'",
   };
   return value.replace(
-    /&(nbsp|amp|lt|gt|quot|#x[0-9a-f]+|#\d+);/gi,
+    /&(nbsp|amp|lt|gt|quot|apos|#x[0-9a-f]+|#\d+);/gi,
     (entity, name: string) => {
       const key = name.toLowerCase();
       const named = namedEntities[key];
