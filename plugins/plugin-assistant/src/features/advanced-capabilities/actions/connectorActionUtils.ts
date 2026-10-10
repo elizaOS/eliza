@@ -78,8 +78,13 @@ export function numberParam(
   fallback?: number,
 ): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value.trim());
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    // Canonical decimal strings only: Number("0x10") is 16 and
+    // Number("1e2") is 100 — both used to silently become limit values
+    // instead of being dropped like other malformed planner params.
+    if (!/^-?\d+(\.\d+)?$/.test(trimmed)) return fallback;
+    const parsed = Number(trimmed);
     if (Number.isFinite(parsed)) return parsed;
   }
   return fallback;
