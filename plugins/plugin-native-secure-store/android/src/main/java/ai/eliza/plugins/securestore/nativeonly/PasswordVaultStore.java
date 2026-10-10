@@ -163,6 +163,38 @@ public class PasswordVaultStore {
    * holds the first web binding so existing readers keep working.
    */
   public synchronized String saveEntry(String id, String label, String username, List<String> facets, String password) throws Exception {
+    JSONArray records = load();
+    String saved = putEntry(records, id, label, username, facets, password);
+    persist(records);
+    return saved;
+  }
+
+  /** Add reviewed web entries in one commit. Recheck duplicates against current storage.
+   * Validate the complete batch before persisting; validation or capacity failure leaves
+   * the previously committed vault intact. Persistence uses the existing atomic writer. */
+  public synchronized int addWebsiteEntries(JSONArray incoming) throws Exception {
+    JSONArray records = load();
+    java.util.Set<String> existing = new java.util.HashSet<>();
+    for (int i = 0; i < records.length(); i++) {
+      JSONObject record = records.getJSONObject(i);
+      for (String facet : bindings(record)) if (PasswordFacets.isWeb(facet))
+        existing.add(facet + "\n" + record.getString("username"));
+    }
+    int added = 0;
+    for (int i = 0; i < incoming.length(); i++) {
+      JSONObject item = incoming.getJSONObject(i);
+      String origin = PasswordFacets.web(item.getString("origin"));
+      String username = item.getString("username");
+      if (!existing.add(origin + "\n" + username)) continue;
+      putEntry(records, null, item.getString("label"), username,
+        java.util.Collections.singletonList(origin), item.getString("password"));
+      added++;
+    }
+    if (added > 0) persist(records);
+    return added;
+  }
+
+  private static String putEntry(JSONArray records, String id, String label, String username, List<String> facets, String password) throws Exception {
     String name = label == null ? "" : label.trim();
     if (name.isEmpty() || name.length() > MAX_LABEL) throw new IOException("Enter a name");
     if (username == null || username.length() > MAX_USERNAME) throw new IOException("Enter a shorter username");
@@ -172,7 +204,7 @@ public class PasswordVaultStore {
     for (String facet : facets) normalized.add(PasswordFacets.normalize(facet));
     String origin = "";
     for (String facet : normalized) if (PasswordFacets.isWeb(facet)) { origin = facet; break; }
-    JSONArray records = load(); int found = -1;
+    int found = -1;
     if (id != null) for (int i = 0; i < records.length(); i++) if (records.getJSONObject(i).getString("id").equals(id)) found = i;
     if (id != null && found < 0) throw new IOException("Password no longer exists");
     if (id == null && password == null) throw new IOException("Enter a password");
@@ -184,7 +216,7 @@ public class PasswordVaultStore {
       .put("createdAt", previous == null ? now : previous.optLong("createdAt", previous.optLong("updatedAt", now)))
       .put("label", name).put("bindings", new JSONArray(new ArrayList<>(normalized)));
     if (found >= 0) records.put(found, value); else records.put(value);
-    persist(records); return id;
+    return id;
   }
   public synchronized JSONObject get(String id) throws Exception {
     JSONArray records=load(); for(int i=0;i<records.length();i++) if(records.getJSONObject(i).getString("id").equals(id)) return records.getJSONObject(i); throw new IOException("Password no longer exists");

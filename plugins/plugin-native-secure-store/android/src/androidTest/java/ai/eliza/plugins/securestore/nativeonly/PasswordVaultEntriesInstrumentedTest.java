@@ -55,6 +55,32 @@ public final class PasswordVaultEntriesInstrumentedTest {
       assertTrue(vault.entries().length() > 0);
       vault.delete(id); vault.delete(legacy);
       assertEquals(0, vault.entries().length());
+      // A reviewed import is one transaction against the current vault. A row
+      // added since review is skipped; neither it nor repeated rows are overwritten.
+      String retained = vault.saveEntry(null, "Retained", "same-user", Arrays.asList("https://example.test"), secret);
+      JSONArray incoming = new JSONArray()
+        .put(new JSONObject().put("label", "Replace").put("origin", "https://EXAMPLE.test:443/").put("username", "same-user").put("password", "must-not-replace"))
+        .put(new JSONObject().put("label", "New").put("origin", "https://new.test").put("username", "new-user").put("password", "synthetic-import"))
+        .put(new JSONObject().put("label", "Duplicate").put("origin", "https://new.test").put("username", "new-user").put("password", "must-not-replace"));
+      assertEquals(1, vault.addWebsiteEntries(incoming));
+      assertEquals(secret, vault.get(retained).getString("password"));
+      byte[] committed = Files.readAllBytes(new File(root, "vault.enc").toPath());
+      // A late invalid row must not leave the earlier valid row partially saved.
+      JSONArray invalidBatch = new JSONArray()
+        .put(new JSONObject().put("label", "Valid first").put("origin", "https://first.test").put("username", "u").put("password", "synthetic"))
+        .put(new JSONObject().put("label", "Invalid last").put("origin", "http://last.test").put("username", "u").put("password", "synthetic"));
+      try { vault.addWebsiteEntries(invalidBatch); fail("Accepted invalid batch"); } catch (java.io.IOException expected) {}
+      assertArrayEquals(committed, Files.readAllBytes(new File(root, "vault.enc").toPath()));
+      PasswordVaultStore reopened = new PasswordVaultStore(root, alias, aad, (PasswordVaultStore.KeyPolicy) null);
+      assertEquals(2, reopened.entries().length());
+      JSONArray oversized = new JSONArray();
+      for (int i = 0; i < PasswordVaultStore.MAX_ENTRIES; i++) oversized.put(new JSONObject()
+        .put("label", "Synthetic").put("origin", "https://capacity.test").put("username", "u" + i).put("password", "synthetic"));
+      try { reopened.addWebsiteEntries(oversized); fail("Partially imported an oversized batch"); }
+      catch (java.io.IOException expected) { assertEquals("Password vault is full", expected.getMessage()); }
+      assertArrayEquals(committed, Files.readAllBytes(new File(root, "vault.enc").toPath()));
+      JSONArray imported = reopened.entries();
+      for (int i = 0; i < imported.length(); i++) reopened.delete(imported.getJSONObject(i).getString("id"));
       // Re-opening an alias under a different policy is refused rather than silently re-keyed.
       try { new PasswordVaultStore(root, alias, aad, new PasswordVaultStore.KeyPolicy(60, true)).entries(); fail("Policy mismatch accepted"); }
       catch (java.io.IOException expected) {}

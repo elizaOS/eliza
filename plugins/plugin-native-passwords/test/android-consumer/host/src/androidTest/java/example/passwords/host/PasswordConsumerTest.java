@@ -29,10 +29,10 @@ import static org.junit.Assert.*;
 /** Real offline app -> framework Save -> credential prompt -> provider picker -> framework fill. */
 public final class PasswordConsumerTest {
  private final UiAutomation ui = InstrumentationRegistry.getInstrumentation().getUiAutomation();
- private String shell(String command) throws Exception {
+ String shell(String command) throws Exception {
   try (ParcelFileDescriptor fd = ui.executeShellCommand(command); java.io.InputStream input = new ParcelFileDescriptor.AutoCloseInputStream(fd)) { return new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim(); }
  }
- private AccessibilityNodeInfo find(Predicate<AccessibilityNodeInfo> match) {
+ AccessibilityNodeInfo find(Predicate<AccessibilityNodeInfo> match) {
   if (android.os.Build.VERSION.SDK_INT >= 33) ui.clearCache();
   List<AccessibilityNodeInfo> roots = new ArrayList<>();
   for (AccessibilityWindowInfo window : ui.getWindows()) { AccessibilityNodeInfo root = window.getRoot(); if (root != null) roots.add(root); }
@@ -42,7 +42,7 @@ public final class PasswordConsumerTest {
   return null;
  }
  private static String text(AccessibilityNodeInfo node) { return node == null || node.getText() == null ? "" : node.getText().toString(); }
- private void await(BooleanSupplier condition, String message) {
+ void await(BooleanSupplier condition, String message) {
   long end = SystemClock.elapsedRealtime() + 15000;
   while (!condition.getAsBoolean() && SystemClock.elapsedRealtime() < end) SystemClock.sleep(100);
   boolean passed = condition.getAsBoolean();
@@ -56,7 +56,7 @@ public final class PasswordConsumerTest {
   }
   assertTrue(message, passed);
  }
- private void press(String label) {
+ void press(String label) {
   await(() -> find(node -> label.equalsIgnoreCase(text(node))) != null, "Missing control: " + label);
   AccessibilityNodeInfo node = find(item -> label.equalsIgnoreCase(text(item)));
   while (node != null && !node.isClickable()) node = node.getParent();
@@ -76,7 +76,7 @@ public final class PasswordConsumerTest {
  private void credentialPrompt() {
   await(() -> find(node -> node.isPassword() && node.isEditable() && !"example.passwords.fixture".contentEquals(node.getPackageName() == null ? "" : node.getPackageName())) != null, "Device credential prompt");
  }
- private void pin(String value) throws Exception {
+ void pin(String value) throws Exception {
   credentialPrompt();
   shell("input text " + value); shell("input keyevent 66");
  }
@@ -114,6 +114,15 @@ public final class PasswordConsumerTest {
   assertTrue("Fresh fixture Activity starts", started.contains("Status: ok"));
   focus("Test username");
   await(() -> find(node -> "Fill with a saved password".equals(text(node))) != null, "Framework admitted the form before edits");
+ }
+ static void clearSyntheticVault(Context context) throws Exception {
+  assertEquals("example.passwords.host", context.getPackageName());
+  PasswordVaultAccess access = PasswordVaultAccess.get(context); access.lock(); access.requests.clear();
+  for (String name : new String[]{"vault.enc", "vault.enc.bak", "vault.enc.new"}) {
+   File file = new File(access.config.directory, name); assertTrue(!file.exists() || file.delete());
+  }
+  java.security.KeyStore keys = java.security.KeyStore.getInstance("AndroidKeyStore"); keys.load(null);
+  if (keys.containsAlias(access.config.alias)) keys.deleteEntry(access.config.alias);
  }
  @Test public void saveAndFillRequireUserUnlockAndChoice() throws Exception {
   assertEquals("1", InstrumentationRegistry.getArguments().getString("disposablePasswordFixture"));
@@ -175,7 +184,7 @@ public final class PasswordConsumerTest {
   } finally {
    if (previous.isEmpty() || previous.equals("null")) shell("settings --user " + user + " delete secure autofill_service");
    else shell("settings --user " + user + " put secure autofill_service " + previous);
-   if (ownPin) shell("locksettings clear --user " + user + " --old " + pin);
+   if (ownPin) { clearSyntheticVault(context); shell("locksettings clear --user " + user + " --old " + pin); }
   }
  }
 }

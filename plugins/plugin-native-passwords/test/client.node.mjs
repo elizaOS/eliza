@@ -12,6 +12,8 @@ import {
   passwordsError,
 } from "../src/client.ts";
 
+import { createTransferClient } from "../src/transfer.ts";
+
 const SYNTHETIC = "synthetic-value-not-a-secret";
 const entry = (id, label, username, facets) => ({
   id,
@@ -294,4 +296,48 @@ test("vault binding metadata is complete or explicitly rejected", () => {
       }),
     { code: "unavailable" },
   );
+});
+
+test("transfer clients accept counts and reject malformed or leaking bridge results", async () => {
+  const client = (result) =>
+    createTransferClient({
+      async exportVault() {
+        return result;
+      },
+      async importVault() {
+        return result;
+      },
+    });
+  assert.deepEqual(await client({ exported: 2 }).exportVault(), {
+    exported: 2,
+  });
+  assert.deepEqual(await client({ imported: 1, skipped: 2 }).importVault(), {
+    imported: 1,
+    skipped: 2,
+  });
+  for (const result of [
+    null,
+    {},
+    { exported: -1 },
+    { exported: 1.5 },
+    { exported: Infinity },
+    { exported: 1, password: SYNTHETIC },
+  ]) {
+    await assert.rejects(
+      client(result).exportVault(),
+      (error) => !error.message.includes(SYNTHETIC),
+    );
+  }
+  for (const result of [
+    null,
+    {},
+    { imported: 1 },
+    { imported: 1, skipped: -1 },
+    { imported: 1, skipped: 0, rows: [{ password: SYNTHETIC }] },
+  ]) {
+    await assert.rejects(
+      client(result).importVault(),
+      (error) => !error.message.includes(SYNTHETIC),
+    );
+  }
 });
