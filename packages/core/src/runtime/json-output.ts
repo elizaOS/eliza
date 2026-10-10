@@ -111,6 +111,48 @@ export function extractJsonObjects(raw: string): string[] {
 	return objects;
 }
 
+/**
+ * Spans of the outermost complete `{...}` objects embedded in prose, in order.
+ * Unlike {@link extractJsonObjects}, a `"` outside every object is prose (`5"
+ * wide`), and a `{` that never closes is dropped instead of swallowing the
+ * objects after it. One linear pass; quotes and escapes are tracked only
+ * inside an open brace.
+ */
+export function extractJsonObjectSpans(
+	raw: string,
+): Array<{ start: number; end: number }> {
+	const open: number[] = [];
+	const closed: Array<{ start: number; end: number }> = [];
+	let inString = false;
+	let escaped = false;
+	for (let index = 0; index < raw.length; index++) {
+		const char = raw[index];
+		if (inString) {
+			if (escaped) {
+				escaped = false;
+			} else if (char === "\\") {
+				escaped = true;
+			} else if (char === '"') {
+				inString = false;
+			}
+			continue;
+		}
+		if (char === '"' && open.length > 0) {
+			inString = true;
+		} else if (char === "{") {
+			open.push(index);
+		} else if (char === "}" && open.length > 0) {
+			closed.push({ start: open.pop() as number, end: index + 1 });
+		}
+	}
+	closed.sort((a, b) => a.start - b.start);
+	const spans: Array<{ start: number; end: number }> = [];
+	for (const span of closed) {
+		if (span.start >= (spans.at(-1)?.end ?? 0)) spans.push(span);
+	}
+	return spans;
+}
+
 export function repairJsonStringEscapes(raw: string): string {
 	let output = "";
 	let inString = false;
