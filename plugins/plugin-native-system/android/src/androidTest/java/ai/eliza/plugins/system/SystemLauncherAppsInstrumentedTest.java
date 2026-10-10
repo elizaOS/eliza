@@ -97,12 +97,12 @@ public final class SystemLauncherAppsInstrumentedTest {
         Intent handoff = SystemLauncherApps.defaultLaunchIntent(context, "dial");
         if (handoff != null && handoff.getComponent() != null)
             assertNotEquals(context.getPackageName(), handoff.getComponent().getPackageName());
-        String expected = InstrumentationRegistry.getArguments().getString("launcherExpectedDialerPackage");
-        if (expected != null) {
+        String expectedPackage = InstrumentationRegistry.getArguments().getString("launcherExpectedDialerPackage");
+        if (expectedPackage != null) {
             assertTrue("The installed dialer must be available to the consumer", handler.available);
-            assertEquals(expected, handler.packageName);
+            assertEquals(expectedPackage, handler.packageName);
             assertNotNull(handoff);
-            assertEquals(expected, handoff.getComponent().getPackageName());
+            assertEquals(expectedPackage, handoff.getComponent().getPackageName());
         }
         assertNull(SystemLauncherApps.roleIntent("sms"));
         try { SystemLauncherApps.resolveDefault(context, "camera"); fail("Unknown role admitted"); }
