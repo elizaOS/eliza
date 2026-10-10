@@ -73,9 +73,7 @@ vi.mock("@elizaos/shared/steward-session-client", async () => {
 });
 
 vi.mock("@elizaos/login", async () => ({
-  ...(await vi.importActual<typeof import("@elizaos/login")>(
-    "@elizaos/login",
-  )),
+  ...(await vi.importActual<typeof import("@elizaos/login")>("@elizaos/login")),
   LoginAuth: class {
     getSession() {
       return null;
