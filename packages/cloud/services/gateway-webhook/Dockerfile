@@ -52,7 +52,7 @@ RUN bun -e 'const path = Bun.argv.at(-1); const manifest = await Bun.file(path).
     && mkdir -p "${CORE_DIR}/src" \
     && printf 'export * from "./errors.ts"; export * from "./security/log-redaction.ts";\n' > "${CORE_DIR}/src/protocol.ts" \
     && printf '{"name":"gateway-webhook-build","private":true,"workspaces":["packages/cloud/services/*","packages/core","packages/cloud/sdk","plugins/plugin-network"]}\n' > package.json \
-    && bun -e 'const path = Bun.argv.at(-1); const manifest = await Bun.file(path).json(); const src = (f) => ({"eliza-source": `./src/backend/${f}.ts`, default: `./src/backend/${f}.ts`}); await Bun.write(path, JSON.stringify({name:manifest.name,version:manifest.version,type:"module",exports:{"./contract":src("contract"),"./svc-auth":src("svc-auth"),"./client":src("client")}}));' "${NETWORK_PLUGIN_DIR}/package.json" \
+    && bun -e 'const path = Bun.argv.at(-1); const manifest = await Bun.file(path).json(); const src = (f) => ({"eliza-source": `./src/backend/${f}.ts`, default: `./src/backend/${f}.ts`}); await Bun.write(path, JSON.stringify({name:manifest.name,version:manifest.version,type:"module",dependencies:{"@elizaos/cloud-services-common":manifest.dependencies["@elizaos/cloud-services-common"]},exports:{"./contract":src("contract"),"./svc-auth":src("svc-auth"),"./client":src("client")}}));' "${NETWORK_PLUGIN_DIR}/package.json" \
     && bun install --production
 
 # Build stage
