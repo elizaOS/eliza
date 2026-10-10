@@ -121,8 +121,8 @@ async function getSignedTopupRecipient(
   rawBody?: string,
 ): Promise<TopupRecipient | null> {
   const hasWalletSig =
-    !!request.headers.get("X-Wallet-Address") &&
-    !!request.headers.get("X-Timestamp") &&
+    !!request.headers.get("X-Wallet-Address") ||
+    !!request.headers.get("X-Timestamp") ||
     !!request.headers.get("X-Wallet-Signature");
 
   if (!hasWalletSig) return null;
@@ -398,15 +398,6 @@ export function createTopupHandler(options: CreateTopupHandlerOptions) {
       const msg = e instanceof Error ? e.message : String(e);
       return Response.json({ error: msg }, { status: 401 });
     }
-    if (!signedRecipient && !body?.walletAddress?.trim()) {
-      return Response.json(
-        {
-          error: "walletAddress is required (body or wallet signature headers)",
-        },
-        { status: 400 },
-      );
-    }
-
     const settlement = await x402FacilitatorService.settle(
       paymentPayload as Parameters<typeof x402FacilitatorService.settle>[0],
       requirements as Parameters<typeof x402FacilitatorService.settle>[1],

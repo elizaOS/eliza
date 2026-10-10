@@ -98,10 +98,33 @@ test("a signature header without the wallet address and timestamp is rejected be
     body: await response.json(),
     settleCalls: settle.mock.calls.length,
   }).toEqual({
-    status: 400,
-    body: {
-      error: "walletAddress is required (body or wallet signature headers)",
-    },
+    status: 401,
+    body: { error: "Wallet signature verification failed" },
+    settleCalls: 0,
+  });
+});
+
+test("a signature header with a body walletAddress is rejected before the payment is settled", async () => {
+  const settle = stubSettlement();
+
+  const response = await topup(
+    new Request("https://cloud.test/api/v1/topup/10", {
+      method: "POST",
+      headers: {
+        "X-PAYMENT": paymentHeader,
+        "X-Wallet-Signature": "0x1234",
+      },
+      body: JSON.stringify({ walletAddress: account.address }),
+    }),
+  );
+
+  expect({
+    status: response.status,
+    body: await response.json(),
+    settleCalls: settle.mock.calls.length,
+  }).toEqual({
+    status: 401,
+    body: { error: "Wallet signature verification failed" },
     settleCalls: 0,
   });
 });
