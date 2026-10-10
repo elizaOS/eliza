@@ -421,7 +421,12 @@ describe("iMessage service — media → AppleScript attachment build", () => {
       replies.push({ text: "here it is", attachments: [{ id: "chart", url: fixturePath }] });
       await dispatch();
       expect(sendSingleMessage).toHaveBeenCalledTimes(1);
-      expect(sendSingleMessage).toHaveBeenCalledWith("+14155552671", "here it is");
+      // The key comes from the inbound guid, so a redelivered turn reuses it.
+      expect(sendSingleMessage).toHaveBeenCalledWith(
+        "+14155552671",
+        "here it is",
+        "imessage-reply-guid-7-0-0"
+      );
       expect(runtime.reportError).toHaveBeenLastCalledWith(
         "imessage.replyDelivery",
         expect.objectContaining({ code: "IMESSAGE_REPLY_ATTACHMENT_UNSUPPORTED" }),

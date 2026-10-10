@@ -1226,8 +1226,12 @@ export class IMessageService extends Service implements IIMessageService {
     const messageIds: string[] = [];
     const localEffectIds: string[] = [];
     try {
-      for (const chunk of chunks) {
-        const result = await this.sendSingleMessage(target, chunk);
+      for (const [chunkIndex, chunk] of chunks.entries()) {
+        const result = await this.sendSingleMessage(
+          target,
+          chunk,
+          options?.idempotencyKey ? `${options.idempotencyKey}-${chunkIndex}` : undefined
+        );
         if (result.messageId) messageIds.push(result.messageId);
         if (!result.success) {
           return { ...result, messageIds, localEffectIds };
@@ -1571,7 +1575,20 @@ export class IMessageService extends Service implements IIMessageService {
         : await this.checkDmAccess(inbound.sender);
       if (!access.allowed) {
         if (access.pairingReplyMessage && this.isAutoReplyEnabled()) {
-          await this.sendSingleMessage(inbound.sender, access.pairingReplyMessage);
+          const pairingResult = await this.sendSingleMessage(
+            inbound.sender,
+            access.pairingReplyMessage
+          );
+          if (!pairingResult.success) {
+            this.runtime.reportError(
+              "imessage.pairingReply",
+              new ElizaError("iMessage pairing reply delivery failed", {
+                code: "IMESSAGE_PAIRING_REPLY_DELIVERY_FAILED",
+                context: { receiptDigest, detail: pairingResult.error },
+              }),
+              { receiptDigest }
+            );
+          }
         }
         return "ignored";
       }
@@ -1932,14 +1949,18 @@ export class IMessageService extends Service implements IIMessageService {
     // unrelated TCC prompt merely by enabling inbound messages.
   }
 
-  private async sendSingleMessage(to: string, text: string): Promise<IMessageSendResult> {
+  private async sendSingleMessage(
+    to: string,
+    text: string,
+    idempotencyKey?: string
+  ): Promise<IMessageSendResult> {
     if (this.settings?.transport === "blooio") {
       return await sendBlooioMessage({
         apiKey: this.settings.blooioApiKey as string,
         from: this.settings.blooioChannelId ?? (this.settings.blooioFromNumber as string),
         to,
         text,
-        idempotencyKey: `imessage-${crypto.randomUUID()}`,
+        idempotencyKey: idempotencyKey ?? `imessage-${crypto.randomUUID()}`,
       });
     }
     // Outbound delivery stays on Apple's local Messages automation surface.
@@ -2513,10 +2534,16 @@ export class IMessageService extends Service implements IIMessageService {
     // DMs we target the sender's handle directly.
     const replyTarget = row.chatType === "group" ? `chat_id:${row.chatId}` : row.handle;
 
+    // A failed reply fails the Blooio webhook, and Blooio redelivers it. The
+    // key is derived from the inbound message so a reply that Blooio already
+    // accepted is not sent again when the turn is repeated.
+    let replyCount = 0;
+
     const callback: HandlerCallback = async (content) => {
       if (!this.runtime) {
         return [];
       }
+      const replyIdempotencyKey = `imessage-reply-${row.guid}-${replyCount++}`;
       const replyText = renderIMessageInteractionText(
         content,
         resolveInteractionAppBaseUrl(this.runtime)
@@ -2543,7 +2570,11 @@ export class IMessageService extends Service implements IIMessageService {
 
       // Same send path as the connector send handler: it chunks long text and
       // delivers attachments.
-      const sendResult = await this.sendMessage(replyTarget, replyText, { mediaUrls, accountId });
+      const sendResult = await this.sendMessage(replyTarget, replyText, {
+        mediaUrls,
+        accountId,
+        idempotencyKey: replyIdempotencyKey,
+      });
       // A failed send is thrown so the turn that asked for the reply sees the
       // failure instead of an empty success.
       if (!sendResult.success) {
