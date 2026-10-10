@@ -253,8 +253,17 @@ export function readStage1TerminalReaskSetting(
 export function readStage1EmptyRetryLimit(runtime: IAgentRuntime): number {
   const raw = runtime.getSetting?.("ELIZA_RESPONSE_HANDLER_EMPTY_RETRIES");
   if (raw === undefined || raw === null || raw === "") return 2;
-  const parsed =
-    typeof raw === "number" ? raw : Number.parseInt(String(raw).trim(), 10);
+  // Number.parseInt stops at the first non-digit ("1e2" -> 1), so a typo was
+  // silently accepted as the retry limit instead of falling back to the
+  // default. Require the whole trimmed value to be decimal, mirroring
+  // botLoopMaxAgentTurns in bot-loop-gate.ts.
+  let parsed: number;
+  if (typeof raw === "number") {
+    parsed = raw;
+  } else {
+    const text = String(raw).trim();
+    parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
+  }
   if (!Number.isFinite(parsed)) return 2;
   return Math.max(0, Math.min(5, Math.trunc(parsed)));
 }
