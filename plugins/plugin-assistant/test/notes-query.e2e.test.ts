@@ -627,3 +627,48 @@ test("foreground search, availability and named edits preserve negotiated owner 
     await fixture.cleanup();
   }
 });
+
+test("foreground review discriminators reject values that stringify to valid actions", async () => {
+  const { calendarAvailability, validateNamedTargetOperation } = await import(
+    "@elizaos/contracts"
+  );
+  const { namedTargetValidators } = await import(
+    "../src/services/device-actions/foreground-review-contract.ts"
+  );
+  for (const type of ["notes_named", "calendar_named", "reminder_named"]) {
+    for (const action of [
+      ["update"],
+      ["delete"],
+      { toString: () => "update" },
+    ]) {
+      expect(() =>
+        validateNamedTargetOperation(
+          { type, action, name: "Selected" },
+          namedTargetValidators,
+        ),
+      ).toThrow();
+    }
+    expect(() =>
+      validateNamedTargetOperation(
+        { type: [type], action: "delete", name: "Selected" },
+        namedTargetValidators,
+      ),
+    ).toThrow();
+  }
+  const operation = {
+    type: "calendar_availability" as const,
+    start: "2026-10-09T12:00:00.000Z",
+    end: "2026-10-09T13:00:00.000Z",
+    timeZone: "UTC",
+  };
+  expect(() =>
+    calendarAvailability(operation, 1, [
+      {
+        start: operation.start,
+        end: operation.end,
+        allDay: false,
+        availability: ["free"] as unknown as "free",
+      },
+    ]),
+  ).toThrow();
+});

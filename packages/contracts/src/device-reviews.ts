@@ -176,7 +176,8 @@ export function calendarAvailability(
     keys(event, ["start", "end", "allDay", "availability"]);
     if (
       typeof event.allDay !== "boolean" ||
-      !["busy", "free", "tentative"].includes(String(event.availability))
+      typeof event.availability !== "string" ||
+      !["busy", "free", "tentative"].includes(event.availability)
     )
       throw Error("Invalid Calendar availability event");
     let a = Date.parse(instant(event.start)),
@@ -577,9 +578,10 @@ export function isNamedTargetOperation(
   return (
     !!value &&
     typeof value === "object" &&
+    typeof (value as { type?: unknown }).type === "string" &&
     Object.hasOwn(
       NAMED_TARGET_DOMAIN_CAPABILITY,
-      String((value as { type?: unknown }).type),
+      (value as { type: string }).type,
     )
   );
 }
@@ -615,7 +617,7 @@ export function validateNamedTargetOperation(
 ): NamedTargetOperation {
   const v = namedObject(value);
   if (!isNamedTargetOperation(v)) throw Error("Unsupported named target");
-  if (!NAMED_ACTIONS[v.type].includes(String(v.action)))
+  if (typeof v.action !== "string" || !NAMED_ACTIONS[v.type].includes(v.action))
     throw Error("Unsupported named target action");
   const name = recordName(v.name);
   if (v.action === "update") {
