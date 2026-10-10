@@ -217,6 +217,8 @@ interface NetworkDeliveryIntent {
   receipt?: { providerMessageIds: string[]; acceptedAt: string };
   serviceReceiptPending?: boolean;
   refusal?: { error: "opted_out" | "rejected"; retryable: boolean };
+  /** When the first gateway send started; recovery waits out the claim window. */
+  dispatchedAt?: number;
 }
 const NETWORK_DELIVERY_ACK_KEY = "network-delivery-ack-pending";
 const NETWORK_DELIVERY_ACTIVE_KEY = "network-delivery-active";
@@ -256,6 +258,12 @@ const PROVISIONAL_CONVERGENCE_ALIAS_KEY =
 const PROVISIONAL_CONVERGENCE_IMPORT_PREFIX =
   "personal-provisional-convergence-import:";
 const RETRY_DELAY_MS = 30_000;
+/**
+ * After this long, receipt recovery may ask the gateway to close a delivery it
+ * never claimed. Longer than the gateway's 60 s dispatch claim plus the 10 s
+ * request timeout, so a slow first send is not closed while still in flight.
+ */
+const NETWORK_DELIVERY_UNCLAIMED_GRACE_MS = 120_000;
 const MOBILE_PUSH_TOKENS_KEY = "mobile-push-tokens";
 const MAX_MOBILE_PUSH_TOKENS = 32;
 const MOBILE_PUSH_DELIVERY_LEDGER_KEY = "mobile-push-delivery-ledger";
@@ -1907,8 +1915,17 @@ export class SharedRuntimeConversation {
     } else if (!intent.receipt) {
       const recovering = intent.state !== "prepared";
       if (!recovering) {
-        await this.state.storage.put(key, { ...intent, state: "dispatching" });
+        intent = { ...intent, state: "dispatching", dispatchedAt: Date.now() };
+        await this.state.storage.put(key, intent);
       }
+      // A send the gateway never received (502, refused connection, early
+      // timeout) leaves no claim, and a plain receipt read answers "unknown"
+      // forever while this delivery holds the room. After the claim window,
+      // ask the gateway to settle an unclaimed key as not sent.
+      const abandonUnclaimed =
+        recovering &&
+        Date.now() - (intent.dispatchedAt ?? 0) >=
+          NETWORK_DELIVERY_UNCLAIMED_GRACE_MS;
       const gatewayBody = JSON.stringify({
         platform: d.platform,
         project: "network",
@@ -1917,6 +1934,7 @@ export class SharedRuntimeConversation {
         text: d.text,
         idempotencyKey: intent.providerKey,
         ...(d.compliance ? { networkCompliance: d.compliance } : {}),
+        ...(abandonUnclaimed ? { abandonUnclaimed: true } : {}),
       });
       const path = recovering
         ? "/internal/deliver/receipt"
@@ -1963,7 +1981,8 @@ export class SharedRuntimeConversation {
         };
         await this.state.storage.put(key, intent);
       } else if (
-        !recovering &&
+        (!recovering ||
+          (abandonUnclaimed && receipt?.code === "not_claimed")) &&
         receipt?.success === false &&
         receipt.acceptance === "not_accepted"
       ) {

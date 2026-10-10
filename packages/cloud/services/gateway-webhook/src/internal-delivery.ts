@@ -69,6 +69,7 @@ const DELIVERY_RECEIPT_TTL_SECONDS = 14 * 24 * 60 * 60;
 
 type DeliveryReceipt = (
   | { state: "indeterminate" }
+  | { state: "abandoned" }
   | {
       state: "complete";
       acceptedAt?: string;
@@ -94,6 +95,8 @@ function parseReceipt(value: unknown): DeliveryReceipt | undefined {
     const parsed = (
       typeof value === "string" ? JSON.parse(value) : value
     ) as Record<string, unknown>;
+    if (parsed.state === "abandoned" && typeof parsed.hash === "string")
+      return { state: "abandoned", hash: parsed.hash };
     if (parsed.state === "dispatching" || parsed.state === "indeterminate") {
       return {
         state: "indeterminate",
@@ -252,18 +255,55 @@ async function deliveryHash(
     .join("");
 }
 
-/** Read-only receipt recovery; never invokes a connector, even when no receipt exists. */
+const notClaimed = () =>
+  Response.json(
+    {
+      success: false,
+      acceptance: "not_accepted",
+      code: "not_claimed",
+      retryable: false,
+    },
+    { status: 422 },
+  );
+
+/**
+ * Receipt recovery; never invokes a connector, even when no receipt exists.
+ * With `abandonUnclaimed`, a key with no claim at all is closed for good, so
+ * the caller can settle "not sent" and a late send of that key is refused.
+ * The gateway writes its indeterminate record before any provider call, so
+ * an unclaimed key was never sent.
+ */
 export async function readInternalDeliveryReceipt(
   request: Request,
   dependencies: InternalDeliveryDependencies,
 ): Promise<Response> {
-  const delivery = parseDelivery(await request.json().catch(() => null));
+  const raw = await request.json().catch(() => null);
+  const delivery = parseDelivery(raw);
   if (!delivery)
     return Response.json({ success: false, error: "invalid" }, { status: 400 });
-  const value = await dependencies.redis.get(
-    `internal-delivery:${delivery.platform}:${delivery.project}:${delivery.idempotencyKey}`,
-  );
+  const key = `internal-delivery:${delivery.platform}:${delivery.project}:${delivery.idempotencyKey}`;
+  let value = await dependencies.redis.get(key);
+  if (
+    value == null &&
+    (raw as Record<string, unknown>).abandonUnclaimed === true
+  ) {
+    const abandoned = await dependencies.redis.set(
+      key,
+      JSON.stringify({
+        state: "abandoned",
+        hash: await deliveryHash(delivery),
+      }),
+      { ex: DELIVERY_RECEIPT_TTL_SECONDS, nx: true },
+    );
+    if (abandoned !== null) return notClaimed();
+    value = await dependencies.redis.get(key);
+  }
   const receipt = parseReceipt(value);
+  if (
+    receipt?.state === "abandoned" &&
+    receipt.hash === (await deliveryHash(delivery))
+  )
+    return notClaimed();
   if (!receipt || receipt.hash !== (await deliveryHash(delivery)))
     return Response.json(
       { success: false, acceptance: "unknown", retryable: false },
@@ -471,6 +511,7 @@ export async function deliverInternalMessage(
       providerMessageIds: existing.providerMessageIds,
     });
   }
+  if (existing?.state === "abandoned") return notClaimed();
   if (existing?.state === "indeterminate") {
     return Response.json(
       {
