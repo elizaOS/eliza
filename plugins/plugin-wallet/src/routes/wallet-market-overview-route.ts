@@ -218,7 +218,15 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 function numberFromUnknown(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value !== "string" || value.trim().length === 0) return null;
-  const parsed = Number(value);
+  // Number() silently accepts non-decimal spellings ("0x10" -> 16), so a
+  // malformed market-data value was silently kept as a displayed number
+  // instead of being treated as absent. Require the whole trimmed value to
+  // be decimal, mirroring TWILIO_SMS_COST_PATTERN in
+  // packages/cloud/sdk/src/browser-contracts/markup.ts.
+  const text = value.trim();
+  const parsed = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(text)
+    ? Number(text)
+    : Number.NaN;
   return Number.isFinite(parsed) ? parsed : null;
 }
 
