@@ -2439,6 +2439,12 @@ ElizaClient.prototype.getCloudBillingSummary = async function (
         typeof pricing.x402Enabled === "boolean" ? pricing.x402Enabled : false,
       low: typeof balance === "number" ? balance < 2 : undefined,
       critical: typeof balance === "number" ? balance < 0.5 : undefined,
+      // Same top-level fields as the plugin-elizacloud proxy summary.
+      hasPaymentMethod:
+        typeof organization.hasPaymentMethod === "boolean"
+          ? organization.hasPaymentMethod
+          : undefined,
+      minimumTopUp: numberOrNull(pricing.minimumTopUp) ?? undefined,
     };
   }
   return this.fetch("/api/cloud/billing/summary");
