@@ -45,6 +45,7 @@ import {
 } from "../goal-grounding.js";
 import { evaluateGoalProgressWithLlm } from "../goal-semantic-evaluator.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
+import { resolveOwnerTimeZone } from "../owner/fact-store.js";
 import {
   createLifeOpsAuditEvent,
   type LifeOpsScheduleMergedStateRecord,
@@ -483,7 +484,7 @@ export class GoalsDomain {
     summary: LifeOpsGoalReview["summary"];
     now: Date;
   }): Promise<Record<string, unknown>> {
-    const timeZone = resolveDefaultTimeZone();
+    const timeZone = await resolveOwnerTimeZone(this.ctx.runtime, args.now);
     const linkedDefinitionSummaries = args.linkedDefinitions.map(
       (definition) => ({
         id: definition.id,
