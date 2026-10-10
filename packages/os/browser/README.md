@@ -340,8 +340,10 @@ Run its contracts with `node --test protection/domain-lookalike.test.mjs` from
 this directory; the package browser suite includes them.
 
 The task-effect watch covers the interval from a helper action to the person's
-next trusted pointer or keyboard input, for at most 30 seconds. A person's
-submission may finish later than that input; its delayed receipt is not treated
+next trusted control activation, for at most 30 seconds. A click on a button or
+link, or a submission/activation keypress, creates that handoff. Stray taps,
+scrolling and ordinary typing retain only the short 1.5-second attribution
+window. A person's submission may finish later; its delayed receipt is not treated
 as an automated helper effect. Requests that started before the handoff remain
 reportable when they finish afterward. Synthetic page events do not end the
 interval, and a new helper action starts a new interval. This observation rule
