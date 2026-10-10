@@ -192,15 +192,13 @@ function resolveDueAt(
   if (Number.isNaN(base.getTime())) return null;
   const { year, month, day } = getZonedDateParts(base, timeZone);
   const observedDay: LocalDate = { year, month, day };
-  if (/\btomorrow\b/i.test(text)) {
-    return dueAtOnLocalDate(addDaysToLocalDate(observedDay, 1), timeZone);
-  }
   const weekdayNames = WEEKDAYS.join("|");
   // "by Friday ... on Monday" is a Friday deadline. A later "on"/"next"
-  // day must not override an earlier "by"/"before" day.
-  const deadlineWeekday = [
+  // day must not override an earlier "by"/"before" day, and neither may a
+  // "tomorrow" elsewhere in the sentence ("tomorrow's agenda by Friday").
+  const deadlineDay = [
     ...text.matchAll(
-      new RegExp(`\\b(?:by|before)\\s+(${weekdayNames})\\b`, "gi"),
+      new RegExp(`\\b(?:by|before)\\s+(tomorrow|${weekdayNames})\\b`, "gi"),
     ),
   ].at(-1)?.[1];
   const scheduledWeekday = [
@@ -208,13 +206,17 @@ function resolveDueAt(
       new RegExp(`\\b(?:on|next)\\s+(${weekdayNames})\\b`, "gi"),
     ),
   ].at(-1)?.[1];
-  const weekday =
-    deadlineWeekday ??
+  const dueDay =
+    deadlineDay ??
+    (/\btomorrow\b(?!['’]s)/i.test(text) ? "tomorrow" : undefined) ??
     scheduledWeekday ??
-    text.match(new RegExp(`\\b(${weekdayNames})\\b`, "i"))?.[1];
-  if (!weekday) return null;
+    text.match(new RegExp(`\\b(${weekdayNames}|tomorrow)\\b`, "i"))?.[1];
+  if (dueDay?.toLowerCase() === "tomorrow") {
+    return dueAtOnLocalDate(addDaysToLocalDate(observedDay, 1), timeZone);
+  }
+  if (!dueDay) return null;
   const target = WEEKDAYS.indexOf(
-    weekday.toLowerCase() as (typeof WEEKDAYS)[number],
+    dueDay.toLowerCase() as (typeof WEEKDAYS)[number],
   );
   const delta = (target - getWeekdayForLocalDate(observedDay) + 7) % 7 || 7;
   return dueAtOnLocalDate(addDaysToLocalDate(observedDay, delta), timeZone);
