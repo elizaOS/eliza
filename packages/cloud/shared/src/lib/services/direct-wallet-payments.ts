@@ -1041,7 +1041,9 @@ function evmPrivateKey(env: Bindings, network: DirectWalletNetwork): Hex | null 
     envString(env, `CRYPTO_DIRECT_${network.toUpperCase()}_PRIVATE_KEY`) ??
     envString(env, "CRYPTO_DIRECT_EVM_PRIVATE_KEY");
   if (!key) return null;
-  return (key.startsWith("0x") ? key : `0x${key}`) as Hex;
+  // Accept the uppercase 0X prefix too, mirroring resolveEvmPrivateKey:
+  // "0X…" used to become "0x0X…", which privateKeyToAccount rejects.
+  return (/^0[xX]/.test(key) ? `0x${key.slice(2)}` : `0x${key}`) as Hex;
 }
 
 type PreparedSweepMetadata =
