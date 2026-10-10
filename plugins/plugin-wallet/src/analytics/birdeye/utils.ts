@@ -126,12 +126,12 @@ export const extractChain = (
   const trimmedText = text.trim();
 
   // Check for SUI address (0x followed by 64 hex chars)
-  if (trimmedText.match(/^0x[a-fA-F0-9]{64}$/)) {
+  if (trimmedText.match(/^0[xX][a-fA-F0-9]{64}$/)) {
     return "sui";
   }
 
   // Check for EVM address (0x followed by 40 hex chars)
-  if (trimmedText.match(/^0x[a-fA-F0-9]{40}$/)) {
+  if (trimmedText.match(/^0[xX][a-fA-F0-9]{40}$/)) {
     // Build EVM chain list dynamically from supported chains (exclude solana and sui)
     const evmChains = BIRDEYE_SUPPORTED_CHAINS.filter(
       (chain) => chain !== "solana" && chain !== "sui",
@@ -158,7 +158,7 @@ export const extractAddresses = (text: string): BaseAddress[] => {
 
   // Sui addresses (0x followed by 64 hex chars). Extract first so the EVM
   // matcher does not take the 40-char prefix of a Sui address.
-  const suiAddresses = text.match(/0x[a-fA-F0-9]{64}(?![a-fA-F0-9])/g);
+  const suiAddresses = text.match(/0[xX][a-fA-F0-9]{64}(?![a-fA-F0-9])/g);
   if (suiAddresses) {
     addresses.push(
       ...suiAddresses.map((address) => ({
@@ -169,7 +169,7 @@ export const extractAddresses = (text: string): BaseAddress[] => {
   }
 
   // EVM-compatible chains (Ethereum, Arbitrum, Avalanche, BSC, Optimism, Polygon, Base, zkSync)
-  const evmAddresses = text.match(/0x[a-fA-F0-9]{40}(?![a-fA-F0-9])/g);
+  const evmAddresses = text.match(/0[xX][a-fA-F0-9]{40}(?![a-fA-F0-9])/g);
   if (evmAddresses) {
     addresses.push(
       ...evmAddresses
