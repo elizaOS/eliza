@@ -54,9 +54,18 @@ export function toRaw(amount: string | bigint, decimals: number): bigint {
   const intPart = abs.slice(0, dotIndex);
   let fracPart = abs.slice(dotIndex + 1);
 
-  // Truncate or pad fractional part to `decimals` digits
+  // Pad the fractional part to `decimals` digits. Digits past `decimals`
+  // must all be zero: a nonzero digit there names an amount the token
+  // cannot hold, and cutting it would send a smaller amount than the
+  // caller named. The plugin's Solana transfer parsers refuse the same
+  // input (`parseSolanaBaseUnits`, `parseSolanaTokenBaseUnits`).
   if (fracPart.length > decimals) {
-    fracPart = fracPart.slice(0, decimals); // truncate (floor for positive amounts)
+    if (/[1-9]/.test(fracPart.slice(decimals))) {
+      throw new Error(
+        `toRaw: amount "${amount}" has more than ${decimals} decimal places`,
+      );
+    }
+    fracPart = fracPart.slice(0, decimals);
   } else {
     fracPart = fracPart.padEnd(decimals, "0");
   }
