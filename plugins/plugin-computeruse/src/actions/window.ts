@@ -183,6 +183,7 @@ export const windowAction: Action = {
       { ...params, action } as WindowActionParams,
       callback,
       { ownerId: approvalOwnerIdFromMemory(message) },
+      options?.abortSignal,
     );
   },
 

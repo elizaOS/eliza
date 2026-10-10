@@ -835,6 +835,35 @@ describe("ComputerUseService file and terminal execution (real host I/O)", () =>
     expect(typeof bounded.success).toBe("boolean");
   }, 20_000);
 
+  it("drops a pending approval when the caller's signal aborts", async () => {
+    const target = path.join(workdir, "cancelled.txt");
+    expect(service.setApprovalMode("smart_approve")).toBe("smart_approve");
+    try {
+      const controller = new AbortController();
+      const pending = service.executeCommand(
+        "file_write",
+        { path: target, content: "must not be written" },
+        controller.signal,
+      );
+      await expect
+        .poll(() => service.getApprovalSnapshot().pendingCount)
+        .toBe(1);
+      const [approval] = service.getApprovalSnapshot().pendingApprovals;
+
+      controller.abort();
+      const result = await pending;
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("approval cancelled");
+      expect(service.getApprovalSnapshot().pendingCount).toBe(0);
+      // A late Approve click must not run the cancelled action.
+      expect(service.resolveApproval(approval.id, true)).toBeNull();
+      expect(fs.existsSync(target)).toBe(false);
+    } finally {
+      service.setApprovalMode("full_control");
+    }
+  }, 20_000);
+
   it("exposes approval and display introspection", () => {
     expect(service.setApprovalMode("full_control")).toBe("full_control");
     const snapshot = service.getApprovalSnapshot();
