@@ -382,9 +382,14 @@ class PayoutStatusService {
 
   private getEvmWalletAddress(privateKey: string): string | null {
     try {
-      const key = privateKey.startsWith("0x")
-        ? (privateKey as `0x${string}`)
-        : (`0x${privateKey}` as `0x${string}`);
+      // Accept the uppercase 0X prefix too, mirroring resolveEvmPrivateKey:
+      // "0X…" used to become "0x0X…", which privateKeyToAccount rejects and
+      // misreported a valid key as unconfigured.
+      const key = (
+        /^0[xX]/.test(privateKey)
+          ? `0x${privateKey.slice(2)}`
+          : `0x${privateKey}`
+      ) as `0x${string}`;
       const account = privateKeyToAccount(key);
       return account.address;
     } catch (error) {
