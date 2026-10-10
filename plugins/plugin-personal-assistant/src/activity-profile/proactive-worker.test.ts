@@ -21,7 +21,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActivityProfile } from "./types.js";
 
 // 09:00 in the HOST timezone: the worker resolves its timezone via
-// `resolveDefaultTimeZone()` (host Intl), and the retired planner's GM slot
+// `resolveOwnerTimeZone()`, which is the host zone while no owner zone fact is
+// stored, and the retired planner's GM slot
 // defaulted to 08:00 local with an 11:00 cutoff — so a 9am-local tick with an
 // hour-old owner sighting is squarely inside the old firing window on any
 // machine this suite runs on.
@@ -302,6 +303,51 @@ describe("proactive-worker behavioral tripwire", () => {
     expect(metadata.activityProfile).toBeDefined();
     expect(metadata.firedActionsLog).toBeUndefined();
     expect(metadata.proactiveAgent).toMatchObject({ kind: "runtime_runner" });
+  });
+
+  it("rebuilds in the owner zone when the stored profile was built in another zone", async () => {
+    const { runtime } = createTripwireRuntime();
+    const actual =
+      await vi.importActual<typeof import("./service.js")>("./service.js");
+    const {
+      readProfileFromMetadata,
+      profileNeedsRebuild,
+      buildActivityProfile,
+      refreshCurrentState,
+    } = await import("./service.js");
+    const { resolveOwnerFactStore } = await import(
+      "../lifeops/owner/fact-store.js"
+    );
+    await resolveOwnerFactStore(runtime).update(
+      { timezone: "Asia/Tokyo" },
+      { source: "profile_save", recordedAt: GM_FAVORABLE_NOW.toISOString() },
+    );
+    vi.mocked(profileNeedsRebuild).mockImplementation(
+      actual.profileNeedsRebuild,
+    );
+    // Fresh by age, so only the zone can force the rebuild.
+    const profileIn = (timezone: string) =>
+      ({ ...gmFavorableProfile, timezone }) as ActivityProfile;
+
+    vi.mocked(readProfileFromMetadata).mockReturnValueOnce(
+      profileIn("America/New_York"),
+    );
+    await executeProactiveTask(runtime, { now: GM_FAVORABLE_NOW });
+    expect(buildActivityProfile).toHaveBeenCalledExactlyOnceWith(
+      runtime,
+      "owner-entity-0000-0000-0000-000000000001",
+      "Asia/Tokyo",
+      GM_FAVORABLE_NOW,
+    );
+    expect(refreshCurrentState).not.toHaveBeenCalled();
+
+    vi.mocked(readProfileFromMetadata).mockReturnValueOnce(
+      profileIn("Asia/Tokyo"),
+    );
+    await executeProactiveTask(runtime, { now: GM_FAVORABLE_NOW });
+    expect(buildActivityProfile).toHaveBeenCalledOnce();
+    expect(refreshCurrentState).toHaveBeenCalledOnce();
+    vi.mocked(profileNeedsRebuild).mockImplementation(() => false);
   });
 
   it("the tick INVOKES the rhythm learner, patching OwnerFacts with the derived window (B1 end-to-end)", async () => {

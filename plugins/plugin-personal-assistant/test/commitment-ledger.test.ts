@@ -71,6 +71,24 @@ describe("commitment ledger extraction and audit", () => {
     expect(rows[0]?.dueAt).toBe("2026-07-10T17:00:00.000Z");
   });
 
+  it.each([
+    "I'll call you tomorrow about the report due by Friday.",
+    "I'll finish it tomorrow, before Friday's meeting.",
+    "I'll send the report by Friday and call tomorrow.",
+    "I'll send tomorrow's agenda.",
+  ])("keeps tomorrow as the due day: %s", (text) => {
+    const rows = extractCommitmentLedgerRecords({
+      agentId: AGENT_ID,
+      source: "sent_mail",
+      sourceKey: `gmail:msg-plain-tomorrow:${text}`,
+      observedAt: OBSERVED_AT,
+      text,
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.dueAt).toBe("2026-07-07T17:00:00.000Z");
+  });
+
   it("keeps a by-deadline when a later on-weekday is only a discussion day", () => {
     const rows = extractCommitmentLedgerRecords({
       agentId: AGENT_ID,

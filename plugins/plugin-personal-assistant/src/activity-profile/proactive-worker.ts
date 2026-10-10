@@ -127,7 +127,7 @@ export async function executeProactiveTask(
   const metadata = isRecord(task.metadata) ? task.metadata : {};
   const currentProfile = readProfileFromMetadata(metadata);
   let profile: ActivityProfile | null;
-  if (profileNeedsRebuild(currentProfile, now)) {
+  if (profileNeedsRebuild(currentProfile, now, timezone)) {
     logger.info("[proactive] Building full activity profile");
     profile = await buildActivityProfile(runtime, ownerEntityId, timezone, now);
   } else if (currentProfile) {
