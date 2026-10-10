@@ -23,14 +23,14 @@ import {
   stopComputerUseRuntime,
 } from "../../test/helpers/service-runtime.ts";
 import { clipboardAction } from "../actions/clipboard.js";
-import { runComputerUseAgentLoop } from "../actions/use-computer-agent.js";
-import type { AgentLoop } from "../actor/agent-loop.js";
-import type { ComputerInterface } from "../actor/computer-interface.js";
-import type { Scene } from "../scene/scene-types.js";
 import {
   type ComputerUseAgentReport,
   computerUseAgentAction,
+  runComputerUseAgentLoop,
 } from "../actions/use-computer-agent.js";
+import type { AgentLoop } from "../actor/agent-loop.js";
+import type { ComputerInterface } from "../actor/computer-interface.js";
+import type { Scene } from "../scene/scene-types.js";
 import {
   ComputerUseService,
   parseComputerUseActionTimeoutMs,
