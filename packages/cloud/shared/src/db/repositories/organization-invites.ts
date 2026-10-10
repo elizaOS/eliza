@@ -1,5 +1,5 @@
 // Persists organization invites records for cloud services through the shared DB boundary.
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import {
   type NewOrganizationInvite,
@@ -43,13 +43,16 @@ export class OrganizationInvitesRepository {
   }
 
   /**
-   * Finds a pending invite by email address (case-insensitive).
+   * Finds a pending, unexpired invite by email address (case-insensitive).
+   * The status stays "pending" after expires_at until a token check marks it
+   * expired, so the expiry is checked here too.
    */
   async findPendingInviteByEmail(email: string): Promise<OrganizationInvite | undefined> {
     return await dbRead.query.organizationInvites.findFirst({
       where: and(
         eq(organizationInvites.invited_email, email.toLowerCase()),
         eq(organizationInvites.status, "pending"),
+        gt(organizationInvites.expires_at, new Date()),
       ),
       with: {
         organization: true,
