@@ -1337,7 +1337,12 @@ function resolveChatGenerationTimeoutMs(explicit?: number): number {
   }
   const fromEnv = readAliasedEnv("ELIZA_CHAT_GENERATION_TIMEOUT_MS");
   if (fromEnv) {
-    const parsed = Number.parseInt(fromEnv, 10);
+    // Number.parseInt stops at the first non-digit, so "60000junk" parsed to
+    // a finite 60000 and was accepted as a deliberate setting instead of
+    // falling back to the default. Require the whole trimmed value to be
+    // decimal, mirroring resolveGenerationTimeoutMs in the discord plugin.
+    const text = fromEnv.trim();
+    const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
     if (Number.isFinite(parsed) && parsed > 0) {
       return Math.max(1000, parsed);
     }

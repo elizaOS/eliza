@@ -222,8 +222,11 @@ function readUsdAmount(value: unknown, fallback: number): number {
   if (typeof value !== "string" && typeof value !== "number") {
     return fallback;
   }
-  const parsed =
-    typeof value === "number" ? value : Number.parseFloat(value.trim());
+  // Number.parseFloat stops at the first non-digit, so "0.05junk" parsed to
+  // 0.05 and was accepted as a deliberate price instead of falling back to
+  // the default. Require the whole trimmed value to be decimal.
+  const text = typeof value === "number" ? String(value) : value.trim();
+  const parsed = /^\d+(\.\d+)?$/.test(text) ? Number(text) : Number.NaN;
   if (
     !Number.isFinite(parsed) ||
     parsed < 0 ||

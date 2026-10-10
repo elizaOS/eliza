@@ -108,7 +108,7 @@ describe("AI-QA reviewer arguments", () => {
     "rejects invalid concurrency %j",
     (value) => {
       expect(() => parseReviewerArgs(["--concurrency", value])).toThrow(
-        "--concurrency must be a positive safe integer",
+        "--concurrency must be a whole decimal integer",
       );
     },
   );

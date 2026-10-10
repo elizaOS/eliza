@@ -191,7 +191,10 @@ export function validateClockAlarmContext(value: unknown): ClockAlarmContext {
   const v = object(value);
   if (
     v.sensitive !== false ||
-    !["available", "stale", "unavailable"].includes(String(v.alarmsStatus)) ||
+    // String() coercion would accept ["available"]; the un-coerced value is
+    // stored below, so require an actual string.
+    typeof v.alarmsStatus !== "string" ||
+    !["available", "stale", "unavailable"].includes(v.alarmsStatus) ||
     !Array.isArray(v.alarms)
   )
     throw Error("Clock alarm snapshot unavailable");
