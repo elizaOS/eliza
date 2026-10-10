@@ -84,11 +84,23 @@ function getApiBase(): string {
 
 function parseSince(since: string | undefined): number | undefined {
   if (!since) return undefined;
-  const numeric = Number(since);
-  if (Number.isFinite(numeric) && numeric > 0) {
-    return numeric;
+  const trimmed = since.trim();
+  // Canonical integer epoch only. Number("1e2") is 100 and Number("0x10")
+  // is 16 — both used to silently become a since filter instead of being
+  // dropped, mirroring the diagnostics since-filter's documented hazard.
+  if (/^\d+$/.test(trimmed)) {
+    const epochMs = Number(trimmed);
+    if (Number.isSafeInteger(epochMs) && epochMs > 0) return epochMs;
+    return undefined;
   }
-  const parsed = Date.parse(since);
+  // Date.parse("10/11/2026") and Date.parse("0") are implementation-defined
+  // and must not become a silent since filter ("0" parsed as 2001-01-01 in
+  // V8). Only ISO-shaped timestamps fall through, mirroring the diagnostics
+  // since-filter.
+  if (!/^\d{4}-\d{2}-\d{2}(?:[T\s].*)?$/.test(trimmed)) {
+    return undefined;
+  }
+  const parsed = Date.parse(trimmed);
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 
