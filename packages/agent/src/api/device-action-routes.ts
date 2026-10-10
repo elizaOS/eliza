@@ -1,4 +1,9 @@
 import type http from "node:http";
+import {
+  CALENDAR_AVAILABILITY_CAPABILITY,
+  NAMED_TARGET_CAPABILITY,
+  NOTES_SEARCH_CAPABILITY,
+} from "@elizaos/contracts";
 import { validateNativeNotesReadReplyHint } from "@elizaos/contracts/native-notes-query";
 import {
   AgentRuntime,
@@ -71,6 +76,9 @@ export function deviceRequestCredential(
     "calendar.next-read.v1",
     "notes.local-record.v1",
     "notes.query.v1",
+    CALENDAR_AVAILABILITY_CAPABILITY,
+    NAMED_TARGET_CAPABILITY,
+    NOTES_SEARCH_CAPABILITY,
     "reminders.local-record.v1",
     "reminders.local-record.v2",
     "reminders.create.v1",
@@ -148,6 +156,9 @@ export async function handleDeviceActionRoutes(
             "calendar.next-read.v1",
             "notes.local-record.v1",
             "notes.query.v1",
+            CALENDAR_AVAILABILITY_CAPABILITY,
+            NAMED_TARGET_CAPABILITY,
+            NOTES_SEARCH_CAPABILITY,
             "reminders.local-record.v1",
             "reminders.local-record.v2",
             "reminders.create.v1",

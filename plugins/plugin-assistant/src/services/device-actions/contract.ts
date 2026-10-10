@@ -17,6 +17,12 @@ import {
   type ClockOperation,
   validateClockOperation,
 } from "./clock-contract.ts";
+import {
+  type ForegroundReviewOperation,
+  foregroundReviewCapabilityAvailable,
+  isForegroundReviewType,
+  validateForegroundReviewOperation,
+} from "./foreground-review-contract.ts";
 import { type MapsOperation, validateMapsOperation } from "./maps-contract.ts";
 import {
   type NotesOperation,
@@ -71,6 +77,7 @@ export type DeviceOperation =
   | NotesOperation
   | NativeNotesQueryOperation
   | CalendarOperation
+  | ForegroundReviewOperation
   | WorkflowReadOperation
   | WorkflowPresentationOperation
   | { type: "create_note"; title: string; body: string }
@@ -87,6 +94,8 @@ export function deviceOperationSupportedByCapabilities(
     return capabilities?.includes(CALENDAR_CREATE_CAPABILITY) === true;
   if (type === "calendar_read_next")
     return capabilities?.includes(CALENDAR_NEXT_CAPABILITY) === true;
+  if (isForegroundReviewType(type))
+    return foregroundReviewCapabilityAvailable(type, capabilities);
   if (type === "notes_query")
     return (
       capabilities?.includes(NOTES_QUERY_CAPABILITY) === true &&
@@ -203,6 +212,20 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
       } catch {
         throw new DeviceActionError(
           "Invalid Calendar operation. Calendar fields require title, description, location, start, end and timeZone. Use canonical UTC start/end with milliseconds (YYYY-MM-DDTHH:mm:ss.sssZ), end after start, a valid IANA timeZone, and exact observed source/target IDs and revisions.",
+        );
+      }
+    case "calendar_availability":
+    case "notes_search":
+    case "notes_named":
+    case "calendar_named":
+    case "reminder_named":
+      try {
+        return validateForegroundReviewOperation(p);
+      } catch (error) {
+        throw new DeviceActionError(
+          p.type === "calendar_availability"
+            ? "Invalid Calendar availability operation. Use canonical UTC start/end with milliseconds (YYYY-MM-DDTHH:mm:ss.sssZ), end after start and at most seven days later, and a valid IANA timeZone."
+            : `Invalid ${String(p.type).replace("_", " ")} operation: ${(error as Error).message}`,
         );
       }
     case "post_notification":
