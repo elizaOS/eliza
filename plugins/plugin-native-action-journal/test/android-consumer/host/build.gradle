@@ -22,3 +22,6 @@ android.sourceSets.main.java {
  srcDir file('../../../../plugin-native-secure-store/android/src/main/java')
  include '**/JsonCredentialSlots.java'
 }
+
+// Reuse the same real storage test as the generic native-plugin lane.
+android.sourceSets.androidTest.java.srcDir file('../../../android/src/androidTest/java')
