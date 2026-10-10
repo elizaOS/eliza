@@ -30,6 +30,20 @@ const WAKE_POLL_INTERVAL_MS = 2_000;
 const NON_RUNNING_STATES = new Set(["stopped", "sleeping", "suspended"]);
 const ERROR_STATES = new Set(["error", "failed"]);
 
+/**
+ * Price consent for starting `agent`. A Shared agent starts no paid compute, so
+ * it gets no price dialog and sends no acceptance. Null means the owner
+ * cancelled.
+ */
+async function confirmAgentStart(
+  agent: CloudCompatAgent,
+  label: string,
+): Promise<{ dedicatedPriceAcceptance?: string } | null> {
+  if (agent.execution_tier === "shared") return {};
+  const dedicatedPriceAcceptance = await confirmDedicatedComputeStart(label);
+  return dedicatedPriceAcceptance ? { dedicatedPriceAcceptance } : null;
+}
+
 function activeCloudAgentId(): string | null {
   const active = loadPersistedActiveServer();
   return active ? resolveDedicatedAgentId(active) : null;
@@ -147,14 +161,15 @@ export function useCloudAgentManagement(getManagementToken: () => string) {
    * only hand the user a live container. Resolves `true` once the agent reports
    * `running`; resolves `false` (with the failure surfaced) if the resume call
    * is rejected. Throws on timeout so the caller can decide whether to enter
-   * anyway. Mirrors the delete-job poll loop. `dedicatedPriceAcceptance` is the
-   * price the owner just confirmed for this paid start.
+   * anyway. Mirrors the delete-job poll loop. `start` carries the price the
+   * owner just confirmed when this is a paid Dedicated start.
    */
   const wakeUntilRunning = useCallback(
-    async (agent: CloudCompatAgent, dedicatedPriceAcceptance: string) => {
-      const res = await client.resumeCloudCompatAgent(agent.agent_id, {
-        dedicatedPriceAcceptance,
-      });
+    async (
+      agent: CloudCompatAgent,
+      start: { dedicatedPriceAcceptance?: string },
+    ) => {
+      const res = await client.resumeCloudCompatAgent(agent.agent_id, start);
       if (!res.success) {
         return { ok: false as const, error: "Start failed" };
       }
@@ -208,17 +223,13 @@ export function useCloudAgentManagement(getManagementToken: () => string) {
       // wait for readiness before binding, so chat doesn't land on a 404.
       if (NON_RUNNING_STATES.has(status)) {
         // Waking a stopped Dedicated agent opens a new paid session.
-        const dedicatedPriceAcceptance =
-          await confirmDedicatedComputeStart(label);
-        if (!dedicatedPriceAcceptance) return;
+        const start = await confirmAgentStart(agent, label);
+        if (!start) return;
         setBusyId(agent.agent_id);
         setWakingId(agent.agent_id);
         setActionNotice(`Waking ${label}…`, "success", 3000);
         try {
-          const outcome = await wakeUntilRunning(
-            agent,
-            dedicatedPriceAcceptance,
-          );
+          const outcome = await wakeUntilRunning(agent, start);
           if (!outcome.ok) {
             setActionNotice(outcome.error, "error", 4000);
             setBusyId(null);
@@ -518,16 +529,15 @@ export function useCloudAgentManagement(getManagementToken: () => string) {
 
   const resumeAgent = useCallback(
     async (agent: CloudCompatAgent) => {
-      const dedicatedPriceAcceptance = await confirmDedicatedComputeStart(
+      const start = await confirmAgentStart(
+        agent,
         agent.agent_name || "this agent",
       );
-      if (!dedicatedPriceAcceptance) return;
+      if (!start) return;
       setBusyId(agent.agent_id);
       setWakingId(agent.agent_id);
       try {
-        const res = await client.resumeCloudCompatAgent(agent.agent_id, {
-          dedicatedPriceAcceptance,
-        });
+        const res = await client.resumeCloudCompatAgent(agent.agent_id, start);
         if (!res.success) {
           throw new Error("Start failed");
         }
