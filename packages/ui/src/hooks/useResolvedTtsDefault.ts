@@ -8,8 +8,7 @@
  * `GET /api/tts/local-inference/status`), else Kokoro through Eliza Cloud when a
  * voice session exists, else ElevenLabs when a key is configured, else the
  * browser SpeechSynthesis fallback. Consumed by `useVoiceConfig` (to seed the
- * default when the user hasn't picked a provider) and by `VoiceConfigView` (to
- * label which provider the "Device default" resolves to).
+ * default when the user hasn't picked a provider).
  *
  * The readiness probe is deferred: the on-device check only fires when the
  * platform/mode preference is `local-inference` (desktop/mobile-local), so a
