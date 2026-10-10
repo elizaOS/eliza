@@ -182,13 +182,19 @@ export class CameraWeb extends WebPlugin {
         deviceId: options.deviceId ? { exact: options.deviceId } : undefined,
         // An omitted direction defaults to the back camera, as on both
         // native bridges; leaving it unconstrained lets the browser pick
-        // a different camera. "external" stays unconstrained.
+        // a different camera. "external" stays unconstrained. An explicit
+        // deviceId skips the defaulted constraint: the device is already
+        // fully identified, and stacking facingMode:"environment" on a
+        // front-camera id makes the browser reject the request while iOS
+        // gives the deviceId the same precedence in pickCamera.
         facingMode:
           options.direction === "front"
             ? "user"
             : options.direction === "external"
               ? undefined
-              : "environment",
+              : options.deviceId
+                ? undefined
+                : "environment",
         width: options.resolution?.width
           ? { ideal: options.resolution.width }
           : { ideal: 1920 },
