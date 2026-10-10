@@ -64,7 +64,7 @@ public final class PasswordConsumerTest {
  }
  private AccessibilityNodeInfo field(String label) { return find(node -> node.isEditable() && label.contentEquals(node.getContentDescription() == null ? "" : node.getContentDescription())); }
  private void focus(String label) {
-  await(() -> { AccessibilityNodeInfo node = field(label); return node != null && node.performAction(AccessibilityNodeInfo.ACTION_FOCUS); }, "Synthetic field accepts focus: " + label);
+  await(() -> { AccessibilityNodeInfo node = field(label); return node != null && (node.isFocused() || node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)); }, "Synthetic field accepts focus: " + label);
  }
  private void input(String label, String value) {
   focus(label);
