@@ -38,6 +38,8 @@ import {
   type ReadJsonBodyOptions,
   type ServiceRoutingConfig,
 } from "@elizaos/host/protocol";
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
+import { getCloudSecret } from "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets";
 import { configFileExists, loadElizaConfig } from "../config/config.ts";
 import {
   captureDevCloudEnvAuthority,
@@ -104,6 +106,21 @@ function normalizeCanonicalRuntimeConfigForCurrentServer(args: {
       },
     },
   };
+}
+
+/**
+ * True when this agent holds the credential plugin-elizacloud authenticates
+ * with: the linked key in config, a config env entry, the sealed login secret,
+ * or the process environment.
+ */
+function hasCloudApiKeyForInference(config: ElizaConfig): boolean {
+  const configEnv = asRecord(config.env);
+  return [
+    config.cloud?.apiKey,
+    configEnv?.ELIZAOS_CLOUD_API_KEY,
+    asRecord(configEnv?.vars)?.ELIZAOS_CLOUD_API_KEY,
+    getCloudSecret("ELIZAOS_CLOUD_API_KEY"),
+  ].some((value) => typeof value === "string" && value.trim().length > 0);
 }
 
 function ensureCloudContainerCharacterDefaults(
@@ -663,6 +680,28 @@ export async function handleFirstRunRoutes(
         if (devCloudSnapshot) {
           restoreDevCloudEnvAuthority(devCloudSnapshot);
         }
+      }
+
+      // Selecting Cloud inference is intent, not proof it can serve. A local
+      // agent only reaches Cloud models with its own API key; a renderer-held
+      // Cloud session (native direct sign-in) never gives it one. Saving
+      // `firstRunComplete` here would report a finished setup whose first chat
+      // has no text provider. A Cloud-hosted agent is provisioned with its key.
+      if (
+        explicitServiceRoutingRequested &&
+        isCloudInferenceSelectedInConfig(config as Record<string, unknown>) &&
+        normalizeDeploymentTargetConfig(config.deploymentTarget)?.runtime !==
+          "cloud" &&
+        !isCloudProvisionedContainer() &&
+        !hasCloudApiKeyForInference(config)
+      ) {
+        restoreProcessEnvironment(preCommitEnvironment, { ...process.env });
+        error(
+          res,
+          "Eliza Cloud inference is not available on this agent: it has no Eliza Cloud API key, so it cannot reach Cloud models. Choose another provider.",
+          409,
+        );
+        return true;
       }
 
       if (config.models && typeof config.models === "object") {
