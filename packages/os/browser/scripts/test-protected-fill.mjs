@@ -267,6 +267,7 @@ try {
   // also when the page sends it after a delay. A request the person's own
   // typing starts, and a third-party request, are not.
   const posted = [];
+  let slowRoute;
   await page.route("https://analytics.example/**", (route) =>
     route.fulfill({ status: 204 }),
   );
@@ -274,13 +275,20 @@ try {
     const request = route.request();
     if (request.method() !== "GET" || request.url().includes("/api/")) {
       posted.push(new URL(request.url()).pathname);
+      if (request.url().includes("/api/slow")) {
+        slowRoute = route;
+        return;
+      }
       return route.fulfill({ contentType: "application/json", body: "{}" });
     }
     return route.fulfill({
       contentType: "text/html",
       body: `<input id="otp3" aria-label="Code" autocomplete="one-time-code" maxlength="6">
 <input id="later" aria-label="Later" maxlength="6"><input id="xhr" aria-label="Xhr"><input id="ping" aria-label="Ping"><input id="route" aria-label="Route"><input id="note" aria-label="Note"><input id="search" aria-label="Search">
+<input id="slow" aria-label="Slow"><button id="person" type="button">Submit payment myself</button>
 <script>
+document.getElementById('slow').addEventListener('input',()=>fetch('/api/slow',{method:'POST'}));
+document.getElementById('person').addEventListener('click',()=>setTimeout(()=>{history.pushState({},'','/receipt');fetch('/api/receipt')},2000));
 document.getElementById('otp3').addEventListener('input',e=>{if(e.target.value.length===6)fetch('/api/verify',{method:'POST',body:'{}'})});
 document.getElementById('later').addEventListener('input',e=>{if(e.target.value.length===6)setTimeout(()=>fetch('/api/later',{method:'POST'}),3500)});
 document.getElementById('route').addEventListener('input',()=>history.pushState({}, '', '/next'));
@@ -363,6 +371,9 @@ document.getElementById('ping').addEventListener('input',()=>navigator.sendBeaco
   await fetchAct("22", "Later", "#later", "123456");
   await page.waitForTimeout(500);
   assert.equal(await fetchRead("22"), undefined);
+  await page.evaluate(() =>
+    window.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })),
+  );
   await page.waitForTimeout(4000);
   assert.ok(posted.includes("/api/later"));
   assert.equal(await fetchRead("22"), "request");
@@ -379,6 +390,32 @@ document.getElementById('ping').addEventListener('input',()=>navigator.sendBeaco
   await page.waitForTimeout(500);
   assert.ok(posted.includes("/api/collect"));
   assert.equal(await fetchRead("26"), "request");
+  // A person can submit, then wait more than 1.5 seconds for the site's receipt.
+  // This is a new person interaction, not a continuation of the helper's fill.
+  await fetchAct("27", "Note", "#note", "ready");
+  await page.click("#person");
+  await page.waitForURL("https://fetch.example/receipt");
+  await page.waitForTimeout(300);
+  assert.equal(
+    await fetchRead("27"),
+    undefined,
+    "Delayed person receipt must not pause the task",
+  );
+  // A helper-started request still belongs to the helper if it finishes after
+  // the person takes over. Use its start time, not its delivery time.
+  const slowStarted = page.waitForRequest((request) =>
+    request.url().endsWith("/api/slow"),
+  );
+  await fetchAct("28", "Slow", "#slow", "x");
+  await slowStarted;
+  await page.click("#search");
+  await slowRoute.fulfill({ contentType: "application/json", body: "{}" });
+  await page.waitForTimeout(500);
+  assert.equal(
+    await fetchRead("28"),
+    "request",
+    "Earlier helper request must remain visible after person input",
+  );
   // A short brand under a country domain: banking.ab.de posting to
   // api.ab.de is the same site.
   await page.route("https://api.ab.de/**", (route) => {

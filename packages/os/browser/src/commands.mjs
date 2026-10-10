@@ -422,8 +422,8 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     // A task fill or click must not submit a form or leave the page, also
     // not through the page's own script (an auto-submitting code field, or
     // a button that calls form.submit()). For 30 seconds, or until the next
-    // task fill or click, watch what the page does that recent input by the
-    // person did not start:
+    // task fill or click, watch what the page does before the person takes
+    // over with trusted input:
     // - a form submit or a page change to another document is stopped,
     //   except a click on a link that opens that link;
     // - a same-document address change (history.pushState) is recorded;
@@ -436,7 +436,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     globalThis[watchKey]?.stop();
     const anchor =
       command.subaction === "click" ? node.closest("a[href]") : null;
-    let personAt = Number.NEGATIVE_INFINITY;
+    let personAt = Number.POSITIVE_INFINITY;
     const startedAt = performance.now();
     const controller = new AbortController();
     const watch = {
@@ -446,7 +446,10 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
           : null,
       stop: () => controller.abort(),
     };
-    const byPerson = (at) => at - personAt >= 0 && at - personAt <= 1500;
+    // Human submission can finish well after 1.5 seconds. Keep the first
+    // trusted input as the handoff boundary until the next helper action.
+    // Resource start times still expose older requests delivered afterward.
+    const byPerson = (at) => at >= personAt;
     const record = (kind) => {
       watch.violation ??= { kind, scope: policy.guidanceScope };
     };
@@ -458,7 +461,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     };
     const options = { capture: true, signal: controller.signal };
     const person = (event) => {
-      if (event.isTrusted) personAt = performance.now();
+      if (event.isTrusted) personAt = Math.min(personAt, performance.now());
     };
     window.addEventListener("pointerdown", person, options);
     window.addEventListener("keydown", person, options);
