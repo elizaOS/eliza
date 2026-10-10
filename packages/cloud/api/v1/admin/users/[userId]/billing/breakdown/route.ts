@@ -68,6 +68,7 @@ async function __hono_GET(
       inputCost: sql<string>`COALESCE(SUM(${usageRecords.input_cost}), 0)`,
       outputCost: sql<string>`COALESCE(SUM(${usageRecords.output_cost}), 0)`,
       markup: sql<string>`COALESCE(SUM(${usageRecords.markup}), 0)`,
+      unbilledLegacyTwilioMarkup: sql<string>`COALESCE(SUM(CASE WHEN ${usageRecords.type} = 'twilio_sms' AND ${usageRecords.markup} > 0 AND jsonb_typeof(${usageRecords.metadata} -> 'billing' -> 'rawCost') = 'number' THEN CASE WHEN ${usageRecords.input_cost} = (${usageRecords.metadata} -> 'billing' ->> 'rawCost')::numeric THEN ${usageRecords.markup} ELSE 0 END ELSE 0 END), 0)`,
       recordCount: sql<number>`COUNT(*)::int`,
     })
     .from(usageRecords)
@@ -81,7 +82,10 @@ async function __hono_GET(
     .orderBy(usageRecords.type, usageRecords.provider);
 
   const breakdown: BreakdownRow[] = rows.map((row) => {
-    const billedCost = Number(row.inputCost) + Number(row.outputCost);
+    const billedCost =
+      Number(row.inputCost) +
+      Number(row.outputCost) +
+      Number(row.unbilledLegacyTwilioMarkup);
     const markup = Number(row.markup);
     return {
       type: row.type,

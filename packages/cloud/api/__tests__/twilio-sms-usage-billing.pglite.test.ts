@@ -114,13 +114,14 @@ afterAll(async () => {
   await closeDatabaseConnectionsForTests();
 });
 
-test("a pre-deploy Twilio SMS row is converted once and a new webhook row is untouched", async () => {
+async function insertLegacyTwilioRow(requestId: string): Promise<void> {
   await getPgliteClientForTests().query(
     `INSERT INTO usage_records(organization_id,user_id,type,model,provider,input_cost,output_cost,markup,request_id,metadata)
-     VALUES ($1,$2,'twilio_sms','twilio-sms','twilio','0.75','0','0.15','SM_pre_deploy',$3)`,
+     VALUES ($1,$2,'twilio_sms','twilio-sms','twilio','0.75','0','0.15',$3,$4)`,
     [
       orgId,
       userId,
+      requestId,
       JSON.stringify({
         channel: "sms",
         segments: 1,
@@ -136,9 +137,47 @@ test("a pre-deploy Twilio SMS row is converted once and a new webhook row is unt
       }),
     ],
   );
+}
+
+async function twilioBreakdown(): Promise<unknown> {
+  const response = await app.request(
+    `/admin/users/${userId}/billing/breakdown`,
+  );
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as {
+    breakdown: Array<{
+      type: string;
+      rawCost: number;
+      markup: number;
+      billedCost: number;
+      recordCount: number;
+    }>;
+  };
+  const rounded = (value: number) => Math.round(value * 1e6) / 1e6;
+  return body.breakdown.map((row) => ({
+    type: row.type,
+    rawCost: rounded(row.rawCost),
+    markup: rounded(row.markup),
+    billedCost: rounded(row.billedCost),
+    recordCount: row.recordCount,
+  }));
+}
+
+const expectedBreakdown = [
+  {
+    type: "twilio_sms",
+    rawCost: 2.25,
+    markup: 0.45,
+    billedCost: 2.7,
+    recordCount: 3,
+  },
+];
+
+test("legacy and new Twilio SMS rows report billed cost in either rollout order", async () => {
+  await insertLegacyTwilioRow("SM_legacy_before_migration");
 
   const form = new URLSearchParams({
-    MessageSid: "SM_post_deploy",
+    MessageSid: "SM_new_before_migration",
     AccountSid: "AC_test",
     From: "+15550000001",
     To: "+15550000002",
@@ -155,51 +194,21 @@ test("a pre-deploy Twilio SMS row is converted once and a new webhook row is unt
     executionCtx as never,
   );
   expect(webhook.status).toBe(200);
+
+  await applyMigration(billedCostMigration.statements);
+  await insertLegacyTwilioRow("SM_legacy_after_migration");
   expect(await twilioInputCosts()).toEqual({
-    SM_post_deploy: "0.900000",
-    SM_pre_deploy: "0.750000",
+    SM_legacy_after_migration: "0.750000",
+    SM_legacy_before_migration: "0.900000",
+    SM_new_before_migration: "0.900000",
   });
+  expect(await twilioBreakdown()).toEqual(expectedBreakdown);
 
   await applyMigration(billedCostMigration.statements);
   expect(await twilioInputCosts()).toEqual({
-    SM_post_deploy: "0.900000",
-    SM_pre_deploy: "0.900000",
+    SM_legacy_after_migration: "0.900000",
+    SM_legacy_before_migration: "0.900000",
+    SM_new_before_migration: "0.900000",
   });
-  await applyMigration(billedCostMigration.statements);
-  expect(await twilioInputCosts()).toEqual({
-    SM_post_deploy: "0.900000",
-    SM_pre_deploy: "0.900000",
-  });
-
-  const response = await app.request(
-    `/admin/users/${userId}/billing/breakdown`,
-  );
-  expect(response.status).toBe(200);
-  const body = (await response.json()) as {
-    breakdown: Array<{
-      type: string;
-      rawCost: number;
-      markup: number;
-      billedCost: number;
-      recordCount: number;
-    }>;
-  };
-  const rounded = (value: number) => Math.round(value * 1e6) / 1e6;
-  expect(
-    body.breakdown.map((row) => ({
-      type: row.type,
-      rawCost: rounded(row.rawCost),
-      markup: rounded(row.markup),
-      billedCost: rounded(row.billedCost),
-      recordCount: row.recordCount,
-    })),
-  ).toEqual([
-    {
-      type: "twilio_sms",
-      rawCost: 1.5,
-      markup: 0.3,
-      billedCost: 1.8,
-      recordCount: 2,
-    },
-  ]);
+  expect(await twilioBreakdown()).toEqual(expectedBreakdown);
 });

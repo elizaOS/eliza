@@ -39,6 +39,7 @@ describe("GET /api/v1/admin/users/:userId/billing/breakdown", () => {
         input_cost numeric default 0,
         output_cost numeric default 0,
         markup numeric default 0,
+        metadata jsonb not null default '{}',
         created_at timestamp not null default now()
       );
     `);
