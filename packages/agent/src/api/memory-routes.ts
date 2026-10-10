@@ -36,7 +36,7 @@ import {
 import type { RouteRequestContext } from "@elizaos/host/protocol";
 
 import {
-  type DocumentsServiceResult,
+  type DocumentsServiceLike,
   getDocumentsService,
 } from "@elizaos/plugin-assistant";
 import { composePrompt } from "@elizaos/plugin-assistant/text/template-rendering";
@@ -426,12 +426,26 @@ async function buildMemorySearchCorpus(
   // snapshot is marked obsolete and retried instead of being returned or
   // published for later reuse.
   const countBefore = await countRoomMessages(runtime, roomId);
+  // One row past the limit proves whether the scan covered the whole room.
   const memories = await runtime.getMemories({
     roomId,
     tableName: "messages",
-    limit: MEMORY_SEARCH_SCAN_LIMIT,
+    limit: MEMORY_SEARCH_SCAN_LIMIT + 1,
     includeEmbedding: false, // only reads content.text
   });
+  if (memories.length > MEMORY_SEARCH_SCAN_LIMIT) {
+    throw new ElizaError(
+      "Memory search cannot cover every saved note: the notes room exceeds the scan limit",
+      {
+        code: "MEMORY_SEARCH_SCAN_LIMIT",
+        context: {
+          roomId,
+          rowCount: countBefore ?? memories.length,
+          limit: MEMORY_SEARCH_SCAN_LIMIT,
+        },
+      },
+    );
+  }
   const countAfter =
     countBefore === null ? null : await countRoomMessages(runtime, roomId);
   const candidates: MemorySearchCandidate[] = [];
@@ -679,12 +693,10 @@ async function searchMemoryNotes(
 }
 async function searchDocuments(
   runtime: AgentRuntime,
+  documentsService: DocumentsServiceLike,
   query: string,
   limit: number,
 ): Promise<DocumentSearchHit[]> {
-  const documents: DocumentsServiceResult = await getDocumentsService(runtime);
-  const documentsService = documents.service;
-  if (!documentsService || !runtime.agentId) return [];
   const agentId = runtime.agentId as UUID;
   const searchMessage: Memory = {
     id: crypto.randomUUID() as UUID,
@@ -1139,9 +1151,27 @@ export async function handleMemoryRoutes(
       Math.max(requestedLimit, 1),
       QUICK_CONTEXT_MAX_LIMIT,
     );
+    // The host always composes the documents plugin, so a missing service is
+    // a load failure. Answering with documents: [] would report "no knowledge
+    // matched" for a store that was never searched.
+    const { service: documentsService, reason } =
+      await getDocumentsService(runtime);
+    if (!documentsService) {
+      if (reason === "timeout") {
+        res.setHeader("Retry-After", "5");
+        error(
+          res,
+          "Documents service is still loading. Please retry shortly.",
+          503,
+        );
+      } else {
+        error(res, "Documents service is not available.", 503);
+      }
+      return true;
+    }
     const [memories, documents] = await Promise.all([
       searchMemoryNotes(runtime, roomId, query, limit),
-      searchDocuments(runtime, query, limit),
+      searchDocuments(runtime, documentsService, query, limit),
     ]);
     const prompt = buildQuickContextPrompt({ query, memories, documents });
     const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
