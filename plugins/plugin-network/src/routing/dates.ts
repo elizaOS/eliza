@@ -107,8 +107,7 @@ function nextMonthDay(m: number, n: number, today: Date): Date | null {
     // Date.UTC rolls a day that does not exist in the month (Feb 30, Apr 31,
     // day 0) into a neighbouring month. That rolled date is not the stated
     // date, so skip it — the same existence check nextDayOfMonth applies.
-    if (candidate.getUTCMonth() !== m || candidate.getUTCDate() !== n)
-      continue;
+    if (candidate.getUTCMonth() !== m || candidate.getUTCDate() !== n) continue;
     if (candidate > today) return candidate;
   }
   return null;
