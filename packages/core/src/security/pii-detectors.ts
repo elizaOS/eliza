@@ -349,7 +349,7 @@ export const PII_DETECTORS: readonly PiiDetector[] = [
 			/-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----[\s\S]+?-----END (?:[A-Z]+ )?PRIVATE KEY-----/g,
 	},
 	// EVM/0x hex private key or address-shaped 32-byte hex (kept conservative: 64 hex).
-	{ kind: "hex-secret", pattern: /\b0x[a-fA-F0-9]{64}\b/g },
+	{ kind: "hex-secret", pattern: /\b0[xX][a-fA-F0-9]{64}\b/g },
 	// MAC address.
 	{
 		kind: "mac-address",
