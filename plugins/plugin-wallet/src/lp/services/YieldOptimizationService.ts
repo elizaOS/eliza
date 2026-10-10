@@ -22,6 +22,13 @@ const AVG_SWAP_TX_FEE_LAMPORTS = BigInt(10000); // Potentially higher for swaps 
 const AVG_LP_ADD_REMOVE_TX_FEE_LAMPORTS = BigInt(15000); // LP operations can be more complex
 const DEFAULT_SOL_PRICE_USD = 150;
 
+/** A recorded 0% yield is real. `apy || apr` replaced it with the other rate. */
+function recordedYield(apy: unknown, apr: unknown): number {
+  if (typeof apy === "number" && Number.isFinite(apy)) return apy;
+  if (typeof apr === "number" && Number.isFinite(apr)) return apr;
+  return 0;
+}
+
 /**
  * Interface for the YieldOptimizationService.
  * This service is responsible for fetching data about available LP pools,
@@ -234,10 +241,10 @@ export class YieldOptimizationService
 
     for (const position of currentPositions) {
       const { underlyingTokens } = position;
-      const currentYield =
-        (position.metadata?.apy as number) ||
-        (position.metadata?.apr as number) ||
-        0;
+      const currentYield = recordedYield(
+        position.metadata?.apy,
+        position.metadata?.apr,
+      );
 
       for (const targetPool of allAvailablePools) {
         if (
@@ -255,7 +262,10 @@ export class YieldOptimizationService
         );
 
         if (canPotentiallyFormPair) {
-          const estimatedNewYield = targetPool.apy || targetPool.apr || 0;
+          const estimatedNewYield = recordedYield(
+            targetPool.apy,
+            targetPool.apr,
+          );
           if (estimatedNewYield > currentYield) {
             const costDetails = await this.calculateRebalanceCost(
               position,
@@ -264,7 +274,11 @@ export class YieldOptimizationService
               undefined,
               underlyingTokens,
             );
-            const positionValueUsd = position.valueUsd || 1;
+            const positionValueUsd =
+              typeof position.valueUsd === "number" &&
+              Number.isFinite(position.valueUsd)
+                ? position.valueUsd
+                : 1;
             const costInYieldTerms =
               (costDetails.costUsd || 0) / positionValueUsd;
 
