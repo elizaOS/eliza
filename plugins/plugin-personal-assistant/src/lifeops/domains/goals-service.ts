@@ -45,7 +45,7 @@ import {
 } from "../goal-grounding.js";
 import { evaluateGoalProgressWithLlm } from "../goal-semantic-evaluator.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
-import { resolveOwnerTimeZone } from "../owner/fact-store.js";
+import { readOwnerTimeZoneResolver } from "../owner/fact-store.js";
 import {
   createLifeOpsAuditEvent,
   type LifeOpsScheduleMergedStateRecord,
@@ -484,18 +484,24 @@ export class GoalsDomain {
     summary: LifeOpsGoalReview["summary"];
     now: Date;
   }): Promise<Record<string, unknown>> {
-    const timeZoneByInstant = new Map<number, Promise<string>>();
-    const resolveTimeZoneFor = (instant: Date): Promise<string> => {
-      const key = instant.getTime();
-      const cached = timeZoneByInstant.get(key);
-      if (cached) {
-        return cached;
+    const timeZoneAt = await readOwnerTimeZoneResolver(this.ctx.runtime);
+    const timeZone = timeZoneAt(args.now);
+    // Each sleep edge is rendered in the owner zone in effect at that edge, so
+    // a night that straddles a travel boundary keeps its bedtime in the zone
+    // the owner fell asleep in. An absent or unparseable edge has no zone.
+    const localSleepEdge = (
+      isoValue: string | null,
+    ): { timeZone: string | null; local: string | null } => {
+      const instant = isoValue ? new Date(isoValue) : null;
+      if (!instant || Number.isNaN(instant.getTime())) {
+        return { timeZone: null, local: null };
       }
-      const pending = resolveOwnerTimeZone(this.ctx.runtime, instant);
-      timeZoneByInstant.set(key, pending);
-      return pending;
+      const edgeTimeZone = timeZoneAt(instant);
+      return {
+        timeZone: edgeTimeZone,
+        local: this.formatLocalHourMinute(isoValue, edgeTimeZone),
+      };
     };
-    const timeZone = await resolveTimeZoneFor(args.now);
     const linkedDefinitionSummaries = args.linkedDefinitions.map(
       (definition) => ({
         id: definition.id,
@@ -512,38 +518,29 @@ export class GoalsDomain {
         ).toISOString(),
       })
     ).filter((signal) => signal.health?.sleep);
-    const sleepSessions = (
-      await Promise.all(
-        sleepSignals.map(async (signal) => {
-          const sleep = signal.health?.sleep;
-          if (!sleep) {
-            return null;
-          }
-          const observedAt = new Date(signal.observedAt);
-          const sessionTimeZone = await resolveTimeZoneFor(
-            Number.isNaN(observedAt.getTime()) ? args.now : observedAt,
-          );
-          return {
-            observedAt: signal.observedAt,
-            asleepAt: sleep.asleepAt,
-            awakeAt: sleep.awakeAt,
-            durationMinutes: sleep.durationMinutes,
-            timeZone: sessionTimeZone,
-            localBedtime: this.formatLocalHourMinute(
-              sleep.asleepAt,
-              sessionTimeZone,
-            ),
-            localWakeTime: this.formatLocalHourMinute(
-              sleep.awakeAt,
-              sessionTimeZone,
-            ),
-            stage: sleep.stage,
-          };
-        }),
-      )
-    ).filter(
-      (session): session is NonNullable<typeof session> => session !== null,
-    );
+    const sleepSessions = sleepSignals
+      .map((signal) => {
+        const sleep = signal.health?.sleep;
+        if (!sleep) {
+          return null;
+        }
+        const bedtime = localSleepEdge(sleep.asleepAt);
+        const wake = localSleepEdge(sleep.awakeAt);
+        return {
+          observedAt: signal.observedAt,
+          asleepAt: sleep.asleepAt,
+          awakeAt: sleep.awakeAt,
+          durationMinutes: sleep.durationMinutes,
+          bedtimeTimeZone: bedtime.timeZone,
+          localBedtime: bedtime.local,
+          wakeTimeZone: wake.timeZone,
+          localWakeTime: wake.local,
+          stage: sleep.stage,
+        };
+      })
+      .filter(
+        (session): session is NonNullable<typeof session> => session !== null,
+      );
     const sleepStartHours = sleepSessions
       .map((session) => {
         const localBedtime = session.localBedtime;

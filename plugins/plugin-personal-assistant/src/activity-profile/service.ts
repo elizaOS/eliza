@@ -409,7 +409,12 @@ export function readFiredLogFromMetadata(
 export function profileNeedsRebuild(
   profile: ActivityProfile | null,
   now: Date,
+  timezone: string,
 ): boolean {
   if (!profile) return true;
+  // A refresh keeps the stored profile's zone for its day key, so a profile
+  // built in another zone (owner zone changed, travel started or ended) must
+  // be rebuilt rather than refreshed.
+  if (profile.timezone !== timezone) return true;
   return now.getTime() - profile.analyzedAt > PROFILE_MAX_AGE_MS;
 }

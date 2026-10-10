@@ -542,6 +542,78 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
     expect(observed).toBeLessThanOrEqual(Date.now());
   });
 
+  it("scopes the bulk reschedule cohort to the owner's calendar day and month", async () => {
+    // 01:00 on 1 August in Tokyo; still 31 July in UTC and every zone west
+    // of it, so a host-zone window differs on both bounds.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-07-31T16:00:00.000Z"));
+    const store = resolveOwnerFactStore(runtime);
+    const feed = vi.spyOn(calendar, "getCalendarFeed");
+    const text = "Push all school meetings before next month.";
+    try {
+      await store.update(
+        { timezone: "Asia/Tokyo" },
+        { source: "profile_save", recordedAt: "2026-07-27T17:54:00.000Z" },
+      );
+      await invoke(message("00000000-0000-0000-0000-000000009961", text), {
+        action: "bulk_reschedule",
+      });
+      expect(feed).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          timeMin: "2026-07-31T15:00:00.000Z",
+          timeMax: "2026-08-31T15:00:00.000Z",
+          timeZone: "Asia/Tokyo",
+        }),
+      );
+
+      await invoke(message("00000000-0000-0000-0000-000000009962", text), {
+        action: "bulk_reschedule",
+        timeZone: "America/New_York",
+      });
+      expect(feed).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          timeMin: "2026-07-31T04:00:00.000Z",
+          timeMax: "2026-08-01T04:00:00.000Z",
+          timeZone: "America/New_York",
+        }),
+      );
+
+      // An unreadable owner zone fails the preview; no calendar read is made
+      // in a substituted zone.
+      feed.mockClear();
+      vi.spyOn(runtime, "getCache").mockRejectedValue(
+        new Error("owner fact cache unavailable"),
+      );
+      const failed = await executePlannedToolCall(
+        runtime,
+        {
+          message: message("00000000-0000-0000-0000-000000009963", text),
+          userRoles: ["OWNER"],
+          activeContexts: ["calendar"],
+          callback: async () => [],
+        },
+        { name: calendarAction.name, params: { action: "bulk_reschedule" } },
+        {
+          actions: promoteSubactionsToActions(
+            calendarAction,
+            calendarActionPromotionOptions,
+          ).filter((action) => action.name === calendarAction.name),
+        },
+      );
+      expect(failed.success).toBe(false);
+      expect(JSON.stringify(failed)).toContain(
+        "CALENDAR_TIME_ZONE_UNAVAILABLE",
+      );
+      expect(feed).not.toHaveBeenCalled();
+    } finally {
+      vi.restoreAllMocks();
+      await store.clear();
+      vi.useRealTimers();
+    }
+  });
+
   it("distinguishes an elapsed daily feed from tomorrow's next event at evening time", async () => {
     const now = "2028-09-25T03:53:00.000Z";
     vi.useFakeTimers({ toFake: ["Date"] });

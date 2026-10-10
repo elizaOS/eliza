@@ -17,6 +17,7 @@ import type {
   LifeOpsCalendarFeed,
   LifeOpsCalendarProvider,
 } from "@elizaos/contracts";
+import { resolveCalendarTimeZone } from "@elizaos/contracts";
 import type {
   Action,
   ActionExample,
@@ -86,7 +87,6 @@ import {
 import {
   type OwnerQuietHours,
   resolveOwnerFactStore,
-  resolveOwnerTimeZone,
 } from "../lifeops/owner/fact-store.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import {
@@ -1336,12 +1336,12 @@ function extractBulkRescheduleCohortLabel(text: string): string | null {
 function buildBulkRescheduleLookupWindow(
   timeZone: string,
   text: string,
+  now: Date,
 ): {
   timeMin: string;
   timeMax: string;
   scopeLabel: string;
 } {
-  const now = new Date();
   const local = getZonedDateParts(now, timeZone);
   const startOfToday = buildUtcDateFromLocalParts(timeZone, {
     year: local.year,
@@ -1414,12 +1414,18 @@ async function handleBulkReschedulePreview(args: {
   timeZone: string | null;
 }): Promise<ActionResult> {
   const text = messageText(args.message);
+  // The cohort's day and month boundaries are the owner's, resolved by the
+  // shared fail-closed calendar zone owner: an unreadable or invalid owner
+  // zone fails the preview instead of scoping the cohort in the host's zone.
+  const now = new Date();
   const timeZone =
-    args.timeZone ?? (await resolveOwnerTimeZone(args.runtime, new Date()));
+    args.timeZone ??
+    (await resolveCalendarTimeZone(args.runtime, now)).timeZone;
   const cohortLabel = extractBulkRescheduleCohortLabel(text);
   const { timeMin, timeMax, scopeLabel } = buildBulkRescheduleLookupWindow(
     timeZone,
     text,
+    now,
   );
   const service = resolveCalendarService(args.runtime);
 

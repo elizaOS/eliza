@@ -4,7 +4,7 @@ import type {
   LifeOpsGoalReview,
 } from "@elizaos/contracts";
 import type { IAgentRuntime, UUID } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {
   createOwnerFactStore,
@@ -79,7 +79,7 @@ const provenance: OwnerFactProvenance = {
 };
 
 describe("GoalsDomain semantic sleep evidence", () => {
-  it("uses the owner zone effective at each sleep signal observation", async () => {
+  it("uses the owner zone effective at each sleep edge", async () => {
     const runtime = makeRuntime();
     registerOwnerFactStore(runtime, createOwnerFactStore(runtime));
     const store = resolveOwnerFactStore(runtime);
@@ -99,12 +99,20 @@ describe("GoalsDomain semantic sleep evidence", () => {
         "2026-10-08T03:30:00.000Z",
         "2026-10-08T11:30:00.000Z",
       ),
+      // Fell asleep at home before the trip started, woke after it started,
+      // and the signal was observed during travel.
+      makeSleepSignal(
+        "2026-10-09T12:00:00.000Z",
+        "2026-10-08T23:00:00.000Z",
+        "2026-10-09T07:00:00.000Z",
+      ),
       makeSleepSignal(
         "2026-10-10T12:00:00.000Z",
         "2026-10-10T03:30:00.000Z",
         "2026-10-10T11:30:00.000Z",
       ),
     ];
+    const readFacts = vi.spyOn(store, "read");
     const deps = {
       listActivitySignals: async () => sleepSignals,
     } as GoalsDeps;
@@ -129,16 +137,26 @@ describe("GoalsDomain semantic sleep evidence", () => {
     expect(evidence.sleepSessions).toMatchObject([
       {
         observedAt: "2026-10-08T12:00:00.000Z",
-        timeZone: "America/New_York",
+        bedtimeTimeZone: "America/New_York",
         localBedtime: "23:30",
+        wakeTimeZone: "America/New_York",
         localWakeTime: "07:30",
       },
       {
+        observedAt: "2026-10-09T12:00:00.000Z",
+        bedtimeTimeZone: "America/New_York",
+        localBedtime: "19:00",
+        wakeTimeZone: "Asia/Tokyo",
+        localWakeTime: "16:00",
+      },
+      {
         observedAt: "2026-10-10T12:00:00.000Z",
-        timeZone: "Asia/Tokyo",
+        bedtimeTimeZone: "Asia/Tokyo",
         localBedtime: "12:30",
+        wakeTimeZone: "Asia/Tokyo",
         localWakeTime: "20:30",
       },
     ]);
+    expect(readFacts).toHaveBeenCalledOnce();
   });
 });
