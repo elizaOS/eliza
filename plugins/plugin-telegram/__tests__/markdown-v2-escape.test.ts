@@ -25,3 +25,20 @@ describe("convertMarkdownToTelegram mid-line '>'", () => {
     );
   });
 });
+
+describe("convertMarkdownToTelegram backslash escapes", () => {
+  it("sends an escaped punctuation character once, without the backslash", () => {
+    expect(convertMarkdownToTelegram("file\\_name")).toBe("file\\_name");
+    expect(convertMarkdownToTelegram("\\# not a heading")).toBe(
+      "\\# not a heading",
+    );
+    expect(convertMarkdownToTelegram("\\_x\\_ and _y_")).toBe(
+      "\\_x\\_ and _y_",
+    );
+    expect(convertMarkdownToTelegram("price is \\$5")).toBe("price is $5");
+  });
+
+  it("keeps a backslash before a letter", () => {
+    expect(convertMarkdownToTelegram("C:\\Users")).toBe("C:\\\\Users");
+  });
+});

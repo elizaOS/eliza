@@ -139,10 +139,11 @@ export function convertMarkdownToTelegram(markdown: string): string {
     },
   );
 
-  // Protect escaped asterisks before interpreting emphasis. Consuming pairs
-  // of backslashes also preserves whether the next asterisk is escaped.
-  // Code and link destinations were already stored above and stay unchanged.
-  converted = converted.replace(/\\([\\*])/g, (_match, literal) =>
+  // A backslash before ASCII punctuation is that character as text
+  // (CommonMark backslash escapes): store it before emphasis is read.
+  // Consuming pairs of backslashes also preserves whether the next character
+  // is escaped. Code and link destinations were already stored above.
+  converted = converted.replace(/\\([!-/:-@[-`{-~])/g, (_match, literal) =>
     storeReplacement(escapePlainText(literal)),
   );
 
