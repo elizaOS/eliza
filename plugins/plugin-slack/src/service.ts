@@ -425,6 +425,7 @@ interface SlackAppMentionEventType {
   ts: string;
   thread_ts?: string;
   event_ts: string;
+  files?: unknown[];
 }
 
 interface SlackReactionEventType {
@@ -1639,6 +1640,7 @@ export class SlackService extends Service implements ISlackService {
         channel: event.channel,
         ts: event.ts,
         thread_ts: event.thread_ts,
+        files: event.files,
       },
       accountId,
     );
@@ -2326,6 +2328,7 @@ export class SlackService extends Service implements ISlackService {
       channel: string;
       ts: string;
       thread_ts?: string;
+      files?: unknown[];
     },
     accountId = this.defaultAccountId,
   ): Promise<Memory | null> {
@@ -2343,6 +2346,11 @@ export class SlackService extends Service implements ISlackService {
     const cleanText = event.text
       .replace(`<@${this.getBotUserIdForAccount(accountId)}>`, "")
       .trim();
+
+    const media: Media[] = slackFilesToMedia(normalizeSlackFiles(event.files), {
+      channelId: event.channel,
+      messageTs: event.ts,
+    });
 
     const memory: Memory = {
       id: createUniqueUuid(
@@ -2362,6 +2370,7 @@ export class SlackService extends Service implements ISlackService {
         name: displayName,
         metadata: { accountId },
         mentionContext: { isMention: true, isReply: false, isThread: false },
+        ...(media.length > 0 ? { attachments: media } : {}),
       },
       metadata: {
         type: "message",

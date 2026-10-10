@@ -60,6 +60,9 @@ function createClient() {
     },
     users: {
       list: vi.fn().mockImplementation(async () => ({ members: bolt.users })),
+      info: vi.fn().mockImplementation(async ({ user }: { user: string }) => ({
+        user: bolt.users.find((entry) => entry.id === user),
+      })),
     },
     chat: {
       postMessage: vi.fn().mockResolvedValue({ ok: true, ts: "1.000001" }),
@@ -227,6 +230,11 @@ async function startHarness(overrides: SlackConnectorInput = {}) {
       ): Promise<Memory | null>;
     }
   ).buildMemoryFromMessage.bind(service);
+  const buildRawMentionMemory = (
+    service as unknown as {
+      buildMemoryFromMention: (...args: unknown[]) => Promise<Memory | null>;
+    }
+  ).buildMemoryFromMention.bind(service);
   Object.assign(service, {
     processAgentMessage,
     buildMemoryFromMessage: vi.fn().mockResolvedValue({
@@ -252,6 +260,7 @@ async function startHarness(overrides: SlackConnectorInput = {}) {
     throw new Error("Bolt message handler was not registered");
   return {
     app,
+    buildRawMentionMemory,
     buildRawMessageMemory,
     processAgentMessage,
     runtime,
@@ -362,6 +371,56 @@ describe("persisted Slack policy through Bolt handlers", () => {
     expect(first?.id).toBeDefined();
     expect(second?.id).toBeDefined();
     expect(first?.id).not.toBe(second?.id);
+  });
+
+  it("keeps files attached to a channel mention on the processed memory", async () => {
+    const harness = await startHarness();
+    Object.assign(harness.service, {
+      buildMemoryFromMention: harness.buildRawMentionMemory,
+    });
+    const appMention = harness.app.eventHandlers.get("app_mention");
+    const messageHandler = harness.app.messageHandler;
+    if (!appMention || !messageHandler)
+      throw new Error("Slack handlers were not registered");
+    const files = [
+      {
+        id: "F0123ABCD",
+        name: "error.png",
+        title: "error.png",
+        mimetype: "image/png",
+        filetype: "png",
+        size: 2048,
+        url_private: "https://files.slack.com/files-pri/T0-F0123ABCD/error.png",
+        url_private_download:
+          "https://files.slack.com/files-pri/T0-F0123ABCD/download/error.png",
+      },
+    ];
+
+    await messageHandler({
+      message: message({
+        subtype: "file_share",
+        text: "<@U0BOTBOT0> what is this error?",
+        files,
+      }),
+      client: harness.app.client,
+    });
+    await appMention({
+      event: mention({ text: "<@U0BOTBOT0> what is this error?", files }),
+      client: harness.app.client,
+    });
+
+    expect(harness.processAgentMessage).toHaveBeenCalledTimes(1);
+    const processed = harness.processAgentMessage.mock.calls[0][0] as Memory;
+    expect(processed.content.text).toBe("what is this error?");
+    expect(processed.content.attachments).toEqual([
+      {
+        id: "F0123ABCD",
+        url: "https://files.slack.com/files-pri/T0-F0123ABCD/download/error.png",
+        title: "error.png",
+        source: "slack",
+        description: "error.png",
+      },
+    ]);
   });
 
   it("projects canonical connector config and enforces name-resolved policy", async () => {
