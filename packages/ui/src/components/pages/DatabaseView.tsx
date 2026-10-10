@@ -32,7 +32,10 @@ import type {
   TableRowsResponse,
 } from "../../api/client-types-core";
 import { getCached, setCached } from "../../hooks/resource-cache";
-import { useActiveAgentAuthority } from "../../hooks/useActiveAgentAuthority";
+import {
+  getActiveAgentAuthority,
+  useActiveAgentAuthority,
+} from "../../hooks/useActiveAgentAuthority";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { PageLayout } from "../../layouts/page-layout";
 import { useTranslation } from "../../state/TranslationContext.hooks";
@@ -133,13 +136,16 @@ function AuthorityDatabaseView({
   tablesRef.current = tables;
 
   const loadStatus = useCallback(async (): Promise<DatabaseStatus | null> => {
+    if (getActiveAgentAuthority() !== authority) return null;
     try {
       const status = await client.getDatabaseStatus();
+      if (getActiveAgentAuthority() !== authority) return null;
       setDbStatus(status);
       setCached(statusCacheKey, status);
       setStatusLoadError("");
       return status;
     } catch (err) {
+      if (getActiveAgentAuthority() !== authority) return null;
       setStatusLoadError(err instanceof Error ? err.message : String(err));
       setDbStatus({
         provider: "pglite",
@@ -151,18 +157,21 @@ function AuthorityDatabaseView({
       });
       return null;
     }
-  }, [statusCacheKey]);
+  }, [authority, statusCacheKey]);
 
   const loadTables = useCallback(
     async (options?: { silent?: boolean }) => {
+      if (getActiveAgentAuthority() !== authority) return;
       if (!options?.silent) setLoading(true);
       setErrorMessage("");
       try {
         const { tables: t } = await client.getDatabaseTables();
+        if (getActiveAgentAuthority() !== authority) return;
         const next = Array.isArray(t) ? t : [];
         setTables(next);
         setCached(tablesCacheKey, next);
       } catch (err) {
+        if (getActiveAgentAuthority() !== authority) return;
         const msg = err instanceof Error ? err.message : "error";
         // Don't show error if database is simply not connected (cloud mode, agent not running)
         if (!msg.includes("Database not available")) {
@@ -176,7 +185,7 @@ function AuthorityDatabaseView({
       }
       setLoading(false);
     },
-    [tablesCacheKey],
+    [authority, tablesCacheKey],
   );
 
   const loadTableData = useCallback(

@@ -81,4 +81,36 @@ describe("DatabaseView agent authority switching", () => {
     });
     expect(await screen.findByText("agent_b_private")).toBeTruthy();
   });
+
+  it("does not continue a departed agent initialization against the new agent", async () => {
+    let releaseAgentAStatus: (() => void) | undefined;
+    client.getDatabaseStatus = vi.fn(async () => {
+      if (client.getBaseUrl().includes("agent-a")) {
+        await new Promise<void>((resolve) => {
+          releaseAgentAStatus = resolve;
+        });
+      }
+      return {
+        provider: "pglite",
+        connected: true,
+        serverVersion: "test",
+        tableCount: 1,
+        pgliteDataDir: null,
+        postgresHost: null,
+      };
+    });
+    render(<DatabaseView />);
+    await waitFor(() => expect(releaseAgentAStatus).toBeTypeOf("function"));
+    act(() => client.setBaseUrl("http://agent-b.invalid"));
+    await waitFor(() => expect(client.getDatabaseTables).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      releaseAgentBTables?.();
+    });
+    expect(await screen.findByText("agent_b_private")).toBeTruthy();
+    await act(async () => {
+      releaseAgentAStatus?.();
+    });
+    expect(client.getDatabaseTables).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("agent_a_private")).toBeNull();
+  });
 });
