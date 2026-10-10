@@ -34,7 +34,10 @@ const callbackState = vi.hoisted(() => ({
   exchange: (): Promise<{ token?: string }> => new Promise(() => {}),
 }));
 
-vi.mock("../../lib/steward-session", () => ({
+vi.mock("../../lib/steward-session", async () => ({
+  ...(await vi.importActual<typeof import("../../lib/steward-session")>(
+    "../../lib/steward-session",
+  )),
   hasStewardOAuthCallbackInUrl: () => callbackState.hasCallback,
   consumeStewardCodeFromQuery: () => "callback-code",
   consumeStewardOAuthStateFromCallback: () => callbackState.returnedState,
