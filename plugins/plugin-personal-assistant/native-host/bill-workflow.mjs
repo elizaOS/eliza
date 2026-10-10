@@ -335,6 +335,24 @@ export class BillWorkflow {
           "The task changed while the bill was being checked. Check it again.",
         );
       }
+      // The browser stopped a submit or page change that a task action set
+      // off. Stop here; the person checks the website before going on.
+      if (fresh.snapshot.effectViolation !== undefined) {
+        await this.clearGuidance();
+        if (!(await this.stillAuthorized()) || this.signal.aborted)
+          throw new BillHostError("Task authorization changed");
+        const current = this.runtime.get(task.id);
+        if (["active", "waiting"].includes(current.status)) {
+          this.runtime.control(current.id, current.revision, "pause");
+          await this.runtime.settle?.(current.id);
+        }
+        return {
+          kind: "paused",
+          taskId: this.taskId,
+          message:
+            "The website tried to submit or leave the page after my last step. I paused the task. Check the website to confirm what happened before resuming.",
+        };
+      }
       if (snapshotKey !== policySnapshotKey(fresh.snapshot)) {
         await this.clearGuidance();
         return blocked(
