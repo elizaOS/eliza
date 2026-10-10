@@ -404,8 +404,13 @@ export class TelegramOwnerPairingServiceImpl
     }
 
     const telegrafBot = bot as import("telegraf").Telegraf<Context>;
-    const chatId = Number(externalId);
-    if (!Number.isFinite(chatId) || chatId <= 0) {
+    // Canonical digit user IDs only: Number("1e3") is 1000 and Number("0x10")
+    // is 16 — both used to silently retarget the login DM to a different
+    // Telegram user instead of failing validation. Mirrors the Discord
+    // sibling's strict isValidSnowflake gate for the same contract.
+    const trimmedId = externalId.trim();
+    const chatId = /^\d+$/.test(trimmedId) ? Number(trimmedId) : Number.NaN;
+    if (!Number.isSafeInteger(chatId) || chatId <= 0) {
       throw new Error(
         `Invalid Telegram externalId "${externalId}" — must be a positive numeric user ID`,
       );
