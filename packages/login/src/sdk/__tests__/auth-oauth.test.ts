@@ -1170,3 +1170,49 @@ describe("signInWithOAuth", () => {
     expect(storage.getItem("steward_oauth_verifier")).not.toBeNull();
   });
 });
+
+describe("explicit Cloud personal phone SDK wire", () => {
+  it.each([undefined, "unchanged-sdk-tenant"])(
+    "retains configured tenant semantics: %s",
+    async (tenantId) => {
+      const client = new LoginAuth({
+        baseUrl: `${BASE_URL}/cloud-owner-phone`,
+        ...(tenantId ? { tenantId } : {}),
+        storage: new TestStorage(),
+      });
+      installMockFetch({
+        ok: true,
+        phone: "***2671",
+        expiresAt: "2026-10-10T00:00:00Z",
+      });
+      await client.sendSmsOtp("+14155552671", "synthetic-captcha");
+      expect(lastCapture?.url).toBe(
+        `${BASE_URL}/cloud-owner-phone/auth/sms/send`,
+      );
+      expect(lastCapture?.body).toEqual({
+        phone: "+14155552671",
+        captchaToken: "synthetic-captcha",
+        ...(tenantId ? { tenantId } : {}),
+      });
+      installMockFetch({
+        ok: true,
+        mfaRequired: true,
+        mfa: {
+          type: "totp",
+          challengeId: "synthetic-challenge",
+          expiresAt: "2026-10-10T00:00:00Z",
+        },
+        user: { id: "synthetic-owner" },
+      });
+      await client.verifySmsOtp("+14155552671", "123456");
+      expect(lastCapture?.url).toBe(
+        `${BASE_URL}/cloud-owner-phone/auth/sms/verify`,
+      );
+      expect(lastCapture?.body).toEqual({
+        phone: "+14155552671",
+        code: "123456",
+        ...(tenantId ? { tenantId } : {}),
+      });
+    },
+  );
+});

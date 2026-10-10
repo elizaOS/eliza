@@ -31,6 +31,8 @@ beforeAll(() => {
 });
 
 const authSpies = vi.hoisted(() => ({
+  configurations: [] as Array<{ baseUrl?: string; tenantId?: string }>,
+  smsConfigurations: [] as Array<{ baseUrl?: string; tenantId?: string }>,
   storage: null as {
     getItem(key: string): string | null;
     setItem(key: string, value: string): void;
@@ -95,22 +97,34 @@ vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => {
 
 vi.mock("@elizaos/login", () => ({
   LoginAuth: class {
+    private config: { baseUrl?: string; tenantId?: string };
     constructor(config: {
+      baseUrl?: string;
+      tenantId?: string;
       storage: {
         getItem(key: string): string | null;
         setItem(key: string, value: string): void;
         removeItem(key: string): void;
       };
     }) {
+      this.config = config;
       authSpies.storage = config.storage;
+      authSpies.configurations.push({
+        baseUrl: config.baseUrl,
+        tenantId: config.tenantId,
+      });
     }
 
     getProviders = authSpies.getProviders;
     getSession = authSpies.getSession;
     refreshSession = authSpies.refreshSession;
-    sendSmsOtp = authSpies.sendSmsOtp;
+    async sendSmsOtp(...args: unknown[]) {
+      authSpies.smsConfigurations.push(this.config);
+      return await authSpies.sendSmsOtp(...args);
+    }
 
     async verifySmsOtp(phone: string, code: string) {
+      authSpies.smsConfigurations.push(this.config);
       const result = await authSpies.verifySmsOtp(phone, code);
       if (result && typeof result === "object" && "token" in result) {
         authSpies.storage?.setItem(
@@ -157,6 +171,8 @@ vi.mock("../../lib/steward-session", () => ({
   recoverStewardSessionViaCookie: sessionSpies.recover,
   refreshStewardSessionViaCookie: vi.fn(),
   syncStewardSessionCookie: sessionSpies.sync,
+  resolveStewardAuthEndpoint: (path: string) =>
+    `https://api.example.test${path}`,
 }));
 
 vi.mock("../../lib/login-return-to", () => ({
@@ -198,6 +214,8 @@ async function sendPhoneCode() {
 describe("StewardLoginSection phone login", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    authSpies.configurations.length = 0;
+    authSpies.smsConfigurations.length = 0;
     authSpies.getProviders.mockResolvedValue({
       passkey: false,
       email: true,
@@ -459,6 +477,14 @@ describe("StewardLoginSection phone login", () => {
   it("verifies six digits through the existing session completion authority", async () => {
     renderSection("/login?returnTo=%2Fdashboard%2Fagents");
     await sendPhoneCode();
+    expect(authSpies.configurations).toContainEqual({
+      baseUrl: "https://api.example.test/steward/cloud-owner-phone",
+      tenantId: undefined,
+    });
+    expect(authSpies.configurations).toContainEqual({
+      baseUrl: "https://api.example.test/steward",
+      tenantId: expect.any(String),
+    });
 
     const codeInput = screen.getByLabelText("Six-digit code");
     fireEvent.change(codeInput, { target: { value: "12a345678" } });
@@ -478,6 +504,15 @@ describe("StewardLoginSection phone login", () => {
         { verifiedPhone: "+14155552671" },
       ),
     );
+    expect(authSpies.smsConfigurations).toHaveLength(2);
+    expect(
+      authSpies.smsConfigurations.every(
+        (config) =>
+          config.baseUrl ===
+            "https://api.example.test/steward/cloud-owner-phone" &&
+          config.tenantId === undefined,
+      ),
+    ).toBe(true);
     expect(sessionSpies.write).toHaveBeenCalledWith("sms-session-token");
     expect(returnToSpies.resolve).toHaveBeenCalled();
   });

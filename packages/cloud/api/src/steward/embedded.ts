@@ -238,31 +238,58 @@ function isStringArray(value: unknown): value is string[] {
   );
 }
 
-async function readBoundedBody(response: Response): Promise<string | null> {
+async function readBoundedBody(
+  response: Response,
+  maxBytes = MAX_PROVIDERS_BODY_BYTES,
+  signal?: AbortSignal,
+): Promise<string | null> {
   if (!response.body) return null;
   const reader = response.body.getReader();
+  let onAbort: (() => void) | undefined;
+  const aborted = signal
+    ? new Promise<null>((resolve) => {
+        onAbort = () => {
+          void reader.cancel().catch(() => undefined);
+          resolve(null);
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+        if (signal.aborted) onAbort();
+      })
+    : undefined;
   const chunks: Uint8Array[] = [];
   let total = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > MAX_PROVIDERS_BODY_BYTES) {
-      await reader.cancel();
+  try {
+    while (true) {
+      const next = aborted
+        ? await Promise.race([reader.read(), aborted])
+        : await reader.read();
+      if (next === null || signal?.aborted) return null;
+      const { done, value } = next;
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        if (signal) void reader.cancel().catch(() => undefined);
+        else await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    try {
+      return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch {
       return null;
     }
-    chunks.push(value);
-  }
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    return null;
+  } finally {
+    if (signal && onAbort) {
+      signal.removeEventListener("abort", onAbort);
+      reader.releaseLock();
+    }
   }
 }
 
@@ -721,6 +748,20 @@ async function patchProvidersResponse(
 export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
   const url = new URL(c.req.url);
   const requestMethod = c.req.method.toUpperCase();
+  const path = stripStewardPrefix(url.pathname);
+  const ownerPhonePrefix = "/cloud-owner-phone";
+  const isOwnerPhoneLogin =
+    path === ownerPhonePrefix || path.startsWith(`${ownerPhonePrefix}/`);
+  const upstreamPath = isOwnerPhoneLogin
+    ? path.slice(ownerPhonePrefix.length)
+    : path;
+  if (
+    isOwnerPhoneLogin &&
+    (requestMethod !== "POST" ||
+      !["/auth/sms/send", "/auth/sms/verify"].includes(upstreamPath))
+  ) {
+    return c.json({ ok: false, error: "Phone sign-in route not found" }, 404);
+  }
   const isReadMethod = requestMethod === "GET" || requestMethod === "HEAD";
   const isProvidersRequest = isReadMethod && isAuthProvidersPath(url.pathname);
   const providerCacheKey = isProvidersRequest
@@ -751,7 +792,7 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
     );
   }
 
-  const upstreamUrl = new URL(`${upstream}${stripStewardPrefix(url.pathname)}`);
+  const upstreamUrl = new URL(`${upstream}${upstreamPath}`);
   upstreamUrl.search = url.search;
 
   // The Steward backend gates mutating sensitive paths (/auth, /agents,
@@ -774,7 +815,50 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
 
   let bodyBytes: ArrayBuffer | null = null;
   if (isMutating) {
-    bodyBytes = await c.req.raw.clone().arrayBuffer();
+    if (isOwnerPhoneLogin) {
+      const deadline = new AbortController();
+      const timer = setTimeout(() => deadline.abort(), 5_000);
+      const bodySignal = AbortSignal.any([c.req.raw.signal, deadline.signal]);
+      let personalBodyText: string | null;
+      try {
+        personalBodyText = await readBoundedBody(
+          new Response(c.req.raw.body),
+          16_384,
+          bodySignal,
+        );
+      } finally {
+        clearTimeout(timer);
+      }
+      if (bodySignal.aborted)
+        return c.json(
+          { ok: false, error: "Phone sign-in request timed out" },
+          408,
+        );
+      if (personalBodyText === null)
+        return c.json(
+          { ok: false, error: "Invalid phone sign-in request" },
+          400,
+        );
+      let body: unknown;
+      try {
+        body = JSON.parse(personalBodyText);
+      } catch {
+        return c.json(
+          { ok: false, error: "Invalid phone sign-in request" },
+          400,
+        );
+      }
+      if (!body || typeof body !== "object" || Array.isArray(body))
+        return c.json(
+          { ok: false, error: "Invalid phone sign-in request" },
+          400,
+        );
+      const personalBody = { ...body } as Record<string, unknown>;
+      delete personalBody.tenantId;
+      bodyBytes = new TextEncoder().encode(JSON.stringify(personalBody)).buffer;
+    } else {
+      bodyBytes = await c.req.raw.clone().arrayBuffer();
+    }
   }
 
   const init: RequestInit = {
@@ -843,7 +927,13 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
   // separately via `NEXT_PUBLIC_STEWARD_TENANT_ID` in cloud-frontend's
   // wrangler.toml `[env.preview.vars]`.
   const pinnedTenantId = c.env.STEWARD_TENANT_ID;
-  if (typeof pinnedTenantId === "string" && pinnedTenantId.trim().length > 0) {
+  if (isOwnerPhoneLogin) {
+    headers.delete("x-steward-tenant");
+    headers.delete("content-length");
+  } else if (
+    typeof pinnedTenantId === "string" &&
+    pinnedTenantId.trim().length > 0
+  ) {
     headers.set("x-steward-tenant", pinnedTenantId.trim());
   }
 

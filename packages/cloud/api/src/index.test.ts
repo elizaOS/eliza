@@ -713,6 +713,90 @@ describe("thin Steward public path dispatch (#18049)", () => {
     ).toBe(true);
   });
 
+  test.each(["send", "verify"])(
+    "dispatches Cloud owner-phone %s CORS and POST through the actual Worker entry",
+    async (leg) => {
+      let upstreamCalls = 0;
+      globalThis.fetch = (async (
+        input: RequestInfo | URL,
+        init?: RequestInit,
+      ) => {
+        upstreamCalls += 1;
+        expect(String(input)).toBe(
+          `https://steward.example.test/auth/sms/${leg}`,
+        );
+        expect(new Headers(init?.headers).get("x-steward-tenant")).toBeNull();
+        expect(JSON.parse(await new Response(init?.body).text())).toEqual({
+          phone: "+14155552671",
+          code: "123456",
+        });
+        return Response.json({ ok: true });
+      }) as typeof fetch;
+      try {
+        const url = `https://api.eliza.app/steward/cloud-owner-phone/auth/sms/${leg}`;
+        const preflight = await cloudApiWorker.fetch(
+          new Request(url, {
+            method: "OPTIONS",
+            headers: {
+              origin: "https://cloud.eliza.app",
+              "access-control-request-method": "POST",
+              "access-control-request-headers": "content-type",
+            },
+          }),
+          stewardEnv,
+          executionCtx,
+        );
+        expect(preflight.status).toBe(204);
+        expect(preflight.headers.get("access-control-allow-origin")).toBe(
+          "https://cloud.eliza.app",
+        );
+        expect(preflight.headers.get("access-control-allow-credentials")).toBe(
+          "true",
+        );
+        expect(preflight.headers.get("access-control-allow-methods")).toContain(
+          "POST",
+        );
+        expect(upstreamCalls).toBe(0);
+        const response = await cloudApiWorker.fetch(
+          new Request(url, {
+            method: "POST",
+            headers: {
+              origin: "https://cloud.eliza.app",
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              phone: "+14155552671",
+              code: "123456",
+              tenantId: "caller-tenant",
+            }),
+          }),
+          stewardEnv,
+          executionCtx,
+        );
+        expect(response.status).toBe(200);
+        expect(response.headers.get("x-eliza-steward-path")).toBe("thin");
+        expect(response.headers.get("access-control-allow-origin")).toBe(
+          "https://cloud.eliza.app",
+        );
+        expect(upstreamCalls).toBe(1);
+        expect(
+          isThinStewardPath(
+            "POST",
+            "/steward/cloud-owner-phone/user/me/accounts",
+          ),
+        ).toBe(false);
+        expect(
+          isThinStewardPath(
+            "GET",
+            `/steward/cloud-owner-phone/auth/sms/${leg}`,
+          ),
+        ).toBe(false);
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    },
+  );
+
   test("dispatches POST /steward/auth/email/send through the thin shell", async () => {
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       const url =
@@ -1116,7 +1200,7 @@ describe("cloud-api worker entrypoint", () => {
       ],
       [
         "https://docs.elizacloud.ai/docs/api/agents?source=legacy",
-        "https://eliza.app",
+        "https://eliza.app/",
       ],
     ] as const;
 
