@@ -17,6 +17,16 @@ export default defineConfig({
 		conditions: ["eliza-source"],
 		alias: [
 			{
+				find: /^@elizaos\/testing\/runtime$/,
+				replacement: path.join(
+					getElizaWorkspaceRoot(repoRoot),
+					"packages",
+					"testing",
+					"src",
+					"runtime.ts",
+				),
+			},
+			{
 				find: /^@elizaos\/testing$/,
 				replacement: path.join(
 					getElizaWorkspaceRoot(repoRoot),
