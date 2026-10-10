@@ -2258,17 +2258,17 @@ export class ElizaSandboxService {
     // doing backup hydration/reconstruction outside the lifecycle transaction;
     // live push authority is re-read under the advisory + row locks below.
     const rec = await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId);
-    if (!rec) return { success: false, error: "Agent not found" };
+    if (!rec) return { success: false, error: "Agent not found", refusal: "not-found" };
 
     const initialAuthorityRejection = restoreAuthorityRejection(rec);
     if (initialAuthorityRejection) {
-      return { success: false, error: initialAuthorityRejection };
+      return { success: false, error: initialAuthorityRejection, refusal: "conflict" };
     }
 
     const restoringRunningGeneration = rec.status === "running";
     if (!restoringRunningGeneration && rec.retained_runtime) {
       // Replacing a retained runtime would discard writes no backup covers.
-      return { success: false, error: RETAINED_RUNTIME_PROVISION_REFUSAL };
+      return { success: false, error: RETAINED_RUNTIME_PROVISION_REFUSAL, refusal: "conflict" };
     }
     if (restoringRunningGeneration && !rec.bridge_url) {
       return { success: false, error: "Running agent is missing its restore endpoint" };
@@ -2277,6 +2277,7 @@ export class ElizaSandboxService {
       return {
         success: false,
         error: "Agent restore cannot start while replacement cleanup is pending",
+        refusal: "conflict",
       };
     }
 
@@ -2287,7 +2288,7 @@ export class ElizaSandboxService {
       ? await agentSandboxesRepository.getStoredBackupById(backupId)
       : await agentSandboxesRepository.getLatestStoredBackup(rec.id);
     if (!storedBackup || storedBackup.sandbox_record_id !== rec.id) {
-      return { success: false, error: "No backup found" };
+      return { success: false, error: "No backup found", refusal: "not-found" };
     }
 
     if (!restoringRunningGeneration && backupId) {
@@ -2296,6 +2297,7 @@ export class ElizaSandboxService {
         return {
           success: false,
           error: "Stopped agents can only restore the latest backup",
+          refusal: "conflict",
         };
       }
     }
@@ -2329,7 +2331,16 @@ export class ElizaSandboxService {
           lifecycle_revision: rec.lifecycle_revision,
         },
       });
-      return prov.success ? { success: true, backup } : { success: false, error: prov.error };
+      if (prov.success) return { success: true, backup };
+      // Provision reports these admission refusals as plain strings; any other
+      // provision failure is a fault.
+      const admissionRefused =
+        prov.error === RESTORE_AUTHORITY_CHANGED ||
+        prov.error === RESTORE_BACKUP_CHANGED ||
+        prov.error === RETAINED_RUNTIME_PROVISION_REFUSAL;
+      return admissionRefused
+        ? { success: false, error: prov.error, refusal: "conflict" }
+        : { success: false, error: prov.error };
     }
 
     // Capture the complete target->base chain from the primary before
@@ -2342,7 +2353,7 @@ export class ElizaSandboxService {
       !storedRestoreChain ||
       !storedRestorePointStillCanonical(storedRestoreChain[0]!, storedBackup)
     ) {
-      return { success: false, error: RESTORE_BACKUP_CHANGED };
+      return { success: false, error: RESTORE_BACKUP_CHANGED, refusal: "conflict" };
     }
 
     const backup = await hydrateAgentSandboxBackup(storedBackup);
@@ -2360,35 +2371,54 @@ export class ElizaSandboxService {
       !confirmedRestoreChain ||
       !storedRestoreChainStillCanonical(confirmedRestoreChain, storedRestoreChain)
     ) {
-      return { success: false, error: RESTORE_BACKUP_CHANGED };
+      return { success: false, error: RESTORE_BACKUP_CHANGED, refusal: "conflict" };
     }
 
     const authorized = await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
       const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
-      if (!current) return { success: false as const, error: RESTORE_AUTHORITY_CHANGED };
+      if (!current)
+        return {
+          success: false as const,
+          error: RESTORE_AUTHORITY_CHANGED,
+          refusal: "conflict" as const,
+        };
 
       const currentAuthorityRejection = restoreAuthorityRejection(current);
       if (currentAuthorityRejection) {
-        return { success: false as const, error: currentAuthorityRejection };
+        return {
+          success: false as const,
+          error: currentAuthorityRejection,
+          refusal: "conflict" as const,
+        };
       }
       if (current.status !== "running" || !current.bridge_url) {
-        return { success: false as const, error: RESTORE_AUTHORITY_CHANGED };
+        return {
+          success: false as const,
+          error: RESTORE_AUTHORITY_CHANGED,
+          refusal: "conflict" as const,
+        };
       }
       if (this.getReplacementCleanupLocator(current)) {
         return {
           success: false as const,
           error: "Agent restore cannot start while replacement cleanup is pending",
+          refusal: "conflict" as const,
         };
       }
       if (await this.hasActiveExclusiveLifecycleJobTx(tx, agentId, orgId)) {
         return {
           success: false as const,
           error: "Agent restore cannot start while an exclusive lifecycle job is active",
+          refusal: "conflict" as const,
         };
       }
       if (!restoreCaptureStillCanonical(current, rec)) {
-        return { success: false as const, error: RESTORE_AUTHORITY_CHANGED };
+        return {
+          success: false as const,
+          error: RESTORE_AUTHORITY_CHANGED,
+          refusal: "conflict" as const,
+        };
       }
 
       // Hold every row used by reconstruction through the push so prune and
@@ -2416,7 +2446,11 @@ export class ElizaSandboxService {
         .for("update")
         .execute();
       if (!storedRestoreChainStillCanonical(lockedRestoreChain, storedRestoreChain)) {
-        return { success: false as const, error: RESTORE_BACKUP_CHANGED };
+        return {
+          success: false as const,
+          error: RESTORE_BACKUP_CHANGED,
+          refusal: "conflict" as const,
+        };
       }
 
       // Reserve a lifecycle generation BEFORE the irreversible runtime call.
@@ -2457,7 +2491,11 @@ export class ElizaSandboxService {
         )
         .returning({ lifecycleRevision: agentSandboxes.lifecycle_revision });
       if (!reserved) {
-        return { success: false as const, error: RESTORE_AUTHORITY_CHANGED };
+        return {
+          success: false as const,
+          error: RESTORE_AUTHORITY_CHANGED,
+          refusal: "conflict" as const,
+        };
       }
       if (reserved.lifecycleRevision !== current.lifecycle_revision + 1) {
         // A returned row proves the CAS update ran. Committing it without the
