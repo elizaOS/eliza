@@ -1,16 +1,12 @@
 // Coordinates cloud service discord behavior behind route handlers.
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { DISCORD_API_BASE, discordBotHeaders, discordFetch } from "../utils/discord-api";
 import { logger } from "../utils/logger";
 
-const DISCORD_API = "https://discord.com/api/v10";
-
 async function discordPost(token: string, path: string, body: unknown): Promise<Response> {
-  return fetch(`${DISCORD_API}${path}`, {
+  return discordFetch(`${DISCORD_API_BASE}${path}`, {
     method: "POST",
-    headers: {
-      Authorization: `Bot ${token}`,
-      "Content-Type": "application/json",
-    },
+    headers: discordBotHeaders(token),
     body: JSON.stringify(body),
   });
 }
