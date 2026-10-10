@@ -18,7 +18,11 @@ function isAsciiLetter(character: string): boolean {
 }
 
 function isAsciiLocalCharacter(character: string): boolean {
-  return isAsciiLetterOrDigit(character) || "._%+-".includes(character);
+  // RFC 5322 atext and dot (without ` { | }): o'brien and ops&dev are whole
+  // local parts, not the suffix after the punctuation.
+  return (
+    isAsciiLetterOrDigit(character) || ".!#$%&'*+/=?^_~-".includes(character)
+  );
 }
 
 function isAsciiDomainCharacter(character: string): boolean {
@@ -66,6 +70,8 @@ function extractAsciiEmailToken(value: string): string | null {
     let start = at;
     while (start > 0 && isAsciiLocalCharacter(value[start - 1] ?? ""))
       start -= 1;
+    // A quote around a bare address is not part of it.
+    while (start < at && value[start] === "'") start += 1;
     let end = at + 1;
     while (end < value.length && isAsciiDomainCharacter(value[end] ?? ""))
       end += 1;
@@ -73,6 +79,8 @@ function extractAsciiEmailToken(value: string): string | null {
     const dot = domain.lastIndexOf(".");
     if (
       start < at &&
+      // A non-ASCII local part is not cut down to its ASCII suffix.
+      !(start > 0 && value.charCodeAt(start - 1) > 0x7f) &&
       dot > 0 &&
       !domain.startsWith(".") &&
       domain.length - dot - 1 >= 2 &&
