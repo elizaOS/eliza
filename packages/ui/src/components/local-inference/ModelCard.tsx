@@ -11,6 +11,7 @@ import type {
   HardwareProbe,
   InstalledModel,
 } from "@elizaos/contracts";
+import { isSettingsDefaultLocalModel } from "@elizaos/plugin-native-inference/model-catalog/catalog";
 import { catalogDownloadSizeGb } from "@elizaos/plugin-native-inference/model-catalog/recommendation";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
@@ -42,7 +43,11 @@ interface ModelCardProps {
   onUninstall: (modelId: string) => void;
   /** When present, a "Verify" button appears on installed models. */
   onVerify?: (modelId: string) => void;
-  /** When present, a "Redownload" button appears on installed models. */
+  /**
+   * When present, a "Redownload" button appears on installed models that are
+   * still offerable. Redownload uninstalls first, so it is hidden when the
+   * download would be refused.
+   */
   onRedownload?: (modelId: string) => void;
   downloadDisabledReason?: string;
   busy: boolean;
@@ -187,16 +192,18 @@ export function ModelCard({
             {t("modelcard.verify", { defaultValue: "Verify" })}
           </Button>
         )}
-        {installedEntry?.source === "eliza-download" && onRedownload && (
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => onRedownload(model.id)}
-            disabled={busy}
-          >
-            {t("modelcard.redownload", { defaultValue: "Redownload" })}
-          </Button>
-        )}
+        {installedEntry?.source === "eliza-download" &&
+          onRedownload &&
+          isSettingsDefaultLocalModel(model) && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => onRedownload(model.id)}
+              disabled={busy}
+            >
+              {t("modelcard.redownload", { defaultValue: "Redownload" })}
+            </Button>
+          )}
         {installedEntry?.source === "eliza-download" && (
           <Button
             size="sm"
