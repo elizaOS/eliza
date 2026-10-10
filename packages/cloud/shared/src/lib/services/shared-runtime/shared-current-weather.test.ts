@@ -209,6 +209,20 @@ describe("current US weather evidence", () => {
     expect(terms[0]).toBe("Espanola");
   });
 
+  it("transliterates non-decomposing Latin letters for the geocoder", async () => {
+    const terms: string[] = [];
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      terms.push(url.searchParams.get("term") ?? "");
+      return Response.json([]);
+    }) as typeof fetch;
+    await runCurrentUsWeatherSearch("current public weather in Cœur d'Alene, Idaho", {
+      fetchImpl,
+      cache: false,
+    });
+    expect(terms[0]).toBe("Coeur d'Alene");
+  });
+
   it("accepts named US states/abbreviations without city hardcoding", () => {
     expect(parseExplicitUsWeatherQuery("current public weather in Madison, Wisconsin")).toEqual({
       city: "Madison",

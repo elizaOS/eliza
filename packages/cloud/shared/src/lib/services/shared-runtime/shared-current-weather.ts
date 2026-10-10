@@ -192,6 +192,32 @@ const metadataCache = new Map<string, { expiresAt: number; value: Metadata }>();
 export function clearCurrentWeatherMetadataCacheForTests(): void {
   metadataCache.clear();
 }
+const GEOCODER_NON_DECOMPOSING_LATIN = /[ÆæŒœØøŁłÐðĐđÞþß]/gu;
+const geocoderLatinReplacements: Readonly<Record<string, string>> = {
+  Æ: "AE",
+  æ: "ae",
+  Œ: "OE",
+  œ: "oe",
+  Ø: "O",
+  ø: "o",
+  Ł: "L",
+  ł: "l",
+  Ð: "D",
+  ð: "d",
+  Đ: "D",
+  đ: "d",
+  Þ: "TH",
+  þ: "th",
+  ß: "ss",
+};
+const foldForGeocoder = (v: string) =>
+  v
+    .replace(
+      GEOCODER_NON_DECOMPOSING_LATIN,
+      (character) => geocoderLatinReplacements[character] ?? character,
+    )
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "");
 const fold = (v: string) =>
   v
     .normalize("NFKD")
@@ -542,9 +568,10 @@ export async function runCurrentUsWeatherSearch(
     if (cached && cached.expiresAt > now()) metadata = cached.value;
     if (!metadata) {
       const geo = new URL("https://dashboard.waterdata.usgs.gov/service/geocoder/get/location/1.0");
-      // The USGS geocoder finds "Espanola" but returns nothing for "Española";
-      // the place filter below already compares accent-folded names.
-      geo.searchParams.set("term", target.city.normalize("NFKD").replace(/\p{M}/gu, ""));
+      // The USGS geocoder finds "Espanola" but returns nothing for "Española"
+      // or "Cœur d'Alene". The place filter below already compares
+      // accent-folded names.
+      geo.searchParams.set("term", foldForGeocoder(target.city));
       geo.searchParams.set("include", "gnis");
       geo.searchParams.set("states", target.state);
       geo.searchParams.set("maxSuggestions", "20");
