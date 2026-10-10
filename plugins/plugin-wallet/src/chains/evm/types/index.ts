@@ -61,8 +61,8 @@ export const PrivateKeySchema = z
 
 export const AmountSchema = z.string().refine(
   (val) => {
-    const num = parseFloat(val);
-    return !Number.isNaN(num) && num > 0;
+    const num = Number(val);
+    return Number.isFinite(num) && num > 0;
   },
   { message: "Amount must be a positive number" }
 );
@@ -73,8 +73,8 @@ export const OptionalAmountSchema = z
   .refine(
     (val) => {
       if (val === undefined) return true;
-      const num = parseFloat(val);
-      return !Number.isNaN(num) && num > 0;
+      const num = Number(val);
+      return Number.isFinite(num) && num > 0;
     },
     { message: "If provided, amount must be a positive number" }
   );
