@@ -339,7 +339,7 @@ export async function handleImageDescription(
       throw new ElizaError(
         "Eliza Cloud did not complete the image description; retry with a model capable of returning the complete page",
         {
-          code: "MODEL_INCOMPLETE_OUTPUT",
+          code: "MODEL_OUTPUT_INCOMPLETE",
           context: { provider: "elizacloud", finishReason },
         }
       );

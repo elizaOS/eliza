@@ -238,8 +238,21 @@ export async function handleImageDescription(
       throw new ElizaError(
         "OpenAI reached its output boundary; refusing partial image description",
         {
-          code: "MODEL_INCOMPLETE_OUTPUT",
-          context: { provider: "openai", finishReason: "length" },
+          code: "MODEL_OUTPUT_INCOMPLETE",
+          context: {
+            provider: "openai",
+            model: modelName,
+            finishReason: "length",
+            ...(responseData.usage
+              ? {
+                  usage: {
+                    promptTokens: responseData.usage.prompt_tokens,
+                    completionTokens: responseData.usage.completion_tokens,
+                    totalTokens: responseData.usage.total_tokens,
+                  },
+                }
+              : {}),
+          },
         }
       );
     }
