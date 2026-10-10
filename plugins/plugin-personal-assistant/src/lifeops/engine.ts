@@ -160,6 +160,21 @@ function resolveLagMinutes(cadence: LifeOpsCadence): number {
   return cadence.visibilityLagMinutes ?? 0;
 }
 
+function resolveSnoozedRelevanceEndAt(
+  scheduledAt: Date,
+  relevanceEndAt: Date,
+  snoozedUntil: string | null | undefined,
+): Date {
+  const snoozedUntilMs = snoozedUntil ? Date.parse(snoozedUntil) : Number.NaN;
+  if (!Number.isFinite(snoozedUntilMs)) {
+    return relevanceEndAt;
+  }
+  const relevantSpanMs = relevanceEndAt.getTime() - scheduledAt.getTime();
+  return new Date(
+    Math.max(relevanceEndAt.getTime(), snoozedUntilMs + relevantSpanMs),
+  );
+}
+
 function resolveOccurrenceState(
   currentState: LifeOpsOccurrenceState | null | undefined,
   relevanceStartAt: Date,
@@ -276,7 +291,11 @@ function buildWindowOccurrence(
   );
   const dueAt = buildUtcDateFromLocalParts(definition.timezone, endLocal);
   const relevanceStartAt = addMinutes(scheduledAt, -leadMinutes);
-  const relevanceEndAt = addMinutes(dueAt, lagMinutes);
+  const relevanceEndAt = resolveSnoozedRelevanceEndAt(
+    scheduledAt,
+    addMinutes(dueAt, lagMinutes),
+    existing?.snoozedUntil,
+  );
   const occurrenceKey = buildOccurrenceKey(
     cadencePrefix,
     localDateKey,
@@ -346,7 +365,11 @@ function buildSlotOccurrence(
   );
   const dueAt = scheduledAt;
   const relevanceStartAt = addMinutes(scheduledAt, -leadMinutes);
-  const relevanceEndAt = addMinutes(scheduledAt, lagMinutes);
+  const relevanceEndAt = resolveSnoozedRelevanceEndAt(
+    scheduledAt,
+    addMinutes(scheduledAt, lagMinutes),
+    existing?.snoozedUntil,
+  );
   const occurrenceKey = buildOccurrenceKey("slot", localDateKey, slot.key);
   return {
     id: existing?.id ?? crypto.randomUUID(),
@@ -425,7 +448,11 @@ function buildIntervalOccurrence(
   );
   const lagMinutes = Math.max(resolveLagMinutes(cadence), durationMinutes);
   const relevanceStartAt = addMinutes(scheduledAt, -leadMinutes);
-  const relevanceEndAt = addMinutes(scheduledAt, lagMinutes);
+  const relevanceEndAt = resolveSnoozedRelevanceEndAt(
+    scheduledAt,
+    addMinutes(scheduledAt, lagMinutes),
+    existing?.snoozedUntil,
+  );
   const occurrenceKey = buildOccurrenceKey(
     "interval",
     args.localDateKey,
