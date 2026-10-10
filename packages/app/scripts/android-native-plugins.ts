@@ -34,16 +34,30 @@ export function inventory(repoRoot = root) {
         fs.readFileSync(path.join(dir, "package.json"), "utf8"),
       );
       const android = fs.existsSync(path.join(dir, "android/build.gradle"));
-      const testDir = path.join(dir, "android/src/androidTest");
-      const tests = fs.existsSync(testDir)
-        ? fs
-            .readdirSync(testDir, { recursive: true })
-            .filter((name) => /\.(kt|java)$/.test(name))
-            .flatMap((name) => {
-              const source = fs.readFileSync(path.join(testDir, name), "utf8");
-              const count = [...source.matchAll(/@Test\b/g)].length;
-              return count ? [{ file: name, count }] : [];
-            })
+      const readTests = (testDir: string) =>
+        fs.existsSync(testDir)
+          ? fs
+              .readdirSync(testDir, { recursive: true })
+              .filter((name) => /\.(kt|java)$/.test(name))
+              .flatMap((name) => {
+                const source = fs.readFileSync(
+                  path.join(testDir, name),
+                  "utf8",
+                );
+                const count = [...source.matchAll(/@Test\b/g)].length;
+                return count ? [{ file: name, count }] : [];
+              })
+          : [];
+      const tests = readTests(path.join(dir, "android/src/androidTest"));
+      const consumerProject =
+        descriptors[directory]?.kind === "host-configured-library" &&
+        fs.existsSync(path.join(dir, "test/android-consumer/build.gradle"))
+          ? `plugins/${directory}/test/android-consumer`
+          : null;
+      const consumerTests = consumerProject
+        ? readTests(
+            path.join(repoRoot, consumerProject, "host/src/androidTest"),
+          )
         : [];
       return {
         directory,
@@ -51,6 +65,8 @@ export function inventory(repoRoot = root) {
         project: manifest.name.replace(/^@/, "").replaceAll("/", "-"),
         android,
         tests,
+        consumerProject,
+        consumerTests,
         expectedTests:
           tests.reduce((sum, test) => sum + test.count, 0) +
           (android && descriptors[directory]?.kind !== "host-configured-library"
@@ -182,6 +198,13 @@ async function main() {
       (!args.includes("--plugin") || plugin.directory === value("--plugin")),
   );
   if (!selected.length) throw new Error("No matching Android plugins");
+  // A multi-app consumer fixture has its own install and permission protocol. Never
+  // count its tests as assertions in the generic library APK or fabricate a pass.
+  const external = selected.filter((plugin) => plugin.expectedTests === 0);
+  if (external.length)
+    throw new Error(
+      `Run the dedicated consumer fixtures first: ${external.map((plugin) => plugin.consumerProject ?? plugin.directory).join(", ")}. Select a generic module with --plugin for this runner.`,
+    );
   const outputDir = testOutputPath(
     "android-native-plugins",
     new Date().toISOString().replaceAll(":", "-"),
