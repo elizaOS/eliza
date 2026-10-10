@@ -270,31 +270,25 @@ const BACKUP_RESTORE_CHOICE = [
   "[/CHOICE]",
 ].join("\n");
 
-/**
- * True when the model catalog has an Eliza-1 tier that can be downloaded and
- * activated. The local-inference hub offers downloads with the same predicate.
- */
-function onDeviceModelPublished(): boolean {
-  return recommendForFirstRun() !== null;
-}
-
 // RAM-tier-gated (#14390): below the 12 GB on-device-model floor the
 // on-device option stays visible but labeled unavailable (its tap is refused
 // with the reason) and the recommendation moves to Eliza Cloud inference —
 // the local agent remains allowed in cloud-inference mode on that band.
-// The same unavailable treatment applies when the model catalog has no
-// published, activation-eligible Eliza-1 tier: nothing can be downloaded, so
-// the option is never offered as the recommendation.
+// When the model catalog has no published, activation-eligible Eliza-1 tier,
+// nothing can be downloaded: the on-device label says so and the
+// recommendation moves to Eliza Cloud inference. The tap is still accepted,
+// because a model that is already on the device (an image-bundled or
+// previously installed bundle) activates without a download.
 function providerChoice(opts: {
   defaultId: "on-device" | "other";
   tier: DeviceRamTierAssessment | null;
 }): string {
   const ramBlocked = opts.tier != null && !opts.tier.allowsLocalModels;
-  const modelsBlocked = ramBlocked || !onDeviceModelPublished();
+  const modelsBlocked = ramBlocked || recommendForFirstRun() === null;
   const onDevice = ramBlocked
     ? `${FIRST_RUN_ACTION_PREFIX}provider:on-device=On this device (unavailable — needs 12 GB+ RAM, ~${opts.tier?.marketedRamGb} GB detected)`
     : modelsBlocked
-      ? `${FIRST_RUN_ACTION_PREFIX}provider:on-device=On this device (unavailable — no Eliza-1 model is published yet)`
+      ? `${FIRST_RUN_ACTION_PREFIX}provider:on-device=On this device (no model download available yet)`
       : `${FIRST_RUN_ACTION_PREFIX}provider:on-device=On this device (recommended)`;
   const cloud = modelsBlocked
     ? `${FIRST_RUN_ACTION_PREFIX}provider:elizacloud=Eliza Cloud inference (recommended)`
@@ -1392,16 +1386,6 @@ export function useFirstRunConductor(): void {
             seedFreshChoiceTurn(
               "first-run:provider",
               `On-device models won't work here — ${tier.reason}. Eliza Cloud inference keeps the agent on this device and runs the models in the cloud.\n\n${providerChoice({ defaultId: "on-device", tier })}`,
-            );
-            return true;
-          }
-          // No published Eliza-1 tier passes the activation gate: the finish
-          // would start a local agent that can never load a model. Refuse
-          // with the reason and re-offer the provider choice.
-          if (!onDeviceModelPublished()) {
-            seedFreshChoiceTurn(
-              "first-run:provider",
-              `There is no on-device model to download yet — no published Eliza-1 model has passed its release checks. Eliza Cloud inference keeps the agent on this device and runs the models in the cloud, or you can set up your own provider in Settings.\n\n${providerChoice({ defaultId: "on-device", tier })}`,
             );
             return true;
           }
