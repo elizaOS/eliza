@@ -560,7 +560,12 @@ export function resolveGroupDmAllow(params: {
 	}
 
 	const allowList = new Set(
-		channels.map((entry) => normalizeDiscordSlug(String(entry))),
+		channels.map((entry) => {
+			const text = String(entry).trim();
+			// The slug normalizer drops "*", so keep the wildcard entry as-is;
+			// the check below looks for it in the set.
+			return text === "*" ? "*" : normalizeDiscordSlug(text);
+		}),
 	);
 	const candidates = [
 		normalizeDiscordSlug(channelId),
