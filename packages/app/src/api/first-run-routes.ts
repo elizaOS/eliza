@@ -384,6 +384,22 @@ export async function handleFirstRunRoute(
             config as Record<string, unknown>,
             devCloudAuthority,
           );
+          if (
+            !resolvedCloudApiKey &&
+            devCloudAuthority &&
+            cloudInferenceSelected &&
+            replayDeploymentTarget?.runtime !== "cloud"
+          ) {
+            // The launcher owns the Cloud credential under a development
+            // authority and the plugin collector drops the Cloud plugin
+            // without one. Committing this route would report a finished
+            // setup whose first chat has no provider.
+            return {
+              ok: false,
+              status: 409,
+              error: `Eliza Cloud inference is not available under the ${devCloudAuthority} development Cloud target. Relaunch with --cloud-target=staging and ELIZA_DEV_CLOUD_API_KEY, or choose another provider.`,
+            };
+          }
           if (!resolvedCloudApiKey) {
             logger.warn(
               devCloudAuthority
