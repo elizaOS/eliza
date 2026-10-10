@@ -37,7 +37,7 @@ export interface DiscordInstallWelcomeRedis {
     destination: string,
     whereFrom: "left" | "right",
     whereTo: "left" | "right",
-  ): Promise<string | null>;
+  ): Promise<unknown>;
   lrem(key: string, count: number, value: string): Promise<number>;
 }
 
@@ -141,13 +141,13 @@ export class DiscordInstallWelcomeQueue {
   }
 
   async drainOnce(): Promise<boolean> {
-    let raw = await this.redis.lmove(
+    let claimed = await this.redis.lmove(
       QUEUE_KEY,
       PROCESSING_KEY,
       "right",
       "left",
     );
-    if (!raw) {
+    if (!claimed) {
       const recovered = await this.redis.lmove(
         PROCESSING_KEY,
         QUEUE_KEY,
@@ -155,9 +155,18 @@ export class DiscordInstallWelcomeQueue {
         "left",
       );
       if (!recovered) return false;
-      raw = await this.redis.lmove(QUEUE_KEY, PROCESSING_KEY, "right", "left");
-      if (!raw) return false;
+      claimed = await this.redis.lmove(
+        QUEUE_KEY,
+        PROCESSING_KEY,
+        "right",
+        "left",
+      );
+      if (!claimed) return false;
     }
+    // Upstash REST deserializes list members by default, so the claim can
+    // arrive as the parsed job. enqueue stored JSON.stringify(job), so the
+    // same call gives back the exact member for lrem and the requeue.
+    const raw = typeof claimed === "string" ? claimed : JSON.stringify(claimed);
 
     let job: DiscordInstallWelcomeJob;
     try {
