@@ -186,6 +186,12 @@ function normalizePlatform(value: unknown): string | undefined {
  */
 function normalizeDurationMinutes(value: unknown): number | undefined | null {
   if (value === undefined || value === null) return undefined;
+  if (typeof value === "string") {
+    // Canonical digit strings only: Number("0x10") is 16 and Number("1e2")
+    // is 100 — both used to silently become mute durations instead of being
+    // rejected like other malformed planner params.
+    if (!/^\d+$/.test(value.trim())) return null;
+  }
   const parsed = typeof value === "string" ? Number(value) : value;
   if (
     typeof parsed !== "number" ||
