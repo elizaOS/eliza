@@ -31,6 +31,8 @@
  * the structured result back as a message via the existing action callback.
  */
 
+import { contentBlockId } from "./message-block-id";
+
 // Temporal types render native `<input type="date|time|datetime-local">`, which
 // submit an ISO-ish string (`YYYY-MM-DD` / `HH:mm` / `YYYY-MM-DDTHH:mm`). Kept
 // in sync with the core `InteractionFieldType` union; both parsers coerce any
@@ -93,16 +95,6 @@ const UNSAFE_OBJECT_FIELD_NAMES = new Set([
 
 export const FORM_RE =
   /\[[ \t]*FORM[ \t]*\][ \t]*\r?\n([\s\S]*?)\r?\n\[[ \t]*\/[ \t]*FORM[ \t]*\]/g;
-
-export function generateFormId(): string {
-  if (
-    typeof crypto !== "undefined" &&
-    typeof crypto.randomUUID === "function"
-  ) {
-    return crypto.randomUUID();
-  }
-  return `form-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
-}
 
 function parseField(raw: unknown): FormFieldSpec | null {
   if (!raw || typeof raw !== "object") return null;
@@ -175,7 +167,7 @@ export function parseFormBody(body: string): FormRequestSpec | null {
     id:
       typeof record.id === "string" && record.id.length > 0
         ? record.id
-        : generateFormId(),
+        : contentBlockId("form", body),
     ...(typeof record.title === "string" ? { title: record.title } : {}),
     ...(typeof record.description === "string"
       ? { description: record.description }

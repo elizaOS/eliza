@@ -5,22 +5,13 @@
  * `MessageContent` React graph (which transitively imports the runtime).
  */
 
+import { contentBlockId } from "./message-block-id";
 import type { ChoiceOption } from "./widgets/ChoiceWidget";
 
 // Header attributes (`id=…`, `allow_custom`) are captured as a single string in
 // group 2 and parsed below, so they can appear in any order.
 export const CHOICE_RE =
   /\[[ \t]*CHOICE[ \t]*:[ \t]*([\w-]+)(?:[ \t]+([^\]]*))?\][ \t]*\r?\n([\s\S]*?)\r?\n\[[ \t]*\/[ \t]*CHOICE[ \t]*\]/g;
-
-export function generateChoiceId(): string {
-  if (
-    typeof crypto !== "undefined" &&
-    typeof crypto.randomUUID === "function"
-  ) {
-    return crypto.randomUUID();
-  }
-  return `choice-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
-}
 
 export function parseChoiceBody(body: string): ChoiceOption[] {
   const options: ChoiceOption[] = [];
@@ -56,7 +47,7 @@ export function findChoiceRegions(text: string): ChoiceMatch[] {
     const scope = m[1];
     const attrs = m[2] ?? "";
     const idMatch = attrs.match(/\bid=(\S+)/);
-    const id = idMatch?.[1] ?? generateChoiceId();
+    const id = idMatch?.[1] ?? contentBlockId("choice", m[0]);
     const allowCustom = /\ballow_custom\b/.test(attrs);
     const options = parseChoiceBody(m[3]);
     if (options.length > 0) {
