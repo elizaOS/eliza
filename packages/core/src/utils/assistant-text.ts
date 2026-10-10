@@ -197,11 +197,13 @@ function stripWrappedStageDirections(input: string, pattern: RegExp): string {
 }
 
 function tidyAssistantTextSpacing(input: string): string {
+	// The space goes only before clause punctuation, not before a token that
+	// starts with it: ".env", "!help" and ".50" keep their space.
 	return input
 		.replace(/[ \t]+\n/g, "\n")
 		.replace(/\n[ \t]+/g, "\n")
 		.replace(/[ \t]{2,}/g, " ")
-		.replace(/ ?([,.;!?])/g, "$1")
+		.replace(/ ?([,.;!?])(?![\p{L}\p{N}_/~])/gu, "$1")
 		.replace(/\(\s+/g, "(")
 		.replace(/\s+\)/g, ")");
 }
