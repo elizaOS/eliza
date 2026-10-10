@@ -1144,11 +1144,13 @@ export async function handleMemoryRoutes(
       searchDocuments(runtime, query, limit),
     ]);
     const prompt = buildQuickContextPrompt({ query, memories, documents });
-    let answer = "I couldn't generate a quick answer right now.";
     const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-    const text = typeof response === "string" ? response : String(response);
-    if (text.trim()) {
-      answer = text.trim();
+    const answer = (
+      typeof response === "string" ? response : String(response)
+    ).trim();
+    if (!answer) {
+      error(res, "Quick context model returned no text", 502);
+      return true;
     }
     json(res, {
       query,
