@@ -251,6 +251,7 @@ import {
   lifeOpsErrorMessage,
   normalizeEnumValue,
   normalizeOptionalString,
+  normalizePhoneNumber,
   requireNonEmptyString,
 } from "../service-normalize.js";
 import type { ReminderActivityProfileSnapshot } from "../service-types.js";
@@ -698,17 +699,6 @@ function normalizeOptionalRecord(
 }
 
 const LIFEOPS_PRIVACY_CLASSES = ["public", "private", "shared"] as const;
-
-function normalizePhoneNumber(value: unknown, field: string): string {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    fail(400, `${field} must be a non-empty phone number string`);
-  }
-  const cleaned = value.replace(/[\s\-().]/g, "");
-  if (!/^\+?\d{7,15}$/.test(cleaned)) {
-    fail(400, `${field} is not a valid phone number`);
-  }
-  return cleaned.startsWith("+") ? cleaned : `+${cleaned}`;
-}
 
 function normalizePrivacyClass(
   value: unknown,
