@@ -637,16 +637,16 @@ export function icsExceptionDateInstants(
 export function readIcsExceptionDates(
   recurrence: readonly string[],
   timezone: string | null,
-): { instants: Set<number>; complete: boolean } {
+): { instants: Set<number>; complete: boolean; invalidValueCount: number } {
   const instants = new Set<number>();
-  let complete = true;
+  let invalidValueCount = 0;
   for (const line of recurrence) {
     if (!/^EXDATE[:;]/i.test(line.trim())) continue;
     let property: IcsContentLine;
     try {
       property = parseContentLine(line);
     } catch {
-      complete = false;
+      invalidValueCount += 1;
       continue;
     }
     for (const value of splitOutsideQuotes(property.value, ",")) {
@@ -658,11 +658,15 @@ export function readIcsExceptionDates(
         );
         instants.add(Date.parse(parsed.instant));
       } catch {
-        complete = false;
+        invalidValueCount += 1;
       }
     }
   }
-  return { instants, complete };
+  return {
+    instants,
+    complete: invalidValueCount === 0,
+    invalidValueCount,
+  };
 }
 
 function parseEvent(

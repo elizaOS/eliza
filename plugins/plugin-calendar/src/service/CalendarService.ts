@@ -5114,6 +5114,19 @@ export class CalendarService extends Service {
       timeMin: args.timeMin,
       timeMax: args.timeMax,
     });
+    for (const code of expansion.diagnostics) {
+      this.runtime.reportError(
+        "calendar:ics-expansion",
+        new CalendarServiceError(
+          422,
+          code === "CALENDAR_ICS_EXDATE_INVALID"
+            ? "The subscribed calendar contains an invalid EXDATE value."
+            : "The subscribed calendar recurrence exceeds supported date arithmetic.",
+          code,
+        ),
+        { sourceId: args.source.id },
+      );
+    }
     const events = expansion.events.filter(
       (event) => event.status !== "cancelled",
     );
