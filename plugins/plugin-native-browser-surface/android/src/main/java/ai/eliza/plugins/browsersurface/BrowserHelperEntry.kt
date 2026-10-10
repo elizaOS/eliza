@@ -93,7 +93,10 @@ internal class BrowserHelperEntry(
     }
 
     fun removeEntry() {
-        entry?.let { if (it.isAttachedToWindow) manager.removeViewImmediate(it) }
+        // WindowManager.addView assigns the window's ViewRootImpl as the view's parent at once,
+        // but the view attaches only on its first traversal. A refusal in the same main-thread
+        // turn (hideBrowserDockWithEntry with no browser split) must still remove the window.
+        entry?.let { if (it.isAttachedToWindow || it.parent != null) manager.removeViewImmediate(it) }
         entry = null
     }
 
@@ -133,7 +136,7 @@ internal class BrowserHelperEntry(
         input.hideSoftInputFromWindow(webView.windowToken, 0)
         webView.clearFocus()
         frame.removeView(webView)
-        if (frame.isAttachedToWindow) manager.removeViewImmediate(frame)
+        if (frame.isAttachedToWindow || frame.parent != null) manager.removeViewImmediate(frame)
         parent?.addView(webView, parentIndex, parentLayout)
         full = null; parent = null; parentLayout = null
         webView.post {
