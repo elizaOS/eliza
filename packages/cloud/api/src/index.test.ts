@@ -1200,7 +1200,7 @@ describe("cloud-api worker entrypoint", () => {
       ],
       [
         "https://docs.elizacloud.ai/docs/api/agents?source=legacy",
-        "https://eliza.app",
+        "https://eliza.app/",
       ],
     ] as const;
 
