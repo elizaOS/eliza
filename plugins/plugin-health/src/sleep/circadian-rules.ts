@@ -136,10 +136,16 @@ const RULES: readonly Rule[] = [
   },
   // desktop.lockedGt30m — session lock sustained past 30 min.
   function desktopLocked(inputs) {
-    const hit = findSignal(
-      inputs,
-      (s) => s.source === "desktop_power" && s.state === "locked",
-    );
+    // The desktop reports its power state every minute, newest first. The
+    // lock started at the oldest report of the current unbroken locked run,
+    // not at the newest locked report.
+    let hit: { signal: LifeOpsActivitySignal; ageMs: number } | null = null;
+    for (const signal of inputs.signals) {
+      if (signal.source !== "desktop_power") continue;
+      if (signal.state !== "locked") break;
+      const ageMs = signalAge(signal, inputs.nowMs);
+      if (ageMs !== null) hit = { signal, ageMs };
+    }
     if (!hit || hit.ageMs < 30 * 60000) return null;
     return {
       name: "desktop.lockedGt30m",
