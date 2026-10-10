@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type http from "node:http";
 import type { AgentRuntime, Service } from "@elizaos/core";
 import {
@@ -686,10 +687,17 @@ export async function handleCloudBillingRoute(
       }),
     });
 
+    // The cloud checkout route requires an Idempotency-Key header. Pass the
+    // caller's key through, or create one for this checkout request.
+    const callerKey = req.headers["idempotency-key"];
+    const idempotencyKey =
+      typeof callerKey === "string" && callerKey.trim()
+        ? callerKey.trim()
+        : `eliza-checkout-${randomUUID()}`;
     const checkoutResponse = await fetchUpstream(
       `${baseUrl}/api/v1/credits/checkout`,
       "POST",
-      headers,
+      { ...headers, "Idempotency-Key": idempotencyKey },
       upstreamBody,
     );
     const checkoutPayload = await readJsonResponse(checkoutResponse);
