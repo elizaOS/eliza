@@ -1833,7 +1833,7 @@ export async function runOnboardingChatWithStore(
     const handoffReceiptMatchesCanonicalTarget =
       !session.handoffCopiedAt || session.launchUrl === canonicalLaunchUrl;
     const retainedHandoffMatchesStoredAgent =
-      !!session.agentId &&
+      session.agentId === canonicalAgentId &&
       !!session.handoffCopiedAt &&
       session.launchUrl === controlPanelUrl(session.agentId);
     const retainHealthyHandoffWhileDeletionFailureIsVisible =
