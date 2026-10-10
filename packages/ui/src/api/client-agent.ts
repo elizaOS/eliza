@@ -1800,9 +1800,17 @@ ElizaClient.prototype.restartAgent = async function (this: ElizaClient) {
       method: "POST",
     });
     return res.status;
-  } catch {
+  } catch (err) {
     // Back-compat for older runtimes that still expose only the process-level
-    // restart endpoint.
+    // restart endpoint. Any other failure (409 restart in progress, 500 restart
+    // failed, network) is the caller's to handle; falling back would kill the
+    // process.
+    if (
+      !(err instanceof ApiError) ||
+      (err.status !== 404 && err.status !== 405 && err.status !== 501)
+    ) {
+      throw err;
+    }
     await this.fetch<{
       ok: boolean;
     }>("/api/restart", { method: "POST" });
