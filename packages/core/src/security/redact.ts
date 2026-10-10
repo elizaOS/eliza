@@ -110,7 +110,11 @@ function redactPemBlock(block: string): string {
 	if (lines.length < 2) {
 		return "***";
 	}
-	return `${lines[0]}\n…redacted…\n${lines[lines.length - 1]}`;
+	const last = lines[lines.length - 1];
+	// A block cut off at the next BEGIN header has key material as its last line.
+	return last.startsWith("-----END ")
+		? `${lines[0]}\n…redacted…\n${last}`
+		: `${lines[0]}\n…redacted…\n`;
 }
 
 function redactMatch(match: string, groups: string[]): string {
