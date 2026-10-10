@@ -994,7 +994,8 @@ export class GoalsDomain {
       "definition",
       definitionRecord.definition.id,
     );
-    const lastReminderAttempt = reminderInspection.attempts[0] ?? null;
+    // Attempts are oldest first (ORDER BY scheduled_for, step_index, attempted_at).
+    const lastReminderAttempt = reminderInspection.attempts.at(-1) ?? null;
     const lastOccurrenceAudit = reminderInspection.audits[0] ?? null;
     const whyVisible =
       occurrence.state === "snoozed" && occurrence.snoozedUntil
@@ -1015,8 +1016,8 @@ export class GoalsDomain {
         source: definitionRecord.definition.source,
         whyVisible,
         lastReminderAt: lastReminderAttempt?.attemptedAt ?? null,
-        lastReminderChannel: lastReminderAttempt?.channel,
-        lastReminderOutcome: lastReminderAttempt?.outcome,
+        lastReminderChannel: lastReminderAttempt?.channel ?? null,
+        lastReminderOutcome: lastReminderAttempt?.outcome ?? null,
         lastActionSummary: lastOccurrenceAudit
           ? `${lastOccurrenceAudit.reason} at ${lastOccurrenceAudit.createdAt}`
           : null,
