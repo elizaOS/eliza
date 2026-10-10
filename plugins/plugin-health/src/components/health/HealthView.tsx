@@ -139,8 +139,11 @@ function formatDateTime(value: string | null): string {
 
 function formatDuration(minutes: number | null): string {
   if (minutes === null) return "—";
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
+  // A median of an even count can end in .5 (472.5). Round the whole
+  // duration first, so the row prints "7h 53m", not "7h 52.5m".
+  const total = Math.round(minutes);
+  const hours = Math.floor(total / 60);
+  const mins = total % 60;
   if (hours === 0) return `${mins}m`;
   return `${hours}h ${mins}m`;
 }
