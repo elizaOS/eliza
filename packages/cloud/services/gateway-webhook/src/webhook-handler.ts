@@ -14,6 +14,7 @@ import {
 } from "@elizaos/cloud-services-common/telegram";
 import {
   executeResponseAttempts,
+  PERSONAL_SHARED_FAILURE_REPLY,
   type PersonalSharedFailureMetadata,
   personalSharedFailureReply,
   personalSharedNoResponseFailure,
@@ -928,7 +929,50 @@ export async function handleWebhook(
           });
         }
       }
-      await settleBackgroundDeliveryFailure(redis, err, {
+      let failure: unknown = err;
+      if (
+        err instanceof PersonalSharedPreEgressError &&
+        !agentId &&
+        isPersonalElizaTransport(adapter.platform) &&
+        !isNetworkProject(project) &&
+        isDirectChat(event)
+      ) {
+        // The provider already received its acknowledgement and will not
+        // retry, and nothing reached the sender. Send the same notice a
+        // private Telegram turn gets, so the failed turn is not silent. A
+        // Network turn is excluded: its consent state can be unknown here.
+        logger.warn("Personal Shared turn failed; delivering failure notice", {
+          project,
+          platform: adapter.platform,
+          messageId: event.messageId,
+          traceId: trace.traceId,
+          error: err.message,
+          status: err.failure?.status ?? null,
+          failureStage: err.failure?.stage ?? null,
+          failureName: err.failure?.name ?? null,
+          failureCauseName: err.failure?.causeName ?? null,
+          retryable: err.failure?.retryable ?? false,
+        });
+        try {
+          await sendDirectReply(
+            adapter,
+            config,
+            event,
+            deps,
+            project,
+            personalSharedFailureReply(err.failure),
+          );
+          await redis.set(dedupKey, CONNECTOR_DELIVERED, {
+            ex: TELEGRAM_DELIVERY_TTL_SECONDS,
+          });
+          return;
+        } catch (noticeError) {
+          // error-policy:J2 the turn failure is logged above; the ledger now
+          // records the outcome of the notice send, which is the only egress.
+          failure = noticeError;
+        }
+      }
+      await settleBackgroundDeliveryFailure(redis, failure, {
         dedupKey,
         project,
         platform: adapter.platform,
@@ -1483,6 +1527,20 @@ async function processMessage(
         agentId,
         reason: server.kind,
       });
+      // The agent did not run and nothing was sent. A direct chat gets the
+      // failure notice, so the ledger records a real delivery. A group gets
+      // no notice and keeps the earlier behavior.
+      if (isDirectChat(event)) {
+        await sendDirectReply(
+          adapter,
+          config,
+          event,
+          deps,
+          project,
+          PERSONAL_SHARED_FAILURE_REPLY,
+          deliveryHooks,
+        );
+      }
       return;
     }
     logger.info(
@@ -1625,6 +1683,15 @@ export function startTypingRefreshLoop(
     stopped = true;
     clearInterval(timer);
   };
+}
+
+/** A one-to-one chat with a real inbound message, not a membership change. */
+function isDirectChat(event: ChatEvent): boolean {
+  return (
+    event.chatType !== "group" &&
+    event.chatType !== "supergroup" &&
+    !event.membershipChange
+  );
 }
 
 function isPersonalElizaTransport(
