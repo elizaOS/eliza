@@ -1794,6 +1794,7 @@ async function handleRequestForViewClient(
       pathname.startsWith("/api/tts/local-inference") ||
       pathname.startsWith("/api/asr/local-inference") ||
       pathname.startsWith("/api/voice/audio-frames") ||
+      pathname === "/api/voice/native-pcm-turn" ||
       pathname === "/api/voice/playback-frames" ||
       pathname === "/api/voice/aec-capture") &&
     (await (async () => {
