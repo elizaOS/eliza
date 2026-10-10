@@ -41,8 +41,8 @@ export function getChainByName(chainName: string): Chain {
 
 export const AddressSchema = z
   .string()
-  .regex(/^0x[a-fA-F0-9]{40}$/, "Invalid Ethereum address format")
-  .transform((addr) => addr as Address);
+  .regex(/^0[xX][a-fA-F0-9]{40}$/, "Invalid Ethereum address format")
+  .transform((addr) => `0x${addr.slice(2)}` as Address);
 
 export const HashSchema = z
   .string()
