@@ -81,14 +81,14 @@ async function __hono_GET(
     .orderBy(usageRecords.type, usageRecords.provider);
 
   const breakdown: BreakdownRow[] = rows.map((row) => {
-    const rawCost = Number(row.inputCost) + Number(row.outputCost);
+    const billedCost = Number(row.inputCost) + Number(row.outputCost);
     const markup = Number(row.markup);
     return {
       type: row.type,
       provider: row.provider,
-      rawCost,
+      rawCost: billedCost - markup,
       markup,
-      billedCost: rawCost + markup,
+      billedCost,
       recordCount: row.recordCount,
     };
   });
