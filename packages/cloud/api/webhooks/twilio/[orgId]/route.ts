@@ -287,7 +287,7 @@ async function handleIncomingMessage(
           provider: "twilio",
           input_tokens: 0,
           output_tokens: 0,
-          input_cost: String(billing.rawCost),
+          input_cost: String(billing.billedCost),
           output_cost: String(0),
           markup: String(billing.markup),
           request_id: event.MessageSid,
