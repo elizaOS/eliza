@@ -134,7 +134,7 @@ function parseArgs(argv) {
       case "--instruct":
         args.instruct = argv[++i];
         break;
-      case "--max-seconds":
+      case "--max-seconds": {
         // Number.parseFloat stops at the first non-digit ("15junk" -> 15), so a
         // typo silently passed the positive guard instead of failing.
         // Require the whole trimmed value to be decimal; malformed -> NaN fails
@@ -145,6 +145,7 @@ function parseArgs(argv) {
           ? Number(maxSecondsRaw)
           : Number.NaN;
         break;
+      }
       case "--skip-encode":
         args.skipEncode = true;
         break;
