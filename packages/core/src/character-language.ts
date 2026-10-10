@@ -48,19 +48,22 @@ export function normalizeCharacterLanguage(input: unknown): CharacterLanguage {
 	if (lower === "zh" || lower.startsWith("zh-")) {
 		return "zh-CN";
 	}
-	if (lower.startsWith("ko")) {
+	// Whole primary subtag only: "kok" (Konkani), "tlh" and "est" are not
+	// Korean, Tagalog or Spanish. "_" is accepted as in "es_ES".
+	const primary = lower.split(/[-_]/u)[0];
+	if (primary === "ko") {
 		return "ko";
 	}
-	if (lower.startsWith("es")) {
+	if (primary === "es") {
 		return "es";
 	}
-	if (lower.startsWith("pt")) {
+	if (primary === "pt") {
 		return "pt";
 	}
-	if (lower.startsWith("vi")) {
+	if (primary === "vi") {
 		return "vi";
 	}
-	if (lower.startsWith("tl") || lower.startsWith("fil")) {
+	if (primary === "tl" || primary === "fil") {
 		return "tl";
 	}
 	if (lower === "ja" || lower.startsWith("ja-")) {
