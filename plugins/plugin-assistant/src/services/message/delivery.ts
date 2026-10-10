@@ -458,7 +458,7 @@ export function shouldRewriteActionCallback(
   return !PASSIVE_TURN_ACTIONS.has(resolvedAction);
 }
 
-export async function rewriteActionCallbackInCharacter(args: {
+type ActionCallbackRenderInput = {
   runtime: IAgentRuntime;
   message: Pick<Memory, "id" | "roomId" | "entityId">;
   response: Content;
@@ -470,7 +470,52 @@ export async function rewriteActionCallbackInCharacter(args: {
   groundingFailure?: PlannedReplyClaimKind | "missing_reply";
   /** Only reply recovery with retained originals may opt into this read. */
   allowFullContextRequest?: boolean;
-}): Promise<{
+};
+
+/** Optional presentation may keep the already user-destined callback text. */
+export async function rewriteActionCallbackInCharacter(
+  args: ActionCallbackRenderInput,
+): ReturnType<typeof renderActionCallbackInCharacter> {
+  try {
+    return await renderActionCallbackInCharacter(args);
+  } catch (error) {
+    // error-policy:J4 optional presentation preserves the original callback;
+    // required reply recovery uses the throwing renderer below instead.
+    args.runtime.logger.debug(
+      {
+        src: "service:message",
+        actionName: args.actionName,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Failed to rewrite action callback in character voice",
+    );
+    args.runtime.reportError("MessageService.rewriteActionCallback", error, {
+      actionName: args.actionName,
+      roomId: args.message.roomId,
+    });
+    return reportActionCallbackRenderFailure(args, "rewrite_error");
+  }
+}
+
+function reportActionCallbackRenderFailure(
+  args: ActionCallbackRenderInput,
+  reason: string,
+): null {
+  const actionError =
+    typeof args.response.error === "string" ? args.response.error.trim() : "";
+  if (actionError)
+    args.runtime.reportError(
+      "MessageService.rewriteActionCallback",
+      new Error(actionError),
+      { actionName: args.actionName, roomId: args.message.roomId, reason },
+    );
+  return null;
+}
+
+/** Required recovery must retain provider, cancellation and parsing failures. */
+export async function renderActionCallbackInCharacter(
+  args: ActionCallbackRenderInput,
+): Promise<{
   text: string;
   effectReceiptIds: string[];
   contextRequest?: "full";
@@ -478,21 +523,11 @@ export async function rewriteActionCallbackInCharacter(args: {
   // Failure contract: a failed rewrite must never fabricate wire text — no
   // meta-narration about formatting ever ships (observed live: a settings
   // action succeeded and the user received an internal formatting apology).
-  // Returning null keeps the raw callback text as the delivery: it was
-  // already user-destined before the re-voicing attempt. An action-owned
-  // error string is diagnostics for runtime.reportError, not chat content.
-  const fail = (reason: string): null => {
-    const actionError =
-      typeof args.response.error === "string" ? args.response.error.trim() : "";
-    if (actionError) {
-      args.runtime.reportError(
-        "MessageService.rewriteActionCallback",
-        new Error(actionError),
-        { actionName: args.actionName, roomId: args.message.roomId, reason },
-      );
-    }
-    return null;
-  };
+  // An unusable model value returns null. Optional presentation keeps its
+  // original callback; required recovery rejects without exposing its draft.
+  // An action error belongs to diagnostics, not replacement chat content.
+  const fail = (reason: string) =>
+    reportActionCallbackRenderFailure(args, reason);
   if (typeof args.runtime.useModel !== "function") {
     return fail("model_unavailable");
   }
@@ -546,61 +581,43 @@ export async function rewriteActionCallbackInCharacter(args: {
       : []),
   ].join("\n");
 
-  try {
-    const raw = (await runWithSuppressedModelStream(() =>
-      args.runtime.useModel(ModelType.TEXT_SMALL, {
-        prompt,
-        providerOptions: { eliza: { thinking: "off" } },
-      }),
-    )) as string | GenerateTextResult;
-    const cleaned = stripReasoningBlocks(getV5ModelText(raw)).trim();
-    const parsed = parseJSONObjectFromText(cleaned) as {
-      response?: unknown;
-      effectReceiptIds?: unknown;
-      contextRequest?: unknown;
-    } | null;
-    if (parsed?.contextRequest !== undefined) {
-      return args.allowFullContextRequest && parsed.contextRequest === "full"
-        ? { text: "", effectReceiptIds: [], contextRequest: "full" }
-        : fail("invalid_context_request");
-    }
-    const response =
-      typeof parsed?.response === "string" ? parsed.response.trim() : "";
-    if (!response || response === args.text) {
-      return fail("unusable_model_response");
-    }
-    if (parseJSONObjectFromText(response)) return fail("json_shaped_response");
-    if (
-      parsed?.effectReceiptIds !== undefined &&
-      (!Array.isArray(parsed.effectReceiptIds) ||
-        !parsed.effectReceiptIds.every(
-          (id: unknown) => typeof id === "string" && id.trim(),
-        ))
-    ) {
-      return fail("invalid_effect_receipt_ids");
-    }
-    const text = response.replace(/^["'`]+|["'`]+$/g, "").trim();
-    return text
-      ? {
-          text,
-          effectReceiptIds: (parsed?.effectReceiptIds ?? []) as string[],
-        }
-      : fail("unusable_model_response");
-  } catch (error) {
-    // error-policy:J4 Voice rewriting is an optional presentation layer; the
-    // raw action callback text remains the delivered degraded response.
-    args.runtime.logger.debug(
-      {
-        src: "service:message",
-        actionName: args.actionName,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Failed to rewrite action callback in character voice",
-    );
-    args.runtime.reportError("MessageService.rewriteActionCallback", error, {
-      actionName: args.actionName,
-      roomId: args.message.roomId,
-    });
-    return fail("rewrite_error");
+  const raw = (await runWithSuppressedModelStream(() =>
+    args.runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt,
+      providerOptions: { eliza: { thinking: "off" } },
+    }),
+  )) as string | GenerateTextResult;
+  const cleaned = stripReasoningBlocks(getV5ModelText(raw)).trim();
+  const parsed = parseJSONObjectFromText(cleaned) as {
+    response?: unknown;
+    effectReceiptIds?: unknown;
+    contextRequest?: unknown;
+  } | null;
+  if (parsed?.contextRequest !== undefined) {
+    return args.allowFullContextRequest && parsed.contextRequest === "full"
+      ? { text: "", effectReceiptIds: [], contextRequest: "full" }
+      : fail("invalid_context_request");
   }
+  const response =
+    typeof parsed?.response === "string" ? parsed.response.trim() : "";
+  if (!response || response === args.text) {
+    return fail("unusable_model_response");
+  }
+  if (parseJSONObjectFromText(response)) return fail("json_shaped_response");
+  if (
+    parsed?.effectReceiptIds !== undefined &&
+    (!Array.isArray(parsed.effectReceiptIds) ||
+      !parsed.effectReceiptIds.every(
+        (id: unknown) => typeof id === "string" && id.trim(),
+      ))
+  ) {
+    return fail("invalid_effect_receipt_ids");
+  }
+  const text = response.replace(/^["'`]+|["'`]+$/g, "").trim();
+  return text
+    ? {
+        text,
+        effectReceiptIds: (parsed?.effectReceiptIds ?? []) as string[],
+      }
+    : fail("unusable_model_response");
 }
