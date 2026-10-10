@@ -84,7 +84,12 @@ const PREPULL_PID_DIR = "/tmp";
  */
 const NODE_HEALTH_FAILURE_THRESHOLD = (() => {
   const raw = process.env.CONTAINERS_NODE_HEALTH_FAILURE_THRESHOLD;
-  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  // Number.parseInt stops at the first non-digit ("1e3" -> 1), so a typo
+  // silently set the auto-disable threshold to 1 instead of the default 3.
+  // Require the whole trimmed value to be decimal, mirroring
+  // resolveGenerationTimeoutMs in the discord plugin.
+  const text = (raw ?? "").trim();
+  const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
   return Number.isFinite(parsed) && parsed >= 1 ? parsed : 3;
 })();
 
