@@ -224,7 +224,11 @@ export function getCachingContextualizationPrompt(
 
   const formattedPrompt = promptTemplate.replace(
     "{chunk_content}",
-    chunkContent,
+    // A raw string replacement interprets "$" patterns ("$&", "$'", "$`"),
+    // so chunk text like "a$'b" corrupted the enrichment prompt instead of
+    // being inserted literally. A replacement function inserts the chunk
+    // verbatim.
+    () => chunkContent,
   );
 
   return {
