@@ -223,24 +223,36 @@ function applyEvent(raw: SwarmEvent): void {
   agent.updatedAt = Math.max(agent.updatedAt, activity.timestamp);
   entry.lastSeq = Math.max(entry.lastSeq, activity.seq);
 
+  // Streamed output means the sub-agent is working. The orchestrator emits
+  // `ready` before the first prompt, so only this moves it out of idle.
+  const markRunning = () => {
+    if (agent.status !== "waiting" && acceptsSeq(seqs.status, activity.seq)) {
+      agent.status = "running";
+      seqs.status = activity.seq;
+    }
+  };
+
   switch (activity.kind) {
     case "message":
       if (acceptsSeq(seqs.text, activity.seq)) {
         agent.currentText = activity.text;
         seqs.text = activity.seq;
       }
+      markRunning();
       break;
     case "reasoning":
       if (acceptsSeq(seqs.reasoning, activity.seq)) {
         agent.currentReasoning = activity.text;
         seqs.reasoning = activity.seq;
       }
+      markRunning();
       break;
     case "plan":
       if (acceptsSeq(seqs.plan, activity.seq)) {
         agent.plan = activity.entries;
         seqs.plan = activity.seq;
       }
+      markRunning();
       if (acceptsSeq(entry.planSeq, activity.seq)) {
         // The most-recently-updated plan is also the task-level checklist so a
         // single-agent task surfaces its todos at the card root.
@@ -266,10 +278,7 @@ function applyEvent(raw: SwarmEvent): void {
       if (agent.steps.length > MAX_STEPS_PER_AGENT) {
         agent.steps.splice(0, agent.steps.length - MAX_STEPS_PER_AGENT);
       }
-      if (agent.status !== "waiting" && acceptsSeq(seqs.status, activity.seq)) {
-        agent.status = "running";
-        seqs.status = activity.seq;
-      }
+      markRunning();
       break;
     }
     case "lifecycle":
