@@ -61,7 +61,7 @@ export async function hasLifeOpsAccess(
 }
 
 export type GoogleCapabilityStatus = {
-  status: LifeOpsGoogleConnectorStatus | null;
+  status: LifeOpsGoogleConnectorStatus;
   connected: boolean;
   hasCalendarRead: boolean;
   hasCalendarWrite: boolean;
@@ -73,20 +73,7 @@ export type GoogleCapabilityStatus = {
 export async function getGoogleCapabilityStatus(
   service: LifeOpsService,
 ): Promise<GoogleCapabilityStatus> {
-  let status: LifeOpsGoogleConnectorStatus;
-  try {
-    status = await service.getGoogleConnectorStatus(INTERNAL_URL);
-  } catch {
-    return {
-      status: null,
-      connected: false,
-      hasCalendarRead: false,
-      hasCalendarWrite: false,
-      hasGmailTriage: false,
-      hasGmailSend: false,
-      hasGmailManage: false,
-    };
-  }
+  const status = await service.getGoogleConnectorStatus(INTERNAL_URL);
   const capabilities = new Set(status.grantedCapabilities);
   return {
     status,
