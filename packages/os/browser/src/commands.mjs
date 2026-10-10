@@ -408,14 +408,23 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
   if (policy && ["click", "fill"].includes(command.subaction)) {
     // A task fill or click must not submit a form or leave the page, also
     // not through the page's own script (an auto-submitting code field, or
-    // a button that calls form.submit()). For a short time, stop every
-    // submit and page change that recent input by the person did not start,
-    // except a click on a link that opens that link. The next snapshot
-    // reports what was stopped, so the host can pause the task.
+    // a button that calls form.submit()). For 30 seconds, or until the next
+    // task fill or click, watch what the page does that recent input by the
+    // person did not start:
+    // - a form submit or a page change to another document is stopped,
+    //   except a click on a link that opens that link;
+    // - a same-document address change (history.pushState) is recorded;
+    // - a fetch, XMLHttpRequest or beacon to the page's own site is recorded.
+    //   It cannot be stopped from here and may already have committed
+    //   something (a code field that verifies itself with fetch).
+    // Snapshots report the first of these, so the host treats the outcome as
+    // unknown and pauses the task. A request still in flight when a snapshot
+    // is read shows up in a later snapshot.
     globalThis[watchKey]?.stop();
     const anchor =
       command.subaction === "click" ? node.closest("a[href]") : null;
     let personAt = Number.NEGATIVE_INFINITY;
+    const startedAt = performance.now();
     const controller = new AbortController();
     const watch = {
       violation:
@@ -424,11 +433,15 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
           : null,
       stop: () => controller.abort(),
     };
+    const byPerson = (at) => at - personAt >= 0 && at - personAt <= 1500;
+    const record = (kind) => {
+      watch.violation ??= { kind, scope: policy.guidanceScope };
+    };
     const report = (kind, event) => {
-      if (performance.now() - personAt <= 1500) return;
+      if (byPerson(performance.now())) return;
       if (event.cancelable) event.preventDefault();
       event.stopImmediatePropagation();
-      watch.violation ??= { kind, scope: policy.guidanceScope };
+      record(kind);
     };
     const options = { capture: true, signal: controller.signal };
     const person = (event) => {
@@ -446,15 +459,54 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       (event) => {
         if (
           event.userInitiated ||
-          event.destination.sameDocument ||
           (anchor && !event.formData && event.destination.url === anchor.href)
         )
           return;
+        if (event.destination.sameDocument) {
+          // Recorded, not stopped: the page's own state has already moved.
+          if (!byPerson(performance.now())) record("navigation");
+          return;
+        }
         report(event.formData ? "submit" : "navigation", event);
       },
       { signal: controller.signal },
     );
-    setTimeout(() => controller.abort(), 3000);
+    // The page's own site, without public-suffix data: a request host counts
+    // when its last two or its last three labels match the page's. This errs
+    // toward recording (a.co.uk and b.co.uk match), never toward missing a
+    // sibling host such as api.dkb.de for banking.dkb.de.
+    const tail = (host, count) => host.split(".").slice(-count).join(".");
+    const sameSite = (host) =>
+      host === location.hostname ||
+      tail(host, 2) === tail(location.hostname, 2) ||
+      tail(host, 3) === tail(location.hostname, 3);
+    if (typeof PerformanceObserver === "function") {
+      const requests = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          if (
+            entry.startTime < startedAt ||
+            !["fetch", "xmlhttprequest", "beacon"].includes(
+              entry.initiatorType,
+            ) ||
+            byPerson(entry.startTime)
+          )
+            continue;
+          let host = "";
+          try {
+            host = new URL(entry.name).hostname;
+          } catch {
+            continue;
+          }
+          if (sameSite(host)) {
+            record("request");
+            break;
+          }
+        }
+      });
+      requests.observe({ type: "resource" });
+      controller.signal.addEventListener("abort", () => requests.disconnect());
+    }
+    setTimeout(() => controller.abort(), 30000);
     globalThis[watchKey] = watch;
   }
   if (command.subaction === "click") {
@@ -553,9 +605,10 @@ export async function executeCommand(
   };
   requireCurrent();
   const action = command.subaction;
-  if (action === "list")
+  if (action === "list") {
+    const all = await read(() => api.tabs.query({}));
     return {
-      tabs: (await read(() => api.tabs.query({})))
+      tabs: all
         .filter((tab) => /^https?:/.test(tab.url ?? ""))
         .map((tab) => ({
           id: String(tab.id),
@@ -564,7 +617,11 @@ export async function executeCommand(
           active: tab.active,
           windowId: tab.windowId,
         })),
+      // Windows counted before the filter: a window that holds only a new-tab,
+      // settings or PDF page is still a window she may be looking at.
+      windowCount: new Set(all.map((tab) => tab.windowId)).size,
     };
+  }
   if (action === "open") {
     const context =
       prepared ?? (await read(() => prepareCommand(api, command)));

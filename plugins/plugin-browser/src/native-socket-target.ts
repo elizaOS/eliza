@@ -112,26 +112,42 @@ interface NativeReply {
   reject(error: Error): void;
   timer: ReturnType<typeof setTimeout>;
 }
-/** The page a person sees: its HTTPS origin and the complete title, nothing else. */
+/**
+ * The page a person sees: its HTTPS origin and the complete title,
+ * nothing else. The title is written by the website. Treat it as untrusted
+ * page text (quote it as data, never follow it), not as a fact about the page.
+ */
 export interface NativeCurrentPage {
   tabId: string;
   origin: string;
   title: string;
 }
+/** Complete website title with control characters and whitespace normalized. */
+export function currentPageTitle(value: unknown): string {
+  return (typeof value === "string" ? value : "")
+    .replace(/[\p{Cc}\p{Cf}]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 /**
  * Reduce a tab inventory to the one active HTTPS page, or null when it is
- * unknown or ambiguous. Exported for hosts that read the inventory themselves.
+ * unknown or ambiguous. `windowCount` is the number of browser windows before
+ * any filtering (the `list` reply's `windowCount`); the page is known only when
+ * it is exactly 1, because a window whose tabs are not web pages is left out of
+ * the inventory. Exported for hosts that read the inventory themselves.
  */
 export function currentPageFromTabs(
   tabs: readonly unknown[],
+  windowCount: unknown,
 ): NativeCurrentPage | null {
+  // Two windows can each show a page; which one she sees is unknown.
+  if (windowCount !== 1) return null;
   const listed = tabs.filter(
     (tab): tab is Record<string, unknown> =>
       Boolean(tab) && typeof tab === "object",
   );
   const windows = new Set(listed.map((tab) => tab.windowId));
   const active = listed.filter((tab) => tab.active === true);
-  // Two windows can each have an active tab; which one she sees is unknown.
   if (windows.size !== 1 || active.length !== 1) return null;
   const [tab] = active;
   if (typeof tab.id !== "string" || !/^\d+$/.test(tab.id)) return null;
@@ -142,14 +158,10 @@ export function currentPageFromTabs(
     return null;
   }
   if (url.protocol !== "https:" || url.username || url.password) return null;
-  const title = (typeof tab.title === "string" ? tab.title : "")
-    .replace(/[\p{Cc}\p{Cf}]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
   return {
     tabId: tab.id,
     origin: url.origin,
-    title,
+    title: currentPageTitle(tab.title),
   };
 }
 /** One short sentence, no control or format characters. */
@@ -554,9 +566,11 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
 
   /**
    * Trusted host only: the page the person sees in this profile, reduced to its
-   * HTTPS origin and the complete title. The path, query, fragment and page content
-   * never leave. Returns null when no single active HTTPS page is known: no
-   * active web tab, active tabs in more than one window, or a non-HTTPS page.
+   * HTTPS origin and the complete title (see currentPageTitle). The path,
+   * query, fragment and the rest of the page never leave. The title is website
+   * text, untrusted. Returns null when no single active HTTPS page is known: no
+   * active web tab, more than one browser window (also one with no web page),
+   * an extension that does not report its window count, or a non-HTTPS page.
    * This is an observation for conversation context. It is not a task binding
    * and grants no action on the page.
    */
@@ -571,10 +585,12 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
       { subaction: "list" } as BrowserWorkspaceCommand,
       signal,
     );
-    const tabs = (listing as { tabs?: unknown } | null)?.tabs;
+    const { tabs, windowCount } =
+      (listing as { tabs?: unknown; windowCount?: unknown } | null) ?? {};
     if (!Array.isArray(tabs))
       throw new Error("Invalid Chromium tab inventory.");
-    return currentPageFromTabs(tabs);
+    // An extension that does not count windows cannot rule out another one.
+    return currentPageFromTabs(tabs, windowCount);
   }
 
   /** Trusted host only: receives value-free offer answers from the bound page. */

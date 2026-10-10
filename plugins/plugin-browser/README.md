@@ -106,19 +106,34 @@ primitive does not resolve codes, grant account access, or qualify a live provid
 A proposal can set `expectedSelector` to the one reviewed binding target it is
 for. The actuator refuses it before dispatch unless the binding holds that
 selector for the action, and the browser (`task-expected-target`) accepts no
-other node. For a few seconds after a task fill or click, the browser stops any
-form submit or page change that the person's own input did not start (a link
-click still opens its link). A snapshot then reports `effectViolation`; the
-actuator records such an action as an unknown outcome. `showGuidance` accepts
+other node. For 30 seconds after a task fill or click (or until the next one), the browser
+stops any form submit or move to another document that the person's own input
+did not start (a link click still opens its link). It also records, without
+being able to stop them, a same-document address change (`history.pushState`)
+and a fetch, XMLHttpRequest or beacon to the page's own site, such as a code
+field that verifies itself with `fetch()`. A snapshot then reports
+`effectViolation` (`submit`, `navigation` or `request`); the actuator records
+such an action as an unknown outcome, and the bill workflow pauses on any later
+snapshot that carries it. A request still in flight when the actuator reads its
+after-action snapshot appears only in a later snapshot, and anything the page
+does after the 30 seconds is not watched. `showGuidance` accepts
 `keepClearRefs` (controls the label must not cover, peer capability
 `task-guide-keep-clear`) and returns `placement` and `dismissed`.
 
 `NativeSocketBrowserTarget.currentPage()` is a trusted host read of the page the
 person sees in the connected profile. It sends one `list` command and returns the
 single active HTTPS tab as `{ tabId, origin, title }`: the origin without path,
-query or fragment, and the complete title without control characters. It returns `null` when no single active HTTPS page is known (no
-active web tab, active tabs in more than one window, or a non-HTTPS page). The
-result is conversation context only. It binds no task and permits no action.
+query or fragment, and the complete title from `currentPageTitle()`, with control
+characters and whitespace normalized. This preserves the authorized source
+context without truncation or heuristic replacement. The title is written by
+the website, so hosts pass it to a model as quoted data, never as instructions.
+It returns `null` when no single active HTTPS page is known: no active web tab,
+more than one browser window (the extension's `list` reply counts windows before
+it drops non-web tabs, so a window showing only a new-tab or settings page
+counts), an extension that does not report `windowCount`, or a non-HTTPS page.
+Which window has focus is not read, so with one window the active tab is taken
+as the page she sees. Incognito windows are counted only when the extension is
+allowed in incognito; otherwise she may be looking at one that is not counted. The result is conversation context only. It binds no task and permits no action.
 
 Android hosts set `ELIZA_BROWSER_ANDROID_APPLICATION` to their application ID
 when starting the native target. It connects and reconnects only to that app's

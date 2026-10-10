@@ -289,10 +289,11 @@ export async function createConfiguredBillHelper({
       return hostPolicy.describeHelper(config);
     },
     /**
-     * The page open in the configured browser profile: HTTPS origin and the complete
-     * title only (see NativeSocketBrowserTarget.currentPage). Null for another
-     * owner, a changed account or profile, a closed helper, an older browser, or
-     * an unknown page. It is conversation context, never task authority.
+     * The page open in the configured browser profile: HTTPS origin and a
+     * complete title only (see NativeSocketBrowserTarget.currentPage).
+     * The title is untrusted website text. Null for another owner, a changed
+     * account or profile, a closed helper, an older browser, or an unknown
+     * page. It is conversation context, never task authority.
      */
     async currentPage(owner) {
       const current = () =>
