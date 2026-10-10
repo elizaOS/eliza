@@ -2,7 +2,7 @@
  * Drives the real gateway webhook handler over HTTP into a local Cloud route
  * and proves private Personal Shared replies leave through the identity that
  * received the message, and that terminal no-response turns are never silent.
- * Only the external provider APIs (Telegram, Blooio) are substituted.
+ * Only the external provider APIs (Telegram, Blooio, Twilio) are substituted.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -13,6 +13,7 @@ import {
 } from "@elizaos/cloud-services-common/transport";
 import { blooioAdapter } from "../src/adapters/blooio";
 import { telegramAdapter } from "../src/adapters/telegram";
+import { twilioAdapter } from "../src/adapters/twilio";
 import type { GatewayRedis } from "../src/redis";
 import { handleWebhook } from "../src/webhook-handler";
 import {
@@ -85,6 +86,9 @@ const envKeys = [
   "ELIZA_APP_BLOOIO_API_KEY",
   "ELIZA_APP_BLOOIO_WEBHOOK_SECRET",
   "ELIZA_APP_BLOOIO_PHONE_NUMBER",
+  "ELIZA_APP_TWILIO_ACCOUNT_SID",
+  "ELIZA_APP_TWILIO_AUTH_TOKEN",
+  "ELIZA_APP_TWILIO_PHONE_NUMBER",
   "ELIZA_APP_WEBHOOK_PROJECT",
 ] as const;
 const savedEnv = new Map<string, string | undefined>();
@@ -127,6 +131,15 @@ beforeEach(() => {
         return Response.json({ id: "msg_provider_1" });
       }
       return Response.json({ ok: true });
+    }
+    if (url.startsWith("https://api.twilio.com/")) {
+      const call = {
+        url,
+        body: Object.fromEntries(new URLSearchParams(String(init?.body ?? ""))),
+      } satisfies ProviderCall;
+      providerCalls.push(call);
+      resolveProviderSent(call);
+      return Response.json({ sid: "SMprovider1" });
     }
     return originalFetch(input, init);
   }) as typeof fetch;
@@ -446,5 +459,81 @@ describe("private Blooio Personal Shared egress", () => {
       text: PERSONAL_SHARED_FAILURE_REPLY,
       to: "+15551234567",
     });
+  });
+});
+
+const TWILIO_AUTH_TOKEN = "twilio-test-token";
+
+function twilioInboundSms(messageSid: string): Request {
+  const url = "http://gateway.test/webhook/eliza-app/twilio";
+  const params: Record<string, string> = {
+    MessageSid: messageSid,
+    AccountSid: "ACelizatest",
+    From: "+15551234567",
+    To: "+15559990001",
+    Body: "make me an image of a lighthouse",
+  };
+  const signed = Object.keys(params)
+    .sort()
+    .map((key) => `${key}${params[key]}`)
+    .join("");
+  return new Request(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      "x-twilio-signature": createHmac("sha1", TWILIO_AUTH_TOKEN)
+        .update(url + signed)
+        .digest("base64"),
+    },
+    body: new URLSearchParams(params).toString(),
+  });
+}
+
+describe("Twilio Personal Shared egress", () => {
+  beforeEach(() => {
+    process.env.ELIZA_APP_TWILIO_ACCOUNT_SID = "ACelizatest";
+    process.env.ELIZA_APP_TWILIO_AUTH_TOKEN = TWILIO_AUTH_TOKEN;
+    process.env.ELIZA_APP_TWILIO_PHONE_NUMBER = "+15559990001";
+  });
+
+  test("generated media reaches the SMS reply as links", async () => {
+    const cloud = startCloud({
+      reply: "here's your image.",
+      mediaUrls: ["https://cdn.example.test/lighthouse.png"],
+    });
+
+    const response = await handleWebhook(
+      twilioInboundSms("SMinbound1"),
+      twilioAdapter,
+      deps(cloud.origin, new MemoryRedis()),
+      "eliza-app",
+    );
+    expect(response.status).toBe(200);
+
+    const send = await providerSent;
+    expect(cloud.turns).toHaveLength(1);
+    expect(send.body).toMatchObject({
+      To: "+15551234567",
+      From: "+15559990001",
+      Body: "here's your image.\nhttps://cdn.example.test/lighthouse.png",
+    });
+  });
+
+  test("a media-only reply is sent instead of being treated as no response", async () => {
+    const cloud = startCloud({
+      reply: "",
+      mediaUrls: ["https://cdn.example.test/lighthouse.png"],
+    });
+
+    const response = await handleWebhook(
+      twilioInboundSms("SMinbound2"),
+      twilioAdapter,
+      deps(cloud.origin, new MemoryRedis()),
+      "eliza-app",
+    );
+    expect(response.status).toBe(200);
+
+    const send = await providerSent;
+    expect(send.body.Body).toBe("https://cdn.example.test/lighthouse.png");
   });
 });
