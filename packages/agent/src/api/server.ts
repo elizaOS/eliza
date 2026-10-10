@@ -970,6 +970,7 @@ interface RequestContext {
   onRestart:
     | ((options?: RuntimeRestartOptions) => Promise<AgentRuntime | null>)
     | null;
+  onStop: ((runtime: AgentRuntime) => Promise<void>) | null;
   onRuntimeSwapped?: () => void;
   onRuntimeActivated?: (
     previousRuntime: AgentRuntime | null,
@@ -1076,6 +1077,9 @@ async function applyRuntimeRestart(
     options = { ...options, disposeCurrentBeforeBuild: true };
   }
   if (!ctx?.onRestart) {
+    return false;
+  }
+  if (state.runtimeStopPromise) {
     return false;
   }
   if (state.agentState === "restarting") {
@@ -2001,6 +2005,7 @@ async function handleRequestForViewClient(
       // (fresh-install deferred boot / stopped host) instead of fake-flipping
       // the reported state to "running" with nothing behind it.
       onRestart: ctx?.onRestart ?? undefined,
+      onStop: ctx?.onStop ?? undefined,
       onRuntimeSwapped: ctx?.onRuntimeSwapped,
       onRuntimeActivated: ctx?.onRuntimeActivated,
     })
@@ -3262,6 +3267,8 @@ export async function startApiServer(opts?: {
    * If omitted the endpoint returns 501 (not supported in this mode).
    */
   onRestart?: (options?: RuntimeRestartOptions) => Promise<AgentRuntime | null>;
+  /** Fully disposes a live runtime before the lifecycle route reports stopped. */
+  onStop?: (runtime: AgentRuntime) => Promise<void>;
   /** A replacement shares the exact physical store and cannot overlap its predecessor. */
   restartRequiresRuntimeDisposal?: boolean;
   /** Runs after the server atomically publishes the replacement runtime. */
@@ -3536,6 +3543,7 @@ export async function startApiServer(opts?: {
   };
   // Store the restart callback on the state so the route handler can access it.
   const onRestart = opts?.onRestart ?? null;
+  const onStop = opts?.onStop ?? null;
   const restartRequiresRuntimeDisposal =
     opts?.restartRequiresRuntimeDisposal === true;
   const onRuntimeActivated = opts?.onRuntimeActivated;
@@ -3548,6 +3556,7 @@ export async function startApiServer(opts?: {
     hostRuntimeMode:
       hostConfig === undefined ? undefined : resolveRuntimeMode(hostConfig),
     onRestart,
+    onStop,
     restartRequiresRuntimeDisposal,
     onRuntimeActivated,
     onRuntimeSwapped: () => {

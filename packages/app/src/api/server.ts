@@ -1062,6 +1062,7 @@ export async function startApiServer(
   }
 
   const callerOptions = args[0];
+  const callerStop = callerOptions?.onStop;
   const voiceHost = createSelfHostedVoice(compatState, {
     protectedHost: Boolean(callerOptions?.hostAdmission),
   });
@@ -1086,6 +1087,18 @@ export async function startApiServer(
       clearCompatRuntimeRestart(compatState);
       await callerOptions?.onRuntimeActivated?.(previousRuntime, activeRuntime);
     },
+    ...(callerStop
+      ? {
+          onStop: async (runtime: AgentRuntime) => {
+            await callerStop(runtime);
+            if (compatState.current === runtime) {
+              stopStandaloneKokoro(compatState);
+              voiceHost.reset();
+              compatState.current = null;
+            }
+          },
+        }
+      : {}),
     requestMiddleware: async (req, res, next) => {
       await runCompatRequestPipeline(req, res, compatState, async () => {
         if (await voiceHost.handleRequest(req, res)) return;
