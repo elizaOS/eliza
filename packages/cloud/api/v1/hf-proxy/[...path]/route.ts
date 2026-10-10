@@ -109,7 +109,12 @@ function retryAfterUntilNextUtcMonth(now: Date): string {
 function parseContentLength(headers: Headers): number | null {
   const value = headers.get("content-length");
   if (!value) return null;
-  const parsed = Number.parseInt(value, 10);
+  // Number.parseInt stops at the first non-digit ("123junk" -> 123), so a
+  // malformed header value was accepted as a declared byte count instead of
+  // being treated as unknown. Require the whole trimmed value to be
+  // decimal, mirroring responseContentLength in the agent fetch helpers.
+  const text = value.trim();
+  const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
