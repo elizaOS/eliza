@@ -167,7 +167,15 @@ function readyLabel(value: boolean | undefined): string {
 }
 function hasPositiveAmount(value: string | null | undefined): boolean {
   if (!value) return false;
-  const parsed = Number.parseFloat(value);
+  // Number.parseFloat stops at the first non-digit ("100junk" -> 100), so a
+  // malformed balance string was reported as positive funds instead of
+  // absent/zero. Require the whole trimmed value to be decimal, mirroring
+  // TWILIO_SMS_COST_PATTERN in
+  // packages/cloud/sdk/src/browser-contracts/markup.ts.
+  const text = value.trim();
+  const parsed = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(text)
+    ? Number(text)
+    : Number.NaN;
   return Number.isFinite(parsed) && parsed > 0;
 }
 async function renderWalletLiveState(): Promise<string | null> {
