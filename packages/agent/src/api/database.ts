@@ -1079,18 +1079,14 @@ async function handleQuery(
     const stripped = scan.structuralText.trim();
     const noLiterals = scan.callableText;
     const noStrings = scan.keywordText;
-    // Reject PostgreSQL unicode-escaped quoted identifiers (`U&"s\0065tval"`)
-    // in read-only mode: they decode to the real name only at parse time, so
-    // the literal-name dangerous-function scan below is bypassable (a mutating
-    // function hides as `U&"s\0065tval"`). Legit read-only queries never need
-    // them. Mirrors checkReadOnly() in actions/database.ts.
-    if (/[uU]&"/.test(noLiterals)) {
-      sendJsonError(
-        res,
-        'Query rejected: Unicode-escaped identifiers (U&"...") are not allowed in read-only mode: they can hide a dangerous function name from the guard.',
-      );
-      return;
-    }
+    // PostgreSQL unicode-escaped quoted identifiers (`U&"s\0065tval"`) need
+    // no extra check here: scanSqlForReadOnly already rejects them, because
+    // they decode to the real name only at parse time and could hide a
+    // mutating function from the scan below. This is the same policy as
+    // checkReadOnly() in actions/database.ts. Do not scan the decoded
+    // callable text for `U&"` again: a plain quoted identifier whose name
+    // only contains those characters (for example `"aU&""b"`) is not a
+    // unicode-escaped identifier and the shared guard accepts it.
     const mutationKeywords = [
       // ── DML ────────────────────────────────────────────────────────────
       "INSERT",
