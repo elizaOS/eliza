@@ -169,7 +169,11 @@ export function resolveStateLostRespawnCap(runtime: {
   const raw =
     runtime.getSetting?.(STATE_LOST_RESPAWN_CAP_SETTING) ??
     process.env[STATE_LOST_RESPAWN_CAP_SETTING];
-  const parsed = typeof raw === "string" ? Number.parseInt(raw, 10) : NaN;
+  // Number.parseInt stops at the first non-digit ("1e3" -> 1), so a typo
+  // was silently accepted as the respawn cap override instead of the
+  // budget-derived default. Require the whole trimmed value to be decimal.
+  const rawText = typeof raw === "string" ? raw.trim() : "";
+  const parsed = /^\+?\d+$/.test(rawText) ? Number(rawText) : Number.NaN;
   return Number.isFinite(parsed) && parsed > 0
     ? parsed
     : stateLostRespawnCapFor(MAX_SESSION_RETRY_ATTEMPTS);
