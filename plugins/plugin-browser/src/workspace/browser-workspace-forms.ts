@@ -289,8 +289,15 @@ export async function submitWebBrowserWorkspaceForm(
     submitter?.hasAttribute(`form${name}`)
       ? submitter.getAttribute(`form${name}`)
       : form.getAttribute(name);
+  // HTML method keywords: "dialog" closes the form's dialog and sends nothing;
+  // a missing or invalid value means GET.
+  const methodKeyword = attr("method")?.trim().toLowerCase();
+  if (methodKeyword === "dialog") {
+    form.closest("dialog[open]")?.removeAttribute("open");
+    return;
+  }
+  const method = methodKeyword === "post" ? "post" : "get";
   const action = attr("action")?.trim() || tab.url;
-  const method = (attr("method")?.trim() || "get").toLowerCase();
   const submitUrl = new URL(action, form.baseURI).toString();
   // Submit interception (issue #19882): the resolved submit URL is only known
   // here, after the form's action/base resolution — so per-domain policies get
