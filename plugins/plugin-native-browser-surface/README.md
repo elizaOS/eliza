@@ -87,6 +87,10 @@ must observe and validate the relevant browser target before any workflow effect
 Other platforms reject these operations. Installed pane/input qualification,
 rotation, existing-tab continuity, Close/return and persistent entry are separate
 integration requirements; these APIs alone do not provide a complete helper UI.
+The dock state has no page address or title, because the website runs in
+Chromium, not in this plugin. A host reads the current page through the browser
+extension connection instead (`NativeSocketBrowserTarget.currentPage()` in
+`@elizaos/plugin-browser`).
 
 When the host is already embedded, `presentBrowser()` revalidates the installed
 browser and host embedding trust and preserves the existing pane without sending

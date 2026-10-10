@@ -45,6 +45,21 @@ public final class NativeRuntimeSession implements AutoCloseable {
     public void start() { supervisor.start(); }
     public void restart() { supervisor.restart(); }
     public void invalidate() { supervisor.invalidate(); }
+    /** Test builds only: forcibly ends one named child of the running launch, as a crash
+     * would, so the supervisor's own exit detection and bounded restart policy run. It
+     * sends no request, restarts nothing itself and never touches a retired launch.
+     * Returns false when the session is not running or no live child has that name. */
+    public boolean injectChildExit(String name) {
+        if (name == null || name.isEmpty()) return false;
+        NativeProcessSupervisor.Snapshot before = supervisor.snapshot();
+        Scope scope = current;
+        if (before.state != NativeProcessSupervisor.State.RUNNING || scope == null) return false;
+        Process process = scope.processes().get(name);
+        // A lifecycle change after the lookup retires this scope; never kill a newer launch's child.
+        if (process == null || !process.isAlive() || supervisor.snapshot() != before || current != scope) return false;
+        process.destroyForcibly();
+        return true;
+    }
     @Override public void close() { supervisor.close(); }
 
     /** Bind resources captured by the host to their original lifecycle before dispatch.

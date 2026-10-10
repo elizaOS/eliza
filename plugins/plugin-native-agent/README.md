@@ -259,6 +259,14 @@ shutdown invalidate old requests without retargeting them. No start is triggered
 status or health reads. Consumer instrumentation should exercise actual failure,
 restart, stop and health wiring separately from real configured-runtime acceptance.
 
+For that instrumentation, `NativeRuntimeSession.injectChildExit(name)` ends one
+named child of the running launch as a crash would. The supervisor's own exit
+detection and restart budget then run. It sends no request and never ends a
+child of a retired launch. `EmbeddedRuntimeService.injectChildExitFor(type, name)`
+exposes it to a host only when the live service overrides
+`allowsChildExitInjection()` to return true. Return true only in a test build;
+the default is false, and the static method then throws.
+
 Hosts that capture an endpoint before request admission must use the snapshot-bound
 `NativeRuntimeSession.request(snapshot, ...)` overload. Capture the snapshot before
 selecting the endpoint; a lifecycle change then rejects transport admission instead

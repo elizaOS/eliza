@@ -108,6 +108,11 @@ Closing is idempotent and attempts both host and native cleanup even after an
 exception; startup rollback preserves the original failure and cleanup errors.
 Real local-socket and private-file tests cover these boundaries; they do not
 establish live browser, provider or device acceptance.
+`currentPage(owner)` returns the configured profile's current page as
+`{ origin, title }`, or `null` for another owner, a changed account or profile,
+a closed helper, an older browser or an unknown page. Hosts can use it to tell
+the conversation which website is open beside it, for example in an Android
+browser split, where the dock state has no page.
 
 `native-host/load-configured-bill-helper.mjs` loads explicit helper configuration,
 passes the task artifact's source identity to the reviewed document loader, and

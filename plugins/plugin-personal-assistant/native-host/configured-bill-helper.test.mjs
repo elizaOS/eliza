@@ -200,6 +200,59 @@ test("shutdown fences a description waiting for account validation", async (t) =
   assert.equal(f.disconnected, true);
 });
 
+test("the current page is origin and title only, for the configured owner and profile", async (t) => {
+  const f = await fixture(t);
+  let page = {
+    tabId: "3",
+    origin: "https://bills.example.test",
+    title: "Pay a bill",
+  };
+  let profile = "profile";
+  let reads = 0;
+  class Target extends f.args.runtimeModule.NativeSocketBrowserTarget {
+    getProfileId() {
+      return profile;
+    }
+    async currentPage() {
+      reads++;
+      if (page instanceof Error) throw page;
+      return page;
+    }
+  }
+  f.args.runtimeModule = { NativeSocketBrowserTarget: Target };
+  let account = "owner";
+  f.args.credentialGate = async () => account;
+  const helper = await createConfiguredBillHelper(f.args);
+  assert.deepEqual(await helper.currentPage({ actorId: "owner" }), {
+    origin: "https://bills.example.test",
+    title: "Pay a bill",
+  });
+  assert.equal(await helper.currentPage({ actorId: "other" }), null);
+  assert.equal(await helper.currentPage(undefined), null);
+  account = "other";
+  assert.equal(await helper.currentPage({ actorId: "owner" }), null);
+  account = "owner";
+  profile = "another-profile";
+  assert.equal(await helper.currentPage({ actorId: "owner" }), null);
+  profile = "profile";
+  assert.equal(reads, 1);
+  page = null;
+  assert.equal(await helper.currentPage({ actorId: "owner" }), null);
+  page = new Error("browser gone");
+  assert.equal(await helper.currentPage({ actorId: "owner" }), null);
+  await helper.close();
+  page = { tabId: "3", origin: "https://bills.example.test", title: "" };
+  assert.equal(await helper.currentPage({ actorId: "owner" }), null);
+  assert.equal(reads, 3);
+});
+
+test("an older browser target reports no current page", async (t) => {
+  const f = await fixture(t);
+  const helper = await createConfiguredBillHelper(f.args);
+  assert.equal(await helper.currentPage({ actorId: "owner" }), null);
+  await helper.close();
+});
+
 test("readback stores only projected evidence after a conclusive result", async (t) => {
   const f = await fixture(t);
   let status = "unknown";

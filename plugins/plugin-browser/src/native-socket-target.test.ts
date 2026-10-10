@@ -6,6 +6,7 @@ import { expect, it, vi } from "vitest";
 import { BrowserDispatchFailure } from "./dispatch-types";
 import {
   androidNativeBrowserSocketPath,
+  currentPageFromTabs,
   NativeSocketBrowserTarget,
 } from "./native-socket-target";
 
@@ -909,6 +910,139 @@ it("requires the guide-label capability for labels, offers, pause and a configur
       }),
     ).rejects.toMatchObject({ kind: "UNSUPPORTED" });
     expect(frames.messages).toHaveLength(0);
+  } finally {
+    socket?.destroy();
+    await target.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("reduces the one active HTTPS page to its origin and a short title", () => {
+  const tab = {
+    id: "7",
+    url: "https://pay.example.test/account/123?token=secret#review",
+    title: "  Pay\u0000 your\u200b bill\n now ",
+    active: true,
+    windowId: 1,
+  };
+  expect(
+    currentPageFromTabs([
+      tab,
+      { ...tab, id: "8", active: false, url: "https://other.test/" },
+    ]),
+  ).toEqual({
+    tabId: "7",
+    origin: "https://pay.example.test",
+    title: "Pay your bill now",
+  });
+  expect(
+    currentPageFromTabs([{ ...tab, title: "x".repeat(400) }])?.title,
+  ).toHaveLength(120);
+  expect(currentPageFromTabs([{ ...tab, title: undefined }])?.title).toBe("");
+  // Unknown or ambiguous pages are not guessed.
+  expect(currentPageFromTabs([])).toBeNull();
+  expect(currentPageFromTabs([{ ...tab, active: false }])).toBeNull();
+  expect(
+    currentPageFromTabs([tab, { ...tab, id: "9", windowId: 2 }]),
+  ).toBeNull();
+  expect(
+    currentPageFromTabs([tab, { ...tab, id: "9", active: false, windowId: 2 }]),
+  ).toBeNull();
+  expect(
+    currentPageFromTabs([{ ...tab, url: "http://pay.example.test/" }]),
+  ).toBeNull();
+  expect(
+    currentPageFromTabs([{ ...tab, url: "https://user:pw@pay.example.test/" }]),
+  ).toBeNull();
+  expect(currentPageFromTabs([{ ...tab, url: "not a url" }])).toBeNull();
+  expect(currentPageFromTabs([{ ...tab, id: "x" }])).toBeNull();
+});
+
+it("reads the current page through a list request and sends nothing else", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "native-current-page-"));
+  const socketPath = join(directory, "browser.sock");
+  const target = new NativeSocketBrowserTarget(() => {});
+  let socket: Socket | undefined;
+  try {
+    await expect(target.currentPage()).rejects.toMatchObject({
+      kind: "UNSUPPORTED",
+    });
+    await target.start({ ELIZA_BROWSER_NATIVE_SOCKET: socketPath });
+    socket = createConnection(socketPath);
+    const peer = socketFrames(socket);
+    peer.send({
+      type: "hello",
+      protocol: 2,
+      extensionId: "pmldpcoefklbdbgmggcejkfoinmjfeio",
+      profileId: "page-profile",
+      capabilities: ["list"],
+    });
+    await vi.waitFor(async () => expect(await target.available()).toBe(true));
+    const page = target.currentPage();
+    await vi.waitFor(() => expect(peer.messages).toHaveLength(1));
+    expect(peer.messages[0]).toMatchObject({
+      type: "command",
+      command: { subaction: "list" },
+    });
+    peer.send({
+      type: "result",
+      id: peer.messages[0].id,
+      ok: true,
+      result: {
+        tabs: [
+          {
+            id: "3",
+            url: "https://bills.example.test/pay?amount=12",
+            title: "Pay a bill",
+            active: true,
+            windowId: 4,
+          },
+        ],
+      },
+    });
+    await expect(page).resolves.toEqual({
+      tabId: "3",
+      origin: "https://bills.example.test",
+      title: "Pay a bill",
+    });
+    const invalid = target.currentPage();
+    await vi.waitFor(() => expect(peer.messages).toHaveLength(2));
+    peer.send({
+      type: "result",
+      id: peer.messages[1].id,
+      ok: true,
+      result: { tabs: "none" },
+    });
+    await expect(invalid).rejects.toThrow(/tab inventory/);
+    expect(peer.messages).toHaveLength(2);
+  } finally {
+    socket?.destroy();
+    await target.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("refuses the current page when the peer cannot list tabs", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "native-current-page-old-"));
+  const socketPath = join(directory, "browser.sock");
+  const target = new NativeSocketBrowserTarget(() => {});
+  let socket: Socket | undefined;
+  try {
+    await target.start({ ELIZA_BROWSER_NATIVE_SOCKET: socketPath });
+    socket = createConnection(socketPath);
+    const peer = socketFrames(socket);
+    peer.send({
+      type: "hello",
+      protocol: 2,
+      extensionId: "pmldpcoefklbdbgmggcejkfoinmjfeio",
+      profileId: "page-profile",
+      capabilities: ["snapshot"],
+    });
+    await vi.waitFor(async () => expect(await target.available()).toBe(true));
+    await expect(target.currentPage()).rejects.toMatchObject({
+      kind: "UNSUPPORTED",
+    });
+    expect(peer.messages).toHaveLength(0);
   } finally {
     socket?.destroy();
     await target.stop();

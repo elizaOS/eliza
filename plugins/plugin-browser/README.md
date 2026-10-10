@@ -113,6 +113,14 @@ actuator records such an action as an unknown outcome. `showGuidance` accepts
 `keepClearRefs` (controls the label must not cover, peer capability
 `task-guide-keep-clear`) and returns `placement` and `dismissed`.
 
+`NativeSocketBrowserTarget.currentPage()` is a trusted host read of the page the
+person sees in the connected profile. It sends one `list` command and returns the
+single active HTTPS tab as `{ tabId, origin, title }`: the origin without path,
+query or fragment, and the title without control characters, at most 120
+characters. It returns `null` when no single active HTTPS page is known (no
+active web tab, active tabs in more than one window, or a non-HTTPS page). The
+result is conversation context only. It binds no task and permits no action.
+
 Android hosts set `ELIZA_BROWSER_ANDROID_APPLICATION` to their application ID
 when starting the native target. It connects and reconnects only to that app's
 `<applicationId>.browser.native` abstract socket. The default remains
