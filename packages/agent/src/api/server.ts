@@ -597,7 +597,6 @@ async function getX402Plugin(): Promise<X402PluginModule | null> {
 // real specifier rather than the short key. See optional-plugin-fallback.ts.
 const optionalPluginSpecifiers = {
   capacitor: "@elizaos/plugin-native-inference/host-bridge",
-  computerUse: "@elizaos/plugin-computeruse",
   cloud: "@elizaos/plugin-elizacloud",
   imessage: "@elizaos/plugin-imessage",
   mcp: "@elizaos/plugin-mcp",
@@ -605,7 +604,6 @@ const optionalPluginSpecifiers = {
 } as const;
 const optionalPluginImports = {
   capacitor: () => importOptionalPlugin(optionalPluginSpecifiers.capacitor),
-  computerUse: () => importOptionalPlugin(optionalPluginSpecifiers.computerUse),
   cloud: () => importOptionalPlugin(optionalPluginSpecifiers.cloud),
   imessage: () => importOptionalPlugin(optionalPluginSpecifiers.imessage),
   mcp: () => importOptionalPlugin(optionalPluginSpecifiers.mcp),
@@ -1849,17 +1847,6 @@ async function handleRequestForViewClient(
     })
   ) {
     return;
-  }
-  if (!isMobilePlatform() && pathname.startsWith("/api/computer-use/")) {
-    const { handleComputerUseRoutes } = await getOptionalPluginApi<{
-      handleComputerUseRoutes: (
-        req: http.IncomingMessage,
-        res: http.ServerResponse,
-        pathname: string,
-        method: string,
-      ) => Promise<boolean>;
-    }>("computerUse");
-    if (await handleComputerUseRoutes(req, res, pathname, method)) return;
   }
   if (method === "POST" && pathname === "/api/provider/switch") {
     if (

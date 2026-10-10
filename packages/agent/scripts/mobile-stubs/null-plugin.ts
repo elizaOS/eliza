@@ -59,8 +59,6 @@ function makeStubProxy() {
     "WHATSAPP_MAX_PAIRING_SESSIONS",
     // plugin-discord-local (api server)
     "handleDiscordLocalRoute",
-    // plugin-computeruse (api server route handler)
-    "handleComputerUseRoutes",
     // plugin-workflow route surface. Mobile does not host the workflow
     // runtime, but api/server.ts still awaits this optional route hook before
     // falling through to normal conversation routes.

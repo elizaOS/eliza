@@ -70,7 +70,7 @@ if(mode==='android'){
  assert.equal((await request(valid,{runtime:null})).status,503);features=false;assert.equal((await request(valid)).status,503);features=true;
  assert.equal((await request({...valid,instructions:''})).status,400);assert.equal(tasks.size,1);assert.equal(executions,0);
 }else{assert.equal(cold.status,404);assert.equal(cold.handled,false);assert.equal(tasks.size,0);assert.equal(globalThis.workflowModuleMissing===true,mode==='absent');}
-const absent=await getOptionalPluginApi('computerUse');assert.equal(await absent.handleComputerUseRoutes({}),false);
+const absent=await getOptionalPluginApi('mcp');assert.equal(await absent.handleMcpRoutes({}),false);
 console.log(JSON.stringify({mode,coldStatus:cold.status,created:tasks.size,executions,ownerGates:true,optionalAbsence:true,workflowModuleMissing:globalThis.workflowModuleMissing===true}));
 `,
   );
