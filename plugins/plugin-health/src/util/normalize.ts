@@ -43,8 +43,17 @@ export function normalizeOptionalBoolean(
 ): boolean | undefined {
   if (value === undefined || value === null) return undefined;
   if (typeof value === "boolean") return value;
-  if (value === "true" || value === 1) return true;
-  if (value === "false" || value === 0) return false;
+  if (typeof value === "string") {
+    // Match the canonical normalizer (packages/contracts, plugin-calendar):
+    // trim and lowercase before comparing, and accept "1"/"0" string forms.
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true" || normalized === "1") return true;
+    if (normalized === "false" || normalized === "0") return false;
+  } else if (value === 1) {
+    return true;
+  } else if (value === 0) {
+    return false;
+  }
   return undefined;
 }
 
@@ -56,8 +65,13 @@ export function normalizeOptionalIsoString(
   if (typeof value !== "string") {
     fail(400, `${field} must be an ISO string`);
   }
+  if (value === "") return undefined;
   const trimmed = (value as string).trim();
-  if (trimmed.length === 0) return undefined;
+  if (trimmed.length === 0) {
+    // A blank string is not absent: the canonical normalizer rejects it with
+    // 400 via requireNonEmptyString. Same defect class as #34687.
+    fail(400, `${field} must be a non-empty string`);
+  }
   if (Number.isNaN(Date.parse(trimmed))) {
     fail(400, `${field} must be a valid ISO timestamp`);
   }
@@ -68,9 +82,9 @@ export function normalizeOptionalFiniteNumber(
   value: unknown,
   field: string,
 ): number | null {
-  if (value === undefined || value === null) return null;
+  if (value === undefined || value === null || value === "") return null;
   if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string") {
+  if (typeof value === "string" && value.trim().length > 0) {
     const parsed = Number(value);
     if (Number.isFinite(parsed)) return parsed;
   }

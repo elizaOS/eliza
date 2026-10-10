@@ -208,6 +208,13 @@ test('native selected source persists through HTTP; explicit dossier has one mod
       });
       return { status: response.status, body: (await response.json()) as any };
     };
+    // Clients offer native evening briefs and lapsed-source pausing only when the agent advertises them.
+    expect((await call('/status')).body).toMatchObject({
+      hostedDigestProtocol: 1,
+      hostedDigestSourcePauseProtocol: 1,
+      hostedNativeSourceProtocol: 1,
+      hostedNativeEveningProtocol: 1,
+    });
     const noSource = await workflowAction.handler(
       state.runtime,
       {
@@ -413,7 +420,7 @@ test('native selected source persists through HTTP; explicit dossier has one mod
     expect(
       (
         await call('/hosted/loops', {
-          spec: { ...spec, template: 'evening', enabled: true },
+          spec: { ...spec, template: 'evening', manualOnly: true },
           mutationId: randomUUID(),
           confirmed: true,
         })

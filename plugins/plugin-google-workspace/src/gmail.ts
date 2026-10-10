@@ -1682,23 +1682,27 @@ function normalizeSnippet(value: string | null | undefined): string {
 function decodeHtmlEntities(value: string): string {
   const namedEntities: Record<string, string> = {
     amp: "&",
+    apos: "'",
     gt: ">",
     lt: "<",
     nbsp: " ",
     quot: '"',
   };
-  return value.replace(/&(nbsp|amp|lt|gt|quot|#x[0-9a-f]+|#\d+);/gi, (entity, name: string) => {
-    const key = name.toLowerCase();
-    const named = namedEntities[key];
-    if (named !== undefined) return named;
-    // Gmail HTML writes apostrophes as &#x27; and other characters as numeric references.
-    const hex = /^#x([0-9a-f]+)$/.exec(key);
-    const code = Number.parseInt(hex ? hex[1] : key.slice(1), hex ? 16 : 10);
-    if (!Number.isInteger(code) || code <= 0 || code > 0x10ffff) return entity;
-    if (code >= 0xd800 && code <= 0xdfff) return entity;
-    if (code === 0xa0) return " ";
-    return String.fromCodePoint(code);
-  });
+  return value.replace(
+    /&(nbsp|amp|apos|lt|gt|quot|#x[0-9a-f]+|#\d+);/gi,
+    (entity, name: string) => {
+      const key = name.toLowerCase();
+      const named = namedEntities[key];
+      if (named !== undefined) return named;
+      // Gmail HTML writes apostrophes as &#x27; and other characters as numeric references.
+      const hex = /^#x([0-9a-f]+)$/.exec(key);
+      const code = Number.parseInt(hex ? hex[1] : key.slice(1), hex ? 16 : 10);
+      if (!Number.isInteger(code) || code <= 0 || code > 0x10ffff) return entity;
+      if (code >= 0xd800 && code <= 0xdfff) return entity;
+      if (code === 0xa0) return " ";
+      return String.fromCodePoint(code);
+    }
+  );
 }
 
 function internalDateToIso(value: string | null | undefined): string {

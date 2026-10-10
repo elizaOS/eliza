@@ -43,6 +43,8 @@ when its UI pauses.
 ## Tests
 
 `node --test test/native-host/policy.node.mjs` runs the framework-free policy tests on a JDK.
+The repository Turbo task forwards the SDK and JDK locations and reruns this native
+compile check without cache because the installed toolchains live outside the workspace.
 `test/native-host/android-compile.node.mjs` compiles every Android source against the SDK
 `android.jar`. This check requires `ANDROID_HOME` or `ANDROID_SDK_ROOT` with an API 33+ platform; a missing SDK is an error.
 

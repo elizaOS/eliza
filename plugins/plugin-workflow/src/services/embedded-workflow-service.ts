@@ -16,7 +16,7 @@ import {
   TRIGGER_SCHEMA_VERSION,
   type TriggerConfig,
 } from '@elizaos/core';
-import { and, asc, desc, eq, gt, notInArray, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, notInArray, or, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import {
   embeddedExecutions,
@@ -56,6 +56,7 @@ import {
   digestPhoneSpec,
   digestRecord,
   digestSource,
+  digestSourceState,
   digestText,
   HOSTED_SPEC,
   HOSTED_TEMPLATE_VERSION,
@@ -581,11 +582,6 @@ export class EmbeddedWorkflowService extends Service {
       source = await digestSource(this.getDb(), this.tenantId, ownerId, spec.sourceId);
     if (source.revision !== spec.sourceRevision)
       throw new WorkflowApiError('Reviewed snapshot revision changed', 409);
-    if (source.live?.provider === 'native' && spec.template !== 'morning')
-      throw new WorkflowApiError(
-        'Selected phone sources support a reviewed morning brief or an on-demand dossier',
-        400
-      );
     if (source.live?.provider === 'native' && spec.enabled) {
       if (source.revoked || Date.parse(source.expiresAt) <= Date.now())
         throw new WorkflowApiError('Native source grant expired or revoked', 409);
@@ -680,26 +676,48 @@ export class EmbeddedWorkflowService extends Service {
     return execution;
   }
   async listHostedDigests(ownerId: string) {
-    return (
+    const rows = (
       await this.getDb()
         .select()
         .from(embeddedWorkflows)
         .where(eq(embeddedWorkflows.agentId, this.tenantId))
-    )
-      .filter(
-        (row) =>
-          row.workflow.metadata?.elizaOwnerEntityId === ownerId &&
-          row.workflow.metadata?.[HOSTED_SPEC] &&
-          !validateDigestSpec(JSON.parse(String(row.workflow.metadata[HOSTED_SPEC]))).manualOnly
-      )
+    ).filter(
+      (row) =>
+        row.workflow.metadata?.elizaOwnerEntityId === ownerId &&
+        row.workflow.metadata?.[HOSTED_SPEC]
+    );
+    const definitions = rows
       .map((row) => ({
-        id: row.id,
-        versionId: row.versionId,
-        name: row.name,
+        row,
         spec: validateDigestSpec(JSON.parse(String(row.workflow.metadata?.[HOSTED_SPEC]))),
-        active: row.active,
-        removed: isWorkflowRemoved(row.workflow),
-      }));
+      }))
+      .filter(({ spec }) => !spec.manualOnly);
+    if (!definitions.length) return [];
+    const sources = await this.getDb()
+      .select()
+      .from(hostedSources)
+      .where(
+        and(
+          eq(hostedSources.agentId, this.tenantId),
+          eq(hostedSources.ownerId, ownerId),
+          inArray(hostedSources.id, [...new Set(definitions.map(({ spec }) => spec.sourceId))])
+        )
+      );
+    const states = new Map(
+      sources.map((source) => [
+        source.id,
+        digestSourceState({ ...source.source, revoked: source.revoked }),
+      ])
+    );
+    return definitions.map(({ row, spec }) => ({
+      id: row.id,
+      versionId: row.versionId,
+      name: row.name,
+      spec,
+      active: row.active,
+      removed: isWorkflowRemoved(row.workflow),
+      sourceState: states.get(spec.sourceId) ?? 'revoked',
+    }));
   }
   async digestResults(ownerId: string, clientId: string) {
     const where = and(
@@ -1392,8 +1410,30 @@ export class EmbeddedWorkflowService extends Service {
       if (this.scheduleLocks.get(requested.id) === work) this.scheduleLocks.delete(requested.id);
     }
   }
+  /** True when a scheduled digest's reviewed source is revoked or expired. */
+  private async hostedSourceLapsed(workflow: WorkflowDefinitionResponse): Promise<boolean> {
+    if (!workflow.metadata?.[HOSTED_SPEC]) return false;
+    const spec = validateDigestSpec(JSON.parse(String(workflow.metadata[HOSTED_SPEC])));
+    if (spec.manualOnly) return false;
+    const [row] = await this.getDb()
+      .select()
+      .from(hostedSources)
+      .where(
+        and(
+          eq(hostedSources.agentId, this.tenantId),
+          eq(hostedSources.ownerId, String(workflow.metadata.elizaOwnerEntityId || '')),
+          eq(hostedSources.id, spec.sourceId)
+        )
+      );
+    return !row || digestSourceState({ ...row.source, revoked: row.revoked }) !== 'current';
+  }
   private async syncActiveSchedule(workflow: WorkflowDefinitionResponse): Promise<void> {
     if (workflow.metadata?.[HOSTED_SPEC] && workflow.active && workflow.schedule?.enabled) {
+      // Renewal saves a new reviewed version and re-arms this schedule.
+      if (await this.hostedSourceLapsed(workflow)) {
+        await this.removeSchedule(workflow.id);
+        return;
+      }
       const tasks = await this.runtime.getTasks({
         agentIds: [this.runtime.agentId],
         tags: [...WORKFLOW_TRIGGER_TAGS],
@@ -1720,6 +1760,12 @@ export class EmbeddedWorkflowService extends Service {
       if (pending.finished) await writeDigestResult(tx, this.tenantId, workflow, pending);
       return { workflow, pending, fresh: true };
     });
+    if (
+      accepted.fresh &&
+      accepted.pending.finished &&
+      (accepted.pending.output as Record<string, unknown> | undefined)?.paused === true
+    )
+      await this.syncSchedule(accepted.workflow);
     if (accepted.fresh && !accepted.pending.finished) {
       const controller = new AbortController();
       this.controllers.set(accepted.pending.id, controller);
@@ -1805,6 +1851,8 @@ export class EmbeddedWorkflowService extends Service {
             output: admission,
           };
           await this.saveExecution(unavailable);
+          if ((admission as Record<string, unknown>).paused === true)
+            await this.syncSchedule(workflow);
           return unavailable;
         }
         const spec = validateDigestSpec(JSON.parse(String(workflow.metadata[HOSTED_SPEC])));
@@ -1818,7 +1866,8 @@ export class EmbeddedWorkflowService extends Service {
                   owner,
                   source.live,
                   String(context.scheduledAt),
-                  controller.signal
+                  controller.signal,
+                  spec.template
                 )
               : await readHostedGoogleSource(this.runtime, owner, source.live, {
                   signal: controller.signal,

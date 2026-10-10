@@ -3,6 +3,13 @@ import { matchBillControl, validateBillControls } from "./bill-controls.mjs";
 import { BillHostError } from "./errors.mjs";
 
 const blocked = (reason) => ({ kind: "blocked", reason });
+const personGuidance = (kind) =>
+  [
+    "human-review",
+    "human-sign-in",
+    "human-verification",
+    "human-submit",
+  ].includes(kind);
 // Observation selectors are fresh opaque references on each read. Compare the
 // facts behind them, then use the new references when guidance is restored.
 const policySnapshotKey = (snapshot) =>
@@ -134,7 +141,9 @@ export class BillWorkflow {
       "choose-existing-method": "existingMethod",
     };
     const control = this.controls[keys[decision.kind]];
-    if (!control) {
+    const discovered =
+      personGuidance(decision.kind) && decision.guidanceTarget !== undefined;
+    if (!control && !discovered) {
       await this.clearGuidance();
       return decision;
     }
@@ -150,7 +159,16 @@ export class BillWorkflow {
             guidance,
           }
         : { ...decision, guidance };
-    const target = matchBillControl(snapshot, control);
+    const matches = discovered
+      ? snapshot.elements.filter(
+          (element) => element.selector === decision.guidanceTarget,
+        )
+      : [];
+    const target = discovered
+      ? matches.length === 1
+        ? matches[0]
+        : null
+      : matchBillControl(snapshot, control);
     if (!target || !this.actuator.showGuidance) {
       await this.clearGuidance();
       return unavailable();
@@ -358,6 +376,21 @@ export class BillWorkflow {
         return blocked(
           "The website changed while the bill was being checked. Check it again.",
         );
+      }
+      // Policy may point at an observed control for the person. Rebind that
+      // reference only after all page facts match, never as an execution target.
+      if (
+        personGuidance(decision?.kind) &&
+        decision.guidanceTarget !== undefined
+      ) {
+        const index = snapshot.elements.findIndex(
+          (element) => element.selector === decision.guidanceTarget,
+        );
+        decision = {
+          ...decision,
+          guidanceTarget:
+            index < 0 ? null : fresh.snapshot.elements[index].selector,
+        };
       }
       ({ observation, snapshot } = fresh);
     }

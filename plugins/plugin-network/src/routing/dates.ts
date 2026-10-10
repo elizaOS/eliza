@@ -203,11 +203,23 @@ export function resolveWindow(text: string, now: Date): DateWindow {
         ? addDays(today, n)
         : dur[2] === "week"
           ? addDays(today, 7 * n)
-          : day(
-              today.getUTCFullYear(),
-              today.getUTCMonth() + n,
-              today.getUTCDate(),
-            );
+          : (() => {
+              // Clamp to the last day of the target month: Date.UTC rolls a
+              // non-existent day (Jan 31 + 1 month = Feb 31) into the next
+              // month (Mar 3). Same rollover class fixed in nextMonthDay
+              // (#34651).
+              const target = today.getUTCMonth() + n;
+              const lastDay = day(
+                today.getUTCFullYear(),
+                target + 1,
+                0,
+              ).getUTCDate();
+              return day(
+                today.getUTCFullYear(),
+                target,
+                Math.min(today.getUTCDate(), lastDay),
+              );
+            })();
     return { from: null, until: iso(until) };
   }
   if (/\b(?:all\s+)?next\s+week\b/.test(t)) {

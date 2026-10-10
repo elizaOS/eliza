@@ -1,0 +1,12 @@
+apply plugin: 'com.android.library'
+android {
+ namespace 'ai.eliza.plugins.media'
+ compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 36
+ // ImageDecoder and ContentResolver Bundle queries require API 29+.
+ defaultConfig { minSdk 29; targetSdk project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 36; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
+ compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+repositories { google(); mavenCentral() }
+dependencies {
+ implementation project(':capacitor-android')
+}

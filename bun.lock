@@ -2486,6 +2486,16 @@
         "@capacitor/core": "^8.3.1",
       },
     },
+    "plugins/plugin-native-media": {
+      "name": "@elizaos/capacitor-owned-media",
+      "version": "2.0.3-beta.7",
+      "devDependencies": {
+        "@capacitor/android": "8.5.0",
+        "@types/node": "^25.6.0",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "typescript": "^6.0.3",
+      },
+    },
     "plugins/plugin-native-messages": {
       "name": "@elizaos/plugin-native-messages",
       "version": "2.0.3-beta.7",
@@ -3860,6 +3870,8 @@
     "@elizaos/capacitor-network-policy": ["@elizaos/capacitor-network-policy@workspace:plugins/plugin-native-network-policy"],
 
     "@elizaos/capacitor-notification-mirror": ["@elizaos/capacitor-notification-mirror@workspace:plugins/plugin-native-notifications"],
+
+    "@elizaos/capacitor-owned-media": ["@elizaos/capacitor-owned-media@workspace:plugins/plugin-native-media"],
 
     "@elizaos/capacitor-secure-store": ["@elizaos/capacitor-secure-store@workspace:plugins/plugin-native-secure-store"],
 

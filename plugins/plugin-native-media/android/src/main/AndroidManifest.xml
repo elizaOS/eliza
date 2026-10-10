@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Library code only: no components and no permissions. Owned MediaStore items need none;
+     hosts decide which media permissions, if any, they declare. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />

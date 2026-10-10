@@ -7,6 +7,7 @@ import { BrowserDispatchFailure } from "./dispatch-types";
 import {
   androidNativeBrowserSocketPath,
   currentPageFromTabs,
+  currentPageTitle,
   NativeSocketBrowserTarget,
 } from "./native-socket-target";
 
@@ -639,7 +640,7 @@ it("binds Android sockets to validated host application identity", async () => {
     "org.example/other",
     "org.example ",
     "org.example\0other",
-    "org." + "x".repeat(110),
+    `org.${"x".repeat(110)}`,
   ]) {
     expect(() => androidNativeBrowserSocketPath(invalid)).toThrow(
       "Invalid native browser Android application ID",
@@ -926,36 +927,51 @@ it("reduces the one active HTTPS page to its origin and the complete title", () 
     windowId: 1,
   };
   expect(
-    currentPageFromTabs([
-      tab,
-      { ...tab, id: "8", active: false, url: "https://other.test/" },
-    ]),
+    currentPageFromTabs(
+      [tab, { ...tab, id: "8", active: false, url: "https://other.test/" }],
+      1,
+    ),
   ).toEqual({
     tabId: "7",
     origin: "https://pay.example.test",
     title: "Pay your bill now",
   });
-  expect(
-    currentPageFromTabs([{ ...tab, title: "x".repeat(400) }])?.title,
-  ).toHaveLength(400);
-  expect(currentPageFromTabs([{ ...tab, title: undefined }])?.title).toBe("");
+  // Model-facing context preserves the complete authorized title.
+  const title = `${"a".repeat(119)}😀 ${"x".repeat(400)} user@example.com 123456789`;
+  expect(currentPageFromTabs([{ ...tab, title }], 1)?.title).toBe(title);
+  expect(currentPageTitle(title)).toBe(title);
+  expect(currentPageFromTabs([{ ...tab, title: undefined }], 1)?.title).toBe(
+    "",
+  );
   // Unknown or ambiguous pages are not guessed.
-  expect(currentPageFromTabs([])).toBeNull();
-  expect(currentPageFromTabs([{ ...tab, active: false }])).toBeNull();
+  expect(currentPageFromTabs([], 1)).toBeNull();
+  expect(currentPageFromTabs([{ ...tab, active: false }], 1)).toBeNull();
   expect(
-    currentPageFromTabs([tab, { ...tab, id: "9", windowId: 2 }]),
+    currentPageFromTabs([tab, { ...tab, id: "9", windowId: 2 }], 2),
   ).toBeNull();
   expect(
-    currentPageFromTabs([tab, { ...tab, id: "9", active: false, windowId: 2 }]),
+    currentPageFromTabs(
+      [tab, { ...tab, id: "9", active: false, windowId: 2 }],
+      2,
+    ),
+  ).toBeNull();
+  // A second window that holds only a new-tab or settings page is not in the
+  // web-tab inventory, but it is counted, so the page she sees is unknown.
+  expect(currentPageFromTabs([tab], 2)).toBeNull();
+  // An extension that does not count windows cannot rule that out.
+  expect(currentPageFromTabs([tab], undefined)).toBeNull();
+  expect(currentPageFromTabs([tab], "1")).toBeNull();
+  expect(
+    currentPageFromTabs([{ ...tab, url: "http://pay.example.test/" }], 1),
   ).toBeNull();
   expect(
-    currentPageFromTabs([{ ...tab, url: "http://pay.example.test/" }]),
+    currentPageFromTabs(
+      [{ ...tab, url: "https://user:pw@pay.example.test/" }],
+      1,
+    ),
   ).toBeNull();
-  expect(
-    currentPageFromTabs([{ ...tab, url: "https://user:pw@pay.example.test/" }]),
-  ).toBeNull();
-  expect(currentPageFromTabs([{ ...tab, url: "not a url" }])).toBeNull();
-  expect(currentPageFromTabs([{ ...tab, id: "x" }])).toBeNull();
+  expect(currentPageFromTabs([{ ...tab, url: "not a url" }], 1)).toBeNull();
+  expect(currentPageFromTabs([{ ...tab, id: "x" }], 1)).toBeNull();
 });
 
 it("reads the current page through a list request and sends nothing else", async () => {
@@ -998,6 +1014,7 @@ it("reads the current page through a list request and sends nothing else", async
             windowId: 4,
           },
         ],
+        windowCount: 1,
       },
     });
     await expect(page).resolves.toEqual({
@@ -1005,16 +1022,36 @@ it("reads the current page through a list request and sends nothing else", async
       origin: "https://bills.example.test",
       title: "Pay a bill",
     });
-    const invalid = target.currentPage();
+    // An older extension that does not count windows: the page is unknown.
+    const uncounted = target.currentPage();
     await vi.waitFor(() => expect(peer.messages).toHaveLength(2));
     peer.send({
       type: "result",
       id: peer.messages[1].id,
       ok: true,
+      result: {
+        tabs: [
+          {
+            id: "3",
+            url: "https://bills.example.test/pay",
+            title: "Pay a bill",
+            active: true,
+            windowId: 4,
+          },
+        ],
+      },
+    });
+    await expect(uncounted).resolves.toBeNull();
+    const invalid = target.currentPage();
+    await vi.waitFor(() => expect(peer.messages).toHaveLength(3));
+    peer.send({
+      type: "result",
+      id: peer.messages[2].id,
+      ok: true,
       result: { tabs: "none" },
     });
     await expect(invalid).rejects.toThrow(/tab inventory/);
-    expect(peer.messages).toHaveLength(2);
+    expect(peer.messages).toHaveLength(3);
   } finally {
     socket?.destroy();
     await target.stop();

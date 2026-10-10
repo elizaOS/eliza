@@ -52,7 +52,13 @@ An expired, unrevoked binding can renew at the same task epoch only with a highe
 binding revision and identical owner, origin, targets and display name. Revoked
 bindings and scope changes require a new epoch.
 
-Run `bun run --cwd packages/os test:browser` for protocol tests.
+Run `bun run --cwd packages/os test:browser` for protocol tests. CI runs this
+lane in the OS verification job (`.github/workflows/os.yml`: `verify:portable`
+runs `test`, which ends with `test:browser`) whenever a change touches
+`packages/os`. That job runs for develop pushes (`develop-full.yml` calls
+`ci.yml`), not in pull request validation. The Chromium scripts
+(`test:browser:page`, `test:browser:guidance`, `test:browser:task-guidance` and
+`scripts/test-protected-fill.mjs`) need a browser and are run by hand.
 Installed-browser and signed Android native-host verification are separate required
 integration checks; a built extension alone does not prove those paths work.
 
@@ -224,7 +230,11 @@ field-policy and snapshot-redaction checks; native transport and provider
 qualification remain separate. The same script checks the task effect watch: a
 fill that makes a code field submit itself, and a button that calls
 `form.submit()`, are stopped and reported as `effectViolation`; a link click still
-opens its link. It also checks date fills (`YYYY-MM-DD`, real days only), the
+opens its link. A fetch or beacon to the page's own site after a task fill (also
+one sent seconds later), and a same-document `history.pushState`, cannot be
+stopped but are reported (`request`, `navigation`); third-party requests and
+requests that the person's own typing starts are not. The watch lasts 30 seconds
+or until the next task fill or click. It also checks date fills (`YYYY-MM-DD`, real days only), the
 `expectedSelector` target check and the value-free `hasInput` field flag.
 
 Show-only guides scroll an off-screen target into view and report `placement`.

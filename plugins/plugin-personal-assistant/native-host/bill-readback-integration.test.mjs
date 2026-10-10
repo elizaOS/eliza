@@ -45,6 +45,19 @@ async function checkReadback(asynchronous) {
   let waitForPolicy = null,
     pageNote = "",
     effectViolation;
+  let discoverControl = false,
+    invalidTarget = false,
+    shownTarget = null;
+  const decide = (...args) =>
+    discoverControl
+      ? {
+          kind: "human-review",
+          message: "Check this control on the website.",
+          guidanceTarget: invalidTarget
+            ? "stale:0:1"
+            : args[1].elements[0].selector,
+        }
+      : deriveBillDecision(...args);
   const bindings = [];
   const text = () =>
     Object.entries({
@@ -65,8 +78,14 @@ async function checkReadback(asynchronous) {
       .map(([k, v]) => `${k}: ${v}`)
       .join("\n") + pageNote;
   const target = {
-    guideTask: async (c) =>
-      c.kind === "hide" ? { visible: false } : { accepted: guidanceAvailable },
+    guideTask: async (c) => {
+      if (c.kind === "hide") {
+        shownTarget = null;
+        return { visible: false };
+      }
+      shownTarget = c.selector;
+      return { accepted: guidanceAvailable };
+    },
     bindTask: async (b) => {
       bindings.push(b);
       return {
@@ -112,9 +131,9 @@ async function checkReadback(asynchronous) {
     deriveBillDecision: asynchronous
       ? async (...args) => {
           await waitForPolicy?.();
-          return deriveBillDecision(...args);
+          return decide(...args);
         }
-      : deriveBillDecision,
+      : decide,
     selectionGuidance: {
       unavailableMessage:
         "Bring the saved method into view. No method selection was sent.",
@@ -209,6 +228,16 @@ async function checkReadback(asynchronous) {
         contextKey: choice.contextKey,
         value: "existing",
       });
+    discoverControl = true;
+    const discovered = await request();
+    assert.equal(discovered.kind, "human-review");
+    assert.equal(discovered.guidance.available, true);
+    assert.equal(shownTarget, `view${sequence}:0:1`);
+    assert.equal(effects, 0);
+    invalidTarget = true;
+    assert.equal((await request()).guidance.available, false);
+    assert.equal(shownTarget, null);
+    invalidTarget = false;
     if (asynchronous)
       for (const change of ["text", "effect"]) {
         let entered, release;
@@ -243,6 +272,7 @@ async function checkReadback(asynchronous) {
           await runtime.observe(task.id, paused.revision, true);
         }
       }
+    discoverControl = false;
     let offer = await request();
     assert.equal(offer.kind, "choose-existing-method");
     assert.equal(offer.choice.state, "pending");
