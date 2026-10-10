@@ -90,7 +90,9 @@ public class PasswordTransferPlugin extends Plugin {
     });
   }
   private void fail(Transfer op, Exception failure, String ioMessage, String ioCode) {
-    if (failure instanceof PasswordVaultAccess.Locked) finish(op, null, "Unlock expired; start the transfer again", "locked");
+    if (failure instanceof PasswordVaultAccess.Locked) finish(op, null, op.exporting
+      ? "Unlock expired; export stopped. The selected file may contain passwords; delete it if you do not need it."
+      : "Unlock expired; start the transfer again", "locked");
     else if (failure instanceof PasswordVaultAccess.KeyInvalidated) finish(op, null, "Saved passwords can no longer be decrypted on this device", "key-invalidated");
     else finish(op, null, ioMessage, ioCode);
   }
