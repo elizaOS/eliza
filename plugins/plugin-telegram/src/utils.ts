@@ -24,17 +24,24 @@ function escapePlainText(text: string): string {
 
 /**
  * Escapes plain text line‐by–line while preserving any leading blockquote markers.
+ * When the text does not start a line (it follows code, a link or bold on the
+ * same line), its first line has no blockquote marker: a ">" there is
+ * mid-line and must be escaped, or Telegram rejects the message.
  */
-function escapePlainTextPreservingBlockquote(text: string): string {
+function escapePlainTextPreservingBlockquote(
+  text: string,
+  startsLine = true,
+): string {
   if (!text) {
     return "";
   }
   return text
     .split("\n")
-    .map((line) => {
+    .map((line, index) => {
       // If the line begins with one or more ">" (and optional space),
       // leave that part unescaped.
-      const match = line.match(/^(>+\s?)(.*)$/);
+      const match =
+        startsLine || index > 0 ? line.match(/^(>+\s?)(.*)$/) : null;
       if (match) {
         return match[1] + escapePlainText(match[2]);
       }
@@ -226,13 +233,15 @@ export function convertMarkdownToTelegram(markdown: string): string {
 
   const finalEscaped = converted
     .split(SENTINEL_PATTERN)
-    .map((segment) => {
+    .map((segment, index) => {
       // If the segment is a sentinel, leave it untouched.
       if (SENTINEL_TEST.test(segment)) {
         return segment;
       } else {
         // Otherwise, escape it while preserving any leading blockquote markers.
-        return escapePlainTextPreservingBlockquote(segment);
+        // Only the first segment starts the text; every later one follows a
+        // sentinel on the same line.
+        return escapePlainTextPreservingBlockquote(segment, index === 0);
       }
     })
     .join("");
