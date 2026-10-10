@@ -1986,6 +1986,23 @@ export class SharedRuntimeConversation {
         };
         await this.state.storage.put(key, intent);
       } else if (
+        !recovering &&
+        receipt?.success === false &&
+        receipt.acceptance === "not_accepted" &&
+        receipt.retryable === true
+      ) {
+        // The gateway sent nothing and released its claim (ledger or receipt
+        // store down, send failed before the connector): the same key must
+        // dispatch again on the caller's retry, not replay a final rejection.
+        const { dispatchedAt: _dispatchedAt, ...prepared } = intent;
+        intent = { ...prepared, state: "prepared" };
+        await this.state.storage.put(key, intent);
+        await this.state.storage.delete(NETWORK_DELIVERY_ACTIVE_KEY);
+        await this.updateAlarmDeadlines(
+          ({ networkDeliveryRetryAt: _due, ...rest }) => rest,
+        );
+        return failure("unavailable", 503, true);
+      } else if (
         (!recovering ||
           (abandonUnclaimed && receipt?.code === "not_claimed")) &&
         receipt?.success === false &&
