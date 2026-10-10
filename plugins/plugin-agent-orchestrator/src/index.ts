@@ -662,7 +662,12 @@ function parseProgressMode(value: string | undefined): SubAgentProgressMode {
 }
 function parseProgressDelayMs(value: string | undefined): number {
   if (!value) return 15000;
-  const parsed = Number.parseInt(value, 10);
+  // Number.parseInt stops at the first non-digit ("5000junk" -> 5000), so a
+  // typo was silently accepted as the delay instead of the default 15000.
+  // Require the whole trimmed value to be decimal, mirroring
+  // resolveGenerationTimeoutMs in the discord plugin.
+  const text = value.trim();
+  const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
   if (!Number.isFinite(parsed) || parsed < 0) return 15000;
   return Math.min(parsed, 120000);
 }
