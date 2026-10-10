@@ -1069,21 +1069,6 @@ export async function startMockApiServer(
       json(res, 200, { installed: [], available: false });
       return;
     }
-    if (
-      method === "GET" &&
-      pathname === "/api/coding-agents/coordinator/status"
-    ) {
-      json(res, 200, {
-        supervisionLevel: "unavailable",
-        taskCount: 0,
-        tasks: [],
-        pendingConfirmations: 0,
-        taskThreadCount: 0,
-        taskThreads: [],
-        frameworks: [],
-      });
-      return;
-    }
     if (method === "GET" && pathname === "/api/orchestrator/status") {
       json(res, 200, emptyOrchestratorStatus);
       return;

@@ -248,7 +248,6 @@ it("returns errors for absent capabilities and serves routes after plugin regist
     "/api/setup/telegram-account/status",
     "/api/whatsapp/status",
     "/api/coding-agents/preflight",
-    "/api/coding-agents/coordinator/status",
     "/api/lifeops/activity-signals",
     "/api/catalog/apps",
     "/api/drop/status",

@@ -49,7 +49,6 @@ const HOST_OWNED_FEATURE_ROUTE_PREFIXES = [
 /** Exact host fallbacks that share a prefix with genuinely deferred routes. */
 const HOST_OWNED_FEATURE_ROUTES = [
   { method: "GET", pathname: "/api/coding-agents/preflight" },
-  { method: "GET", pathname: "/api/coding-agents/coordinator/status" },
   { method: "GET", pathname: "/api/lifeops/inbox" },
   { method: "GET", pathname: "/api/lifeops/activity-signals" },
   { method: "POST", pathname: "/api/lifeops/activity-signals" },
