@@ -586,9 +586,11 @@ export function getHotWalletAddresses(): { evm: string | null; solana: string | 
   let evm: string | null = null;
   const evmKey = env.EVM_PAYOUT_PRIVATE_KEY || env.EVM_PRIVATE_KEY;
   if (evmKey) {
-    const key = evmKey.startsWith("0x")
-      ? (evmKey as `0x${string}`)
-      : (`0x${evmKey}` as `0x${string}`);
+    // Accept the uppercase 0X prefix too, mirroring resolveEvmPrivateKey:
+    // "0X…" used to become "0x0X…", which privateKeyToAccount rejects.
+    const key = (
+      /^0[xX]/.test(evmKey) ? `0x${evmKey.slice(2)}` : `0x${evmKey}`
+    ) as `0x${string}`;
     evm = privateKeyToAccount(key).address;
   }
 
