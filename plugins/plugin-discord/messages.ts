@@ -236,10 +236,12 @@ export function resolveGenerationTimeoutMs(
 		timeoutSetting !== null &&
 		String(timeoutSetting).trim() !== "";
 
-	const parsed = Number.parseInt(
-		String(timeoutSetting ?? fallbackSetting ?? "120000"),
-		10,
-	);
+	// Number.parseInt stops at the first non-digit, so "60000junk" parsed to a
+	// finite 60000 and was accepted as a deliberate setting instead of falling
+	// back to the default. Require the whole trimmed value to be decimal,
+	// mirroring parsePositiveInteger in group-coordination.ts.
+	const text = String(timeoutSetting ?? fallbackSetting ?? "120000").trim();
+	const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
 	let base: number | null;
 	if (!Number.isFinite(parsed)) {
 		base = 120_000;
@@ -251,10 +253,10 @@ export function resolveGenerationTimeoutMs(
 		return base;
 	}
 
-	const mediaParsed = Number.parseInt(
-		String(mediaGenerationTimeoutSetting ?? ""),
-		10,
-	);
+	const mediaText = String(mediaGenerationTimeoutSetting ?? "").trim();
+	const mediaParsed = /^\+?\d+$/.test(mediaText)
+		? Number(mediaText)
+		: Number.NaN;
 	if (!Number.isFinite(mediaParsed) || mediaParsed <= 0) {
 		return base;
 	}
