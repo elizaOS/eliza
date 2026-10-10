@@ -225,7 +225,9 @@ export function isSharedPrivateGoogleContextRequest(message: string): boolean {
   const text = message.normalize("NFKC").trim();
   if (sharedPublicGoogleProductQuery(text)) return false;
   return (
-    /^(?:please\s+)?(?:connect|link)\s+(?:(?:my|the)\s+)?google(?:\s+account)?[.!?]*$/iu.test(text) ||
+    /^(?:please\s+)?(?:connect|link)\s+(?:(?:my|the)\s+)?google(?:\s+account)?[.!?]*$/iu.test(
+      text,
+    ) ||
     /\b(?:connect|link|read|search|find|check|show|list|summari[sz]e)\b[^.!?]{0,80}\b(?:gmail|google calendar)\b/iu.test(
       text,
     ) ||

@@ -185,8 +185,7 @@ function parseArgs(argv) {
       // default, mirroring the --jobs parsing in compile-libllama.ts (#34770).
       const jobsRaw = (argv[++i] ?? "").trim();
       out.jobs = /^\+?\d+$/.test(jobsRaw) ? Number(jobsRaw) : null;
-    }
-    else if (argv[i] === "--portable-cpu") out.portableCpu = true;
+    } else if (argv[i] === "--portable-cpu") out.portableCpu = true;
     else if (argv[i] === "--force") out.force = true;
     else if (argv[i] === "--check") out.check = true;
     else if (argv[i] === "--ensure") out.ensure = true;
