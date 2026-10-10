@@ -816,7 +816,17 @@ export const settingsAction: Action = {
       name: "updates",
       description: "[set] Optional array of `{ key, value }` for bulk writes.",
       required: false,
-      schema: { type: "array" as const },
+      schema: {
+        type: "array" as const,
+        items: {
+          type: "object" as const,
+          properties: {
+            key: { type: "string" as const },
+            value: { type: "string" as const },
+          },
+          required: ["key", "value"],
+        },
+      },
     },
   ],
 
