@@ -1030,7 +1030,7 @@ describe("Cloud owner-phone personal issuance intent", () => {
     async (leg) => {
       const bodies: Record<string, unknown>[] = [];
       const calls = stubFetch(async (_input, init) => {
-        bodies.push(JSON.parse(String(init?.body)));
+        bodies.push(await new Response(init?.body).json());
         return Response.json({ ok: true });
       });
       const env = baseEnv({
@@ -1072,7 +1072,7 @@ describe("Cloud owner-phone personal issuance intent", () => {
   it("keeps normal tenant-scoped SMS callers unchanged and refuses a broader personal proxy", async () => {
     const bodies: unknown[] = [];
     const calls = stubFetch(async (_input, init) => {
-      bodies.push(JSON.parse(String(init?.body)));
+      bodies.push(await new Response(init?.body).json());
       return Response.json({ ok: true });
     });
     const app = makeApp(baseEnv());

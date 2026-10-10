@@ -726,7 +726,7 @@ describe("thin Steward public path dispatch (#18049)", () => {
           `https://steward.example.test/auth/sms/${leg}`,
         );
         expect(new Headers(init?.headers).get("x-steward-tenant")).toBeNull();
-        expect(JSON.parse(String(init?.body))).toEqual({
+        expect(await new Response(init?.body).json()).toEqual({
           phone: "+14155552671",
           code: "123456",
         });
