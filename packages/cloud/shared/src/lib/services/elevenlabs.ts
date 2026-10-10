@@ -113,6 +113,14 @@ export interface STTOptions {
   languageCode?: string;
 }
 
+/** Parse an optional 0..1 TTS voice setting and fall back when malformed. */
+function parseVoiceSetting(value: string | undefined, fallback: number): number {
+  const text = (value ?? "").trim();
+  if (text === "") return fallback;
+  const parsed = /^\+?\d+(?:\.\d+)?$/.test(text) ? Number(text) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 /**
  * Service for ElevenLabs TTS and STT functionality.
  */
@@ -125,18 +133,7 @@ export class ElevenLabsService {
     this.client = new ElevenLabsClient({ apiKey: config.apiKey });
   }
 
-  /** Parse an optional 0..1 TTS voice setting; malformed values fall back to
- * the configured default. Number.parseFloat stops at the first non-digit
- * ("0.5junk" -> 0.5, "abc" -> NaN into the API), so the whole trimmed value
- * must be decimal, mirroring parseAndValidateCredits in stripe-event.ts. */
-function parseVoiceSetting(value: string | undefined, fallback: number): number {
-  const text = (value ?? "").trim();
-  if (text === "") return fallback;
-  const parsed = /^\+?\d+(?:\.\d+)?$/.test(text) ? Number(text) : Number.NaN;
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-/**
+  /**
    * Initialize service with environment variables (following plugin patterns)
    */
   static fromEnv(env?: ElevenLabsEnv): ElevenLabsService {
