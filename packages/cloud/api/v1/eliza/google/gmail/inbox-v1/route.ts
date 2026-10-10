@@ -66,7 +66,11 @@ app.get("/thread", async (context) =>
 );
 app.get("/attachment", async (context) =>
   context.json(
-    await managedInboxProvider.attachment(
+    await (context.req.query("opaque") === "1"
+      ? managedInboxProvider.opaqueAttachment
+      : managedInboxProvider.attachment
+    ).call(
+      managedInboxProvider,
       await selected(context),
       context.req.query("messageId") || "",
       context.req.query("partId") || "",
@@ -74,7 +78,22 @@ app.get("/attachment", async (context) =>
     ),
   ),
 );
+app.get("/drafts", async (context) =>
+  context.json(
+    await managedInboxProvider.drafts(
+      await selected(context),
+      context.req.query("pageToken"),
+    ),
+  ),
+);
 app.get("/draft", async (context) => {
+  if (context.req.query("content") === "1")
+    return context.json(
+      await managedInboxProvider.draftContent(
+        await selected(context),
+        context.req.query("draftId") ?? "",
+      ),
+    );
   const { raw: _raw, ...metadata } = await managedInboxProvider.draft(
     await selected(context),
     context.req.query("draftId") ?? "",
