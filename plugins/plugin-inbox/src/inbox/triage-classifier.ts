@@ -413,14 +413,17 @@ function validUrgency(v: unknown): "low" | "medium" | "high" | null {
 }
 
 function validConfidence(v: unknown): number | null {
-  const numeric =
-    typeof v === "string" && v.trim().length > 0 ? Number(v.trim()) : v;
-  if (
-    typeof numeric === "number" &&
-    Number.isFinite(numeric) &&
-    numeric >= 0 &&
-    numeric <= 1
-  ) {
+  if (typeof v === "number") {
+    return Number.isFinite(v) && v >= 0 && v <= 1 ? v : null;
+  }
+  if (typeof v !== "string") return null;
+  const trimmed = v.trim();
+  // Canonical decimal strings only: Number("0x1") is 1, Number("1e0") is 1,
+  // and Number(".5") is 0.5 — all used to silently become a confidence
+  // value instead of being rejected like other malformed model output.
+  if (!/^-?\d+(\.\d+)?$/.test(trimmed)) return null;
+  const numeric = Number(trimmed);
+  if (Number.isFinite(numeric) && numeric >= 0 && numeric <= 1) {
     return numeric;
   }
   return null;
