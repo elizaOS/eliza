@@ -1442,11 +1442,15 @@ async function executeMeasuredSharedElizaRuntimeTurn(
 
     const delivered: string[] = [];
     let lastDeliveredContent: Content | undefined;
+    const bufferedPublicChunks: string[] = [];
+    let publicQuoteRepairAccepted = false;
     const bufferPublicStream = Boolean(
       onStreamChunk && publicSearchIntent && !privateCapabilityIntent,
     );
     const streamChunkHandler = bufferPublicStream
-      ? (_chunk: string) => {}
+      ? (chunk: string) => {
+          bufferedPublicChunks.push(chunk);
+        }
       : onStreamChunk;
     const messageService = runtime.messageService;
     if (!messageService) {
@@ -1750,6 +1754,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         if (repaired) {
           reply = repaired;
           repairOutcome = "accepted";
+          publicQuoteRepairAccepted = true;
         }
       } catch (error) {
         // error-policy:J1 private/provider errors never become quote authority.
@@ -1772,7 +1777,13 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       });
     }
     if (bufferPublicStream && onStreamChunk) {
-      await onStreamChunk(reply);
+      if (publicQuoteRepairAccepted) {
+        await onStreamChunk(reply);
+      } else {
+        for (const chunk of bufferedPublicChunks) {
+          await onStreamChunk(chunk);
+        }
+      }
     }
     return {
       reply,
