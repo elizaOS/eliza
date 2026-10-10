@@ -374,8 +374,10 @@ function getEvmWallet(runtime: IAgentRuntime) {
   if (!rawPrivateKey || typeof rawPrivateKey !== "string") {
     throw new Error("EVM_PRIVATE_KEY is required for EVM LP operations.");
   }
-  const privateKey = rawPrivateKey.startsWith("0x")
-    ? rawPrivateKey
+  // Accept the uppercase 0X prefix too, mirroring resolveEvmPrivateKey:
+  // "0X…" used to become "0x0X…", which privateKeyToAccount rejects.
+  const privateKey = /^0[xX]/.test(rawPrivateKey)
+    ? `0x${rawPrivateKey.slice(2)}`
     : `0x${rawPrivateKey}`;
   const account = privateKeyToAccount(privateKey as `0x${string}`);
   return { address: account.address, privateKey: privateKey as `0x${string}` };
