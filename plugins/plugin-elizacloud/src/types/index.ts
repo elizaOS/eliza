@@ -64,7 +64,6 @@ export type {
   ContainerGetResponse,
   ContainerListResponse,
   ContainerStatus,
-  CreditBalanceResponse,
   CreditSummaryResponse,
   CreditTransaction,
   GatewayRelayRequest,

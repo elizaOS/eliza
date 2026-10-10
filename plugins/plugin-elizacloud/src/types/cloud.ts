@@ -84,14 +84,6 @@ export interface CloudCredentials {
 
 // ─── Credits Types ──────────────────────────────────────────────────────────
 
-export interface CreditBalanceResponse {
-  success: boolean;
-  data: {
-    balance: number;
-    currency: string;
-  };
-}
-
 export interface CreditSummaryResponse {
   success: boolean;
   data: {

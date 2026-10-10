@@ -127,15 +127,12 @@ describe("CloudApiClient with route-based server", () => {
   it("GET /credits/balance returns numeric balance", async () => {
     route("GET", "/credits/balance", () => ({
       status: 200,
-      body: { success: true, data: { balance: 4.37, currency: "USD" } },
+      body: { balance: 4.37 },
     }));
 
     const client = new CloudApiClient(baseUrl, "eliza_test");
-    const result = await client.requestData<{ data: { balance: number } }>(
-      "GET",
-      "/credits/balance"
-    );
-    expect(result.data.balance).toBeCloseTo(4.37);
+    const result = await client.requestData<{ balance: number }>("GET", "/credits/balance");
+    expect(result.balance).toBeCloseTo(4.37);
   });
 });
 
@@ -216,7 +213,7 @@ describe("credit lifecycle", () => {
   it("balance check → insufficient credits on container create", async () => {
     route("GET", "/credits/balance", () => ({
       status: 200,
-      body: { success: true, data: { balance: 2.0, currency: "USD" } },
+      body: { balance: 2.0 },
     }));
 
     route("POST", "/containers", () => ({
@@ -231,11 +228,8 @@ describe("credit lifecycle", () => {
     const client = new CloudApiClient(baseUrl, "eliza_test");
 
     // Check balance first
-    const balance = await client.requestData<{ data: { balance: number } }>(
-      "GET",
-      "/credits/balance"
-    );
-    expect(balance.data.balance).toBe(2.0);
+    const balance = await client.requestData<{ balance: number }>("GET", "/credits/balance");
+    expect(balance.balance).toBe(2.0);
 
     // Attempt container creation — should throw InsufficientCreditsError
     let caught: Error | null = null;
