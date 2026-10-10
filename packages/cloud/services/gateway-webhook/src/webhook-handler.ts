@@ -1267,9 +1267,12 @@ async function processMessage(
       return;
     }
     if (outcome.kind === "open") networkTurn = outcome.turn;
-  } else if (isNetworkProject(project)) {
-    // The Network (legacy, no service): carrier keywords (STOP/HELP/START) and
-    // the consent ledger run before any identity, account, or agent work.
+  }
+  if (isNetworkProject(project) && !networkTurn) {
+    // The Network without a service-owned turn (legacy, or a turn the service
+    // ignored): carrier keywords (STOP/HELP/START) and the consent ledger run
+    // before any identity, account, or agent work, so an ignored STOP is
+    // still recorded and confirmed.
     let compliance: NetworkInboundCompliance;
     try {
       compliance = await handleNetworkInboundCompliance(
