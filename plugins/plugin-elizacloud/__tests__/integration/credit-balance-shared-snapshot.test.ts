@@ -69,6 +69,50 @@ describe("creditBalanceProvider shared snapshot", () => {
     expect(balanceFetchCount(server)).toBe(1);
   });
 
+  it("does not serve another organization's cached balance after a sign-in switch", async () => {
+    let org = "org-A";
+    server.state.balance = 500;
+    const runtime = makeRuntime({ baseUrl: server.url, organizationId: () => org });
+    await Promise.all([
+      cloudAccountProvider.get(runtime, MESSAGE, STATE),
+      creditBalanceProvider.get(runtime, MESSAGE, STATE),
+    ]);
+
+    org = "org-B";
+    server.state.balance = 3;
+    const [, credits] = await Promise.all([
+      cloudAccountProvider.get(runtime, MESSAGE, STATE),
+      creditBalanceProvider.get(runtime, MESSAGE, STATE),
+    ]);
+    expect(credits.values?.cloudCredits).toBe(3);
+    expect(credits.text).toContain("$3.00");
+  });
+
+  it("fails closed when the organization changes during the balance fetch", async () => {
+    let org = "org-A"
+    let releaseBalance: () => void = () => undefined
+    let requestStarted: () => void = () => undefined
+    const balanceReady = new Promise<void>((resolve) => {
+      releaseBalance = resolve
+    })
+    const requestReady = new Promise<void>((resolve) => {
+      requestStarted = resolve
+    })
+    server.state.balance = 500
+    server.state.beforeBalanceReply = async () => {
+      requestStarted()
+      await balanceReady
+    }
+    const runtime = makeRuntime({ baseUrl: server.url, organizationId: () => org })
+    const pending = creditBalanceProvider.get(runtime, MESSAGE, STATE)
+    await requestReady
+    org = "org-B"
+    releaseBalance()
+
+    const result = await pending
+    expect(result.text).toBe("")
+    expect(result.values?.cloudCreditsUnavailable).toBe(true)
+  })
   it("flags low and critical balances with the top-up pointer", async () => {
     server.state.balance = 1.5;
     const low = await creditBalanceProvider.get(

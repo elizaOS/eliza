@@ -8,7 +8,11 @@ import { getBaseURL } from "../utils/config";
 import { createElizaCloudClient } from "../utils/sdk-client";
 import { getCachedAccountSnapshot } from "./cloud-account";
 
-const creditCaches = new WeakMap<IAgentRuntime, { value: number; at: number }>();
+/** Keyed by runtime and tagged with the org: a sign-in to another org reuses the runtime. */
+const creditCaches = new WeakMap<
+  IAgentRuntime,
+  { value: number; at: number; organizationId: string | undefined }
+>();
 const TTL = 60_000;
 
 export const creditBalanceProvider: Provider = {
@@ -26,6 +30,7 @@ export const creditBalanceProvider: Provider = {
   async get(runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> {
     const auth = runtime.getService("CLOUD_AUTH") as CloudAuthService | undefined;
     if (!auth?.isAuthenticated()) return { text: "" };
+    const organizationId = auth.getOrganizationId();
     const topUpUrl = resolveCloudBillingUrl(getBaseURL(runtime));
 
     // CLOUD_ACCOUNT shares this contextGate and fetches the same balance in
@@ -37,7 +42,8 @@ export const creditBalanceProvider: Provider = {
       return result;
     }
 
-    const cached = creditCaches.get(runtime);
+    const entry = creditCaches.get(runtime);
+    const cached = entry?.organizationId === organizationId ? entry : undefined;
     if (cached && Date.now() - cached.at < TTL) {
       const result = format(cached.value, topUpUrl);
       return result;
@@ -56,7 +62,13 @@ export const creditBalanceProvider: Provider = {
       }
       return { text: "", values: { cloudCreditsUnavailable: true }, data: {} };
     }
-    creditCaches.set(runtime, { value: balance, at: Date.now() });
+    if (organizationId !== auth.getOrganizationId()) {
+      return { text: "", values: { cloudCreditsUnavailable: true }, data: {} }
+    }
+
+    if (organizationId === auth.getOrganizationId()) {
+      creditCaches.set(runtime, { value: balance, at: Date.now(), organizationId })
+    }
 
     if (balance < 1.0) logger.warn(`[CloudCredits] Low balance: $${balance.toFixed(2)}`);
     const result = format(balance, topUpUrl);
