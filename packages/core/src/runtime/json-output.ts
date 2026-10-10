@@ -111,6 +111,84 @@ export function extractJsonObjects(raw: string): string[] {
 	return objects;
 }
 
+/**
+ * Spans of the outermost complete `{...}` objects embedded in prose, in order.
+ * Unlike {@link extractJsonObjects}, text before a `{` never changes how that
+ * object is read: a `"` outside every object is prose (`5" wide`), and a `{`
+ * that never closes (`{ 5"`) is dropped instead of hiding the objects after it.
+ * Linear: the end of each `{` and of each string is resolved once and reused.
+ */
+export function extractJsonObjectSpans(
+	raw: string,
+): Array<{ start: number; end: number }> {
+	const UNRESOLVED = -2;
+	const UNCLOSED = -1;
+	const objectEnds = new Int32Array(raw.length).fill(UNRESOLVED);
+	const stringEnds = new Int32Array(raw.length).fill(UNRESOLVED);
+	// Index of the quote that closes a string whose content starts at `from`.
+	const resolveStringEnd = (from: number): number => {
+		const visited: number[] = [];
+		let end = UNCLOSED;
+		for (let index = from; index < raw.length; index++) {
+			const known = stringEnds[index] as number;
+			if (known !== UNRESOLVED) {
+				end = known;
+				break;
+			}
+			visited.push(index);
+			if (raw[index] === "\\") {
+				index++;
+			} else if (raw[index] === '"') {
+				end = index;
+				break;
+			}
+		}
+		for (const index of visited) stringEnds[index] = end;
+		return end;
+	};
+	// Exclusive end of the object opened by the `{` at `from`, or UNCLOSED.
+	const resolveObjectEnd = (from: number): number => {
+		const frames = [{ start: from, index: from + 1 }];
+		let childEnd = UNRESOLVED;
+		while (frames.length > 0) {
+			const frame = frames[frames.length - 1] as (typeof frames)[number];
+			let end = childEnd === UNCLOSED ? UNCLOSED : UNRESOLVED;
+			if (childEnd >= 0) frame.index = childEnd;
+			childEnd = UNRESOLVED;
+			for (; end === UNRESOLVED && frame.index < raw.length; frame.index++) {
+				const char = raw[frame.index];
+				if (char === '"') {
+					const close = resolveStringEnd(frame.index + 1);
+					if (close === UNCLOSED) end = UNCLOSED;
+					else frame.index = close;
+				} else if (char === "}") {
+					end = frame.index + 1;
+				} else if (char === "{") {
+					const nested = objectEnds[frame.index] as number;
+					if (nested === UNRESOLVED) break;
+					if (nested === UNCLOSED) end = UNCLOSED;
+					else frame.index = nested - 1;
+				}
+			}
+			if (end === UNRESOLVED && frame.index < raw.length) {
+				frames.push({ start: frame.index, index: frame.index + 1 });
+				continue;
+			}
+			childEnd = end === UNRESOLVED ? UNCLOSED : end;
+			objectEnds[frame.start] = childEnd;
+			frames.pop();
+		}
+		return childEnd;
+	};
+	const spans: Array<{ start: number; end: number }> = [];
+	for (let start = raw.indexOf("{"); start >= 0; ) {
+		const end = resolveObjectEnd(start);
+		if (end >= 0) spans.push({ start, end });
+		start = raw.indexOf("{", end >= 0 ? end : start + 1);
+	}
+	return spans;
+}
+
 export function repairJsonStringEscapes(raw: string): string {
 	let output = "";
 	let inString = false;

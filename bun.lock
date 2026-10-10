@@ -2221,6 +2221,18 @@
         "@elizaos/core": "workspace:*",
       },
     },
+    "plugins/plugin-native-action-journal": {
+      "name": "@elizaos/capacitor-action-journal",
+      "version": "2.0.3-beta.7",
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
     "plugins/plugin-native-activity-tracker": {
       "name": "@elizaos/native-activity-tracker",
       "version": "2.0.3-beta.7",
@@ -2564,6 +2576,19 @@
         "@types/node": "^25.6.0",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
+      },
+    },
+    "plugins/plugin-native-passwords": {
+      "name": "@elizaos/capacitor-passwords",
+      "version": "2.0.3-beta.7",
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "rollup": "^4.63.5",
+        "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
       },
     },
     "plugins/plugin-native-phone": {
@@ -3842,6 +3867,8 @@
 
     "@elizaos/benchmark-framework": ["@elizaos/benchmark-framework@workspace:packages/benchmarks/framework/typescript"],
 
+    "@elizaos/capacitor-action-journal": ["@elizaos/capacitor-action-journal@workspace:plugins/plugin-native-action-journal"],
+
     "@elizaos/capacitor-agent": ["@elizaos/capacitor-agent@workspace:plugins/plugin-native-agent"],
 
     "@elizaos/capacitor-appblocker": ["@elizaos/capacitor-appblocker@workspace:plugins/plugin-native-appblocker"],
@@ -3871,6 +3898,8 @@
     "@elizaos/capacitor-notification-mirror": ["@elizaos/capacitor-notification-mirror@workspace:plugins/plugin-native-notifications"],
 
     "@elizaos/capacitor-owned-media": ["@elizaos/capacitor-owned-media@workspace:plugins/plugin-native-media"],
+
+    "@elizaos/capacitor-passwords": ["@elizaos/capacitor-passwords@workspace:plugins/plugin-native-passwords"],
 
     "@elizaos/capacitor-secure-store": ["@elizaos/capacitor-secure-store@workspace:plugins/plugin-native-secure-store"],
 
@@ -9730,6 +9759,8 @@
 
     "@elizaos/auth/@noble/hashes": ["@noble/hashes@1.8.0", "", {}, "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A=="],
 
+    "@elizaos/capacitor-action-journal/@capacitor/core": ["@capacitor/core@8.5.2", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-agnQbGdhGw/KZFuLf7H9SY2o+oE7upkr/WPQsYaokXP6f9chaE8iVmbKkfN6SVl4w3pmz7oZ3Ur1hbkmy1hx+w=="],
+
     "@elizaos/capacitor-agent/@capacitor/core": ["@capacitor/core@8.5.2", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-agnQbGdhGw/KZFuLf7H9SY2o+oE7upkr/WPQsYaokXP6f9chaE8iVmbKkfN6SVl4w3pmz7oZ3Ur1hbkmy1hx+w=="],
 
     "@elizaos/capacitor-appblocker/@capacitor/core": ["@capacitor/core@8.5.2", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-agnQbGdhGw/KZFuLf7H9SY2o+oE7upkr/WPQsYaokXP6f9chaE8iVmbKkfN6SVl4w3pmz7oZ3Ur1hbkmy1hx+w=="],
@@ -9755,6 +9786,8 @@
     "@elizaos/capacitor-mobile-signals/@capacitor/core": ["@capacitor/core@8.5.2", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-agnQbGdhGw/KZFuLf7H9SY2o+oE7upkr/WPQsYaokXP6f9chaE8iVmbKkfN6SVl4w3pmz7oZ3Ur1hbkmy1hx+w=="],
 
     "@elizaos/capacitor-network-policy/@capacitor/core": ["@capacitor/core@8.5.2", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-agnQbGdhGw/KZFuLf7H9SY2o+oE7upkr/WPQsYaokXP6f9chaE8iVmbKkfN6SVl4w3pmz7oZ3Ur1hbkmy1hx+w=="],
+
+    "@elizaos/capacitor-passwords/@capacitor/core": ["@capacitor/core@8.5.2", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-agnQbGdhGw/KZFuLf7H9SY2o+oE7upkr/WPQsYaokXP6f9chaE8iVmbKkfN6SVl4w3pmz7oZ3Ur1hbkmy1hx+w=="],
 
     "@elizaos/capacitor-secure-store/@capacitor/core": ["@capacitor/core@8.5.2", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-agnQbGdhGw/KZFuLf7H9SY2o+oE7upkr/WPQsYaokXP6f9chaE8iVmbKkfN6SVl4w3pmz7oZ3Ur1hbkmy1hx+w=="],
 

@@ -113,6 +113,9 @@ export const listInboxAction: Action = {
           sources: params.sources,
           sinceMs: params.sinceMs,
           limit: params.limit,
+          // The limit must apply after the read filter, or a newest page of
+          // read mail reports "no unread" while older unread mail exists.
+          unreadOnly: true,
         });
         unread = messages.filter((m) => !m.isRead);
       }

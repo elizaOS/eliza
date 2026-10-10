@@ -363,7 +363,7 @@ export const PII_DETECTORS: readonly PiiDetector[] = [
 	{
 		kind: "pgp-private-key",
 		pattern:
-			/-----BEGIN PGP PRIVATE KEY BLOCK-----[\s\S]+?-----END PGP PRIVATE KEY BLOCK-----/g,
+			/-----BEGIN PGP PRIVATE KEY BLOCK-----(?:(?!-----BEGIN PGP PRIVATE KEY BLOCK-----)[\s\S])+?(?:-----END PGP PRIVATE KEY BLOCK-----|(?=-----BEGIN PGP PRIVATE KEY BLOCK-----))|-----BEGIN PGP PRIVATE KEY BLOCK-----(?=-----BEGIN PGP PRIVATE KEY BLOCK-----)/g,
 	},
 	// AWS access key id.
 	{
@@ -387,11 +387,12 @@ export const PII_DETECTORS: readonly PiiDetector[] = [
 	{ kind: "openai-key", pattern: /\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b/g },
 	// Slack tokens.
 	{ kind: "slack-token", pattern: /\bxox[baprs]-[0-9A-Za-z-]{10,}\b/g },
-	// Private key PEM block.
+	// Private key PEM block. Bounded at the next BEGIN header like the log
+	// redaction pattern, so a run of headers without END lines stays linear.
 	{
 		kind: "private-key",
 		pattern:
-			/-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----[\s\S]+?-----END (?:[A-Z]+ )?PRIVATE KEY-----/g,
+			/-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----(?:(?!-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----)[\s\S])+?(?:-----END (?:[A-Z]+ )?PRIVATE KEY-----|(?=-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----))|-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----(?=-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----)/g,
 	},
 	// EVM/0x hex private key or address-shaped 32-byte hex (kept conservative: 64 hex).
 	{ kind: "hex-secret", pattern: /\b0[xX][a-fA-F0-9]{64}\b/g },

@@ -134,6 +134,16 @@ function headerAddresses(value: string | null): string[] {
   if (!value) return [];
   return addresses(addressparser(value, { flatten: true }).map((entry) => entry.address));
 }
+/**
+ * Recipients as the draft names them, for a list row only. Gmail keeps drafts with
+ * unfinished recipients ("bob"); the strict check stays on the editable draft read.
+ */
+function listedAddresses(value: string | null): string[] {
+  if (!value) return [];
+  return addressparser(value, { flatten: true })
+    .map((entry) => entry.address || entry.name)
+    .filter(Boolean);
+}
 function findPart(payload: GmailPayloadPart, mimeType: string): GmailPayloadPart | null {
   let visited = 0;
   let found: GmailPayloadPart | null = null;
@@ -572,7 +582,7 @@ export class InboxGoogleProvider {
           draftId,
           messageId: providerId(message.id),
           subject: draftHeader(payload, "Subject") ?? "",
-          to: headerAddresses(draftHeader(payload, "To")),
+          to: listedAddresses(draftHeader(payload, "To")),
           snippet: typeof message.snippet === "string" ? message.snippet.slice(0, 300) : "",
           updatedAt:
             Number.isFinite(internal) && internal > 0 ? new Date(internal).toISOString() : null,

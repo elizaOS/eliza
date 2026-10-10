@@ -1017,3 +1017,6 @@ packages/ui/src/components/shell/__e2e__/output-home-locale/
 
 # Temporary atomic core build directories.
 /packages/core/.core-build-*/
+
+/plugins/plugin-native-*/test/android-consumer/.gradle/
+/plugins/plugin-native-*/test/android-consumer/*/build/

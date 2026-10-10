@@ -101,7 +101,14 @@ export const STRIPE_MAX_CREDITS = MAX_CREDITS;
  * Returns null when the input is not a finite positive number within bounds.
  */
 export function parseAndValidateCredits(creditsStr: string): number | null {
-  const credits = Number.parseFloat(creditsStr);
+  // Number.parseFloat stops at the first non-digit ("25junk" -> 25), so a
+  // malformed metadata value was silently honored as a deliberate credit
+  // amount instead of being rejected. Require the whole trimmed value to
+  // be decimal, mirroring resolveGenerationTimeoutMs in the discord plugin.
+  const trimmed = creditsStr.trim();
+  const credits = /^\+?\d+(?:\.\d+)?$/.test(trimmed)
+    ? Number(trimmed)
+    : Number.NaN;
   if (!Number.isFinite(credits) || credits <= 0 || credits > MAX_CREDITS) {
     return null;
   }

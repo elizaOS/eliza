@@ -171,6 +171,7 @@ export * from "./runtime/effect-delivery.ts";
 export * from "./runtime/historical-receipt-wire";
 export {
 	containsToolCallShapedMarkup,
+	extractJsonObjectSpans,
 	extractJsonObjects,
 	parseJsonObject,
 	parsePseudoTagToolInvocations,

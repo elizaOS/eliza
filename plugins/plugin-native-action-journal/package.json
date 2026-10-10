@@ -1,0 +1,66 @@
+{
+  "name": "@elizaos/capacitor-action-journal",
+  "version": "2.0.3-beta.7",
+  "description": "Durable reserve/apply/finish journal for owner-approved device actions in Eliza apps.",
+  "type": "module",
+  "main": "./dist/esm/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "eliza-source": "./src/index.ts",
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "android/README.md",
+    "dist/",
+    "src/"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaOS/eliza.git",
+    "directory": "plugins/plugin-native-action-journal"
+  },
+  "scripts": {
+    "build": "node ../../packages/scripts/rm-path-recursive.ts dist && tsc6 -p tsconfig.json --noCheck",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "test": "node --test --experimental-strip-types test/client.node.mjs test/native-host/journal.node.mjs"
+  },
+  "capacitor": {
+    "android": {
+      "src": "android"
+    }
+  },
+  "devDependencies": {
+    "@capacitor/core": "^8.3.1",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.3.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "elizaos": {
+    "platforms": [],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": false,
+      "android": "Host-subclassed Capacitor plugin over a durable encrypted host store; the host chooses the bridge name.",
+      "ios": false
+    }
+  }
+}

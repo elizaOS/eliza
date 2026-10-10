@@ -28,7 +28,7 @@ import type {
   X402PaymentRequirements,
   X402TransactionLog,
 } from "./types.js";
-import { DEFAULT_SUPPORTED_NETWORKS } from "./types.js";
+import { DEFAULT_SUPPORTED_NETWORKS, USDC_ADDRESSES } from "./types.js";
 
 export const DEFAULT_X402_FETCH_TIMEOUT_MS = 10_000;
 const X402_PROTOCOL_FEE_BPS = 77n;
@@ -48,6 +48,10 @@ export class X402Client {
   private config: X402ClientConfig;
   private budget: X402BudgetTracker;
   private supportedNetworks: Set<string>;
+  // Budget caps are base units of one token (USDC from x402FromEnv). Without
+  // an explicit asset list, a capped client pays only in USDC, so another
+  // token's amount is never checked against a USDC cap.
+  private usdcOnly: boolean;
 
   constructor(wallet: AgentWallet, config: X402ClientConfig = {}) {
     this.wallet = wallet;
@@ -59,6 +63,10 @@ export class X402Client {
     };
     this.budget = new X402BudgetTracker(config);
     this.supportedNetworks = new Set(this.config.supportedNetworks);
+    this.usdcOnly =
+      config.globalDailyLimit !== undefined ||
+      config.globalPerRequestMax !== undefined ||
+      (config.serviceBudgets?.length ?? 0) > 0;
   }
 
   /**
@@ -259,7 +267,11 @@ export class X402Client {
 
       // v6: resolve via TokenRegistry — accept any known ERC-20 on this network
       const resolved = resolveAssetAddress(req.asset, req.network);
-      return resolved != null;
+      if (resolved == null) return false;
+      return (
+        !this.usdcOnly ||
+        resolved.toLowerCase() === USDC_ADDRESSES[req.network]?.toLowerCase()
+      );
     });
 
     if (compatible.length === 0) return null;

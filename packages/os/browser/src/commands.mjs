@@ -121,6 +121,11 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         return;
       const style = getComputedStyle(node);
       if (style.display === "none") return;
+      if (node instanceof HTMLDetailsElement && !node.open) {
+        const summary = node.querySelector(":scope > summary");
+        if (summary) collectText(summary);
+        return;
+      }
       for (const child of node.childNodes) collectText(child);
     };
     collectText(root);
@@ -214,27 +219,34 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         node.isContentEditable
           ? { edited: monitor.editedFields.has(node) }
           : {}),
-        // Whether the person (or the page) already put text here. Only this
-        // boolean leaves the page; the text itself stays behind the boundary.
-        ...((node instanceof HTMLInputElement &&
-          ![
-            "button",
-            "submit",
-            "reset",
-            "image",
-            "checkbox",
-            "radio",
-            "file",
-            "hidden",
-            "range",
-            "color",
-          ].includes(node.type)) ||
-        node instanceof HTMLTextAreaElement ||
-        node instanceof HTMLSelectElement
-          ? { hasInput: node.value !== "" }
-          : node.isContentEditable
-            ? { hasInput: (node.textContent ?? "").trim() !== "" }
-            : {}),
+        // A select can have a valid choice whose internal value is empty.
+        // Only selection/occupancy leaves the page, never the field value.
+        ...(node instanceof HTMLSelectElement
+          ? {
+              hasInput:
+                node.selectedIndex >= 0 &&
+                !node.validity.valueMissing &&
+                !node.options[node.selectedIndex].disabled &&
+                (node.value !== "" || monitor.editedFields.has(node)),
+            }
+          : (node instanceof HTMLInputElement &&
+                ![
+                  "button",
+                  "submit",
+                  "reset",
+                  "image",
+                  "checkbox",
+                  "radio",
+                  "file",
+                  "hidden",
+                  "range",
+                  "color",
+                ].includes(node.type)) ||
+              node instanceof HTMLTextAreaElement
+            ? { hasInput: node.value !== "" }
+            : node.isContentEditable
+              ? { hasInput: (node.textContent ?? "").trim() !== "" }
+              : {}),
       };
     };
     const nodes = new Map();
@@ -243,6 +255,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       "a,button,input,textarea,select,[role=button],[role=textbox],[contenteditable=true],summary",
     );
     for (const node of candidates) {
+      if (!node.checkVisibility({ checkVisibilityCSS: true })) continue;
       const id = String(nodes.size);
       const geometry = bounds(node);
       // This equality sentinel never leaves the isolated page realm.
@@ -422,8 +435,8 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     // A task fill or click must not submit a form or leave the page, also
     // not through the page's own script (an auto-submitting code field, or
     // a button that calls form.submit()). For 30 seconds, or until the next
-    // task fill or click, watch what the page does that recent input by the
-    // person did not start:
+    // task fill or click, watch what the page does before the person takes
+    // over by activating a control:
     // - a form submit or a page change to another document is stopped,
     //   except a click on a link that opens that link;
     // - a same-document address change (history.pushState) is recorded;
@@ -437,6 +450,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     const anchor =
       command.subaction === "click" ? node.closest("a[href]") : null;
     let personAt = Number.NEGATIVE_INFINITY;
+    let activationAt = Number.POSITIVE_INFINITY;
     const startedAt = performance.now();
     const controller = new AbortController();
     const watch = {
@@ -446,7 +460,11 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
           : null,
       stop: () => controller.abort(),
     };
-    const byPerson = (at) => at - personAt >= 0 && at - personAt <= 1500;
+    // A person's activated control can finish after the short typing window.
+    // Stray taps, scrolling and ordinary typing do not create that handoff.
+    // Resource start times still expose older requests delivered afterward.
+    const byPerson = (at) =>
+      at >= activationAt || (at - personAt >= 0 && at - personAt <= 1500);
     const record = (kind) => {
       watch.violation ??= { kind, scope: policy.guidanceScope };
     };
@@ -462,6 +480,31 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     };
     window.addEventListener("pointerdown", person, options);
     window.addEventListener("keydown", person, options);
+    const activate = (event) => {
+      if (!event.isTrusted || !(event.target instanceof Element)) return;
+      const target = event.target;
+      const control = target.closest(
+        'button,input[type="submit"],input[type="button"],input[type="reset"],a[href],[role="button"],[role="link"]',
+      );
+      if (control?.matches(':disabled,[aria-disabled="true"]')) return;
+      const keyboard = event.type === "keydown";
+      const enterForm =
+        event.key === "Enter" &&
+        target instanceof HTMLInputElement &&
+        target.form;
+      const controlKey =
+        control &&
+        !target.isContentEditable &&
+        !target.matches(
+          "textarea,select,input:not([type=submit]):not([type=button]):not([type=reset])",
+        ) &&
+        (event.key === "Enter" ||
+          (event.key === " " && !control.matches('a[href],[role="link"]')));
+      if (keyboard ? !controlKey && !enterForm : !control) return;
+      activationAt = Math.min(activationAt, performance.now());
+    };
+    window.addEventListener("click", activate, options);
+    window.addEventListener("keydown", activate, options);
     window.addEventListener(
       "submit",
       (event) => report("submit", event),

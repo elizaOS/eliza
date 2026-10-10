@@ -1,0 +1,27 @@
+plugins { id 'com.android.application' }
+android {
+ namespace 'example.actionjournal'
+ compileSdk 36
+ defaultConfig {
+  applicationId 'example.actionjournal.host'
+  minSdk 26
+  targetSdk 35
+  testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+ }
+ compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
+}
+dependencies {
+ implementation project(':journal')
+ implementation project(':capacitor-android')
+ androidTestImplementation 'androidx.test:runner:1.5.2'
+ androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+}
+
+// Exercise the existing encrypted slot store, without a second fixture cipher.
+android.sourceSets.main.java {
+ srcDir file('../../../../plugin-native-secure-store/android/src/main/java')
+ include '**/JsonCredentialSlots.java'
+}
+
+// Reuse the same real storage test as the generic native-plugin lane.
+android.sourceSets.androidTest.java.srcDir file('../../../android/src/androidTest/java')

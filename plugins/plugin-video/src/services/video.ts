@@ -85,6 +85,24 @@ function manualSubtitleUrl(
   return tracks.find((t) => t?.url && !t.ext)?.url;
 }
 
+/** Result `parseCaption` returns when the content is not caption JSON. */
+const CAPTION_PARSE_ERROR = "Error: Unable to parse captions";
+
+/**
+ * Pick the automatic-caption variant `parseCaption` can read. yt-dlp lists
+ * the same format variants as for manual subtitles, but this parser reads
+ * only json3, so prefer a URL-bearing json3 variant, then a URL-bearing
+ * variant without `ext`; known unsupported formats cannot use this parser.
+ */
+function automaticCaptionUrl(
+  tracks: YtDlpSubtitleTrack[] | undefined,
+): string | undefined {
+  if (!Array.isArray(tracks)) return undefined;
+  const json3 = tracks.find((t) => t?.url && t.ext === "json3");
+  if (json3) return json3.url;
+  return tracks.find((t) => t?.url && !t.ext)?.url;
+}
+
 function loggableError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -606,13 +624,17 @@ export class VideoService extends IVideoService {
       }
 
       // Check for automatic captions (same first-usable-variant scan).
-      const captionUrl = videoInfo.automatic_captions?.en?.find(
-        (track) => track?.url,
-      )?.url;
+      const captionUrl = automaticCaptionUrl(videoInfo.automatic_captions?.en);
       if (captionUrl) {
         elizaLogger.log("Automatic captions found");
         const captionContent = await this.downloadCaption(captionUrl);
-        return this.parseCaption(captionContent);
+        const transcript = this.parseCaption(captionContent);
+        // A parse failure is not a transcript: fall through to the next
+        // source like the manual path does for an empty parse, instead of
+        // returning (and caching) the error text as the video text.
+        if (transcript.trim() && transcript !== CAPTION_PARSE_ERROR) {
+          return transcript;
+        }
       }
 
       // Check if it's a music video
@@ -667,11 +689,11 @@ export class VideoService extends IVideoService {
           "Unexpected caption format:",
           JSON.stringify(jsonContent),
         );
-        return "Error: Unable to parse captions";
+        return CAPTION_PARSE_ERROR;
       }
     } catch (error) {
       elizaLogger.log("Error parsing caption:", loggableError(error));
-      return "Error: Unable to parse captions";
+      return CAPTION_PARSE_ERROR;
     }
   }
 

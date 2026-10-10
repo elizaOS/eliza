@@ -193,6 +193,7 @@ function searchQuery(filters: SearchMessagesFilters): string {
 function listQuery(opts: ListOptions): string {
   const tokens = [opts.channelIds?.length ? "in:anywhere" : "in:inbox"];
   pushSinceToken(tokens, opts.sinceMs);
+  if (opts.unreadOnly) tokens.push("is:unread");
   return tokens.join(" ");
 }
 
@@ -385,10 +386,10 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
     const service = this.requireService(runtime);
     const refs: MessageRef[] = [];
     for (const accountId of requestedAccounts(opts.worldIds)) {
-      // Channel and time filters must reach Gmail before maxResults applies, or
-      // the provider's newest page can hold no match while older ones exist.
+      // Channel, time and read filters must reach Gmail before maxResults applies,
+      // or the provider's newest page can hold no match while older ones exist.
       const messages =
-        opts.channelIds?.length || opts.sinceMs !== undefined
+        opts.channelIds?.length || opts.sinceMs !== undefined || opts.unreadOnly
           ? await searchGmailChannels(
               service,
               {

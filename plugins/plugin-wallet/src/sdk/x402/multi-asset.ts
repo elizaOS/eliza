@@ -20,8 +20,13 @@ import { USDC_ADDRESSES } from "./types.js";
 export function parseNetworkChainId(network: string): number | null {
   const parts = network.split(":");
   if (parts.length < 2) return null;
-  const id = parseInt(parts[parts.length - 1], 10);
-  return Number.isNaN(id) ? null : id;
+  // parseInt stops at the first non-digit, so "8453junk" parsed to 8453 and
+  // was accepted as a valid chain id. Require the whole trimmed segment to
+  // be a non-negative decimal integer instead.
+  const text = parts[parts.length - 1].trim();
+  if (!/^\d+$/.test(text)) return null;
+  const id = Number(text);
+  return Number.isSafeInteger(id) ? id : null;
 }
 
 /**

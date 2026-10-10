@@ -1,0 +1,21 @@
+apply plugin: 'com.android.library'
+android {
+ namespace 'ai.eliza.plugins.actionjournal'
+ compileSdk rootProject.ext.compileSdkVersion
+ defaultConfig { minSdk 26; targetSdk rootProject.ext.targetSdkVersion; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
+ compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
+}
+dependencies {
+ implementation project(':capacitor-android')
+ androidTestImplementation 'androidx.test:runner:1.7.0'
+ androidTestImplementation 'androidx.test.ext:junit:1.3.0'
+}
+
+// Test the real encrypted host store without adding a production storage dependency.
+def credentialFixture = layout.buildDirectory.dir('generated/credential-slots-fixture')
+def prepareCredentialFixture = tasks.register('prepareCredentialSlotsFixture', Copy) {
+ from file('../../plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly/JsonCredentialSlots.java')
+ into credentialFixture
+}
+android.sourceSets.androidTest.java.srcDir(credentialFixture)
+tasks.matching { it.name == 'preDebugAndroidTestBuild' }.configureEach { dependsOn prepareCredentialFixture }

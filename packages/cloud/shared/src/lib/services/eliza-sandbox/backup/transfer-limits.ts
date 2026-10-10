@@ -24,13 +24,22 @@ export const SNAPSHOT_ERROR_BODY_EXCERPT_BYTES = 512;
 export const SNAPSHOT_MAX_RAW_BYTES = resolveRetainableAgentBackupBytes(
   process.env.ELIZA_SNAPSHOT_MAX_RAW_BYTES,
 );
+// Number.parseInt stops at the first non-digit, so "100junk" parsed to 100
+// and silently changed the snapshot hydration budget instead of falling
+// back to the default. Require the whole trimmed value to be a positive
+// decimal, mirroring resolveRetainableAgentBackupBytes in the core protocol
+// module (which deliberately avoids parseInt for this reason).
+function parsePositiveIntOr(raw: string | undefined, fallback: number): number {
+  const text = (raw ?? "").trim();
+  const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export const SNAPSHOT_MAX_FILES = (() => {
-  const raw = Number.parseInt(process.env.ELIZA_SNAPSHOT_MAX_FILES ?? "", 10);
-  return Number.isFinite(raw) && raw > 0 ? raw : 5000;
+  return parsePositiveIntOr(process.env.ELIZA_SNAPSHOT_MAX_FILES, 5000);
 })();
 export const SNAPSHOT_MAX_EXPANDED_BYTES = (() => {
-  const raw = Number.parseInt(process.env.ELIZA_SNAPSHOT_MAX_EXPANDED_BYTES ?? "", 10);
-  return Number.isFinite(raw) && raw > 0 ? raw : 384 * 1024 * 1024;
+  return parsePositiveIntOr(process.env.ELIZA_SNAPSHOT_MAX_EXPANDED_BYTES, 384 * 1024 * 1024);
 })();
 /**
  * Stream a Response body, enforcing a hard byte budget (#16639): the read is

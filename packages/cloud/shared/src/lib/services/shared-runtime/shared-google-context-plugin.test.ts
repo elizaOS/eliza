@@ -25,7 +25,22 @@ describe("Google Shared action/capability bridge", () => {
     for (const text of ["What's in my inbox?", "Summarize my recent emails", "Connect Gmail"]) {
       expect(isSharedGoogleContextRequest(text)).toBe(true);
     }
-    expect(isSharedGoogleContextRequest("What is Gmail?")).toBe(false);
+    for (const text of [
+      "Connect Google",
+      "Link Google account",
+      "Please connect my Google account.",
+    ]) {
+      expect(isSharedGoogleContextRequest(text)).toBe(true);
+      expect(resolveSharedPublicSearchIntent(text, [])).toBeUndefined();
+    }
+    for (const text of [
+      "What is Gmail?",
+      "Google",
+      "Tell me about Google",
+      "Link Google account API docs",
+    ]) {
+      expect(isSharedGoogleContextRequest(text)).toBe(false);
+    }
     for (const [text, query] of [
       ["Find Gmail API documentation", "Gmail API documentation"],
       ["Read Google Calendar API docs", "Read Google Calendar API docs"],

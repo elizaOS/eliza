@@ -46,6 +46,19 @@ function errorMessage(error: unknown): string {
 
 // ─── Arg parsing ─────────────────────────────────────────────────────────────
 
+// parseInt stops at the first non-digit ("1e3" -> 1), so a typo was
+// silently accepted as the flag value. Require the whole trimmed value
+// to be decimal; malformed -> documented default, mirroring
+// resolveGenerationTimeoutMs in the discord plugin.
+const parseBenchIntArg = (
+  raw: string | undefined,
+  fallback: number,
+): number => {
+  const text = (raw ?? "").trim();
+  const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
 function parseArgs(argv: string[]) {
   const args = {
     apiBase: "https://api.eliza.app",
@@ -64,13 +77,13 @@ function parseArgs(argv: string[]) {
         args.webBase = argv[++i];
         break;
       case "--rounds":
-        args.rounds = parseInt(argv[++i], 10);
+        args.rounds = parseBenchIntArg(argv[++i], 5);
         break;
       case "--poll-rounds":
-        args.pollRounds = parseInt(argv[++i], 10);
+        args.pollRounds = parseBenchIntArg(argv[++i], 3);
         break;
       case "--poll-interval":
-        args.pollIntervalMs = parseInt(argv[++i], 10);
+        args.pollIntervalMs = parseBenchIntArg(argv[++i], 2000);
         break;
       case "--no-cors-check":
         args.corsCheck = false;

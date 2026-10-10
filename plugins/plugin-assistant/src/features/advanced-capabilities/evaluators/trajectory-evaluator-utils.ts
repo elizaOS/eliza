@@ -63,7 +63,11 @@ export function parseJsonObject(raw: string): Record<string, unknown> | null {
     // malformed JSON is an explicit invalid result.
     return null;
   }
-  if (!parsed || typeof parsed !== "object") return null;
+  // An array is typeof "object" but not a Record; reject it so callers
+  // always receive a plain object or null. Mirrors parseExtraction.
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return null;
+  }
   return parsed as Record<string, unknown>;
 }
 

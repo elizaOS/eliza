@@ -994,7 +994,12 @@ export class GoalsDomain {
       "definition",
       definitionRecord.definition.id,
     );
-    const lastReminderAttempt = reminderInspection.attempts[0] ?? null;
+    // History is ordered by its planned slots; a delayed earlier slot can finish last.
+    const [lastReminderAttempt] =
+      await this.ctx.repository.listLatestReminderAttemptsForOccurrences(
+        this.ctx.agentId(),
+        [occurrence.id],
+      );
     const lastOccurrenceAudit = reminderInspection.audits[0] ?? null;
     const whyVisible =
       occurrence.state === "snoozed" && occurrence.snoozedUntil
@@ -1015,8 +1020,8 @@ export class GoalsDomain {
         source: definitionRecord.definition.source,
         whyVisible,
         lastReminderAt: lastReminderAttempt?.attemptedAt ?? null,
-        lastReminderChannel: lastReminderAttempt?.channel,
-        lastReminderOutcome: lastReminderAttempt?.outcome,
+        lastReminderChannel: lastReminderAttempt?.channel ?? null,
+        lastReminderOutcome: lastReminderAttempt?.outcome ?? null,
         lastActionSummary: lastOccurrenceAudit
           ? `${lastOccurrenceAudit.reason} at ${lastOccurrenceAudit.createdAt}`
           : null,

@@ -174,6 +174,7 @@ export function isCalendarOperation(
   return (
     !!value &&
     typeof value === "object" &&
+    typeof (value as { type?: unknown }).type === "string" &&
     [
       "calendar_create_local",
       "calendar_read_next",

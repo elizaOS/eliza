@@ -79,7 +79,7 @@ const MONTH = String.raw`(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|j
 const WEEKDAY = String.raw`(sun|mon|tue|tues|wed|thu|thur|thurs|fri|sat)(?:day|nesday|sday|urday|rsday)?`;
 const DAY = String.raw`(\d{1,2})(?:st|nd|rd|th)?`;
 const DATE_EXPR = new RegExp(
-  String.raw`\b(?:${MONTH}\s+${DAY}|${DAY}\s+(?:of\s+)?${MONTH}|the\s+${DAY}(?:st|nd|rd|th)?|(\d{1,2})(?:st|nd|rd|th)|(next\s+)?${WEEKDAY}|tomorrow|(?!may\b)${MONTH}|after\s+new\s*year'?s?|(\d{1,2})\/(\d{1,2}))\b`,
+  String.raw`\b(?:${MONTH}\s+${DAY}|(?:the\s+)?${DAY}\s+(?:of\s+)?${MONTH}|the\s+${DAY}(?:st|nd|rd|th)?|(\d{1,2})(?:st|nd|rd|th)|(next\s+)?${WEEKDAY}|tomorrow|(?!may\b)${MONTH}|after\s+new\s*year'?s?|(\d{1,2})\/(\d{1,2}))\b`,
   "i",
 );
 
@@ -100,17 +100,42 @@ function nextDayOfMonth(n: number, today: Date): Date | null {
   return null;
 }
 
+/** This exact date if it exists and is after today. */
+function futureDay(
+  year: number,
+  m: number,
+  n: number,
+  today: Date,
+): Date | null {
+  const candidate = day(year, m, n);
+  // Date.UTC rolls a day that does not exist in the month (Feb 30, Apr 31,
+  // day 0) into a neighbouring month. That rolled date is not the stated
+  // date, so reject it — the same existence check nextDayOfMonth applies.
+  if (candidate.getUTCMonth() !== m || candidate.getUTCDate() !== n)
+    return null;
+  return candidate > today ? candidate : null;
+}
+
 /** Next occurrence (today excluded) of month/day, or of the month's first day. */
 function nextMonthDay(m: number, n: number, today: Date): Date | null {
-  for (const year of [today.getUTCFullYear(), today.getUTCFullYear() + 1]) {
-    const candidate = day(year, m, n);
-    // Date.UTC rolls a day that does not exist in the month (Feb 30, Apr 31,
-    // day 0) into a neighbouring month. That rolled date is not the stated
-    // date, so skip it — the same existence check nextDayOfMonth applies.
-    if (candidate.getUTCMonth() !== m || candidate.getUTCDate() !== n) continue;
-    if (candidate > today) return candidate;
-  }
-  return null;
+  return (
+    futureDay(today.getUTCFullYear(), m, n, today) ??
+    futureDay(today.getUTCFullYear() + 1, m, n, today)
+  );
+}
+
+/** The month/day in the year the member states right after it ("January 5, 2028", "1/5/28"), else its next occurrence. */
+function monthDay(
+  m: number,
+  n: number,
+  rest: string,
+  today: Date,
+): Date | null {
+  const y = /^(?:,?\s+(\d{4})|\/(\d{4}|\d{2}))\b/.exec(rest);
+  if (!y) return nextMonthDay(m, n, today);
+  const stated = y[1] ?? y[2];
+  const year = stated.length === 2 ? 2000 + Number(stated) : Number(stated);
+  return futureDay(year, m, n, today);
 }
 
 function nextWeekday(w: number, today: Date, nextWeek: boolean): Date {
@@ -136,11 +161,14 @@ export function parseDateExpr(expr: string, now: Date): Date | null {
   const m = DATE_EXPR.exec(expr);
   if (!m) return null;
   const s = m[0].toLowerCase();
+  const rest = expr.slice(m.index + m[0].length);
   if (/after\s+new\s*year/.test(s))
     return day(today.getUTCFullYear() + 1, 0, 2);
   if (s === "tomorrow") return addDays(today, 1);
-  if (m[1] && m[2]) return nextMonthDay(monthIndex(m[1]), Number(m[2]), today);
-  if (m[3] && m[4]) return nextMonthDay(monthIndex(m[4]), Number(m[3]), today);
+  if (m[1] && m[2])
+    return monthDay(monthIndex(m[1]), Number(m[2]), rest, today);
+  if (m[3] && m[4])
+    return monthDay(monthIndex(m[4]), Number(m[3]), rest, today);
   if (m[5]) return nextDayOfMonth(Number(m[5]), today);
   if (m[6]) return nextDayOfMonth(Number(m[6]), today);
   if (m[8]) {
@@ -153,7 +181,7 @@ export function parseDateExpr(expr: string, now: Date): Date | null {
     const mo = Number(m[10]) - 1,
       d = Number(m[11]);
     return mo >= 0 && mo < 12 && d >= 1 && d <= 31
-      ? nextMonthDay(mo, d, today)
+      ? monthDay(mo, d, rest, today)
       : null;
   }
   return null;
@@ -178,8 +206,12 @@ export function resolveWindow(text: string, now: Date): DateWindow {
 
   const range = new RegExp(String.raw`\bfrom\s+(.+?)\s+${END}\s+(.+)$`).exec(t);
   if (range?.[1] && range[2]) {
-    out.from = iso(parseDateExpr(range[1], now));
-    out.until = iso(parseDateExpr(range[2], now));
+    const from = parseDateExpr(range[1], now);
+    let until = parseDateExpr(range[2], now);
+    // "from friday until monday": the end day comes next after the start day.
+    if (from && until && until <= from) until = parseDateExpr(range[2], from);
+    out.from = iso(from);
+    out.until = iso(until);
     if (out.until) return out;
   }
   const end = new RegExp(String.raw`\b${END}\s+(?:the\s+)?(.+)$`).exec(t);
@@ -227,9 +259,13 @@ export function resolveWindow(text: string, now: Date): DateWindow {
     return { from: iso(nextMonday), until: iso(addDays(nextMonday, 6)) };
   }
   if (/\bthis\s+week\b/.test(t)) {
+    // "this week" ends on this Sunday (structured-field.ts). Weeks start on
+    // Monday, so on a Sunday this Sunday is today itself. The `|| 7`
+    // next-occurrence shift used for weekdays must not apply here: it would
+    // move the end to next Sunday and extend the window by a full week.
     return {
       from: null,
-      until: iso(addDays(today, (7 - today.getUTCDay()) % 7 || 7)),
+      until: iso(addDays(today, (7 - today.getUTCDay()) % 7)),
     };
   }
   return out;

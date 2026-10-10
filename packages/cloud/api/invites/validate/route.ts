@@ -40,6 +40,7 @@ app.get("/", async (c) => {
         role: validation.invite?.invited_role,
         invited_email: validation.invite?.invited_email,
         expires_at: validation.invite?.expires_at,
+        inviter_name: validation.invite?.inviter?.name ?? null,
       },
     });
   } catch (error) {

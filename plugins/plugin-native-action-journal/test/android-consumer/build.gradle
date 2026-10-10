@@ -1,0 +1,4 @@
+plugins { id 'com.android.application' version '8.13.0' apply false; id 'com.android.library' version '8.13.0' apply false }
+allprojects { repositories { google(); mavenCentral() } }
+
+ext { compileSdkVersion = 36; targetSdkVersion = 35 }

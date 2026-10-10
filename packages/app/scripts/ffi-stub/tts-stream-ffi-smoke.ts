@@ -38,7 +38,12 @@ function strictEnvFloat(name: string, fallback: number): number | null {
 
 function intArg(name: string, fallback: number): number {
   const value = arg(name, String(fallback));
-  const n = Number.parseInt(value, 10);
+  // Number.parseInt stops at the first non-digit ("3junk" -> 3), so a typo
+  // was silently accepted as the flag value instead of throwing. Require
+  // the whole trimmed value to be decimal, mirroring strictEnvInt in this
+  // file.
+  const trimmed = value.trim();
+  const n = /^\+?\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN;
   if (!Number.isFinite(n) || n < 0) {
     throw new Error(`${name} must be a non-negative integer`);
   }
@@ -47,7 +52,12 @@ function intArg(name: string, fallback: number): number {
 
 function positiveNumberArg(name: string, fallback: number): number {
   const value = arg(name, String(fallback));
-  const n = Number.parseFloat(value);
+  // Number.parseFloat stops at the first non-digit ("0.5junk" -> 0.5), so a
+  // typo was silently accepted as the flag value instead of throwing.
+  // Require the whole trimmed value to be decimal, mirroring strictEnvFloat
+  // in this file.
+  const trimmed = value.trim();
+  const n = /^\+?\d+(?:\.\d+)?$/.test(trimmed) ? Number(trimmed) : Number.NaN;
   if (!Number.isFinite(n) || n < 0) {
     throw new Error(`${name} must be a non-negative number`);
   }

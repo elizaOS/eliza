@@ -32,3 +32,9 @@ pinned manifests. APK assembly does not establish actual speech or device accept
 Run `node --test packages/app/scripts/local-speech/speech-passage.test.mjs` for
 passage preflight, PCM bounds and cancellation wiping, then qualify actual
 microphone/synthesis/playback on the consumer's Android devices.
+
+VITS synthesis uses zero sampling noise and a length scale of one. The default
+noise produces different waveforms for repeated text and caused intermittent
+keyword errors in a consumer's synthesis-to-recognition check. Zero noise makes
+that path repeatable. It does not guarantee recognition accuracy for all text or
+replace each consumer's runtime/model and Android ABI qualification.

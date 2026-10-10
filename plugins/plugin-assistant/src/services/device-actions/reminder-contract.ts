@@ -137,7 +137,12 @@ export function reminderFields(value: unknown): ReminderFields {
     if (s.recurrence !== null) {
       const r = object(s.recurrence);
       keys(r, ["rule", "zone", "date", "time", "leadMinutes"]);
-      if (!["daily", "weekdays", "weekly"].includes(String(r.rule)))
+      // String() coercion would accept ["daily"] or {toString: () => "daily"};
+      // the un-coerced value is stored below, so require an actual string.
+      if (
+        typeof r.rule !== "string" ||
+        !["daily", "weekdays", "weekly"].includes(r.rule)
+      )
         throw Error("Unsupported reminder repeat");
       const zone = text(r.zone, 128),
         date = text(r.date, 10),
@@ -269,7 +274,9 @@ export function validateReminderResult(
     "scheduling-failed",
     "pending",
   ];
-  if (!statuses.includes(String(v.status)))
+  // String() coercion would accept ["cancelled"], but the operation checks
+  // below compare the un-coerced value strictly. Require an actual string.
+  if (typeof v.status !== "string" || !statuses.includes(v.status))
     throw Error("Invalid reminder result status");
   const timing = checkedTiming(v);
   if (timing.alertMinutes !== undefined && !reminderRequiresV2(op))

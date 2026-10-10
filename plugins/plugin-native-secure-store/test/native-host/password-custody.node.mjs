@@ -1,0 +1,41 @@
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { test } from "node:test";
+import { fileURLToPath } from "node:url";
+
+const plugin = fileURLToPath(new URL("../..", import.meta.url));
+const nativeonly = path.join(
+  plugin,
+  "android/src/main/java/ai/eliza/plugins/securestore/nativeonly",
+);
+test("password vault frame and binding normalization reject tampering and unsafe origins", (t) => {
+  const classes = fs.mkdtempSync(path.join(os.tmpdir(), "password-custody-"));
+  t.after(() => fs.rmSync(classes, { recursive: true, force: true }));
+  const bin = (name) =>
+    process.env.JAVA_HOME
+      ? path.join(process.env.JAVA_HOME, "bin", name)
+      : name;
+  execFileSync(
+    bin("javac"),
+    [
+      "-d",
+      classes,
+      path.join(nativeonly, "PasswordVaultFrame.java"),
+      path.join(nativeonly, "PasswordFacets.java"),
+      path.join(plugin, "test/native-host/PasswordCustodyTest.java"),
+    ],
+    { timeout: 60000 },
+  );
+  const output = execFileSync(
+    bin("java"),
+    ["-cp", classes, "PasswordCustodyTest"],
+    {
+      timeout: 60000,
+      encoding: "utf8",
+    },
+  );
+  assert.match(output, /^\d+ assertions passed/);
+});

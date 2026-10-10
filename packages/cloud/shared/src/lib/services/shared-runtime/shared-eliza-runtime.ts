@@ -311,6 +311,7 @@ function createRuntime(options: {
   reminderPlugin?: Plugin;
   todoPlugin?: Plugin;
   googlePlugin?: Plugin;
+  googleContextAvailable?: boolean;
   networkPlugin?: Plugin;
 }): AgentRuntime {
   const capabilityPlugin = createSharedRuntimeCapabilitiesPlugin({
@@ -318,7 +319,7 @@ function createRuntime(options: {
     webSearch: options.webSearchEnabled,
     reminders: options.actionsEnabled && Boolean(options.reminderPlugin),
     todos: options.actionsEnabled && Boolean(options.todoPlugin),
-    googleContext: options.actionsEnabled && Boolean(options.googlePlugin),
+    googleContext: options.actionsEnabled && options.googleContextAvailable === true,
     media: options.actionsEnabled && Boolean(options.mediaPlugin),
     transport: options.transport,
   });
@@ -1139,8 +1140,15 @@ async function executeMeasuredSharedElizaRuntimeTurn(
             : traceable;
         })
       : undefined;
+  const googleContextAvailable =
+    actionsEnabled && Boolean(input.execution?.google) && !publicSearchIntent;
+  // Connection availability does not authorize a private read. Only the
+  // current server-bound utterance admits the executable Google action.
   const googlePlugin =
-    actionsEnabled && input.execution?.google && !publicSearchIntent
+    googleContextAvailable &&
+    input.execution?.google &&
+    input.capabilityText &&
+    isSharedGoogleContextRequest(input.capabilityText)
       ? createSharedGoogleContextPlugin(input.execution.google)
       : undefined;
   if (webSearchPlugin && publicSearchIntent?.kind === "general") {
@@ -1200,6 +1208,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     reminderPlugin,
     todoPlugin,
     googlePlugin,
+    googleContextAvailable,
     networkPlugin,
   });
   exposeRuntime(runtime);

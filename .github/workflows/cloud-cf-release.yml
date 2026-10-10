@@ -143,6 +143,8 @@ on:
         required: false
       SECRETS_MASTER_KEY:
         required: false
+      NETWORK_SITE_AUTH_SERVER_TOKEN:
+        required: false
       STAGING_SESSION_EXCHANGE_SIGNING_SECRET:
         required: false
       STEWARD_API_URL:
@@ -1382,6 +1384,10 @@ jobs:
           ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64: ${{ secrets.ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64 }}
           VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
           VAST_BASE_URL: ${{ secrets.VAST_BASE_URL }}
+          # Optional staging-only Network phone handoff. Absence preserves existing bindings.
+          NETWORK_SITE_AUTH_ENABLED: ${{ steps.env.outputs.deploy_environment == 'staging' && vars.NETWORK_SITE_AUTH_ENABLED || '' }}
+          NETWORK_SITE_AUTH_ORIGIN: ${{ steps.env.outputs.deploy_environment == 'staging' && vars.NETWORK_SITE_AUTH_ORIGIN || '' }}
+          NETWORK_SITE_AUTH_SERVER_TOKEN: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.NETWORK_SITE_AUTH_SERVER_TOKEN || '' }}
           DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
           # Phone and app voice are production features. Staging remains an
           # explicit repository-variable opt-in, while production is pinned on
@@ -1786,6 +1792,10 @@ jobs:
             echo "::notice::$name is not configured; Worker binding state: $result"
             return 0
           }
+
+          # Admit named staging candidates before the existing atomic queue; no values are printed.
+          network_site_auth_names="$(node "$CHECKOUT_DIR/packages/cloud/scripts/verify-network-site-auth-binding.ts")" || exit 1
+          for name in $network_site_auth_names; do queue_secret "$name" || exit 1; done
 
           # Build the next Worker version with the QA activation bit absent.
           # The served gate was already disabled above; version-aware updates

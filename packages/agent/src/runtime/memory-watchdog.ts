@@ -77,7 +77,12 @@ function parsePositiveInt(
   min: number,
 ): number {
   if (raw == null) return fallback;
-  const parsed = Number.parseInt(raw.trim(), 10);
+  // Number.parseInt stops at the first non-digit, so "100junk" parsed to a
+  // finite 100 and was accepted as a deliberate setting instead of falling
+  // back to the default. Require the whole trimmed value to be decimal,
+  // mirroring resolveGenerationTimeoutMs in the discord plugin.
+  const text = raw.trim();
+  const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
   if (!Number.isFinite(parsed)) return fallback;
   return Math.max(min, parsed);
 }

@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+ <queries><package android:name="example.passwords.fixture" /></queries>
+ <application android:label="Password consumer test" android:allowBackup="false">
+  <service android:name="ai.eliza.plugins.passwords.ElizaPasswordAutofillService" android:label="Test passwords" android:exported="true" android:permission="android.permission.BIND_AUTOFILL_SERVICE">
+   <intent-filter><action android:name="android.service.autofill.AutofillService" /></intent-filter>
+   <meta-data android:name="android.autofill" android:resource="@xml/eliza_passwords_autofill_service" />
+  </service>
+ </application>
+</manifest>

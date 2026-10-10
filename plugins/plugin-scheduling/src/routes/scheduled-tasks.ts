@@ -22,6 +22,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { isLoopbackRemoteAddress } from "@elizaos/core";
 import {
   ChannelKeyError,
   type ScheduledTaskFireResult,
@@ -59,13 +60,7 @@ export interface SchedulingRouteContext {
 }
 
 function isLoopback(ctx: SchedulingRouteContext): boolean {
-  const remote = ctx.req.socket.remoteAddress ?? "";
-  return (
-    remote === "127.0.0.1" ||
-    remote === "::1" ||
-    remote === "::ffff:127.0.0.1" ||
-    remote === ""
-  );
+  return isLoopbackRemoteAddress(ctx.req.socket.remoteAddress);
 }
 
 interface ScheduledTaskRouteDeps {

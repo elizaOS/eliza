@@ -1232,7 +1232,11 @@ async function processMessage(
             delivered.providerMessageIds.length > 0) &&
           (delivered.history === true ||
             (!outcome.handled.accountEligible &&
-              outcome.handled.replyKind === "compliance" &&
+              (outcome.handled.replyKind === "compliance" ||
+                (outcome.handled.replyKind === "reply" &&
+                  outcome.handled.reason === "onboarding_asked" &&
+                  outcome.handled.memberId === null &&
+                  outcome.handled.app !== null)) &&
               delivered.history === false));
         unknown = response.status === 202 || delivered?.error === "unknown";
         notAccepted = !accepted && !unknown && response.status < 500;
@@ -2031,10 +2035,13 @@ async function sendPersonalSharedReply(
   if (isNetworkProject(project) && !isGroup) {
     let optedOut: boolean;
     try {
+      // An app-scoped START newer than a line-wide STOP reopens that app,
+      // as the internal delivery fence already reads it.
       optedOut = await isNetworkAddressOptedOut(
         networkConsentLedger(deps),
         project,
         event.senderId,
+        networkTurn?.app,
       );
     } catch (error) {
       throw new PersonalSharedPreEgressError(

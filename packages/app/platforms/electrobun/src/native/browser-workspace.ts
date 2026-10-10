@@ -255,7 +255,11 @@ function requiresManualHandoff(
 function resolveEvalTimeoutMs(): number {
 	const raw = process.env.ELIZA_BROWSER_TAB_EVAL_TIMEOUT_MS?.trim();
 	if (!raw) return DEFAULT_EVAL_TIMEOUT_MS;
-	const parsed = Number.parseInt(raw, 10);
+	// Number.parseInt stops at the first non-digit, so "60000junk" parsed to
+	// a finite 60000 and was accepted as a deliberate timeout instead of
+	// falling back to the default. Require the whole trimmed value to be
+	// decimal, mirroring resolveGenerationTimeoutMs in the discord plugin.
+	const parsed = /^\+?\d+$/.test(raw) ? Number(raw) : Number.NaN;
 	if (!Number.isFinite(parsed)) return DEFAULT_EVAL_TIMEOUT_MS;
 	return Math.min(MAX_EVAL_TIMEOUT_MS, Math.max(MIN_EVAL_TIMEOUT_MS, parsed));
 }

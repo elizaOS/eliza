@@ -1,4 +1,7 @@
 {
+  "plugin-native-action-journal": {
+    "kind": "host-configured-library"
+  },
   "plugin-native-agent": {
     "name": "Agent",
     "class": "ai.eliza.plugins.agent.AgentPlugin"
@@ -58,6 +61,9 @@
     "class": "ai.eliza.plugins.networkpolicy.NetworkPolicyPlugin"
   },
   "plugin-native-notifications": {
+    "kind": "host-configured-library"
+  },
+  "plugin-native-passwords": {
     "kind": "host-configured-library"
   },
   "plugin-native-phone": {

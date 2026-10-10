@@ -131,6 +131,8 @@ export function usePullGesture(
     t: number;
     pointerId: number;
   } | null>(null);
+  const touchCompatibilityCleanup = React.useRef<(() => void) | null>(null);
+  React.useEffect(() => () => touchCompatibilityCleanup.current?.(), []);
   // Which axis the gesture committed to, once it crossed AXIS_COMMIT_SLOP.
   const axis = React.useRef<GestureAxis | null>(null);
   // Last observed pointer position/time while pressed. REAL touch can end a
@@ -184,8 +186,27 @@ export function usePullGesture(
       // moves or replaces the control, a touch compatibility click can be
       // re-hit-tested onto the newly exposed element (for example, the chat
       // composer) and perform an unrelated default action such as focus.
+      touchCompatibilityCleanup.current?.();
       if (preventTouchCompatibilityEvents && event.pointerType === "touch") {
         event.preventDefault();
+        // Cancelling pointerdown suppresses compatibility mouse events, but
+        // Chromium can still dispatch click onto content exposed by the tap.
+        // touchstart follows pointerdown; cancel that native event on this
+        // gesture owner only. React's delegated touch listener can be passive.
+        const owner = event.currentTarget;
+        const cancelTouchStart = (touch: Event) => {
+          touch.preventDefault();
+          cleanup();
+        };
+        const cleanup = () => {
+          owner.removeEventListener("touchstart", cancelTouchStart);
+          touchCompatibilityCleanup.current = null;
+        };
+        touchCompatibilityCleanup.current = cleanup;
+        owner.addEventListener("touchstart", cancelTouchStart, {
+          once: true,
+          passive: false,
+        });
       }
       // A press that reaches here is the primary pointer (a secondary touch
       // finger returned above), so it is the ONLY pointer down and it begins a
@@ -303,6 +324,7 @@ export function usePullGesture(
     (event: React.PointerEvent) => {
       const s = start.current;
       if (!s || s.pointerId !== event.pointerId) return;
+      touchCompatibilityCleanup.current?.();
       // Apply the latest coalesced drag before deciding the release. Consumers
       // read that live value to choose the nearest detent, and the canceled rAF
       // cannot replay stale motion after the settle below.
@@ -453,6 +475,7 @@ export function usePullGesture(
     (event: React.PointerEvent) => {
       const s = start.current;
       if (!s || s.pointerId !== event.pointerId) return;
+      touchCompatibilityCleanup.current?.();
       const committedAxis = axis.current;
       const l = last.current;
       drag.cancel();

@@ -12,9 +12,10 @@ import { readRequestBodyBuffer } from "@elizaos/host";
 
 import crypto from "node:crypto";
 import type http from "node:http";
-import { isIP } from "node:net";
-import type { AgentRuntime } from "@elizaos/core";
-import { isLoopbackBindHost } from "@elizaos/core/protocol";
+import {
+	type AgentRuntime,
+	isTrustedLocalRequest as isCoreTrustedLocalRequest,
+} from "@elizaos/core";
 import { readAliasedEnv, resolveApiToken } from "@elizaos/host/protocol";
 
 const MAX_BODY_BYTES = 1_048_576;
@@ -69,56 +70,6 @@ export function tokenMatches(expected: string, provided: string): boolean {
 	);
 }
 
-function isLoopbackRemoteAddress(
-	remoteAddress: string | null | undefined,
-): boolean {
-	if (!remoteAddress) return false;
-	const normalized = remoteAddress.trim().toLowerCase();
-	return (
-		normalized === "127.0.0.1" ||
-		normalized === "::1" ||
-		normalized === "0:0:0:0:0:0:0:1" ||
-		normalized === "::ffff:127.0.0.1" ||
-		normalized === "::ffff:0:127.0.0.1"
-	);
-}
-
-function headerList(value: string | string[] | undefined): string[] {
-	if (!value) return [];
-	return (Array.isArray(value) ? value : [value])
-		.flatMap((entry) => entry.split(","))
-		.map((entry) => entry.trim())
-		.filter(Boolean);
-}
-
-function proxyClientHeaderBlocksLocalTrust(
-	headers: http.IncomingHttpHeaders,
-): boolean {
-	for (const name of [
-		"forwarded",
-		"forwarded-for",
-		"x-forwarded",
-		"x-forwarded-for",
-		"x-original-forwarded-for",
-		"x-real-ip",
-		"x-client-ip",
-		"x-forwarded-client-ip",
-		"x-cluster-client-ip",
-		"cf-connecting-ip",
-		"true-client-ip",
-		"fastly-client-ip",
-		"x-appengine-user-ip",
-		"x-azure-clientip",
-	]) {
-		const values = headerList(headers[name]);
-		for (const value of values) {
-			const host = value.replace(/^\[|\]$/g, "").split(":")[0];
-			if (host && isIP(host) && !isLoopbackRemoteAddress(host)) return true;
-		}
-	}
-	return false;
-}
-
 function isCloudProvisionedByEnv(): boolean {
 	return readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1";
 }
@@ -127,51 +78,13 @@ function isLocalAuthRequiredByEnv(): boolean {
 	return process.env.ELIZA_REQUIRE_LOCAL_AUTH === "1";
 }
 
-function isTrustedLocalOrigin(raw: string): boolean {
-	const trimmed = raw.trim();
-	if (!trimmed || trimmed === "null") return true;
-	try {
-		const parsed = new URL(trimmed);
-		if (
-			parsed.protocol === "file:" ||
-			parsed.protocol === "app:" ||
-			parsed.protocol === "tauri:" ||
-			parsed.protocol === "capacitor:" ||
-			parsed.protocol === "capacitor-electron:" ||
-			parsed.protocol === "electrobun:" ||
-			parsed.protocol === "views:"
-		) {
-			return true;
-		}
-		return isLoopbackBindHost(parsed.hostname);
-	} catch {
-		return false;
-	}
-}
-
-export function isTrustedLocalRequest(
+function isTrustedLocalRequest(
 	req: Pick<http.IncomingMessage, "headers" | "socket">,
 ): boolean {
-	if (isLocalAuthRequiredByEnv()) return false;
-	if (isCloudProvisionedByEnv()) return false;
-	if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) return false;
-	if (proxyClientHeaderBlocksLocalTrust(req.headers)) return false;
-
-	const host = firstHeaderValue(req.headers.host);
-	if (host && !isLoopbackBindHost(host)) return false;
-
-	const secFetchSite = firstHeaderValue(
-		req.headers["sec-fetch-site"],
-	)?.toLowerCase();
-	if (secFetchSite === "cross-site") return false;
-
-	const origin = firstHeaderValue(req.headers.origin);
-	if (origin && !isTrustedLocalOrigin(origin)) return false;
-
-	const referer = firstHeaderValue(req.headers.referer);
-	if (!origin && referer && !isTrustedLocalOrigin(referer)) return false;
-
-	return true;
+	return isCoreTrustedLocalRequest(req, {
+		localAuthRequired: isLocalAuthRequiredByEnv(),
+		cloudProvisioned: isCloudProvisionedByEnv(),
+	});
 }
 
 function scrubStackFields(value: unknown): unknown {

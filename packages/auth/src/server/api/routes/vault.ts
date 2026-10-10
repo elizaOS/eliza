@@ -530,6 +530,15 @@ function parseReferenceId(value: unknown): string | undefined | null {
   return trimmed;
 }
 
+// parseInt stops at the first non-digit ("1e3" -> 1), so a malformed CHAIN_ID
+// silently switched the signing chain (e.g. to mainnet) instead of falling
+// back to the 8453 default. Require the whole trimmed value to be decimal,
+// mirroring the strict Number() parsing of this same env var in global-wallet.ts.
+function parseChainIdEnv(): number {
+  const raw = (process.env.CHAIN_ID ?? "").trim();
+  return /^\+?\d+$/.test(raw) ? Number(raw) : 8453;
+}
+
 function parseTransferActionInput(body: TransferActionInput): {
   to: string;
   token: "native" | string;
@@ -547,7 +556,7 @@ function parseTransferActionInput(body: TransferActionInput): {
   const chainId =
     typeof body.chainId === "number" && Number.isInteger(body.chainId)
       ? body.chainId
-      : parseInt(process.env.CHAIN_ID || "8453", 10);
+      : parseChainIdEnv();
   const referenceId = parseReferenceId(body.referenceId);
   const isSolanaTransfer = isSolanaActionChain(chainId);
 
@@ -605,7 +614,7 @@ function parseSendCallsActionInput(body: SendCallsActionInput):
   const chainId =
     typeof body.chainId === "number" && Number.isInteger(body.chainId)
       ? body.chainId
-      : parseInt(process.env.CHAIN_ID || "8453", 10);
+      : parseChainIdEnv();
   if (!Number.isSafeInteger(chainId) || chainId <= 0)
     return "chainId must be a positive integer";
   const referenceId = parseReferenceId(body.referenceId);
@@ -2152,8 +2161,7 @@ vaultRoutes.post("/:agentId/sign", async (c) => {
     );
   }
 
-  const resolvedChainId =
-    request.chainId || parseInt(process.env.CHAIN_ID || "8453", 10);
+  const resolvedChainId = request.chainId || parseChainIdEnv();
   if (!hasCalldata(request.data)) {
     const gasGuard = await nativeTransferGasAccountingGuard(
       c,
@@ -6468,7 +6476,7 @@ vaultRoutes.post("/:agentId/sign-typed-data", async (c) => {
 
   const resolvedChainId =
     (typeof body.domain.chainId === "number" ? body.domain.chainId : 0) ||
-    parseInt(process.env.CHAIN_ID || "8453", 10);
+    parseChainIdEnv();
   // Use the EIP-712 domain's verifyingContract as the request `to` so that
   // destination-based policies (approved-addresses, condition-set, contract
   // allowlist) meaningfully gate the contract the typed data authorizes. Falls

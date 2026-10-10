@@ -18,10 +18,15 @@ import * as React from "react";
 import { lazy, Suspense, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderBootFailure } from "./boot-failure";
+import { NETWORK_HOME_ENABLED } from "./network-home/network-home-flag";
 import { seedPublicWebBootConfig } from "./public-web-boot-config";
 import { registerViewServiceWorker } from "./sw-registration";
 
 const ManagedCloudPage = lazy(() => loadManagedCloudPage());
+// The Network home page (DRAFT copy); only in builds with VITE_NETWORK_HOME=1.
+const NetworkHomePage = NETWORK_HOME_ENABLED
+  ? lazy(() => import("./network-home/NetworkHomePage"))
+  : null;
 
 let publicRoot: Root | null = null;
 let fullAppHandoffStarted = false;
@@ -76,6 +81,9 @@ function mountPublicWebEntry(): void {
           <CloudRouterShell
             appElement={<FullAppHandoff />}
             cloudManagementElement={<ManagedCloudPage />}
+            marketingHomeElement={
+              NetworkHomePage ? <NetworkHomePage /> : undefined
+            }
           />
         </Suspense>
       </React.StrictMode>

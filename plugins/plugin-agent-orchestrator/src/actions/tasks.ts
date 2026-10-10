@@ -1692,8 +1692,14 @@ function readPositiveInteger(value: unknown): number | undefined {
     return value;
   }
   if (typeof value !== "string") return undefined;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+  // Number.parseInt stops at the first non-digit ("5junk" -> 5), so a
+  // malformed value was silently accepted as a deliberate positive integer
+  // instead of falling back to the planner default. Require the whole
+  // trimmed value to be decimal, mirroring resolveGenerationTimeoutMs in
+  // the discord plugin.
+  const text = value.trim();
+  const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function laneExecutionContent(

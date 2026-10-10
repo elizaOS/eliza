@@ -120,6 +120,11 @@ export interface DraftRecord {
 export interface ListOptions {
   sinceMs?: number;
   limit?: number;
+  /**
+   * Only unread messages count toward `limit`. An adapter that cannot filter
+   * by read state may ignore it; callers still filter the result.
+   */
+  unreadOnly?: boolean;
   worldIds?: string[];
   channelIds?: string[];
 }

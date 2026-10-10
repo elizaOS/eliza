@@ -7,6 +7,8 @@ import type { AgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { createRealTestRuntime } from "../../../packages/app/test/helpers/real-runtime.ts";
 import { resolveDefaultTimeZone } from "../src/lifeops/defaults.js";
+import { resolveNextRelativeScheduleInstant } from "../src/lifeops/relative-schedule-resolver.js";
+import { resolveLifeOpsRelativeTime } from "../src/lifeops/relative-time.js";
 import {
   LifeOpsRepository,
   type LifeOpsScheduleMergedStateRecord,
@@ -248,8 +250,70 @@ describe("merged schedule state", () => {
           status: "paused",
         });
       }
+
+      // A concrete after-midnight bedtime target (Friday's sleep-day, carried
+      // to Saturday 02:00) is gated on the same sleep-day as the projection.
+      const concrete = buildCloudState(
+        String(fixture.runtime.agentId),
+        "2026-10-09T12:00:00.000Z",
+        "UTC",
+      );
+      concrete.relativeTime.bedtimeTargetAt = "2026-10-10T02:00:00.000Z";
+      concrete.baseline = {
+        medianWakeLocalHour: 8,
+        medianBedtimeLocalHour: 26,
+        medianSleepDurationMin: 360,
+        bedtimeStddevMin: 15,
+        wakeStddevMin: 15,
+        sampleCount: 10,
+        windowDays: 28,
+      };
+      for (const [onDays, expected] of [
+        [[5], "2026-10-10T02:00:00.000Z"],
+        [[6], "2026-10-11T02:00:00.000Z"],
+      ] as const) {
+        expect(
+          resolveNextRelativeScheduleInstant({
+            schedule: {
+              kind: "relative_to_bedtime",
+              timezone: "UTC",
+              offsetMinutes: 0,
+              onDays: [...onDays],
+            },
+            state: concrete,
+            nowMs: Date.parse("2026-10-09T12:00:00.000Z"),
+          }),
+        ).toBe(expected);
+      }
     } finally {
       await fixture.cleanup();
     }
+  });
+  // A 01:30 bedtime rolled across the London spring-forward (29 Mar 2026)
+  // keeps 01:30 on later days instead of the gap-shifted 02:30.
+  it("rolls a bedtime in the spring-forward gap back onto its clock time", () => {
+    const state = buildCloudState(
+      "agent",
+      "2026-03-30T19:00:00.000Z",
+      "Europe/London",
+    );
+    state.circadianState = "awake";
+    state.wakeAt = "2026-03-27T08:00:00.000Z";
+    state.regularity = { ...state.regularity, regularityClass: "very_regular" };
+    state.baseline = {
+      medianWakeLocalHour: 9,
+      medianBedtimeLocalHour: 25.5,
+      medianSleepDurationMin: 450,
+      bedtimeStddevMin: 15,
+      wakeStddevMin: 15,
+      sampleCount: 20,
+      windowDays: 28,
+    };
+    const relativeTime = resolveLifeOpsRelativeTime({
+      nowMs: Date.parse("2026-03-30T19:00:00.000Z"),
+      timezone: "Europe/London",
+      schedule: state,
+    });
+    expect(relativeTime.bedtimeTargetAt).toBe("2026-03-31T00:30:00.000Z");
   });
 });

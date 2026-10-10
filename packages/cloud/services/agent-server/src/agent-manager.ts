@@ -181,7 +181,15 @@ export function buildCanonicalMessageMetadata(args: {
 
 const REDIS_STATE_TTL_SECONDS = Math.max(
   60,
-  Number.parseInt(process.env.REDIS_STATE_TTL_SECONDS ?? "120", 10) || 120,
+  // parseInt stops at the first non-digit ("1e3junk" -> 1), so a typo
+  // silently changed the Redis state TTL instead of falling back to the
+  // 120 default. Require the whole trimmed value to be decimal; malformed
+  // -> NaN falls through the || 120 chain as before, mirroring
+  // resolveGenerationTimeoutMs in the discord plugin.
+  (() => {
+    const raw = (process.env.REDIS_STATE_TTL_SECONDS ?? "").trim();
+    return /^[+-]?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+  })() || 120,
 );
 const REDIS_REFRESH_INTERVAL_MS = 30_000;
 const AGENT_ROUTING_TTL_SECONDS = 30 * 24 * 3600;

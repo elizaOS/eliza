@@ -59,7 +59,7 @@ test("discovers all Android modules and exposes missing device coverage", () => 
   assert.ok(plugins.some((plugin) => !plugin.android));
   for (const plugin of plugins.filter((plugin) => plugin.android)) {
     assert.ok(
-      plugin.tests.length > 0,
+      plugin.tests.length > 0 || plugin.consumerTests.length > 0,
       `${plugin.directory} needs device tests`,
     );
   }
@@ -134,6 +134,20 @@ test("host-configured libraries count real native tests without inventing a defa
     assert.equal(
       plugin.expectedTests,
       plugin.tests.reduce((sum, item) => sum + item.count, 0),
+    );
+  }
+  for (const name of [
+    "plugin-native-media",
+    "plugin-native-notifications",
+    "plugin-native-passwords",
+  ]) {
+    const plugin = plugins.find((item) => item.directory === name);
+    assert.ok(plugin.consumerTests.length > 0);
+    assert.ok(plugin.consumerProject.endsWith("/test/android-consumer"));
+    assert.equal(
+      plugin.expectedTests,
+      0,
+      "consumer-host assertions are not generic APK tests",
     );
   }
   const camera = plugins.find(
