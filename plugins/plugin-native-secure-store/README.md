@@ -12,6 +12,14 @@ bun run --cwd plugins/plugin-native-secure-store build
 
 Native storage behavior requires testing on the target Apple or Android device.
 
+`KeystoreTextFrame` is a native-only codec for existing
+`Base64(IV):Base64(AES-GCM ciphertext/tag)` records. Hosts retain the deployed
+alias, storage and access policy; the format has no AAD or unlock requirement.
+It serializes cold key creation across instances and bounds encoded records on
+read and write. Native custody tests cover old-writer/new-reader and
+new-writer/old-reader compatibility, tampering and concurrent cold use. Use the
+authenticated password vault for passwords, not this codec.
+
 Android's device suite verifies the real WebView/Capacitor/Keystore round trip,
 activity recreation, ciphertext persistence, deletion, and invalid/corrupt input:
 
