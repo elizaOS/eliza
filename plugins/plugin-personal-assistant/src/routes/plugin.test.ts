@@ -203,7 +203,7 @@ describe("LifeOps raw route owner/admin gate", () => {
       reportError,
     } as AgentRuntime;
     const allowed = await requireLifeOpsRouteOwnerAdminAccess({
-      req: createRequest("/api/lifeops/app-state", {
+      req: createRequest("/api/lifeops/app-state?q=private", {
         authorization: "Bearer owner-token",
       }),
       res,
