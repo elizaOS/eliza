@@ -162,7 +162,14 @@ export async function requireLifeOpsRouteOwnerAdminAccess(args: {
     if (await requestHasOwnerRouteRole({ req, res, runtime })) {
       return true;
     }
-  } catch {
+  } catch (cause) {
+    // error-policy:J1 boundary translation — the gate fails closed when the
+    // auth/session store throws, and reports the fault so a store outage is
+    // not read as a missing role.
+    runtime.reportError("LifeOps.routeAccess", cause, {
+      method: req.method,
+      path: req.url,
+    });
     error(res, "LifeOps route access could not be verified", 403);
     return false;
   }
