@@ -2155,15 +2155,13 @@ async function sendPersonalSharedReply(
   // Empty is the agent's deliberate shouldRespond=no result. Membership
   // changes and stale turns intentionally take this path with no authority
   // token because there will be no provider egress to authorize.
-  if (
-    reply.length === 0 &&
-    !(
-      adapter.platform === "telegram" &&
-      event.chatType === "private" &&
-      !event.membershipChange &&
-      replyMediaUrls.length > 0
-    )
-  ) {
+  // A direct reply that is only media still has something to deliver. Telegram
+  // appends media links only in private chats, so its channels stay excluded.
+  const hasDeliverableMedia =
+    replyMediaUrls.length > 0 &&
+    isDirectChat(event) &&
+    (adapter.platform !== "telegram" || event.chatType === "private");
+  if (reply.length === 0 && !hasDeliverableMedia) {
     return {
       cloudMs,
       cloudAttempts: attemptResult.attempts,

@@ -5,6 +5,7 @@ import {
   classifyTwilioSmsCostConfig,
   resolveTwilioSmsCostPerSegment,
 } from "@elizaos/cloud-sdk/browser-contracts";
+import { telegramReplyWithMedia } from "@elizaos/cloud-services-common/telegram";
 import { z } from "zod";
 import { logger } from "../logger";
 import { boundedGatewayFetch } from "./bounded-fetch";
@@ -327,8 +328,16 @@ export const twilioAdapter: PlatformAdapter = {
     await sendTwilioReply(config, event, text);
   },
 
-  async sendReplyWithReceipt(config, event, text) {
-    return { providerMessageIds: await sendTwilioReply(config, event, text) };
+  // SMS has no attachment field on this path, so generated media travels as
+  // HTTPS links in the Body. MMS MediaUrl needs an MMS-capable number.
+  async sendReplyWithReceipt(config, event, text, _deliveryHooks, mediaUrls) {
+    return {
+      providerMessageIds: await sendTwilioReply(
+        config,
+        event,
+        telegramReplyWithMedia(text, mediaUrls),
+      ),
+    };
   },
 
   async sendTypingIndicator(): Promise<void> {
