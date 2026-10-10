@@ -3,6 +3,35 @@ import { matchBillControl, validateBillControls } from "./bill-controls.mjs";
 import { BillHostError } from "./errors.mjs";
 
 const blocked = (reason) => ({ kind: "blocked", reason });
+// Observation selectors are fresh opaque references on each read. Compare the
+// facts behind them, then use the new references when guidance is restored.
+const policySnapshotKey = (snapshot) =>
+  JSON.stringify({
+    url: snapshot.url,
+    documentId: snapshot.documentId,
+    inputRevision: snapshot.inputRevision,
+    effectViolation: snapshot.effectViolation,
+    text: snapshot.text,
+    elements: snapshot.elements.map(
+      ({ selector: _selector, ...facts }) => facts,
+    ),
+  });
+
+async function awaitPolicy(pending, signal) {
+  let abort;
+  try {
+    return await Promise.race([
+      pending,
+      new Promise((_resolve, reject) => {
+        abort = () => reject(new BillHostError("Task authorization changed"));
+        if (signal.aborted) abort();
+        else signal.addEventListener("abort", abort, { once: true });
+      }),
+    ]);
+  } finally {
+    signal.removeEventListener("abort", abort);
+  }
+}
 /** Reviewed host policy over shared task/runtime primitives. No agent submit operation exists. */
 export class BillWorkflow {
   constructor({
@@ -238,7 +267,7 @@ export class BillWorkflow {
         };
       throw error;
     }
-    const { observation, snapshot } = this.actuator.readObservation(
+    let { observation, snapshot } = this.actuator.readObservation(
       task.id,
       this.runtime.owner,
     );
@@ -260,7 +289,84 @@ export class BillWorkflow {
           "The website tried to submit or leave the page after my last step. I paused the task. Check the website to confirm what happened before resuming.",
       };
     }
-    const decision = this.deriveBillDecision(this.bill, snapshot);
+    const { epoch: policyEpoch, revision: policyRevision } = this.runtime.get(
+      this.taskId,
+    );
+    const snapshotKey = policySnapshotKey(snapshot);
+    let decision = this.deriveBillDecision(this.bill, snapshot, {
+      signal: this.signal,
+      taskId: this.taskId,
+      epoch: policyEpoch,
+    });
+    if (decision && typeof decision.then === "function") {
+      decision = await awaitPolicy(decision, this.signal);
+      if (!(await this.stillAuthorized()) || this.signal.aborted)
+        throw new BillHostError("Task authorization changed");
+      const current = this.runtime.get(this.taskId);
+      if (
+        current.status !== "active" ||
+        current.epoch !== policyEpoch ||
+        current.revision !== policyRevision
+      ) {
+        await this.clearGuidance();
+        return blocked(
+          "The task changed while the bill was being checked. Check it again.",
+        );
+      }
+      await this.runtime.observe(
+        current.id,
+        current.revision,
+        false,
+        this.stillAuthorized,
+      );
+      const fresh = this.actuator.readObservation(
+        this.taskId,
+        this.runtime.owner,
+      );
+      if (!(await this.stillAuthorized()) || this.signal.aborted)
+        throw new BillHostError("Task authorization changed");
+      const observedTask = this.runtime.get(this.taskId);
+      if (
+        observedTask.status !== "active" ||
+        observedTask.epoch !== policyEpoch
+      ) {
+        await this.clearGuidance();
+        return blocked(
+          "The task changed while the bill was being checked. Check it again.",
+        );
+      }
+      // The browser stopped a submit or page change that a task action set
+      // off. Stop here; the person checks the website before going on.
+      if (fresh.snapshot.effectViolation !== undefined) {
+        await this.clearGuidance();
+        if (!(await this.stillAuthorized()) || this.signal.aborted)
+          throw new BillHostError("Task authorization changed");
+        const current = this.runtime.get(task.id);
+        if (["active", "waiting"].includes(current.status)) {
+          this.runtime.control(current.id, current.revision, "pause");
+          await this.runtime.settle?.(current.id);
+        }
+        return {
+          kind: "paused",
+          taskId: this.taskId,
+          message:
+            "The website tried to submit or leave the page after my last step. I paused the task. Check the website to confirm what happened before resuming.",
+        };
+      }
+      if (snapshotKey !== policySnapshotKey(fresh.snapshot)) {
+        await this.clearGuidance();
+        return blocked(
+          "The website changed while the bill was being checked. Check it again.",
+        );
+      }
+      ({ observation, snapshot } = fresh);
+    }
+    if (
+      !decision ||
+      typeof decision !== "object" ||
+      typeof decision.kind !== "string"
+    )
+      throw new BillHostError("Invalid bill observation decision");
     if (decision.kind === "outcome") {
       await this.clearGuidance();
       if (!(await this.stillAuthorized()))

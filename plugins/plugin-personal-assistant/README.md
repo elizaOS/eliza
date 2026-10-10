@@ -47,6 +47,12 @@ visible parts).
 
 Hosts must supply reviewed `deriveBillDecision` and exact `controls` policy.
 Neither may come from renderer input, page instructions or a model response.
+The policy can return a decision or a promise. An asynchronous policy receives
+the task's cancellation signal in its third-argument context. The workflow rechecks
+authority, task state and a fresh browser observation before using that result.
+Changed page facts discard the result; no choice, review or outcome is saved.
+Payment reviews use `paymentDate: null` when the page does not show a date.
+Unknown dates stay null in saved evidence and client responses.
 Bill-source parsing and provider/account scope are also explicit host inputs.
 The plugin's confidence-based `src/lifeops/bill-extraction.ts` remains a separate
 inbox classification API; its result alone is not payment authorization.

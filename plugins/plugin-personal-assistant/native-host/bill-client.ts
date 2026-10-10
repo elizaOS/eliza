@@ -213,7 +213,7 @@ export type BillReview = {
   totalMinor: number;
   currency: string;
   currencyDigits: number;
-  paymentDate: string;
+  paymentDate: string | null;
   method: string;
   servicePeriod: string | null;
   source: string;
@@ -388,9 +388,18 @@ export function readBillDecision(
         currency: r.currency,
         currencyDigits: r.currencyDigits,
       });
-    for (const value of [r.company, r.accountLabel, r.paymentDate, r.method])
+    for (const value of [r.company, r.accountLabel, r.method])
       if (typeof value !== "string" || value.length > 300)
         throw new BillClientResponseError("Invalid bill detail");
+    if (
+      r.paymentDate !== null &&
+      (typeof r.paymentDate !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(r.paymentDate) ||
+        Number.isNaN(Date.parse(`${r.paymentDate}T00:00:00Z`)) ||
+        new Date(`${r.paymentDate}T00:00:00Z`).toISOString().slice(0, 10) !==
+          r.paymentDate)
+    )
+      throw new BillClientResponseError("Invalid bill payment date");
     if (r.servicePeriod !== null && typeof r.servicePeriod !== "string")
       throw new BillClientResponseError("Invalid service period");
   }
