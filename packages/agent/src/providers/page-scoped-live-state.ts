@@ -23,7 +23,6 @@ import type {
   WalletNftsResponse,
 } from "@elizaos/contracts";
 import {
-  type AppRunSummary,
   type IAgentRuntime,
   logger,
   type RegistryAppInfo,
@@ -131,52 +130,18 @@ async function renderBrowserLiveState(
     return null;
   }
 }
-function dedupeApps(
-  groups: Array<RegistryAppInfo[] | null>,
-): RegistryAppInfo[] {
-  const apps = new Map<string, RegistryAppInfo>();
-  for (const group of groups) {
-    if (!group) continue;
-    for (const app of group) {
-      if (!app.name || apps.has(app.name)) continue;
-      apps.set(app.name, app);
-    }
-  }
-  return [...apps.values()].sort((left, right) =>
-    left.displayName.localeCompare(right.displayName),
-  );
-}
 async function renderAppsLiveState(): Promise<string | null> {
-  const [catalogApps, serverApps, runs] = await Promise.all([
-    fetchLocalJson<RegistryAppInfo[]>("/api/catalog/apps"),
-    fetchLocalJson<RegistryAppInfo[]>("/api/apps"),
-    fetchLocalJson<AppRunSummary[]>("/api/apps/runs"),
-  ]);
-  if (!catalogApps && !serverApps && !runs) {
+  const catalogApps =
+    await fetchLocalJson<RegistryAppInfo[]>("/api/catalog/apps");
+  if (!catalogApps) {
     return "Live apps state: unavailable from the Apps API.";
   }
-  const apps = dedupeApps([catalogApps, serverApps]);
-  const activeRuns = runs ?? [];
+  const apps = [...catalogApps].sort((left, right) =>
+    left.displayName.localeCompare(right.displayName),
+  );
   const lines: string[] = [
-    `Live apps state: ${apps.length} catalog app${apps.length === 1 ? "" : "s"}, ${activeRuns.length} running app${activeRuns.length === 1 ? "" : "s"}.`,
+    `Live apps state: ${apps.length} catalog app${apps.length === 1 ? "" : "s"}.`,
   ];
-  if (activeRuns.length > 0) {
-    lines.push("Running apps:");
-    for (const run of activeRuns) {
-      const health = run.health.state ? ` health=${run.health.state}` : "";
-      const viewer = run.viewerAttachment
-        ? ` viewer=${run.viewerAttachment}`
-        : "";
-      const summary = run.summary
-        ? ` — ${toWellFormedUnicode(run.summary)}`
-        : "";
-      lines.push(
-        `- ${run.displayName} (${run.appName}) status=${run.status}${health}${viewer}${summary}`,
-      );
-    }
-  } else {
-    lines.push("Running apps: none.");
-  }
   if (apps.length > 0) {
     lines.push("Catalog sample:");
     for (const app of apps) {
