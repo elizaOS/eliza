@@ -365,6 +365,21 @@ function daysInMonth(year: number, month: number): number {
   return d.getUTCDate();
 }
 
+function greatestCommonDivisor(left: number, right: number): number {
+  let a = Math.abs(left);
+  let b = Math.abs(right);
+  while (b !== 0) {
+    const remainder = a % b;
+    a = b;
+    b = remainder;
+  }
+  return a;
+}
+
+function monthIndex(year: number, month: number): number {
+  return year * 12 + month - 1;
+}
+
 const MAX_GENERATED_OCCURRENCES = 1000;
 
 /**
@@ -463,6 +478,275 @@ function* generateOccurrences(args: {
         }
       }
     }
+  }
+
+  function* emptyDates(): Generator<LocalDateOnly> {}
+
+  function seekLocalDates(): {
+    dates: Generator<LocalDateOnly>;
+    skipped: number;
+  } {
+    const rangeDateParts = getZonedDateParts(new Date(rangeStartMs), timeZone);
+    const rangeDate: LocalDateOnly = {
+      year: rangeDateParts.year,
+      month: rangeDateParts.month,
+      day: rangeDateParts.day,
+    };
+
+    if (rule.freq === "DAILY") {
+      let selectedIndex = Math.max(
+        0,
+        Math.ceil(daysBetweenLocalDates(anchorDate, rangeDate) / rule.interval),
+      );
+      for (;;) {
+        const date = addDaysToLocalDate(
+          anchorDate,
+          selectedIndex * rule.interval,
+        );
+        const instantMs = toInstant(date).getTime();
+        if (instantMs > startMs && instantMs >= rangeStartMs) break;
+        selectedIndex += 1;
+      }
+      const skipped = Math.max(0, selectedIndex - 1);
+      function* dates(): Generator<LocalDateOnly> {
+        for (let index = selectedIndex; ; index += 1) {
+          const date = addDaysToLocalDate(anchorDate, index * rule.interval);
+          const instantMs = toInstant(date).getTime();
+          if (instantMs > startMs && instantMs >= rangeStartMs) yield date;
+        }
+      }
+      return { dates: dates(), skipped };
+    }
+
+    if (rule.freq === "WEEKLY") {
+      const byDay = [...(rule.byDay ?? [getWeekdayForLocalDate(anchorDate)])];
+      const mondayOffset = (getWeekdayForLocalDate(anchorDate) + 6) % 7;
+      const anchorWeekStart = addDaysToLocalDate(anchorDate, -mondayOffset);
+      const dayOffsets = [
+        ...new Set(byDay.map((weekday) => (weekday + 6) % 7)),
+      ].sort((a, b) => a - b);
+      if (dayOffsets.length === 0) return { dates: emptyDates(), skipped: 0 };
+      let selectedWeek = Math.max(
+        0,
+        Math.floor(
+          daysBetweenLocalDates(anchorWeekStart, rangeDate) /
+            (rule.interval * 7),
+        ),
+      );
+      let selectedOffsetIndex = 0;
+      for (;;) {
+        const weekStart = addDaysToLocalDate(
+          anchorWeekStart,
+          selectedWeek * rule.interval * 7,
+        );
+        const foundIndex = dayOffsets.findIndex((offset) => {
+          const date = addDaysToLocalDate(weekStart, offset);
+          const instantMs = toInstant(date).getTime();
+          return instantMs > startMs && instantMs >= rangeStartMs;
+        });
+        if (foundIndex >= 0) {
+          selectedOffsetIndex = foundIndex;
+          break;
+        }
+        selectedWeek += 1;
+      }
+      const firstWeekStart = anchorWeekStart;
+      const firstWeekCount = dayOffsets.filter((offset) => {
+        const date = addDaysToLocalDate(firstWeekStart, offset);
+        return toInstant(date).getTime() > startMs;
+      }).length;
+      let skipped =
+        selectedWeek === 0
+          ? 0
+          : firstWeekCount + (selectedWeek - 1) * dayOffsets.length;
+      const selectedWeekStart = addDaysToLocalDate(
+        anchorWeekStart,
+        selectedWeek * rule.interval * 7,
+      );
+      for (let index = 0; index < selectedOffsetIndex; index += 1) {
+        const date = addDaysToLocalDate(
+          selectedWeekStart,
+          dayOffsets[index] ?? 0,
+        );
+        if (toInstant(date).getTime() > startMs) skipped += 1;
+      }
+      function* dates(): Generator<LocalDateOnly> {
+        for (let week = selectedWeek; ; week += 1) {
+          const weekStart = addDaysToLocalDate(
+            anchorWeekStart,
+            week * rule.interval * 7,
+          );
+          const firstIndex = week === selectedWeek ? selectedOffsetIndex : 0;
+          for (let index = firstIndex; index < dayOffsets.length; index += 1) {
+            const date = addDaysToLocalDate(weekStart, dayOffsets[index] ?? 0);
+            const instantMs = toInstant(date).getTime();
+            if (instantMs > startMs && instantMs >= rangeStartMs) yield date;
+          }
+        }
+      }
+      return { dates: dates(), skipped };
+    }
+
+    if (rule.freq === "MONTHLY") {
+      const byMonthDay = rule.byMonthDay ?? [anchorDate.day];
+      const rawDays = (step: number): number[] => {
+        const { year, month } = addMonthsToLocalMonth(
+          anchorDate,
+          step * rule.interval,
+        );
+        const monthLength = daysInMonth(year, month);
+        return byMonthDay
+          .map((day) => (day < 0 ? monthLength + day + 1 : day))
+          .filter((day) => day >= 1 && day <= monthLength)
+          .sort((a, b) => a - b);
+      };
+      const monthDelta =
+        monthIndex(rangeDate.year, rangeDate.month) -
+        monthIndex(anchorDate.year, anchorDate.month);
+      let selectedStep = Math.max(0, Math.floor(monthDelta / rule.interval));
+      let selectedDayIndex = -1;
+      const cycleSteps = 4800 / greatestCommonDivisor(rule.interval, 4800);
+      for (let attempt = 0; attempt < cycleSteps; attempt += 1) {
+        const { year, month } = addMonthsToLocalMonth(
+          anchorDate,
+          selectedStep * rule.interval,
+        );
+        const days = rawDays(selectedStep);
+        const foundIndex = days.findIndex((day) => {
+          const instantMs = toInstant({ year, month, day }).getTime();
+          return instantMs > startMs && instantMs >= rangeStartMs;
+        });
+        if (foundIndex >= 0) {
+          selectedDayIndex = foundIndex;
+          break;
+        }
+        selectedStep += 1;
+      }
+      if (selectedDayIndex < 0) return { dates: emptyDates(), skipped: 0 };
+
+      let cycleTotal = 0;
+      for (let step = 0; step < cycleSteps; step += 1) {
+        cycleTotal += rawDays(step).length;
+      }
+      let skipped = 0;
+      if (selectedStep > 0) {
+        const fullCycles = Math.floor(selectedStep / cycleSteps);
+        const remainder = selectedStep % cycleSteps;
+        skipped = fullCycles * cycleTotal;
+        for (let step = 0; step < remainder; step += 1) {
+          skipped += rawDays(step).length;
+        }
+        const firstMonth = addMonthsToLocalMonth(anchorDate, 0);
+        const firstMonthDays = rawDays(0);
+        skipped -= firstMonthDays.filter((day) => {
+          const instantMs = toInstant({ ...firstMonth, day }).getTime();
+          return instantMs <= startMs;
+        }).length;
+      }
+      const { year: selectedYear, month: selectedMonth } =
+        addMonthsToLocalMonth(anchorDate, selectedStep * rule.interval);
+      const selectedDays = rawDays(selectedStep);
+      for (let index = 0; index < selectedDayIndex; index += 1) {
+        const day = selectedDays[index];
+        if (day === undefined) continue;
+        if (
+          toInstant({
+            year: selectedYear,
+            month: selectedMonth,
+            day,
+          }).getTime() > startMs
+        ) {
+          skipped += 1;
+        }
+      }
+      function* dates(): Generator<LocalDateOnly> {
+        for (let step = selectedStep; ; step += 1) {
+          const { year, month } = addMonthsToLocalMonth(
+            anchorDate,
+            step * rule.interval,
+          );
+          const days = rawDays(step);
+          const firstIndex = step === selectedStep ? selectedDayIndex : 0;
+          for (let index = firstIndex; index < days.length; index += 1) {
+            const day = days[index];
+            if (day === undefined) continue;
+            const instantMs = toInstant({ year, month, day }).getTime();
+            if (instantMs > startMs && instantMs >= rangeStartMs) {
+              yield { year, month, day };
+            }
+          }
+        }
+      }
+      return { dates: dates(), skipped };
+    }
+
+    const yearlyCandidate = (step: number): LocalDateOnly | null => {
+      const year = anchorDate.year + step * rule.interval;
+      if (anchorDate.day > daysInMonth(year, anchorDate.month)) return null;
+      return { year, month: anchorDate.month, day: anchorDate.day };
+    };
+    const yearDelta = rangeDate.year - anchorDate.year;
+    let selectedStep = Math.max(0, Math.floor(yearDelta / rule.interval));
+    let selectedCandidate: LocalDateOnly | null = null;
+    const cycleSteps = 400 / greatestCommonDivisor(rule.interval, 400);
+    for (let attempt = 0; attempt < cycleSteps; attempt += 1) {
+      const candidate = yearlyCandidate(selectedStep);
+      if (
+        candidate &&
+        toInstant(candidate).getTime() > startMs &&
+        toInstant(candidate).getTime() >= rangeStartMs
+      ) {
+        selectedCandidate = candidate;
+        break;
+      }
+      selectedStep += 1;
+    }
+    if (!selectedCandidate) return { dates: emptyDates(), skipped: 0 };
+
+    let validInCycle = 0;
+    for (let step = 0; step < cycleSteps; step += 1) {
+      if (yearlyCandidate(step)) validInCycle += 1;
+    }
+    let skipped = 0;
+    if (selectedStep > 0) {
+      const fullCycles = Math.floor(selectedStep / cycleSteps);
+      const remainder = selectedStep % cycleSteps;
+      skipped = fullCycles * validInCycle;
+      for (let step = 0; step < remainder; step += 1) {
+        if (yearlyCandidate(step)) skipped += 1;
+      }
+      if (yearlyCandidate(0)) skipped -= 1;
+    }
+    function* dates(): Generator<LocalDateOnly> {
+      for (let step = selectedStep; ; step += 1) {
+        const candidate = yearlyCandidate(step);
+        if (!candidate) continue;
+        const instantMs = toInstant(candidate).getTime();
+        if (instantMs > startMs && instantMs >= rangeStartMs) yield candidate;
+      }
+    }
+    return { dates: dates(), skipped };
+  }
+
+  if (args.rangeStart !== undefined && !Number.isFinite(rangeStartMs)) return;
+
+  if (rangeStartMs > startMs) {
+    if (rule.untilMs !== undefined && rule.untilMs < rangeStartMs) return;
+    const sought = seekLocalDates();
+    emitted = 1 + sought.skipped;
+    if (emitted >= generatedBudget) return;
+    let retained = 0;
+    for (const date of sought.dates) {
+      const instant = toInstant(date);
+      if (rule.untilMs !== undefined && instant.getTime() > rule.untilMs)
+        return;
+      emitted += 1;
+      retained += 1;
+      if (retained > retainedBudget) return;
+      yield instant;
+      if (emitted >= generatedBudget) return;
+    }
+    return;
   }
 
   // DTSTART is always the first occurrence.

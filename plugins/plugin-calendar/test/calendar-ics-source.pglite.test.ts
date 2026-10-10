@@ -811,6 +811,45 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     ]);
   });
 
+  it("seeks an ancient unbounded daily series without walking its history", async () => {
+    const source = await createSource();
+    await syncBody(
+      source.id,
+      calendar(
+        [
+          "BEGIN:VEVENT",
+          "UID:ancient-daily",
+          "DTSTAMP:20260901T000000Z",
+          "DTSTART:00010101T160000Z",
+          "DTEND:00010101T170000Z",
+          "RRULE:FREQ=DAILY",
+          "SUMMARY:Ancient daily series",
+          "END:VEVENT",
+        ].join("\r\n"),
+      ),
+    );
+    const feed = await service.getCalendarFeed(
+      new URL("http://internal.test/api/calendar"),
+      {
+        grantId: source.id,
+        timeMin: "2026-10-12T00:00:00.000Z",
+        timeMax: "2026-10-19T00:00:00.000Z",
+      },
+      new Date(),
+    );
+
+    expect(feed.state).toBe("complete");
+    expect(feed.events.map((event) => event.startAt)).toEqual([
+      "2026-10-12T16:00:00.000Z",
+      "2026-10-13T16:00:00.000Z",
+      "2026-10-14T16:00:00.000Z",
+      "2026-10-15T16:00:00.000Z",
+      "2026-10-16T16:00:00.000Z",
+      "2026-10-17T16:00:00.000Z",
+      "2026-10-18T16:00:00.000Z",
+    ]);
+  });
+
   it("rejects an older SEQUENCE without overwriting the current event", async () => {
     const source = await createSource();
     await syncBody(
