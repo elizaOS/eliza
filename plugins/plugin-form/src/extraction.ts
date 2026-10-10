@@ -99,6 +99,31 @@ function parseBoolean(value: unknown): boolean {
   );
 }
 
+/**
+ * Parse an LLM-produced confidence value as a canonical decimal only.
+ * `parseFloat` silently accepts non-canonical forms (`"0x1"` → 0,
+ * `"1e2"` → 100, `"0.9abc"` → 0.9) that the extraction prompts never emit
+ * (they specify `confidence 0.0-1.0`); malformed values must fall back to
+ * the neutral default instead of becoming a fabricated confidence.
+ * Returns `undefined` for anything that is not a canonical decimal string
+ * or a finite number.
+ */
+function parseConfidenceDecimal(value: unknown): number | undefined {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : undefined;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    // Canonical decimal strings only: no hex, no exponents, no leading-dot
+    // or explicit-plus forms, no trailing junk, no blanks.
+    if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
+      const n = Number(trimmed);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return undefined;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -252,11 +277,7 @@ export function parseFormExtractorOutput(raw: unknown): IntentResult | null {
 
     const value: JsonValue = (entry.value as JsonValue | undefined) ?? null;
 
-    let confidence =
-      typeof entry.confidence === "number"
-        ? entry.confidence
-        : parseFloat(String(entry.confidence ?? ""));
-    if (!Number.isFinite(confidence)) confidence = 0.5;
+    let confidence = parseConfidenceDecimal(entry.confidence) ?? 0.5;
     confidence = Math.max(0, Math.min(1, confidence));
 
     const reasoning =
@@ -401,15 +422,12 @@ Return only a valid JSON object with this schema:
     value = parseValue(value, resolvedControl, controlType);
   }
 
-  const confidence =
-    typeof parsed.confidence === "number"
-      ? parsed.confidence
-      : parseFloat(String(parsed.confidence ?? ""));
+  const confidence = parseConfidenceDecimal(parsed.confidence) ?? 0.5;
 
   const result: ExtractionResult = {
     field: resolvedControl.key,
     value: value ?? null,
-    confidence: Number.isFinite(confidence) ? confidence : 0.5,
+    confidence,
     reasoning: parsed.reasoning ? String(parsed.reasoning) : undefined,
   };
 
@@ -524,15 +542,12 @@ Rules:
       value = parseValue(value, control, controlType);
     }
 
-    const confidence =
-      typeof correction.confidence === "number"
-        ? correction.confidence
-        : parseFloat(String(correction.confidence ?? ""));
+    const confidence = parseConfidenceDecimal(correction.confidence) ?? 0.8;
 
     corrections.push({
       field: control.key,
       value: value ?? null,
-      confidence: Number.isFinite(confidence) ? confidence : 0.8,
+      confidence,
       isCorrection: true,
     });
   }
