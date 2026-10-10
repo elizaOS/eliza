@@ -138,11 +138,25 @@ export class NetworkServiceClient {
   }
 
   /** Ask the service to relay the member's message to a match. Idempotent by messageId. */
-  relay(req: RelaySendRequest): Promise<RelaySendResponse> {
-    return this.#post<RelaySendResponse>(
+  async relay(req: RelaySendRequest): Promise<RelaySendResponse> {
+    const result = await this.#post<RelaySendResponse>(
       RELAY_PATH,
       `${req.messageId}:relay`,
       req,
     );
+    if (
+      !result ||
+      typeof result !== "object" ||
+      !["pass", "hold", "block", "none"].includes(result.decision) ||
+      typeof result.senderNotice !== "string" ||
+      typeof result.delivered !== "boolean" ||
+      typeof result.replayed !== "boolean" ||
+      (result.delivered && result.decision !== "pass")
+    )
+      throw new NetworkServiceError(
+        200,
+        "Network service returned an invalid relay receipt",
+      );
+    return result;
   }
 }

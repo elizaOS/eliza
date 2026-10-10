@@ -117,6 +117,48 @@ describe("RELAY action", () => {
     assert.equal(result?.data?.delivered, false);
   });
 
+  it("does not report a passed classifier result as delivered without a receipt", async () => {
+    const { store } = serviceSetup({
+      decision: "pass",
+      senderNotice: "Sent.",
+      delivered: false,
+      replayed: false,
+    });
+    const result = await relayAction(store).handler(
+      runtime,
+      message("tell Sam I am late"),
+    );
+    assert.equal(result?.success, false);
+    assert.equal(result?.error, "delivery_unconfirmed");
+    assert.equal(result?.data?.delivered, false);
+  });
+
+  it("rejects malformed or contradictory service receipts", async () => {
+    for (const response of [
+      null,
+      {},
+      {
+        decision: "pass",
+        senderNotice: "Sent.",
+        delivered: "true",
+        replayed: false,
+      },
+      {
+        decision: "block",
+        senderNotice: "Blocked",
+        delivered: true,
+        replayed: false,
+      },
+    ]) {
+      const { store } = serviceSetup(response);
+      await assert.rejects(
+        () =>
+          relayAction(store).handler(runtime, message("tell Sam I am late")),
+        /invalid relay receipt/,
+      );
+    }
+  });
+
   it("is not offered when the store cannot relay", () => {
     const plugin = createNetworkEdgePlugin({
       store: new InMemoryNetworkStore(),

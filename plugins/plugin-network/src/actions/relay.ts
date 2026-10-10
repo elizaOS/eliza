@@ -108,6 +108,20 @@ export function createRelayAction(options: RelayActionOptions): Action {
         text,
       });
 
+      if (result.decision === "pass" && !result.delivered)
+        return {
+          ...failure(
+            "delivery_unconfirmed",
+            "The service accepted the relay, but delivery is not confirmed. Do not report it as sent.",
+          ),
+          data: {
+            actionName: "RELAY",
+            decision: result.decision,
+            delivered: false,
+            replayed: result.replayed,
+          },
+        };
+
       if (result.decision === "none") {
         return {
           success: false,
