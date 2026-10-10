@@ -262,50 +262,6 @@ export interface CloudCompatManagedDiscordStatus {
   connectedAt: string | null;
   restarted?: boolean;
 }
-/** Discord plugin config shape exposed to cloud dashboard. */
-export interface CloudCompatDiscordConfig {
-  dm?: {
-    enabled?: boolean;
-    policy?: "open" | "pairing" | "allowlist";
-    allowFrom?: Array<string | number>;
-    groupEnabled?: boolean;
-  };
-  requireMention?: boolean;
-  reactionNotifications?: "off" | "own" | "all" | "allowlist";
-  actions?: {
-    reactions?: boolean;
-    stickers?: boolean;
-    emojiUploads?: boolean;
-    stickerUploads?: boolean;
-    polls?: boolean;
-    permissions?: boolean;
-    messages?: boolean;
-    threads?: boolean;
-    pins?: boolean;
-    search?: boolean;
-    memberInfo?: boolean;
-    roleInfo?: boolean;
-    roles?: boolean;
-    channelInfo?: boolean;
-    voiceStatus?: boolean;
-    events?: boolean;
-    moderation?: boolean;
-    channels?: boolean;
-    presence?: boolean;
-  };
-  maxLinesPerMessage?: number;
-  textChunkLimit?: number;
-  intents?: {
-    presence?: boolean;
-    guildMembers?: boolean;
-  };
-  pluralkit?: {
-    enabled?: boolean;
-  };
-  execApprovals?: {
-    enabled?: boolean;
-  };
-}
 export interface CloudCompatManagedGithubStatus {
   configured: boolean;
   connected: boolean;
