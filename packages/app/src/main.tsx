@@ -2807,6 +2807,14 @@ const CloudRouterShell = lazy(async () => {
   return { default: mod.CloudRouterShell };
 });
 
+/** Account management follows the Cloud session independently of agent boot. */
+const ManagedCloudPage = lazy(async () => {
+  if (__ELIZA_WEB_SHELL__ !== true) {
+    throw new Error("ManagedCloudPage is web-build-only");
+  }
+  return import("@elizaos/ui/cloud/shell/ManagedCloudPage");
+});
+
 /** Approved marketing surfaces bundled only into the hosted web shell. */
 const MarketingHomePage = lazy(async () => {
   if (__ELIZA_WEB_SHELL__ !== true) {
@@ -2889,6 +2897,7 @@ function mountReactApp(): void {
       <CloudRouterShell
         marketingHomeElement={<MarketingHomePage />}
         downloadsElement={<MarketingDownloadsPage />}
+        cloudManagementElement={<ManagedCloudPage />}
         appElement={
           <AppProvider branding={APP_BRANDING}>{appSubtree}</AppProvider>
         }
