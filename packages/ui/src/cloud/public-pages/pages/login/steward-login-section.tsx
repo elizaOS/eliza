@@ -116,6 +116,7 @@ import {
   recoverStewardEmailSessionViaCookie,
   recoverStewardSessionViaCookie,
   refreshStewardSessionViaCookie,
+  resolveStewardAuthEndpoint,
   stripLegacyTokenHashFromAddressBar,
   syncStewardSessionCookie,
 } from "../../lib/steward-session";
@@ -635,21 +636,26 @@ export default function StewardLoginSection({
     [],
   );
 
-  const auth = useMemo(() => {
-    const privateSession = new Map<string, string>();
-    return new LoginAuth({
-      baseUrl: stewardApiUrl,
-      tenantId: STEWARD_TENANT_ID,
-      // Steward writes successful exchanges into its configured storage before
-      // returning. Keep that intermediate state private: handleSuccess first
-      // completes the authoritative Cloud sync (including verified-phone
-      // convergence), then publishes once through writeStoredStewardToken.
-      storage: {
-        getItem: (key) => privateSession.get(key) ?? null,
-        setItem: (key, value) => privateSession.set(key, value),
-        removeItem: (key) => privateSession.delete(key),
-      },
-    });
+  const { auth, phoneAuth } = useMemo(() => {
+    const privateAuth = (baseUrl: string, tenantId?: string) => {
+      const privateSession = new Map<string, string>();
+      return new LoginAuth({
+        baseUrl,
+        ...(tenantId ? { tenantId } : {}),
+        // Intermediate exchanges stay private until authoritative Cloud sync.
+        storage: {
+          getItem: (key) => privateSession.get(key) ?? null,
+          setItem: (key, value) => privateSession.set(key, value),
+          removeItem: (key) => privateSession.delete(key),
+        },
+      });
+    };
+    return {
+      auth: privateAuth(stewardApiUrl, STEWARD_TENANT_ID),
+      phoneAuth: privateAuth(
+        resolveStewardAuthEndpoint("/steward/cloud-owner-phone"),
+      ),
+    };
   }, [stewardApiUrl]);
 
   const emailInputRef = useRef<HTMLInputElement>(null);
@@ -1729,7 +1735,7 @@ export default function StewardLoginSection({
     setError(null);
     setFieldError(null);
     try {
-      await auth.sendSmsOtp(normalizedPhone);
+      await phoneAuth.sendSmsOtp(normalizedPhone);
       setPhone(normalizedPhone);
       setSmsCode("");
       setResendAvailableAt(Date.now() + AUTH_CODE_RESEND_COOLDOWN_MS);
@@ -1756,7 +1762,9 @@ export default function StewardLoginSection({
     setLoading("sms");
     setError(null);
     try {
-      const result = requireCompletedAuth(await auth.verifySmsOtp(phone, code));
+      const result = requireCompletedAuth(
+        await phoneAuth.verifySmsOtp(phone, code),
+      );
       await handleSuccess(result.token, result.refreshToken, {
         verifiedPhone: phone,
       });
