@@ -6,9 +6,11 @@ import type { SharedTurnMessage } from "./run-shared-agent-turn";
 
 const EXPLICIT_SELF_NAME = /^my(?: preferred)? name is\s+(.+?)[.!?]?$/iu;
 // An unquoted name is written as one: no word starts with a lowercase letter,
-// apart from surname particles. "My name is not important" or "my name is on
-// the account" is a phrase, not a name. Caseless scripts (李明, محمد) pass.
-const UNQUOTED_NAME_WORD = /^(?:[^\p{Ll}]|(?:al|bin|da|de|del|della|der|di|du|la|le|van|von|y)$)/u;
+// apart from surname particles, including elided ones before a capital
+// (d'Angelo, o'Connor). "My name is not important" or "my name is on the
+// account" is a phrase, not a name. Caseless scripts (李明, محمد) pass.
+const UNQUOTED_NAME_WORD =
+  /^(?:[^\p{Ll}]|\p{Ll}{1,3}['’]\p{Lu}|(?:al|bin|da|de|del|della|der|di|du|la|le|van|von|y)$)/u;
 const QUOTED_SELF_NAME =
   /^(?:please\s+)?(?:call me|you can call me|i go by)\s+["“]([^"”]+)["”][.!?]?$/iu;
 

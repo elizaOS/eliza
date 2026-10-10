@@ -48,7 +48,17 @@ describe("Shared participant name projection", () => {
   });
 
   test("an unquoted name keeps surname particles and caseless scripts", () => {
-    for (const name of ["Ana de la Cruz", "李明", "محمد", "יוסי", "さくら", "Мария"]) {
+    for (const name of [
+      "Ana de la Cruz",
+      "李明",
+      "محمد",
+      "יוסי",
+      "さくら",
+      "Мария",
+      "d'Angelo",
+      "o'Connor",
+      "d’Arcy",
+    ]) {
       expect(resolveSharedParticipantName({ message: `My name is ${name}.`, history: [] })).toBe(
         name,
       );
