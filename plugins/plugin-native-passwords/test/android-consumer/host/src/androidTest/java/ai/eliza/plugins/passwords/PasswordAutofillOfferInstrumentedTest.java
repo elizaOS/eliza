@@ -29,6 +29,7 @@ public final class PasswordAutofillOfferInstrumentedTest {
     root.webDomain = "example.test"; root.webScheme = "https";
     PasswordFormPolicy.Node user = new PasswordFormPolicy.Node(); user.id = id(context); user.text = true; user.inputType = 0x21;
     PasswordFormPolicy.Node pass = new PasswordFormPolicy.Node(); pass.id = id(context); pass.text = true; pass.inputType = 0x81;
+    user.fieldOrigin="https://example.test"; pass.fieldOrigin="https://example.test";
     root.add(user).add(pass);
     return PasswordFormPolicy.evaluate("org.example.browser", context.getPackageName(), false, root, "org.example.browser"::equals, false);
   }

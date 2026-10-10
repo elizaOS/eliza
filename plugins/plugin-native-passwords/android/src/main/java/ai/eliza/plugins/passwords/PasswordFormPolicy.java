@@ -19,7 +19,7 @@ import java.util.Set;
  *   <li>The requesting package comes from the framework ({@code AssistStructure#getActivityComponent}),
  *   never from a caller-supplied value.</li>
  *   <li>Web content is accepted only from a trusted browser. Every web node and every login field
- *   must report the same HTTPS domain; any second domain is treated as a cross-origin frame and
+ *   must report the same HTTPS domain and an explicit native field origin; any second domain is treated as a cross-origin frame and
  *   the request is refused. Mixed native and web login fields are refused.</li>
  *   <li>When the host itself is the browser, its own WebView must also report the committed
  *   top-level origin ({@link #TOP_ORIGIN_EXTRA}); its host must equal the field domain, and the
@@ -47,7 +47,7 @@ public final class PasswordFormPolicy {
   /** Framework view node reduced to the fields this policy reads. {@code id} is opaque. */
   public static final class Node {
     public Object id;
-    public String webDomain, webScheme, htmlType, htmlAutocomplete, topOrigin;
+    public String webDomain, webScheme, htmlType, htmlAutocomplete, topOrigin, fieldOrigin;
     public List<String> hints = Collections.emptyList();
     public int inputType;
     public boolean text, visible = true, focused;
@@ -117,6 +117,16 @@ public final class PasswordFormPolicy {
         // origin carries it. Same host: the exact origin is the top-level one (port included).
         if (!host(top).equals(host(webOrigin))) throw new Rejected("Cross-origin frame");
         webOrigin = top;
+      }
+      // A form-level domain is not a field origin. Chromium can flatten iframe
+      // inputs into the top-level form, and Android drops the URL's port.
+      // Require the existing native per-field origin contract; never infer it
+      // from the form or the host's top-level extra.
+      for (Field field : login) {
+        String exact;
+        try { exact = PasswordFacets.web(field.node.fieldOrigin); }
+        catch (Exception unavailable) { throw new Rejected("Field origin unavailable"); }
+        if (!webOrigin.equals(exact)) throw new Rejected("Cross-origin frame");
       }
     } else {
       if (!topOrigins.isEmpty()) throw new Rejected("Top-level origin without web fields");

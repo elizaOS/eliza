@@ -1,6 +1,7 @@
 package ai.eliza.plugins.passwords;
 
 import android.app.assist.AssistStructure;
+import ai.eliza.plugins.securestore.nativeonly.PasswordAutofillPolicy;
 import android.content.Context;
 import android.os.Bundle;
 import android.util.Pair;
@@ -48,6 +49,7 @@ final class AutofillStructures {
     if (extras != null) {
       Object top = extras.get(PasswordFormPolicy.TOP_ORIGIN_EXTRA);
       if (top != null) node.topOrigin = String.valueOf(top);
+      node.fieldOrigin = extras.getString(PasswordAutofillPolicy.FIELD_ORIGIN);
     }
     if (forSave) {
       AutofillValue value = view.getAutofillValue();

@@ -30,7 +30,7 @@ public final class PasswordPolicyTest {
   static final int TEXT = 1, TEXT_PASSWORD = 0x81, TEXT_EMAIL = 0x21;
 
   static Node field(String id, int inputType, String... hints) { Node node = new Node(); node.id = id; node.text = true; node.inputType = inputType; node.hints = Arrays.asList(hints); return node; }
-  static Node web(String domain, String scheme, Node... children) { Node node = new Node(); node.webDomain = domain; node.webScheme = scheme; for (Node child : children) node.add(child); return node; }
+  static Node web(String domain, String scheme, Node... children) { Node node = new Node(); node.webDomain = domain; node.webScheme = scheme; for (Node child : children) { if(child.text)child.fieldOrigin=scheme+"://"+domain; node.add(child); } return node; }
   static Node root(Node... children) { Node node = new Node(); for (Node child : children) node.add(child); return node; }
   static Target fill(String pkg, boolean hostBrowser, Node root) throws Exception { return PasswordFormPolicy.evaluate(pkg, HOST, hostBrowser, root, TRUST, false); }
 
@@ -93,6 +93,7 @@ public final class PasswordPolicyTest {
     rejects("Cross-origin frame", () -> fill(HOST, true, root(framed)));
     // Field domains carry no port; the host's top-level origin supplies the exact one.
     Node ported = web("example.com", "https", field("u", TEXT), field("p", TEXT_PASSWORD)); ported.topOrigin = "https://example.com:8443";
+    for(Node field:ported.children)field.fieldOrigin="https://example.com:8443";
     Target portedTarget = fill(HOST, true, root(ported));
     check(portedTarget.webOrigin.equals("https://example.com:8443"));
     check(!PasswordMatching.matches(Arrays.asList("https://example.com"), portedTarget, null));
@@ -107,6 +108,16 @@ public final class PasswordPolicyTest {
     rejects("Top-level origin unavailable", () -> fill(HOST, true, root(missingTop)));
     Node strayTop = root(field("u", TEXT), field("p", TEXT_PASSWORD)); strayTop.topOrigin = "https://example.com";
     rejects("Top-level origin without web fields", () -> fill(APP, false, strayTop));
+    // Real Chromium structures can flatten iframe fields under the top domain.
+    // Missing per-field origin must fail closed even when that domain is trusted.
+    Node flattened = web("example.com", "https", field("u", TEXT), field("p", TEXT_PASSWORD));
+    flattened.topOrigin="https://example.com";
+    flattened.children.get(1).fieldOrigin=null;
+    rejects("Field origin unavailable", () -> fill(HOST,true,root(flattened)));
+    flattened.children.get(1).fieldOrigin="https://example.org";
+    rejects("Cross-origin frame", () -> fill(HOST,true,root(flattened)));
+    flattened.children.get(1).fieldOrigin="https://example.com:8443";
+    rejects("Cross-origin frame", () -> fill(HOST,true,root(flattened)));
     Node deep = root(); Node cursor = deep;
     for (int i = 0; i < 60; i++) { Node next = root(); cursor.add(next); cursor = next; }
     cursor.add(field("p", TEXT_PASSWORD));

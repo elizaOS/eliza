@@ -10,8 +10,8 @@ On-device password manager for Eliza Android hosts:
   key is bound to the lock-screen secure ID: enrolling a new biometric does not invalidate it
   (whoever can enroll already knows the credential), while removing the screen lock does. A
   vault whose key is lost or invalidated can only be deleted (`reset`) after a fresh unlock.
-- **Autofill provider** – `ElizaPasswordAutofillService` works across apps and in WebView
-  browsers through the Android Autofill framework, with save capture.
+- **Autofill provider** – `ElizaPasswordAutofillService` supports native app fields through Android Autofill, with save capture. Browser
+  fields require explicit native per-field origins; ordinary WebView metadata is refused.
 - **Vault client** – a Capacitor plugin (`ElizaPasswords`) and a validating TypeScript client for
   the host's own vault UI. Responses are metadata only.
 
@@ -47,7 +47,10 @@ bun run --cwd plugins/plugin-native-passwords test   # TS client + JVM policy te
 5. Keep backup disabled or exclude the no-backup directory (it is excluded by Android).
 6. A host that is itself a browser sets `eliza_passwords_host_is_browser` and adds
    `PasswordFormPolicy.TOP_ORIGIN_EXTRA` (the committed top-level HTTPS origin) to its content
-   WebView's autofill node in `onProvideAutofillVirtualStructure`.
+   WebView's autofill node in `onProvideAutofillVirtualStructure`. Every login field must
+   also carry `PasswordAutofillPolicy.FIELD_ORIGIN` from the native browser engine.
+   Never copy the top-level origin onto fields or obtain this authority from page JavaScript.
+   Standard WebView does not expose this contract and is not supported for browser Autofill.
 
 The user enables the provider in Android's own confirmation, opened by
 `openAutofillSettings()` (`Settings.ACTION_REQUEST_SET_AUTOFILL_SERVICE`). `status()` reads back
@@ -64,13 +67,13 @@ the selected service; the plugin never sets secure settings or infers selection.
   whose signing certificate is verified). Any second web domain in the structure (a cross-origin
   frame), a non-HTTPS scheme, mixed native/web login fields, or a host top-level origin that
   differs from the field origin refuses the request. The host's own native UI is never filled.
-- Web bindings match exact origins (`https://host[:port]`); subdomains are distinct. Android's
-  field metadata (`ViewNode#getWebDomain`) has no port: in a host browser the committed
-  top-level origin supplies it; for an allowlisted third-party browser the target is the
-  default-port origin of the reported domain, so a page on a non-default port of the same host
-  is indistinguishable from it. App
-  bindings (`android://<sha256>@<package>`) match only when `PackageManager#hasSigningCertificate`
-  confirms the stored signer, which honours key rotation.
+- Web bindings match exact origins (`https://host[:port]`); subdomains and ports are distinct.
+  Every login field must supply the existing native `PasswordAutofillPolicy.FIELD_ORIGIN`
+  metadata and match the admitted origin. Form-level domains alone are insufficient.
+  A host browser also supplies its committed top-level origin; other trusted adapters are
+  limited to the default-port origin. Missing field origins refuse both Save and Fill.
+  App bindings (`android://<sha256>@<package>`) require `PackageManager#hasSigningCertificate`
+  to confirm the stored signer, which honours key rotation.
 - Password fields need an explicit signal (autofill hint, HTML `type=password`, or a password
   input type); page text, labels and ids are never used for the password field.
 - Save requests keep captured values in memory behind a one-shot token. `PasswordSaveActivity`
