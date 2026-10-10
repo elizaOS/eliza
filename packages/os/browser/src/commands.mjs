@@ -121,6 +121,11 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         return;
       const style = getComputedStyle(node);
       if (style.display === "none") return;
+      if (node instanceof HTMLDetailsElement && !node.open) {
+        const summary = node.querySelector(":scope > summary");
+        if (summary) collectText(summary);
+        return;
+      }
       for (const child of node.childNodes) collectText(child);
     };
     collectText(root);
@@ -250,6 +255,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       "a,button,input,textarea,select,[role=button],[role=textbox],[contenteditable=true],summary",
     );
     for (const node of candidates) {
+      if (!node.checkVisibility({ checkVisibilityCSS: true })) continue;
       const id = String(nodes.size);
       const geometry = bounds(node);
       // This equality sentinel never leaves the isolated page realm.
@@ -488,6 +494,10 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         target.form;
       const controlKey =
         control &&
+        !target.isContentEditable &&
+        !target.matches(
+          "textarea,select,input:not([type=submit]):not([type=button]):not([type=reset])",
+        ) &&
         (event.key === "Enter" ||
           (event.key === " " && !control.matches('a[href],[role="link"]')));
       if (keyboard ? !controlKey && !enterForm : !control) return;
