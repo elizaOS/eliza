@@ -46,7 +46,13 @@ export function normalizeLanguage(input: unknown): UiLanguage {
 	if (lower === "es" || lower.startsWith("es-")) return "es";
 	if (lower === "pt" || lower.startsWith("pt-")) return "pt";
 	if (lower === "vi" || lower.startsWith("vi-")) return "vi";
-	if (lower === "tl" || lower.startsWith("tl-") || lower === "fil" || lower.startsWith("fil-")) return "tl";
+	if (
+		lower === "tl" ||
+		lower.startsWith("tl-") ||
+		lower === "fil" ||
+		lower.startsWith("fil-")
+	)
+		return "tl";
 	if (lower === "ja" || lower.startsWith("ja-")) return "ja";
 	return DEFAULT_UI_LANGUAGE;
 }
