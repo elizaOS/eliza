@@ -47,8 +47,13 @@ const DEFAULT_MAX_RECORDS = 200;
 function readEnvNumber(name: string, fallback: number): number {
   const raw = process.env[name];
   if (!raw) return fallback;
-  const n = Number(raw);
-  return Number.isFinite(n) && n >= 0 ? n : fallback;
+  const trimmed = raw.trim();
+  // Canonical decimal digits only: Number(" ") is 0, Number("0x10") is 16,
+  // and Number("1e3") is 1000 — all used to silently reconfigure the
+  // runtime-ops retention/cap instead of falling back to the defaults.
+  if (!/^\d+$/.test(trimmed)) return fallback;
+  const n = Number(trimmed);
+  return Number.isSafeInteger(n) && n >= 0 ? n : fallback;
 }
 
 export interface FilesystemRuntimeOperationRepositoryOptions {
