@@ -495,6 +495,12 @@ test("buffered bridge releases the room before its response body is consumed", a
     {} as never,
   );
 
+  expect(await makeInvoke(object)("buffered-warmup")).toMatchObject({
+    code: "conversation_cache_warming",
+    retryable: true,
+  });
+  await Promise.all(background.splice(0));
+
   const firstResponse = await object.fetch(
     new Request("https://shared-runtime.internal/bridge", {
       method: "POST",
@@ -511,6 +517,7 @@ test("buffered bridge releases the room before its response body is consumed", a
     }),
   );
 
+  expect(firstResponse.status).toBe(200);
   const second = makeInvoke(object)("buffered-second");
   await expect(
     Promise.race([
@@ -520,7 +527,16 @@ test("buffered bridge releases the room before its response body is consumed", a
       ),
     ]),
   ).resolves.not.toBe("queue-blocked");
-  await firstResponse.arrayBuffer();
+  expect(await second).toMatchObject({
+    jsonrpc: "2.0",
+    id: "buffered-second",
+    result: {},
+  });
+  expect(await firstResponse.json()).toMatchObject({
+    jsonrpc: "2.0",
+    id: "buffered-first",
+    result: {},
+  });
   await Promise.all(background.splice(0));
   const responseTimings = loggerInfo.mock.calls.filter(
     ([event]) =>
