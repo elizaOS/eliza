@@ -3,6 +3,7 @@
  * the host avoids an ambient declaration for a package that may be absent and
  * gives every dynamic-loader boundary one versioned shape to validate.
  */
+import { logger } from "@elizaos/core";
 import type {
   LegacyRouteHandler,
   PaymentEnabledRoute,
@@ -64,7 +65,14 @@ export function loadX402PaymentModule(): Promise<X402PluginModule | null> {
       if (vetted) x402PaymentModule = vetted;
       return vetted;
     })
-    .catch(() => null);
+    .catch((err: unknown) => {
+      // The refusal is the response; the load failure is still reported so a
+      // broken install is not mistaken for an absent optional plugin.
+      logger.warn(
+        `[x402] payment plugin failed to load; x402 routes are refused: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    });
   return x402PaymentModulePromise;
 }
 
