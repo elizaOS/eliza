@@ -105,7 +105,11 @@ function normalizeTabId(raw: string): string | null {
 function readIntegerSearchParam(url: URL, key: string): number | undefined {
 	const raw = url.searchParams.get(key)?.trim();
 	if (!raw) return undefined;
-	const parsed = Number.parseInt(raw, 10);
+	// Number.parseInt stops at the first non-digit, so "10junk" parsed to a
+	// finite 10 and was accepted as a deliberate value instead of being
+	// treated as absent. Require the whole trimmed value to be decimal,
+	// mirroring resolveGenerationTimeoutMs in the discord plugin.
+	const parsed = /^\+?\d+$/.test(raw) ? Number(raw) : Number.NaN;
 	return Number.isFinite(parsed) ? parsed : undefined;
 }
 
