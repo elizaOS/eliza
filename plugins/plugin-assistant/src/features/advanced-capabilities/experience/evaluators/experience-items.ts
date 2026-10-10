@@ -145,7 +145,12 @@ function getNumberSetting(
   const value = runtime.getSetting(key);
   if (typeof value === "number") return value;
   if (typeof value === "string") {
-    const parsed = Number.parseFloat(value);
+    // Number.parseFloat stops at the first invalid character ("12px" -> 12).
+    // Number() rejects the whole string instead, so a malformed setting
+    // falls back to the default. Same defect class as #34663 and #34694.
+    const text = value.trim();
+    if (!text) return fallback;
+    const parsed = Number(text);
     return Number.isFinite(parsed) ? parsed : fallback;
   }
   return fallback;
