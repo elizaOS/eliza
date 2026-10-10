@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { AgentRuntime } from "@elizaos/core";
+import type { AgentRuntime, Memory } from "@elizaos/core";
 import {
   afterAll,
   afterEach,
@@ -22,6 +22,10 @@ import {
   startComputerUseRuntime,
   stopComputerUseRuntime,
 } from "../../test/helpers/service-runtime.ts";
+import {
+  type ComputerUseAgentReport,
+  computerUseAgentAction,
+} from "../actions/use-computer-agent.js";
 import {
   ComputerUseService,
   parseComputerUseActionTimeoutMs,
@@ -862,6 +866,27 @@ describe("ComputerUseService file and terminal execution (real host I/O)", () =>
     } finally {
       service.setApprovalMode("full_control");
     }
+  }, 20_000);
+
+  it("ends COMPUTER_USE_AGENT when the turn's signal is aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    const result = await computerUseAgentAction.handler(
+      runtime,
+      { content: {} } as Memory,
+      undefined,
+      {
+        parameters: { goal: "click the save button" },
+        abortSignal: controller.signal,
+      },
+    );
+
+    expect(result?.success).toBe(false);
+    expect(result?.error).toContain("cancelled by its owner");
+    const report = result?.data?.report as ComputerUseAgentReport;
+    expect(report.reason).toBe("cancelled");
+    expect(report.steps).toEqual([]);
   }, 20_000);
 
   it("exposes approval and display introspection", () => {
