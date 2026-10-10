@@ -147,6 +147,12 @@
       "dependsOn": ["typecheck:deps"],
       "outputs": []
     },
+    "@elizaos/capacitor-notification-mirror#typecheck": {
+      "dependsOn": ["typecheck:deps"],
+      "env": ["ANDROID_HOME", "ANDROID_SDK_ROOT", "JAVA_HOME"],
+      "cache": false,
+      "outputs": []
+    },
     "@elizaos/agent#typecheck": {
       "dependsOn": [
         "typecheck:deps",
@@ -630,16 +636,9 @@
       ]
     },
     "@elizaos/plugin-todos#build": {
-      "dependsOn": [
-        "^build",
-        "@elizaos/ui#build"
-      ],
-      "env": [
-        "LOG_LEVEL"
-      ],
-      "outputs": [
-        "dist/**"
-      ],
+      "dependsOn": ["^build", "@elizaos/ui#build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["dist/**"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "!dist/**",
