@@ -421,7 +421,7 @@ export function createTopupHandler(options: CreateTopupHandlerOptions) {
         recipient = await getBodyTopupRecipient(body.walletAddress!);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        return Response.json({ error: msg }, { status: 401 });
+        return Response.json({ error: msg }, { status: 503 });
       }
     }
 

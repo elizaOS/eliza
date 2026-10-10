@@ -297,3 +297,31 @@ test("a signed request credits the signer's organization and ignores a different
     creditedWallet: account.address,
   });
 });
+
+test("an account lookup failure after settlement is reported as 503", async () => {
+  const settle = stubSettlement();
+  spyOn(usersService, "getByWalletAddressWithOrganization").mockRejectedValue(
+    new Error("database connection refused"),
+  );
+  const addCredits = spyOn(creditsService, "addCredits");
+
+  const response = await topup(
+    new Request("https://cloud.test/api/v1/topup/10", {
+      method: "POST",
+      headers: { "X-PAYMENT": paymentHeader },
+      body: JSON.stringify({ walletAddress: account.address }),
+    }),
+  );
+
+  expect({
+    status: response.status,
+    body: await response.json(),
+    settleCalls: settle.mock.calls.length,
+    addCreditsCalls: addCredits.mock.calls.length,
+  }).toEqual({
+    status: 503,
+    body: { error: "database connection refused" },
+    settleCalls: 1,
+    addCreditsCalls: 0,
+  });
+});
