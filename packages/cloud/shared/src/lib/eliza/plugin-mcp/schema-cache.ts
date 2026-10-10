@@ -65,7 +65,14 @@ export class McpSchemaCache {
     const enabled = process.env.MCP_SCHEMA_CACHE_ENABLED === "true";
     const url = process.env.MCP_CACHE_REDIS_URL;
     const token = process.env.MCP_CACHE_REDIS_TOKEN;
-    this.ttl = parseInt(process.env.MCP_SCHEMA_CACHE_TTL || String(DEFAULT_TTL), 10);
+    // parseInt stops at the first non-digit ("300junk" -> 300) and yields NaN
+    // for non-numeric input, silently changing or breaking the cache TTL.
+    // Require the whole trimmed value to be a positive decimal, mirroring
+    // resolveGenerationTimeoutMs in the discord plugin.
+    const ttlRaw = (process.env.MCP_SCHEMA_CACHE_TTL ?? "").trim();
+    const ttlParsed = /^\+?\d+$/.test(ttlRaw) ? Number(ttlRaw) : Number.NaN;
+    this.ttl =
+      Number.isFinite(ttlParsed) && ttlParsed > 0 ? ttlParsed : DEFAULT_TTL;
 
     if (!enabled) {
       logger.debug("[McpSchemaCache] Disabled");
