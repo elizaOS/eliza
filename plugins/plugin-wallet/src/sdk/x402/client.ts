@@ -48,9 +48,9 @@ export class X402Client {
   private config: X402ClientConfig;
   private budget: X402BudgetTracker;
   private supportedNetworks: Set<string>;
-  // Budget caps are base units of one token (USDC from x402FromEnv). Without
-  // an explicit asset list, a capped client pays only in USDC, so another
-  // token's amount is never checked against a USDC cap.
+  // Budget caps are base units of one token (USDC from x402FromEnv). A
+  // capped client pays only in USDC, also when supportedAssets lists other
+  // tokens, so another token's amount is never checked against a USDC cap.
   private usdcOnly: boolean;
 
   constructor(wallet: AgentWallet, config: X402ClientConfig = {}) {
@@ -258,19 +258,17 @@ export class X402Client {
     const compatible = accepts.filter((req) => {
       if (!this.supportedNetworks.has(req.network)) return false;
 
-      // Config override: explicit supportedAssets list
-      if (this.config.supportedAssets?.[req.network]) {
-        return this.config.supportedAssets[req.network].some(
-          (a) => a.toLowerCase() === req.asset.toLowerCase(),
-        );
-      }
-
-      // v6: resolve via TokenRegistry — accept any known ERC-20 on this network
-      const resolved = resolveAssetAddress(req.asset, req.network);
-      if (resolved == null) return false;
+      // Config override: explicit supportedAssets list; else v6: any ERC-20
+      // the TokenRegistry knows on this network
+      const listed = this.config.supportedAssets?.[req.network];
+      const accepted = listed
+        ? listed.some((a) => a.toLowerCase() === req.asset.toLowerCase())
+        : resolveAssetAddress(req.asset, req.network) != null;
+      if (!accepted) return false;
       return (
         !this.usdcOnly ||
-        resolved.toLowerCase() === USDC_ADDRESSES[req.network]?.toLowerCase()
+        resolveAssetAddress(req.asset, req.network)?.toLowerCase() ===
+          USDC_ADDRESSES[req.network]?.toLowerCase()
       );
     });
 
