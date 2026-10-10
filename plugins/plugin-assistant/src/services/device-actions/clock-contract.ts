@@ -390,11 +390,14 @@ export function validateClockResult(
         : successful;
     if (outcome !== "applied") {
       keys(v, ["kind", "action", "status"]);
+      // String() coercion would accept ["failed"]; the un-coerced value is
+      // stored below, so require an actual string.
       if (
         !(outcome === "unknown"
           ? v.status === "unknown"
           : (outcome === "failed" || outcome === "not_applied") &&
-            ["unavailable", "denied", "failed"].includes(String(v.status)))
+            typeof v.status === "string" &&
+            ["unavailable", "denied", "failed"].includes(v.status))
       )
         throw Error("Clock result cannot establish this outcome");
       return {
@@ -452,7 +455,8 @@ export function validateClockResult(
       : outcome === "unknown"
         ? v.status === "unknown"
         : outcome === "failed" || outcome === "not_applied"
-          ? ["unavailable", "denied", "failed"].includes(String(v.status))
+          ? typeof v.status === "string" &&
+            ["unavailable", "denied", "failed"].includes(v.status)
           : false;
   if (!valid) throw Error("Clock result cannot establish this outcome");
   return {
