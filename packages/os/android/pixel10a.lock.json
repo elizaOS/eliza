@@ -39,6 +39,16 @@
       "url": "https://github.com/GrapheneOS/vendor_state.git",
       "ref": "refs/tags/2026100600",
       "commit": "1469180711293a5852bfda9a5f67b8f53d9828ad"
+    },
+    {
+      "path": "tools/arsclib",
+      "url": "https://github.com/GrapheneOS/platform_tools_arsclib.git",
+      "ref": "refs/tags/2026100600",
+      "commit": "e81e4e7a8e2af31804ad1f4fd100da01a2db9edf"
     }
-  ]
+  ],
+  "resolvedManifest": {
+    "path": "android/pixel11pro-resolved-manifest.json",
+    "sha256": "01bac1fa7a01e0555e759b41b4ce5160376b630cf7ea5933db9c81e73c5bc9ca"
+  }
 }

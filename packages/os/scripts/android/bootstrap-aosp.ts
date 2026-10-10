@@ -100,7 +100,7 @@ export function loadAospLock(filePath = aospLockPath) {
         typeof project?.url !== "string" ||
         !project.url.startsWith("https://") ||
         typeof project?.ref !== "string" ||
-        !project.ref.startsWith("refs/heads/") ||
+        !/^refs\/(heads|tags)\/.+/.test(project.ref) ||
         !/^[0-9a-f]{40}$/.test(project?.commit ?? "") ||
         (project.sparsePaths !== undefined &&
           (!Array.isArray(project.sparsePaths) ||
