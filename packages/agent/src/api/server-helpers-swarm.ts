@@ -655,8 +655,12 @@ function removeLocalPathReferences(
     titles.push(title);
     const escapedPath = escapeRegExp(attachment.url);
     cleaned = cleaned
-      .replace(new RegExp(`\`${escapedPath}\``, "gu"), title)
-      .replace(new RegExp(escapedPath, "gu"), title);
+      // A raw string replacement interprets "$" patterns ("$&", "$'", "$`"),
+      // so a filename like "cost_$&.csv" corrupted the delivered text instead
+      // of being inserted literally. A replacement function inserts the title
+      // verbatim, like replaceAttachedArtifactMarkdownLinks below.
+      .replace(new RegExp(`\`${escapedPath}\``, "gu"), () => title)
+      .replace(new RegExp(escapedPath, "gu"), () => title);
   }
 
   const workdirs = payload.tasks
@@ -675,8 +679,8 @@ function removeLocalPathReferences(
     const title = path.basename(resolved);
     const escapedPath = escapeRegExp(localPath);
     cleaned = cleaned
-      .replace(new RegExp(`\`${escapedPath}\``, "gu"), title)
-      .replace(new RegExp(escapedPath, "gu"), title);
+      .replace(new RegExp(`\`${escapedPath}\``, "gu"), () => title)
+      .replace(new RegExp(escapedPath, "gu"), () => title);
   }
 
   const trimmed = cleaned.trim();
