@@ -1772,7 +1772,11 @@ function maxSpawnsPerOrigin(runtime: IAgentRuntime): number {
   const raw =
     runtime.getSetting?.("ELIZA_MAX_SPAWNS_PER_ORIGIN") ??
     process.env.ELIZA_MAX_SPAWNS_PER_ORIGIN;
-  const n = Number.parseInt(String(raw ?? ""), 10);
+  // Number.parseInt stops at the first non-digit ("1e3" -> 1), so a typo
+  // was silently accepted as the spawn cap instead of the default 3.
+  // Require the whole trimmed value to be decimal.
+  const rawText = String(raw ?? "").trim();
+  const n = /^\+?\d+$/.test(rawText) ? Number(rawText) : Number.NaN;
   return Number.isFinite(n) && n > 0 ? n : 3;
 }
 
