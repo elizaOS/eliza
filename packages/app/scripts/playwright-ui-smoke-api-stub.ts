@@ -497,29 +497,6 @@ const emptyWalletNfts = {
   solana: null,
 };
 
-const emptyWalletTradingProfile = {
-  window: "30d",
-  source: "all",
-  generatedAt: new Date(0).toISOString(),
-  summary: {
-    totalSwaps: 0,
-    buyCount: 0,
-    sellCount: 0,
-    settledCount: 0,
-    successCount: 0,
-    revertedCount: 0,
-    tradeWinRate: null,
-    txSuccessRate: null,
-    winningTrades: 0,
-    evaluatedTrades: 0,
-    realizedPnlBnb: "0",
-    volumeBnb: "0",
-  },
-  pnlSeries: [],
-  tokenBreakdown: [],
-  recentSwaps: [],
-};
-
 const emptyWalletMarketSource = {
   providerId: "coingecko",
   providerName: "CoinGecko",
@@ -3540,23 +3517,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && url.pathname === "/api/wallet/os-store") {
-    sendJson(req, res, 200, {
-      available: true,
-      backend: "in-house",
-      evmKeyInOsStore: true,
-      solanaKeyInOsStore: true,
-      envKeysPresent: false,
-    });
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/wallet/os-store") {
-    const body = (await readJsonBody(req)) || {};
-    sendJson(req, res, 200, { ok: true, action: body.action ?? null });
-    return;
-  }
-
   if (req.method === "POST" && url.pathname === "/api/wallet/refresh-cloud") {
     sendJson(req, res, 200, {
       ok: true,
@@ -3596,19 +3556,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (
-    req.method === "POST" &&
-    url.pathname === "/api/wallet/production-defaults"
-  ) {
-    await readJsonBody(req);
-    sendJson(req, res, 200, {
-      ok: true,
-      updated: true,
-      warnings: [],
-    });
-    return;
-  }
-
   if (req.method === "GET" && url.pathname === "/api/wallet/balances") {
     sendJson(req, res, 200, emptyWalletBalances);
     return;
@@ -3616,11 +3563,6 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/wallet/nfts") {
     sendJson(req, res, 200, emptyWalletNfts);
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/wallet/trading/profile") {
-    sendJson(req, res, 200, emptyWalletTradingProfile);
     return;
   }
 

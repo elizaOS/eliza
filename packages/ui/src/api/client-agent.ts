@@ -351,18 +351,6 @@ declare module "./client-base.js" {
       solanaPrivateKey: string;
       solanaAddress: string;
     }>;
-    getWalletOsStoreStatus(): Promise<{
-      backend: string;
-      available: boolean;
-      readEnabled: boolean;
-      vaultId: string;
-    }>;
-    postWalletOsStoreAction(action: "migrate" | "delete"): Promise<{
-      ok: boolean;
-      migrated?: string[];
-      failed?: string[];
-      error?: string;
-    }>;
     getAuthStatus(): Promise<{
       required: boolean;
       authenticated?: boolean;
@@ -1457,20 +1445,6 @@ ElizaClient.prototype.getFirstRunStatus = async function (this: ElizaClient) {
 };
 ElizaClient.prototype.getWalletKeys = async function (this: ElizaClient) {
   return this.fetch("/api/wallet/keys");
-};
-ElizaClient.prototype.getWalletOsStoreStatus = async function (
-  this: ElizaClient,
-) {
-  return this.fetch("/api/wallet/os-store");
-};
-ElizaClient.prototype.postWalletOsStoreAction = async function (
-  this: ElizaClient,
-  action,
-) {
-  return this.fetch("/api/wallet/os-store", {
-    method: "POST",
-    body: JSON.stringify({ action }),
-  });
 };
 ElizaClient.prototype.getAuthStatus = async function (this: ElizaClient) {
   // Prefer typed Electrobun RPC. Throws AgentNotReadyError when the

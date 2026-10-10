@@ -1783,25 +1783,6 @@ export async function handleWalletRoutes(
     });
     return true;
   }
-  if (method === "GET" && pathname === "/api/wallet/approvals/stream") {
-    error(
-      res,
-      "Wallet approval streaming requires the Steward wallet route bridge.",
-      503,
-    );
-    return true;
-  }
-  const approvalDecision = /^\/api\/wallet\/approvals\/([^/]+)\/decision$/.exec(
-    pathname,
-  );
-  if (method === "POST" && approvalDecision) {
-    error(
-      res,
-      "Wallet approval decisions require the Steward wallet route bridge.",
-      503,
-    );
-    return true;
-  }
   // POST /api/wallet/export — removed (no plaintext key export from the agent API).
   if (method === "POST" && pathname === "/api/wallet/export") {
     error(

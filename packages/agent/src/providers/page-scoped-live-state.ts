@@ -21,7 +21,6 @@ import type {
   WalletBalancesResponse,
   WalletConfigStatus,
   WalletNftsResponse,
-  WalletTradingProfileResponse,
 } from "@elizaos/contracts";
 import {
   type AppRunSummary,
@@ -207,15 +206,12 @@ function hasPositiveAmount(value: string | null | undefined): boolean {
   return Number.isFinite(parsed) && parsed > 0;
 }
 async function renderWalletLiveState(): Promise<string | null> {
-  const [config, balances, nfts, profile] = await Promise.all([
+  const [config, balances, nfts] = await Promise.all([
     fetchLocalJson<WalletConfigStatus>("/api/wallet/config"),
     fetchLocalJson<WalletBalancesResponse>("/api/wallet/balances"),
     fetchLocalJson<WalletNftsResponse>("/api/wallet/nfts"),
-    fetchLocalJson<WalletTradingProfileResponse>(
-      "/api/wallet/trading/profile?window=24h&source=all",
-    ),
   ]);
-  if (!config && !balances && !nfts && !profile) {
+  if (!config && !balances && !nfts) {
     return "Live wallet state: unavailable from the Wallet API.";
   }
   const lines: string[] = ["Live wallet state:"];
@@ -275,11 +271,6 @@ async function renderWalletLiveState(): Promise<string | null> {
     const solanaNftCount = nfts.solana?.nfts.length ?? 0;
     const nftCount = evmNftCount + solanaNftCount;
     lines.push(`- NFTs: ${nftCount} item${nftCount === 1 ? "" : "s"}.`);
-  }
-  if (profile) {
-    lines.push(
-      `- 24h activity: ${profile.summary.totalSwaps} swap${profile.summary.totalSwaps === 1 ? "" : "s"}, realized P&L ${profile.summary.realizedPnlBnb} BNB, volume ${profile.summary.volumeBnb} BNB.`,
-    );
   }
   return lines.join("\n");
 }
