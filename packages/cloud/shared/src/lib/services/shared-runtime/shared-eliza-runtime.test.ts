@@ -613,44 +613,89 @@ describe("Shared Eliza Workerd runtime", () => {
         if (!signal) throw new Error("Expected the genuine SDK abort signal");
         providerStarted.resolve(signal);
         if (mode === "abort") {
-          return new Response(new ReadableStream({
-            start(controller) {
-              signal.addEventListener("abort", () => controller.error(
-                signal.reason ?? new DOMException("Aborted", "AbortError"),
-              ), { once: true });
-            },
-          }), { headers: { "Content-Type": "text/event-stream" } });
+          return new Response(
+            new ReadableStream({
+              start(controller) {
+                signal.addEventListener(
+                  "abort",
+                  () =>
+                    controller.error(signal.reason ?? new DOMException("Aborted", "AbortError")),
+                  { once: true },
+                );
+              },
+            }),
+            { headers: { "Content-Type": "text/event-stream" } },
+          );
         }
         const args = JSON.stringify({
-          shouldRespond: "RESPOND", thought: "Return the offline reply.",
-          contexts: ["simple"], intents: [], candidateActionNames: [],
-          replyText: "A small reset helps.", replyEffectStatus: "none",
-          facts: [], relationships: [], addressedTo: [],
+          shouldRespond: "RESPOND",
+          thought: "Return the offline reply.",
+          contexts: ["simple"],
+          intents: [],
+          candidateActionNames: [],
+          replyText: "A small reset helps.",
+          replyEffectStatus: "none",
+          facts: [],
+          relationships: [],
+          addressedTo: [],
         });
         const first = {
-          id: "offline-numeric-stream", object: "chat.completion.chunk", created: 0,
-          model: "gemma-4-31b", choices: [{ index: 0, delta: {
-            role: "assistant", tool_calls: [{ index: 0, id: "offline-handler",
-              type: "function", function: { name: "HANDLE_RESPONSE", arguments: args } }],
-          }, finish_reason: null }],
+          id: "offline-numeric-stream",
+          object: "chat.completion.chunk",
+          created: 0,
+          model: "gemma-4-31b",
+          choices: [
+            {
+              index: 0,
+              delta: {
+                role: "assistant",
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: "offline-handler",
+                    type: "function",
+                    function: { name: "HANDLE_RESPONSE", arguments: args },
+                  },
+                ],
+              },
+              finish_reason: null,
+            },
+          ],
         };
         // An SDK SSE error is not a projected HTTP401/503. Aggregate usage
         // may still resolve; it must never overwrite this observed failure.
-        const last = mode === "error"
-          ? { error: { message: "SYNTHETIC_PRIVATE_STREAM_ERROR", type: "server_error",
-              param: null, code: "synthetic_stream_error" } }
-          : { id: "offline-numeric-stream", object: "chat.completion.chunk", created: 0,
-              model: "gemma-4-31b", choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }],
-              usage: { prompt_tokens: 41, completion_tokens: 17, total_tokens: 58 } };
-        return new Response(`data: ${JSON.stringify(first)}\n\ndata: ${JSON.stringify(last)}\n\ndata: [DONE]\n\n`, {
-          headers: { "Content-Type": "text/event-stream" },
-        });
+        const last =
+          mode === "error"
+            ? {
+                error: {
+                  message: "SYNTHETIC_PRIVATE_STREAM_ERROR",
+                  type: "server_error",
+                  param: null,
+                  code: "synthetic_stream_error",
+                },
+              }
+            : {
+                id: "offline-numeric-stream",
+                object: "chat.completion.chunk",
+                created: 0,
+                model: "gemma-4-31b",
+                choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }],
+                usage: { prompt_tokens: 41, completion_tokens: 17, total_tokens: 58 },
+              };
+        return new Response(
+          `data: ${JSON.stringify(first)}\n\ndata: ${JSON.stringify(last)}\n\ndata: [DONE]\n\n`,
+          {
+            headers: { "Content-Type": "text/event-stream" },
+          },
+        );
       }) as typeof fetch;
       try {
         const { runSharedAgentTurnStream } = await import("./run-shared-agent-turn");
         const result = await runSharedAgentTurnStream({
           character: { name: "Shared Eliza", system: "You are Eliza.", model: "gemma-4-31b" },
-          history: [], message: "Give me a small reset.", traceId,
+          history: [],
+          message: "Give me a small reset.",
+          traceId,
           execution: {
             channel: { type: ChannelType.DM, source: "shared-runtime" },
             agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
@@ -683,15 +728,26 @@ describe("Shared Eliza Workerd runtime", () => {
         expect(providerCalls).toBeGreaterThan(0);
         expect(audits).toHaveLength(1);
         expect(audits[0].calls.length).toBeGreaterThan(0);
-        const expected = mode === "success" ? "sdk_completed" : mode === "abort" ? "aborted" : "sdk_error";
+        const expected =
+          mode === "success" ? "sdk_completed" : mode === "abort" ? "aborted" : "sdk_error";
         expect(audits[0].calls.every((call) => call.outcome === expected)).toBe(true);
         if (mode === "success") {
-          expect(audits[0].calls.every((call) => call.inputTokens === 41 &&
-            call.outputTokens === 17 && call.totalTokens === 58)).toBe(true);
+          expect(
+            audits[0].calls.every(
+              (call) =>
+                call.inputTokens === 41 && call.outputTokens === 17 && call.totalTokens === 58,
+            ),
+          ).toBe(true);
         }
         const encoded = JSON.stringify(audits);
-        for (const sentinel of ["Give me a small reset.", "A small reset helps.",
-          "SYNTHETIC_PRIVATE_STREAM_ERROR", "shared-runtime-test-key", "reasoning", "tool_calls"]) {
+        for (const sentinel of [
+          "Give me a small reset.",
+          "A small reset helps.",
+          "SYNTHETIC_PRIVATE_STREAM_ERROR",
+          "shared-runtime-test-key",
+          "reasoning",
+          "tool_calls",
+        ]) {
           expect(encoded).not.toContain(sentinel);
         }
       } finally {
