@@ -169,3 +169,9 @@ Run `vitest run --config vitest.device-actions.config.ts` from this package for 
 The package root exports the memory, knowledge-delivery and notification actions.
 Hosts explicitly compose them; importing the package does not install those
 actions or change an existing host's selected behavior.
+
+Foreground device review supports Calendar free/busy, Notes content or title search,
+and name-targeted record edits. Each requires its negotiated capability. The phone
+owner selects records locally; receipts bind the exact approved fields and selected
+record revision. Reminder v2 timing is never sent to a v1 peer. No-match results are
+observations, not evidence of a completed edit.

@@ -1059,6 +1059,9 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           "reminders.create.v1",
           "clock.handoff.v2",
           "clock.alarms.v1",
+          "notes.search.v1",
+          "calendar.availability-read.v1",
+          "device.named-target.v1",
         ].sort(),
       );
       expect(enrolled.body.capabilities).toContain("clock.handoff.v1");

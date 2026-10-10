@@ -24,6 +24,11 @@ import {
   deviceActionEffectReceipts,
   deviceApprovalPersistenceReceipt,
 } from "./effect-receipts.ts";
+import {
+  isForegroundReviewOperation,
+  isForegroundReviewType,
+  validateForegroundReviewResult,
+} from "./foreground-review-contract.ts";
 import { isMapsOperation, validateMapsResult } from "./maps-contract.ts";
 import { isNotesOperation, validateNotesResult } from "./notes-contract.ts";
 import { validateNotesQueryResult } from "./notes-query-result.ts";
@@ -470,6 +475,76 @@ const reminderCreateAfterSchema: ActionParameterSchema = {
     },
   },
 };
+const calendarAvailabilitySchema: ActionParameterSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["type", "start", "end", "timeZone"],
+  properties: {
+    type: { type: "string", enum: ["calendar_availability"] },
+    start: calendarFields.properties.start,
+    end: {
+      type: "string",
+      description:
+        "Canonical UTC ISO instant with three millisecond digits, after start and at most seven days later.",
+    },
+    timeZone: calendarFields.properties.timeZone,
+  },
+};
+const notesSearchSchema: ActionParameterSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["type", "query"],
+  properties: {
+    type: { type: "string", enum: ["notes_search"] },
+    query: {
+      anyOf: [
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["kind", "text"],
+          properties: {
+            kind: { type: "string", enum: ["content"] },
+            text: { type: "string" },
+          },
+        },
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["kind", "limit"],
+          properties: {
+            kind: { type: "string", enum: ["titles"] },
+            limit: { type: "integer", minimum: 1, maximum: 50 },
+          },
+        },
+      ],
+    },
+  },
+};
+const recordName = {
+  type: "string",
+  description:
+    "The record name or title exactly as the owner said it. Never an ID or revision.",
+};
+const namedTargetSchemas: ActionParameterSchema[] = [
+  ["notes_named", "update", notesSchemas[1]?.properties?.fields],
+  ["notes_named", "delete"],
+  ["calendar_named", "update", calendarFields],
+  ["calendar_named", "delete"],
+  ["reminder_named", "update", selectedUpdateSchema?.properties?.fields],
+  ["reminder_named", "cancel"],
+].map(([type, action, fields]) => ({
+  type: "object",
+  additionalProperties: false,
+  required: ["type", "action", "name", ...(fields ? ["fields"] : [])],
+  properties: {
+    type: { type: "string", enum: [type as string] },
+    action: { type: "string", enum: [action as string] },
+    name: recordName,
+    ...(fields ? { fields: fields as ActionParameterSchema } : {}),
+  },
+}));
+export const FOREGROUND_REVIEW_GUIDANCE =
+  "Free/busy questions such as am I free at 3pm Tuesday use calendar_availability with exact canonical UTC start/end (at most seven days) and the phone timeZone; requires calendar.availability-read.v1. The owner selects which calendars the phone reads in a foreground review; only busy intervals are shared, never titles. Events marked free are ignored, tentative events count as busy, all-day events block their whole local days. Report the returned status and intervals only. Content search such as find my note about X uses notes_search query {kind: content, text}; a list of note titles uses {kind: titles, limit 1-50}; both require notes.search.v1. The owner chooses the shared note or reviews the exact titles first. To edit or delete a record from Home by its name, use notes_named, calendar_named or reminder_named with action and the spoken name (and full replacement fields for update); requires device.named-target.v1 plus the domain capability. The phone matches names locally and the owner chooses the exact record before approving; never invent IDs or revisions. When the request is ambiguous about which record, time or calendar, ask one short clarifying question instead of proposing.";
 const CLOCK_PROPOSAL_GUIDANCE =
   "Clock handoff requires clock.handoff.v1 or clock.handoff.v2. Set requires the current phone clientDevice.context.timeZone, integer hour/minute, and label. Explicit days requires clock.handoff.v2: [] is one-off, [1,2,3,4,5,6,7] daily, [2,3,4,5,6] weekdays; other weekly patterns use exact unique integers Sunday=1 through Saturday=7. Preserve requested repeat days exactly. A v1 phone supports only a one-off set without days; never silently drop recurrence or replace an unsupported alarm pattern with a reminder. Never invent the phone timezone or substitute an approximate reminder for an alarm. Only show is navigation-only. After explicit owner approval, set/dismiss/snooze may change alarms immediately: dismiss can disable the active one-shot alarm or suppress a repeating occurrence, and targetless snooze can affect all ringing alarms. Clock may use its default snooze duration or show a chooser. Never promise a second confirmation in Clock, target one selected alarm using this targetless contract, or claim an opened receipt proves creation, dismissal, snoozing or ringing. The owner must see and approve the actual scope before any native request. This tool does not perform the operation. Do not report the proposal as completed.";
 export const CLOCK_ALARM_GUIDANCE =
@@ -480,6 +555,8 @@ export const proposeDeviceAction: Action = {
   description:
     "Native Notes discovery from Home uses notes_query with query {kind: title, text: requested title} or {kind: latest, by: created|updated}, only with notes.query.v1. Candidates remain on the phone; the owner confirms exactly one note to share. Unknown chronology or ties require local owner choice; a returned owner-choice-uncertain basis does not prove latest. Never substitute backend Notes. " +
     "For a one-shot relative reminder use reminder_create_after with fields title, body and schedule {after: elapsed duration with units such as 2m, alertMinutes: 0 for one alert or null for no alert}. The server resolves exact instants from the authenticated turn start; do not calculate epoch timestamps. Requires reminders.create.v1. Use returned reminderTiming dueAtDisplay and alertAtDisplay verbatim when available; they already use the phone timezone. Otherwise keep the returned UTC instants explicit, without inventing a local timezone. Create reviewed no-alert, lead or recurring reminders only with reminder_create and reminders.create.v1. The legacy create_reminder supports only title and dueAt and always requests an alert; never discard requested timing. reminder_create.fields requires title, body and schedule; schedule requires at, dueAt, alertMinutes (null means no alert), recurrence (null or exact repeat). at=dueAt-(alertMinutes??0)*60000; recurrence leadMinutes matches. No-alert creates pending, not delivered. Propose an approved selected Maps snapshot, note, reminder, view change, or HTTPS browser navigation on the phone enrolled for this authenticated turn. Notes read-selected/update/delete requires notes.local-record.v1 and exact selected sourceId/sourceRevision/noteId/revision. Existing create_note creates a text note. Selected reminder read/update/complete/snooze/cancel requires reminders.local-record.v1 and exact sourceId/sourceRevision/reminderId/occurrenceId/revision. Preserve target.timingVersion=2 when supplied by the phone. TimingVersion 2 targets and schedules with dueAt plus alertMinutes require reminders.local-record.v2. Supply both timing fields together; alertMinutes null means no notification, at equals dueAt, and any recurrence leadMinutes is zero. Numeric alerts require at=dueAt-alertMinutes*60000 and matching recurrence leadMinutes. No-alert tasks cannot be snoozed; only an explicitly reviewed schedule edit enables an alert. Cancel stops all future repeats; snooze is ten minutes. For creation from Home use calendar_create_local with exact fields and calendar.create.v1; the phone resolves its default On this phone calendar and requires native confirmation. For next-event discovery use calendar_read_next with no guessed timestamps and calendar.next-read.v1; the native clock fixes a window from now through the next 30 owner-local days; the foreground native review discovers readable Calendar sources and shares only the approved next event, or an explicit no-events-in-window result. Never infer a source from arbitrary UI selection; no background access is granted. Calendar create/read-selected/update/delete additionally requires calendar.local-event.v1 and the exact current native source/target revisions; never invent IDs or revisions. Maps read-selected requires maps.selected-read.v1 and exact current clientDevice.context kind/id/revision; never infer coordinates from the opaque identifier. The phone owner must explicitly review and approve." +
+    " " +
+    FOREGROUND_REVIEW_GUIDANCE +
     " " +
     CLOCK_ALARM_GUIDANCE +
     " " +
@@ -515,8 +592,11 @@ export const proposeDeviceAction: Action = {
             },
           },
           ...calendarSchemas,
+          calendarAvailabilitySchema,
           ...notesSchemas,
           notesQuerySchema,
+          notesSearchSchema,
+          ...namedTargetSchemas,
           ...reminderSchemas,
           reminderCreateSchema,
           reminderCreateAfterSchema,
@@ -687,29 +767,32 @@ export const proposeDeviceAction: Action = {
         isReminderCreate(payload.operation) ||
         isCalendarOperation(payload.operation) ||
         isNotesOperation(payload.operation) ||
-        isNativeNotesQuery(payload.operation)) &&
+        isNativeNotesQuery(payload.operation) ||
+        isForegroundReviewOperation(payload.operation)) &&
       receipt &&
       typeof receipt === "object" &&
       !Array.isArray(receipt) &&
       receipt.outcome === "applied"
     ) {
-      const result = isNativeNotesQuery(payload.operation)
-        ? validateNotesQueryResult(payload.operation, receipt.result)
-        : isMapsOperation(payload.operation)
-          ? validateMapsResult(payload.operation, receipt.result)
-          : isReminderCreate(payload.operation)
-            ? validateReminderCreateResult(
-                payload.operation,
-                receipt.result,
-                typeof receipt.operationId === "string"
-                  ? receipt.operationId
-                  : undefined,
-              )
-            : isReminderOperation(payload.operation)
-              ? validateReminderResult(payload.operation, receipt.result)
-              : isNotesOperation(payload.operation)
-                ? validateNotesResult(payload.operation, receipt.result)
-                : validateCalendarResult(payload.operation, receipt.result);
+      const result = isForegroundReviewOperation(payload.operation)
+        ? validateForegroundReviewResult(payload.operation, receipt.result)
+        : isNativeNotesQuery(payload.operation)
+          ? validateNotesQueryResult(payload.operation, receipt.result)
+          : isMapsOperation(payload.operation)
+            ? validateMapsResult(payload.operation, receipt.result)
+            : isReminderCreate(payload.operation)
+              ? validateReminderCreateResult(
+                  payload.operation,
+                  receipt.result,
+                  typeof receipt.operationId === "string"
+                    ? receipt.operationId
+                    : undefined,
+                )
+              : isReminderOperation(payload.operation)
+                ? validateReminderResult(payload.operation, receipt.result)
+                : isNotesOperation(payload.operation)
+                  ? validateNotesResult(payload.operation, receipt.result)
+                  : validateCalendarResult(payload.operation, receipt.result);
       return {
         success: true,
         transcriptVisibility: "internal",
@@ -834,7 +917,9 @@ export function deviceActionForCapabilities(
           (type) =>
             typeof type === "string" &&
             (capabilities === undefined
-              ? type !== "clock_alarm" && type !== "notes_query"
+              ? type !== "clock_alarm" &&
+                type !== "notes_query" &&
+                !isForegroundReviewType(type)
               : deviceOperationSupportedByCapabilities(
                   type === "reminder_create_after" ? "reminder_create" : type,
                   capabilities,

@@ -1,6 +1,11 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import {
+  CALENDAR_AVAILABILITY_CAPABILITY,
+  NAMED_TARGET_CAPABILITY,
+  NOTES_SEARCH_CAPABILITY,
+} from "@elizaos/contracts";
+import {
   isNativeNotesQuery,
   type NativeNotesReadReplyOrigin,
   NOTES_QUERY_CAPABILITY,
@@ -46,6 +51,12 @@ import {
   validateDeviceOperation,
   validateDevicePayload,
 } from "./contract.ts";
+import {
+  FOREGROUND_REVIEW_TYPES,
+  foregroundReviewOperationAvailable,
+  isForegroundReviewOperation,
+  validateForegroundReviewResult,
+} from "./foreground-review-contract.ts";
 import {
   assertMapsObservation,
   isMapsOperation,
@@ -174,6 +185,7 @@ export async function withDeviceActionTurn<T>(
                   CALENDAR_CAPABILITY,
                   CALENDAR_CREATE_CAPABILITY,
                   CALENDAR_NEXT_CAPABILITY,
+                  CALENDAR_AVAILABILITY_CAPABILITY,
                 ].some((capability) => capabilities.includes(capability)) &&
                 tags.includes("resource:calendar-records")
               ? "Calendar"
@@ -780,6 +792,9 @@ export class DeviceActionService {
           CALENDAR_NEXT_CAPABILITY,
           "notes.local-record.v1",
           NOTES_QUERY_CAPABILITY,
+          NOTES_SEARCH_CAPABILITY,
+          CALENDAR_AVAILABILITY_CAPABILITY,
+          NAMED_TARGET_CAPABILITY,
           REMINDER_CAPABILITY,
           REMINDER_TIMING_CAPABILITY,
           REMINDER_CREATE_CAPABILITY,
@@ -979,6 +994,11 @@ export class DeviceActionService {
     )
       throw new DeviceActionError("Reminder capability unavailable");
     if (
+      isForegroundReviewOperation(validated) &&
+      !foregroundReviewOperationAvailable(validated, c.capabilities)
+    )
+      throw new DeviceActionError("Foreground review capability unavailable");
+    if (
       isNativeNotesQuery(validated) &&
       (!c.capabilities?.includes(NOTES_QUERY_CAPABILITY) ||
         !c.capabilities.includes(NOTES_CAPABILITY))
@@ -1019,6 +1039,7 @@ export class DeviceActionService {
         "calendar_read_selected",
         "calendar_update",
         "calendar_delete",
+        ...FOREGROUND_REVIEW_TYPES,
       ].includes(validated.type)
     )
       throw new DeviceActionError("Workflow read requires bound dispatcher");
@@ -1324,6 +1345,7 @@ export class DeviceActionService {
         );
         if (
           (isNativeNotesQuery(operation) ||
+            isForegroundReviewOperation(operation) ||
             operation.type === "calendar_create_local" ||
             operation.type === "calendar_read_next") &&
           !supported
@@ -1374,6 +1396,11 @@ export class DeviceActionService {
       !reminderCapabilityAvailable(payload.operation, c.capabilities)
     )
       throw new DeviceActionError("Reminder capability unavailable");
+    if (
+      isForegroundReviewOperation(payload.operation) &&
+      !foregroundReviewOperationAvailable(payload.operation, c.capabilities)
+    )
+      throw new DeviceActionError("Foreground review capability unavailable");
     if (
       isNativeNotesQuery(payload.operation) &&
       (!c.capabilities?.includes(NOTES_QUERY_CAPABILITY) ||
@@ -1618,6 +1645,22 @@ export class DeviceActionService {
         } catch {
           throw new DeviceActionError("Invalid Calendar receipt");
         }
+      } else if (
+        isForegroundReviewOperation(payload.operation) &&
+        receipt.outcome === "applied"
+      ) {
+        try {
+          receipt = {
+            ...receipt,
+            result: validateForegroundReviewResult(
+              payload.operation,
+              value.result,
+              c.capabilities ?? [],
+            ),
+          };
+        } catch {
+          throw new DeviceActionError("Invalid foreground review receipt");
+        }
       } else if (read && receipt.outcome === "applied") {
         receipt = {
           ...receipt,
@@ -1802,6 +1845,22 @@ export class DeviceActionService {
           };
         } catch {
           throw new DeviceActionError("Invalid Calendar receipt");
+        }
+      } else if (
+        isForegroundReviewOperation(payload.operation) &&
+        receipt.outcome === "applied"
+      ) {
+        try {
+          receipt = {
+            ...receipt,
+            result: validateForegroundReviewResult(
+              payload.operation,
+              value.result,
+              c.capabilities ?? [],
+            ),
+          };
+        } catch {
+          throw new DeviceActionError("Invalid foreground review receipt");
         }
       } else if (
         (payload.operation.type === "read_selected_notes" ||
