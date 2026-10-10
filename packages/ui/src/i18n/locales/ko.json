@@ -2347,8 +2347,6 @@
   "conversations.manageConnections": "관리",
   "conversations.minutesAgo": "{{count}}분 전",
   "conversations.newChat": "+ 새 채팅",
-  "conversations.newTerminal": "새 터미널",
-  "conversations.newTerminalFailed": "터미널을 시작하지 못했어요: {{message}}",
   "conversations.noMatchingChats": "검색과 일치하는 채팅이 없습니다",
   "conversations.none": "아직 대화가 없습니다.",
   "conversations.noneApp": "아직 채팅이 없어요",

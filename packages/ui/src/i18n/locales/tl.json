@@ -2340,8 +2340,6 @@
   "conversations.manageConnections": "I-manage",
   "conversations.minutesAgo": "{{count}}m nakalipas",
   "conversations.newChat": "+ Bagong Chat",
-  "conversations.newTerminal": "Bagong Terminal",
-  "conversations.newTerminalFailed": "Hindi nasimulan ang terminal: {{message}}",
   "conversations.noMatchingChats": "Walang chat na tugma sa hinanap mo",
   "conversations.none": "Wala pang usapan",
   "conversations.noneApp": "Wala pang chats",

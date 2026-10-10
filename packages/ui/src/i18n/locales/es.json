@@ -2347,8 +2347,6 @@
   "conversations.manageConnections": "Gestionar",
   "conversations.minutesAgo": "Hace {{count}}m",
   "conversations.newChat": "+ Nuevo chat",
-  "conversations.newTerminal": "Nueva terminal",
-  "conversations.newTerminalFailed": "No se pudo iniciar el terminal: {{message}}",
   "conversations.noMatchingChats": "Ningún chat coincide con tu búsqueda",
   "conversations.none": "Aún no hay conversaciones",
   "conversations.noneApp": "Aún no hay chats",
