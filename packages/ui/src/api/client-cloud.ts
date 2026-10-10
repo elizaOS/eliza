@@ -3180,7 +3180,7 @@ ElizaClient.prototype.getCloudCompatAgentStatus = async function (
         bridgeUrl: a.bridge_url,
         webUiUrl: a.webUiUrl,
         currentNode: null,
-        suspendedReason: null,
+        suspendedReason: a.error_message ?? null,
         databaseStatus: a.database_status,
       },
     };
