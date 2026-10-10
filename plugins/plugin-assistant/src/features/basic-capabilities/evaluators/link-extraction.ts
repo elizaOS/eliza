@@ -77,9 +77,9 @@ function hasUrl(message: Memory): boolean {
 }
 
 function extractTitle(html: string): string {
-  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  if (titleMatch?.[1]) {
-    return decodeHtmlEntities(titleMatch[1]).replace(/\s+/g, " ").trim();
+  const title = extractTitleElement(html);
+  if (title) {
+    return decodeHtmlEntities(title).replace(/\s+/g, " ").trim();
   }
   // HTML attributes are unordered. Requiring property before content drops
   // <meta content="Hello World" property="og:title"> and stores an empty title.
@@ -90,14 +90,55 @@ function extractTitle(html: string): string {
   return "";
 }
 
+// The page is untrusted. A tag regex retried at every `<` rescans the rest of a
+// page that never closes the tag, so these scans find each end once.
+
+/** Text of the first `<title ...>...</title>`. */
+function extractTitleElement(html: string): string {
+  const open = /<title/i.exec(html);
+  if (!open) return "";
+  const start = html.indexOf(">", open.index + open[0].length);
+  if (start < 0) return "";
+  const close = /<\/title>/gi;
+  close.lastIndex = start + 1;
+  const end = close.exec(html);
+  return end ? html.slice(start + 1, end.index) : "";
+}
+
+/**
+ * For each index, the `>` that ends a tag whose attributes start there, with
+ * quoted values skipped; -1 when the tag never closes. Built right to left.
+ */
+function tagEnds(html: string): Int32Array {
+  const ends = new Int32Array(html.length + 1).fill(-1);
+  let nextDouble = -1;
+  let nextSingle = -1;
+  for (let index = html.length - 1; index >= 0; index--) {
+    const char = html[index];
+    if (char === ">") ends[index] = index;
+    else if (char === '"')
+      ends[index] = nextDouble < 0 ? -1 : (ends[nextDouble + 1] as number);
+    else if (char === "'")
+      ends[index] = nextSingle < 0 ? -1 : (ends[nextSingle + 1] as number);
+    else ends[index] = ends[index + 1] as number;
+    if (char === '"') nextDouble = index;
+    if (char === "'") nextSingle = index;
+  }
+  return ends;
+}
+
 function extractOpenGraphTitle(html: string): string {
-  for (const match of html.matchAll(
-    /<meta(?=[\s/>])(?:"[^"]*"|'[^']*'|[^'">])*>/gi,
-  )) {
+  const ends = tagEnds(html);
+  const meta = /<meta(?=[\s/>])/gi;
+  for (let match = meta.exec(html); match; match = meta.exec(html)) {
+    const end = ends[meta.lastIndex] as number;
+    if (end < 0) continue;
+    const tag = html.slice(match.index, end + 1);
+    meta.lastIndex = end + 1;
     let property: string | undefined;
     let content: string | undefined;
     // Consume complete quoted values so title text cannot masquerade as an attribute.
-    for (const attribute of match[0].matchAll(
+    for (const attribute of tag.matchAll(
       /\s([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g,
     )) {
       const name = attribute[1].toLowerCase();
@@ -127,10 +168,21 @@ function decodeHtmlEntities(value: string): string {
 }
 
 function stripTags(html: string): string {
-  return stripHtmlRawTextElements(html)
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const text = stripHtmlRawTextElements(html);
+  let output = "";
+  let copied = 0;
+  for (let open = text.indexOf("<"); open >= 0; ) {
+    const close = text.indexOf(">", open + 1);
+    if (close < 0) break;
+    if (close > open + 1) {
+      output += `${text.slice(copied, open)} `;
+      copied = close + 1;
+      open = text.indexOf("<", close + 1);
+    } else {
+      open = text.indexOf("<", open + 1);
+    }
+  }
+  return (output + text.slice(copied)).replace(/\s+/g, " ").trim();
 }
 
 /**
