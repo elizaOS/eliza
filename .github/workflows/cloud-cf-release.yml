@@ -143,6 +143,8 @@ on:
         required: false
       SECRETS_MASTER_KEY:
         required: false
+      NETWORK_SITE_AUTH_SERVER_TOKEN:
+        required: false
       STAGING_SESSION_EXCHANGE_SIGNING_SECRET:
         required: false
       STEWARD_API_URL:
@@ -1382,6 +1384,10 @@ jobs:
           ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64: ${{ secrets.ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64 }}
           VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
           VAST_BASE_URL: ${{ secrets.VAST_BASE_URL }}
+          # Optional staging-only Network phone handoff. Absence preserves existing bindings.
+          NETWORK_SITE_AUTH_ENABLED: ${{ steps.env.outputs.deploy_environment == 'staging' && vars.NETWORK_SITE_AUTH_ENABLED || '' }}
+          NETWORK_SITE_AUTH_ORIGIN: ${{ steps.env.outputs.deploy_environment == 'staging' && vars.NETWORK_SITE_AUTH_ORIGIN || '' }}
+          NETWORK_SITE_AUTH_SERVER_TOKEN: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.NETWORK_SITE_AUTH_SERVER_TOKEN || '' }}
           DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
           # Phone and app voice are production features. Staging remains an
           # explicit repository-variable opt-in, while production is pinned on
@@ -1786,6 +1792,34 @@ jobs:
             echo "::notice::$name is not configured; Worker binding state: $result"
             return 0
           }
+
+          # Reuse the atomic queue; never replace an opaque managed secret payload.
+          # Unset means preserve. Explicit false disables only the gate, leaving authority unchanged.
+          if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
+            case "${NETWORK_SITE_AUTH_ENABLED:-}" in
+              "") ;;
+              false) queue_secret NETWORK_SITE_AUTH_ENABLED || exit 1 ;;
+              true)
+                node --input-type=module - <<'NODE'
+          const origin = process.env.NETWORK_SITE_AUTH_ORIGIN;
+          const token = process.env.NETWORK_SITE_AUTH_SERVER_TOKEN;
+          let url;
+          try { url = new URL(origin); } catch {}
+          if (process.env.DEPLOY_ENVIRONMENT !== "staging" || !url || url.protocol !== "http:"
+            || !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) || url.origin !== origin
+            || url.pathname !== "/" || url.username || url.password || url.search || url.hash
+            || typeof token !== "string" || token.length < 32) {
+            console.error("::error::Staging Network site auth requires an exact HTTP loopback origin and a server token of at least 32 characters");
+            process.exit(1);
+          }
+          NODE
+                for name in NETWORK_SITE_AUTH_ENABLED NETWORK_SITE_AUTH_ORIGIN NETWORK_SITE_AUTH_SERVER_TOKEN; do
+                  queue_secret "$name" || exit 1
+                done
+                ;;
+              *) echo "::error::NETWORK_SITE_AUTH_ENABLED must be absent, true, or false"; exit 1 ;;
+            esac
+          fi
 
           # Build the next Worker version with the QA activation bit absent.
           # The served gate was already disabled above; version-aware updates

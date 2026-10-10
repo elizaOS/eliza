@@ -42,6 +42,7 @@ const acknowledgements: Array<Record<string, unknown>> = [];
 const cloudBodies: Array<Record<string, unknown>> = [];
 const sent: Array<{ to: string; text: string }> = [];
 let respond: (req: TurnRequest) => TurnResponse | Response;
+let recordedHistory = true;
 
 const fakeTwilio: PlatformAdapter = {
   platform: "twilio",
@@ -170,7 +171,7 @@ beforeAll(() => {
             delivery: {
               ok: true,
               providerMessageIds: ["cloud-owned-receipt"],
-              history: true,
+              history: recordedHistory,
             },
           },
         });
@@ -194,6 +195,7 @@ beforeEach(() => {
   acknowledgements.length = 0;
   cloudBodies.length = 0;
   sent.length = 0;
+  recordedHistory = true;
 });
 
 describe("Network takeover: the service owns the turn", () => {
@@ -384,5 +386,45 @@ describe("Network takeover: the service owns the turn", () => {
     } finally {
       delete process.env.NETWORK_TAKEOVER_ALLOWLIST;
     }
+  });
+  test("canonical account-free onboarding acknowledges provider acceptance without inventing history", async () => {
+    recordedHistory = false;
+    respond = () => ({
+      outcome: "handled",
+      replies: ["Reply with your first name and age."],
+      replyIds: [],
+      delivery: "collected",
+      replyKind: "reply",
+      accountEligible: false,
+      app: "ntwrk",
+      memberId: null,
+      reason: "onboarding_asked",
+    });
+    expect(await inbound("hi", "+14155550719")).toBe("delivered");
+    expect(acknowledgements[0]).toMatchObject({
+      outcome: "accepted",
+      providerMessageIds: ["cloud-owned-receipt"],
+      historyRecorded: false,
+    });
+    expect(cloudBodies).toHaveLength(1);
+    expect(sent).toHaveLength(1);
+    // A normal member reply cannot borrow the account-free onboarding receipt.
+    respond = () => ({
+      outcome: "handled",
+      replies: ["Member reply"],
+      replyIds: [],
+      delivery: "collected",
+      replyKind: "reply",
+      accountEligible: false,
+      app: "ntwrk",
+      memberId: "member",
+      reason: "handled",
+    });
+    await inbound("another question", "+14155550719");
+    expect(acknowledgements[1]).toMatchObject({
+      outcome: "rejected",
+      providerMessageIds: [],
+      historyRecorded: false,
+    });
   });
 });
