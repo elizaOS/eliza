@@ -192,32 +192,17 @@ const metadataCache = new Map<string, { expiresAt: number; value: Metadata }>();
 export function clearCurrentWeatherMetadataCacheForTests(): void {
   metadataCache.clear();
 }
-// Latin letters NFKD does not decompose, spelled as US place names write them
-// without diacritics (Cœur d'Alene is "Coeur d'Alene" in GNIS).
+// NFKD does not decompose œ; GNIS spells Cœur d'Alene as Coeur d'Alene.
 const PLAIN_LETTERS: Readonly<Record<string, string>> = {
   œ: "oe",
   Œ: "Oe",
-  æ: "ae",
-  Æ: "Ae",
-  ß: "ss",
-  ø: "o",
-  Ø: "O",
-  ł: "l",
-  Ł: "L",
-  đ: "d",
-  Đ: "D",
-  ð: "d",
-  Ð: "D",
-  þ: "th",
-  Þ: "Th",
-  ı: "i",
 };
-/** The name in plain Latin letters: marks removed, ligatures spelled out. */
+/** The name in the plain spelling accepted by the USGS geocoder. */
 const plainLetters = (v: string) =>
   v
     .normalize("NFKD")
     .replace(/\p{M}/gu, "")
-    .replace(/[œŒæÆßøØłŁđĐðÐþÞı]/g, (c) => PLAIN_LETTERS[c] ?? c);
+    .replace(/[œŒ]/g, (c) => PLAIN_LETTERS[c] ?? c);
 const fold = (v: string) =>
   plainLetters(v).toLowerCase().replace(/[.'’]/g, "").replace(/\s+/g, " ").trim();
 const record = (v: unknown): Record<string, unknown> | undefined =>
