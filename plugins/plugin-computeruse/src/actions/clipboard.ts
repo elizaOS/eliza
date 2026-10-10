@@ -84,8 +84,16 @@ function resolveClipboardAction(
 
 async function runClipboardAction(
   params: ClipboardActionParams,
+  service: ComputerUseService,
+  signal?: AbortSignal,
 ): Promise<ClipboardActionResult> {
   if (params.action === "read") {
+    const approvalError = await service.awaitApproval(
+      "clipboard_read",
+      {},
+      signal,
+    );
+    if (approvalError) return { success: false, error: approvalError };
     const text = toWellFormedUnicode(await driverReadClipboard());
     const preview =
       text.length > CLIPBOARD_PREVIEW_CODE_UNITS
@@ -107,6 +115,12 @@ async function runClipboardAction(
         error: "text is required for clipboard write",
       };
     }
+    const approvalError = await service.awaitApproval(
+      "clipboard_write",
+      { text: params.text },
+      signal,
+    );
+    if (approvalError) return { success: false, error: approvalError };
     await driverWriteClipboard(params.text);
     return {
       success: true,
@@ -180,10 +194,14 @@ export const clipboardAction: Action = {
 
     let result: ClipboardActionResult;
     try {
-      result = await runClipboardAction({
-        ...params,
-        action,
-      } satisfies ClipboardActionParams);
+      result = await runClipboardAction(
+        {
+          ...params,
+          action,
+        } satisfies ClipboardActionParams,
+        service,
+        options?.abortSignal,
+      );
     } catch (error) {
       // error-policy:J1 action boundary — the platform failure becomes a
       // structured {success:false,error} ActionResult the model sees.

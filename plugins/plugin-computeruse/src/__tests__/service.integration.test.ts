@@ -22,6 +22,11 @@ import {
   startComputerUseRuntime,
   stopComputerUseRuntime,
 } from "../../test/helpers/service-runtime.ts";
+import { clipboardAction } from "../actions/clipboard.js";
+import { runComputerUseAgentLoop } from "../actions/use-computer-agent.js";
+import type { AgentLoop } from "../actor/agent-loop.js";
+import type { ComputerInterface } from "../actor/computer-interface.js";
+import type { Scene } from "../scene/scene-types.js";
 import {
   type ComputerUseAgentReport,
   computerUseAgentAction,
@@ -390,6 +395,91 @@ describe("ComputerUseService validates input before the approval gate", () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain("windowId");
     expect(result.error).not.toContain("paused");
+  }, 10_000);
+
+  it("blocks a COMPUTER_USE_AGENT step while computer use is paused", async () => {
+    const display = {
+      id: 1,
+      bounds: [0, 0, 800, 600] as [number, number, number, number],
+      scaleFactor: 1,
+      primary: true,
+      name: "test-display",
+    };
+    const scene: Scene = {
+      timestamp: Date.now(),
+      displays: [display],
+      focused_window: null,
+      apps: [],
+      ocr: [],
+      ax: [],
+      vlm_scene: null,
+      vlm_elements: null,
+    };
+    // Scene and display reads are fixed so no host capture runs; the approval
+    // gate is the real service's.
+    const gatedService = {
+      refreshScene: async () => scene,
+      getCurrentScene: () => scene,
+      getDisplays: () => [display],
+      setSceneVlmAnnotations: () => {},
+      awaitApproval: service.awaitApproval.bind(service),
+    } as unknown as ComputerUseService;
+    const driverCalls: string[] = [];
+    const computerInterface = new Proxy(
+      {},
+      {
+        get: (_target, name) => async () => {
+          driverCalls.push(String(name));
+        },
+      },
+    ) as ComputerInterface;
+    const loop: AgentLoop = {
+      name: "fixed-click",
+      predictStep: async () => ({
+        scene_summary: "a dialog with a save button",
+        proposed: {
+          kind: "click",
+          displayId: display.id,
+          x: 10,
+          y: 10,
+          rationale: "click save",
+        },
+        rois: [],
+      }),
+      predictClick: async () => null,
+    };
+
+    const report = await runComputerUseAgentLoop(
+      runtime,
+      { goal: "click the save button" },
+      gatedService,
+      {
+        loop,
+        computerInterface,
+        captureAll: async () => [{ display, frame: Buffer.from("frame") }],
+      },
+    );
+
+    expect(report.reason).toBe("error");
+    expect(report.error).toContain("paused");
+    expect(driverCalls).toEqual([]);
+  }, 10_000);
+
+  it("blocks CLIPBOARD read and write while computer use is paused", async () => {
+    for (const parameters of [
+      { action: "read" },
+      { action: "write", text: "must not reach the clipboard" },
+    ]) {
+      const result = await clipboardAction.handler(
+        runtime,
+        { content: {} } as Memory,
+        undefined,
+        { parameters },
+      );
+
+      expect(result?.success).toBe(false);
+      expect(result?.text).toContain("paused");
+    }
   }, 10_000);
 });
 

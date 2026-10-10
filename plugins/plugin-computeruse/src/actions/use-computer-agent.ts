@@ -62,6 +62,7 @@ import {
   makeComputerInterface,
 } from "../actor/computer-interface.js";
 import { dispatch } from "../actor/dispatch.js";
+import type { BrainActionKind } from "../actor/types.js";
 import {
   captureAllDisplays,
   type DisplayCapture,
@@ -187,6 +188,24 @@ export function formatComputerUseAgentProgress(
     ? ""
     : ` (failed: ${normalizeForStatus(progress.result.error ?? "unknown")})`;
   return `Step ${progress.step}/${progress.maxSteps}: ${progress.actionKind} - ${rationale}${failure}`;
+}
+
+/**
+ * Approval command for a proposed step: the same name USE_COMPUTER gates the
+ * identical input under. `wait` and `finish` touch nothing and need no approval.
+ */
+function agentApprovalCommand(kind: BrainActionKind): string | null {
+  switch (kind) {
+    case "wait":
+    case "finish":
+      return null;
+    case "key":
+      return "key_press";
+    case "hotkey":
+      return "key_combo";
+    default:
+      return kind;
+  }
 }
 
 function getService(runtime: IAgentRuntime): ComputerUseService | null {
@@ -375,6 +394,19 @@ export async function runComputerUseAgentLoop(
       report.error =
         "repeated action on an unchanged screen was blocked; fresh owner intent is required";
       return finalize();
+    }
+    const approvalCommand = agentApprovalCommand(proposed.proposed.kind);
+    if (approvalCommand) {
+      const approvalError = await service.awaitApproval(
+        approvalCommand,
+        { ...proposed.proposed },
+        params.signal,
+      );
+      if (approvalError) {
+        report.reason = params.signal?.aborted ? "cancelled" : "error";
+        report.error = approvalError;
+        return finalize();
+      }
     }
     const dispatchResult = await dispatch(proposed.proposed, {
       interface: computer,
