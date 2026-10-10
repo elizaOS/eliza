@@ -912,6 +912,16 @@ async function extractAgentData(
       tableName,
       includeEmbedding: false,
     });
+    if (tableName === "document_fragments") {
+      memories.push(
+        ...(await db.getMemories({
+          agentId,
+          tableName,
+          metadata: { fragmentRole: "source-segment" },
+          includeEmbedding: false,
+        })),
+      );
+    }
     for (const mem of memories) {
       if (mem.id && !memoryIdSet.has(mem.id)) {
         memoryIdSet.add(mem.id);
