@@ -43,8 +43,17 @@ export function normalizeOptionalBoolean(
 ): boolean | undefined {
   if (value === undefined || value === null) return undefined;
   if (typeof value === "boolean") return value;
-  if (value === "true" || value === 1) return true;
-  if (value === "false" || value === 0) return false;
+  if (typeof value === "string") {
+    // Match the canonical normalizer (packages/contracts, plugin-calendar):
+    // trim and lowercase before comparing, and accept "1"/"0" string forms.
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true" || normalized === "1") return true;
+    if (normalized === "false" || normalized === "0") return false;
+  } else if (value === 1) {
+    return true;
+  } else if (value === 0) {
+    return false;
+  }
   return undefined;
 }
 
