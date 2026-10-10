@@ -280,18 +280,12 @@ export function registerMediaJobWorker(runtime: IAgentRuntime) {
           });
           try {
             await notifications.notify({
-              title: "Media transcript ready",
-              body:
-                summary ??
-                "The transcript is saved. Ask about its contents or sources.",
+              // The inbox belongs to the agent, not the private requester.
+              // Content and identifiers stay behind task/document access checks.
+              title: "Media task complete",
+              body: "Open your media tasks to view completed results.",
               category: "task",
               source: "video",
-              groupKey: `media:${task.id}`,
-              data: {
-                taskId: task.id,
-                documentId: document.clientDocumentId,
-                roomId: task.roomId,
-              },
             });
             await current.updateTask(task.id, {
               metadata: { ...completed, notificationState: "submitted" },

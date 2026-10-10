@@ -5,7 +5,17 @@ import fs from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ElizaError, IAgentRuntime, Media } from "@elizaos/core";
-import { ChannelType, TaskStatus, type UUID } from "@elizaos/core";
+import {
+  ChannelType,
+  type Memory,
+  ModelType,
+  NotificationService,
+  Service,
+  ServiceType,
+  TaskStatus,
+  type UUID,
+} from "@elizaos/core";
+import { DocumentService } from "@elizaos/plugin-assistant/documents";
 import { createTestRuntime } from "@elizaos/testing/runtime";
 import { describe, expect, it, vi } from "vitest";
 import { mediaStatusAction, registerMediaJobWorker } from "../jobs";
@@ -403,6 +413,7 @@ it("runs reloaded media tasks and retains scoped failure status in the real task
   const { runtime, cleanup } = await createTestRuntime({
     characterName: "MediaTaskContract",
   });
+
   try {
     const entityId = randomUUID() as UUID,
       roomId = randomUUID() as UUID,
@@ -482,3 +493,182 @@ it("runs reloaded media tasks and retains scoped failure status in the real task
     await cleanup();
   }
 }, 120_000);
+
+it("keeps private media results out of the shared inbox while enforcing requester access", async () => {
+  const transcript =
+    "MEDIA_PRIVATE_TRANSCRIPT_SENTINEL: the complete synthetic source.";
+  const summary = "MEDIA_PRIVATE_SUMMARY_SENTINEL: the source is complete.";
+  const title = "MEDIA_PRIVATE_TITLE_SENTINEL";
+  const sourceUrl = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+  let modelCalls = 0;
+  class CompletedMediaFixture extends Service {
+    static readonly serviceType = ServiceType.VIDEO;
+    capabilityDescription = "Offline completed-media boundary";
+    static async start(runtime: IAgentRuntime) {
+      return new CompletedMediaFixture(runtime);
+    }
+    async processVideo() {
+      return { title, text: transcript };
+    }
+    async stop() {}
+  }
+  const { runtime, cleanup } = await createTestRuntime({
+    characterName: "PrivateMediaCompletion",
+    embeddingDimensions: 384,
+    settings: { CTX_DOCUMENTS_ENABLED: false, LOAD_DOCS_ON_STARTUP: false },
+    plugins: [
+      {
+        name: "offline-media-completion",
+        services: [DocumentService, NotificationService, CompletedMediaFixture],
+      },
+    ],
+    configureRuntime(current) {
+      current.registerModel(
+        ModelType.TEXT_EMBEDDING,
+        async () => Array(384).fill(0),
+        "offline-embedding",
+      );
+      current.registerModel(
+        ModelType.TEXT_SMALL,
+        async () => (++modelCalls === 1 ? summary : '{"approved":true}'),
+        "offline-summary",
+      );
+    },
+  });
+  try {
+    const requester = randomUUID() as UUID;
+    const other = randomUUID() as UUID;
+    const roomId = randomUUID() as UUID;
+    const worldId = randomUUID() as UUID;
+    await runtime.ensureWorldExists({
+      id: worldId,
+      name: "Offline media",
+      agentId: runtime.agentId,
+      metadata: {
+        roles: { [requester]: "USER", [other]: "USER" },
+        roleSources: { [requester]: "manual", [other]: "manual" },
+      },
+    });
+    for (const entityId of [requester, other]) {
+      await runtime.ensureConnection({
+        entityId,
+        roomId,
+        worldId,
+        worldName: "Offline media",
+        userName: entityId,
+        name: "Media fixture",
+        source: "test",
+        type: ChannelType.DM,
+      });
+    }
+    for (const serviceType of [
+      "documents",
+      ServiceType.NOTIFICATION,
+      ServiceType.VIDEO,
+    ]) {
+      await runtime.getServiceLoadPromise(serviceType);
+    }
+    const documents = runtime.getService<DocumentService>("documents");
+    const notifications = runtime.getService<NotificationService>(
+      ServiceType.NOTIFICATION,
+    );
+    if (!documents || !notifications)
+      throw new Error("Media consumers did not initialize");
+    // Observe the actual storage result; the spy calls the real document service.
+    const saveDocument = vi.spyOn(documents, "addDocument");
+    registerMediaJobWorker(runtime);
+    const taskId = await runtime.createTask({
+      name: "PROCESS_PUBLIC_MEDIA",
+      agentId: runtime.agentId,
+      entityId: requester,
+      roomId,
+      worldId,
+      tags: ["queue", "media"],
+      dueAt: Date.now(),
+      metadata: {
+        status: TaskStatus.PENDING,
+        url: sourceUrl,
+        kind: "youtube",
+        summary: true,
+      },
+    });
+    const task = await runtime.getTask(taskId);
+    const worker = runtime.getTaskWorker("PROCESS_PUBLIC_MEDIA");
+    if (!task || !worker) throw new Error("Media task did not initialize");
+    expect(await worker.execute(runtime, {}, task)).toMatchObject({
+      preserveTask: true,
+    });
+    const completed = await runtime.getTask(taskId);
+    expect(completed?.metadata).toMatchObject({
+      status: TaskStatus.COMPLETED,
+      summary,
+      notificationState: "submitted",
+    });
+    expect(modelCalls).toBe(2);
+    const documentId = completed?.metadata?.documentId;
+    if (typeof documentId !== "string")
+      throw new Error("Completed media document is missing");
+    const savedDocument = await saveDocument.mock.results[0]?.value;
+    saveDocument.mockRestore();
+    if (!savedDocument) throw new Error("Private document was not saved");
+    expect(savedDocument.clientDocumentId).toBe(documentId);
+    const message = (entityId: UUID): Memory => ({
+      id: randomUUID() as UUID,
+      agentId: runtime.agentId,
+      entityId,
+      roomId,
+      worldId,
+      content: { text: "Read my media result", source: "test" },
+    });
+    expect(
+      (
+        await documents.getDocumentById(
+          savedDocument.storedDocumentMemoryId,
+          message(requester),
+        )
+      )?.content.text,
+    ).toBe(transcript);
+    expect(
+      await documents.getDocumentById(
+        savedDocument.storedDocumentMemoryId,
+        message(other),
+      ),
+    ).toBeNull();
+    expect(
+      await mediaStatusAction.handler(runtime, message(requester), undefined, {
+        parameters: { taskId },
+      }),
+    ).toMatchObject({ success: true, data: { summary } });
+    await expect(
+      mediaStatusAction.handler(runtime, message(other), undefined, {
+        parameters: { taskId },
+      }),
+    ).rejects.toMatchObject({ code: "MEDIA_TASK_NOT_FOUND" });
+    // The real inbox consumer has agent scope, so both entities can see this
+    // projection. It must carry no requester-private content or coordinates.
+    const inbox = notifications.list();
+    expect(inbox).toHaveLength(1);
+    expect(inbox[0]).toMatchObject({
+      title: "Media task complete",
+      body: "Open your media tasks to view completed results.",
+    });
+    expect(inbox[0].data).toBeUndefined();
+    expect(inbox[0].groupKey).toBeUndefined();
+    for (const privateValue of [
+      transcript,
+      summary,
+      title,
+      sourceUrl,
+      taskId,
+      documentId,
+      savedDocument.storedDocumentMemoryId,
+      roomId,
+      requester,
+      other,
+    ]) {
+      expect(JSON.stringify(inbox)).not.toContain(privateValue);
+    }
+  } finally {
+    await cleanup();
+  }
+});
