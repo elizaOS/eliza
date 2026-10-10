@@ -28,7 +28,7 @@
   },
   "homepage": "https://github.com/elizaOS/eliza",
   "devDependencies": {
-    "@capacitor/android": "8.5.0",
+    "@capacitor/android": "8.5.1",
     "@types/node": "^25.6.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3"

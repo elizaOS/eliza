@@ -212,7 +212,7 @@
   },
   "dependencies": {
     "@capacitor-community/sqlite": "^8.1.0",
-    "@capacitor/android": "8.5.0",
+    "@capacitor/android": "8.5.1",
     "@capacitor/app": "8.1.1",
     "@capacitor/background-runner": "^3.0.0",
     "@capacitor/barcode-scanner": "3.1.2",
@@ -221,7 +221,7 @@
     "@capacitor/device": "8.0.3",
     "@capacitor/filesystem": "^8.0.0",
     "@capacitor/haptics": "8.0.2",
-    "@capacitor/ios": "8.5.0",
+    "@capacitor/ios": "8.5.3",
     "@capacitor/keyboard": "8.0.5",
     "@capacitor/local-notifications": "^8.0.0",
     "@capacitor/network": "^8.0.0",

@@ -113,6 +113,7 @@ function extractOpenGraphTitle(html: string): string {
 function decodeHtmlEntities(value: string): string {
   const namedEntities: Record<string, string> = {
     amp: "&",
+    apos: "'",
     gt: ">",
     lt: "<",
     nbsp: " ",
@@ -120,7 +121,7 @@ function decodeHtmlEntities(value: string): string {
     "#39": "'",
   };
   return value.replace(
-    /&(amp|lt|gt|quot|#39|nbsp);/gi,
+    /&(amp|apos|lt|gt|quot|#39|nbsp);/gi,
     (entity, name: string) => namedEntities[name.toLowerCase()] ?? entity,
   );
 }

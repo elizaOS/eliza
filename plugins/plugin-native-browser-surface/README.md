@@ -130,3 +130,28 @@ Android may kill the process when permission changes, so this recovery does not
 establish process-death persistence. The permission watcher is removed on destroy.
 
 `SubmittedNavigation` from `./submitted-navigation` owns submitted-address history, stale-check fencing and revision-bound explicit one-time overrides. Hosts validate/resolve addresses and supply a verdict check. Failed checks stay unavailable. Hosts retain warning/confirmation UI, sandbox configuration and all navigation authorization. This controller cannot observe internal iframe navigation or certify loaded content.
+
+## Android host web policy
+
+The pure-JVM policy classes in `ai.eliza.plugins.browsersurface` are shared by hosts
+with persistent and private WebView profiles. Run `bun run test:native-policy`
+from this package with a JDK on PATH or JAVA_HOME.
+
+- `BrowserWebOrigin` validates HTTP(S) origins, blob owners and site matching.
+- `BrowserDownloadPolicy` limits cookies to the open source tab's exact origin,
+  decodes data URLs within 64 MB on Android 26+, and excludes private downloads from saved history.
+  Saved entries survive restoration even above the limit for adding new entries.
+- `BrowserSitePermissions` stores revocable camera, microphone and location choices
+  per origin. Private tabs neither read nor store these choices.
+- `BrowserSessionPolicy` restores valid persistent tabs, history and complete titles.
+  It excludes private tabs and validates bookmarks. Hosts own tab and storage limits.
+- `BrowserExternalLinkPolicy` requires a user gesture and selects a safe handoff kind.
+  The host constructs a fresh intent and refuses a resolved target in its own package.
+- `BrowserAutofillEligibility` requires the selected, visible, committed HTTPS document
+  to match the engine address. The host owns framework commit/cancel and excludes
+  ineligible views from autofill.
+
+Hosts retain consent UI, OS permissions, sealed storage, navigation and downloads.
+Recheck cookie policy at every redirect; do not hand authenticated headers to
+DownloadManager, which stores and replays them. These policies do not themselves
+perform network requests or qualify a browser/device integration.

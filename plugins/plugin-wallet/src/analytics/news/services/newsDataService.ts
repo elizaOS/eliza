@@ -133,6 +133,7 @@ export class NewsDataService extends Service {
       "&#8212;": "—",
       "&#038;": "&",
       "&amp;": "&",
+      "&nbsp;": " ",
       "&lt;": "<",
       "&gt;": ">",
       "&quot;": '"',
@@ -145,8 +146,18 @@ export class NewsDataService extends Service {
     }
 
     // Handle numeric entities
-    decoded = decoded.replace(/&#(\d+);/g, (_match, dec) => {
-      return String.fromCharCode(dec);
+    decoded = decoded.replace(/&#(\d+);/g, (entity, dec) => {
+      // fromCharCode truncates astral-plane entities to 16 bits ("&#128512;"
+      // becomes U+F600 instead of the grinning face). Use fromCodePoint and
+      // leave invalid code points raw, mirroring the gmail connector.
+      const code = Number(dec);
+      if (!Number.isSafeInteger(code) || code <= 0 || code > 0x10ffff) {
+        return entity;
+      }
+      if (code >= 0xd800 && code <= 0xdfff) {
+        return entity;
+      }
+      return String.fromCodePoint(code);
     });
 
     return decoded;

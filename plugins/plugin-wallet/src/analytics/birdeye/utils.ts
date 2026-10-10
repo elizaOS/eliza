@@ -258,7 +258,12 @@ export const extractTimeRange = (
   if (dateRangeMatch) {
     const start = new Date(dateRangeMatch[1]).getTime() / 1000;
     const end = new Date(dateRangeMatch[2]).getTime() / 1000;
-    return { start, end };
+    // The regex accepts impossible dates (month 13, day 45); new Date()
+    // yields NaN for those. Fall through to the other strategies instead
+    // of returning a NaN-poisoned range.
+    if (Number.isFinite(start) && Number.isFinite(end)) {
+      return { start, end };
+    }
   }
 
   const timeRegex = /(\d+)\s*(second|minute|hour|day|week|month)s?\s*ago/i;

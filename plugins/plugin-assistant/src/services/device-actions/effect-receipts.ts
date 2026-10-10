@@ -1,10 +1,15 @@
 import {
+  isNamedTargetOperation,
+  validateNamedTargetResult,
+} from "@elizaos/contracts";
+import {
   type EffectReceipt,
   normalizeEffectReceipt,
   type PlannerToolResult,
 } from "@elizaos/core";
 import type { ApprovalEnqueueResult } from "../approval/types.ts";
 import { type DeviceOperation, validateDevicePayload } from "./contract.ts";
+import { namedTargetValidators } from "./foreground-review-contract.ts";
 
 /** Only call after authenticated proposal lookup and operation-result validation.
  * Proof refers to persisted queue/native operation identities, never payload text. */
@@ -43,6 +48,13 @@ export function deviceActionEffectReceipts(
     typeof provider.operationId === "string"
   ) {
     const read = deviceOperationIsRead(operation.type);
+    const noMatch =
+      isNamedTargetOperation(operation) &&
+      validateNamedTargetResult(
+        operation,
+        provider.result,
+        namedTargetValidators,
+      ).basis === "no-match";
     const evidence = {
       ...base,
       receiptId: execution.attemptId,
@@ -54,7 +66,7 @@ export function deviceActionEffectReceipts(
     // snapshot stays in ActionResult.data; no new read occurs during retrieval.
     return [
       normalizeEffectReceipt(
-        read
+        read || noMatch
           ? {
               ...evidence,
               idempotency: {
@@ -62,8 +74,9 @@ export function deviceActionEffectReceipts(
                 replayed: false,
               },
               outcome: "noop",
-              reason:
-                "Retrieved the immutable historical selected-read snapshot; no resource was changed or reread.",
+              reason: noMatch
+                ? "The reviewed name matched no local record; no resource was changed."
+                : "Retrieved the immutable historical selected-read snapshot; no resource was changed or reread.",
             }
           : {
               ...evidence,
@@ -143,12 +156,17 @@ function deviceOperationIsRead(type: DeviceOperation["type"]): boolean {
     case "maps_read_selected":
     case "notes_read_selected":
     case "notes_query":
+    case "notes_search":
+    case "calendar_availability":
     case "reminder_read_selected":
     case "calendar_read_next":
     case "calendar_read_selected":
     case "read_selected_notes":
     case "read_calendar_range":
       return true;
+    case "notes_named":
+    case "calendar_named":
+    case "reminder_named":
     case "notes_update":
     case "notes_delete":
     case "reminder_update":

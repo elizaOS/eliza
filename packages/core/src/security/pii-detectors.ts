@@ -199,6 +199,50 @@ export function wifValid(value: string): boolean {
 	return true;
 }
 
+const IBAN_CANDIDATE =
+	/\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?[A-Z0-9]{1,3})?\b/g;
+
+/** IBAN length per country (SWIFT IBAN registry plus national formats it lacks). */
+const IBAN_LENGTH_BY_COUNTRY: ReadonlyMap<string, number> = new Map(
+	"AD24 AE23 AL28 AO25 AT20 AX18 AZ28 BA20 BE16 BF28 BG22 BH22 BI27 BJ28 BL27 BR29 BY28 CF27 CG27 CH21 CI28 CM27 CR22 CV25 CY28 CZ24 DE22 DJ27 DK18 DO28 DZ26 EE20 EG29 ES24 FI18 FK18 FO18 FR27 GA27 GB22 GE22 GF27 GI23 GL18 GP27 GQ27 GR27 GT28 GW25 HN28 HR21 HU28 IE22 IL23 IQ23 IR26 IS26 IT27 JO30 KM27 KW30 KZ20 LB28 LC32 LI21 LT20 LU20 LV21 LY25 MA28 MC27 MD24 ME22 MF27 MG27 MK19 ML28 MN20 MQ27 MR27 MT31 MU30 MZ25 NC27 NE28 NI28 NL18 NO15 OM23 PF27 PK24 PL28 PM27 PS29 PT25 QA29 RE27 RO24 RS22 RU33 SA24 SC31 SD18 SE24 SI19 SK24 SM27 SN28 SO23 ST25 SV28 TD27 TF27 TG28 TL23 TN24 TR26 UA29 VA22 VG24 WF27 XK20 YE30 YT27"
+		.split(" ")
+		.map((entry) => [entry.slice(0, 2), Number(entry.slice(2))]),
+);
+
+/**
+ * IBAN spans. The shape regex is greedy, so a short uppercase or digit token
+ * after the number (`… 1332 BIC`, `…7034 EUR`, a year) joins the match as a
+ * trailing group and fails mod-97. Such a candidate is cut back to whole
+ * space-separated groups at its country's registered length and checked once
+ * more, so the back-off adds at most one mod-97 test per candidate. Scanning
+ * resumes after the kept span so a dropped tail is searched again.
+ */
+function findIbanSpans(
+	text: string,
+): Array<{ value: string; start: number; end: number }> {
+	const spans: Array<{ value: string; start: number; end: number }> = [];
+	IBAN_CANDIDATE.lastIndex = 0;
+	for (
+		let match = IBAN_CANDIDATE.exec(text);
+		match;
+		match = IBAN_CANDIDATE.exec(text)
+	) {
+		let value = match[0];
+		if (!ibanValid(value)) {
+			const length = IBAN_LENGTH_BY_COUNTRY.get(value.slice(0, 2)) ?? 0;
+			while (value.replace(/ /g, "").length > length && value.includes(" ")) {
+				value = value.slice(0, value.lastIndexOf(" "));
+			}
+			if (value.replace(/ /g, "").length !== length || !ibanValid(value)) {
+				continue;
+			}
+		}
+		spans.push({ value, start: match.index, end: match.index + value.length });
+		IBAN_CANDIDATE.lastIndex = match.index + value.length;
+	}
+	return spans;
+}
+
 /** Base64 string decodes to a `user:password` pair (basic-auth credentials). */
 function basicAuthValid(b64: string): boolean {
 	try {
@@ -245,11 +289,12 @@ export const PII_DETECTORS: readonly PiiDetector[] = [
 		pattern: /\b\d{3}[ -]\d{2}[ -]\d{4}\b/g,
 		validate: (match) => ssnValid(match),
 	},
-	// IBAN — country + 2 check digits + BBAN; mod-97 validated.
+	// IBAN — country + 2 check digits + BBAN; mod-97 validated. Uses a custom
+	// span finder so a token after the number (BIC, currency) cannot void it.
 	{
 		kind: "iban",
-		pattern: /\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?[A-Z0-9]{1,3})?\b/g,
-		validate: (match) => ibanValid(match),
+		pattern: IBAN_CANDIDATE,
+		findSpans: (text) => findIbanSpans(text),
 	},
 	// JWT — three base64url segments; the first two start with the canonical
 	// `eyJ` (`{"`) so this does not match arbitrary dotted base64.
@@ -349,7 +394,7 @@ export const PII_DETECTORS: readonly PiiDetector[] = [
 			/-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----[\s\S]+?-----END (?:[A-Z]+ )?PRIVATE KEY-----/g,
 	},
 	// EVM/0x hex private key or address-shaped 32-byte hex (kept conservative: 64 hex).
-	{ kind: "hex-secret", pattern: /\b0x[a-fA-F0-9]{64}\b/g },
+	{ kind: "hex-secret", pattern: /\b0[xX][a-fA-F0-9]{64}\b/g },
 	// MAC address.
 	{
 		kind: "mac-address",

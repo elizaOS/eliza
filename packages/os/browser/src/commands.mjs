@@ -35,6 +35,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       domRevision: 0,
       inputRevision: 0,
       ownedHosts: new WeakSet(),
+      editedFields: new WeakSet(),
     };
     monitor.recordMutations = (records) => {
       if (
@@ -59,8 +60,13 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       attributes: true,
       characterData: true,
     });
-    const input = () => {
+    const input = (event) => {
       monitor.inputRevision++;
+      if (
+        ["input", "change"].includes(event?.type) &&
+        event.target instanceof Element
+      )
+        monitor.editedFields.add(event.target);
     };
     document.addEventListener("beforeinput", input, true);
     document.addEventListener("input", input, true);
@@ -202,6 +208,12 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
             .filter(Boolean)
             .join(" ") || null,
         sensitive: sensitivity(node),
+        ...(node instanceof HTMLInputElement ||
+        node instanceof HTMLSelectElement ||
+        node instanceof HTMLTextAreaElement ||
+        node.isContentEditable
+          ? { edited: monitor.editedFields.has(node) }
+          : {}),
         // Whether the person (or the page) already put text here. Only this
         // boolean leaves the page; the text itself stays behind the boundary.
         ...((node instanceof HTMLInputElement &&
@@ -217,7 +229,8 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
             "range",
             "color",
           ].includes(node.type)) ||
-        node instanceof HTMLTextAreaElement
+        node instanceof HTMLTextAreaElement ||
+        node instanceof HTMLSelectElement
           ? { hasInput: node.value !== "" }
           : node.isContentEditable
             ? { hasInput: (node.textContent ?? "").trim() !== "" }
