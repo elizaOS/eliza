@@ -2340,8 +2340,10 @@ export class Vault {
       walletAddress = kp.publicKey.toBase58();
     } else {
       // EVM - expect 0x-prefixed hex private key
-      const normalizedKey = privateKey.startsWith("0x")
-        ? privateKey
+      // Accept the uppercase 0X prefix too, mirroring resolveEvmPrivateKey:
+      // "0X…" used to become "0x0X…", which privateKeyToAccount rejects.
+      const normalizedKey = /^0[xX]/.test(privateKey)
+        ? `0x${privateKey.slice(2)}`
         : `0x${privateKey}`;
       const account = privateKeyToAccount(normalizedKey as `0x${string}`);
       walletAddress = account.address;
