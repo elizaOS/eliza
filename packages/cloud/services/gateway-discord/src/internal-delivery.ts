@@ -15,7 +15,7 @@ interface InternalDiscordDelivery {
 export interface DiscordInternalDeliveryDependencies {
   getInternalSecret(): string | undefined;
   receipts: {
-    get(key: string): Promise<string | null>;
+    get(key: string): Promise<unknown>;
     set(
       key: string,
       value: string,
@@ -47,11 +47,20 @@ function receiptKey(delivery: InternalDiscordDelivery): string {
   return `internal-delivery:discord:${delivery.discordUserId}:${delivery.idempotencyKey}`;
 }
 
-function parseReceipt(value: string | null): DeliveryReceipt | undefined {
+function parseReceipt(value: unknown): DeliveryReceipt | undefined {
   if (value === "indeterminate") return { state: "indeterminate" };
-  if (!value?.startsWith("{")) return undefined;
+  // The gateway Redis adapters (and Upstash's default deserialization) hand
+  // back an already-parsed object for a JSON receipt; a raw string is parsed.
+  if (
+    !(value && typeof value === "object") &&
+    !(typeof value === "string" && value.startsWith("{"))
+  ) {
+    return undefined;
+  }
   try {
-    const parsed = JSON.parse(value) as Record<string, unknown>;
+    const parsed = (
+      typeof value === "string" ? JSON.parse(value) : value
+    ) as Record<string, unknown>;
     if (parsed.state === "indeterminate") return { state: "indeterminate" };
     if (
       parsed.state === "complete" &&
@@ -161,7 +170,7 @@ export async function deliverInternalDiscordMessage(
   }
 
   const key = receiptKey(delivery);
-  let existingValue: string | null;
+  let existingValue: unknown;
   try {
     existingValue = await dependencies.receipts.get(key);
   } catch {
