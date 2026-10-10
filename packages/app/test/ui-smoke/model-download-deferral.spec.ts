@@ -2,6 +2,7 @@
  * Playwright UI-smoke spec for the Model Download Deferral app flow using the
  * real renderer fixture.
  */
+import { recommendForFirstRun } from "@elizaos/plugin-native-inference/model-catalog/recommendation";
 import { expect, type Page, type Route, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
@@ -110,9 +111,21 @@ async function routeFirstRunIncomplete(page: Page): Promise<void> {
   });
 }
 
-test("selecting on-device inference drops the user into chat while the model downloads in the background", async ({
-  page,
-}) => {
+// The first-run provider step offers on-device only when the model catalog has
+// a published Eliza-1 tier that passes the activation gate. Each test below
+// covers one side of that gate.
+const ON_DEVICE_MODEL_PUBLISHED = recommendForFirstRun() !== null;
+
+interface LocalFinishObservations {
+  firstRunPosted: boolean;
+  backgroundDownloadStarted: boolean;
+}
+
+/** Drive first-run to the Local provider step and return the on-device choice. */
+async function openProviderStep(
+  page: Page,
+  observed: LocalFinishObservations,
+): Promise<ReturnType<Page["getByTestId"]>> {
   await installRenderTelemetryGuard(page);
   await installDefaultAppRoutes(page);
   await routeFirstRunIncomplete(page);
@@ -121,6 +134,7 @@ test("selecting on-device inference drops the user into chat while the model dow
   // Accept the first-run profile submission (POST /api/first-run).
   await page.route("**/api/first-run", async (route) => {
     if (route.request().method() === "POST") {
+      observed.firstRunPosted = true;
       await fulfillJson(route, 200, { ok: true });
       return;
     }
@@ -130,7 +144,6 @@ test("selecting on-device inference drops the user into chat while the model dow
   // Track the background download: the helper waits for /api/health, fetches
   // the hub, then queues a fit-aware model download. The hub must contain a
   // default-eligible model or the helper legitimately no-ops.
-  let backgroundDownloadStarted = false;
   await page.route("**/api/local-inference/**", async (route) => {
     const url = new URL(route.request().url());
     if (
@@ -144,7 +157,7 @@ test("selecting on-device inference drops the user into chat while the model dow
       route.request().method() === "POST" &&
       (url.pathname.endsWith("/downloads") || url.pathname.endsWith("/active"))
     ) {
-      backgroundDownloadStarted = true;
+      observed.backgroundDownloadStarted = true;
       await fulfillJson(route, 200, {
         ok: true,
         job: { modelId: DOWNLOAD_MODEL_ID, status: "queued" },
@@ -168,10 +181,59 @@ test("selecting on-device inference drops the user into chat while the model dow
   const runtimeChoice = page.getByTestId("choice-__first_run__:runtime:local");
   await expect(runtimeChoice).toBeVisible({ timeout: 15_000 });
 
-  // This device → on-device inference.
+  // This device → provider step.
   await runtimeChoice.click();
   const onDevice = page.getByTestId("choice-__first_run__:provider:on-device");
   await expect(onDevice).toBeVisible({ timeout: 10_000 });
+  return onDevice;
+}
+
+test("on-device inference is labeled unavailable and refused while no Eliza-1 tier is published", async ({
+  page,
+}) => {
+  test.skip(
+    ON_DEVICE_MODEL_PUBLISHED,
+    "the catalog has a published, activation-eligible Eliza-1 tier",
+  );
+  const observed: LocalFinishObservations = {
+    firstRunPosted: false,
+    backgroundDownloadStarted: false,
+  };
+  const onDevice = await openProviderStep(page, observed);
+  await expect(onDevice).toContainText("unavailable");
+  await expect(onDevice).not.toContainText("recommended");
+  await expect(
+    page.getByTestId("choice-__first_run__:provider:elizacloud"),
+  ).toContainText("recommended");
+
+  await onDevice.click();
+
+  // The tap is refused with the reason and the provider choice is re-offered;
+  // no local agent is started and nothing is persisted or downloaded.
+  await expect(
+    page.getByText("There is no on-device model to download yet", {
+      exact: false,
+    }),
+  ).toBeVisible({ timeout: 10_000 });
+  await expect(
+    page.getByTestId("choice-__first_run__:tutorial:skip"),
+  ).toHaveCount(0);
+  expect(observed.firstRunPosted).toBe(false);
+  expect(observed.backgroundDownloadStarted).toBe(false);
+});
+
+test("selecting on-device inference drops the user into chat while the model downloads in the background", async ({
+  page,
+}) => {
+  test.skip(
+    !ON_DEVICE_MODEL_PUBLISHED,
+    "no published Eliza-1 tier passes the activation gate, so first-run refuses on-device",
+  );
+  const observed: LocalFinishObservations = {
+    firstRunPosted: false,
+    backgroundDownloadStarted: false,
+  };
+  const onDevice = await openProviderStep(page, observed);
   await onDevice.click();
 
   // THE requirement: picking on-device does NOT park the user on a blocking
@@ -184,7 +246,7 @@ test("selecting on-device inference drops the user into chat while the model dow
   // And the download was deferred to the background (kicked off, not awaited)
   // before the user even reaches the tutorial step.
   await expect
-    .poll(() => backgroundDownloadStarted, { timeout: 15_000 })
+    .poll(() => observed.backgroundDownloadStarted, { timeout: 15_000 })
     .toBe(true);
 
   // Completing the tutorial step flips first-run complete and drops the user
