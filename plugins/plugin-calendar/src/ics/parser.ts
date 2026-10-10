@@ -630,20 +630,39 @@ export function icsExceptionDateInstants(
   recurrence: readonly string[],
   timezone: string | null,
 ): Set<number> {
+  return readIcsExceptionDates(recurrence, timezone).instants;
+}
+
+/** Parse every usable EXDATE while reporting whether any value was invalid. */
+export function readIcsExceptionDates(
+  recurrence: readonly string[],
+  timezone: string | null,
+): { instants: Set<number>; complete: boolean } {
   const instants = new Set<number>();
+  let complete = true;
   for (const line of recurrence) {
-    const property = parseContentLine(line);
-    if (property.name !== "EXDATE") continue;
+    if (!/^EXDATE[:;]/i.test(line.trim())) continue;
+    let property: IcsContentLine;
+    try {
+      property = parseContentLine(line);
+    } catch {
+      complete = false;
+      continue;
+    }
     for (const value of splitOutsideQuotes(property.value, ",")) {
-      const parsed = parseDateProperty(
-        { ...property, value: value.trim() },
-        timezone,
-        "EXDATE",
-      );
-      instants.add(Date.parse(parsed.instant));
+      try {
+        const parsed = parseDateProperty(
+          { ...property, value: value.trim() },
+          timezone,
+          "EXDATE",
+        );
+        instants.add(Date.parse(parsed.instant));
+      } catch {
+        complete = false;
+      }
     }
   }
-  return instants;
+  return { instants, complete };
 }
 
 function parseEvent(

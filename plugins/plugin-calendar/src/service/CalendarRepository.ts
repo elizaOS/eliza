@@ -653,6 +653,53 @@ export class CalendarRepository {
   }
 
   /**
+   * Reads one bounded ICS expansion input: rows already in the window,
+   * recurrence masters that can generate into it, and overrides whose original
+   * recurrence instant is in the window even when the override moved out.
+   */
+  async listIcsCalendarEventsForExpansion(args: {
+    agentId: string;
+    sourceId: string;
+    timeMin: string;
+    timeMax: string;
+  }): Promise<LifeOpsCalendarEvent[]> {
+    const metadata = "metadata_json::jsonb";
+    const recurrenceArray = `CASE
+      WHEN jsonb_typeof(${metadata} -> 'recurrence') = 'array'
+      THEN ${metadata} -> 'recurrence'
+      ELSE '[]'::jsonb
+    END`;
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_calendar.life_calendar_events
+        WHERE agent_id = ${sqlQuote(args.agentId)}
+          AND provider = 'ics'
+          AND side = 'owner'
+          AND grant_id = ${sqlQuote(args.sourceId)}
+          AND (
+            (end_at > ${sqlQuote(args.timeMin)}
+              AND start_at < ${sqlQuote(args.timeMax)})
+            OR (
+              start_at < ${sqlQuote(args.timeMax)}
+              AND ${metadata} ->> 'icsRecurrenceId' IS NULL
+              AND EXISTS (
+                SELECT 1
+                  FROM jsonb_array_elements_text(${recurrenceArray}) AS recurrence_line(value)
+                 WHERE recurrence_line.value ~* '^RRULE[:;]'
+              )
+            )
+            OR (
+              ${metadata} ->> 'icsRecurrenceId' >= ${sqlQuote(args.timeMin)}
+              AND ${metadata} ->> 'icsRecurrenceId' < ${sqlQuote(args.timeMax)}
+            )
+          )
+        ORDER BY start_at ASC`,
+    );
+    return rows.map(parseCalendarEvent);
+  }
+
+  /**
    * Returns events whose `end_at` falls in (cursorEndAt, upToIso] OR
    * (end_at == cursorEndAt AND id > cursorId). Ordered by (end_at, id)
    * ascending so callers can advance a tuple cursor and never re-fire for the
