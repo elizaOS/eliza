@@ -139,7 +139,10 @@ export function reminderFields(value: unknown): ReminderFields {
       keys(r, ["rule", "zone", "date", "time", "leadMinutes"]);
       // String() coercion would accept ["daily"] or {toString: () => "daily"};
       // the un-coerced value is stored below, so require an actual string.
-      if (typeof r.rule !== "string" || !["daily", "weekdays", "weekly"].includes(r.rule))
+      if (
+        typeof r.rule !== "string" ||
+        !["daily", "weekdays", "weekly"].includes(r.rule)
+      )
         throw Error("Unsupported reminder repeat");
       const zone = text(r.zone, 128),
         date = text(r.date, 10),
