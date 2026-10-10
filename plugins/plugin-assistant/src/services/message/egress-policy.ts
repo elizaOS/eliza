@@ -42,7 +42,7 @@ import {
 import type { EvaluatorOutput } from "../../runtime/evaluator";
 import { renderActionResultsForModel } from "../../runtime/planner-rendering";
 import { resolveCallbackActionName } from "./action-identifiers.js";
-import { rewriteActionCallbackInCharacter } from "./delivery.js";
+import { renderActionCallbackInCharacter } from "./delivery.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
 import { financialCompletionIsUngrounded } from "./financial-completion.ts";
 import {
@@ -896,19 +896,27 @@ export async function resolvePlannedReplyEgress(args: {
         : {}),
     },
   });
-  const rewrite = (selected: boolean) => {
+  let recoveryError: unknown;
+  const rewrite = async (selected: boolean) => {
     getStreamingContext()?.abortSignal?.throwIfAborted();
     const jsonPayload = payload(selected);
     const text = JSON.stringify(jsonPayload);
-    return rewriteActionCallbackInCharacter({
-      runtime: args.runtime,
-      message: args.message,
-      response: { text },
-      text,
-      jsonPayload: JSON.parse(text) as JsonValue,
-      allowFullContextRequest: selected && historySelection !== undefined,
-      groundingFailure: reason,
-    });
+    try {
+      return await renderActionCallbackInCharacter({
+        runtime: args.runtime,
+        message: args.message,
+        response: { text },
+        text,
+        jsonPayload: JSON.parse(text) as JsonValue,
+        allowFullContextRequest: selected && historySelection !== undefined,
+        groundingFailure: reason,
+      });
+    } catch (error) {
+      // error-policy:J2 required recovery cannot expose the rejected draft.
+      // The grounding boundary below rethrows with this original cause.
+      recoveryError = error;
+      return null;
+    }
   };
   let selected = historySelection !== undefined;
   let rewritten = await rewrite(selected);
@@ -961,6 +969,7 @@ export async function resolvePlannedReplyEgress(args: {
       "A grounded conversational reply could not be generated",
       {
         code: "REPLY_GROUNDING_FAILED",
+        cause: recoveryError,
         context: { roomId: args.message.roomId, messageId: args.message.id },
       },
     );
