@@ -640,7 +640,7 @@ const parseStrictContentLength = (
 	return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 };
 
-class Downloader {
+export class Downloader {
 	private readonly active = new Map<string, ActiveJob>();
 	private readonly terminal = new Map<string, DownloadJob>();
 	private readonly listeners = new Set<DownloadListener>();
