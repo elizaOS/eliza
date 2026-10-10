@@ -50,7 +50,15 @@ function coerceCloudBalance(value: unknown): number | null {
         const trimmed = value.trim();
         if (!trimmed)
             return null;
-        const parsed = Number.parseFloat(trimmed);
+        // Number.parseFloat stops at the first non-digit ("10.50USD" -> 10.5),
+        // so a malformed balance was silently accepted as a dollar amount
+        // instead of being rejected as an unexpected response. Require the
+        // whole trimmed value to be decimal, mirroring the sibling
+        // coerceCloudBalance in lib/cloud-connection.ts and
+        // TWILIO_SMS_COST_PATTERN in packages/cloud/sdk/src/browser-contracts/markup.ts.
+        const parsed = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(trimmed)
+            ? Number(trimmed)
+            : Number.NaN;
         return Number.isFinite(parsed) ? parsed : null;
     }
     return null;
