@@ -160,6 +160,8 @@ function isForbiddenIpv6(address: string): boolean {
     const [first, second] = hextets;
     if ((first & 0xfe00) === 0xfc00) return true; // fc00::/7 unique-local
     if ((first & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
+    if ((first & 0xffc0) === 0xfec0) return true; // fec0::/10 deprecated site-local
+    if ((first & 0xff00) === 0xff00) return true; // ff00::/8 multicast
     if (first === 0x2001 && second === 0x0db8) return true; // 2001:db8::/32 documentation
     if (isNat64LocalUsePrefix(hextets)) return true;
 
