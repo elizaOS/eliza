@@ -54,6 +54,7 @@ import {
   NATIVE_TOKEN_ADDRESS,
   TX_CONFIRMATION_TIMEOUT_MS,
 } from "../constants";
+import { parseExactUnits } from "../exact-units";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
 import {
   type ChainBalanceState,
@@ -281,7 +282,7 @@ export class SwapAction {
         toChainId: this.walletProvider.getChainConfigs(params.chain).id,
         fromTokenAddress: params.fromToken,
         toTokenAddress: params.toToken,
-        fromAmount: parseUnits(params.amount, fromTokenDecimals).toString(),
+        fromAmount: parseExactUnits(params.amount, fromTokenDecimals).toString(),
         fromAddress,
         options: {
           slippage,
@@ -318,7 +319,7 @@ export class SwapAction {
       const reqParams = new URLSearchParams({
         sell_tokens: resolvedFromToken,
         buy_tokens: resolvedToToken,
-        sell_amounts: parseUnits(params.amount, fromTokenDecimals).toString(),
+        sell_amounts: parseExactUnits(params.amount, fromTokenDecimals).toString(),
         taker_address: fromAddress,
         approval_type: "Standard",
         skip_validation: "true",
@@ -344,7 +345,7 @@ export class SwapAction {
       }
       const route: BebopRoute = {
         data: quoteTx.data,
-        sellAmount: parseUnits(params.amount, fromTokenDecimals).toString(),
+        sellAmount: parseExactUnits(params.amount, fromTokenDecimals).toString(),
         approvalTarget: firstRoute.quote.approvalTarget as Address,
         from: quoteTx.from as Address,
         value: quoteTx.value?.toString() ?? "0",
@@ -393,7 +394,7 @@ export class SwapAction {
         params.fromToken === NATIVE_TOKEN_ADDRESS ? KYBERSWAP_NATIVE_SENTINEL : params.fromToken;
       const toToken =
         params.toToken === NATIVE_TOKEN_ADDRESS ? KYBERSWAP_NATIVE_SENTINEL : params.toToken;
-      const amountIn = parseUnits(params.amount, fromTokenDecimals).toString();
+      const amountIn = parseExactUnits(params.amount, fromTokenDecimals).toString();
       const url = new URL(`https://aggregator-api.kyberswap.com/${chainSlug}/api/v1/routes`);
       url.searchParams.set("tokenIn", fromToken);
       url.searchParams.set("tokenOut", toToken);

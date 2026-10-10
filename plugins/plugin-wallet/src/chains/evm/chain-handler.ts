@@ -28,6 +28,7 @@ import type {
   WalletRouterParams,
 } from "../../types/wallet-router.js";
 import type { SupportedChain, Transaction } from "./types";
+import { parseExactEther, parseExactUnits } from "./exact-units";
 
 export type EvmWalletSubaction = "transfer" | "swap" | "gov";
 export type EvmWalletMode = "prepare" | "execute";
@@ -251,7 +252,7 @@ export class EvmWalletChainHandler implements WalletChainHandler {
           isNativeEvmToken(params.fromToken, this.chainConfig)
             ? {
                 to: recipient,
-                value: parseEther(amount).toString(),
+                value: parseExactEther(amount).toString(),
                 data: "0x",
                 chainId: this.chainConfig.id,
               }
@@ -332,7 +333,7 @@ export class EvmWalletChainHandler implements WalletChainHandler {
     const data = encodeFunctionData({
       abi: transferAbi,
       functionName: "transfer",
-      args: [recipient, parseUnits(amount, decimals)],
+      args: [recipient, parseExactUnits(amount, decimals)],
     });
 
     const hash = await walletClient.sendTransaction(

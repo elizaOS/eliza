@@ -42,6 +42,7 @@ import type {
   WalletRouterExecution,
   WalletRouterParams,
 } from "../../types/wallet-router.js";
+import { parseExactUnits } from "./exact-units";
 
 type LiFiGetWalletClient = NonNullable<
   Parameters<typeof EVM>[0]
@@ -378,7 +379,7 @@ export class BridgeAction {
       resolvedFromToken,
       params.fromChain,
     );
-    const fromAmountParsed = parseUnits(params.amount, fromTokenDecimals);
+    const fromAmountParsed = parseExactUnits(params.amount, fromTokenDecimals);
 
     const walletClient = this.walletProvider.getWalletClient(params.fromChain);
     const [fromAddress] = await walletClient.getAddresses();

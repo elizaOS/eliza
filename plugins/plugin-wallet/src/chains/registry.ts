@@ -41,13 +41,7 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
-import {
-  type Address,
-  type Chain,
-  encodeFunctionData,
-  parseAbi,
-  parseUnits,
-} from "viem";
+import { type Address, type Chain, encodeFunctionData, parseAbi } from "viem";
 import * as viemChains from "viem/chains";
 import type { WalletBackendService } from "../services/wallet-backend-service.js";
 import type {
@@ -63,6 +57,7 @@ import { SwapAction } from "./evm/actions/swap";
 import { TransferAction } from "./evm/actions/transfer";
 import { routeEvmBridge } from "./evm/bridge-router";
 import { DEFAULT_CHAINS, NATIVE_TOKEN_ADDRESS } from "./evm/constants";
+import { parseExactUnits } from "./evm/exact-units";
 import { initWalletProvider } from "./evm/providers/wallet";
 import type { SupportedChain, Transaction } from "./evm/types";
 import BigNumber from "./solana/bn";
@@ -289,7 +284,7 @@ async function executeEvmTransfer(
   const data = encodeFunctionData({
     abi: transferAbi,
     functionName: "transfer",
-    args: [recipient, parseUnits(params.amount ?? "", decimals)],
+    args: [recipient, parseExactUnits(params.amount ?? "", decimals)],
   });
 
   const hash = await walletClient.sendTransaction(

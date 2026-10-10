@@ -9,8 +9,9 @@
 import { type IAgentRuntime, type Memory, ModelType, type State } from "@elizaos/core";
 import { parseJSONObjectFromText } from "@elizaos/core/protocol";
 import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
-import { type Hex, parseEther } from "viem";
+import type { Hex } from "viem";
 import { runIntentModel } from "../../../utils/intent-trajectory";
+import { parseExactEther } from "../exact-units";
 import type { WalletProvider } from "../providers/wallet";
 import { transferTemplate } from "../templates";
 import {
@@ -39,7 +40,7 @@ export class TransferAction {
       buildSendTxParams({
         account,
         to: params.toAddress,
-        value: parseEther(params.amount),
+        value: parseExactEther(params.amount),
         data,
         chain: chainConfig,
       })
@@ -48,7 +49,7 @@ export class TransferAction {
       hash,
       from: account.address,
       to: params.toAddress,
-      value: parseEther(params.amount),
+      value: parseExactEther(params.amount),
       data,
     };
   }
