@@ -1324,10 +1324,22 @@ async function handleDelete(
 function parseTimestampParam(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string" && value.trim()) {
-    const parsed = Date.parse(value.trim());
+    const trimmed = value.trim();
+    // Canonical epoch-ms first: Date.parse("0") is implementation-defined
+    // (2000-01-01 in V8) and must not shadow the epoch-ms reading, and
+    // Number("0x10") is 16 / Number("1e5") is 100000 — both used to silently
+    // become time filters instead of being dropped.
+    if (/^\d+$/.test(trimmed)) {
+      const epochMs = Number(trimmed);
+      if (Number.isSafeInteger(epochMs)) return epochMs;
+      return undefined;
+    }
+    // Only ISO-shaped timestamps reach Date.parse: the planner contract is
+    // "ISO date or epoch ms", and V8's lenient parser turns inputs like "-5"
+    // into 2001-05-01 instead of dropping them.
+    if (!/^\d{4}-\d{2}-\d{2}(?:[T\s].*)?$/.test(trimmed)) return undefined;
+    const parsed = Date.parse(trimmed);
     if (Number.isFinite(parsed)) return parsed;
-    const numeric = Number(value.trim());
-    if (Number.isFinite(numeric)) return numeric;
   }
   return undefined;
 }
