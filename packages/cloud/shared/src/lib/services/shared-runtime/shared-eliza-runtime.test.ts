@@ -758,8 +758,10 @@ describe("Shared Eliza Workerd runtime", () => {
   );
 
   test("runs HANDLE_RESPONSE through AgentRuntime and preserves native usage", async () => {
+    let clockMs = 0;
     const requests: Array<Record<string, unknown>> = [];
     globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+      clockMs += 10;
       requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
       return new Response(
         JSON.stringify({
@@ -809,61 +811,66 @@ describe("Shared Eliza Workerd runtime", () => {
     }) as typeof fetch;
 
     const { runSharedAgentTurn } = await import("./run-shared-agent-turn");
-    let dispatches = 0;
-    const startedAt = performance.now();
-    const result = await runSharedAgentTurn({
-      character: {
-        name: "Shared Eliza",
-        system: "You are Eliza.",
-        model: "gemma-4-31b",
-      },
-      history: [],
-      message: "say hello",
-      messageIds: {
-        user: "c92f5aaa-59ce-40a6-994b-e9e16dc85198",
-        assistant: "f492130b-2fc6-4b2b-bdca-51f441b0483d",
-      },
-      onProviderDispatch: async () => {
-        dispatches += 1;
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      },
-      execution: {
-        channel: { type: ChannelType.DM, source: "shared-runtime" },
-        agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
-        roomKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
-      },
-    });
+    const clockSpy = spyOn(performance, "now").mockImplementation(() => clockMs);
+    try {
+      let dispatches = 0;
+      const startedAt = performance.now();
+      const result = await runSharedAgentTurn({
+        character: {
+          name: "Shared Eliza",
+          system: "You are Eliza.",
+          model: "gemma-4-31b",
+        },
+        history: [],
+        message: "say hello",
+        messageIds: {
+          user: "c92f5aaa-59ce-40a6-994b-e9e16dc85198",
+          assistant: "f492130b-2fc6-4b2b-bdca-51f441b0483d",
+        },
+        onProviderDispatch: async () => {
+          dispatches += 1;
+          clockMs += 50;
+        },
+        execution: {
+          channel: { type: ChannelType.DM, source: "shared-runtime" },
+          agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+          roomKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+        },
+      });
 
-    expect(result.reply).toBe("hello from the genuine Shared runtime");
-    expect(result.model).toBe("gemma-4-31b");
-    expect(result.degraded).toBe(false);
-    expect(result.usage).toEqual({
-      promptTokens: 41,
-      completionTokens: 17,
-      totalTokens: 58,
-      inputTokens: 41,
-      outputTokens: 17,
-    });
-    expect(result.history.map((message) => message.content)).toEqual([
-      "say hello",
-      "hello from the genuine Shared runtime",
-    ]);
-    expect(dispatches).toBe(1);
-    expect(performance.now() - startedAt).toBeGreaterThanOrEqual(40);
-    expect(result.timing).toMatchObject({
-      replayed: false,
-      callCount: 1,
-      fallbackCount: 0,
-      selectedProvider: "cerebras",
-      callsTruncated: false,
-    });
-    expect(result.timing?.durationMs).toBeLessThan(30);
-    expect(requests).toHaveLength(1);
-    expect(
-      (requests[0].tools as Array<{ function?: { name?: string } }>).some(
-        (tool) => tool.function?.name === "HANDLE_RESPONSE",
-      ),
-    ).toBe(true);
+      expect(result.reply).toBe("hello from the genuine Shared runtime");
+      expect(result.model).toBe("gemma-4-31b");
+      expect(result.degraded).toBe(false);
+      expect(result.usage).toEqual({
+        promptTokens: 41,
+        completionTokens: 17,
+        totalTokens: 58,
+        inputTokens: 41,
+        outputTokens: 17,
+      });
+      expect(result.history.map((message) => message.content)).toEqual([
+        "say hello",
+        "hello from the genuine Shared runtime",
+      ]);
+      expect(dispatches).toBe(1);
+      expect(performance.now() - startedAt).toBe(60);
+      expect(result.timing).toMatchObject({
+        replayed: false,
+        callCount: 1,
+        fallbackCount: 0,
+        selectedProvider: "cerebras",
+        callsTruncated: false,
+      });
+      expect(result.timing?.durationMs).toBe(10);
+      expect(requests).toHaveLength(1);
+      expect(
+        (requests[0].tools as Array<{ function?: { name?: string } }>).some(
+          (tool) => tool.function?.name === "HANDLE_RESPONSE",
+        ),
+      ).toBe(true);
+    } finally {
+      clockSpy.mockRestore();
+    }
   });
 
   test("persists an ambiguous group message when AgentRuntime chooses IGNORE", async () => {
