@@ -120,7 +120,7 @@ describe("server-owned Shared Google read seam", () => {
     );
     for (const request of [
       { kind: "other", timeMin: "2026-10-08", timeMax: "2026-10-09", timeZone: "UTC" },
-      { kind: "calendar", timeMin: "2026-10-08", timeMax: "2026-10-09", timeZone: null },
+      { kind: "calendar", timeMin: "2026-10-08", timeMax: "2026-10-09" },
       { kind: "gmail_search", query: 42 },
       null,
     ]) {
@@ -130,7 +130,7 @@ describe("server-owned Shared Google read seam", () => {
     expect(calls).toHaveLength(0);
   });
 
-  test("calendar read defaults omitted timezone to UTC and preserves the complete interval", async () => {
+  test("calendar read preserves the complete authorized interval and event fields", async () => {
     const { calls, deps } = fixture();
     deps.fetchManagedGoogleCalendarFeed = async (args) => {
       calls.push({ name: "calendar", args });
@@ -150,6 +150,7 @@ describe("server-owned Shared Google read seam", () => {
         kind: "calendar",
         timeMin: "2026-10-08T00:00:00Z",
         timeMax: "2026-11-09T00:00:00Z",
+        timeZone: "America/Los_Angeles",
       }),
     ).toMatchObject({ events: [] });
     expect(calls[1]).toMatchObject({
@@ -159,7 +160,7 @@ describe("server-owned Shared Google read seam", () => {
         calendarId: "primary",
         timeMin: "2026-10-08T00:00:00.000Z",
         timeMax: "2026-11-09T00:00:00.000Z",
-        timeZone: "UTC",
+        timeZone: "America/Los_Angeles",
       },
     });
   });
