@@ -474,7 +474,7 @@ export class KaminoLiquidityService extends Service {
           strategyType: "Staking Strategy",
           estimatedTvl: 0, // Would need additional API calls to get TVL
           volume24h: 0,
-          apy: parseFloat(stakingYield.apy),
+          apy: parseFloat(stakingYield.apy) * 100, // Convert to percentage, as in calculateLimoApy
           tokenA: stakingYield.tokenMint,
           tokenB: "SOL", // Assuming staking against SOL
           feeTier: "0%",
@@ -555,7 +555,7 @@ export class KaminoLiquidityService extends Service {
           strategyType: "Staking Strategy",
           estimatedTvl: 0,
           volume24h: 0,
-          apy: parseFloat(stakingStrategy.apy),
+          apy: parseFloat(stakingStrategy.apy) * 100, // Convert to percentage, as in calculateLimoApy
           tokenA: stakingStrategy.tokenMint,
           tokenB: "SOL",
           feeTier: "0%",
@@ -722,7 +722,7 @@ export class KaminoLiquidityService extends Service {
               strategyType: "Staking Strategy",
               estimatedTvl: 0,
               volume24h: 0,
-              apy: parseFloat(stakingYield.apy),
+              apy: parseFloat(stakingYield.apy) * 100, // Convert to percentage, as in calculateLimoApy
               tokenA: stakingYield.tokenMint,
               tokenB: "SOL",
               feeTier: "0%",
