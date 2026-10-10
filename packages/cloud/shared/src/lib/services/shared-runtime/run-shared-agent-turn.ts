@@ -1,4 +1,4 @@
-import { observeOwnerCapture, type OwnerModelCapture } from "./shared-owner-model-capture";
+import { type OwnerModelCapture, observeOwnerCapture } from "./shared-owner-model-capture";
 /**
  * Shared runtime — runs a single agent turn container-free.
  *
@@ -37,7 +37,6 @@ import {
 } from "@elizaos/plugin-scheduling/edge";
 import type { TodoStore } from "@elizaos/plugin-todos/edge";
 import { runWebSearchEdge } from "@elizaos/plugin-web-search/edge";
-import { isCurrentWeatherObservationRequest, runCurrentUsWeatherSearch } from "./shared-current-weather";
 import type {
   SharedRuntimePublicGrounding,
   SharedRuntimeReminderActionProvenance,
@@ -59,13 +58,18 @@ import {
   type SharedCapabilityResolution,
   type SharedCapabilityWall,
 } from "./shared-capability-wall";
+import {
+  isCurrentWeatherObservationRequest,
+  runCurrentUsWeatherSearch,
+} from "./shared-current-weather";
 import type { SharedMemoryStore } from "./shared-memory-store";
+import { formatSharedMessageText, SHARED_MESSAGE_STYLE } from "./shared-message-style";
 import {
   finalizeSharedRealtimeReply,
   hasSharedRealtimeIntent,
   requireTraceableRealtimeSearch,
-  resolveSharedRealtimeRequirement,
   resolveSharedPublicSearchIntent,
+  resolveSharedRealtimeRequirement,
   sharedRealtimePromptPolicy,
 } from "./shared-realtime-grounding";
 import type { SharedRuntimeChannel } from "./shared-runtime-channel";
@@ -103,12 +107,10 @@ export interface SharedTurnMessage {
   reminderAction?: SharedReminderActionProvenance;
 }
 
-export type SharedReminderOperation =
-  SharedRuntimeReminderActionProvenance["operation"];
+export type SharedReminderOperation = SharedRuntimeReminderActionProvenance["operation"];
 
 /** Mutation provenance derived from a genuine REMINDERS result, never assistant prose. */
-export type SharedReminderActionProvenance =
-  SharedRuntimeReminderActionProvenance;
+export type SharedReminderActionProvenance = SharedRuntimeReminderActionProvenance;
 
 export interface SharedAgentCharacter {
   /** Display/agent name. */
@@ -134,9 +136,7 @@ export interface SharedMediaGenerationPort {
   canGenerateMedia(
     request: Pick<MediaGenerationRequest, "mediaType" | "audioKind">,
   ): boolean | Promise<boolean>;
-  generateMedia(
-    request: MediaGenerationRequest,
-  ): Promise<MediaGenerationResponse>;
+  generateMedia(request: MediaGenerationRequest): Promise<MediaGenerationResponse>;
 }
 
 export interface RunSharedAgentTurnInput {
@@ -213,9 +213,7 @@ export interface RunSharedAgentTurnInput {
 
 type SharedRuntimeExecution = NonNullable<RunSharedAgentTurnInput["execution"]>;
 
-function resolveRuntimeExecution(
-  input: RunSharedAgentTurnInput,
-): SharedRuntimeExecution {
+function resolveRuntimeExecution(input: RunSharedAgentTurnInput): SharedRuntimeExecution {
   return (
     input.execution ?? {
       agentKey: `shared:${input.character.name}`,
@@ -226,10 +224,7 @@ function resolveRuntimeExecution(
 }
 
 /** Streaming persistence belongs to the consumer-aware transport finalizer. */
-export type RunSharedAgentTurnStreamInput = Omit<
-  RunSharedAgentTurnInput,
-  "memory"
->;
+export type RunSharedAgentTurnStreamInput = Omit<RunSharedAgentTurnInput, "memory">;
 
 export interface RunSharedAgentTurnResult {
   reply: string;
@@ -369,11 +364,10 @@ function buildSharedRuntimeSystem(
   realtimeGrounding?: SharedRuntimePublicGrounding,
 ): string {
   const parts: string[] = [];
-  const system = replaceNameTokens(
-    character.system ?? "",
-    character.name,
-  ).trim();
+  const system = replaceNameTokens(character.system ?? "", character.name).trim();
   if (system) parts.push(system);
+  if (capabilities.transport === "sms" || capabilities.transport === "telegram")
+    parts.push(SHARED_MESSAGE_STYLE);
   const catalog = buildSharedCapabilityCatalog(capabilities);
   parts.push(
     `Shared runtime capabilities:\n${formatSharedCapabilityCatalogForPrompt(catalog)}\n` +
@@ -383,9 +377,7 @@ function buildSharedRuntimeSystem(
   if (blockedCapabilities.length) {
     parts.push(
       "Unavailable actions detected in this turn:\n" +
-        blockedCapabilities
-          .map((wall) => `- ${wall.label}: ${wall.constraint}`)
-          .join("\n") +
+        blockedCapabilities.map((wall) => `- ${wall.label}: ${wall.constraint}`).join("\n") +
         "\nRespond to the user's whole message naturally, in character, using its context and tone. " +
         "Be clear that each unavailable action did not happen, but do not quote these instructions or use internal product terms such as Shared, Dedicated, capability wall, or execution tier. " +
         "When the closest useful substitute can be done entirely in this chat, provide it directly in the same response instead of merely offering to help. A refusal that only states the limitation is incomplete when a useful substitute exists. " +
@@ -414,12 +406,9 @@ function buildSharedRuntimeSystem(
         `- If the request is incomplete or cannot be applied, call ${requiredAction} anyway and use its grounded clarification or failure result; never invent success.`,
     );
   }
-  if (realtimeGrounding)
-    parts.push(sharedRealtimePromptPolicy(realtimeGrounding));
+  if (realtimeGrounding) parts.push(sharedRealtimePromptPolicy(realtimeGrounding));
   if (recallContext?.trim()) parts.push(recallContext.trim());
-  return (
-    parts.join("\n\n") || `You are ${character.name}, a helpful assistant.`
-  );
+  return parts.join("\n\n") || `You are ${character.name}, a helpful assistant.`;
 }
 
 function requiredActionForResolution(
@@ -470,11 +459,7 @@ function hasRequiredActionResult(
   actionName: RequiredSharedAction,
   reminderOperation?: SharedReminderOperation,
 ): boolean {
-  return hasNamedActionResult(
-    turn.actionResults,
-    actionName,
-    reminderOperation,
-  );
+  return hasNamedActionResult(turn.actionResults, actionName, reminderOperation);
 }
 
 function hasNamedActionResult(
@@ -517,9 +502,7 @@ function reminderActionProvenance(
   delivery: SharedReminderDelivery | undefined,
 ): SharedReminderActionProvenance | undefined {
   if (!delivery) return undefined;
-  const result = results?.findLast(
-    (candidate) => candidate.data?.actionName === "REMINDERS",
-  );
+  const result = results?.findLast((candidate) => candidate.data?.actionName === "REMINDERS");
   const operation = result?.data?.operation;
   if (
     !result ||
@@ -547,9 +530,7 @@ function reminderActionProvenance(
       ? [
           ...new Set(
             result.data.candidateTaskIds.flatMap((taskId) =>
-              typeof taskId === "string" && taskId.trim()
-                ? [taskId.trim()]
-                : [],
+              typeof taskId === "string" && taskId.trim() ? [taskId.trim()] : [],
             ),
           ),
         ].slice(0, 100)
@@ -568,9 +549,7 @@ function reminderActionProvenance(
     actionName: "REMINDERS",
     operation: operation as SharedReminderOperation,
     success: result.success === true,
-    ...(result.data?.requiresConfirmation === true
-      ? { requiresConfirmation: true }
-      : {}),
+    ...(result.data?.requiresConfirmation === true ? { requiresConfirmation: true } : {}),
     ...(candidateTaskIds.length ? { requiresSelection: true } : {}),
     taskIds: [...taskIds],
     ...(candidateTaskIds.length ? { candidateTaskIds } : {}),
@@ -590,9 +569,7 @@ function withReminderActionProvenance(
   const history = [...turn.history];
   const assistantIndex = input.messageIds?.assistant
     ? history.findLastIndex(
-        (message) =>
-          message.role === "assistant" &&
-          message.id === input.messageIds?.assistant,
+        (message) => message.role === "assistant" && message.id === input.messageIds?.assistant,
       )
     : history.findLastIndex((message) => message.role === "assistant");
   if (assistantIndex < 0) return turn;
@@ -718,9 +695,7 @@ function trustedReminderPredecessor(
 ): SharedReminderActionProvenance | undefined {
   if (!delivery) return undefined;
   const previous = history.at(-1);
-  const provenance = parseSharedReminderActionProvenance(
-    previous?.reminderAction,
-  );
+  const provenance = parseSharedReminderActionProvenance(previous?.reminderAction);
   if (
     previous?.role !== "assistant" ||
     previous.interrupted === true ||
@@ -785,8 +760,7 @@ function normalizedReminderOperationCommand(text: string): string | undefined {
   return normalized || undefined;
 }
 
-const POSITIVE_REMINDER_COMMAND_PREFIX =
-  "(?:(?:can|could|would|will) you (?:please )?|please )?";
+const POSITIVE_REMINDER_COMMAND_PREFIX = "(?:(?:can|could|would|will) you (?:please )?|please )?";
 
 function primaryReminderCommandClause(text: string): string {
   return (
@@ -799,9 +773,7 @@ function primaryReminderCommandClause(text: string): string {
 
 function isExplicitReminderClearAllIntent(text: string): boolean {
   if (hasTrailingSharedActionCancellation(text)) return false;
-  const normalized = normalizedReminderOperationCommand(
-    primaryReminderCommandClause(text),
-  );
+  const normalized = normalizedReminderOperationCommand(primaryReminderCommandClause(text));
   if (!normalized) return false;
   const confirmation =
     "(?:yes|yep|oui|confirm|confirmed|confirmé|confirmée|i confirm|je confirme|do it|go ahead|vas y|allez y)";
@@ -825,9 +797,7 @@ function isShortReminderClearConfirmation(text: string): boolean {
 
 function isExplicitReminderCreationIntent(text: string): boolean {
   if (hasTrailingSharedActionCancellation(text)) return false;
-  const normalized = normalizedReminderOperationCommand(
-    primaryReminderCommandClause(text),
-  );
+  const normalized = normalizedReminderOperationCommand(primaryReminderCommandClause(text));
   if (!normalized) return false;
   if (
     new RegExp(
@@ -840,17 +810,12 @@ function isExplicitReminderCreationIntent(text: string): boolean {
   const scheduleCue =
     /\b(?:today|tomorrow|tonight|noon|midnight|next (?:week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|in (?:\d+|an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve) (?:minute|minutes|hour|hours|day|days|week|weeks)|at \d{1,2}(?: \d{2})?(?: am| pm)?|\d{1,2}(?: \d{2})? (?:am|pm)|every (?:day|weekday|week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d+ (?:minute|minutes|hour|hours|day|days|week|weeks))|on (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|(?:january|february|march|april|may|june|july|august|september|october|november|december) \d{1,2}(?: \d{4})?|\d{1,2}(?: \d{1,2})?))\b/iu;
   if (!scheduleCue.test(normalized)) return false;
-  return new RegExp(
-    `^${POSITIVE_REMINDER_COMMAND_PREFIX}remind me\\b.+$`,
-    "iu",
-  ).test(normalized);
+  return new RegExp(`^${POSITIVE_REMINDER_COMMAND_PREFIX}remind me\\b.+$`, "iu").test(normalized);
 }
 
 function isExplicitReminderUpdateIntent(text: string): boolean {
   if (hasTrailingSharedActionCancellation(text)) return false;
-  const normalized = normalizedReminderOperationCommand(
-    primaryReminderCommandClause(text),
-  );
+  const normalized = normalizedReminderOperationCommand(primaryReminderCommandClause(text));
   return Boolean(
     normalized &&
       new RegExp(
@@ -901,9 +866,7 @@ function reminderTargetAroundCommandNoun(
   );
 }
 
-function updateTargetBeforeSchedule(
-  value: string | undefined,
-): string | undefined {
+function updateTargetBeforeSchedule(value: string | undefined): string | undefined {
   if (!value) return undefined;
   const match = value.match(
     /^(.+)\s+(?:to|at|for)\s+(?:(?:at|in)\s+)?(?:\d{1,2}(?:\s+\d{2})?\s*(?:am|pm)?|today|tomorrow|tonight|noon|midnight|next\b|every\b|on\b|in\b)[\s\S]*$/iu,
@@ -911,9 +874,7 @@ function updateTargetBeforeSchedule(
   return match?.[1]?.trim() || value;
 }
 
-function snoozeTargetBeforeDuration(
-  value: string | undefined,
-): string | undefined {
+function snoozeTargetBeforeDuration(value: string | undefined): string | undefined {
   if (!value) return undefined;
   const match = value.match(
     /^(.+)\s+(?:for\s+(?:\d+|an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:minutes?|hours?|days?)|until\s+.+)$/iu,
@@ -921,13 +882,9 @@ function snoozeTargetBeforeDuration(
   return match?.[1]?.trim() || value;
 }
 
-function trustedReminderOperationIntent(
-  text: string,
-): TrustedReminderIntent | undefined {
+function trustedReminderOperationIntent(text: string): TrustedReminderIntent | undefined {
   if (hasTrailingSharedActionCancellation(text)) return undefined;
-  const normalized = normalizedReminderOperationCommand(
-    primaryReminderCommandClause(text),
-  );
+  const normalized = normalizedReminderOperationCommand(primaryReminderCommandClause(text));
   if (!normalized || isExplicitReminderClearAllIntent(text)) return undefined;
   if (isExplicitReminderCreationIntent(text)) return { operation: "create" };
   if (
@@ -937,17 +894,11 @@ function trustedReminderOperationIntent(
   ) {
     return { operation: "list" };
   }
-  const deleteTarget = reminderTargetAroundCommandNoun(
-    normalized,
-    "remove|delete",
-  );
+  const deleteTarget = reminderTargetAroundCommandNoun(normalized, "remove|delete");
   if (deleteTarget) {
     return { operation: "delete", target: deleteTarget };
   }
-  const dismissTarget = reminderTargetAroundCommandNoun(
-    normalized,
-    "dismiss|cancel",
-  );
+  const dismissTarget = reminderTargetAroundCommandNoun(normalized, "dismiss|cancel");
   if (dismissTarget) {
     return { operation: "dismiss", target: dismissTarget };
   }
@@ -955,10 +906,7 @@ function trustedReminderOperationIntent(
     return {
       operation: "update",
       target: updateTargetBeforeSchedule(
-        reminderTargetAroundCommandNoun(
-          normalized,
-          "change|update|edit|reschedule",
-        ),
+        reminderTargetAroundCommandNoun(normalized, "change|update|edit|reschedule"),
       ),
     };
   }
@@ -974,8 +922,7 @@ function trustedReminderOperationIntent(
     const target = reminderTargetAroundCommandNoun(normalized, operation);
     return {
       operation,
-      target:
-        operation === "snooze" ? snoozeTargetBeforeDuration(target) : target,
+      target: operation === "snooze" ? snoozeTargetBeforeDuration(target) : target,
     };
   }
   return undefined;
@@ -1008,9 +955,7 @@ type ContextualReminderIntent = {
 function reminderOrdinalSelectionIndex(text: string): number | undefined {
   const normalized = normalizedShortReminderCommand(text);
   if (!normalized) return undefined;
-  const match = normalized.match(
-    /^(?:the )?(first|second|third|1st|2nd|3rd)(?: one)?$/iu,
-  );
+  const match = normalized.match(/^(?:the )?(first|second|third|1st|2nd|3rd)(?: one)?$/iu);
   switch (match?.[1]?.toLocaleLowerCase("en-US")) {
     case "first":
     case "1st":
@@ -1035,16 +980,12 @@ function contextualReminderIntent(
   if (explicitOperation) {
     return {
       operation: explicitOperation,
-      ...(predecessor.taskIds.length === 1
-        ? { target: predecessor.taskIds[0] }
-        : {}),
+      ...(predecessor.taskIds.length === 1 ? { target: predecessor.taskIds[0] } : {}),
     };
   }
   const ordinalIndex = reminderOrdinalSelectionIndex(text);
   const target =
-    ordinalIndex === undefined
-      ? undefined
-      : predecessor.candidateTaskIds?.[ordinalIndex];
+    ordinalIndex === undefined ? undefined : predecessor.candidateTaskIds?.[ordinalIndex];
   if (
     predecessor.success !== false ||
     predecessor.requiresSelection !== true ||
@@ -1093,11 +1034,7 @@ function isContextualReminderFollowup(input: RunSharedAgentTurnInput): boolean {
   ) {
     return true;
   }
-  if (
-    /\b(?:efface|supprime|vide)\s+(?:tous mes rappels|la liste des rappels)\b/iu.test(
-      text,
-    )
-  ) {
+  if (/\b(?:efface|supprime|vide)\s+(?:tous mes rappels|la liste des rappels)\b/iu.test(text)) {
     return true;
   }
   if (
@@ -1116,10 +1053,7 @@ function capabilityResolution(
   explicit: SharedCapabilityResolution | null,
 ): SharedCapabilityResolution | null {
   if (!isContextualReminderFollowup(input)) return explicit;
-  const contextual = resolveSharedCapabilityIntent(
-    "update reminder",
-    capabilities,
-  );
+  const contextual = resolveSharedCapabilityIntent("update reminder", capabilities);
   if (
     contextual?.kind === "enabled-primary" &&
     explicit?.kind === "blocked-primary" &&
@@ -1141,9 +1075,7 @@ function withCapabilityResolution(
   return {
     ...result,
     ...(capabilityWall ? { capabilityWall } : {}),
-    ...(blockedSecondary.length
-      ? { blockedSecondaryCapabilities: blockedSecondary }
-      : {}),
+    ...(blockedSecondary.length ? { blockedSecondaryCapabilities: blockedSecondary } : {}),
   };
 }
 
@@ -1155,9 +1087,7 @@ function withStreamCapabilityResolution(
   return {
     ...result,
     ...(capabilityWall ? { capabilityWall } : {}),
-    ...(blockedSecondary.length
-      ? { blockedSecondaryCapabilities: blockedSecondary }
-      : {}),
+    ...(blockedSecondary.length ? { blockedSecondaryCapabilities: blockedSecondary } : {}),
   };
 }
 /**
@@ -1174,28 +1104,16 @@ export async function runSharedAgentTurn(
   const publicSearchText = input.capabilityText?.trim();
 
   const actionsEnabled = input.messageRole !== "system";
-  const remindersEnabled =
-    actionsEnabled && Boolean(input.execution?.reminders);
+  const remindersEnabled = actionsEnabled && Boolean(input.execution?.reminders);
   const todosEnabled = actionsEnabled && Boolean(input.execution?.todos);
   const capabilities = {
     reminders: remindersEnabled,
     todos: todosEnabled,
   };
   const reminderIntentText = input.capabilityText ?? input.message;
-  const explicitResolution = resolveSharedCapabilityIntent(
-    reminderIntentText,
-    capabilities,
-  );
-  const resolution = capabilityResolution(
-    input,
-    capabilities,
-    explicitResolution,
-  );
-  const requiredAction = requiredActionForTurn(
-    input,
-    resolution,
-    actionsEnabled,
-  );
+  const explicitResolution = resolveSharedCapabilityIntent(reminderIntentText, capabilities);
+  const resolution = capabilityResolution(input, capabilities, explicitResolution);
+  const requiredAction = requiredActionForTurn(input, resolution, actionsEnabled);
   const reminderScheduleProvenance = groundedReminderSchedule(
     input.history,
     input.execution?.reminders?.delivery,
@@ -1204,8 +1122,7 @@ export async function runSharedAgentTurn(
     requiredAction === "REMINDERS" &&
     reminderScheduleProvenance !== undefined &&
     isReminderClockCorrectionText(reminderIntentText) &&
-    (!explicitResolution ||
-      isExplicitReminderUpdateIntent(reminderIntentText)) &&
+    (!explicitResolution || isExplicitReminderUpdateIntent(reminderIntentText)) &&
     !isExplicitReminderCreationIntent(reminderIntentText);
   const reminderClearConfirmationChallenge = hasGroundedReminderClearChallenge(
     input.history,
@@ -1213,10 +1130,8 @@ export async function runSharedAgentTurn(
   );
   const reminderClearAllIntent =
     isExplicitReminderClearAllIntent(reminderIntentText) ||
-    (reminderClearConfirmationChallenge &&
-      isShortReminderClearConfirmation(reminderIntentText));
-  const trustedReminderIntent =
-    trustedReminderOperationIntent(reminderIntentText);
+    (reminderClearConfirmationChallenge && isShortReminderClearConfirmation(reminderIntentText));
+  const trustedReminderIntent = trustedReminderOperationIntent(reminderIntentText);
   const trustedPredecessor = trustedReminderPredecessor(
     input.history,
     input.execution?.reminders?.delivery,
@@ -1224,8 +1139,7 @@ export async function runSharedAgentTurn(
   const contextualIntent = isContextualReminderFollowup(input)
     ? contextualReminderIntent(reminderIntentText, trustedPredecessor)
     : undefined;
-  const reminderOperationIntent =
-    trustedReminderIntent?.operation ?? contextualIntent?.operation;
+  const reminderOperationIntent = trustedReminderIntent?.operation ?? contextualIntent?.operation;
   const reminderTargetIntent = reminderClockCorrection
     ? reminderScheduleProvenance?.taskIds[0]
     : (trustedReminderIntent?.target ?? contextualIntent?.target);
@@ -1234,8 +1148,7 @@ export async function runSharedAgentTurn(
     : reminderClockCorrection
       ? "update"
       : reminderOperationIntent;
-  const capabilityWall =
-    resolution?.kind === "blocked-primary" ? resolution.blocked : undefined;
+  const capabilityWall = resolution?.kind === "blocked-primary" ? resolution.blocked : undefined;
   const blockedSecondary =
     resolution?.kind === "enabled-primary" ? resolution.blockedSecondary : [];
   const modelId = resolveSharedAgentTurnModel(input.character.model);
@@ -1244,13 +1157,7 @@ export async function runSharedAgentTurn(
     const reply = `${input.character.name} is temporarily unavailable (no shared model configured).`;
     return {
       reply,
-      history: appendSharedTurn(
-        input.history,
-        message,
-        reply,
-        input.messageIds,
-        input.messageRole,
-      ),
+      history: appendSharedTurn(input.history, message, reply, input.messageIds, input.messageRole),
       model: "none",
       degraded: true,
     };
@@ -1263,26 +1170,26 @@ export async function runSharedAgentTurn(
   const publicSearchIntent = realtimeRequirement
     ? { kind: "prefetched" as const, requirement: realtimeRequirement }
     : actionsEnabled && publicSearchText && !resolution
-      ? resolveSharedPublicSearchIntent(publicSearchText, input.history) : undefined;
+      ? resolveSharedPublicSearchIntent(publicSearchText, input.history)
+      : undefined;
   const trustedRealtimeIntent =
     actionsEnabled && publicSearchText
       ? hasSharedRealtimeIntent(publicSearchText, input.history)
       : false;
   const untrustedRealtimeIntent =
-    actionsEnabled && !publicSearchText
-      ? hasSharedRealtimeIntent(message, input.history)
-      : false;
+    actionsEnabled && !publicSearchText ? hasSharedRealtimeIntent(message, input.history) : false;
   let realtimeActionResults: ActionResult[] | undefined;
   let realtimeGrounding: SharedRuntimePublicGrounding | undefined;
   if (realtimeRequirement) {
     let searchResult: ActionResult;
     try {
-      searchResult = realtimeRequirement.domain === "weather"
-        ? await runCurrentUsWeatherSearch(realtimeRequirement.query, {
-            signal: input.abortSignal,
-            observationOnly: isCurrentWeatherObservationRequest(publicSearchText ?? message),
-          })
-        : await runWebSearchEdge(realtimeRequirement.query, { signal: input.abortSignal });
+      searchResult =
+        realtimeRequirement.domain === "weather"
+          ? await runCurrentUsWeatherSearch(realtimeRequirement.query, {
+              signal: input.abortSignal,
+              observationOnly: isCurrentWeatherObservationRequest(publicSearchText ?? message),
+            })
+          : await runWebSearchEdge(realtimeRequirement.query, { signal: input.abortSignal });
       input.abortSignal?.throwIfAborted();
     } catch (error) {
       input.abortSignal?.throwIfAborted();
@@ -1309,7 +1216,13 @@ export async function runSharedAgentTurn(
       Date.now(),
       realtimeRequirement.domain,
     );
-    observeOwnerCapture(input.ownerCapture, (capture) => capture.observe("preflight", { query: realtimeRequirement.query, domain: realtimeRequirement.domain, result: traceableResult }));
+    observeOwnerCapture(input.ownerCapture, (capture) =>
+      capture.observe("preflight", {
+        query: realtimeRequirement.query,
+        domain: realtimeRequirement.domain,
+        result: traceableResult,
+      }),
+    );
     realtimeActionResults = [traceableResult];
     realtimeGrounding = sharedPublicWebGrounding(realtimeActionResults);
   }
@@ -1317,9 +1230,7 @@ export async function runSharedAgentTurn(
   let turn: RunSharedAgentTurnResult;
   try {
     const execution = resolveRuntimeExecution(input);
-    const { runSharedElizaRuntimeTurn } = await import(
-      "./shared-eliza-runtime"
-    );
+    const { runSharedElizaRuntimeTurn } = await import("./shared-eliza-runtime");
     turn = withCapabilityResolution(
       await runSharedElizaRuntimeTurn({
         ...input,
@@ -1353,9 +1264,7 @@ export async function runSharedAgentTurn(
         reminderOperationIntent,
         reminderTargetIntent,
         ...(realtimeGrounding ? { realtimeGrounding } : {}),
-        ...(realtimeActionResults
-          ? { preflightActionResults: realtimeActionResults }
-          : {}),
+        ...(realtimeActionResults ? { preflightActionResults: realtimeActionResults } : {}),
       }),
       capabilityWall,
       blockedSecondary,
@@ -1429,9 +1338,7 @@ export async function runSharedAgentTurn(
       ...(realtimeGrounding
         ? [sharedRealtimeTransportReceipt(realtimeGrounding, groundedReply)]
         : []),
-      ...(turn.actionResults ?? []).filter(
-        (result) => !isWebSearchActionResult(result),
-      ),
+      ...(turn.actionResults ?? []).filter((result) => !isWebSearchActionResult(result)),
     ];
     turn = {
       ...turn,
@@ -1444,9 +1351,7 @@ export async function runSharedAgentTurn(
   } else if (trustedRealtimeIntent || untrustedRealtimeIntent) {
     const groundedReply = finalizeSharedRealtimeReply(turn.reply, undefined);
     const history = [...turn.history];
-    const assistantIndex = history.findLastIndex(
-      (entry) => entry.role === "assistant",
-    );
+    const assistantIndex = history.findLastIndex((entry) => entry.role === "assistant");
     if (assistantIndex >= 0) {
       history[assistantIndex] = {
         ...history[assistantIndex],
@@ -1465,6 +1370,23 @@ export async function runSharedAgentTurn(
   // The durable memory commit runs OUTSIDE the provider try/catch: its failure
   // is a storage fault on an already-landed reply and must not be re-labeled
   // as a provider outcome for the caller's settlement classification.
+  if (
+    !publicSearchIntent &&
+    ["sms", "telegram"].includes(
+      sharedCapabilityTransportForSource(
+        input.execution?.channel.source,
+        input.execution?.channel.type,
+      ),
+    )
+  ) {
+    const reply = formatSharedMessageText(turn.reply);
+    if (reply !== turn.reply) {
+      const history = [...turn.history];
+      const index = history.findLastIndex((entry) => entry.role === "assistant");
+      if (index >= 0) history[index] = { ...history[index], content: reply };
+      turn = { ...turn, reply, history };
+    }
+  }
   turn = withReminderActionProvenance(turn, input);
   await commitSharedTurnMemory(input, turn.reply);
   return turn;
@@ -1483,28 +1405,16 @@ export async function runSharedAgentTurnStream(
   const publicSearchText = input.capabilityText?.trim();
 
   const actionsEnabled = input.messageRole !== "system";
-  const remindersEnabled =
-    actionsEnabled && Boolean(input.execution?.reminders);
+  const remindersEnabled = actionsEnabled && Boolean(input.execution?.reminders);
   const todosEnabled = actionsEnabled && Boolean(input.execution?.todos);
   const capabilities = {
     reminders: remindersEnabled,
     todos: todosEnabled,
   };
   const reminderIntentText = input.capabilityText ?? input.message;
-  const explicitResolution = resolveSharedCapabilityIntent(
-    reminderIntentText,
-    capabilities,
-  );
-  const resolution = capabilityResolution(
-    input,
-    capabilities,
-    explicitResolution,
-  );
-  const requiredAction = requiredActionForTurn(
-    input,
-    resolution,
-    actionsEnabled,
-  );
+  const explicitResolution = resolveSharedCapabilityIntent(reminderIntentText, capabilities);
+  const resolution = capabilityResolution(input, capabilities, explicitResolution);
+  const requiredAction = requiredActionForTurn(input, resolution, actionsEnabled);
   const reminderScheduleProvenance = groundedReminderSchedule(
     input.history,
     input.execution?.reminders?.delivery,
@@ -1513,8 +1423,7 @@ export async function runSharedAgentTurnStream(
     requiredAction === "REMINDERS" &&
     reminderScheduleProvenance !== undefined &&
     isReminderClockCorrectionText(reminderIntentText) &&
-    (!explicitResolution ||
-      isExplicitReminderUpdateIntent(reminderIntentText)) &&
+    (!explicitResolution || isExplicitReminderUpdateIntent(reminderIntentText)) &&
     !isExplicitReminderCreationIntent(reminderIntentText);
   const reminderClearConfirmationChallenge = hasGroundedReminderClearChallenge(
     input.history,
@@ -1522,10 +1431,8 @@ export async function runSharedAgentTurnStream(
   );
   const reminderClearAllIntent =
     isExplicitReminderClearAllIntent(reminderIntentText) ||
-    (reminderClearConfirmationChallenge &&
-      isShortReminderClearConfirmation(reminderIntentText));
-  const trustedReminderIntent =
-    trustedReminderOperationIntent(reminderIntentText);
+    (reminderClearConfirmationChallenge && isShortReminderClearConfirmation(reminderIntentText));
+  const trustedReminderIntent = trustedReminderOperationIntent(reminderIntentText);
   const trustedPredecessor = trustedReminderPredecessor(
     input.history,
     input.execution?.reminders?.delivery,
@@ -1533,13 +1440,11 @@ export async function runSharedAgentTurnStream(
   const contextualIntent = isContextualReminderFollowup(input)
     ? contextualReminderIntent(reminderIntentText, trustedPredecessor)
     : undefined;
-  const reminderOperationIntent =
-    trustedReminderIntent?.operation ?? contextualIntent?.operation;
+  const reminderOperationIntent = trustedReminderIntent?.operation ?? contextualIntent?.operation;
   const reminderTargetIntent = reminderClockCorrection
     ? reminderScheduleProvenance?.taskIds[0]
     : (trustedReminderIntent?.target ?? contextualIntent?.target);
-  const capabilityWall =
-    resolution?.kind === "blocked-primary" ? resolution.blocked : undefined;
+  const capabilityWall = resolution?.kind === "blocked-primary" ? resolution.blocked : undefined;
   const blockedSecondary =
     resolution?.kind === "enabled-primary" ? resolution.blockedSecondary : [];
   const modelId = resolveSharedAgentTurnModel(input.character.model);
@@ -1548,13 +1453,7 @@ export async function runSharedAgentTurnStream(
     const reply = `${input.character.name} is temporarily unavailable (no shared model configured).`;
     return {
       reply,
-      history: appendSharedTurn(
-        input.history,
-        message,
-        reply,
-        input.messageIds,
-        input.messageRole,
-      ),
+      history: appendSharedTurn(input.history, message, reply, input.messageIds, input.messageRole),
       model: "none",
       degraded: true,
     };
@@ -1567,35 +1466,28 @@ export async function runSharedAgentTurnStream(
     (actionsEnabled &&
       ((publicSearchText &&
         (resolveSharedPublicSearchIntent(publicSearchText, input.history) ||
-         hasSharedRealtimeIntent(publicSearchText, input.history))) ||
+          hasSharedRealtimeIntent(publicSearchText, input.history))) ||
         (!publicSearchText && hasSharedRealtimeIntent(message, input.history))))
   ) {
     const turn = await runSharedAgentTurn(input);
-    const parts =
-      (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
-        if (turn.reply) yield { type: "text-delta", text: turn.reply };
-        yield {
-          type: "finish",
-          text: turn.reply,
-          ...(turn.responded === false ? { responded: false } : {}),
-          ...(turn.usage ? { usage: turn.usage } : {}),
-          ...(turn.actionResults?.length
-            ? { actionResults: turn.actionResults }
-            : {}),
-          ...(turn.timing ? { timing: turn.timing } : {}),
-        };
-      })();
+    const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
+      if (turn.reply) yield { type: "text-delta", text: turn.reply };
+      yield {
+        type: "finish",
+        text: turn.reply,
+        ...(turn.responded === false ? { responded: false } : {}),
+        ...(turn.usage ? { usage: turn.usage } : {}),
+        ...(turn.actionResults?.length ? { actionResults: turn.actionResults } : {}),
+        ...(turn.timing ? { timing: turn.timing } : {}),
+      };
+    })();
     return {
       model: turn.model,
       degraded: turn.degraded,
       reply: turn.reply,
       history: turn.history,
-      ...(turn.actionResults?.length
-        ? { actionResults: turn.actionResults }
-        : {}),
-      ...(turn.internalGrounding
-        ? { internalGrounding: turn.internalGrounding }
-        : {}),
+      ...(turn.actionResults?.length ? { actionResults: turn.actionResults } : {}),
+      ...(turn.internalGrounding ? { internalGrounding: turn.internalGrounding } : {}),
       ...(turn.capabilityWall ? { capabilityWall: turn.capabilityWall } : {}),
       ...(turn.blockedSecondaryCapabilities?.length
         ? {
@@ -1608,9 +1500,7 @@ export async function runSharedAgentTurnStream(
 
   try {
     const execution = resolveRuntimeExecution(input);
-    const { runSharedElizaRuntimeTurnStream } = await import(
-      "./shared-eliza-runtime"
-    );
+    const { runSharedElizaRuntimeTurnStream } = await import("./shared-eliza-runtime");
     const stream = await runSharedElizaRuntimeTurnStream({
       ...input,
       character: {
@@ -1644,11 +1534,7 @@ export async function runSharedAgentTurnStream(
       reminderOperationIntent,
       reminderTargetIntent,
     });
-    return withStreamCapabilityResolution(
-      stream,
-      capabilityWall,
-      blockedSecondary,
-    );
+    return withStreamCapabilityResolution(stream, capabilityWall, blockedSecondary);
   } catch (error) {
     // error-policy:J2 no SSE bytes exist during setup, so retain the exact
     // runtime cause and add stable billing/diagnostic context for the caller.

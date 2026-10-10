@@ -137,7 +137,7 @@ describe("runSharedAgentTurn realtime grounding", () => {
       expect(JSON.stringify(records)).not.toContain("63,800");
       expect(JSON.stringify(records)).not.toContain("TradingView");
       expect(JSON.stringify(records)).not.toContain("https://");
-      expect(result.reply).toContain("couldn’t safely bind the requested claim");
+      expect(result.reply).toContain("couldn’t verify an answer");
     } finally {
       sink.mockRestore();
     }
@@ -157,14 +157,14 @@ describe("runSharedAgentTurn realtime grounding", () => {
     });
 
     expect(result.reply).toContain("BTC is 70,000 USD.");
-    expect(result.reply).toContain("Source: example.com");
+    expect(result.reply).toContain("Source: https://example.com/markets/btc-usd");
     expect(result.reply).toContain("https://example.com/markets/btc-usd");
-    expect(result.reply).toContain(`parallel, checked ${new Date(searchObservedAt).toISOString()}`);
+    expect(result.reply).not.toContain("checked ");
     expect(result.actionResults).toEqual([
       expect.objectContaining({
         success: true,
         data: expect.objectContaining({
-          deliveredReply: expect.stringContaining("Source: example.com"),
+          deliveredReply: expect.stringContaining("Source: https://example.com/markets/btc-usd"),
           groundingStatus: "verified",
         }),
       }),
@@ -243,8 +243,8 @@ describe("runSharedAgentTurn realtime grounding", () => {
 
     expect(result.reply).not.toContain("63,800");
     expect(result.reply).not.toContain("TradingView");
-    expect(result.reply).toContain("couldn’t safely bind the requested claim");
-    expect(result.reply).toContain("Source provider: parallel");
+    expect(result.reply).toContain("couldn’t verify an answer");
+    expect(result.reply).not.toContain("Source provider: parallel");
     expect(JSON.stringify(result.actionResults)).not.toContain("63,800");
     expect(JSON.stringify(result.actionResults)).not.toContain("TradingView");
   });
@@ -268,8 +268,8 @@ describe("runSharedAgentTurn realtime grounding", () => {
       capabilityText: "weather in Austin today",
     });
 
-    expect(result.reply).toContain("can’t verify");
-    expect(result.reply).toContain("won’t guess");
+    expect(result.reply).toContain("I couldn’t check that right now.");
+    expect(result.reply).toContain("Please try again in a moment.");
     expect(result.reply).not.toContain("72");
     expect(result.reply).not.toContain("WeatherNow");
     expect(result.actionResults?.[0]?.success).toBe(false);
@@ -410,7 +410,7 @@ describe("runSharedAgentTurn realtime grounding", () => {
       searchQueries = [];
       const result = await runSharedAgentTurn({ character, ...input });
       expect(searchQueries).toEqual([]);
-      expect(result.reply).toContain("can’t verify");
+      expect(result.reply).toContain("I couldn’t check that right now.");
       expect(result.reply).not.toContain("99,999");
       expect(result.reply).not.toContain("63,800");
     }
@@ -428,14 +428,14 @@ describe("runSharedAgentTurn realtime grounding", () => {
     for await (const part of result.parts) parts.push(part);
 
     expect(parts.map((part) => part.type)).toEqual(["text-delta", "finish"]);
-    expect(parts[0]?.text).toContain("Source: example.com");
-    expect(parts[1]?.text).toContain("Source: example.com");
+    expect(parts[0]?.text).toContain("Source: https://example.com/markets/btc-usd");
+    expect(parts[1]?.text).toContain("Source: https://example.com/markets/btc-usd");
     expect(parts[1]?.type === "finish" ? parts[1].actionResults : undefined).toEqual([
       expect.objectContaining({
         success: true,
         data: expect.objectContaining({
           query: "ETHEREUM price current",
-          deliveredReply: expect.stringContaining("Source: example.com"),
+          deliveredReply: expect.stringContaining("Source: https://example.com/markets/btc-usd"),
         }),
       }),
     ]);

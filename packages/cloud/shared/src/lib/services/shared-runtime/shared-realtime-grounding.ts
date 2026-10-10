@@ -15,6 +15,7 @@ import {
   currentNwsObservationSource,
   isVerifiedCurrentNwsObservation,
 } from "./shared-current-weather";
+import { formatSharedMessageText } from "./shared-message-style";
 import { sharedSelectedGroundingMetadata } from "./shared-runtime-history-policy";
 
 export type SharedRealtimeDomain = "markets" | "weather" | "news" | "sports" | "mutable_fact";
@@ -915,11 +916,20 @@ function supportedRealtimeReply(
   grounding: AvailableGrounding,
   onRefusal: ((diagnostic: SharedRealtimeBindingDiagnostic) => void) | undefined,
   mode: "realtime" | "general_public",
-): { reply: string; selectedUrls: string[]; omittedUnsupported: boolean } | undefined {
+):
+  | {
+      reply: string;
+      selectedUrls: string[];
+      selectedDisplayUrls: string[];
+      omittedUnsupported: boolean;
+      omittedSubstantive: boolean;
+    }
+  | undefined {
   if (!hasTraceableRealtimeGrounding(grounding)) return undefined;
   SOURCE_MARKER.lastIndex = 0;
   let cursor = 0;
   let omittedUnsupported = false;
+  let omittedSubstantive = false;
   let lastSegmentAccepted = false;
   const diagnostic = {
     markerCount: 0,
@@ -928,6 +938,7 @@ function supportedRealtimeReply(
   };
   const segments: string[] = [];
   const selectedUrls: string[] = [];
+  const selectedDisplayUrls: string[] = [];
   for (const marker of reply.matchAll(SOURCE_MARKER)) {
     diagnostic.markerCount = Math.min(1000, diagnostic.markerCount + 1);
     const source = sourceForUrl(grounding, marker[1]);
@@ -942,9 +953,29 @@ function supportedRealtimeReply(
     ) {
       segments.push(claim);
       selectedUrls.push(marker[1]);
+      let displayUrl = marker[1];
+      const preferred = new URL(source.url);
+      if (
+        preferred.hostname === "developers.google.cn" &&
+        preferred.searchParams.getAll("hl").length === 1 &&
+        preferred.searchParams.get("hl") === "en"
+      ) {
+        preferred.hostname = "developers.google.com";
+        preferred.searchParams.delete("hl");
+        const canonicalSource = sourceForUrl(grounding, preferred.href);
+        if (
+          canonicalSource &&
+          (mode === "general_public"
+            ? generalPublicClaimSupported(claim, canonicalSource, { failedPredicateMask: 0 })
+            : claimSupported(claim, canonicalSource))
+        )
+          displayUrl = canonicalSource.url;
+      }
+      selectedDisplayUrls.push(displayUrl);
       lastSegmentAccepted = true;
     } else {
       omittedUnsupported = true;
+      omittedSubstantive ||= /[\p{L}\p{N}]/u.test(claim);
       lastSegmentAccepted = false;
     }
     cursor = (marker.index ?? 0) + marker[0].length;
@@ -956,6 +987,7 @@ function supportedRealtimeReply(
     if (lastSegmentAccepted) segments[segments.length - 1] += tail.replace(/\s+/gu, "");
   } else if (tail) {
     omittedUnsupported = true;
+    omittedSubstantive ||= /[\p{L}\p{N}]/u.test(tail);
   }
   if (segments.length === 0 && onRefusal) {
     try {
@@ -980,12 +1012,28 @@ function supportedRealtimeReply(
             ? validatedReply.replace(/\n[ \t]*([.!?,;:…]+)(?=[ \t]*(?:\n|$))/gu, "$1")
             : validatedReply,
         selectedUrls,
+        selectedDisplayUrls,
         omittedUnsupported,
+        omittedSubstantive,
       }
     : undefined;
 }
 
-/** Produces Telegram-safe attribution or an honest deterministic recovery. */
+/** Display identity only: exact receipt URLs remain authoritative for validation. */
+function sourceDisplayIdentity(canonical: string): string {
+  const url = new URL(canonical);
+  // The English Google documentation display variant adds no page identity.
+  // Other locales, hosts and query parameters can select different evidence.
+  if (
+    url.hostname === "developers.google.com" &&
+    url.searchParams.getAll("hl").length === 1 &&
+    url.searchParams.get("hl") === "en"
+  )
+    url.searchParams.delete("hl");
+  return url.href;
+}
+
+/** Produces conversational attribution after the unchanged source validators. */
 export function finalizeSharedRealtimeReply(
   reply: string,
   grounding: SharedRuntimePublicGrounding | undefined,
@@ -993,27 +1041,23 @@ export function finalizeSharedRealtimeReply(
   mode: "realtime" | "general_public" = "realtime",
 ): string {
   if (!hasTraceableRealtimeGrounding(grounding)) {
-    return "I can’t verify the current value from a complete, traceable live source right now, so I won’t guess. Please try again shortly.";
+    return "I couldn’t check that right now. Please try again in a moment.";
   }
   const supported = supportedRealtimeReply(reply, grounding, onRefusal, mode);
-  if (!supported) {
-    return `I found live public results, but I couldn’t safely bind the requested claim to one complete source, so I won’t guess.\n\nSource provider: ${grounding.provider} (checked ${new Date(grounding.observedAt).toISOString()})`;
-  }
-  const sources = [...new Set(supported.selectedUrls)].map((url) => {
+  if (!supported)
+    return "I couldn’t verify an answer from the sources I found. Please try rephrasing your question.";
+  const seen = new Set<string>();
+  const sources: string[] = [];
+  for (const url of supported.selectedDisplayUrls) {
     const canonical = canonicalPublicUrl(url);
     if (!canonical) throw new TypeError("Validated Shared realtime source became invalid");
-    const observed =
-      grounding.provider === "nws" && grounding.weatherObservation
-        ? `, observation ${grounding.weatherObservation.timestamp}`
-        : "";
-    return `Source: ${new URL(canonical).hostname.replace(/^www\./u, "")} — ${canonical} (${grounding.provider}${observed}, checked ${new Date(grounding.observedAt).toISOString()})`;
-  });
-  const omission = supported.omittedUnsupported
-    ? mode === "general_public"
-      ? "\n\nI couldn’t verify the rest."
-      : "\n\nI left out part of the draft because it was not supported by the live source."
-    : "";
-  return `${supported.reply}${omission}\n\n${sources.join("\n")}`;
+    const identity = sourceDisplayIdentity(canonical);
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    sources.push(canonical);
+  }
+  const partial = supported.omittedSubstantive ? "I found part of the answer:\n\n" : "";
+  return `${partial}${formatSharedMessageText(supported.reply)}\n\n${sources.length === 1 ? "Source" : "Sources"}: ${sources.join("\n")}`;
 }
 
 /** System-only policy; actual provider results remain untrusted data messages. */

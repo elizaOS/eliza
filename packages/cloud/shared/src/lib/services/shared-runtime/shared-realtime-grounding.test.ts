@@ -488,7 +488,8 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
     expect(delivered).not.toContain("Unsupported trailing prose");
     expect(delivered).toContain("ETH is 3,500 USD.");
     expect(delivered).toContain("https://coin.example/eth");
-    expect(delivered).toContain("left out part of the draft");
+    expect(delivered).not.toContain("draft");
+    expect(delivered).toStartWith("I found part of the answer:");
     expect(delivered).not.toContain("https://coin.example/btc");
   });
 
@@ -690,15 +691,15 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
     });
   });
 
-  test("adds concise source, provider, and checked time for Telegram", () => {
+  test("displays a compact source without internal provider or checked-time metadata", () => {
     const reply = finalizeSharedRealtimeReply(
       "Bitcoin is 77,357.93 USD. [[SOURCE_URL:https://coin.example/bitcoin]]",
       grounding,
     );
     expect(reply).toContain("Bitcoin is 77,357.93 USD.");
     expect(reply).toContain("https://coin.example/bitcoin");
-    expect(reply).toContain("parallel");
-    expect(reply).toContain("2026-08-22T07:00:00.000Z");
+    expect(reply).not.toContain("parallel");
+    expect(reply).not.toContain("2026-08-22T07:00:00.000Z");
     expect(reply).not.toContain("[[SOURCE_URL:");
   });
 
@@ -709,8 +710,8 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
       observedAt,
     };
     const reply = finalizeSharedRealtimeReply("?", unavailable);
-    expect(reply).toContain("can’t verify");
-    expect(reply).toContain("won’t guess");
+    expect(reply).toContain("couldn’t check");
+    expect(reply).not.toContain("traceable");
     expect(reply).not.toMatch(/\b\d[\d,.]*\b/u);
   });
 });
@@ -720,7 +721,7 @@ describe("Shared realtime binding refusal diagnostics", () => {
     const diagnostics: SharedRealtimeBindingDiagnostic[] = [];
     const draft = "PRIVATE_DRAFT_SENTINEL 12345";
     const reply = finalizeSharedRealtimeReply(draft, grounding, (value) => diagnostics.push(value));
-    expect(reply).toContain("couldn’t safely bind");
+    expect(reply).toContain("couldn’t verify an answer");
     expect(diagnostics).toEqual([
       {
         reason: "marker_missing",
@@ -896,7 +897,7 @@ describe("General public citation mode", () => {
       "The per-user limit is 6,000; the project limit is 1,200,000 quota units per minute.",
     ]) {
       expect(general(claim)).toContain(claim);
-      expect(general(claim)).toContain(`Source: developers.google.com — ${url}`);
+      expect(general(claim)).toContain(`Source: ${url}`);
     }
     const paraphrase = "Gmail API calls are rate-limited.";
     expect(
@@ -1043,11 +1044,12 @@ describe("general public reply formatting", () => {
     expect(result).toStartWith("The limit is 1,200 units.\n\nSource:");
     expect(result).not.toContain("verify the rest");
     expect(result).not.toContain("draft");
-    expect(result).toContain(`Source: docs.example.com — ${url}`);
-    // The strict realtime path keeps its existing tail/refusal behavior.
-    expect(finalizeSharedRealtimeReply(reply, receipt)).toContain(
-      "I left out part of the draft because it was not supported by the live source.",
-    );
+    expect(result).not.toContain("I found part of the answer");
+    expect(result).toContain(`Source: ${url}`);
+    // Strict source validation still retains only the supported claim.
+    expect(finalizeSharedRealtimeReply(reply, receipt)).toContain("The limit is 1,200 units");
+    expect(finalizeSharedRealtimeReply(reply, receipt)).not.toContain("draft");
+    expect(finalizeSharedRealtimeReply(reply, receipt)).not.toContain("I found part of the answer");
   });
 
   test("joins standalone punctuation lines only after both cited segments pass validation", () => {
@@ -1056,10 +1058,10 @@ describe("general public reply formatting", () => {
     expect(result).toStartWith("The limit is 1,200 units.\n\nThe allowance is 6,000 units.");
     expect(result).not.toMatch(/\n[.!?]\s*\n/u);
     expect(result).not.toContain("verify the rest");
-    expect(result).toContain("checked 2026-10-09T00:00:00.000Z");
+    expect(result).not.toContain("2026-10-09T00:00:00.000Z");
   });
 
-  test("still omits uncited facts and invalid numeric citations with a human partial-verification notice", () => {
+  test("still removes unsupported claims without boilerplate after a supported answer", () => {
     const supported = `The limit is 1,200 units [[SOURCE_URL:${url}]]`;
     for (const tail of [
       ".\nThe allowance is 9,000 units.",
@@ -1068,9 +1070,146 @@ describe("general public reply formatting", () => {
       const result = general(supported + tail);
       expect(result).toContain("The limit is 1,200 units");
       expect(result).not.toContain("9,000");
-      expect(result).toContain("I couldn’t verify the rest.");
+      expect(result).not.toContain("I couldn’t verify the rest.");
       expect(result).not.toContain("draft");
-      expect(result).toContain(`Source: docs.example.com — ${url}`);
+      expect(result).toContain(`Source: ${url}`);
     }
   });
 });
+
+test("deduplicates localized display links while retaining exact source authority", () => {
+  const url = "https://developers.google.com/workspace/gmail/api/reference/quota";
+  const localized = "https://developers.google.com/workspace/gmail/api/reference/quota?hl=en";
+  const different = "https://developers.google.com/workspace/gmail/api/reference/quota?version=2";
+  const mirror = "https://developers.google.cn/workspace/gmail/api/reference/quota?hl=en";
+  const evidence = "Each project can use 1,200,000 quota units per minute.";
+  const receipt: SharedRuntimePublicGrounding = {
+    kind: "web_search",
+    query: "Gmail API quotas",
+    provider: "parallel",
+    observedAt,
+    truncated: false,
+    text: evidence,
+    sourceUrls: [url, localized, different, mirror],
+    sources: [url, localized, different, mirror].map((source) => ({
+      url: source,
+      text: source === mirror ? "The allowance is 6,000 units." : evidence,
+    })),
+  };
+  const draft = [url, localized, different, mirror]
+    .map(
+      (source) =>
+        `${source === mirror ? "The allowance is 6,000 units." : evidence} [[SOURCE_URL:${source}]]`,
+    )
+    .join("\n");
+  const before = JSON.stringify(receipt);
+  const reply = finalizeSharedRealtimeReply(draft, receipt, undefined, "general_public");
+  expect(reply).toContain(`Sources: ${url}\n${different}`);
+  expect(reply).not.toContain(localized);
+  expect(reply).toContain(mirror);
+  expect(reply).not.toContain("parallel");
+  expect(reply).not.toContain("checked");
+  expect(JSON.stringify(receipt)).toBe(before);
+  const forged = finalizeSharedRealtimeReply(
+    `${evidence} [[SOURCE_URL:https://unknown.example/quota]]`,
+    receipt,
+    undefined,
+    "general_public",
+  );
+  expect(forged).not.toContain("1,200,000");
+  expect(forged).not.toContain("unknown.example");
+  expect(forged).toContain("couldn’t verify an answer");
+});
+
+test.each(["realtime", "general_public"] as const)(
+  "%s marks a substantive partial answer without exposing rejected content",
+  (mode) => {
+    const url = "https://docs.example.com/limits";
+    const text = "The limit is 1,200 units. The allowance is 6,000 units.";
+    const receipt: SharedRuntimePublicGrounding = {
+      kind: "web_search",
+      query: "public limits",
+      provider: "parallel",
+      observedAt,
+      truncated: false,
+      text,
+      sourceUrls: [url],
+      sources: [{ url, text }],
+    };
+    for (const rejected of [
+      `The allowance is 9,000 units. [[SOURCE_URL:${url}]]`,
+      "The allowance is 6,000 units. [[SOURCE_URL:https://unknown.example/limits]]",
+    ]) {
+      const reply = finalizeSharedRealtimeReply(
+        `The limit is 1,200 units. [[SOURCE_URL:${url}]] ${rejected}`,
+        receipt,
+        undefined,
+        mode,
+      );
+      expect(reply).toStartWith("I found part of the answer:\n\nThe limit is 1,200 units.");
+      expect(reply).not.toContain("9,000");
+      expect(reply).not.toContain("6,000");
+      expect(reply).not.toContain("unknown.example");
+      expect(reply).not.toContain("draft");
+      expect(reply).not.toContain("parallel");
+      expect(reply).toContain(`Source: ${url}`);
+    }
+    const complete = finalizeSharedRealtimeReply(
+      `The limit is 1,200 units [[SOURCE_URL:${url}]].`,
+      receipt,
+      undefined,
+      mode,
+    );
+    expect(complete).not.toContain("I found part of the answer");
+    const unsupported = finalizeSharedRealtimeReply(
+      "The allowance is 6,000 units. [[SOURCE_URL:https://unknown.example/limits]]",
+      receipt,
+      undefined,
+      mode,
+    );
+    expect(unsupported).toContain("couldn’t verify an answer");
+    expect(unsupported).not.toContain("I found part of the answer");
+  },
+);
+
+test.each(["realtime", "general_public"] as const)(
+  "%s prefers a canonical Google link only when it independently supports the same cited claim",
+  (mode) => {
+    const canonical = "https://developers.google.com/workspace/gmail/api/reference/quota";
+    const mirror = "https://developers.google.cn/workspace/gmail/api/reference/quota?hl=en";
+    const common = "The limit is 1,200 units.";
+    const distinct = "The allowance is 6,000 units.";
+    const receipt: SharedRuntimePublicGrounding = {
+      kind: "web_search",
+      query: "public API limits",
+      provider: "parallel",
+      observedAt,
+      truncated: false,
+      text: `${common} ${distinct}`,
+      sourceUrls: [canonical, mirror],
+      sources: [
+        { url: canonical, text: common },
+        { url: mirror, text: `${common} ${distinct}` },
+      ],
+    };
+    const before = JSON.stringify(receipt);
+    const duplicated = finalizeSharedRealtimeReply(
+      `${common} [[SOURCE_URL:${canonical}]] ${common} [[SOURCE_URL:${mirror}]]`,
+      receipt,
+      undefined,
+      mode,
+    );
+    expect(duplicated).toContain(`Source: ${canonical}`);
+    expect(duplicated).not.toContain(mirror);
+    const distinctReply = finalizeSharedRealtimeReply(
+      `${common} [[SOURCE_URL:${canonical}]] ${distinct} [[SOURCE_URL:${mirror}]]`,
+      receipt,
+      undefined,
+      mode,
+    );
+    expect(distinctReply).toContain(`Sources: ${canonical}\n${mirror}`);
+    expect(distinctReply).toContain(distinct);
+    expect(distinctReply).not.toContain("I found part of the answer");
+    expect(JSON.stringify(receipt)).toBe(before);
+  },
+);
