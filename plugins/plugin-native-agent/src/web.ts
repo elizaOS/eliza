@@ -83,6 +83,45 @@ function readConfiguredApiBase(): string | undefined {
   return typeof base === "string" && base.trim().length > 0 ? base : undefined;
 }
 
+/**
+ * Project a server status payload onto the shared `AgentStatus` contract.
+ * The server payloads carry no `port` or `error` keys, so returning them raw
+ * leaves those fields `undefined`; the native bridges always emit all five
+ * fields with explicit nulls (iOS `normalizedStatus`, Android `agentStatus`).
+ * The port falls back to the configured API base, as on iOS.
+ */
+function normalizeStatus(payload: unknown, apiBase: string): AgentStatus {
+  const record =
+    payload && typeof payload === "object"
+      ? (payload as Record<string, unknown>)
+      : {};
+  let port: number | null = null;
+  if (typeof record.port === "number" && Number.isFinite(record.port)) {
+    port = record.port;
+  } else if (apiBase) {
+    try {
+      const parsed = new URL(apiBase);
+      port = parsed.port
+        ? Number(parsed.port)
+        : parsed.protocol === "https:"
+          ? 443
+          : parsed.protocol === "http:"
+            ? 80
+            : null;
+    } catch {
+      port = null;
+    }
+  }
+  return {
+    ...record,
+    state: record.state as AgentStatus["state"],
+    agentName: typeof record.agentName === "string" ? record.agentName : null,
+    port,
+    startedAt: typeof record.startedAt === "number" ? record.startedAt : null,
+    error: typeof record.error === "string" ? record.error : null,
+  } as AgentStatus;
+}
+
 function assertNonEmptyText(text: unknown): string {
   if (typeof text !== "string" || text.trim().length === 0) {
     throw new Error("Agent.chat requires non-empty text");
@@ -311,7 +350,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
     });
     await throwIfNotOk(res, "/api/agent/start");
     const data = await res.json();
-    return data.status ?? data;
+    return normalizeStatus(data.status ?? data, this.apiBase());
   }
 
   async stop(): Promise<{ ok: boolean }> {
@@ -342,7 +381,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
       headers: this.authHeaders(),
     });
     await throwIfNotOk(res, "/api/status");
-    return res.json();
+    return normalizeStatus(await res.json(), this.apiBase());
   }
 
   async chat(options: { text: string }): Promise<ChatResult> {
