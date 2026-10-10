@@ -140,7 +140,14 @@ function boundedNumber(
   options: { min: number; max: number; integer?: boolean },
 ): number | undefined | null {
   if (value === null || value === "") return undefined;
-  const parsed = Number(value);
+  // Number() silently accepts non-decimal spellings ("0x10" -> 16), so a
+  // non-decimal query param was honored as a pagination/filter value instead
+  // of failing validation. Require the whole trimmed value to be decimal,
+  // mirroring parseCharacterHistoryLimit in the same file.
+  const text = value.trim();
+  const parsed = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(text)
+    ? Number(text)
+    : Number.NaN;
   if (
     !Number.isFinite(parsed) ||
     (options.integer && !Number.isInteger(parsed)) ||
