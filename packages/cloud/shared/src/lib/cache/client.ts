@@ -1256,7 +1256,14 @@ export class CacheClient {
     const raw = getCloudAwareEnv().CACHE_METRICS_SAMPLE;
     let rate = 0.01;
     if (raw !== undefined && raw !== "") {
-      const parsed = Number.parseFloat(raw);
+      // Number.parseFloat stops at the first non-digit ("0.05junk" -> 0.05),
+      // so a typo was silently accepted as the sample rate instead of the
+      // 0.01 default. Require the whole trimmed value to be decimal,
+      // mirroring parseAndValidateCredits in stripe-event.ts.
+      const rateText = raw.trim();
+      const parsed = /^\+?\d+(?:\.\d+)?$/.test(rateText)
+        ? Number(rateText)
+        : Number.NaN;
       if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 1) {
         rate = parsed;
       }
