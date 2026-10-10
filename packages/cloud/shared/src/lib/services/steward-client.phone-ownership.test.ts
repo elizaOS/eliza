@@ -10,11 +10,11 @@ afterEach(() => {
   mock.restore();
 });
 
-function stewardResponse(accounts: unknown[]): Response {
+function stewardResponse(accounts: unknown[], primaryLoginMethods: unknown = []): Response {
   return new Response(
     JSON.stringify({
       ok: true,
-      data: { accounts, primaryLoginMethods: [] },
+      data: { accounts, primaryLoginMethods },
     }),
     { status: 200, headers: { "content-type": "application/json" } },
   );
@@ -105,5 +105,56 @@ describe("verifyStewardBearerPhone", () => {
     ).rejects.toMatchObject<Partial<StewardPhoneOwnershipError>>({
       code: "upstream_unavailable",
     });
+  });
+});
+
+describe("current primary and linked phone identity", () => {
+  const subject = "phone:cb6880e416769253645cb9c6b8989154bf66a56a77fc14c81fb1019663cbb928";
+  const other = "phone:914a4339de282aeb70b17daa615f3e931dfe383784cda1b13ed7d00e47b88e50";
+  const verify = () =>
+    verifyStewardBearerPhone({
+      env: { STEWARD_API_URL: "https://steward.example" },
+      bearerToken: "owner-session",
+      tenantId: "personal-owner",
+      phoneNumber: "+1 (415) 555-2671",
+    });
+  test("accepts only the current authenticated primary phone subject or phone-provider hash", async () => {
+    for (const response of [
+      stewardResponse([], [{ provider: "wallet", providerAccountId: subject }]),
+      stewardResponse([{ provider: "phone", providerAccountId: subject }]),
+    ]) {
+      globalThis.fetch = mock(async () => response) as typeof fetch;
+      expect(await verify()).toEqual({ status: "verified", phoneNumber: "+14155552671" });
+    }
+  });
+  test("does not confuse another phone, an arbitrary primary method, or a wallet-linked record with phone proof", async () => {
+    for (const response of [
+      stewardResponse([], [{ provider: "wallet", providerAccountId: other }]),
+      stewardResponse([], [{ provider: "email", providerAccountId: subject }]),
+      stewardResponse([{ provider: "wallet", providerAccountId: subject }]),
+      stewardResponse([], [{ provider: "wallet", providerAccountId: "+14155552671" }]),
+      stewardResponse([], [null, { phoneNumber: "+14155552671" }]),
+    ]) {
+      globalThis.fetch = mock(async () => response) as typeof fetch;
+      expect(await verify()).toEqual({ status: "not_linked" });
+    }
+  });
+  test("rejects malformed primary-method envelopes and retains only numeric upstream status", async () => {
+    globalThis.fetch = mock(async () =>
+      stewardResponse([], { provider: "wallet", providerAccountId: subject }),
+    ) as typeof fetch;
+    await expect(verify()).rejects.toMatchObject({
+      code: "invalid_upstream_response",
+      upstreamStatus: 200,
+    });
+    for (const status of [401, 403, 404, 503]) {
+      globalThis.fetch = mock(
+        async () => new Response("SYNTHETIC_PRIVATE_UPSTREAM_BODY", { status }),
+      ) as typeof fetch;
+      await expect(verify()).rejects.toMatchObject({
+        code: "upstream_unavailable",
+        upstreamStatus: status,
+      });
+    }
   });
 });

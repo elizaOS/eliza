@@ -341,7 +341,14 @@ app.post("/", async (c) => {
         }
         logStewardAuth("verified-phone-upstream-unavailable", null);
         logger.error("[steward-auth] Steward phone verification failed", {
-          error: error instanceof Error ? error.message : String(error),
+          code:
+            error instanceof StewardPhoneOwnershipError
+              ? error.code
+              : "unexpected_error",
+          ...(error instanceof StewardPhoneOwnershipError &&
+          error.upstreamStatus !== undefined
+            ? { upstreamStatus: error.upstreamStatus }
+            : {}),
         });
         return c.json(
           errorBody(

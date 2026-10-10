@@ -1023,3 +1023,93 @@ describe("provider contract parity with the release verifier", () => {
     );
   });
 });
+
+describe("Cloud owner-phone personal issuance intent", () => {
+  it.each(["send", "verify"])(
+    "normalizes only the explicit personal SMS %s wire before signing",
+    async (leg) => {
+      const bodies: Record<string, unknown>[] = [];
+      const calls = stubFetch(async (_input, init) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        return Response.json({ ok: true });
+      });
+      const env = baseEnv({
+        STEWARD_REQUEST_SIGNING_SECRET:
+          "test_only_steward_secret_aaaaaaaaaaaaa",
+      });
+      const result = await makeApp(env).request(
+        `https://api.elizacloud.ai/steward/cloud-owner-phone/auth/sms/${leg}`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-steward-tenant": "another-tenant",
+          },
+          body: JSON.stringify({
+            phone: "+14155552671",
+            code: "123456",
+            tenantId: "another-tenant",
+            captchaToken: "synthetic-captcha",
+          }),
+        },
+      );
+      expect(result.status).toBe(200);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.url).toBe(`${UPSTREAM}/auth/sms/${leg}`);
+      expect(calls[0]?.headers.get("x-steward-tenant")).toBeNull();
+      expect(calls[0]?.headers.get("x-steward-signature")).toMatch(
+        /^v1=[0-9a-f]{64}$/,
+      );
+      expect(bodies).toEqual([
+        {
+          phone: "+14155552671",
+          code: "123456",
+          captchaToken: "synthetic-captcha",
+        },
+      ]);
+    },
+  );
+  it("keeps normal tenant-scoped SMS callers unchanged and refuses a broader personal proxy", async () => {
+    const bodies: unknown[] = [];
+    const calls = stubFetch(async (_input, init) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return Response.json({ ok: true });
+    });
+    const app = makeApp(baseEnv());
+    await app.request("https://api.elizacloud.ai/steward/auth/sms/verify", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        phone: "+14155552671",
+        code: "123456",
+        tenantId: "sdk-tenant",
+      }),
+    });
+    expect(calls[0]?.headers.get("x-steward-tenant")).toBe(
+      "elizacloud-staging",
+    );
+    expect(bodies[0]).toEqual({
+      phone: "+14155552671",
+      code: "123456",
+      tenantId: "sdk-tenant",
+    });
+    for (const [method, path] of [
+      ["GET", "/auth/sms/verify"],
+      ["POST", "/user/me/accounts"],
+      ["POST", "/auth/oauth/google"],
+    ]) {
+      const result = await app.request(
+        `https://api.elizacloud.ai/steward/cloud-owner-phone${path}`,
+        { method },
+      );
+      expect(result.status).toBe(404);
+    }
+    expect(calls).toHaveLength(1);
+    const malformed = await app.request(
+      "https://api.elizacloud.ai/steward/cloud-owner-phone/auth/sms/verify",
+      { method: "POST", body: "[]" },
+    );
+    expect(malformed.status).toBe(400);
+    expect(calls).toHaveLength(1);
+  });
+});
