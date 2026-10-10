@@ -600,7 +600,7 @@ function resolveLocalBrowserEvmWallet(): ethers.Wallet {
   if (!evmKey) {
     throw new Error("Local EVM wallet signing is unavailable.");
   }
-  return new ethers.Wallet(evmKey.startsWith("0x") ? evmKey : `0x${evmKey}`);
+  return new ethers.Wallet(prefixEvmHex(evmKey));
 }
 function base58DecodeBrowser(value: string): Buffer {
   if (!value.length) {
