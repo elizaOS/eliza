@@ -485,6 +485,16 @@ function isPgTrue(value: boolean | string | number | null | undefined): boolean 
   return value === true || value === 1 || value === "1" || value === "t" || value === "true";
 }
 
+// Number.parseInt stops at the first non-digit, so "500junk" parsed to 500
+// and silently changed the low-credits notification threshold instead of
+// falling back to the default. Require the whole trimmed value to be decimal,
+// mirroring resolveGenerationTimeoutMs in the discord plugin.
+function parseLowCreditsThreshold(raw: string | undefined): number {
+  const text = (raw ?? "").trim();
+  const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : 1000;
+}
+
 function parseNumeric(value: string | number | null | undefined, fieldName: string): number {
   const parsed = typeof value === "number" ? value : Number.parseFloat(String(value ?? ""));
   if (!Number.isFinite(parsed)) {
@@ -1170,7 +1180,7 @@ export class CreditsService {
       return;
     }
 
-    const threshold = parseInt(process.env.LOW_CREDITS_THRESHOLD || "1000", 10);
+    const threshold = parseLowCreditsThreshold(process.env.LOW_CREDITS_THRESHOLD);
     const status = classifyCreditBalance(newBalance, threshold);
     if (!status) {
       return;
@@ -1197,7 +1207,7 @@ export class CreditsService {
     currentBalance: number,
   ): Promise<void> {
     try {
-      const threshold = parseInt(process.env.LOW_CREDITS_THRESHOLD || "1000", 10);
+      const threshold = parseLowCreditsThreshold(process.env.LOW_CREDITS_THRESHOLD);
 
       if (currentBalance <= 0 || currentBalance > threshold) {
         return;
