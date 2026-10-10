@@ -54,4 +54,5 @@ Capture operations reserve their identity and image hash before insertion. A
 retry resolves a published item instead of inserting another. An incomplete
 pending item is removed and is not silently retried. Unknown provider outcomes
 remain unconfirmed. Capture and edit receipts are retained; saving a new edit
-does not evict older receipts.
+does not evict older receipts. A confirmed edit-save receipt stays successful
+after the user renames or deletes the resulting copy.

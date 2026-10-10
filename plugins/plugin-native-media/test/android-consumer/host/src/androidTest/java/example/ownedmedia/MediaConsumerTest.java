@@ -159,6 +159,11 @@ public final class MediaConsumerTest {
       edits.close();
       assertEquals(copy.getString("id"),
           new OwnedPhotoEdits(context, config).result(session).getString("id"));
+      assertEquals(1, resolver.delete(item(copy.getString("id")), null, null));
+      JSONObject pastSave = new OwnedPhotoEdits(context, config).result(session);
+      assertEquals("saved", pastSave.getString("status"));
+      assertEquals(copy.getString("id"), pastSave.getString("id"));
+      assertEquals(initial + 1, count(resolver, context.getPackageName()));
     } finally {
       edits.close();
       resolver.delete(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "owner_package_name=?",

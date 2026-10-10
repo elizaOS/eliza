@@ -213,6 +213,10 @@ public final class OwnedPhotoEdits {
     if (record == null)
       return receipt("not-started", token, null);
     JSONObject saved = new JSONObject(record);
+    boolean published = saved.optString("status").equals("saved");
+    String savedId = saved.optString("id", null);
+    if (published && savedId != null)
+      return receipt("saved", token, source(savedId));
     // The deterministic owned display name closes publish→receipt crash ambiguity.
     try (Cursor row = resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
              new String[] {"_id", "is_pending"}, "owner_package_name=? AND _display_name=?",
@@ -226,11 +230,14 @@ public final class OwnedPhotoEdits {
           throw new IllegalStateException("Ambiguous saved copy; inspect Photos before retrying");
         row.moveToFirst();
         if (row.getInt(1) == 0) {
-          saved.put("status", "saved");
+          saved.put("status", "saved").put("id", Long.toString(ContentUris.parseId(copy)));
           if (!journal.edit().putString(token, saved.toString()).commit())
             throw new IOException("Saved-copy receipt could not be persisted");
           return receipt("saved", token, copy);
         }
+        // A previously confirmed save remains a historical success, even if its item changed.
+        if (published)
+          return receipt("saved", token, null);
         if (resolver.delete(copy, "is_pending=1", null) != 1)
           throw new IOException("Pending copy cleanup was not confirmed");
         saved.put("status", "failed");
@@ -239,6 +246,8 @@ public final class OwnedPhotoEdits {
         return receipt("failed", token, null);
       }
     }
+    if (published)
+      return receipt("saved", token, null);
     saved.put("status", "failed");
     if (!journal.edit().putString(token, saved.toString()).commit())
       throw new IOException();
@@ -291,7 +300,7 @@ public final class OwnedPhotoEdits {
       if (resolver.update(copy, values, null, null) != 1)
         throw new IOException("Copy publication was not confirmed");
       // Never delete a published copy merely because its receipt write failed.
-      saveReceipt.put("status", "saved");
+      saveReceipt.put("status", "saved").put("id", Long.toString(ContentUris.parseId(copy)));
       journal.edit().putString(token, saveReceipt.toString()).commit();
       return receipt("saved", token, copy);
     } catch (Exception failure) {
