@@ -99,11 +99,20 @@ export async function readHostedNativeSource(
   owner: string,
   selected: HostedNativeSelection,
   occurrence: string,
-  signal: AbortSignal
+  signal: AbortSignal,
+  template: 'morning' | 'evening' = 'morning'
 ) {
   const grant = await assertHostedNativeSource(runtime, owner, selected);
   signal.throwIfAborted();
-  const snapshot = digestRecord(await nativeReader!({ ...selected, action: 'read', occurrence }));
+  // The morning request shape is unchanged; only an evening read names its window.
+  const snapshot = digestRecord(
+    await nativeReader!({
+      ...selected,
+      action: 'read',
+      occurrence,
+      ...(template === 'evening' ? { template } : {}),
+    })
+  );
   signal.throwIfAborted();
   await assertHostedNativeSource(runtime, owner, selected);
   if (
@@ -112,9 +121,20 @@ export async function readHostedNativeSource(
     snapshot.occurrence !== occurrence ||
     !Array.isArray(snapshot.events) ||
     !Array.isArray(snapshot.reminders) ||
-    !Number.isFinite(Date.parse(String(snapshot.observedAt)))
+    !Number.isFinite(Date.parse(String(snapshot.observedAt))) ||
+    (template === 'evening'
+      ? snapshot.template !== 'evening'
+      : snapshot.template !== undefined && snapshot.template !== 'morning')
   )
     throw new WorkflowApiError('Native source result binding changed', 409);
+  // Morning reads list open reminders only; completed-today rows belong to the evening window.
+  if (
+    snapshot.reminders.some((value) => {
+      const status = digestRecord(value).status;
+      return status === 'cancelled' || (template !== 'evening' && status === 'completed');
+    })
+  )
+    throw new WorkflowApiError('Native source result exceeds reviewed selection', 409);
   const scope = digestRecord(grant.scope);
   if (
     snapshot.timeZone !== scope.timeZone ||

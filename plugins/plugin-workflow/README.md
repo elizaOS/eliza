@@ -69,3 +69,19 @@ Notes and Calendar read scopes must match a previously selected draft scope;
 model-supplied device identities, source code and activation are rejected. An
 unsupported request returns a clarification error. Saving remains a separate,
 explicit typed mutation. This endpoint does not enable mobile workflow execution.
+
+### Scheduled native briefs
+
+A trusted host can provide selected Calendar events and reminders for morning
+and evening briefs through `configureHostedNativeSourceReader`. Evening read
+requests and responses include `template: "evening"`; morning requests retain
+the existing shape. The host must restrict completed reminders to the selected
+evening window. A completed status is not evidence of appointment attendance.
+
+The status route advertises `hostedNativeEveningProtocol: 1` when a native reader
+is installed, and `hostedDigestSourcePauseProtocol: 1` for schedule suspension.
+Loop listings report `sourceState` as `current`, `expired`, or `revoked`. A trigger
+with an expired or revoked source records an unavailable result and removes the
+schedule without reading fresh source data. Schedule reconciliation also removes
+lapsed schedules. Saving the loop with a new reviewed source revision re-arms
+the schedule.
