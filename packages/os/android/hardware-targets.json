@@ -2,6 +2,29 @@
   "schemaVersion": 1,
   "targets": [
     {
+      "targetId": "pixel10a-stallion",
+      "marketingName": "Pixel 10a",
+      "manufacturer": "Google",
+      "codenames": ["stallion"],
+      "reviewedAt": "2026-10-09",
+      "authoritativeReferences": [
+        "https://grapheneos.org/build",
+        "https://grapheneos.org/install/cli",
+        "https://github.com/GrapheneOS/platform_manifest/tree/2026100600",
+        "https://developers.google.com/android/images"
+      ],
+      "aospLockPath": "android/pixel10a.lock.json",
+      "sourceStatus": "blocked",
+      "installerEligible": false,
+      "labExperimentsEligible": false,
+      "blockedReasons": [
+        "The lock pins the GrapheneOS platform source for Eliza integration; an Eliza stallion product has not been built or booted.",
+        "Production agent execution and SELinux policy, private release signing, AVB key enrollment, and firmware installation are not yet qualified.",
+        "No physical stallion boot, hardware, OTA, or stock restoration evidence exists."
+      ],
+      "decisionNote": "Keep the Eliza product and runtime on the pinned GrapheneOS device/platform base. This source lock does not add an executable installer target or authorize a firmware transition. Pixel 11 Pro grizzly inputs must not be used on stallion."
+    },
+    {
       "targetId": "pixel11pro-grizzly",
       "marketingName": "Pixel 11 Pro",
       "manufacturer": "Google",

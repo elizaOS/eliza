@@ -632,7 +632,14 @@ export function bootstrapAosp({
   assertRemoteManifestTag(lock);
   run(
     repoBin,
-    ["init", "-u", lock.manifestUrl, "-b", lock.manifestRevision, "--depth=1"],
+    [
+      "init",
+      "-u",
+      lock.manifestUrl,
+      "-b",
+      `refs/tags/${lock.manifestRevision}`,
+      "--depth=1",
+    ],
     { cwd: aospRoot },
   );
   assertPinnedAospCheckout(aospRoot, lock, { requireProjects: false });
