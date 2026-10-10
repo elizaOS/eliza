@@ -235,6 +235,12 @@ class DocumentsSearchModeError extends Error {
     this.name = "DocumentsSearchModeError";
   }
 }
+class DocumentsTimeRangeError extends Error {
+  constructor(message = "Invalid timeRange value") {
+    super(message);
+    this.name = "DocumentsTimeRangeError";
+  }
+}
 function parseSearchMode(value: unknown): DocumentSearchMode | undefined {
   if (value == null || value === "") {
     return undefined;
@@ -247,10 +253,22 @@ function parseSearchMode(value: unknown): DocumentSearchMode | undefined {
 function parseTimestampParam(value: unknown): number | undefined {
   const trimmed = trimString(value);
   if (!trimmed) return undefined;
-  const numeric = Number(trimmed);
-  if (Number.isFinite(numeric)) return numeric;
-  const parsed = Date.parse(trimmed);
-  return Number.isFinite(parsed) ? parsed : undefined;
+  // Canonical epoch-ms only: Number("0x10") is 16, Number("1e5") is 100000,
+  // and Number("-5") is -5 — all silently reinterpreted the caller's time
+  // window instead of rejecting it.
+  if (/^\d+$/.test(trimmed)) {
+    const epochMs = Number(trimmed);
+    if (Number.isSafeInteger(epochMs)) return epochMs;
+  } else if (/^\d{4}-\d{2}-\d{2}(?:[T\s].*)?$/.test(trimmed)) {
+    // Only ISO-shaped timestamps reach Date.parse: Date.parse("-5") and
+    // Date.parse("9.5") are implementation-defined and must not become a
+    // silent time filter (V8 parses "-5" as 2001-04-30).
+    const parsed = Date.parse(trimmed);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  // A present-but-malformed value used to silently drop the filter
+  // (unbounded search); it is now a 400 via DocumentsTimeRangeError.
+  throw new DocumentsTimeRangeError();
 }
 function parseTagsFromSearchParams(searchParams: URLSearchParams): string[] {
   const values = [
@@ -307,6 +325,23 @@ function filtersFromSearchParams(
     ...(mediaFormat ? { mediaFormat } : {}),
     ...(knowledgeFacet ? { knowledgeFacet } : {}),
   };
+}
+function filtersFromSearchParamsOr400(
+  url: URL,
+  res: RouteRequestContext["res"],
+  error: RouteRequestContext["error"],
+  options: { includeTextQuery?: boolean } = {},
+): DocumentFilter | undefined {
+  try {
+    return filtersFromSearchParams(url, options);
+  } catch (timeRangeError) {
+    // error-policy:J1 invalid query values become an HTTP 400 response.
+    if (timeRangeError instanceof DocumentsTimeRangeError) {
+      error(res, timeRangeError.message, 400);
+      return undefined;
+    }
+    throw timeRangeError;
+  }
 }
 function filtersFromUploadBody(
   body: {
@@ -752,7 +787,10 @@ export async function handleDocumentsRoutes(
     // (#13594). The facet param itself is dropped inside countDocumentFacets so
     // every bucket is counted; the remaining scope/room/tag/search filters are
     // honored so the counts describe the current narrowing.
-    const filters = filtersFromSearchParams(url, { includeTextQuery: true });
+    const filters = filtersFromSearchParamsOr400(url, res, error, {
+      includeTextQuery: true,
+    });
+    if (!filters) return true;
     if (!documentsService.listAllDocumentsWithAccessContext) {
       error(res, "Canonical document authorization is unavailable", 503);
       return true;
@@ -774,7 +812,10 @@ export async function handleDocumentsRoutes(
   if (method === "GET" && pathname === "/api/documents") {
     const limit = parsePositiveInteger(url.searchParams.get("limit"), 100);
     const offset = parsePositiveInteger(url.searchParams.get("offset"), 0);
-    const filters = filtersFromSearchParams(url, { includeTextQuery: true });
+    const filters = filtersFromSearchParamsOr400(url, res, error, {
+      includeTextQuery: true,
+    });
+    if (!filters) return true;
     if (
       !documentsService.listAllDocumentsWithAccessContext ||
       !documentsService.listDocumentFragmentsWithAccessContext
@@ -835,7 +876,8 @@ export async function handleDocumentsRoutes(
       max: 1,
     });
     const limit = parsePositiveInteger(url.searchParams.get("limit"), 20);
-    const filters = filtersFromSearchParams(url);
+    const filters = filtersFromSearchParamsOr400(url, res, error);
+    if (!filters) return true;
     const requestedSearchMode = url.searchParams.getAll("searchMode");
     if (requestedSearchMode.length > 1) {
       error(res, "Invalid searchMode", 400);
