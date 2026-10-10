@@ -1,4 +1,7 @@
 {
+  "plugin-native-action-journal": {
+    "kind": "host-configured-library"
+  },
   "plugin-native-agent": {
     "name": "Agent",
     "class": "ai.eliza.plugins.agent.AgentPlugin"

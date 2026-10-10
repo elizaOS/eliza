@@ -49,7 +49,8 @@ an org.json jar (`ELIZA_ORG_JSON_JAR`, or the Gradle cache copy) and runs synthe
 checks. A Java or APK build is not device acceptance; a host's own instrumentation must
 cover its storage, lifecycle and recovery paths.
 
-The checked-in `test/android-consumer` host uses the existing `JsonCredentialSlots` store
+The native-plugin lane and checked-in `test/android-consumer` host share the same
+Android test source and use the existing `JsonCredentialSlots` store
 and Android Keystore. Set `CAPACITOR_ANDROID_DIR` and `ANDROID_HOME`, then build the fixture
 with Gradle (`:host:assembleDebug :host:assembleDebugAndroidTest :host:assembleRelease`).
 Run `example.actionjournal.host.test/androidx.test.runner.AndroidJUnitRunner` on a test

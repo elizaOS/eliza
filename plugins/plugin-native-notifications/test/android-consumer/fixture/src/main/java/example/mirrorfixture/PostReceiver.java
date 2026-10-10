@@ -9,6 +9,11 @@ public final class PostReceiver extends BroadcastReceiver {
     String nonce = i.getStringExtra("nonce");
     if (nonce == null || !UUID.fromString(nonce).toString().equals(nonce))
       throw new IllegalArgumentException("Exact fixture nonce required");
+    // Android 15 can classify UUID digits as a one-time code and redact the
+    // entire preview. Keep the exact routing nonce, but use letters in content.
+    String marker = nonce;
+    for (int digit = 0; digit < 10; digit++)
+      marker = marker.replace((char) ('0' + digit), (char) ('g' + digit));
     NotificationManager manager = c.getSystemService(NotificationManager.class);
     if ("clear".equals(i.getStringExtra("operation"))) {
       manager.cancelAll();
@@ -20,8 +25,8 @@ public final class PostReceiver extends BroadcastReceiver {
       manager.notify(nonce, id,
           new Notification.Builder(c, nonce)
               .setGroup(nonce).setSmallIcon(android.R.drawable.ic_dialog_info)
-              .setContentTitle("Synthetic " + nonce + " " + id)
-              .setContentText("Canary " + nonce)
+              .setContentTitle("Synthetic " + marker)
+              .setContentText("Canary " + marker)
               .setVisibility(
                   id == 2 ? Notification.VISIBILITY_SECRET : Notification.VISIBILITY_PUBLIC)
               .build());
