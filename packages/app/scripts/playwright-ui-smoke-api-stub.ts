@@ -4040,19 +4040,6 @@ const server = http.createServer(async (req, res) => {
 
   if (
     req.method === "GET" &&
-    url.pathname === "/api/coding-agents/coordinator/status"
-  ) {
-    sendJson(req, res, 200, {
-      supervisionLevel: "autonomous",
-      taskCount: 0,
-      tasks: [],
-      pendingConfirmations: 0,
-    });
-    return;
-  }
-
-  if (
-    req.method === "GET" &&
     url.pathname === "/api/coding-agents/coordinator/threads"
   ) {
     sendJson(req, res, 200, { threads: [], total: 0 });
