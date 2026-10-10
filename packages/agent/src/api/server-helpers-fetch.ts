@@ -28,7 +28,12 @@ export function responseContentLength(
 ): number | null {
   const raw = headers.get("content-length");
   if (!raw) return null;
-  const parsed = Number.parseInt(raw, 10);
+  // Number.parseInt stops at the first non-digit, so "123junk" parsed to a
+  // finite 123 and was accepted as a declared length instead of being
+  // treated as unknown. Require the whole trimmed value to be decimal,
+  // mirroring resolveGenerationTimeoutMs in the discord plugin.
+  const text = raw.trim();
+  const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
   if (!Number.isFinite(parsed) || parsed < 0) return null;
   return parsed;
 }
