@@ -414,7 +414,14 @@ export async function handleDeviceActionRoutes(
           ? failure instanceof DeviceActionError &&
             failure.code === "DEVICE_STORE_UNAVAILABLE"
           : !(failure instanceof ElizaError) &&
-            !(failure instanceof Error && failure.name === "AbortError");
+            !(failure instanceof Error && failure.name === "AbortError") &&
+            // A stopped turn (core TurnAbortedError) is a retirement, not a
+            // store failure: the user cancelled, so the reply must not stay
+            // retryable.
+            !(
+              failure instanceof Error &&
+              (failure as { code?: unknown }).code === "TURN_ABORTED"
+            );
         if (!storeFailure)
           tracker.abort(
             cause instanceof Error
