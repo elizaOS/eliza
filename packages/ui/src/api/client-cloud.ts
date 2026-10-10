@@ -2728,7 +2728,7 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
 ElizaClient.prototype.ensureCloudCompatManagedDiscordAgent = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/cloud/v1/app/discord/gateway-agent", {
+  return this.fetch("/api/cloud/v1/eliza/discord/gateway-agent", {
     method: "POST",
   });
 };
@@ -2823,14 +2823,14 @@ ElizaClient.prototype.getCloudCompatAgentManagedDiscord = async function (
   agentId,
 ) {
   return this.fetch(
-    `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/discord`,
+    `/api/cloud/v1/eliza/agents/${encodeURIComponent(agentId)}/discord`,
   );
 };
 
 ElizaClient.prototype.createCloudCompatAgentManagedDiscordOauth =
   async function (this: ElizaClient, agentId, request = {}) {
     return this.fetch(
-      `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/discord/oauth`,
+      `/api/cloud/v1/eliza/agents/${encodeURIComponent(agentId)}/discord/oauth`,
       {
         method: "POST",
         body: JSON.stringify(request),
@@ -2841,7 +2841,7 @@ ElizaClient.prototype.createCloudCompatAgentManagedDiscordOauth =
 ElizaClient.prototype.disconnectCloudCompatAgentManagedDiscord =
   async function (this: ElizaClient, agentId) {
     return this.fetch(
-      `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/discord`,
+      `/api/cloud/v1/eliza/agents/${encodeURIComponent(agentId)}/discord`,
       {
         method: "DELETE",
       },
@@ -2876,7 +2876,7 @@ ElizaClient.prototype.getCloudCompatAgentManagedGithub = async function (
   agentId,
 ) {
   return this.fetch(
-    `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/github`,
+    `/api/cloud/v1/eliza/agents/${encodeURIComponent(agentId)}/github`,
   );
 };
 
@@ -2884,7 +2884,7 @@ ElizaClient.prototype.createCloudCompatAgentManagedGithubOauth =
   async function (this: ElizaClient, agentId, request = {}) {
     try {
       return await this.fetch(
-        `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/github/oauth`,
+        `/api/cloud/v1/eliza/agents/${encodeURIComponent(agentId)}/github/oauth`,
         {
           method: "POST",
           body: JSON.stringify(request),
@@ -2927,7 +2927,7 @@ ElizaClient.prototype.linkCloudCompatAgentManagedGithub = async function (
   connectionId,
 ) {
   return this.fetch(
-    `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/github/link`,
+    `/api/cloud/v1/eliza/agents/${encodeURIComponent(agentId)}/github/link`,
     {
       method: "POST",
       body: JSON.stringify({ connectionId }),
@@ -2940,7 +2940,7 @@ ElizaClient.prototype.disconnectCloudCompatAgentManagedGithub = async function (
   agentId,
 ) {
   return this.fetch(
-    `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/github`,
+    `/api/cloud/v1/eliza/agents/${encodeURIComponent(agentId)}/github`,
     {
       method: "DELETE",
     },
@@ -3019,7 +3019,7 @@ ElizaClient.prototype.getCloudCompatAgentGithubToken = async function (
   agentId,
 ) {
   return this.fetch(
-    `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/github/token`,
+    `/api/cloud/v1/eliza/agents/${encodeURIComponent(agentId)}/github/token`,
   );
 };
 
