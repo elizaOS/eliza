@@ -54,6 +54,7 @@ import {
   NATIVE_TOKEN_ADDRESS,
   TX_CONFIRMATION_TIMEOUT_MS,
 } from "../constants";
+import { parseEvmBaseUnits } from "../exact-units";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
 import {
   type ChainBalanceState,
@@ -251,15 +252,18 @@ export class SwapAction {
       });
       fromTokenDecimals = Number(decimals);
     }
+    // Parsed here, outside the per-aggregator catch blocks, so an amount the
+    // token cannot hold is refused instead of reported as "No routes found".
+    const fromAmount = parseEvmBaseUnits(params.amount, fromTokenDecimals).toString();
     const quotesPromises: Promise<SwapQuote | undefined>[] = [
-      this.getLifiQuote(fromAddress, params, fromTokenDecimals, slippage),
+      this.getLifiQuote(fromAddress, params, fromAmount, slippage),
       // The current Bebop request does not carry an enforceable slippage
       // bound. Keep it available for the legacy default path, but never let
       // it win a quote the user confirmed with an explicit tolerance.
       ...(params.slippageBps === undefined
-        ? [this.getBebopQuote(fromAddress, params, fromTokenDecimals)]
+        ? [this.getBebopQuote(fromAddress, params, fromAmount)]
         : []),
-      this.getKyberSwapQuote(fromAddress, params, fromTokenDecimals, slippage),
+      this.getKyberSwapQuote(fromAddress, params, fromAmount, slippage),
     ];
     const quotesResults = await Promise.all(quotesPromises);
     const sortedQuotes = quotesResults.filter((quote): quote is SwapQuote => quote !== undefined);
@@ -272,7 +276,7 @@ export class SwapAction {
   private async getLifiQuote(
     fromAddress: Address,
     params: SwapParams,
-    fromTokenDecimals: number,
+    fromAmount: string,
     slippage: number = DEFAULT_SLIPPAGE_PERCENT
   ): Promise<SwapQuote | undefined> {
     try {
@@ -281,7 +285,7 @@ export class SwapAction {
         toChainId: this.walletProvider.getChainConfigs(params.chain).id,
         fromTokenAddress: params.fromToken,
         toTokenAddress: params.toToken,
-        fromAmount: parseUnits(params.amount, fromTokenDecimals).toString(),
+        fromAmount,
         fromAddress,
         options: {
           slippage,
@@ -307,7 +311,7 @@ export class SwapAction {
   private async getBebopQuote(
     fromAddress: Address,
     params: SwapParams,
-    fromTokenDecimals: number
+    fromAmount: string
   ): Promise<SwapQuote | undefined> {
     try {
       const chainName = BEBOP_CHAIN_MAP[params.chain] ?? params.chain;
@@ -318,7 +322,7 @@ export class SwapAction {
       const reqParams = new URLSearchParams({
         sell_tokens: resolvedFromToken,
         buy_tokens: resolvedToToken,
-        sell_amounts: parseUnits(params.amount, fromTokenDecimals).toString(),
+        sell_amounts: fromAmount,
         taker_address: fromAddress,
         approval_type: "Standard",
         skip_validation: "true",
@@ -344,7 +348,7 @@ export class SwapAction {
       }
       const route: BebopRoute = {
         data: quoteTx.data,
-        sellAmount: parseUnits(params.amount, fromTokenDecimals).toString(),
+        sellAmount: fromAmount,
         approvalTarget: firstRoute.quote.approvalTarget as Address,
         from: quoteTx.from as Address,
         value: quoteTx.value?.toString() ?? "0",
@@ -383,7 +387,7 @@ export class SwapAction {
   private async getKyberSwapQuote(
     fromAddress: Address,
     params: SwapParams,
-    fromTokenDecimals: number,
+    fromAmount: string,
     slippage: number
   ): Promise<SwapQuote | undefined> {
     try {
@@ -393,11 +397,10 @@ export class SwapAction {
         params.fromToken === NATIVE_TOKEN_ADDRESS ? KYBERSWAP_NATIVE_SENTINEL : params.fromToken;
       const toToken =
         params.toToken === NATIVE_TOKEN_ADDRESS ? KYBERSWAP_NATIVE_SENTINEL : params.toToken;
-      const amountIn = parseUnits(params.amount, fromTokenDecimals).toString();
       const url = new URL(`https://aggregator-api.kyberswap.com/${chainSlug}/api/v1/routes`);
       url.searchParams.set("tokenIn", fromToken);
       url.searchParams.set("tokenOut", toToken);
-      url.searchParams.set("amountIn", amountIn);
+      url.searchParams.set("amountIn", fromAmount);
       url.searchParams.set("gasInclude", "true");
       url.searchParams.set("source", "elizaos");
       const res = await fetch(url.toString(), {
@@ -422,7 +425,7 @@ export class SwapAction {
           chainSlug,
           fromToken,
           toToken,
-          amountIn,
+          amountIn: fromAmount,
           slippageBps,
           fromAddress,
         } satisfies KyberSwapRouteData,
