@@ -129,7 +129,9 @@ function getExpectedEmbeddingDimensions(
           // parsed to 1536 and was accepted as a deliberate setting instead
           // of being ignored. Require the whole trimmed value to be decimal,
           // mirroring resolveGenerationTimeoutMs in the discord plugin.
-          (/^\+?\d+$/.test(raw.trim()) ? Number(raw.trim()) : Number.NaN)
+          /^\+?\d+$/.test(raw.trim())
+          ? Number(raw.trim())
+          : Number.NaN
         : Number.NaN;
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
