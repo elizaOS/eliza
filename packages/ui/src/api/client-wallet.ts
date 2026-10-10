@@ -359,7 +359,12 @@ ElizaClient.prototype.getStewardHistory = async function (
   return this.fetch(`/api/wallet/steward-tx-records${qs ? `?${qs}` : ""}`);
 };
 ElizaClient.prototype.getStewardPending = async function (this: ElizaClient) {
-  return this.fetch("/api/wallet/steward-pending-approvals");
+  // The route returns a paginated page ({ approvals, total, offset, limit });
+  // callers use the approvals array.
+  const res = await this.fetch<
+    StewardPendingResponse | { approvals?: StewardPendingResponse }
+  >("/api/wallet/steward-pending-approvals");
+  return Array.isArray(res) ? res : (res.approvals ?? []);
 };
 ElizaClient.prototype.approveStewardTx = async function (
   this: ElizaClient,
