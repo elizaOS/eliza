@@ -103,6 +103,16 @@ app.post("/", async (c) => {
       userId: agent.user_id,
       stateLossAcknowledged,
     });
+    if (enqueue.created) {
+      void provisioningJobService.triggerImmediate(c.env).catch((error) => {
+        // error-policy:J7 the durable job remains visible to the polling worker.
+        logger.warn("[service-api] Restart worker nudge failed", {
+          agentId,
+          jobId: enqueue.job.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    }
 
     const existingJobCarriesWaiver =
       (enqueue.job.data as { stateLossAcknowledged?: unknown } | null)
