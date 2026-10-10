@@ -64,7 +64,7 @@ export async function findFirstAvailableLoopbackPort(
 ): Promise<number> {
 	const host = options?.host ?? "127.0.0.1";
 	const maxHops = options?.maxHops ?? 64;
-	if (!Number.isFinite(preferred) || preferred < 1 || preferred > 65535) {
+	if (!Number.isInteger(preferred) || preferred < 1 || preferred > 65535) {
 		throw new Error(`Invalid preferred port: ${preferred}`);
 	}
 	for (let i = 0; i < maxHops; i++) {
