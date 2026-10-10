@@ -48,3 +48,8 @@ Use `--output-root /absolute/reports` to retain reports outside an immutable sou
 checkout. Otherwise reports remain under the repository test-results directory.
 A deferred process cleanup also retains its owned user for explicit recovery;
 never remove that user based only on an interrupted ADB client.
+
+The recovery flow also exercises the options journal against the real provider:
+two instances concurrently create one recurring event, CalendarProvider expands
+both one-hour occurrences, and a lost options receipt recovers without another
+insert. Invalid UNTIL dates are refused before the provider call.
