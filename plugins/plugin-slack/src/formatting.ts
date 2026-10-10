@@ -225,10 +225,18 @@ function convertCodeBlocks(text: string, codeSink: string[]): string {
   return out.join("");
 }
 
+/** Holds `body` aside until `restoreCodeBlocks` and returns its sentinel. */
+function holdAside(body: string, codeSink: string[]): string {
+  codeSink.push(body);
+  return `${CODE_SENTINEL_PREFIX}${codeSink.length - 1}${CODE_SENTINEL_SUFFIX}`;
+}
+
 /**
- * Converts markdown links to Slack mrkdwn links
+ * Converts markdown links to Slack mrkdwn links. The finished token is held
+ * aside so the style passes cannot rewrite `*` in its URL (`a*b*c` became
+ * `a_b_c`, a different address); the label gets the style passes here.
  */
-function convertLinks(text: string): string {
+function convertLinks(text: string, codeSink: string[]): string {
   // The URL group tolerates one level of balanced parentheses, as the
   // Telegram converter does: a plain [^)]+ capture cuts a Wikipedia-style
   // URL at its inner closing paren and leaves a malformed link token.
@@ -242,10 +250,26 @@ function convertLinks(text: string): string {
         trimmedText === trimmedUrl ||
         trimmedText === trimmedUrl.replace(/^mailto:/, "")
       ) {
-        return `<${escapeSlackLinkUrl(trimmedUrl)}>`;
+        return holdAside(`<${escapeSlackLinkUrl(trimmedUrl)}>`, codeSink);
       }
-      return `<${escapeSlackLinkUrl(trimmedUrl)}|${escapeSlackMrkdwnSegment(trimmedText)}>`;
+      const label = convertStrikethrough(
+        convertItalic(convertBold(escapeSlackMrkdwnSegment(trimmedText))),
+      );
+      return holdAside(
+        `<${escapeSlackLinkUrl(trimmedUrl)}|${label}>`,
+        codeSink,
+      );
     },
+  );
+}
+
+/**
+ * Holds inline code spans aside like fenced bodies, so the style passes leave
+ * `a*b*c` and `**kwargs` as written. A span never takes in a held sentinel.
+ */
+function convertInlineCode(text: string, codeSink: string[]): string {
+  return text.replace(new RegExp(`\`[^\`\n${CODE_DELIM}]+\``, "g"), (span) =>
+    holdAside(escapeSlackMrkdwnSegment(span), codeSink),
   );
 }
 
@@ -297,11 +321,13 @@ export function markdownToSlackMrkdwn(markdown: string): string {
     return "";
   }
 
-  // Process in order: code blocks -> links -> headings -> text styles -> escape.
-  // Fenced bodies are held aside for the whole pipeline and restored last.
+  // Process in order: code blocks -> links -> inline code -> headings -> text
+  // styles -> escape. Fenced bodies, links, and inline code are held aside for
+  // the whole pipeline and restored last.
   const codeSink: string[] = [];
   let result = convertCodeBlocks(stripSentinelDelimiters(markdown), codeSink);
-  result = convertLinks(result);
+  result = convertLinks(result, codeSink);
+  result = convertInlineCode(result, codeSink);
   result = convertHeadings(result);
   result = convertBold(result);
   result = convertItalic(result);
