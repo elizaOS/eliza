@@ -2347,8 +2347,6 @@
   "conversations.manageConnections": "管理",
   "conversations.minutesAgo": "{{count}}分前",
   "conversations.newChat": "+ 新しいチャット",
-  "conversations.newTerminal": "新しいターミナル",
-  "conversations.newTerminalFailed": "ターミナルを起動できませんでした: {{message}}",
   "conversations.noMatchingChats": "検索に一致するチャットがありません",
   "conversations.none": "会話はまだありません",
   "conversations.noneApp": "チャットはまだありません",

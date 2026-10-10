@@ -915,9 +915,6 @@ declare module "./client-base.js" {
       sessionId: string,
       name?: string,
     ): Promise<CodingAgentScratchWorkspace | null>;
-    spawnShellSession(workdir?: string): Promise<{
-      sessionId: string;
-    }>;
     /**
      * Spawn an interactive PTY session (a real CLI in the web terminal) via
      * `@elizaos/plugin-pty`'s `POST /api/pty/sessions`. Default `kind`
@@ -3715,21 +3712,6 @@ ElizaClient.prototype.promoteCodingAgentScratchWorkspace = async function (
     // failed" signal in this contract; never fake a workspace record.
     return null;
   }
-};
-ElizaClient.prototype.spawnShellSession = async function (
-  this: ElizaClient,
-  workdir?: string,
-) {
-  const res = await this.fetch<{
-    sessionId: string;
-  }>("/api/coding-agents/spawn", {
-    method: "POST",
-    body: JSON.stringify({
-      agentType: "shell",
-      ...(workdir ? { workdir } : {}),
-    }),
-  });
-  return { sessionId: res.sessionId };
 };
 ElizaClient.prototype.spawnPtySession = async function (
   this: ElizaClient,

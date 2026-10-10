@@ -2750,8 +2750,6 @@
   "conversations.muteServer": "Mute server",
   "conversations.muteServerDuration": "Mute server duration",
   "conversations.newChat": "+ New Chat",
-  "conversations.newTerminal": "New terminal",
-  "conversations.newTerminalFailed": "Failed to start terminal: {{message}}",
   "conversations.noMatchingChats": "No chats match your search",
   "conversations.none": "No conversations yet",
   "conversations.noneApp": "No chats yet",
