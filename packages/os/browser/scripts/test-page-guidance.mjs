@@ -29,7 +29,7 @@ const server = createServer((req, res) => {
     // The step's control is below the visible page; a Pay button sits where
     // the label would go under the date field.
     res.end(
-      '<!doctype html><style>body{margin:0;height:3000px;font:22px Arial}button,input{position:absolute;font:22px Arial;padding:16px}</style><input id="date" aria-label="Payment date" style="left:40px;top:40px"><button id="pay" style="left:40px;top:130px">Pay now</button><button id="far" style="left:40px;top:2200px">Account details</button>',
+      '<!doctype html><style nonce="c3R5bGU=">body{margin:0;height:3000px;font:22px Arial}button,input{position:absolute;font:22px Arial;padding:16px}</style><input id="date" aria-label="Payment date" style="left:40px;top:40px"><button id="pay" style="left:40px;top:130px">Pay now</button><button id="far" style="left:40px;top:2200px">Account details</button>',
     );
     return;
   }
