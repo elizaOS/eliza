@@ -15,11 +15,13 @@ if (!process.env.ELIZA_BROWSER_EXECUTABLE)
   throw new Error("Set ELIZA_BROWSER_EXECUTABLE");
 const server = createServer((req, res) => {
   res.setHeader("Content-Type", "text/html");
+  const styles = "style-src 'nonce-c3R5bGU='; style-src-attr 'unsafe-inline'";
+  res.setHeader("Content-Security-Policy", styles);
   if (req.url === "/labels") {
     // A strict font policy must not block the overlay's bundled font bytes.
-    res.setHeader("Content-Security-Policy", "font-src 'none'");
+    res.setHeader("Content-Security-Policy", `${styles}; font-src 'none'`);
     res.end(
-      '<!doctype html><style>body{margin:0;font:22px Arial}button,input{position:absolute;font:22px Arial;padding:16px}</style><button id="first" style="left:40px;top:40px">First step</button><input id="email" aria-label="Email" style="left:600px;top:40px"><button id="last" style="left:40px;top:520px">Last step</button><script>window.pageClicks=[];document.addEventListener("click",e=>window.pageClicks.push({target:e.target.nodeName,path:e.composedPath().map(n=>n.nodeName||"window")}),true)</script>',
+      '<!doctype html><style nonce="c3R5bGU=">body{margin:0;font:22px Arial}button,input{position:absolute;font:22px Arial;padding:16px}</style><button id="first" style="left:40px;top:40px">First step</button><input id="email" aria-label="Email" style="left:600px;top:40px"><button id="last" style="left:40px;top:520px">Last step</button><script>window.pageClicks=[];document.addEventListener("click",e=>window.pageClicks.push({target:e.target.nodeName,path:e.composedPath().map(n=>n.nodeName||"window")}),true)</script>',
     );
     return;
   }
@@ -27,12 +29,12 @@ const server = createServer((req, res) => {
     // The step's control is below the visible page; a Pay button sits where
     // the label would go under the date field.
     res.end(
-      '<!doctype html><style>body{margin:0;height:3000px;font:22px Arial}button,input{position:absolute;font:22px Arial;padding:16px}</style><input id="date" aria-label="Payment date" style="left:40px;top:40px"><button id="pay" style="left:40px;top:130px">Pay now</button><button id="far" style="left:40px;top:2200px">Account details</button>',
+      '<!doctype html><style nonce="c3R5bGU=">body{margin:0;height:3000px;font:22px Arial}button,input{position:absolute;font:22px Arial;padding:16px}</style><input id="date" aria-label="Payment date" style="left:40px;top:40px"><button id="pay" style="left:40px;top:130px">Pay now</button><button id="far" style="left:40px;top:2200px">Account details</button>',
     );
     return;
   }
   res.end(
-    '<!doctype html><style>body{height:2400px;font:22px system-ui}button{margin:100px 20px;padding:20px}</style><button id="target">Continue on this website</button><input type="password" value="private-secret"><p>Provider content</p>',
+    '<!doctype html><style nonce="c3R5bGU=">body{height:2400px;font:22px system-ui}button{margin:100px 20px;padding:20px}</style><button id="target">Continue on this website</button><input type="password" value="private-secret"><p>Provider content</p>',
   );
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));

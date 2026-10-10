@@ -89,12 +89,25 @@ export function createCommandHandler(api) {
     const key = bindingKey(binding.tabId);
     const previous =
       bindings.get(binding.tabId) || (await api.storage.local.get(key))[key];
+    // The host renews an expired lease without changing task authorization.
+    // A newer binding revision may do that only for the identical live scope;
+    // a revoked binding still needs a new epoch and cannot be revived here.
+    const renewal =
+      previous &&
+      !previous.revoked &&
+      !binding.revoked &&
+      previous.expiresAt <= Date.now() &&
+      contextKeys.every((key) => binding[key] === previous[key]) &&
+      binding.origin === previous.origin &&
+      binding.assistantName === previous.assistantName &&
+      JSON.stringify(binding.targets) === JSON.stringify(previous.targets);
     if (
       !current() ||
       (previous &&
         (binding.bindingRevision <= previous.bindingRevision ||
           (previous.taskId === binding.taskId &&
-            binding.epoch <= previous.epoch)))
+            (binding.epoch < previous.epoch ||
+              (binding.epoch === previous.epoch && !renewal)))))
     )
       throw blocked();
     const next = structuredClone(binding);

@@ -149,7 +149,8 @@ try {
         tabId: "1",
         bindingRevision: context.epoch + 1,
         origin,
-        expiresAt: Date.now() + 60000,
+        // This long walkthrough tests expiry separately below.
+        expiresAt: Date.now() + 300000,
         targets,
         revoked: false,
         ...extra,
@@ -497,7 +498,8 @@ try {
   };
   const approvedAction = await startAction();
   await waitPointer();
-  assert.equal((await approvedAction.pending).ok, true);
+  const approvedReply = await approvedAction.pending;
+  assert.equal(approvedReply.ok, true, JSON.stringify(approvedReply));
   assert.equal(await page.evaluate(() => window.clicks), 1);
   assert.equal(await pointerVisible(), false);
   await page.setViewport({ width: 640, height: 960 });
@@ -597,6 +599,35 @@ try {
   );
   const restored = await showStep({ restore: true });
   assert.equal(restored.result.dismissed, false);
+  // Expiry renews the same authorization; it must not grant a changed scope.
+  context = { ...context, epoch: context.epoch + 10 };
+  assert.equal((await bind([], { expiresAt: Date.now() + 1000 })).ok, true);
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+  const renewalRevision = context.epoch + 2;
+  for (const change of [
+    { actorId: "other-actor" },
+    { accountId: "other-account" },
+    { origin: "https://different.example" },
+    { targets: [{ selector: "#target", action: "click" }] },
+    { assistantName: "Other" },
+    { bindingRevision: renewalRevision - 1 },
+  ])
+    assert.equal(
+      (await bind([], { bindingRevision: renewalRevision, ...change })).ok,
+      false,
+    );
+  assert.equal((await bind([], { bindingRevision: renewalRevision })).ok, true);
+  await show();
+  context = { ...context, epoch: context.epoch + 10 };
+  assert.equal(
+    (await bind([], { revoked: true, expiresAt: Date.now() + 1000 })).ok,
+    true,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+  assert.equal(
+    (await bind([], { bindingRevision: context.epoch + 2 })).ok,
+    false,
+  );
   await page.close();
   const closed = await hide();
   assert.equal(closed.ok, true);
@@ -609,6 +640,7 @@ try {
         browser: await browser.version(),
         cases: [
           "bound target display",
+          "expired lease renews at identical scope; changed permissions, stale revisions and revoked leases reject",
           "cancel removes acknowledged guide",
           "new epoch removes old guide",
           "disconnect removes guide and revokes old binding",
