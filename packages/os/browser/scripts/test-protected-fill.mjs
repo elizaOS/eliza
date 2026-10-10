@@ -261,8 +261,115 @@ try {
     true,
   );
   await page.waitForURL("https://effects.example/account");
+  // ---- Script requests and address changes after a task action ----------
+  // A code field that verifies itself with fetch() never submits a form or
+  // leaves the document. The request cannot be stopped, but it is reported,
+  // also when the page sends it after a delay. A request the person's own
+  // typing starts, and a third-party request, are not.
+  const posted = [];
+  await page.route("https://analytics.example/**", (route) =>
+    route.fulfill({ status: 204 }),
+  );
+  await page.route("https://fetch.example/**", (route) => {
+    const request = route.request();
+    if (request.method() !== "GET" || request.url().includes("/api/")) {
+      posted.push(new URL(request.url()).pathname);
+      return route.fulfill({ contentType: "application/json", body: "{}" });
+    }
+    return route.fulfill({
+      contentType: "text/html",
+      body: `<input id="otp3" aria-label="Code" autocomplete="one-time-code" maxlength="6">
+<input id="later" aria-label="Later" maxlength="6"><input id="route" aria-label="Route"><input id="note" aria-label="Note"><input id="search" aria-label="Search">
+<script>
+document.getElementById('otp3').addEventListener('input',e=>{if(e.target.value.length===6)fetch('/api/verify',{method:'POST',body:'{}'})});
+document.getElementById('later').addEventListener('input',e=>{if(e.target.value.length===6)setTimeout(()=>fetch('/api/later',{method:'POST'}),3500)});
+document.getElementById('route').addEventListener('input',()=>history.pushState({}, '', '/next'));
+document.getElementById('note').addEventListener('input',()=>navigator.sendBeacon('https://analytics.example/collect','x'));
+document.getElementById('search').addEventListener('input',()=>fetch('/api/suggest?q=1'));
+</script>`,
+    });
+  });
+  await page.goto("https://fetch.example/start");
+  const { frameTree: fetchTree } = await cdp.send("Page.getFrameTree");
+  const fetchWorld = await cdp.send("Page.createIsolatedWorld", {
+    frameId: fetchTree.frame.id,
+    worldName: "task-requests-test",
+  });
+  const runFetch = async (command, id) => {
+    const result = await cdp.send("Runtime.evaluate", {
+      contextId: fetchWorld.executionContextId,
+      expression: `(${pageCommand.toString()})(${JSON.stringify(command)},${JSON.stringify(id)})`,
+      returnByValue: true,
+    });
+    assert.equal(result.exceptionDetails, undefined);
+    return result.result.value;
+  };
+  const fetchPolicy = (scope, targets = [], extra = {}) => ({
+    origin: "https://fetch.example",
+    expiresAt: Date.now() + 60000,
+    guidanceScope: scope,
+    targets,
+    ...extra,
+  });
+  const fetchAct = async (scope, label, selector, text, extra = {}) => {
+    const id = `fetch-${++seq}`;
+    const targets = [
+      { selector, action: extra.protectedValueKind ? "fill-code" : "fill" },
+    ];
+    const state = await runFetch(
+      { subaction: "snapshot", taskPolicy: fetchPolicy(scope, targets) },
+      id,
+    );
+    const node = state.elements.find((value) => value.label === label);
+    assert.ok(node, label);
+    const result = await runFetch(
+      {
+        subaction: "fill",
+        snapshotId: id,
+        nodeId: node.id,
+        text,
+        taskPolicy: fetchPolicy(scope, targets, extra),
+      },
+      null,
+    );
+    assert.equal(result.dispatched, true, label);
+  };
+  const fetchRead = async (scope) =>
+    (
+      await runFetch(
+        { subaction: "snapshot", taskPolicy: fetchPolicy(scope) },
+        `fetch-${++seq}`,
+      )
+    ).effectViolation;
+  // A third-party beacon is not the site acting on the fill.
+  await fetchAct("20", "Note", "#note", "hello");
+  await page.waitForTimeout(500);
+  assert.equal(await fetchRead("20"), undefined);
+  // The person's own typing may make the site search; that is hers.
+  await page.click("#search");
+  await page.keyboard.type("a");
+  await page.waitForTimeout(500);
+  assert.equal(await fetchRead("20"), undefined);
+  // An auto-verifying code field that posts with fetch() is reported.
+  await fetchAct("21", "Code", "#otp3", "123456", {
+    protectedValueKind: "verification-code",
+  });
+  await page.waitForTimeout(500);
+  assert.deepEqual(posted, ["/api/suggest", "/api/verify"]);
+  assert.equal(await fetchRead("21"), "request");
+  // A request the page sends a few seconds later is still reported.
+  await fetchAct("22", "Later", "#later", "123456");
+  await page.waitForTimeout(500);
+  assert.equal(await fetchRead("22"), undefined);
+  await page.waitForTimeout(4000);
+  assert.ok(posted.includes("/api/later"));
+  assert.equal(await fetchRead("22"), "request");
+  // A same-document address change (a script router) is reported.
+  await fetchAct("23", "Route", "#route", "x");
+  await page.waitForTimeout(300);
+  assert.equal(await fetchRead("23"), "navigation");
   console.log(
-    "PASS: OTP requires protected host marker and dedicated field permission; ordinary, password, non-OTP and Verify paths denied; code excluded from snapshot; task fills and clicks cannot submit or navigate (auto-submit code field, script form.submit()), a link click opens its link, violations are reported per binding; date fields take only real days; an expected target admits only that control; field input is reported as a boolean only.",
+    "PASS: OTP requires protected host marker and dedicated field permission; ordinary, password, non-OTP and Verify paths denied; code excluded from snapshot; task fills and clicks cannot submit or navigate (auto-submit code field, script form.submit()), a link click opens its link, same-site fetch/beacon requests (also delayed) and same-document address changes after a task fill are reported while the person's own and third-party requests are not, violations are reported per binding; date fields take only real days; an expected target admits only that control; field input is reported as a boolean only.",
   );
 } finally {
   await browser.close();
