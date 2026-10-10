@@ -16,6 +16,8 @@ public final class LocalSpeechEngine implements AutoCloseable {
  private OfflineTts speaker;
  private boolean closed;
  private final Set<String> words=new HashSet<>();
+ /** VITS sampling noise, noise width and length scale used for every synthesis. */
+ public static final float SYNTHESIS_NOISE_SCALE=0f,SYNTHESIS_NOISE_SCALE_W=0f,SYNTHESIS_LENGTH_SCALE=1f;
  public LocalSpeechEngine(File directory)throws Exception {
   JSONObject manifest=new JSONObject(readText(new File(directory,"manifest.json"),65536));
   if(!"eliza-local-speech-v1".equals(manifest.getString("format")))throw new IOException("Unsupported model bundle");
@@ -36,6 +38,11 @@ public final class LocalSpeechEngine implements AutoCloseable {
   recognizer=new OfflineRecognizer(null,config);
   try{
    OfflineTtsVitsModelConfig vits=new OfflineTtsVitsModelConfig();vits.setModel(path(directory,required[3]));vits.setLexicon(path(directory,required[4]));vits.setTokens(path(directory,required[5]));vits.setDataDir("");
+   // Deterministic synthesis. sherpa-onnx's VITS defaults (noise 0.667, noise_w 0.8) feed two
+   // unseeded RandomNormalLike nodes, so every call rendered a new waveform and a share of them
+   // misarticulated words (Whisper heard "lady" for "lazy"). Zero noise gives one
+   // repeatable rendering per text; duration stays at the model's own rate.
+   vits.setNoiseScale(SYNTHESIS_NOISE_SCALE);vits.setNoiseScaleW(SYNTHESIS_NOISE_SCALE_W);vits.setLengthScale(SYNTHESIS_LENGTH_SCALE);
    OfflineTtsModelConfig voice=new OfflineTtsModelConfig();voice.setVits(vits);voice.setProvider("cpu");voice.setNumThreads(2);voice.setDebug(false);
    OfflineTtsConfig speech=new OfflineTtsConfig();speech.setModel(voice);speech.setMaxNumSentences(1);
    // Only lexicon-based English TTS; no espeak data and no dynamic frontend choice.
