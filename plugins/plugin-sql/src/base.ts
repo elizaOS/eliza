@@ -3418,7 +3418,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
     return this.withEntityContext(entityId ?? null, async (tx) => {
       const conditions = [eq(memoryTable.type, tableName)];
-      if (tableName === "document_fragments") {
+      if (
+        tableName === "document_fragments" &&
+        params.metadata?.fragmentRole !== "source-segment"
+      ) {
         conditions.push(
           sql`COALESCE(${memoryTable.metadata}->>'fragmentRole', 'embedding-chunk') <> 'source-segment'`
         );
