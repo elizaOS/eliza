@@ -4,3 +4,6 @@ export * from "./notes-document-store.ts";
 export * from "./notes-query.ts";
 export * from "./notes-secure-store.ts";
 export * from "./notes-store.ts";
+export * from "./notes-trash-maintenance.ts";
+export * from "./notes-trash-policy.ts";
+export * from "./notes-trash-schedule.ts";
