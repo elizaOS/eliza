@@ -34,9 +34,10 @@ const callbackState = vi.hoisted(() => ({
   exchange: (): Promise<{ token?: string }> => new Promise(() => {}),
 }));
 
-vi.mock("../../lib/steward-session", () => ({
-  resolveStewardAuthEndpoint: (path: string) =>
-    `https://api.example.test${path}`,
+vi.mock("../../lib/steward-session", async () => ({
+  ...(await vi.importActual<typeof import("../../lib/steward-session")>(
+    "../../lib/steward-session",
+  )),
   hasStewardOAuthCallbackInUrl: () => callbackState.hasCallback,
   consumeStewardCodeFromQuery: () => "callback-code",
   consumeStewardOAuthStateFromCallback: () => callbackState.returnedState,
@@ -90,7 +91,10 @@ vi.mock("@elizaos/login", async () => ({
   },
 }));
 
-vi.mock("../../../shell/steward-url", () => ({
+vi.mock("../../../shell/steward-url", async () => ({
+  ...(await vi.importActual<typeof import("../../../shell/steward-url")>(
+    "../../../shell/steward-url",
+  )),
   resolveBrowserStewardApiUrl: () => "https://api.example.test",
 }));
 
