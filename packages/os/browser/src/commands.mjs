@@ -478,6 +478,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     const person = (event) => {
       if (event.isTrusted) personAt = performance.now();
     };
+    const personForms = new WeakSet();
     window.addEventListener("pointerdown", person, options);
     window.addEventListener("keydown", person, options);
     const activate = (event) => {
@@ -488,16 +489,24 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       );
       if (control?.matches(':disabled,[aria-disabled="true"]')) return;
       const keyboard = event.type === "keydown";
+      const field =
+        target.isContentEditable ||
+        target.matches(
+          "textarea,select,input:not([type=submit]):not([type=button]):not([type=reset])",
+        );
+      // A custom control (no button element or role) can send its form from
+      // script seconds later. Her press inside a form makes that form hers.
+      // A press on a field or its label is not a press on a control.
+      const form = target.closest("form");
+      if (!keyboard && form && !field && !target.closest("label"))
+        personForms.add(form);
       const enterForm =
         event.key === "Enter" &&
         target instanceof HTMLInputElement &&
         target.form;
       const controlKey =
         control &&
-        !target.isContentEditable &&
-        !target.matches(
-          "textarea,select,input:not([type=submit]):not([type=button]):not([type=reset])",
-        ) &&
+        !field &&
         (event.key === "Enter" ||
           (event.key === " " && !control.matches('a[href],[role="link"]')));
       if (keyboard ? !controlKey && !enterForm : !control) return;
@@ -507,7 +516,9 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     window.addEventListener("keydown", activate, options);
     window.addEventListener(
       "submit",
-      (event) => report("submit", event),
+      (event) => {
+        if (!personForms.has(event.target)) report("submit", event);
+      },
       options,
     );
     globalThis.navigation?.addEventListener(
@@ -515,7 +526,10 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       (event) => {
         if (
           event.userInitiated ||
-          (anchor && !event.formData && event.destination.url === anchor.href)
+          (anchor &&
+            !event.formData &&
+            event.destination.url === anchor.href) ||
+          personForms.has(event.sourceElement?.form ?? event.sourceElement)
         )
           return;
         if (event.destination.sameDocument) {

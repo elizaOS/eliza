@@ -261,6 +261,71 @@ try {
     true,
   );
   await page.waitForURL("https://effects.example/account");
+  // ---- A custom control in a form is the person's own submit ------------
+  // The control has no button element or role, and its script sends the
+  // form two seconds after her press.
+  await page.route("https://custom.example/**", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: `<form id="pay" action="/paid" method="post"><input id="amount" aria-label="Amount"><input id="auto" aria-label="Auto"><div id="send" style="padding:20px">Send my payment</div></form><p id="aside" style="padding:20px">Other content</p>
+<script>const pay=document.getElementById('pay');document.getElementById('send').addEventListener('click',()=>setTimeout(()=>pay.submit(),2000));document.getElementById('auto').addEventListener('input',()=>setTimeout(()=>pay.submit(),2000));</script>`,
+    }),
+  );
+  const customAct = async (label, selector) => {
+    const { frameTree: customTree } = await cdp.send("Page.getFrameTree");
+    const customWorld = await cdp.send("Page.createIsolatedWorld", {
+      frameId: customTree.frame.id,
+      worldName: "task-custom-test",
+    });
+    const runCustom = async (command, id) => {
+      const result = await cdp.send("Runtime.evaluate", {
+        contextId: customWorld.executionContextId,
+        expression: `(${pageCommand.toString()})(${JSON.stringify(command)},${JSON.stringify(id)})`,
+        returnByValue: true,
+      });
+      assert.equal(result.exceptionDetails, undefined);
+      return result.result.value;
+    };
+    const taskPolicy = {
+      origin: "https://custom.example",
+      expiresAt: Date.now() + 60000,
+      guidanceScope: "40",
+      targets: [{ selector, action: "fill" }],
+    };
+    const id = `custom-${++seq}`;
+    const state = await runCustom({ subaction: "snapshot", taskPolicy }, id);
+    const node = state.elements.find((value) => value.label === label);
+    assert.ok(node, label);
+    assert.equal(
+      (
+        await runCustom(
+          {
+            subaction: "fill",
+            snapshotId: id,
+            nodeId: node.id,
+            text: "42",
+            taskPolicy,
+          },
+          null,
+        )
+      ).dispatched,
+      true,
+    );
+    return () =>
+      runCustom({ subaction: "snapshot", taskPolicy }, `custom-${++seq}`);
+  };
+  await page.goto("https://custom.example/start");
+  await customAct("Amount", "#amount");
+  await page.click("#send");
+  await page.waitForURL("https://custom.example/paid", { timeout: 5000 });
+  // A press outside the form does not release a submit that the helper's
+  // own fill started.
+  await page.goto("https://custom.example/start");
+  const readCustom = await customAct("Auto", "#auto");
+  await page.click("#aside");
+  await page.waitForTimeout(2500);
+  assert.equal(page.url(), "https://custom.example/start");
+  assert.equal((await readCustom()).effectViolation, "submit");
   // ---- Script requests and address changes after a task action ----------
   // A code field that verifies itself with fetch() never submits a form or
   // leaves the document. The request cannot be stopped, but it is reported,
@@ -520,7 +585,7 @@ document.getElementById('ping').addEventListener('input',()=>navigator.sendBeaco
     "request",
   );
   console.log(
-    "PASS: OTP requires protected host marker and dedicated field permission; ordinary, password, non-OTP and Verify paths denied; code excluded from snapshot; task fills and clicks cannot submit or navigate (auto-submit code field, script form.submit()), a link click opens its link, same-site fetch/beacon requests (also delayed) and same-document address changes after a task fill are reported while the person's own and third-party requests are not, violations are reported per binding; date fields take only real days; an expected target admits only that control; field input is reported as a boolean only.",
+    "PASS: OTP requires protected host marker and dedicated field permission; ordinary, password, non-OTP and Verify paths denied; code excluded from snapshot; task fills and clicks cannot submit or navigate (auto-submit code field, script form.submit()), the person's press on a custom control in a form lets that form's delayed script submit through while a press outside the form does not, a link click opens its link, same-site fetch/beacon requests (also delayed) and same-document address changes after a task fill are reported while the person's own and third-party requests are not, violations are reported per binding; date fields take only real days; an expected target admits only that control; field input is reported as a boolean only.",
   );
 } finally {
   await browser.close();
