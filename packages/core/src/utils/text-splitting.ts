@@ -96,16 +96,27 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 			if (pendingBoundary && (chunk.length > 0 || endOfInput)) {
 				if (!ABBREVIATIONS.has(pendingBoundary.normalizedWord)) {
 					let closerOffset = 0;
+					if (pendingBoundary.unspaced && !pendingBoundary.sawCloser) {
+						while (
+							closerOffset < chunk.length &&
+							SENTENCE_END.has(chunk[closerOffset])
+						) {
+							closerOffset += 1;
+						}
+						pendingBoundary.boundary += closerOffset;
+						scanned += closerOffset;
+					}
+					const terminatorOffset = closerOffset;
 					while (
 						closerOffset < chunk.length &&
 						TRAILING_CLOSERS.includes(chunk[closerOffset])
 					) {
 						closerOffset += 1;
 					}
-					if (closerOffset > 0) {
-						pendingBoundary.boundary += closerOffset;
+					if (closerOffset > terminatorOffset) {
+						pendingBoundary.boundary += closerOffset - terminatorOffset;
 						pendingBoundary.sawCloser = true;
-						scanned += closerOffset;
+						scanned += closerOffset - terminatorOffset;
 					}
 					if (closerOffset === chunk.length) {
 						if (!endOfInput) return undefined;
@@ -166,6 +177,15 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 						: lastWord;
 					if (char !== "." || !ABBREVIATIONS.has(word.toLowerCase())) {
 						let boundary = offset + 1;
+						if (UNSPACED_SENTENCE_END.has(char)) {
+							while (
+								boundary < chunk.length &&
+								SENTENCE_END.has(chunk[boundary])
+							) {
+								boundary += 1;
+							}
+						}
+						const terminatorBoundary = boundary;
 						while (
 							boundary < chunk.length &&
 							TRAILING_CLOSERS.includes(chunk[boundary])
@@ -176,7 +196,7 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 							pendingBoundary = {
 								boundary: scanned + boundary,
 								normalizedWord: char === "." ? word.toLowerCase() : "",
-								sawCloser: boundary > offset + 1,
+								sawCloser: boundary > terminatorBoundary,
 								unspaced: UNSPACED_SENTENCE_END.has(char),
 							};
 							break;
