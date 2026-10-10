@@ -628,13 +628,20 @@ export const computerUseAgentAction: Action = {
         error: "ComputerUseService not available",
       };
     }
-    const report = await runComputerUseAgentLoop(runtime, params, service, {
-      onCompactStepProgress: callback
-        ? async (content) => {
-            await callback(content, "COMPUTER_USE_AGENT");
-          }
-        : undefined,
-    });
+    // The host signal is spread last so a model-supplied `signal` key cannot
+    // replace the turn's cancellation.
+    const report = await runComputerUseAgentLoop(
+      runtime,
+      { ...params, signal: options?.abortSignal },
+      service,
+      {
+        onCompactStepProgress: callback
+          ? async (content) => {
+              await callback(content, "COMPUTER_USE_AGENT");
+            }
+          : undefined,
+      },
+    );
     const text =
       report.reason === "finish"
         ? `Computer-use agent finished after ${report.steps.length} step(s): goal="${report.goal}"`
