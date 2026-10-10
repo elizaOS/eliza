@@ -461,6 +461,8 @@ function normalizeLastExecution(raw: WorkflowExecution): AutomationLastExecution
     'waiting-approval': 'waiting',
     'waiting-event': 'waiting',
     'waiting-timer': 'waiting',
+    'waiting-quota': 'waiting',
+    paused: 'waiting',
   };
   const status = STATUS_MAP[rawStatus] ?? 'unknown';
   const startedAt = typeof raw.startedAt === 'string' ? raw.startedAt : null;
