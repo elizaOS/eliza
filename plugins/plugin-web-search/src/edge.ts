@@ -53,6 +53,8 @@ const HTTP_URL = /https?:\/\/[^\s<>"']+/giu;
 const SOURCE_TEXT_ARRAY_KEYS = new Set(["excerpts"]);
 
 // Keep balanced URL parentheses and remove only excess closing prose marks.
+// Trailing "!", "?", and ":" are sentence punctuation in prose, not URL
+// characters; a URL ending in one is a dead citation, same as ",.;".
 function stripTrailingProsePunctuation(value: string): string {
     let excessClosing = 0;
     for (const char of value) {
@@ -62,7 +64,15 @@ function stripTrailingProsePunctuation(value: string): string {
     let end = value.length;
     while (end > 0) {
         const char = value[end - 1];
-        if (char === "," || char === "." || char === ";") end -= 1;
+        if (
+            char === "," ||
+            char === "." ||
+            char === ";" ||
+            char === "!" ||
+            char === "?" ||
+            char === ":"
+        )
+            end -= 1;
         else if (char === ")" && excessClosing > 0) {
             end -= 1;
             excessClosing -= 1;
