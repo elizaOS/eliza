@@ -2811,8 +2811,7 @@ export class RemindersDomain {
       // Today's occurrence uses today's window. The tail after midnight of a
       // window such as night (22:00-04:00) belongs to the previous night, so
       // 00:05 waits for today's 22:00 instead of firing at once.
-      const isInside =
-        nowMinute >= window.startMinute && nowMinute < endMinute;
+      const isInside = nowMinute >= window.startMinute && nowMinute < endMinute;
       if (isInside) {
         const immediateCandidate = new Date(now.getTime() + 1_000);
         if (
