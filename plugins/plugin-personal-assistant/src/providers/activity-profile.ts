@@ -27,7 +27,7 @@ import {
 import { resolveCurrentBucket } from "../activity-profile/analyzer.js";
 import { PROACTIVE_TASK_TAGS } from "../activity-profile/proactive-worker.js";
 import { readProfileFromMetadata } from "../activity-profile/service.js";
-import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
+import { resolveOwnerTimeZone } from "../lifeops/owner/fact-store.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import {
   buildUtcDateFromLocalParts,
@@ -225,8 +225,8 @@ export const activityProfileProvider: Provider = {
       return { text: "", values: {}, data: {} };
     }
 
-    const timezone = resolveDefaultTimeZone();
     const now = new Date();
+    const timezone = await resolveOwnerTimeZone(runtime, now);
     const bucket = resolveCurrentBucket(timezone, now);
     const baseValues: ActivityProviderValues = {
       userIsActive: false,
