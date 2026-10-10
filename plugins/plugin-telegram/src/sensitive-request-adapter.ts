@@ -86,8 +86,13 @@ async function deliverViaTelegramDm(args: {
   const request = args.request as TelegramDispatchRequest;
   const candidate =
     args.channelId ?? request.requesterEntityId ?? request.originUserId;
-  const chatId = typeof candidate === "string" ? Number(candidate) : Number.NaN;
-  if (!Number.isFinite(chatId) || chatId <= 0) {
+  // Canonical digit user IDs only: Number("1e3") is 1000 and Number("0x10")
+  // is 16 — both used to silently retarget the sensitive-request DM to a
+  // different Telegram user instead of failing validation. Mirrors the
+  // strict gate in sendOwnerLoginDmLink (owner-pairing-service.ts).
+  const trimmed = typeof candidate === "string" ? candidate.trim() : "";
+  const chatId = /^\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN;
+  if (!Number.isSafeInteger(chatId) || chatId <= 0) {
     return {
       delivered: false,
       target: "dm",
