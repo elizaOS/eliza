@@ -3980,6 +3980,15 @@ async function importConversation(
       } => m !== null,
     );
   const sourceIds = importMessages.map((message) => message.sourceId);
+  // A lone surrogate cannot be encoded into the deterministic message id.
+  if (sourceIds.some((sourceId) => sourceId && !sourceId.isWellFormed())) {
+    error(
+      res,
+      "Imported message sourceIds must contain well-formed Unicode",
+      400,
+    );
+    return true;
+  }
   const exactImport = sourceIds.length > 0 && sourceIds.every(Boolean);
   if (sourceIds.some(Boolean) && !exactImport) {
     error(res, "Every imported message must include a sourceId", 400);

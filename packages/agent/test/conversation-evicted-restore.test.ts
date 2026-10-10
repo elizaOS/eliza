@@ -335,3 +335,42 @@ it.each(["lookup", "boot", "concurrent"] as const)(
   },
   120_000,
 );
+
+it.each(["\ud800", "valid-prefix\udfffsuffix"])(
+  "rejects an import source identity with a lone surrogate before any write: %j",
+  async (sourceId) => {
+    const { adapter, dataDir, runtime, state } = await createFixture();
+    try {
+      const convId = "malformed-import";
+      const imported = await call(
+        state,
+        "POST",
+        `/api/conversations/${convId}/import`,
+        {
+          messages: [
+            { role: "user", text: "first", sourceId: "source-1" },
+            { role: "user", text: "second", sourceId },
+          ],
+        },
+      );
+      expect(imported).toEqual({
+        status: 400,
+        payload: {
+          error: "Imported message sourceIds must contain well-formed Unicode",
+        },
+      });
+      expect(state.conversations.has(convId)).toBe(false);
+      expect(
+        await runtime.getMemories({
+          roomId: stringToUuid(`web-conv-${convId}`),
+          tableName: "messages",
+          count: 10,
+        }),
+      ).toEqual([]);
+    } finally {
+      await adapter.close();
+      fs.rmSync(dataDir, { recursive: true, force: true });
+    }
+  },
+  120_000,
+);
