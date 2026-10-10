@@ -11,6 +11,8 @@ export function formatSharedMessageText(text: string): string {
   return text
     .split("\n")
     .map((line) => {
+      // Markdown indented code is literal, including comment and heading markers.
+      if (/^(?: {4}| *\t)/u.test(line)) return line;
       const marker = /^\s*(`{3,}|~{3,})/u.exec(line)?.[1];
       if (marker) {
         if (!fence) fence = marker;
