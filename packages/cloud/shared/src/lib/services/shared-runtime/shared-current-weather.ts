@@ -192,14 +192,19 @@ const metadataCache = new Map<string, { expiresAt: number; value: Metadata }>();
 export function clearCurrentWeatherMetadataCacheForTests(): void {
   metadataCache.clear();
 }
-const fold = (v: string) =>
+// NFKD does not decompose œ; GNIS spells Cœur d'Alene as Coeur d'Alene.
+const PLAIN_LETTERS: Readonly<Record<string, string>> = {
+  œ: "oe",
+  Œ: "Oe",
+};
+/** The name in the plain spelling accepted by the USGS geocoder. */
+const plainLetters = (v: string) =>
   v
     .normalize("NFKD")
     .replace(/\p{M}/gu, "")
-    .toLowerCase()
-    .replace(/[.'’]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+    .replace(/[œŒ]/g, (c) => PLAIN_LETTERS[c] ?? c);
+const fold = (v: string) =>
+  plainLetters(v).toLowerCase().replace(/[.'’]/g, "").replace(/\s+/g, " ").trim();
 const record = (v: unknown): Record<string, unknown> | undefined =>
   v !== null && typeof v === "object" && !Array.isArray(v)
     ? (v as Record<string, unknown>)
@@ -542,7 +547,10 @@ export async function runCurrentUsWeatherSearch(
     if (cached && cached.expiresAt > now()) metadata = cached.value;
     if (!metadata) {
       const geo = new URL("https://dashboard.waterdata.usgs.gov/service/geocoder/get/location/1.0");
-      geo.searchParams.set("term", target.city);
+      // The USGS geocoder finds "Espanola" and "Coeur d'Alene" but returns
+      // nothing for "Española" or "Cœur d'Alene"; the place filter below
+      // compares names folded the same way.
+      geo.searchParams.set("term", plainLetters(target.city));
       geo.searchParams.set("include", "gnis");
       geo.searchParams.set("states", target.state);
       geo.searchParams.set("maxSuggestions", "20");
