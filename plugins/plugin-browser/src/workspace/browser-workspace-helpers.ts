@@ -94,7 +94,13 @@ export function parseBrowserWorkspaceNumberLike(
   if (typeof value !== "string") {
     return undefined;
   }
-  const parsed = Number.parseFloat(value.trim());
+  // Number.parseFloat stops at the first invalid character ("12px" -> 12,
+  // "5s" -> 5). Number() rejects the whole string instead, so a malformed
+  // timeout falls through to the next alias instead of becoming a wrong
+  // millisecond value. Same defect class as #34663.
+  const text = value.trim();
+  if (!text) return undefined;
+  const parsed = Number(text);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
