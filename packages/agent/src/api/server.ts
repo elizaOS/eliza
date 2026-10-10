@@ -341,6 +341,7 @@ import {
   handleRemoteCapabilityRoutes,
   handleSandboxRouteGroup,
   handleSubscriptionRoutes,
+  handleTrajectoryManagementRoutes,
   handleUpdateRoutes,
   handleViewsRoutes,
   handleWorkbenchRoutes,
@@ -3149,6 +3150,19 @@ async function handleRequestForViewClient(
       method,
       url,
       res,
+    })
+  ) {
+    return;
+  }
+  // ── Trajectory management routes (config, export, delete) ───────────────
+  // The owner gate above already covers every /api/trajectories method.
+  if (
+    await handleTrajectoryManagementRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      runtime: state.runtime,
     })
   ) {
     return;
