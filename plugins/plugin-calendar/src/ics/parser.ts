@@ -124,7 +124,14 @@ function unquoteParameter(value: string): string {
     trimmed.startsWith('"') && trimmed.endsWith('"')
       ? trimmed.slice(1, -1)
       : trimmed;
-  return unquoted.replaceAll("\\,", ",").replaceAll('\\"', '"');
+  // Decode RFC 6868 escapes once so an escaped caret stays literal.
+  return unquoted
+    .replaceAll("\\,", ",")
+    .replaceAll('\\"', '"')
+    .replace(/\^([\^n'])/g, (_match, character: string) => {
+      if (character === "n") return "\n";
+      return character === "'" ? '"' : "^";
+    });
 }
 
 function parseContentLine(line: string): IcsContentLine {
