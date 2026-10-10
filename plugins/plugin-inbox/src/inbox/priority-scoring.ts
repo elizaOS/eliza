@@ -198,12 +198,21 @@ function stripModelWrapper(raw: string): string {
 }
 
 function parseScoreNumber(value: unknown): number {
-  const score =
-    typeof value === "number"
-      ? value
-      : typeof value === "string"
-        ? Number(value.trim())
-        : Number.NaN;
+  let score: number;
+  if (typeof value === "number") {
+    score = value;
+  } else if (typeof value === "string") {
+    const trimmed = value.trim();
+    // Canonical decimal strings only: Number("") is 0, Number("0x10") is 16,
+    // and Number("1e3") is 1000 — all used to silently become priority scores
+    // instead of failing validation like other malformed model output.
+    if (!/^-?\d+(\.\d+)?$/.test(trimmed)) {
+      throw new Error("priority scoring score is not a finite number");
+    }
+    score = Number(trimmed);
+  } else {
+    throw new Error("priority scoring score is not a finite number");
+  }
   if (!Number.isFinite(score)) {
     throw new Error("priority scoring score is not a finite number");
   }
