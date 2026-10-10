@@ -41,6 +41,14 @@ export async function executeGatewayForwardAttempts(
     result: Extract<GatewayTargetResult, { ok: false }>,
   ): void => {
     if (result.timedOut && !options.retryOnTimeout) throw result.error;
+    const status = result.status;
+    if (status === undefined) return;
+    // A 4xx answer cannot succeed on replay (404: agent not on this pod, 408
+    // and 429 are transient). A 500 can come after the server already ran the
+    // turn, so hosts that do not replay timeouts must not replay it either.
+    if (status >= 400 && status < 500 && ![404, 408, 429].includes(status))
+      throw result.error;
+    if (status === 500 && !options.retryOnTimeout) throw result.error;
   };
 
   for (let attempt = 0; attempt < options.attempts; attempt++) {
