@@ -584,7 +584,16 @@ function addOneLocalDay(
 
 function emailFromCalendarAddress(value: string): string | null {
   const decoded = decodeIcsText(value).trim();
-  const withoutScheme = decoded.replace(/^mailto:/i, "");
+  let withoutScheme = decoded.replace(/^mailto:/i, "");
+  if (/^mailto:/i.test(decoded)) {
+    try {
+      // Decode the URI once; a literal plus is part of the mailbox.
+      withoutScheme = decodeURIComponent(withoutScheme);
+    } catch {
+      // Invalid URI escapes do not identify a usable email address.
+      return null;
+    }
+  }
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(withoutScheme)
     ? withoutScheme.toLowerCase()
     : null;
