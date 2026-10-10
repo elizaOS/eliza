@@ -305,6 +305,12 @@ for (const width of [1440, 390]) {
         }),
       }),
     );
+    await page.route("**/api/plugins/review-time", (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true }),
+      }),
+    );
     await openAppPath(page, "/apps/plugins");
     await page.locator('li[data-plugin-id="review-time"]').click();
     const zone = page
@@ -326,5 +332,22 @@ for (const width of [1440, 390]) {
       type: "jpeg",
       fullPage: true,
     });
+    const saved = page.waitForRequest(
+      (request) =>
+        request.method() === "PUT" &&
+        request.url().endsWith("/api/plugins/review-time"),
+    );
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Save settings", exact: true })
+      .click();
+    expect((await saved).postDataJSON()).toEqual({
+      config: { DEFAULT_TIMEZONE: "America/New_York" },
+    });
+    await expect(
+      page
+        .getByRole("dialog")
+        .getByRole("button", { name: "Save settings", exact: true }),
+    ).toContainText("Saved");
   });
 }
