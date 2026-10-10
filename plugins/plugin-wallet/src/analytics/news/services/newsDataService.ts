@@ -133,6 +133,7 @@ export class NewsDataService extends Service {
       "&#8212;": "—",
       "&#038;": "&",
       "&amp;": "&",
+      "&nbsp;": " ",
       "&lt;": "<",
       "&gt;": ">",
       "&quot;": '"',
