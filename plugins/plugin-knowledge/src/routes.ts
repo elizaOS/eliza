@@ -1397,6 +1397,11 @@ export async function handleDocumentsRoutes(
     const lowerFilename = document.filename.toLowerCase();
     if (lowerFilename.endsWith(".md") || lowerFilename.endsWith(".mdx")) {
       contentType = "text/markdown";
+    } else if (
+      hasTextBackedFilename(document.filename) &&
+      !isTextBackedContentType(contentType)
+    ) {
+      contentType = "text/plain";
     }
     const textBacked =
       isTextBackedContentType(contentType) ||
