@@ -176,10 +176,15 @@ function getDiscordLocalConfig(
 	}
 
 	const rawSendDelayMs = runtime.getSetting("DISCORD_LOCAL_SEND_DELAY_MS");
-	const parsedSendDelayMs =
-		typeof rawSendDelayMs === "string"
-			? Number.parseInt(rawSendDelayMs, 10)
-			: Number.NaN;
+	// Number.parseInt stops at the first non-digit ("500junk" -> 500), so a
+	// typo was silently accepted as the send delay instead of falling back
+	// to the default. Require the whole trimmed value to be decimal,
+	// mirroring resolveGenerationTimeoutMs in messages.ts.
+	const sendDelayText =
+		typeof rawSendDelayMs === "string" ? rawSendDelayMs.trim() : "";
+	const parsedSendDelayMs = /^\+?\d+$/.test(sendDelayText)
+		? Number(sendDelayText)
+		: Number.NaN;
 
 	return {
 		enabled,
