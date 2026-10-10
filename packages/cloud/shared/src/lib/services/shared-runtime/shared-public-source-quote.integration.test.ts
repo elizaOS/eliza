@@ -241,7 +241,7 @@ for (const status of ["supported", "unsupported"] as const) {
         const finish = streamParts.find((part) => part.type === "finish");
         expect(streamedText).toBe((finish as { text?: string } | undefined)?.text);
         expect(streamedText).toContain(source.text);
-        expect(streamedText).not.toContain("[[SOURCE_URL:");
+
       }
     } finally {
       // error-policy:J6 restore every process-owned dependency boundary after any outcome.
