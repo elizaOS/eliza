@@ -781,13 +781,13 @@ async function dispatchHealth(
       return unsupportedOperation(
         "health",
         subaction,
-        "Use LifeOps Settings to choose Strava, Fitbit, Withings, or Oura before starting OAuth.",
+        "Strava, Fitbit, Withings, and Oura OAuth cannot be started from this build: no route, setting, or action starts it.",
       );
     case "disconnect":
       return unsupportedOperation(
         "health",
         subaction,
-        "Disconnect a specific Strava, Fitbit, Withings, or Oura provider from LifeOps Settings.",
+        "Strava, Fitbit, Withings, and Oura grants cannot be removed from this build: no route, setting, or action disconnects them.",
       );
     case "verify": {
       const [bridge, connectors] = await Promise.all([
