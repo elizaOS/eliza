@@ -8,6 +8,15 @@ import {
 import { runWebSearchEdge } from "@elizaos/plugin-web-search";
 import { Parser } from "htmlparser2";
 
+function parsePublicUrl(input: string, base?: string): URL | undefined {
+  try {
+    return new URL(input, base);
+  } catch {
+    // error-policy:J3 Malformed public input is rejected, never repaired.
+    return undefined;
+  }
+}
+
 const profileName = (value: string) =>
   value
     .normalize("NFKC")
@@ -44,7 +53,8 @@ export async function discoverPublicXPosts(
       typeof receipt.url !== "string"
     )
       continue;
-    const url = new URL(receipt.url);
+    const url = parsePublicUrl(receipt.url);
+    if (url?.protocol !== "https:" || url.username || url.password) continue;
     const match = url.pathname.match(
       /^\/([A-Za-z0-9_]{1,15})(?:\/status\/(\d{15,22}))?\/?$/,
     );
@@ -139,12 +149,12 @@ export async function discoverPublicXPosts(
 }
 
 export async function readPublicXPost(input: string, signal?: AbortSignal) {
-  const url = new URL(input);
-  const match = url.pathname.match(
+  const url = parsePublicUrl(input);
+  const match = url?.pathname.match(
     /^\/([A-Za-z0-9_]{1,15})\/status\/(\d{15,22})\/?$/,
   );
   if (
-    url.protocol !== "https:" ||
+    url?.protocol !== "https:" ||
     url.username ||
     url.password ||
     !["x.com", "www.x.com", "twitter.com", "www.twitter.com"].includes(
@@ -182,8 +192,9 @@ export async function readPublicXPost(input: string, signal?: AbortSignal) {
       code: "X_PUBLIC_POST_INCOMPLETE",
     });
   }
-  const author = new URL(result.author_url);
+  const author = parsePublicUrl(result.author_url);
   if (
+    !author ||
     !["x.com", "twitter.com"].includes(author.hostname) ||
     author.pathname.replace(/^\//, "").toLowerCase() !== handle.toLowerCase()
   ) {
@@ -201,10 +212,12 @@ export async function readPublicXPost(input: string, signal?: AbortSignal) {
         if (name === "p") inBody = true;
         if (name === "br" && inBody) body += "\n";
         if (name === "a" && !inBody && attributes.href) {
-          const link = new URL(attributes.href, canonicalUrl);
-          inDate =
-            ["x.com", "twitter.com"].includes(link.hostname) &&
-            link.pathname === `/${handle}/status/${id}`;
+          const link = parsePublicUrl(attributes.href, canonicalUrl);
+          inDate = Boolean(
+            link &&
+              ["x.com", "twitter.com"].includes(link.hostname) &&
+              link.pathname === `/${handle}/status/${id}`,
+          );
         }
       },
       ontext(text) {

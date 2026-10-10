@@ -705,11 +705,10 @@ function chooseMergedMessage<T extends SharedRuntimeHistoryMessageLike>(
       ...rest
     } = incoming;
     const reminderAction = parseSharedReminderActionProvenance(incoming.reminderAction);
+    const publicReadSources = parseSharedPublicReadSources(incoming.publicReadSources);
     return {
       ...rest,
-      ...(parseSharedPublicReadSources(incoming.publicReadSources)
-        ? { publicReadSources: parseSharedPublicReadSources(incoming.publicReadSources) }
-        : {}),
+      ...(publicReadSources ? { publicReadSources } : {}),
       ...(reminderAction ? { reminderAction } : {}),
     } as T;
   }
@@ -756,11 +755,10 @@ function chooseMergedMessage<T extends SharedRuntimeHistoryMessageLike>(
     publicReadSources: _untrustedPublicReadSources,
     ...chosenWithoutReminderAction
   } = chosen;
+  const publicReadSources = parseSharedPublicReadSources(chosen.publicReadSources);
   return {
     ...chosenWithoutReminderAction,
-    ...(parseSharedPublicReadSources(chosen.publicReadSources)
-      ? { publicReadSources: parseSharedPublicReadSources(chosen.publicReadSources) }
-      : {}),
+    ...(publicReadSources ? { publicReadSources } : {}),
     ...(grounding ? { grounding } : {}),
     ...(reminderAction ? { reminderAction } : {}),
   } as T;

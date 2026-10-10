@@ -219,11 +219,11 @@ function appleScriptStringLiteral(value: string): string {
 }
 
 function appleScriptTargetBlock(to: string, service: string | null = "iMessage"): string {
-  if (to.startsWith("chat_id:")) {
-    return `set targetRef to chat id ${appleScriptStringLiteral(to.slice(8))}`;
-  }
   if (service !== "iMessage" && service !== "SMS" && service !== "RCS") {
     throw new IMessageConfigurationError("Unsupported native Messages service", "nativeService");
+  }
+  if (to.startsWith("chat_id:")) {
+    return `set targetRef to chat id ${appleScriptStringLiteral(to.slice(8))}`;
   }
   return `
     set targetService to 1st account whose service type = ${service === "RCS" ? "SMS" : service}

@@ -11,8 +11,12 @@ import {
   DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES,
   fetchRemoteMedia,
 } from "@elizaos/core";
+import { runWebSearchEdge } from "@elizaos/plugin-web-search";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { discoverPublicXPosts, readPublicXPost } from "./public";
 import { fetchMediaData } from "./utils";
+
+vi.mock("@elizaos/plugin-web-search", () => ({ runWebSearchEdge: vi.fn() }));
 
 vi.mock("@elizaos/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@elizaos/core")>();
@@ -98,5 +102,36 @@ describe("fetchMediaData", () => {
     } finally {
       await fs.rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("public X input boundaries", () => {
+  it("returns the contract error for malformed user input without fetching", async () => {
+    await expect(readPublicXPost("foo bar")).rejects.toMatchObject({
+      code: "X_PUBLIC_POST_URL_INVALID",
+    });
+    expect(mockedFetchRemoteMedia).not.toHaveBeenCalled();
+  });
+
+  it("skips malformed search URLs and continues with a valid public profile", async () => {
+    vi.mocked(runWebSearchEdge).mockResolvedValue({
+      success: true,
+      data: {
+        sources: [
+          { url: "x.com/foo/status/1", text: "Malformed candidate" },
+          { url: "https://x.com/NASASpace", text: "Public profile" },
+        ],
+      },
+    });
+    mockedFetchRemoteMedia.mockResolvedValue({
+      buffer: Buffer.from("<title>NASA Space (@NASASpace) / X</title>"),
+      contentType: "text/html",
+    });
+    const result = await discoverPublicXPosts("NASA Space");
+    expect(result.profiles).toMatchObject([{ handle: "NASASpace" }]);
+    expect(mockedFetchRemoteMedia).toHaveBeenCalledTimes(1);
+    expect(mockedFetchRemoteMedia).toHaveBeenCalledWith(
+      expect.objectContaining({ url: "https://x.com/NASASpace" }),
+    );
   });
 });

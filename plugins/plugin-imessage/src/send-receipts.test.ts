@@ -128,3 +128,28 @@ it("stages every attachment before sending and preserves partial native completi
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+it.each(["+15557654321", "chat_id:synthetic"])(
+  "rejects an unsupported native service before AppleScript for %s",
+  async (target) => {
+    const { service, internal } = fixture("native");
+    const result = await service.sendMessage(target, "Synthetic review", {
+      nativeService: "BOGUS" as "iMessage",
+    });
+    expect(result.success).toBe(false);
+    expect(internal.runAppleScript).not.toHaveBeenCalled();
+  }
+);
+
+it.each(["SMS", "RCS"] as const)(
+  "uses the carrier account for a native %s participant reply",
+  async (nativeService) => {
+    const { service, internal } = fixture("native");
+    expect(
+      (await service.sendMessage("+15557654321", "Synthetic review", { nativeService })).success
+    ).toBe(true);
+    expect(internal.runAppleScript).toHaveBeenCalledWith(
+      expect.stringContaining("service type = SMS")
+    );
+  }
+);
