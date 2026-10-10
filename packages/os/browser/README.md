@@ -21,7 +21,10 @@ A dispatch receipt requires fresh observation to establish the website result.
 Snapshots include document identity, target bounds, viewport, DOM revision and
 input revision. Effects reject changed URLs, page mutations, user input, field
 values or target geometry; read again after manual progress. Form/editable values
-are excluded from snapshot text and labels. The value comparison stays inside
+are excluded from snapshot text and labels. Text fields and dropdowns report
+only whether they have input; fields also report whether an input/change event
+was observed in this document. These flags do not prove a value is correct or
+that a person caused the event. The value comparison stays inside
 the isolated page realm. These freshness checks do not classify a button as safe
 for a particular task or replace the host's action policy.
 Large native messages use ordered lossless chunks below the Android Binder limit.

@@ -16,7 +16,7 @@ const server = createServer((_req, res) => {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.end(`<!doctype html><style>body {height:3000px} input,button {display:block}</style>
   <p>Visible source text</p><span style="visibility:hidden">Hidden<span style="visibility:visible">Visible child</span></span>
-  <input aria-label="Name"><textarea>private-textarea-value</textarea><div contenteditable>private-editable-value</div>
+  <input aria-label="Name"><select aria-label="Payment method"><option value="">Choose a method</option><option value="private-method-value">Checking</option></select><textarea>private-textarea-value</textarea><div contenteditable>private-editable-value</div>
   <div role="button"><div contenteditable>private-nested-value</div><span>Safe label</span></div><button id="go" onclick="document.querySelector('#count').textContent=Number(document.querySelector('#count').textContent)+1">Increment</button><span id="count">0</span>`);
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -76,6 +76,20 @@ try {
   );
   assert.ok(!JSON.stringify(state.value).includes("private-nested-value"));
   cases.push("isolated state and excluded editable values");
+  let method = state.value.elements.find(
+    (element) => element.label === "Payment method",
+  );
+  assert.equal(method.hasInput, false);
+  assert.equal(method.edited, false);
+  await page.select("select", "private-method-value");
+  state = await snapshot();
+  method = state.value.elements.find(
+    (element) => element.label === "Payment method",
+  );
+  assert.equal(method.hasInput, true);
+  assert.equal(method.edited, true);
+  assert.ok(!JSON.stringify(state.value).includes("private-method-value"));
+  cases.push("selected method and changed field are visible without the value");
   assert.equal(
     (await act(state, "fill", "Name", { text: "agent" })).dispatched,
     true,
