@@ -492,7 +492,7 @@ export const useComputerAction: Action = {
     const result: ComputerActionResult = await withApprovalRelay(
       service,
       callback,
-      () => service.executeDesktopAction(desktopParams),
+      () => service.executeDesktopAction(desktopParams, options?.abortSignal),
       { ownerId: approvalOwnerIdFromMemory(message) },
     );
     const text = formatDesktopResultText(desktopParams, result);

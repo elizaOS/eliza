@@ -461,6 +461,7 @@ export class ComputerUseService extends Service {
   async executeCommand(
     command: string,
     parameters: Record<string, unknown> = {},
+    signal?: AbortSignal,
   ): Promise<ComputerUseResult> {
     switch (command) {
       case "app_list_apps":
@@ -486,7 +487,7 @@ export class ComputerUseService extends Service {
       case "app_select_text":
       case "app_secondary_action":
       case "app_hover_target":
-        return this.executeAppAction(command, parameters);
+        return this.executeAppAction(command, parameters, signal);
       case "screenshot":
       case "click":
       case "click_with_modifiers":
@@ -510,10 +511,13 @@ export class ComputerUseService extends Service {
       case "launch":
       case "kill_app":
       case "set_value":
-        return this.executeDesktopAction({
-          ...commandParameters<DesktopActionParams>(parameters),
-          action: this.mapDesktopCommandToAction(command),
-        });
+        return this.executeDesktopAction(
+          {
+            ...commandParameters<DesktopActionParams>(parameters),
+            action: this.mapDesktopCommandToAction(command),
+          },
+          signal,
+        );
       case "browser_open":
       case "browser_connect":
       case "browser_close":
@@ -535,10 +539,13 @@ export class ComputerUseService extends Service {
       case "browser_open_tab":
       case "browser_close_tab":
       case "browser_switch_tab":
-        return this.executeBrowserAction({
-          ...commandParameters<BrowserActionParams>(parameters),
-          action: this.mapBrowserCommandToAction(command),
-        });
+        return this.executeBrowserAction(
+          {
+            ...commandParameters<BrowserActionParams>(parameters),
+            action: this.mapBrowserCommandToAction(command),
+          },
+          signal,
+        );
       case "list_windows":
       case "switch_to_window":
       case "arrange_windows":
@@ -547,10 +554,13 @@ export class ComputerUseService extends Service {
       case "maximize_window":
       case "restore_window":
       case "close_window":
-        return this.executeWindowAction({
-          ...commandParameters<WindowActionParams>(parameters),
-          action: this.mapWindowCommandToAction(command),
-        });
+        return this.executeWindowAction(
+          {
+            ...commandParameters<WindowActionParams>(parameters),
+            action: this.mapWindowCommandToAction(command),
+          },
+          signal,
+        );
       case "file_read":
       case "file_write":
       case "file_edit":
@@ -567,10 +577,13 @@ export class ComputerUseService extends Service {
       case "file_create_dir":
       case "file_directory_exists":
       case "file_get_file_size":
-        return this.executeFileAction({
-          ...commandParameters<FileActionParams>(parameters),
-          action: this.mapFileCommandToAction(command),
-        });
+        return this.executeFileAction(
+          {
+            ...commandParameters<FileActionParams>(parameters),
+            action: this.mapFileCommandToAction(command),
+          },
+          signal,
+        );
       case "terminal_connect":
       case "terminal_execute":
       case "terminal_read":
@@ -578,10 +591,13 @@ export class ComputerUseService extends Service {
       case "terminal_clear":
       case "terminal_close":
       case "execute_command":
-        return this.executeTerminalAction({
-          ...commandParameters<TerminalActionParams>(parameters),
-          action: this.mapTerminalCommandToAction(command),
-        });
+        return this.executeTerminalAction(
+          {
+            ...commandParameters<TerminalActionParams>(parameters),
+            action: this.mapTerminalCommandToAction(command),
+          },
+          signal,
+        );
       default:
         return {
           success: false,
@@ -663,6 +679,7 @@ export class ComputerUseService extends Service {
     const approvalError = await this.awaitApproval(
       command,
       this.appApprovalParameters(parameters),
+      signal,
     );
     if (approvalError) return { success: false, error: approvalError };
     try {
@@ -899,7 +916,11 @@ export class ComputerUseService extends Service {
           signal,
         );
       }
-      return this.executeCommand(action.command, action.parameters ?? {});
+      return this.executeCommand(
+        action.command,
+        action.parameters ?? {},
+        signal,
+      );
     }
 
     const targetId = target.targetId;
@@ -918,7 +939,11 @@ export class ComputerUseService extends Service {
           error: `Command is not allowed in a browser session: ${action.command}`,
         };
       }
-      return this.executeCommand(action.command, action.parameters ?? {});
+      return this.executeCommand(
+        action.command,
+        action.parameters ?? {},
+        signal,
+      );
     }
 
     return {
@@ -960,6 +985,7 @@ export class ComputerUseService extends Service {
 
   async executeDesktopAction(
     rawParams: DesktopActionParams,
+    signal?: AbortSignal,
   ): Promise<ComputerActionResult> {
     const params = this.normalizeDesktopActionParams(rawParams);
     const entry = this.createEntry(params.action, this.toParamsRecord(params));
@@ -975,6 +1001,7 @@ export class ComputerUseService extends Service {
       const approvalError = await this.awaitApproval(
         this.desktopApprovalCommand(params.action),
         this.toParamsRecord(params),
+        signal,
       );
       if (approvalError) {
         return this.failEntry(entry, { success: false, error: approvalError });
@@ -1345,6 +1372,7 @@ export class ComputerUseService extends Service {
 
   async executeBrowserAction(
     rawParams: BrowserActionParams,
+    signal?: AbortSignal,
   ): Promise<BrowserActionResult> {
     const action = this.normalizeBrowserAction(rawParams.action);
     let params: BrowserActionParams;
@@ -1368,6 +1396,7 @@ export class ComputerUseService extends Service {
       const approvalError = await this.awaitApproval(
         this.browserApprovalCommand(params.action),
         this.toParamsRecord(params),
+        signal,
       );
       if (approvalError) {
         return this.failEntry(entry, { success: false, error: approvalError });
@@ -1641,6 +1670,7 @@ export class ComputerUseService extends Service {
 
   async executeWindowAction(
     rawParams: WindowActionParams,
+    signal?: AbortSignal,
   ): Promise<WindowActionResult> {
     const params = this.normalizeWindowActionParams(rawParams);
     const entry = this.createEntry(
@@ -1657,6 +1687,7 @@ export class ComputerUseService extends Service {
       const approvalError = await this.awaitApproval(
         this.windowApprovalCommand(params.action),
         this.toParamsRecord(params),
+        signal,
       );
       if (approvalError) {
         return this.failEntry(entry, { success: false, error: approvalError });
@@ -1797,6 +1828,7 @@ export class ComputerUseService extends Service {
 
   async executeFileAction(
     rawParams: FileActionParams,
+    signal?: AbortSignal,
   ): Promise<FileActionResult> {
     const params = this.normalizeFileActionParams(rawParams);
     const entry = this.createEntry(
@@ -1808,6 +1840,7 @@ export class ComputerUseService extends Service {
       const approvalError = await this.awaitApproval(
         this.fileApprovalCommand(params.action),
         this.toParamsRecord(params),
+        signal,
       );
       if (approvalError) {
         return this.failEntry(entry, { success: false, error: approvalError });
@@ -1902,6 +1935,7 @@ export class ComputerUseService extends Service {
 
   async executeTerminalAction(
     rawParams: TerminalActionParams,
+    signal?: AbortSignal,
   ): Promise<TerminalActionResult> {
     const params = this.normalizeTerminalActionParams(rawParams);
     const entry = this.createEntry(
@@ -1913,6 +1947,7 @@ export class ComputerUseService extends Service {
       const approvalError = await this.awaitApproval(
         this.terminalApprovalCommand(params.action),
         this.toParamsRecord(params),
+        signal,
       );
       if (approvalError) {
         return this.failEntry(entry, { success: false, error: approvalError });
@@ -2510,6 +2545,7 @@ export class ComputerUseService extends Service {
   private async awaitApproval(
     command: string,
     parameters: Record<string, unknown>,
+    signal?: AbortSignal,
   ): Promise<string | null> {
     if (this.approvalManager.shouldAutoApprove(command)) {
       return null;
@@ -2520,6 +2556,7 @@ export class ComputerUseService extends Service {
     const decision = await this.approvalManager.requestApproval(
       command,
       parameters,
+      signal,
     );
     if (decision.approved) {
       return null;
