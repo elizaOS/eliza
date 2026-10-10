@@ -343,12 +343,21 @@ function normalizeLlmScoreEntry(entry: unknown): LlmScoreEntry | null {
   const record = entry as Record<string, unknown>;
   const slug = typeof record.slug === "string" ? record.slug.trim() : "";
   const rawScore = record.score;
-  const score =
-    typeof rawScore === "number"
-      ? rawScore
-      : typeof rawScore === "string"
-        ? Number.parseFloat(rawScore)
-        : Number.NaN;
+  // Number.parseFloat stops at the first non-digit ("1e" -> 1), so a malformed
+  // score was silently kept as the entry's relevance instead of the entry
+  // being dropped. Require the whole trimmed value to be decimal, mirroring
+  // TWILIO_SMS_COST_PATTERN in packages/cloud/sdk/src/browser-contracts/markup.ts.
+  let score: number;
+  if (typeof rawScore === "number") {
+    score = rawScore;
+  } else if (typeof rawScore === "string") {
+    const text = rawScore.trim();
+    score = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(text)
+      ? Number(text)
+      : Number.NaN;
+  } else {
+    score = Number.NaN;
+  }
   const reason =
     typeof record.reason === "string" && record.reason.trim()
       ? record.reason.trim()
