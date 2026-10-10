@@ -93,6 +93,14 @@ export function isThinStewardPasskeyLoginOptionsPath(
  * public discovery paths, POST (+ preflight) for the exact pre-auth login
  * mutations.
  */
+function isThinCloudOwnerPhonePath(pathname: string): boolean {
+  const path = removeTrailingSlashes(pathname);
+  return (
+    path === "/steward/cloud-owner-phone/auth/sms/send" ||
+    path === "/steward/cloud-owner-phone/auth/sms/verify"
+  );
+}
+
 export function isThinStewardPath(method: string, pathname: string): boolean {
   const upper = method.toUpperCase();
   if (upper === "GET" || upper === "HEAD") {
@@ -101,14 +109,16 @@ export function isThinStewardPath(method: string, pathname: string): boolean {
   if (upper === "POST") {
     return (
       isThinStewardEmailAuthPath(pathname) ||
-      isThinStewardPasskeyLoginOptionsPath(pathname)
+      isThinStewardPasskeyLoginOptionsPath(pathname) ||
+      isThinCloudOwnerPhonePath(pathname)
     );
   }
   if (upper === "OPTIONS") {
     return (
       isThinStewardPublicPath(pathname) ||
       isThinStewardEmailAuthPath(pathname) ||
-      isThinStewardPasskeyLoginOptionsPath(pathname)
+      isThinStewardPasskeyLoginOptionsPath(pathname) ||
+      isThinCloudOwnerPhonePath(pathname)
     );
   }
   return false;
