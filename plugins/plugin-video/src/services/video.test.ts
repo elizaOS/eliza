@@ -5,7 +5,10 @@ import fs from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ElizaError, IAgentRuntime, Media } from "@elizaos/core";
+import { ChannelType, TaskStatus, type UUID } from "@elizaos/core";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { describe, expect, it, vi } from "vitest";
+import { mediaStatusAction, registerMediaJobWorker } from "../jobs";
 import type { BinaryResolver } from "./binaries";
 import { VideoService } from "./video";
 
@@ -395,3 +398,87 @@ describe("VideoService deterministic behavior", () => {
     });
   });
 });
+
+it("runs reloaded media tasks and retains scoped failure status in the real task store", async () => {
+  const { runtime, cleanup } = await createTestRuntime({
+    characterName: "MediaTaskContract",
+  });
+  try {
+    const entityId = randomUUID() as UUID,
+      roomId = randomUUID() as UUID,
+      worldId = randomUUID() as UUID;
+    await runtime.ensureConnection({
+      entityId,
+      roomId,
+      worldId,
+      worldName: "Contract world",
+      userName: "Fixture requester",
+      name: "Fixture requester",
+      source: "test",
+      type: ChannelType.DM,
+    });
+    registerMediaJobWorker(runtime);
+    const taskId = await runtime.createTask({
+      name: "PROCESS_PUBLIC_MEDIA",
+      agentId: runtime.agentId,
+      roomId,
+      worldId,
+      entityId,
+      tags: ["queue", "media"],
+      dueAt: Date.now(),
+      metadata: {
+        status: TaskStatus.PENDING,
+        url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        kind: "youtube",
+      },
+    });
+    const task = await runtime.getTask(taskId);
+    const worker = runtime.getTaskWorker("PROCESS_PUBLIC_MEDIA");
+    expect(task).toBeTruthy();
+    expect(worker).toBeTruthy();
+    if (!task || !worker)
+      throw new Error("Native task fixture did not initialize");
+    expect(await worker.shouldRun?.(runtime, task)).toBe(true);
+    expect(await worker.execute(runtime, {}, task)).toMatchObject({
+      preserveTask: true,
+    });
+    const failed = await runtime.getTask(taskId);
+    expect(failed?.metadata).toMatchObject({
+      status: TaskStatus.FAILED,
+      paused: true,
+      error: "MEDIA_TASK_SERVICES_UNAVAILABLE",
+    });
+    if (!failed) throw new Error("Failed task was deleted");
+    expect(await worker.shouldRun?.(runtime, failed)).toBe(false);
+    const message = {
+      id: randomUUID() as UUID,
+      agentId: runtime.agentId,
+      entityId,
+      roomId,
+      worldId,
+      content: { text: "status" },
+    };
+    const result = await mediaStatusAction.handler(
+      runtime,
+      message,
+      undefined,
+      { parameters: { taskId } },
+    );
+    expect(result).toMatchObject({
+      success: true,
+      data: { status: TaskStatus.FAILED },
+    });
+    for (const foreign of [
+      { ...message, entityId: randomUUID() as UUID },
+      { ...message, roomId: randomUUID() as UUID },
+    ]) {
+      await expect(
+        mediaStatusAction.handler(runtime, foreign, undefined, {
+          parameters: { taskId },
+        }),
+      ).rejects.toMatchObject({ code: "MEDIA_TASK_NOT_FOUND" });
+    }
+  } finally {
+    await cleanup();
+  }
+}, 120_000);

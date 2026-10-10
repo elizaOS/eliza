@@ -142,7 +142,8 @@ export function registerMediaJobWorker(runtime: IAgentRuntime) {
   runtime.registerTaskWorker({
     name: MEDIA_JOB,
     shouldRun: async (current, task) =>
-      task.agentId === current.agentId && task.status === TaskStatus.PENDING,
+      task.agentId === current.agentId &&
+      task.metadata?.status === TaskStatus.PENDING,
     execute: async (current, _options, task) => {
       if (!task.id)
         throw new ElizaError("Media task ID is missing.", {
@@ -152,6 +153,7 @@ export function registerMediaJobWorker(runtime: IAgentRuntime) {
       const metadata = {
         ...task.metadata,
         startedAt: new Date().toISOString(),
+        status: TaskStatus.IN_PROGRESS,
       };
       try {
         if (
@@ -177,7 +179,6 @@ export function registerMediaJobWorker(runtime: IAgentRuntime) {
           String(task.metadata.kind),
         );
         await current.updateTask(task.id, {
-          status: TaskStatus.IN_PROGRESS,
           metadata,
         });
         if (
@@ -204,7 +205,7 @@ export function registerMediaJobWorker(runtime: IAgentRuntime) {
         const latest = await current.getTask(task.id);
         if (
           !latest ||
-          latest.status === TaskStatus.CANCELLED ||
+          latest.metadata?.status === TaskStatus.CANCELLED ||
           latest.metadata?.paused === true
         )
           return { preserveTask: true };
@@ -256,6 +257,7 @@ export function registerMediaJobWorker(runtime: IAgentRuntime) {
         }
         const completed = {
           ...metadata,
+          status: TaskStatus.COMPLETED,
           documentId: document.clientDocumentId,
           sourceUrl,
           summary,
@@ -265,7 +267,6 @@ export function registerMediaJobWorker(runtime: IAgentRuntime) {
           notificationState: "pending",
         };
         await current.updateTask(task.id, {
-          status: TaskStatus.COMPLETED,
           metadata: completed,
         });
         processingCompleted = true;
@@ -314,9 +315,9 @@ export function registerMediaJobWorker(runtime: IAgentRuntime) {
         current.reportError("MediaJob.process", error, { taskId: task.id });
         if (processingCompleted) return { preserveTask: true };
         await current.updateTask(task.id, {
-          status: TaskStatus.FAILED,
           metadata: {
             ...metadata,
+            status: TaskStatus.FAILED,
             paused: true,
             error:
               error instanceof ElizaError
@@ -366,9 +367,9 @@ async function queueMedia(
     worldId: room.worldId,
     entityId: message.entityId,
     tags: ["queue", "media"],
-    status: TaskStatus.PENDING,
     dueAt: Date.now(),
     metadata: {
+      status: TaskStatus.PENDING,
       url: publicMediaUrl(url, kind),
       kind,
       summary,
@@ -516,12 +517,12 @@ export const mediaStatusAction: Action = {
       });
     return {
       success: true,
-      text: JSON.stringify({ status: task.status, ...task.metadata }),
+      text: JSON.stringify({ status: task.metadata?.status, ...task.metadata }),
       modelReplyRequired: true,
       data: {
         actionName: "MEDIA_JOB_STATUS",
         taskId: task.id,
-        status: task.status,
+        status: task.metadata?.status,
         ...task.metadata,
       },
     };
