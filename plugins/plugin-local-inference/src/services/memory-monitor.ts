@@ -90,7 +90,13 @@ function envInt(name: string): number | undefined {
 function envFloat(name: string): number | undefined {
 	const raw = process.env[name]?.trim();
 	if (!raw) return undefined;
-	const parsed = Number.parseFloat(raw);
+	// Number.parseFloat stops at the first non-digit ("0.5abc" -> 0.5), so a
+	// typo was silently accepted as the fraction instead of falling back to
+	// the default. Require the whole trimmed value to be decimal, mirroring
+	// TWILIO_SMS_COST_PATTERN in packages/cloud/sdk/src/browser-contracts/markup.ts.
+	const parsed = /^\+?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(raw)
+		? Number(raw)
+		: Number.NaN;
 	return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1
 		? parsed
 		: undefined;
