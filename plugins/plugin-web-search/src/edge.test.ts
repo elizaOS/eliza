@@ -103,6 +103,24 @@ describe("webSearchEdgePlugin", () => {
         ]);
     });
 
+    it("reads URLs in JSON excerpts from the decoded text, not the escapes", () => {
+        const text = JSON.stringify({
+            results: [
+                {
+                    url: "https://example.com/article",
+                    excerpts: [
+                        'Intro\nSee https://docs.example.org/guide\nNext says "https://example.net/x" too',
+                    ],
+                },
+            ],
+        });
+        expect(webSearchSourceUrls(text)).toEqual([
+            "https://example.com/article",
+            "https://docs.example.org/guide",
+            "https://example.net/x",
+        ]);
+    });
+
     it("rejects loopback and private-network citation URLs", () => {
         expect(
             webSearchSourceEvidence(

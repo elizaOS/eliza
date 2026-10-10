@@ -169,11 +169,13 @@ export function webSearchSourceEvidence(text: string): {
         // error-policy:J3 non-JSON providers retain URL inventory but cannot
         // claim source-bound evidence for current factual assertions.
     }
-    for (const match of text.matchAll(/https?:\/\/[^\s<>"']+/gu)) {
-        const exact = publicHttpUrl(match[0]);
-        if (exact && sourceUrls.has(exact)) continue;
-        const parsed = publicHttpUrl(stripTrailingProsePunctuation(match[0]));
-        if (parsed) sourceUrls.add(parsed);
+    for (const prose of decodedStrings(text)) {
+        for (const match of prose.matchAll(/https?:\/\/[^\s<>"']+/gu)) {
+            const exact = publicHttpUrl(match[0]);
+            if (exact && sourceUrls.has(exact)) continue;
+            const parsed = publicHttpUrl(stripTrailingProsePunctuation(match[0]));
+            if (parsed) sourceUrls.add(parsed);
+        }
     }
     return {
         sources: overflowed
@@ -185,6 +187,24 @@ export function webSearchSourceEvidence(text: string): {
         sourceUrls: [...sourceUrls],
         overflowed,
     };
+}
+
+/**
+ * The string values of JSON provider text, decoded: in the raw text `\n` and
+ * `\"` escapes would read as URL characters (`/guide\nNext`).
+ */
+function decodedStrings(text: string): string[] {
+    const strings: string[] = [];
+    try {
+        JSON.parse(text, (_key, value) => {
+            if (typeof value === "string") strings.push(value);
+            return value;
+        });
+        return strings;
+    } catch {
+        // error-policy:J3 non-JSON provider text is scanned as prose.
+        return [text];
+    }
 }
 
 /** Extracts traceable public HTTP sources without interpreting provider prose. */
