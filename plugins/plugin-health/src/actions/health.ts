@@ -179,8 +179,12 @@ function normalizeDays(value: unknown): number | null {
     return Math.floor(value);
   }
   if (typeof value === "string") {
-    const parsed = Number(value.trim());
-    if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed);
+    const trimmed = value.trim();
+    // Canonical digits only: Number("0x10") is 16 and Number("1e3") is 1000 —
+    // both used to silently become the trend window instead of being dropped.
+    if (!/^\d+$/.test(trimmed)) return null;
+    const parsed = Number(trimmed);
+    if (Number.isSafeInteger(parsed) && parsed > 0) return parsed;
   }
   return null;
 }
