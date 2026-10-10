@@ -118,4 +118,5 @@ Passkeys are not implemented.
   real framework objects with synthetic targets. Run with
   `node packages/app/scripts/android-native-plugins.ts --serial <emulator> --plugin plugin-native-passwords`.
   The runner creates and removes a disposable user. These tests do not establish trusted-browser,
-  biometric, physical-device or user acceptance.
+  biometric, physical-device or user acceptance. Layout artifacts render only the fixture
+  views with synthetic data; Android screen-capture protection remains enabled.

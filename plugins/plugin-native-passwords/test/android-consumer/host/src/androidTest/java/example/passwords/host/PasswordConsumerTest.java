@@ -97,6 +97,11 @@ public final class PasswordConsumerTest {
    android.app.Activity activity = selected.get();
    assertTrue("Screen capture remains blocked", (activity.getWindow().getAttributes().flags & android.view.WindowManager.LayoutParams.FLAG_SECURE) != 0);
    android.view.View view = activity.getWindow().getDecorView();
+   captureView(view, name);
+  });
+ }
+ /** Render a fixture-owned view only; this does not change screenshot protection. */
+ static void captureView(android.view.View view, String name) {
    assertTrue(view.getWidth() > 0 && view.getHeight() > 0);
    android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(view.getWidth(), view.getHeight(), android.graphics.Bitmap.Config.ARGB_8888);
    view.draw(new android.graphics.Canvas(bitmap));
@@ -104,7 +109,23 @@ public final class PasswordConsumerTest {
    assertTrue(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, bytes)); bitmap.recycle();
    Bundle artifact = new Bundle(); artifact.putString("nativeArtifactName", name); artifact.putString("nativeArtifactBase64", android.util.Base64.encodeToString(bytes.toByteArray(), android.util.Base64.NO_WRAP));
    InstrumentationRegistry.getInstrumentation().sendStatus(2, artifact);
+ }
+ /** Inspect our native transfer dialog on API 29+, where Android exposes owned windows. */
+ void captureDialog(String message, String name) throws Exception {
+  if (android.os.Build.VERSION.SDK_INT < 29) return;
+  java.util.concurrent.atomic.AtomicReference<android.view.View> selected = new java.util.concurrent.atomic.AtomicReference<>();
+  java.util.concurrent.CountDownLatch laidOut = new java.util.concurrent.CountDownLatch(1);
+  InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+   for (android.view.View root : android.view.inspector.WindowInspector.getGlobalWindowViews()) {
+    android.widget.TextView text = root.findViewById(android.R.id.message);
+    if (text != null && String.valueOf(text.getText()).contains(message) && root.isShown()) selected.set(root);
+   }
+   android.view.View view = selected.get(); assertNotNull("Owned transfer dialog is visible", view);
+   assertTrue("Dialog keeps screen capture blocked", (((android.view.WindowManager.LayoutParams)view.getLayoutParams()).flags & android.view.WindowManager.LayoutParams.FLAG_SECURE) != 0);
+   view.postOnAnimation(() -> view.postOnAnimation(laidOut::countDown));
   });
+  assertTrue("Dialog layout settled", laidOut.await(5, java.util.concurrent.TimeUnit.SECONDS));
+  InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> captureView(selected.get(), name));
  }
  private void launch(Context context, String username, String password) throws Exception {
   String user = shell("am get-current-user");

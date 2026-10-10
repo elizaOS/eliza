@@ -60,6 +60,7 @@ public final class PasswordTransferTest {
 
    invoke("export", "ElizaPasswordTransfer", "exportVault", new JSONObject());
    ui.await(() -> ui.find(node -> "Export saved passwords?".contentEquals(node.getText() == null ? "" : node.getText())) != null, "Export review shown");
+   ui.captureDialog("This exports all saved passwords", "password-export-review.png");
    invoke("overlap", "ElizaPasswordTransfer", "importVault", new JSONObject());
    ui.await(() -> "true".equals(js("results.overlap?.error==='busy'")), "Overlapping transfer is refused");
    ui.press("Cancel");
@@ -75,6 +76,7 @@ public final class PasswordTransferTest {
    invoke("import", "ElizaPasswordTransfer", "importVault", new JSONObject());
    ui.press("passwords.csv"); ui.pin(pin);
    ui.await(() -> ui.find(node -> String.valueOf(node.getText()).contains("https://transfer.example")) != null, "Exact imported origin is reviewed");
+   ui.captureDialog("https://transfer.example", "password-import-review.png");
    ui.press("Import"); value("import", "results.import.value.imported===1 && results.import.value.skipped===0 && Object.keys(results.import.value).length===2");
    unlock(pin);
    PasswordVaultAccess access = PasswordVaultAccess.get(context);
