@@ -28,7 +28,22 @@ composition over the agent's `InteractiveTaskRuntime` and browser's
 it does not create a scheduler, connector identity, autonomous payment action,
 or replacement task engine. `bill_outcomes_v1` and source/attempt/review tables
 are task-owned domain evidence, including uncertain submissions that must survive
-restarts to prevent repeated preparation.
+restarts to prevent repeated preparation. With a journal path, a submission
+attempt is journaled with fsync before its INSERT and written again at the next
+start. A form the person sent on the biller's website while the task was paused
+or restarted, other than a sign-in or code form, is an uncertain submission even
+without a payment review. A page that the browser stopped from submitting after
+a task action pauses the task. A website that already shows the bill paid or
+scheduled ends the task with a kept `bill_prior_outcomes_v1` record; it is never
+this task's payment. After a saved outcome, a host with bill discovery looks up
+to three times for exactly one receipt email that names the provider reference
+and then reports `receiptInEmail`. Each lookup reserves a durable attempt before
+the provider read; failed reads share the same budget and one-minute cooldown.
+The code coordinator never fills a code field
+the person has typed in and reports fixed Google reasons (`codeReason`). Bill
+search fails with `account_mismatch` when the connected Google address cannot
+receive the configured recipient's mail (masked addresses are matched by their
+visible parts).
 
 Hosts must supply reviewed `deriveBillDecision` and exact `controls` policy.
 Neither may come from renderer input, page instructions or a model response.
@@ -61,6 +76,8 @@ selection. Source-link opening requires an explicit call and validated provider
 URL. Hosts supply transport and UI wording; owner authorization and durable effect
 controls remain on the host. Stopping a client suppresses late replies, not host
 effects already dispatched. The leaf is exported as `./native-host/bill-client`.
+`BillDecisionClient.hold()` suspends timed re-checks while a question is answered;
+a command started meanwhile is sent only after `release()`.
 
 
 `native-host/bill-review-controller.ts` sequences explicitly requested bill metadata
