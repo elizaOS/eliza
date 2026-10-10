@@ -125,8 +125,7 @@ person sees in the connected profile. It sends one `list` command and returns th
 single active HTTPS tab as `{ tabId, origin, title }`: the origin without path,
 query or fragment, and the title from `currentPageTitle()`. That title has no
 control or format characters, has email addresses and runs of six or more digits
-replaced by `[email]` and `[number]`, and is at most 120 characters (cut with an
-ellipsis). Names and other words in it are not detected. The title is written by
+replaced by `[email]` and `[number]`, and is preserved in full without a length limit. Names and other words in it are not detected. The title is written by
 the website, so hosts pass it to a model as quoted data, never as instructions.
 It returns `null` when no single active HTTPS page is known: no active web tab,
 more than one browser window (the extension's `list` reply counts windows before

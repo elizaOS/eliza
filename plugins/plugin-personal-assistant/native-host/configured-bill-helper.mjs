@@ -290,7 +290,7 @@ export async function createConfiguredBillHelper({
     },
     /**
      * The page open in the configured browser profile: HTTPS origin and a
-     * bounded, redacted title only (see NativeSocketBrowserTarget.currentPage).
+     * complete, redacted title only (see NativeSocketBrowserTarget.currentPage).
      * The title is untrusted website text. Null for another owner, a changed
      * account or profile, a closed helper, an older browser, or an unknown
      * page. It is conversation context, never task authority.

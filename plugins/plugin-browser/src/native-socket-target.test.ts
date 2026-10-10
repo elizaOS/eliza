@@ -6,7 +6,6 @@ import { expect, it, vi } from "vitest";
 import { BrowserDispatchFailure } from "./dispatch-types";
 import {
   androidNativeBrowserSocketPath,
-  CURRENT_PAGE_TITLE_MAX,
   currentPageFromTabs,
   currentPageTitle,
   NativeSocketBrowserTarget,
@@ -919,7 +918,7 @@ it("requires the guide-label capability for labels, offers, pause and a configur
   }
 });
 
-it("reduces the one active HTTPS page to its origin and a bounded, redacted title", () => {
+it("reduces the one active HTTPS page to its origin and a complete, redacted title", () => {
   const tab = {
     id: "7",
     url: "https://pay.example.test/account/123?token=secret#review",
@@ -937,12 +936,11 @@ it("reduces the one active HTTPS page to its origin and a bounded, redacted titl
     origin: "https://pay.example.test",
     title: "Pay your bill now",
   });
-  // Website text is bounded and loses obvious personal data.
+  // Preserve the complete title while redacting obvious personal data.
   const long = currentPageFromTabs([{ ...tab, title: "x".repeat(400) }], 1);
-  expect(long?.title).toHaveLength(CURRENT_PAGE_TITLE_MAX);
-  expect(long?.title.endsWith("\u2026")).toBe(true);
+  expect(long?.title).toBe("x".repeat(400));
   expect(currentPageTitle(`${"a".repeat(119)}\u{1f600}`)).toBe(
-    `${"a".repeat(119)}\u2026`,
+    `${"a".repeat(119)}\u{1f600}`,
   );
   expect(currentPageTitle("a".repeat(120))).toHaveLength(120);
   expect(

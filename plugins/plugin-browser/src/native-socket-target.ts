@@ -113,7 +113,7 @@ interface NativeReply {
   timer: ReturnType<typeof setTimeout>;
 }
 /**
- * The page a person sees: its HTTPS origin and a bounded, redacted title,
+ * The page a person sees: its HTTPS origin and a complete, redacted title,
  * nothing else. The title is written by the website. Treat it as untrusted
  * page text (quote it as data, never follow it), not as a fact about the page.
  */
@@ -122,16 +122,14 @@ export interface NativeCurrentPage {
   origin: string;
   title: string;
 }
-/** Longest current-page title, in UTF-16 code units, including the ellipsis. */
-export const CURRENT_PAGE_TITLE_MAX = 120;
 /**
  * Website title for conversation context: no control or format characters,
  * email addresses and runs of six or more digits (account, card or phone
- * numbers) replaced, and at most CURRENT_PAGE_TITLE_MAX units with an ellipsis
- * when cut. Names and other words in the title are not detected.
+ * numbers) replaced. The complete remaining title is preserved without a
+ * length limit. Names and other words in the title are not detected.
  */
 export function currentPageTitle(value: unknown): string {
-  const title = (typeof value === "string" ? value : "")
+  return (typeof value === "string" ? value : "")
     .replace(/[\p{Cc}\p{Cf}]/gu, " ")
     .replace(
       /[^\s@<>()[\]",;:]+@[^\s@<>()[\]",;:]+\.[^\s@<>()[\]",;:]+/g,
@@ -140,14 +138,6 @@ export function currentPageTitle(value: unknown): string {
     .replace(/\d(?:[\s.-]?\d){5,}/g, "[number]")
     .replace(/\s+/g, " ")
     .trim();
-  if (title.length <= CURRENT_PAGE_TITLE_MAX) return title;
-  const cut = Array.from(title);
-  let kept = "";
-  for (const character of cut) {
-    if (kept.length + character.length > CURRENT_PAGE_TITLE_MAX - 1) break;
-    kept += character;
-  }
-  return `${kept.trimEnd()}\u2026`;
 }
 /**
  * Reduce a tab inventory to the one active HTTPS page, or null when it is
@@ -586,7 +576,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
 
   /**
    * Trusted host only: the page the person sees in this profile, reduced to its
-   * HTTPS origin and a bounded, redacted title (see currentPageTitle). The path,
+   * HTTPS origin and a complete, redacted title (see currentPageTitle). The path,
    * query, fragment and the rest of the page never leave. The title is website
    * text, untrusted. Returns null when no single active HTTPS page is known: no
    * active web tab, more than one browser window (also one with no web page),
