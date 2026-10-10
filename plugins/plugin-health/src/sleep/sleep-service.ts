@@ -144,15 +144,19 @@ export function createHealthSleepServiceMethods(
       );
       const includeNaps = opts?.includeNaps === true;
       const rows = await listWindowRows({ windowDays, includeNaps });
-      const episodes: LifeOpsSleepHistoryEpisode[] = rows.map((row) => ({
-        id: row.id,
-        startedAt: row.startAt,
-        endedAt: row.endAt,
-        durationMin: durationMinutesFor(row.startAt, row.endAt),
-        cycleType: row.cycleType,
-        source: row.source,
-        confidence: row.confidence,
-      }));
+      // Newest first: the sleep widget and HealthView read episodes[0] as the
+      // latest sleep, while the repository returns rows oldest first.
+      const episodes: LifeOpsSleepHistoryEpisode[] = [...rows]
+        .sort((a, b) => Date.parse(b.startAt) - Date.parse(a.startAt))
+        .map((row) => ({
+          id: row.id,
+          startedAt: row.startAt,
+          endedAt: row.endAt,
+          durationMin: durationMinutesFor(row.startAt, row.endAt),
+          cycleType: row.cycleType,
+          source: row.source,
+          confidence: row.confidence,
+        }));
       return {
         episodes,
         summary: summarizeSleepHistory(episodes),
