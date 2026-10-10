@@ -1,7 +1,7 @@
 # @elizaos/plugin-goals
 
-Life direction plugin for elizaOS: owner-set long-horizon goals, daily check-ins, and a
-self-care / mood / journal panel.
+Life direction plugin for elizaOS: owner-set long-horizon goals with per-goal check-ins, and
+the goals list view.
 
 ## Development
 

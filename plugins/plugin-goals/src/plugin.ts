@@ -20,7 +20,7 @@ const GOALS_PLUGIN_NAME = "@elizaos/plugin-goals";
 export const goalsPlugin: Plugin = {
   name: GOALS_PLUGIN_NAME,
   description:
-    "Life direction: owner-set long-horizon goals with per-goal check-ins on the scheduling spine, goals/routines/reminders schema, and a self-care / mood / journal panel. Routines, reminders, and alarms are still host-adapted by @elizaos/plugin-personal-assistant during migration.",
+    "Life direction: owner-set long-horizon goals with per-goal check-ins on the scheduling spine, the goals/routines/reminders schema, and the goals list view. Routines, reminders, and alarms are still host-adapted by @elizaos/plugin-personal-assistant during migration.",
   dependencies: ["@elizaos/plugin-sql", "@elizaos/plugin-scheduling"],
   // Only OWNER_GOALS has been fully migrated into this standalone package.
   // Routines/reminders/alarms remain host-adapted PA actions for now; do not
@@ -35,8 +35,7 @@ export const goalsPlugin: Plugin = {
     {
       id: "goals",
       label: "Goals",
-      description:
-        "Life goals, routines, today's reminders and alarms, self-care check-in.",
+      description: "The owner's long-horizon goals list.",
       icon: "Target",
       path: "/goals",
       responseContext: {
