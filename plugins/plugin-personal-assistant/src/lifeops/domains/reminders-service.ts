@@ -2808,13 +2808,10 @@ export class RemindersDomain {
         window.endMinute <= window.startMinute
           ? window.endMinute + 24 * 60
           : window.endMinute;
-      const localNowComparable =
-        nowMinute < window.startMinute && endMinute >= 24 * 60
-          ? nowMinute + 24 * 60
-          : nowMinute;
-      const isInside =
-        localNowComparable >= window.startMinute &&
-        localNowComparable < endMinute;
+      // Today's occurrence uses today's window. The tail after midnight of a
+      // window such as night (22:00-04:00) belongs to the previous night, so
+      // 00:05 waits for today's 22:00 instead of firing at once.
+      const isInside = nowMinute >= window.startMinute && nowMinute < endMinute;
       if (isInside) {
         const immediateCandidate = new Date(now.getTime() + 1_000);
         if (
@@ -2826,7 +2823,7 @@ export class RemindersDomain {
         continue;
       }
       const candidateMinute = window.startMinute;
-      if (candidateMinute <= localNowComparable) continue;
+      if (candidateMinute <= nowMinute) continue;
       const localDate = addDaysToLocalDate(
         { year, month, day },
         Math.floor(candidateMinute / (24 * 60)),
