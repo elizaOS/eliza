@@ -496,7 +496,15 @@ function parseLowCreditsThreshold(raw: string | undefined): number {
 }
 
 function parseNumeric(value: string | number | null | undefined, fieldName: string): number {
-  const parsed = typeof value === "number" ? value : Number.parseFloat(String(value ?? ""));
+  // Number.parseFloat stops at the first non-digit ("0.001junk" -> 0.001), so a
+  // malformed numeric string was silently coerced into a balance/amount
+  // instead of throwing. Require the whole trimmed value to be decimal,
+  // mirroring TWILIO_SMS_COST_PATTERN in
+  // packages/cloud/sdk/src/browser-contracts/markup.ts.
+  const text = typeof value === "number" ? String(value) : (value ?? "").trim();
+  const parsed = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(text)
+    ? Number(text)
+    : Number.NaN;
   if (!Number.isFinite(parsed)) {
     throw new Error(`[CreditsService] Invalid numeric ${fieldName}`);
   }
