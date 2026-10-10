@@ -4,6 +4,7 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { client } from "../../../api/client";
+import { __resetResourceCache } from "../../../hooks/resource-cache";
 
 vi.mock("../../../agent-surface/useAgentElement", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
@@ -26,6 +27,8 @@ describe("DatabaseView agent authority switching", () => {
   let releaseAgentBTables: (() => void) | undefined;
 
   beforeEach(() => {
+    __resetResourceCache();
+    releaseAgentBTables = undefined;
     client.setBaseUrl("http://agent-a.invalid");
     client.getDatabaseStatus = vi.fn(async () => ({
       provider: "pglite",
