@@ -1060,6 +1060,35 @@ export class LocalInferenceEngine {
 		}
 	}
 
+	/**
+	 * True when the TEXT_TO_SPEECH handler can produce audio: a live non-stub
+	 * bridge, Kokoro staged in the shared models directory, or Kokoro shipped
+	 * inside the active/assigned Eliza-1 bundle. Mirrors the artifact
+	 * resolution in `ensureActiveBundleVoiceReadyOnce` without loading anything.
+	 */
+	async canSynthesizeLocally(): Promise<boolean> {
+		const bridge = this.voiceBridge;
+		if (bridge) return (bridge.backend as { id?: string }).id !== "stub";
+		if (resolveKokoroEngineConfig() !== null) return true;
+		const bundle = await this.assignedVoiceBundle();
+		return (
+			bundle !== null &&
+			resolveKokoroEngineConfig(path.join(bundle.root, "tts", "kokoro")) !==
+				null
+		);
+	}
+
+	/** The bundle `activateAssignedBundleForVoice` would activate for TTS. */
+	private async assignedVoiceBundle(): Promise<ActiveEliza1Bundle | null> {
+		if (this.activeEliza1Bundle) return this.activeEliza1Bundle;
+		if (this.dispatcher.hasLoadedModel()) return null;
+		const assignments = await readEffectiveAssignments();
+		const modelId = assignments.TEXT_LARGE ?? assignments.TEXT_SMALL;
+		if (!modelId) return null;
+		const installed = await listInstalledModels();
+		return resolveActiveEliza1Bundle(installed.find((m) => m.id === modelId));
+	}
+
 	private localAsrBlockersForBundle(bundle: ActiveEliza1Bundle): string[] {
 		const blockers: string[] = [];
 		if (!bundleHasAsrModelFiles(bundle.root)) {
