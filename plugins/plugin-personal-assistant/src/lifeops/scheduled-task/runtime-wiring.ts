@@ -1515,7 +1515,15 @@ function buildLifeOpsRunnerDeps(
       try {
         const status = await connector.status();
         return status.state !== "disconnected";
-      } catch {
+      } catch (error) {
+        // error-policy:J1 boundary translation — a connector whose status
+        // probe throws cannot carry the escalation step, so the ladder skips
+        // it. Report the probe failure so the skipped channel has a cause.
+        opts.runtime.reportError(
+          "lifeops:scheduled-task:channel-status",
+          error,
+          { channelKey, connectorKind: channel.connectorKind },
+        );
         return false;
       }
     },
