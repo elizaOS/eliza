@@ -828,7 +828,12 @@ export class SubAgentRouter extends Service {
       return;
     }
     const capRaw = readSetting(this.runtime, "ACPX_SUB_AGENT_ROUND_TRIP_CAP");
-    const parsed = capRaw ? Number.parseInt(capRaw, 10) : NaN;
+    // Number.parseInt stops at the first non-digit ("5junk" -> 5), so a
+    // typo was silently accepted as the cap instead of falling back to
+    // the default (32). Require the whole trimmed value to be decimal,
+    // mirroring resolveGenerationTimeoutMs in the discord plugin.
+    const capText = (capRaw ?? "").trim();
+    const parsed = /^\+?\d+$/.test(capText) ? Number(capText) : NaN;
     // Resolve the state-lost respawn cap through the shared resolver so the
     // router and the task service's terminal decision agree on the SAME
     // effective cap even under an operator override (#14104).
