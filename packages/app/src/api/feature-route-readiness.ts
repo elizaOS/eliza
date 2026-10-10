@@ -43,7 +43,6 @@ export type FeatureRouteReadinessFailure = {
  */
 const HOST_OWNED_FEATURE_ROUTE_PREFIXES = [
   "/api/browser-workspace",
-  "/api/computer-use",
   "/api/wallet",
 ] as const;
 /** Exact host fallbacks that share a prefix with genuinely deferred routes. */
