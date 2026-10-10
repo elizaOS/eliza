@@ -5,6 +5,11 @@ import {
   MAX_GMAIL_ATTACHMENT_BYTES,
 } from "@elizaos/plugin-google-workspace/gmail-attachments";
 import { gmailThreadSourceLink } from "@elizaos/plugin-google-workspace/gmail-source-link";
+import {
+  extractGmailHtmlLinks,
+  gmailHasAttachmentsHint,
+  gmailSearchIncludesTrash,
+} from "../../utils/gmail-mime-text";
 import { extractBody, sanitizeHeaderValue } from "../../utils/google-mcp-shared";
 import type { OAuthConnectionRole } from "../oauth/types";
 import {
@@ -344,6 +349,7 @@ export function normalizeGoogleGmailMessage(
     snippet: normalizeSnippet(message.snippet),
     receivedAt,
     isUnread: labels.includes("UNREAD"),
+    hasAttachments: gmailHasAttachmentsHint(message.payload),
     isImportant: triage.isImportant,
     likelyReplyNeeded: triage.likelyReplyNeeded,
     triageScore: triage.triageScore,
@@ -428,7 +434,7 @@ async function fetchManagedGoogleGmailMessages(args: {
     fail(400, "Invalid Gmail page token.");
   const listParams = new URLSearchParams({
     maxResults: String(Math.min(Math.max(args.maxResults, 1), 50)),
-    includeSpamTrash: "false",
+    includeSpamTrash: gmailSearchIncludesTrash(args.query) ? "true" : "false",
   });
   if (args.pageToken) listParams.set("pageToken", args.pageToken);
   for (const labelId of args.labelIds ?? []) {
@@ -695,6 +701,7 @@ export async function readManagedGoogleGmailMessage(args: {
   return {
     message,
     bodyText: normalizeManagedGmailBodyText(rawBody) || message.snippet,
+    links: parsed.payload ? extractGmailHtmlLinks(parsed.payload) : [],
     attachments: gmailAttachmentParts(parsed.payload).map((part) => part.descriptor),
   };
 }

@@ -101,12 +101,13 @@ test("real Hono route + PostgreSQL migration + HTTP provider: admission, respons
   );
   await database.query("INSERT INTO organizations VALUES ($1)", [org]);
   await database.query("INSERT INTO users VALUES ($1),($2)", [user, other]);
-  await database.exec(
-    readFileSync(
-      new URL("../../../db/migrations/0509_managed_gmail_operation_receipts.sql", import.meta.url),
-      "utf8",
-    ),
-  );
+  for (const migration of [
+    "0509_managed_gmail_operation_receipts.sql",
+    "0535_managed_gmail_read_state_operations.sql",
+  ])
+    await database.exec(
+      readFileSync(new URL(`../../../db/migrations/${migration}`, import.meta.url), "utf8"),
+    );
   const operation = crypto.randomUUID(),
     proposal = { kind: "send", body: "Exact reviewed body" };
   expect(
@@ -822,3 +823,274 @@ test("normal binary attachment HTTP download and MIME round trip; rejects altere
     server.stop(true);
   }
 }, 30000);
+
+test("read-state migration widens only the kind allowlist and keeps existing receipts", async () => {
+  const scratch = new PGlite();
+  try {
+    await scratch.exec(
+      "CREATE TABLE organizations(id uuid PRIMARY KEY);CREATE TABLE users(id uuid PRIMARY KEY);",
+    );
+    await scratch.query("INSERT INTO organizations VALUES ($1)", [org]);
+    await scratch.query("INSERT INTO users VALUES ($1)", [user]);
+    const migration = (name: string) =>
+      scratch.exec(
+        readFileSync(new URL(`../../../db/migrations/${name}`, import.meta.url), "utf8"),
+      );
+    const insert = (kind: string) =>
+      scratch.query(
+        "INSERT INTO managed_gmail_operation_receipts (organization_id,user_id,grant_id,request_id,kind,review_digest) VALUES ($1,$2,$3,$4,$5,$6)",
+        [org, user, grant, crypto.randomUUID(), kind, "a".repeat(64)],
+      );
+    await migration("0509_managed_gmail_operation_receipts.sql");
+    const constraint = await scratch.query<{ conname: string }>(
+      "SELECT conname FROM pg_constraint WHERE conrelid='managed_gmail_operation_receipts'::regclass AND pg_get_constraintdef(oid) LIKE '%untrash%'",
+    );
+    expect(constraint.rows.map((row) => row.conname)).toEqual([
+      "managed_gmail_operation_receipts_kind_check",
+    ]);
+    await insert("archive");
+    await expect(insert("mark-read")).rejects.toThrow();
+    await migration("0535_managed_gmail_read_state_operations.sql");
+    await insert("mark-read");
+    await insert("mark-unread");
+    await expect(insert("mark-starred")).rejects.toThrow();
+    const kinds = await scratch.query<{ kind: string }>(
+      "SELECT kind FROM managed_gmail_operation_receipts ORDER BY created_at, kind",
+    );
+    expect(kinds.rows.map((row) => row.kind).sort()).toEqual([
+      "archive",
+      "mark-read",
+      "mark-unread",
+    ]);
+  } finally {
+    await scratch.close();
+  }
+});
+
+test("reviewed mark-read and mark-unread over a closed transport: review digest, stale, scope, request body, readback and receipts", async () => {
+  const { InboxGoogleProvider, inboxDigest } = await import("./inbox-provider");
+  const owner = { organizationId: org, userId: user, grantId: grant };
+  let labels = ["INBOX", "UNREAD"],
+    history = "40",
+    readbackOverride: string[] | null = null;
+  const calls: { method: string; path: string; body: unknown }[] = [];
+  const closedFetch = async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    const url = new URL(String(input));
+    if (url.origin !== "https://gmail.googleapis.com")
+      throw new Error("closed transport: unexpected origin");
+    const method = init?.method ?? "GET",
+      body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+    calls.push({ method, path: url.pathname + url.search, body });
+    if (new Headers(init?.headers).get("authorization") !== "Bearer synthetic-only")
+      return new Response("bad synthetic token", { status: 401 });
+    if (method === "GET" && url.pathname === "/gmail/v1/users/me/messages/target")
+      return Response.json({
+        id: "target",
+        threadId: "thread",
+        historyId: history,
+        labelIds: labels,
+      });
+    if (method === "POST" && url.pathname === "/gmail/v1/users/me/messages/target/modify") {
+      const remove: string[] = body.removeLabelIds ?? [],
+        add: string[] = body.addLabelIds ?? [];
+      labels = [
+        ...labels.filter((label) => !remove.includes(label)),
+        ...add.filter((label) => !labels.includes(label)),
+      ];
+      history = String(Number(history) + 1);
+      return Response.json({
+        id: "target",
+        threadId: "thread",
+        historyId: history,
+        labelIds: readbackOverride ?? labels,
+      });
+    }
+    return new Response("unexpected", { status: 404 });
+  };
+  let scopes = ["https://www.googleapis.com/auth/gmail.modify"];
+  const provider = new InboxGoogleProvider({
+    grant: async () => ({ token: "synthetic-only", email: "owner@example.invalid", scopes }),
+    fetch: closedFetch,
+  });
+  const capabilities = await provider.capabilities(owner);
+  expect(capabilities.readState).toBe(true);
+  expect(capabilities.mailboxMutations).toBe(true);
+
+  const read = await provider.review(
+    owner,
+    { kind: "mark-read", messageId: "target", expectedHistoryId: "40" },
+    crypto.randomUUID(),
+  );
+  const expectedReview = {
+    kind: "mark-read",
+    messageId: "target",
+    expectedHistoryId: "40",
+    from: "owner@example.invalid",
+  };
+  expect(read.kind).toBe("mark-read");
+  expect(read.review).toEqual(expectedReview);
+  expect(read.digest).toBe(await inboxDigest(JSON.stringify(expectedReview)));
+  expect(calls).toEqual([
+    { method: "GET", path: "/gmail/v1/users/me/messages/target?format=minimal", body: undefined },
+  ]);
+  expect(await read.perform()).toEqual({
+    messageId: "target",
+    labelIds: ["INBOX"],
+    historyId: "41",
+    unread: false,
+  });
+  expect(calls[1]).toEqual({
+    method: "POST",
+    path: "/gmail/v1/users/me/messages/target/modify",
+    body: { removeLabelIds: ["UNREAD"] },
+  });
+
+  const unread = await provider.review(
+    owner,
+    { kind: "mark-unread", messageId: "target", expectedHistoryId: "41" },
+    crypto.randomUUID(),
+  );
+  expect(unread.review).toEqual({
+    kind: "mark-unread",
+    messageId: "target",
+    expectedHistoryId: "41",
+    from: "owner@example.invalid",
+  });
+  expect(unread.digest).toBe(await inboxDigest(JSON.stringify(unread.review)));
+  expect(unread.digest).not.toBe(read.digest);
+  expect(await unread.perform()).toEqual({
+    messageId: "target",
+    labelIds: ["INBOX", "UNREAD"],
+    historyId: "42",
+    unread: true,
+  });
+  expect(calls.at(-1)?.body).toEqual({ addLabelIds: ["UNREAD"] });
+
+  const stale = provider.review(
+    owner,
+    { kind: "mark-read", messageId: "target", expectedHistoryId: "41" },
+    crypto.randomUUID(),
+  );
+  await expect(stale).rejects.toBeInstanceOf(InboxContractError);
+  await expect(stale).rejects.toMatchObject({
+    status: 409,
+    message: "Selected message changed; review its current labels",
+  });
+  for (const proposal of [
+    { kind: "mark-read", messageId: "target", expectedHistoryId: "42", labelIds: ["UNREAD"] },
+    { kind: "mark-read", messageId: "../target", expectedHistoryId: "42" },
+    { kind: "mark-unread", messageId: "target", expectedHistoryId: "4\n2" },
+    { kind: "mark-unread", messageId: "target" },
+  ])
+    await expect(provider.review(owner, proposal, crypto.randomUUID())).rejects.toMatchObject({
+      status: 400,
+    });
+
+  // Readback that contradicts the requested state is not success.
+  const postsBefore = calls.filter((call) => call.method === "POST").length;
+  readbackOverride = ["INBOX", "UNREAD"];
+  const contradicted = await provider.review(
+    owner,
+    { kind: "mark-read", messageId: "target", expectedHistoryId: "42" },
+    crypto.randomUUID(),
+  );
+  await expect(contradicted.perform()).rejects.toThrow(
+    "Provider labels did not verify the requested read state",
+  );
+  readbackOverride = [];
+  const missing = await provider.review(
+    owner,
+    { kind: "mark-unread", messageId: "target", expectedHistoryId: history },
+    crypto.randomUUID(),
+  );
+  await expect(missing.perform()).rejects.toThrow(
+    "Provider labels did not verify the requested read state",
+  );
+  expect(calls.filter((call) => call.method === "POST").length).toBe(postsBefore + 2);
+  readbackOverride = null;
+
+  // Route + PostgreSQL receipt: a contradicted readback stays outcome-unknown and is never replayed.
+  const scratch = new PGlite();
+  try {
+    await scratch.exec(
+      "CREATE TABLE organizations(id uuid PRIMARY KEY);CREATE TABLE users(id uuid PRIMARY KEY);",
+    );
+    await scratch.query("INSERT INTO organizations VALUES ($1)", [org]);
+    await scratch.query("INSERT INTO users VALUES ($1)", [user]);
+    for (const migration of [
+      "0509_managed_gmail_operation_receipts.sql",
+      "0535_managed_gmail_read_state_operations.sql",
+    ])
+      await scratch.exec(
+        readFileSync(new URL(`../../../db/migrations/${migration}`, import.meta.url), "utf8"),
+      );
+    const scratchReceipts = new InboxReceipts(async (query) => {
+      const prepared = dialect.sqlToQuery(query);
+      const result = await scratch.query(prepared.sql, prepared.params);
+      return { rows: result.rows as Record<string, unknown>[] };
+    });
+    const routes = createInboxOperationRoutes({
+      receipts: scratchReceipts,
+      authenticate: async () => ({ organizationId: org, userId: user }),
+      review: (selected, proposal, requestId) => provider.review(selected, proposal, requestId),
+    });
+    const call = (path: string, body: unknown) =>
+      routes.request("http://fixture" + path, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    const proposal = { kind: "mark-read", messageId: "target", expectedHistoryId: history },
+      requestId = crypto.randomUUID();
+    const prepared = (await (
+      await call("/operations", { grantId: grant, requestId, proposal })
+    ).json()) as any;
+    expect(prepared.receipt).toMatchObject({ kind: "mark-read", state: "prepared" });
+    expect(prepared.review).toEqual({ ...proposal, from: "owner@example.invalid" });
+    const dispatch = { grantId: grant, reviewDigest: prepared.receipt.reviewDigest, proposal };
+    const done = (await (await call(`/operations/${requestId}/dispatch`, dispatch)).json()) as any;
+    expect(done.receipt.state).toBe("succeeded");
+    expect(done.receipt.providerResult).toMatchObject({ messageId: "target", unread: false });
+    expect(labels).not.toContain("UNREAD");
+
+    readbackOverride = ["INBOX"];
+    const unknownProposal = {
+        kind: "mark-unread",
+        messageId: "target",
+        expectedHistoryId: history,
+      },
+      unknownId = crypto.randomUUID();
+    const pending = (await (
+      await call("/operations", { grantId: grant, requestId: unknownId, proposal: unknownProposal })
+    ).json()) as any;
+    const unknownDispatch = {
+      grantId: grant,
+      reviewDigest: pending.receipt.reviewDigest,
+      proposal: unknownProposal,
+    };
+    const postsBeforeUnknown = calls.filter((c) => c.method === "POST").length;
+    for (let i = 0; i < 3; i++)
+      expect(
+        ((await (await call(`/operations/${unknownId}/dispatch`, unknownDispatch)).json()) as any)
+          .receipt.state,
+      ).toBe("outcome-unknown");
+    expect(calls.filter((c) => c.method === "POST").length).toBe(postsBeforeUnknown + 1);
+    readbackOverride = null;
+  } finally {
+    await scratch.close();
+  }
+
+  // Scope: a read-only grant neither advertises nor reviews read-state changes.
+  scopes = ["https://www.googleapis.com/auth/gmail.readonly"];
+  const callsBeforeScope = calls.length;
+  expect((await provider.capabilities(owner)).readState).toBe(false);
+  for (const kind of ["mark-read", "mark-unread"])
+    await expect(
+      provider.review(
+        owner,
+        { kind, messageId: "target", expectedHistoryId: history },
+        crypto.randomUUID(),
+      ),
+    ).rejects.toMatchObject({ status: 403 });
+  expect(calls.length).toBe(callsBeforeScope);
+}, 20000);
