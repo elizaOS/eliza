@@ -392,6 +392,13 @@ def _coding_summary_result(
             if not isinstance(loaded, dict):
                 raise ValueError("agent result is not a JSON object")
             agent_result = loaded
+            if loaded.get("status") == "error":
+                # The agent command raised before the model finished the task
+                # (sandbox, bridge, or provider failure); that is not a score.
+                raw["infrastructure_error"] = (
+                    f"{task_id}: coding agent command failed: {loaded.get('error')}"
+                )
+                ratio = 0.0
         except (OSError, json.JSONDecodeError, ValueError) as exc:
             raw["infrastructure_error"] = f"{task_id}: unreadable agent result: {exc}"
             ratio = 0.0
