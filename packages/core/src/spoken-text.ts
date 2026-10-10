@@ -22,11 +22,11 @@ const NON_SPEECH_TAGS = [...REASONING_TAG_NAMES, "tool_calls?", "tools?"].join(
 	"|",
 );
 const NON_SPEECH_BLOCK = new RegExp(
-	`<(${NON_SPEECH_TAGS})\\b[^>]*>[\\s\\S]*?(?:<\\/\\1>|$)`,
+	`<(${NON_SPEECH_TAGS})(?=[\\s/>])[^>]*>[\\s\\S]*?(?:<\\/\\1>|$)`,
 	"gi",
 );
 const INCOMPLETE_NON_SPEECH_TAG = new RegExp(
-	`<(?:${NON_SPEECH_TAGS})\\b[^>]*$`,
+	`<(?:${NON_SPEECH_TAGS})(?=[\\s/>]|$)[^>]*$`,
 	"gi",
 );
 
