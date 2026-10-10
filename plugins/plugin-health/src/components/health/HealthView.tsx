@@ -18,7 +18,7 @@
  * times, and percentages are formatted to strings HERE (client displays, never
  * computes) and handed to the presentational view as a snapshot.
  *
- * The default fetchers build URLs from `client.getBaseUrl()`; tests inject the
+ * The default fetchers use the authenticated `client.fetch`; tests inject the
  * fetcher seams so they stay offline.
  */
 
@@ -71,29 +71,11 @@ export interface SleepFetchers {
 /** Maximum time allowed for one sleep-data request. */
 export const HEALTH_VIEW_JSON_TIMEOUT_MS = 15_000;
 
-export async function getHealthJsonWithFetch<T>(
-  url: string,
-  fetchImpl: typeof fetch,
-  timeoutMs: number = HEALTH_VIEW_JSON_TIMEOUT_MS,
-  callerSignal?: AbortSignal,
-): Promise<T> {
-  const deadline = AbortSignal.timeout(timeoutMs);
-  const response = await fetchImpl(url, {
-    method: "GET",
-    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
-  });
-  if (!response.ok) {
-    throw new Error(`Sleep request failed (${response.status}): ${url}`);
-  }
-  return (await response.json()) as T;
-}
-
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
-  return getHealthJsonWithFetch<T>(
-    `${client.getBaseUrl()}${path}`,
-    globalThis.fetch,
-    HEALTH_VIEW_JSON_TIMEOUT_MS,
-    signal,
+  return client.fetch<T>(
+    path,
+    { method: "GET", signal },
+    { timeoutMs: HEALTH_VIEW_JSON_TIMEOUT_MS },
   );
 }
 
