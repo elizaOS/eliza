@@ -45,7 +45,14 @@ function parsePositiveIntList(value: string | undefined): number[] {
   if (!value) return [];
   return value
     .split(",")
-    .map((item) => Number.parseInt(item.trim(), 10))
+    // Number.parseInt stops at the first non-digit ("123junk" -> 123), so a
+    // typo was silently honored as a real network ID instead of being
+    // rejected. Require the whole trimmed token to be decimal, mirroring
+    // parseCanonicalPositiveIntSet in this file (firewall IDs).
+    .map((item) => {
+      const token = item.trim();
+      return /^\+?\d+$/.test(token) ? Number(token) : NaN;
+    })
     .filter((item) => Number.isFinite(item) && item > 0);
 }
 
