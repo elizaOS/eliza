@@ -467,7 +467,14 @@ async function runWalletRouter(
     };
   }
 
-  const preflightFailure = service.preflightWalletAction(params);
+  // The confirmed request always runs in execute mode. Preflight sees that
+  // mode so a request the router will refuse fails before the spend prompt.
+  const executionParams: WalletRouterParams = {
+    ...params,
+    mode: requiresWalletFinancialConfirmation(params) ? "execute" : params.mode,
+  };
+
+  const preflightFailure = service.preflightWalletAction(executionParams);
   if (preflightFailure) {
     const text = formatFailure(preflightFailure);
     const data = toProviderRecord({
@@ -492,11 +499,6 @@ async function runWalletRouter(
   if (!confirmationGate.proceed) {
     return walletFinancialGateActionResult(confirmationGate);
   }
-
-  const executionParams: WalletRouterParams = {
-    ...params,
-    mode: requiresWalletFinancialConfirmation(params) ? "execute" : params.mode,
-  };
 
   const routed = await service.routeWalletAction(executionParams);
   const text = resultText(routed);

@@ -55,6 +55,7 @@ export interface WalletRpcReadinessSnapshot {
 
 import * as ethers from "ethers";
 import { prefixEvmHex } from "../chains/evm/routes/evm-hex.js";
+import type { WalletBackendService } from "../services/wallet-backend-service.js";
 
 type CloudWalletProvider = "privy" | "steward";
 interface CloudWalletDescriptor {
@@ -365,6 +366,19 @@ function readPrimaryMap(config: ElizaConfig): WalletPrimaryMap {
     }
   }
   return out;
+}
+/**
+ * Browser-wallet signing in this process uses the local key only. A
+ * cloud-primary chain shows the cloud address, so signing for it with the
+ * local key would spend from a wallet the user did not select.
+ */
+function cloudPrimarySigningRefusal(
+  config: ElizaConfig,
+  chain: WalletChainKind,
+): string | null {
+  if (readPrimaryMap(config)[chain] !== "cloud") return null;
+  const label = chain === "evm" ? "EVM" : "Solana";
+  return `The primary ${label} wallet is the Eliza Cloud wallet, and this agent has no signer for it. Make the local ${label} wallet primary to sign with it.`;
 }
 function coerceCloudProvider(value: unknown): CloudWalletProvider {
   return value === "privy" || value === "steward" ? value : "privy";
@@ -1355,6 +1369,14 @@ export async function handleWalletRoutes(
       runtime: ctx.runtime ?? null,
       getWalletAddresses: () => primaryAddresses,
     });
+    // Chat wallet writes go through the wallet router. Report the refusal it
+    // would return so readiness here matches what an execute request gets.
+    const executionBlockedReason =
+      capability.executionBlockedReason ??
+      ctx.runtime
+        ?.getService<WalletBackendService>("wallet-backend")
+        ?.getExecutionRefusal("evm") ??
+      null;
     const alchemyKeySet = Boolean(process.env.ALCHEMY_API_KEY?.trim());
     const ankrKeySet = Boolean(process.env.ANKR_API_KEY?.trim());
     const nodeRealSet = Boolean(process.env.NODEREAL_BSC_RPC_URL?.trim());
@@ -1395,8 +1417,8 @@ export async function handleWalletRoutes(
       automationMode: capability.automationMode,
       pluginEvmLoaded: capability.pluginEvmLoaded,
       pluginEvmRequired: capability.pluginEvmRequired,
-      executionReady: capability.executionReady,
-      executionBlockedReason: capability.executionBlockedReason,
+      executionReady: executionBlockedReason === null,
+      executionBlockedReason,
       evmSigningCapability: capability.evmSigningCapability,
       evmSigningReason: capability.evmSigningReason,
       // Solana signing in this process is local-key only; a cloud-primary
@@ -1439,6 +1461,11 @@ export async function handleWalletRoutes(
         error(res, "message is required.", 400);
         return true;
       }
+      const cloudPrimary = cloudPrimarySigningRefusal(config, "evm");
+      if (cloudPrimary) {
+        error(res, cloudPrimary, 503);
+        return true;
+      }
       if (!hasLocalEvmKey) {
         error(res, "No browser EVM signer is available.", 503);
         return true;
@@ -1451,6 +1478,11 @@ export async function handleWalletRoutes(
       return true;
     }
     if (pathname === "/api/wallet/browser-solana-sign-message") {
+      const cloudPrimary = cloudPrimarySigningRefusal(config, "solana");
+      if (cloudPrimary) {
+        error(res, cloudPrimary, 503);
+        return true;
+      }
       if (!hasLocalSolanaKey) {
         error(res, "No browser Solana signer is available.", 503);
         return true;
@@ -1472,6 +1504,11 @@ export async function handleWalletRoutes(
       return true;
     }
     if (pathname === "/api/wallet/browser-solana-transaction") {
+      const cloudPrimary = cloudPrimarySigningRefusal(config, "solana");
+      if (cloudPrimary) {
+        error(res, cloudPrimary, 503);
+        return true;
+      }
       if (!hasLocalSolanaKey) {
         error(res, "No browser Solana transaction signer is available.", 503);
         return true;
@@ -1490,6 +1527,11 @@ export async function handleWalletRoutes(
         }
         error(res, err instanceof Error ? err.message : String(err), 503);
       }
+      return true;
+    }
+    const cloudPrimary = cloudPrimarySigningRefusal(config, "evm");
+    if (cloudPrimary) {
+      error(res, cloudPrimary, 503);
       return true;
     }
     if (!hasLocalEvmKey) {

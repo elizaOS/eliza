@@ -216,10 +216,10 @@ export function resolveWalletCapabilityStatus(state: {
     : getWalletAddresses(state.runtime?.agentId);
   const rpcReadiness = resolveWalletRpcReadiness(state.config);
   const automationMode = resolveWalletAutomationMode(state.config);
-  const evmSigning: EvmSigningCapability = (
+  const resolvedEvmSigning: EvmSigningCapability = (
     state.resolveEvmSigningCapability ?? resolveEvmSigningCapability
   )();
-  const localSignerAvailable = evmSigning.kind === "local";
+  const localSignerAvailable = resolvedEvmSigning.kind === "local";
   const localSolanaSignerAvailable = Boolean(
     process.env.SOLANA_PRIVATE_KEY?.trim(),
   );
@@ -229,6 +229,18 @@ export function resolveWalletCapabilityStatus(state: {
   const pluginEvmRequired = hasEvm || localSignerAvailable;
   const rpcReady = Boolean(rpcReadiness.managedBscRpcReady);
   const primaryEvmSource = readPrimaryWalletSource(state.config, "evm");
+  // The active address of a cloud-primary EVM wallet is the cloud one. Only a
+  // Steward signer can act for it; a local key belongs to a different wallet.
+  const evmSigning: EvmSigningCapability =
+    primaryEvmSource === "cloud" &&
+    (resolvedEvmSigning.kind === "local" || resolvedEvmSigning.kind === "none")
+      ? {
+          kind: "cloud-view-only",
+          canSign: false,
+          reason:
+            "Cloud wallet is primary (view-only — local signing unavailable)",
+        }
+      : resolvedEvmSigning;
   const primarySolanaSource = readPrimaryWalletSource(state.config, "solana");
   const hasCloudPrimary =
     primaryEvmSource === "cloud" || primarySolanaSource === "cloud";
@@ -273,8 +285,7 @@ export function resolveWalletCapabilityStatus(state: {
     automationMode,
     pluginEvmLoaded,
     pluginEvmRequired,
-    executionReady:
-      hasEvm && rpcReady && pluginEvmLoaded && automationMode === "full",
+    executionReady: executionBlockedReason === null,
     executionBlockedReason,
     evmSigningCapability: evmSigning.kind,
     evmSigningReason: evmSigning.reason,

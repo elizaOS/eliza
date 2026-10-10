@@ -218,7 +218,7 @@ describe("wallet router action", () => {
     expect(result?.data?.transactionHash).toBe("0xtest");
   });
 
-  it("refuses a confirmed transfer when the selected Steward backend did not load", async () => {
+  it("refuses a transfer before the spend confirmation when the selected Steward backend did not load", async () => {
     const runtime = createRuntime();
     vi.mocked(runtime.getSetting).mockImplementation((key: string) =>
       key === "ELIZA_WALLET_BACKEND" ? "steward" : null,
@@ -230,7 +230,7 @@ describe("wallet router action", () => {
     const base = handler("base", "Base", "8453", "evm");
     service.registerChainHandler(base);
 
-    const result = await runConfirmed(runtime, {
+    const result = await run(runtime, {
       subaction: "transfer",
       chain: "base",
       fromToken: "ETH",
@@ -240,11 +240,53 @@ describe("wallet router action", () => {
     });
 
     expect(result?.success).toBe(false);
+    expect(result?.data?.requiresConfirmation).toBeUndefined();
     expect(result?.data?.error).toBe("EXECUTION_FAILED");
     expect(String(result?.text)).toContain(
       "Steward is the selected wallet backend but it did not load",
     );
     expect(base.execute).not.toHaveBeenCalled();
+  });
+
+  it("refuses a transfer on a cloud-primary chain instead of signing with the local key", async () => {
+    const { runtime, service } = createService();
+    vi.mocked(runtime.getSetting).mockImplementation((key: string) =>
+      key === "WALLET_SOURCE_EVM" ? "cloud" : null,
+    );
+    const base = handler("base", "Base", "8453", "evm");
+    const solana = handler("solana", "Solana", "solana-mainnet", "solana");
+    service.registerChainHandler(base);
+    service.registerChainHandler(solana);
+
+    const refused = await run(runtime, {
+      subaction: "transfer",
+      chain: "base",
+      fromToken: "ETH",
+      amount: "0.5",
+      recipient: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+      mode: "execute",
+    });
+
+    expect(refused?.success).toBe(false);
+    expect(refused?.data?.requiresConfirmation).toBeUndefined();
+    expect(refused?.data?.error).toBe("EXECUTION_FAILED");
+    expect(String(refused?.text)).toContain(
+      "The primary EVM wallet is the Eliza Cloud wallet",
+    );
+    expect(base.execute).not.toHaveBeenCalled();
+
+    // The Solana primary is still local, so its transfer runs.
+    const sent = await runConfirmed(runtime, {
+      subaction: "transfer",
+      chain: "solana",
+      fromToken: "SOL",
+      amount: "0.5",
+      recipient: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+      mode: "execute",
+    });
+
+    expect(sent?.success).toBe(true);
+    expect(solana.execute).toHaveBeenCalled();
   });
 
   it("routes EVM swap through the selected chain handler", async () => {
