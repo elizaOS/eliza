@@ -196,4 +196,66 @@ describe("Strava connector — recorded real API contract", () => {
       expect(s.localDate).toBe("2026-10-09");
     }
   });
+
+  it("includes both UTC boundary activities for one owner-local day", async () => {
+    let requestedUrl = "";
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/athlete/activities")) {
+        requestedUrl = url;
+        return jsonResponse([
+          {
+            id: 11500000010,
+            name: "Local-day start boundary",
+            sport_type: "Run",
+            start_date: "2026-10-09T23:30:00Z",
+            start_date_local: "2026-10-10T01:30:00Z",
+            moving_time: 600,
+            distance: 1000,
+          },
+          {
+            id: 11500000011,
+            name: "Local-day end boundary",
+            sport_type: "Run",
+            start_date: "2026-10-11T00:30:00Z",
+            start_date_local: "2026-10-10T23:30:00Z",
+            moving_time: 600,
+            distance: 1000,
+          },
+          {
+            id: 11500000012,
+            name: "Outside local day",
+            sport_type: "Run",
+            start_date: "2026-10-09T23:00:00Z",
+            start_date_local: "2026-10-09T23:00:00Z",
+            moving_time: 600,
+            distance: 1000,
+          },
+        ]);
+      }
+      if (url.includes("/athlete")) return jsonResponse(recorded.athlete);
+      throw new Error(`unexpected Strava fetch: ${url}`);
+    });
+
+    const payload = await syncHealthConnectorData({
+      token,
+      grantId: "grant-strava",
+      startDate: "2026-10-10",
+      endDate: "2026-10-10",
+    });
+
+    const query = new URL(requestedUrl).searchParams;
+    expect(Number(query.get("after"))).toBe(
+      Date.parse("2026-10-09T00:00:00.000Z") / 1_000,
+    );
+    expect(Number(query.get("before"))).toBe(
+      Math.floor(Date.parse("2026-10-11T23:59:59.999Z") / 1_000),
+    );
+    expect(
+      payload.workouts.map((workout) => workout.sourceExternalId).sort(),
+    ).toEqual(["11500000010", "11500000011"]);
+    expect(
+      payload.samples.every((sample) => sample.localDate === "2026-10-10"),
+    ).toBe(true);
+  });
 });

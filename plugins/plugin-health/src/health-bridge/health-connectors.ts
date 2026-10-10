@@ -304,10 +304,10 @@ function compactSamples(
 
 async function syncStrava(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
   const after = Math.floor(
-    Date.parse(`${args.startDate}T00:00:00.000Z`) / 1_000,
+    Date.parse(`${addDays(args.startDate, -1)}T00:00:00.000Z`) / 1_000,
   );
   const before = Math.floor(
-    Date.parse(`${args.endDate}T23:59:59.999Z`) / 1_000,
+    Date.parse(`${addDays(args.endDate, 1)}T23:59:59.999Z`) / 1_000,
   );
   const [athlete, activitiesJson] = await Promise.all([
     fetchHealthJson({ token: args.token, path: "/athlete" }),
@@ -328,9 +328,13 @@ async function syncStrava(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
     }
     // start_date is UTC; start_date_local is the athlete's wall clock (Strava
     // writes it with a literal "Z"), so its date is the owner's day.
-    const localDate = /^\d{4}-\d{2}-\d{2}/.exec(
-      getText(activity, "start_date_local") ?? "",
-    )?.[0];
+    const localDate =
+      /^\d{4}-\d{2}-\d{2}/.exec(
+        getText(activity, "start_date_local") ?? "",
+      )?.[0] ?? localDateFromIso(startAt);
+    if (localDate < args.startDate || localDate > args.endDate) {
+      continue;
+    }
     const elapsedSeconds = getNumber(activity, "elapsed_time");
     const movingSeconds = getNumber(activity, "moving_time");
     const durationSeconds = Math.trunc(movingSeconds ?? elapsedSeconds ?? 0);
