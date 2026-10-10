@@ -27,7 +27,7 @@ function safeDecodeUriComponent(value: string): string | null {
   }
 }
 const MEET_URL_RE =
-  /^https?:\/\/meet\.google\.com\/([a-z]{3}-?[a-z]{4}-?[a-z]{3})(?:\?.*)?$/i;
+  /^https?:\/\/meet\.google\.com\/([a-z]{3}-?[a-z]{4}-?[a-z]{3})(?:\/)?(?:\?.*)?$/i;
 const TEAMS_URL_RE =
   /^https?:\/\/(?:[\w-]+\.)?teams\.(?:microsoft|live)\.com\/(?:v2\/)?(?:l\/)?meetup-join\/([^?\s]+)/i;
 const TEAMS_SHORT_RE =
