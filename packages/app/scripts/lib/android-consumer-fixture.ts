@@ -48,7 +48,8 @@ export async function runConsumerFixture({
     return (
       new RegExp(`mCurrentUserId:\\s*${id}\\b`).test(state) &&
       /mTargetUserId:\s*-10000\b/.test(state) &&
-      /mPendingTargetUserIds:\s*\[\]/.test(state)
+      (!state.includes("mPendingTargetUserIds:") ||
+        /mPendingTargetUserIds:\s*\[\]/.test(state))
     );
   };
   const cleanup = async () => {
