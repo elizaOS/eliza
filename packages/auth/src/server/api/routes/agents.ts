@@ -242,10 +242,19 @@ async function writeAgentAudit(
 }
 
 function normalizeAgentTokenExpiry(value: unknown): string | null {
-  const requested =
-    typeof value === "string" && value.trim()
-      ? value.trim()
-      : getAgentTokenExpiry();
+  // The strict grammar and the 30-day cap are the contract for a
+  // caller-supplied expiresIn (see the route error text). The server
+  // default is not caller input: getAgentTokenExpiry validates
+  // AGENT_TOKEN_EXPIRY on every call against the wider grammar the token
+  // signer accepts, with a one-year bound. Re-checking the default here
+  // with the route grammar rejected valid deployments (for example
+  // "12 hours", "45d", "2 weeks") whenever a caller omitted expiresIn,
+  // while createAgentToken in services/context.ts mints with the same
+  // default directly.
+  if (typeof value !== "string" || !value.trim()) {
+    return getAgentTokenExpiry();
+  }
+  const requested = value.trim();
   const seconds = parseDurationSeconds(requested);
   if (!seconds || seconds > MAX_AGENT_TOKEN_SECONDS) return null;
   return requested;
