@@ -127,44 +127,36 @@ function localHourInstantMs(args: {
   const dayDelta = Math.floor(wholeMinutes / (24 * 60));
   const minuteOfDay = ((wholeMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
   const baseDate = addDaysToLocalDate(anchorParts, dayDelta);
-  let candidate = buildUtcDateFromLocalParts(args.timezone, {
-    year: baseDate.year,
-    month: baseDate.month,
-    day: baseDate.day,
-    hour: Math.floor(minuteOfDay / 60),
-    minute: minuteOfDay % 60,
-    second: 0,
-  }).getTime();
+  // Build each civil day from the fixed clock time, not from the previous
+  // candidate: a time in the spring-forward gap moves an hour later, and
+  // reading it back would keep that hour on every later day.
+  const onCivilDay = (days: number) => {
+    const date = addDaysToLocalDate(baseDate, days);
+    return buildUtcDateFromLocalParts(args.timezone, {
+      year: date.year,
+      month: date.month,
+      day: date.day,
+      hour: Math.floor(minuteOfDay / 60),
+      minute: minuteOfDay % 60,
+      second: 0,
+    }).getTime();
+  };
+  let days = 0;
+  let candidate = onCivilDay(days);
   // Advance one civil day at a time until the target is no longer
   // unreasonably far in the past. Adding 24 absolute hours crosses the
   // spring-forward and lands a 23:00 bedtime at midnight.
   for (let step = 0; step < 14; step += 1) {
     if (candidate >= args.nowMs - BEDTIME_TARGET_MAX_PAST_MS) break;
-    candidate = shiftLocalCivilDays(candidate, args.timezone, 1);
+    candidate = onCivilDay(++days);
   }
   for (let step = 0; step < 14; step += 1) {
     if (candidate <= args.nowMs + BEDTIME_TARGET_MAX_FUTURE_MS) break;
-    candidate = shiftLocalCivilDays(candidate, args.timezone, -1);
+    candidate = onCivilDay(--days);
   }
   return candidate;
 }
 
-function shiftLocalCivilDays(
-  instantMs: number,
-  timezone: string,
-  dayDelta: number,
-): number {
-  const parts = getZonedDateParts(new Date(instantMs), timezone);
-  const date = addDaysToLocalDate(parts, dayDelta);
-  return buildUtcDateFromLocalParts(timezone, {
-    year: date.year,
-    month: date.month,
-    day: date.day,
-    hour: parts.hour,
-    minute: parts.minute,
-    second: parts.second,
-  }).getTime();
-}
 function isAsleepState(state: LifeOpsCircadianState): boolean {
   return state === "sleeping" || state === "napping";
 }
