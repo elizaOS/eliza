@@ -271,3 +271,27 @@ test("client rejects leaking native responses and maps errors without echoing in
     "Unlock saved passwords first.",
   );
 });
+
+test("vault binding metadata is complete or explicitly rejected", () => {
+  const facets = Array.from(
+    { length: 20 },
+    (_, i) => `https://site${i}.example`,
+  );
+  assert.equal(
+    parseEntries({ entries: [entry("1", "Account", "owner", facets)] })[0]
+      .bindings.length,
+    20,
+  );
+  assert.throws(
+    () =>
+      parseEntries({
+        entries: [
+          entry("1", "Account", "owner", [
+            ...facets,
+            "https://overflow.example",
+          ]),
+        ],
+      }),
+    { code: "unavailable" },
+  );
+});

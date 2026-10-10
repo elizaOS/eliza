@@ -122,7 +122,7 @@ public final class PasswordConsumerTest {
   String password = "Synthetic-only-" + UUID.randomUUID().toString();
   AccessibilityServiceInfo info = ui.getServiceInfo(); info.flags |= AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS; ui.setServiceInfo(info);
   String previous = shell("settings --user " + user + " get secure autofill_service");
-  assertTrue(previous.equals("null") || previous.matches("[A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+"));
+  assertTrue(previous.isEmpty() || previous.equals("null") || previous.matches("[A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+"));
   boolean ownPin = false;
   try {
    shell("locksettings set-pin --user " + user + " " + pin); ownPin = true;
@@ -168,7 +168,7 @@ public final class PasswordConsumerTest {
    await(() -> find(node -> "Both synthetic fields match".equals(text(node))) != null, "Both fields match the synthetic input");
    await(() -> !access.unlocked(), "Picker closes its grant");
   } finally {
-   if (previous.equals("null")) shell("settings --user " + user + " delete secure autofill_service");
+   if (previous.isEmpty() || previous.equals("null")) shell("settings --user " + user + " delete secure autofill_service");
    else shell("settings --user " + user + " put secure autofill_service " + previous);
    if (ownPin) shell("locksettings clear --user " + user + " --old " + pin);
   }

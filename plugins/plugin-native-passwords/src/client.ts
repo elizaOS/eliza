@@ -95,9 +95,12 @@ export function parseEntries(value: unknown): PasswordEntrySummary[] {
     );
   return entries.map((raw) => {
     const item = (raw || {}) as Record<string, unknown>;
-    const bindings = Array.isArray(item.bindings)
-      ? item.bindings.slice(0, 20).map(binding)
-      : [];
+    if (!Array.isArray(item.bindings) || item.bindings.length > 20)
+      throw new PasswordsClientError(
+        "unavailable",
+        "Saved passwords are unavailable.",
+      );
+    const bindings = item.bindings.map(binding);
     return {
       id: text(item.id, 128),
       label: text(item.label, 200),
