@@ -653,3 +653,6 @@ dfc0e413cecb2c8ee6d43ec0bffbb71bdfcecba8:packages/testing/package.json:generic-a
 
 # Synthetic signed-route test SECRET; only this historical finding is excluded.
 e4f98fb91068c971a16a71f38697518bd5bd7c5f:packages/cloud/api/internal/network/deliver/route.test.ts:generic-api-key:10
+
+# PGP detection regular expression; the match contains regex syntax, not key material.
+1d2b39211a7b9ed918e8c91b6591b27494d85833:packages/core/src/security/pii-detectors.ts:private-key:366
