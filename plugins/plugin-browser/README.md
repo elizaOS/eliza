@@ -103,6 +103,16 @@ only on the authenticated native channel and is excluded from DOM snapshots;
 host evidence/screenshot pipelines must also preserve secret redaction. This
 primitive does not resolve codes, grant account access, or qualify a live provider.
 
+A proposal can set `expectedSelector` to the one reviewed binding target it is
+for. The actuator refuses it before dispatch unless the binding holds that
+selector for the action, and the browser (`task-expected-target`) accepts no
+other node. For a few seconds after a task fill or click, the browser stops any
+form submit or page change that the person's own input did not start (a link
+click still opens its link). A snapshot then reports `effectViolation`; the
+actuator records such an action as an unknown outcome. `showGuidance` accepts
+`keepClearRefs` (controls the label must not cover, peer capability
+`task-guide-keep-clear`) and returns `placement` and `dismissed`.
+
 Android hosts set `ELIZA_BROWSER_ANDROID_APPLICATION` to their application ID
 when starting the native target. It connects and reconnects only to that app's
 `<applicationId>.browser.native` abstract socket. The default remains

@@ -14,12 +14,22 @@ export async function startLocalGateway({
     throw new Error("Native runtime state must be an absolute path");
   if (!validPort(config.port) || (config.native && !config.upstream))
     throw new Error("Invalid native gateway endpoint");
+  if (
+    config.requireInboundToken !== undefined &&
+    typeof config.requireInboundToken !== "boolean"
+  )
+    throw new Error("Invalid inbound token policy");
   const token = (await readFile(config.tokenPath, "utf8")).trim();
-  const inboundToken = config.native
+  // Native hosts always require the inbound token. A desktop host can opt in,
+  // so every local request must carry it there too.
+  const requireInbound = config.native || config.requireInboundToken === true;
+  const inboundToken = requireInbound
     ? (await readFile(config.inboundTokenPath, "utf8")).trim()
     : undefined;
-  if (config.native && (!inboundToken || inboundToken.length < 32))
-    throw new Error("Native gateway token missing");
+  if (requireInbound && (!inboundToken || inboundToken.length < 32))
+    throw new Error(
+      config.native ? "Native gateway token missing" : "Gateway token missing",
+    );
   if (
     config.native &&
     (!validPort(config.credentialBroker?.port) ||

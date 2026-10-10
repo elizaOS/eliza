@@ -20,7 +20,7 @@ import { LifeOpsService } from "./service.js";
 
 // The package harness aliases UI modules to inert controls. Restore the real
 // client for this transport test; requests still cross the actual HTTP socket.
-vi.mock("../../../../packages/ui/src/api/client-base", async () => ({
+vi.mock("@elizaos/ui", async () => ({
   ...(await vi.importActual<typeof import("../../test/stubs/ui.js")>(
     "../../test/stubs/ui.js",
   )),

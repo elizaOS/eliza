@@ -18,16 +18,14 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
-import { schedulingPlugin } from "@elizaos/plugin-scheduling";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createRealTestRuntime } from "../../../packages/app/test/helpers/real-runtime.ts";
 import { PgApprovalQueue } from "../src/lifeops/approval-queue.js";
 import {
   type ApprovalEnqueueInput,
   type ApprovalRequest,
   ApprovalStateTransitionError,
 } from "../src/lifeops/approval-queue.types.js";
-import { personalAssistantPlugin } from "../src/plugin.js";
+import { createLifeOpsTestRuntime } from "./helpers/runtime.js";
 
 /**
  * PgApprovalQueue with a one-shot hook between the transition's read and its
@@ -116,9 +114,7 @@ function spendMoneyInput(
 
 beforeAll(async () => {
   setIsolatedEnv();
-  const result = await createRealTestRuntime({
-    plugins: [schedulingPlugin, personalAssistantPlugin],
-  });
+  const result = await createLifeOpsTestRuntime();
   runtime = result.runtime;
   cleanup = result.cleanup;
   queue = new InterleavedApprovalQueue(runtime, { agentId: runtime.agentId });

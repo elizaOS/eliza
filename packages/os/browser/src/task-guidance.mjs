@@ -61,7 +61,12 @@ function validLabel(g) {
 export function createTaskGuidance(api, authorize) {
   const active = new Map(),
     revisions = new Map(),
-    queues = new Map();
+    queues = new Map(),
+    // Steps the person dismissed, per tab, task and epoch. A reload of the
+    // page does not show them again; only an explicit restore does.
+    dismissals = new Map();
+  const dismissalKey = (taskContext, stepId) =>
+    JSON.stringify([taskContext.taskId, taskContext.epoch, stepId]);
   const stale = () =>
     new BridgeError(
       "STALE_REF",
@@ -247,6 +252,28 @@ export function createTaskGuidance(api, authorize) {
       const entry = [...active].find(([, value]) => value.id === id);
       return entry ? clearTab(entry[0]) : Promise.resolve();
     },
+    /** The person's Dismiss on a shown step; value-free, kept for this tab. */
+    dismiss(message, sender) {
+      const tabId = String(sender?.tab?.id);
+      const shown = active.get(tabId)?.shown;
+      if (
+        !shown ||
+        !message ||
+        Object.keys(message).sort().join(",") !== "guideId,type" ||
+        message.guideId !== shown.guideId ||
+        sender.id !== api.runtime.id ||
+        sender.frameId !== 0 ||
+        typeof shown.documentId !== "string" ||
+        sender.documentId !== shown.documentId ||
+        new URL(sender.url).origin !== shown.origin ||
+        !shown.current()
+      )
+        throw stale();
+      const steps = dismissals.get(tabId) ?? new Set();
+      steps.add(shown.key);
+      dismissals.set(tabId, steps);
+      return { recorded: true };
+    },
     /** One tap on a shown offer becomes a value-free answer event for the host. */
     answer(message, sender) {
       const tabId = String(sender?.tab?.id);
@@ -295,6 +322,7 @@ export function createTaskGuidance(api, authorize) {
         "detail",
         "tone",
         "answers",
+        "keepClear",
       ];
       if (
         !message ||
@@ -329,7 +357,18 @@ export function createTaskGuidance(api, authorize) {
             !Number.isSafeInteger(g.expiresAt) ||
             g.expiresAt <= Date.now() ||
             g.expiresAt > Date.now() + 300000 ||
-            (g.restore !== undefined && typeof g.restore !== "boolean")))
+            (g.restore !== undefined && typeof g.restore !== "boolean") ||
+            (g.keepClear !== undefined &&
+              (!Array.isArray(g.keepClear) ||
+                g.keepClear.length > 8 ||
+                g.keepClear.some(
+                  (ref) =>
+                    typeof ref !== "string" ||
+                    ref.split(":").length !== 3 ||
+                    ref.split(":")[0] !== g.selector.split(":")[0] ||
+                    ref.split(":")[1] !== "0" ||
+                    !/^\d+$/.test(ref.split(":")[2]),
+                )))))
       )
         throw new BridgeError(
           "INVALID_REQUEST",
@@ -372,10 +411,27 @@ export function createTaskGuidance(api, authorize) {
           if (!isCurrent()) throw stale();
           const match = g.selector?.split(":");
           const answerKey = g.answers ? crypto.randomUUID() : undefined;
+          const key =
+            g.kind === "show" ? dismissalKey(g.taskContext, g.stepId) : null;
+          const steps = dismissals.get(g.tabId);
+          if (g.kind === "show") {
+            // Forget dismissals of other tasks or epochs in this tab.
+            for (const step of steps ?? [])
+              if (
+                JSON.stringify(JSON.parse(step).slice(0, 2)) !==
+                JSON.stringify([g.taskContext.taskId, g.taskContext.epoch])
+              )
+                steps.delete(step);
+            if (g.restore) steps?.delete(key);
+          }
           const request =
             g.kind === "show"
               ? {
                   kind: "show",
+                  ...(steps?.has(key) ? { dismissed: true } : {}),
+                  ...(g.keepClear?.length
+                    ? { keepClear: g.keepClear.map((ref) => ref.split(":")[2]) }
+                    : {}),
                   id: `${policy.guidanceScope}:${g.stepId}`,
                   snapshotId: match[0],
                   nodeId: match[2],
@@ -421,6 +477,14 @@ export function createTaskGuidance(api, authorize) {
             await track(g.tabId, false);
             if (active.get(g.tabId) === ticket) active.delete(g.tabId);
           }
+          if (g.kind === "show")
+            ticket.shown = {
+              guideId: request.id,
+              key,
+              documentId: result.documentId,
+              origin: policy.origin,
+              current: isCurrent,
+            };
           // Answers are accepted only for this exact show: same ticket, binding,
           // transport generation, document and per-show key.
           if (answerKey)

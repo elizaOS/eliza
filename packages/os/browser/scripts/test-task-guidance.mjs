@@ -512,6 +512,91 @@ try {
     await page.$eval("#manual", (node) => node.value),
     "approved fixture value",
   );
+  // A host can name the one reviewed target an action is for. Another
+  // reviewed target, or a selector the binding does not hold, is refused
+  // before any pointer or effect.
+  const wrongTarget = await startAction({ expectedSelector: "#manual" });
+  assert.equal((await wrongTarget.pending).error.kind, "POLICY_BLOCKED");
+  const unboundTarget = await startAction({ expectedSelector: "#other" });
+  assert.equal((await unboundTarget.pending).error.kind, "POLICY_BLOCKED");
+  assert.equal(await page.evaluate(() => window.clicks), 1);
+  const boundTarget = await startAction({ expectedSelector: "#target" });
+  await waitPointer();
+  assert.equal((await boundTarget.pending).ok, true);
+  assert.equal(await page.evaluate(() => window.clicks), 2);
+  // The person's Dismiss holds for the step after a reload of the page.
+  const showStep = async (extra = {}) => {
+    const read = await send({
+      type: "command",
+      id: `dismiss-read-${sequence++}`,
+      command: { subaction: "snapshot", id: "1", taskContext: context },
+    });
+    assert.equal(read.ok, true);
+    return send({
+      type: "task-guide",
+      id: `dismiss-${sequence++}`,
+      guidance: {
+        tabId: "1",
+        taskContext: context,
+        revision: sequence,
+        kind: "show",
+        stepId: "details",
+        selector: read.result.frames[0].elements.find(
+          (e) => e.label === "Show details",
+        ).selector,
+        text: "Show the details when you are ready.",
+        expiresAt: Date.now() + 30000,
+        ...extra,
+      },
+    });
+  };
+  await page.setViewport({ width: 1280, height: 800 });
+  // A fresh document: the earlier cases moved the target.
+  await page.reload();
+  assert.equal((await showStep()).result.dismissed, false);
+  await evaluate(
+    "globalThis.chrome={runtime:{sendMessage:async(m)=>{(globalThis.__dismissals??=[]).push(m);return {recorded:true}}}};true",
+  );
+  const shownDeadline = Date.now() + 5000;
+  while (
+    !(await evaluate(
+      "globalThis.__elizaPageGuidanceV1.visible && globalThis.__elizaPageGuidanceV1.shadow.querySelector('.label').classList.contains('shown')",
+    ))
+  ) {
+    assert.ok(Date.now() < shownDeadline, "Step guide did not appear");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  const close = await evaluate(
+    "(()=>{const r=globalThis.__elizaPageGuidanceV1.shadow.querySelector('.close').getBoundingClientRect();return [r.left+r.width/2,r.top+r.height/2]})()",
+  );
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  await page.mouse.click(close[0], close[1]);
+  const [dismissal] = await evaluate("globalThis.__dismissals");
+  assert.deepEqual(Object.keys(dismissal).sort(), ["guideId", "type"]);
+  const dismissSender = {
+    id: "test-extension",
+    tab: { id: 1 },
+    frameId: 0,
+    documentId: (await frame()).loaderId,
+    url: page.url(),
+  };
+  assert.throws(() =>
+    handler.dismissGuide(dismissal, { ...dismissSender, frameId: 2 }),
+  );
+  assert.deepEqual(handler.dismissGuide(dismissal, dismissSender), {
+    recorded: true,
+  });
+  await page.reload();
+  const reloaded = await showStep();
+  assert.equal(reloaded.ok, true, JSON.stringify(reloaded));
+  assert.equal(reloaded.result.dismissed, true);
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.equal(
+    await evaluate("globalThis.__elizaPageGuidanceV1.visible"),
+    false,
+  );
+  const restored = await showStep({ restore: true });
+  assert.equal(restored.result.dismissed, false);
   await page.close();
   const closed = await hide();
   assert.equal(closed.ok, true);
@@ -537,6 +622,8 @@ try {
           "approved native action shows pointer before one actual click and tap after dispatch",
           "configured assistant name; offer tap becomes one answer-ID event; forged, repeated and cross-document answers rejected",
           "pause keeps a grey paused cursor, ends the offer and cancels a pending action",
+          "an expected reviewed target admits only that control",
+          "a dismissed step stays dismissed after a page reload until restored",
         ],
         scope:
           "actual Chromium + command handler; not installed native transport or Android",

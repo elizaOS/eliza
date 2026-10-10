@@ -860,7 +860,22 @@ export function createCloudRoutes({
               interval: p.interval,
               ...(typeof p.allowance?.amountUsd === "string" &&
               /^\d+(\.\d+)?$/.test(p.allowance.amountUsd)
-                ? { allowance: { amountUsd: p.allowance.amountUsd } }
+                ? {
+                    allowance: {
+                      amountUsd: p.allowance.amountUsd,
+                      // The catalog's own terms: what the allowance pays for,
+                      // that it does not roll over, and when it ends.
+                      ...(p.allowance.fundingClass === "allowance_eligible"
+                        ? { fundingClass: p.allowance.fundingClass }
+                        : {}),
+                      ...(p.allowance.rollover === false
+                        ? { rollover: false }
+                        : {}),
+                      ...(p.allowance.expiresAt === "billing_period_end"
+                        ? { expiresAt: p.allowance.expiresAt }
+                        : {}),
+                    },
+                  }
                 : {}),
             })),
         });
@@ -1740,6 +1755,57 @@ export function createCloudRoutes({
         send(res, 200, { disconnected: true });
         return true;
       }
+      // One Google account at a time. After a new grant completes, the app
+      // names the connection it shows; every other owner connection is
+      // removed so task reads cannot use an older mailbox.
+      if (method === "POST" && path === "/cloud/gmail/disconnect-others") {
+        const input = await body(req, 1024);
+        if (
+          Object.keys(input).join(",") !== "connectionId" ||
+          !googleGrantId(input.connectionId)
+        )
+          throw fail(message("invalidGoogleConnection"));
+        const status = await parse(
+          await request("/api/v1/eliza/google/status?side=owner", {
+            key,
+            signal,
+            authorityGeneration: credentialEpoch,
+          }),
+        );
+        // Only the connection Cloud reports as current can be kept.
+        if (
+          status.connected !== true ||
+          status.connectionId !== input.connectionId
+        )
+          throw fail(message("invalidGoogleConnection"), 409);
+        const accounts = await parse(
+          await request("/api/v1/eliza/google/accounts?side=owner", {
+            key,
+            signal,
+            authorityGeneration: credentialEpoch,
+          }),
+        );
+        if (!Array.isArray(accounts))
+          throw fail(message("invalidCloudResponse"), 502);
+        const others = accounts
+          .map((account) => account?.connectionId)
+          .filter((id) => googleGrantId(id) && id !== input.connectionId);
+        // Fence task reads first, as for a single disconnect.
+        googleGeneration++;
+        for (const connectionId of new Set(others))
+          await parse(
+            await request("/api/v1/eliza/google/disconnect", {
+              method: "POST",
+              json: { side: "owner", connectionId },
+              key,
+              signal,
+              authorityGeneration: credentialEpoch,
+            }),
+          );
+        googleGeneration++;
+        send(res, 200, { disconnected: new Set(others).size });
+        return true;
+      }
       if (method === "POST" && path === "/cloud/gmail/connect") {
         await body(req);
         // A new consent can replace the active connection.
@@ -1904,7 +1970,7 @@ export function createCloudRoutes({
         }
       }
     };
-    const currentAccountId = async (googleEpoch) => {
+    const currentAccount = async (googleEpoch) => {
       const status = await readJson(
         "/api/v1/eliza/google/status?side=owner",
         65536,
@@ -1920,8 +1986,20 @@ export function createCloudRoutes({
         throw googleReadFailure("unavailable");
       if (!gmailBodyRead(googleScopes(status.grantedScopes)))
         throw googleReadFailure("insufficient_scope");
-      return status.connectionId;
+      const email = status.identity?.email;
+      return {
+        accountId: status.connectionId,
+        ...(typeof email === "string" &&
+        email.length <= 254 &&
+        /^[^\s@\p{Cc}\p{Cf}]+@[^\s@\p{Cc}\p{Cf}]+\.[^\s@\p{Cc}\p{Cf}]+$/u.test(
+          email,
+        )
+          ? { email }
+          : {}),
+      };
     };
+    const currentAccountId = async (googleEpoch) =>
+      (await currentAccount(googleEpoch)).accountId;
     const port = createManagedGoogleReadPort({
       accountId,
       request: async (path, maxBytes, grantId) => {
@@ -1942,6 +2020,8 @@ export function createCloudRoutes({
     });
     return Object.assign(port, {
       currentAccountId: () => currentAccountId(googleGeneration),
+      /** The connected grant and, when Cloud reports it, its address. */
+      currentAccount: () => currentAccount(googleGeneration),
     });
   };
   handleCloudRoute.documentImagesForAccount = ({

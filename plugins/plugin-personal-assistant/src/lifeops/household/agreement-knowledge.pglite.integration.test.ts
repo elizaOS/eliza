@@ -1118,8 +1118,9 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     }
     await new SchoolCalendarWorkflow(runtime).retainRecordedSources();
     await new SchoolCalendarWorkflow(runtime).retainRecordedSources();
-    const references = (await runtime.getAllMemories()).filter(
-      (memory) => memory.metadata?.mediaUrl === stored.url,
+    const references = await executeRawSql(
+      runtime,
+      `SELECT id FROM memories WHERE agent_id=${sqlQuote(runtime.agentId)} AND type='documents' AND metadata->>'mediaUrl'=${sqlQuote(stored.url)}`,
     );
     expect(references).toHaveLength(1);
     const orphan = await storage.store(
@@ -4645,6 +4646,7 @@ describe("reviewed workspace deletion — real database and disk", () => {
       path.join(os.tmpdir(), "family-delete-http-"),
     );
     vi.stubEnv("ELIZA_STATE_DIR", mediaDir);
+    vi.stubEnv("PGLITE_DATA_DIR", path.join(mediaDir, "pglite"));
     const result = await createLifeOpsTestRuntime({
       pgliteDir: path.join(mediaDir, "pglite"),
       plugins: [
@@ -4936,6 +4938,7 @@ describe("reviewed workspace deletion — real database and disk", () => {
   it("atomically removes private database projections and journals remaining files", async () => {
     const mediaDir = fs.mkdtempSync(path.join(os.tmpdir(), "family-delete-"));
     vi.stubEnv("ELIZA_STATE_DIR", mediaDir);
+    vi.stubEnv("PGLITE_DATA_DIR", path.join(mediaDir, "pglite"));
     const result = await createLifeOpsTestRuntime({
       plugins: [
         fileStoragePlugin,
