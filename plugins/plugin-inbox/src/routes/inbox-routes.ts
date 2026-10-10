@@ -43,8 +43,13 @@ function queryBool(value: unknown): boolean {
 }
 function queryInt(value: unknown, fallback: number): number {
   if (typeof value !== "string") return fallback;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+  const trimmed = value.trim();
+  // Canonical digit strings only: Number("1e3") is 1000 and Number("0x10")
+  // is 16 — both used to silently become the triage read limit instead of
+  // falling back to the default.
+  if (!/^\d+$/.test(trimmed)) return fallback;
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 /**
  * Coerce a request-body `exampleLimit` to a positive integer. A missing value
