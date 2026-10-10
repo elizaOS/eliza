@@ -62,6 +62,7 @@ import {
   hasStewardAuthedCookie,
   writeStoredStewardToken,
 } from "@elizaos/plugin-elizacloud/steward-session-client";
+import { recommendForFirstRun } from "@elizaos/plugin-native-inference/model-catalog/recommendation";
 import {
   ACCENT_PRESETS,
   APP_RESUME_EVENT,
@@ -273,14 +274,22 @@ const BACKUP_RESTORE_CHOICE = [
 // on-device option stays visible but labeled unavailable (its tap is refused
 // with the reason) and the recommendation moves to Eliza Cloud inference —
 // the local agent remains allowed in cloud-inference mode on that band.
+// When the model catalog has no published, activation-eligible Eliza-1 tier,
+// nothing can be downloaded: the on-device label says so and the
+// recommendation moves to Eliza Cloud inference. The tap is still accepted,
+// because a model that is already on the device (an image-bundled or
+// previously installed bundle) activates without a download.
 function providerChoice(opts: {
   defaultId: "on-device" | "other";
   tier: DeviceRamTierAssessment | null;
 }): string {
-  const modelsBlocked = opts.tier != null && !opts.tier.allowsLocalModels;
-  const onDevice = modelsBlocked
+  const ramBlocked = opts.tier != null && !opts.tier.allowsLocalModels;
+  const modelsBlocked = ramBlocked || recommendForFirstRun() === null;
+  const onDevice = ramBlocked
     ? `${FIRST_RUN_ACTION_PREFIX}provider:on-device=On this device (unavailable — needs 12 GB+ RAM, ~${opts.tier?.marketedRamGb} GB detected)`
-    : `${FIRST_RUN_ACTION_PREFIX}provider:on-device=On this device (recommended)`;
+    : modelsBlocked
+      ? `${FIRST_RUN_ACTION_PREFIX}provider:on-device=On this device (no model download available yet)`
+      : `${FIRST_RUN_ACTION_PREFIX}provider:on-device=On this device (recommended)`;
   const cloud = modelsBlocked
     ? `${FIRST_RUN_ACTION_PREFIX}provider:elizacloud=Eliza Cloud inference (recommended)`
     : `${FIRST_RUN_ACTION_PREFIX}provider:elizacloud=Eliza Cloud inference`;
