@@ -638,32 +638,13 @@ export async function ensureLifeOpsHealthPluginRegistered(
     createDefaultCircadianInsightContract(),
   );
 }
-const LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY =
-  "eliza:lifeops:plugin:init-failures";
-async function recordTaskInitFailure(
-  runtime: IAgentRuntime,
-  label: string,
-  message: string,
-): Promise<void> {
-  try {
-    const existing =
-      (await runtime.getCache<Record<string, string>>(
-        LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY,
-      )) ?? {};
-    existing[label] = message;
-    await runtime.setCache(LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY, existing);
-  } catch {
-    // Cache not available; the logger.error is the primary signal.
-  }
-}
 /**
  * Kick off task registration AFTER `runtime.initPromise` resolves — this step
  * cannot be awaited inside `init()` because `init()` runs before the runtime
  * itself has finished initializing. That means failures here are NOT fatal
  * to plugin load; the plugin reports as "loaded" and the specific task
- * subsystem reports as "unavailable". The failure is surfaced via the
- * runtime cache at LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY for observability and
- * via logger.error so ops tooling can alert on it.
+ * subsystem reports as "unavailable". The failure is surfaced via
+ * `runtime.reportError` so the owner and ops tooling can see it.
  */
 // Darwin-only action surface: the native activity tracker, the only
 // SCREEN_TIME data source the planner can reason about end-to-end, is
@@ -679,12 +660,11 @@ function scheduleTaskEnsureAfterRuntimeInit(args: {
 }): void {
   PersonalAssistantStartupService.forRuntime(args.runtime).runAfterInit(
     () => ensureTaskWithRetries(args),
-    async (error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      args.runtime.logger.error(
-        `${args.prefix} ${args.label} init failed after runtime initialization (plugin stays loaded, this subsystem is degraded): ${message}`,
-      );
-      await recordTaskInitFailure(args.runtime, args.label, message);
+    (error) => {
+      args.runtime.reportError("LifeOps.taskInit", error, {
+        label: args.label,
+        recovery: "restart",
+      });
     },
   );
 }
