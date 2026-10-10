@@ -781,6 +781,7 @@ function isPackagedDesktopBuild(): boolean {
 }
 const cleanupFns: Array<() => void | Promise<void>> = [];
 let shutdownCleanupPromise: Promise<void> | null = null;
+let shutdownCleanupSettled = false;
 let lastFocusedWindow: ManagedWindowLike | null = null;
 const macOpenedDevtoolsWindowIds = new Set<number>();
 async function openBrowserDevtoolsFallback(
@@ -2437,12 +2438,20 @@ async function runShutdownCleanup(reason: string): Promise<void> {
 				`[Main] Native module disposal failed during shutdown: ${error instanceof Error ? error.message : String(error)}`,
 			);
 		}
-	})();
+	})().finally(() => {
+		shutdownCleanupSettled = true;
+	});
 	return shutdownCleanupPromise;
 }
 function setupShutdown(): void {
-	Electrobun.events.on("before-quit", () => {
-		void runShutdownCleanup("before-quit");
+	// Electrobun's quit() emits before-quit synchronously and then blocks in
+	// native teardown until the process exits, so async cleanup started here
+	// never runs and the spawned agent runtime is orphaned. Veto the quit,
+	// finish cleanup, then let requestAppQuit() quit again.
+	Electrobun.events.on("before-quit", (event) => {
+		if (shutdownCleanupSettled) return;
+		event.response = { allow: false };
+		void requestAppQuit();
 	});
 }
 /**
