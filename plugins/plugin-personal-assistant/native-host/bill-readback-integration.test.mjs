@@ -43,7 +43,8 @@ async function checkReadback(asynchronous) {
     sequence = 0,
     guidanceAvailable = true;
   let waitForPolicy = null,
-    pageNote = "";
+    pageNote = "",
+    effectViolation;
   const bindings = [];
   const text = () =>
     Object.entries({
@@ -95,6 +96,7 @@ async function checkReadback(asynchronous) {
                 documentId: "doc",
                 url: bill.origin + "/bill",
                 inputRevision: 0,
+                ...(effectViolation ? { effectViolation } : {}),
                 text: text(),
                 elements: [
                   { selector: `${id}:0:1`, label: "Use existing method" },
@@ -207,28 +209,32 @@ async function checkReadback(asynchronous) {
         contextKey: choice.contextKey,
         value: "existing",
       });
-    if (asynchronous) {
-      let entered, release;
-      const started = new Promise((resolve) => {
-        entered = resolve;
-      });
-      waitForPolicy = () => {
-        entered();
-        return new Promise((resolve) => {
-          release = resolve;
+    if (asynchronous)
+      for (const change of ["text", "effect"]) {
+        let entered, release;
+        const started = new Promise((resolve) => {
+          entered = resolve;
         });
-      };
-      const pending = request();
-      await started;
-      pageNote = "\nThe website changed during the policy call.";
-      release();
-      assert.equal((await pending).kind, "blocked");
-      assert.equal(effects, 0);
-      assert.equal(outcomes.loadReview(), null);
-      assert.equal(outcomes.loadAttempt(), null);
-      waitForPolicy = null;
-      pageNote = "";
-    }
+        waitForPolicy = () => {
+          entered();
+          return new Promise((resolve) => {
+            release = resolve;
+          });
+        };
+        const pending = request();
+        await started;
+        if (change === "text")
+          pageNote = "\nThe website changed during the policy call.";
+        else effectViolation = "submit";
+        release();
+        assert.equal((await pending).kind, "blocked");
+        assert.equal(effects, 0);
+        assert.equal(outcomes.loadReview(), null);
+        assert.equal(outcomes.loadAttempt(), null);
+        waitForPolicy = null;
+        pageNote = "";
+        effectViolation = undefined;
+      }
     let offer = await request();
     assert.equal(offer.kind, "choose-existing-method");
     assert.equal(offer.choice.state, "pending");
