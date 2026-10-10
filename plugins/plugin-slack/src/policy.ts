@@ -677,7 +677,11 @@ function extractExplicitChannelId(value: string): string | null {
   const trimmed = value.trim();
   const explicit = trimmed.match(/^(?:id|slack-id):(.+)$/i)?.[1]?.trim();
   if (explicit) return explicit;
-  return /^[CGD][A-Z0-9]{8,}$/i.test(trimmed) ? trimmed : null;
+  // A bare ID must use Slack's canonical uppercase form. Matching
+  // case-insensitively also matches channel names such as "developers" or
+  // "community" (9+ alphanumeric characters starting with c/d/g), which must
+  // be resolved through the directory instead of being used as their own ID.
+  return /^[CGD][A-Z0-9]{8,}$/.test(trimmed) ? trimmed : null;
 }
 
 function assertSupportedSecurityPolicy(account: ResolvedSlackAccount): void {
