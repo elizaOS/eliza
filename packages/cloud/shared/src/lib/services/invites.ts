@@ -196,19 +196,27 @@ export class InvitesService {
       await this.assertOwnerCanVacateSoloOrganization(user.id, vacatedSoloOrgId);
     }
 
-    const movedUser = await usersService.update(userId, {
-      organization_id: invite.organization_id,
-      role: invite.invited_role,
-      updated_at: new Date(),
-    });
-    if (!movedUser) {
-      throw new Error("Failed to move user into invited organization");
+    // Claim the invite before the user moves: a revoke that lands after the
+    // validation above must keep the user out of the organization.
+    const updatedInvite = await organizationInvitesRepository.markAsAccepted(invite.id, userId);
+    if (!updatedInvite) {
+      throw new Error("Invite already used or revoked");
     }
 
-    const updatedInvite = await organizationInvitesRepository.markAsAccepted(invite.id, userId);
-
-    if (!updatedInvite) {
-      throw new Error("Failed to mark invite as accepted");
+    let movedUser: Awaited<ReturnType<typeof usersService.update>>;
+    try {
+      movedUser = await usersService.update(userId, {
+        organization_id: invite.organization_id,
+        role: invite.invited_role,
+        updated_at: new Date(),
+      });
+    } catch (error) {
+      await organizationInvitesRepository.restorePending(invite.id);
+      throw error;
+    }
+    if (!movedUser) {
+      await organizationInvitesRepository.restorePending(invite.id);
+      throw new Error("Failed to move user into invited organization");
     }
 
     if (vacatedSoloOrgId && movedUser?.organization_id === invite.organization_id) {
@@ -368,7 +376,8 @@ export class InvitesService {
     const revoked = await organizationInvitesRepository.revoke(inviteId);
 
     if (!revoked) {
-      throw new Error("Failed to revoke invite");
+      // A concurrent accept claimed the invite after the check above.
+      throw new Error("Can only revoke pending invites");
     }
 
     return revoked;

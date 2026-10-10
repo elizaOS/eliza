@@ -61,6 +61,9 @@ app.post("/", async (c) => {
     const status =
       errorMessage.includes("sign in with") ||
       errorMessage.includes("already a member") ||
+      errorMessage.includes("already used or revoked") ||
+      errorMessage.includes("has been revoked") ||
+      errorMessage.includes("already been accepted") ||
       errorMessage.includes("cannot join another organization")
         ? 409
         : errorMessage.includes("Invalid invite") ||
