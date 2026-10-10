@@ -137,7 +137,9 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 						: lastWord;
 					pendingBoundary = {
 						boundary: scanned + offset + 1,
-						normalizedWord: word.toLowerCase(),
+						// Only a period can belong to an abbreviation ("a.m.?" ends
+						// the sentence at "?").
+						normalizedWord: char === "." ? word.toLowerCase() : "",
 						sawCloser: false,
 					};
 				} else if (
@@ -147,7 +149,7 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 					const word = lastWord.endsWith(".")
 						? lastWord.slice(0, -1)
 						: lastWord;
-					if (!ABBREVIATIONS.has(word.toLowerCase())) {
+					if (char !== "." || !ABBREVIATIONS.has(word.toLowerCase())) {
 						let boundary = offset + 1;
 						while (
 							boundary < chunk.length &&
@@ -158,7 +160,7 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 						if (boundary === chunk.length && !endOfInput) {
 							pendingBoundary = {
 								boundary: scanned + boundary,
-								normalizedWord: word.toLowerCase(),
+								normalizedWord: char === "." ? word.toLowerCase() : "",
 								sawCloser: boundary > offset + 1,
 							};
 							break;
