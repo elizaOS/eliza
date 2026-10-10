@@ -148,7 +148,14 @@ function stripSentinelDelimiters(text: string): string {
  * Uses a sentinel to prevent bold from being matched by italic converter
  */
 function convertBold(text: string): string {
-  return text.replace(/\*\*(.+?)\*\*/g, `${BOLD_SENTINEL}$1${BOLD_SENTINEL}`);
+  // ***x*** is bold italic; read as **(*x)** it leaves a stray * that the
+  // italic step pairs across the bold marker (`*_x*_`).
+  return text
+    .replace(
+      /\*\*\*(?!\s)(.+?)(?<!\s)\*\*\*/g,
+      `${BOLD_SENTINEL}_$1_${BOLD_SENTINEL}`,
+    )
+    .replace(/\*\*(.+?)\*\*/g, `${BOLD_SENTINEL}$1${BOLD_SENTINEL}`);
 }
 
 /**
