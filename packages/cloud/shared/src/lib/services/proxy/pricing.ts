@@ -83,8 +83,11 @@ export async function getServiceMethodCost(serviceId: string, method: string): P
     throw new PricingNotFoundError(serviceId, method);
   }
 
-  const cost = Number.parseFloat(costStr);
-  if (!Number.isFinite(cost)) {
+  const cost = Number(costStr);
+  // Mirror requireServiceMethodCost: PostgreSQL numeric(18,12) is a decimal
+  // string; reject corrupt cached rows too instead of silently truncating
+  // them (Number.parseFloat("0.001junk") -> 0.001).
+  if (!/^\d+(?:\.\d+)?$/.test(costStr) || !Number.isFinite(cost) || cost < 0) {
     throw new Error(`Invalid pricing for ${serviceId}.${method}: ${costStr}`);
   }
   return cost;
