@@ -194,7 +194,12 @@ export async function ensureEmbeddingDimension(
 		typeof value === "number"
 			? value
 			: typeof value === "string"
-				? parseInt(value, 10)
+				? // parseInt stops at the first non-digit, so "1536junk"
+					// parsed to 1536 and was accepted as a deliberate dimension
+					// instead of being ignored. Require the whole trimmed value
+					// to be decimal, mirroring getExpectedEmbeddingDimensions
+					// in the agent runtime.
+					(/^\+?\d+$/.test(value.trim()) ? Number(value.trim()) : NaN)
 				: NaN;
 	const singular = parseDim(runtime.getSetting("EMBEDDING_DIMENSION"));
 	const plural = parseDim(runtime.getSetting("EMBEDDING_DIMENSIONS"));
