@@ -834,18 +834,6 @@ export async function listOrAutoProvisionCloudAgent(
     authToken,
     signal: ports.signal,
     onProgress: (status, detail) => ports.onStatus?.(detail ?? status, status),
-    ...(ports.requestDedicatedActivationConfirmation
-      ? {
-          requestDedicatedActivationConfirmation:
-            ports.requestDedicatedActivationConfirmation,
-        }
-      : {}),
-    ...(ports.requestDedicatedAdoptionConfirmation
-      ? {
-          requestDedicatedAdoptionConfirmation:
-            ports.requestDedicatedAdoptionConfirmation,
-        }
-      : {}),
   });
   addAgentProfile({
     kind: "cloud",

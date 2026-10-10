@@ -1,4 +1,4 @@
-/** Verifies Cloud first-run binds the account identity only after Dedicated activation. */
+/** Verifies Cloud first-run binds the existing personal identity without Dedicated activation. */
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -158,7 +158,8 @@ describe("listOrAutoProvisionCloudAgent — rowless personal Eliza", () => {
     const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
     expect(outcome.kind).toBe("done");
     expect(clientStub.getCloudStatus).not.toHaveBeenCalled();
-    expect(clientStub.ensurePersonalDedicatedEliza).toHaveBeenCalledTimes(1);
+    expect(clientStub.getPersonalSharedEliza).toHaveBeenCalledTimes(1);
+    expect(clientStub.ensurePersonalDedicatedEliza).not.toHaveBeenCalled();
     expect(clientStub.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
   });
 
@@ -171,7 +172,7 @@ describe("listOrAutoProvisionCloudAgent — rowless personal Eliza", () => {
     expect(outcome.kind).toBe("done");
     expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
     expect(clientStub.getCloudStatus).not.toHaveBeenCalled();
-    expect(clientStub.ensurePersonalDedicatedEliza).toHaveBeenCalledWith(
+    expect(clientStub.getPersonalSharedEliza).toHaveBeenCalledWith(
       expect.objectContaining({
         cloudApiBase: "https://staging.elizacloud.ai",
         authToken: "fresh-jwt",
@@ -186,6 +187,7 @@ describe("listOrAutoProvisionCloudAgent — rowless personal Eliza", () => {
     expect(outcome.kind).toBe("needs-cloud-login");
     expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
     expect(clientStub.getCloudStatus).not.toHaveBeenCalled();
+    expect(clientStub.getPersonalSharedEliza).not.toHaveBeenCalled();
     expect(clientStub.ensurePersonalDedicatedEliza).not.toHaveBeenCalled();
     expect(clientStub.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
   });

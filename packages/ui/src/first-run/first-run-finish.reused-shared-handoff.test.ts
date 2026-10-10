@@ -373,30 +373,32 @@ describe("listOrAutoProvisionCloudAgent / runFirstRunFinish routing", () => {
     window.localStorage.setItem("steward_session_token", "steward-jwt");
   });
 
-  it("routes Cloud first run through Dedicated personal activation", async () => {
+  it("routes Cloud first run through the existing personal Shared identity", async () => {
     const outcome = await runFirstRunFinish(
       { ...draft(), runtime: "cloud" },
       ports(),
     );
     expect(outcome.kind).toBe("done");
-    expect(clientMock.ensurePersonalDedicatedEliza).toHaveBeenCalledWith(
+    expect(clientMock.getPersonalSharedEliza).toHaveBeenCalledWith(
       expect.objectContaining({
         cloudApiBase: "https://staging.elizacloud.ai",
         authToken: "steward-jwt",
       }),
     );
     expect(clientMock.getCloudCompatAgents).not.toHaveBeenCalled();
+    expect(clientMock.ensurePersonalDedicatedEliza).not.toHaveBeenCalled();
     expect(clientMock.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
   });
 
   it("surfaces personal identity failure without provisioning a fallback", async () => {
-    clientMock.ensurePersonalDedicatedEliza.mockRejectedValueOnce(
+    clientMock.getPersonalSharedEliza.mockRejectedValueOnce(
       new Error("identity unavailable"),
     );
     await expect(
       listOrAutoProvisionCloudAgent(draft(), ports()),
     ).rejects.toThrow("identity unavailable");
     expect(clientMock.getCloudCompatAgents).not.toHaveBeenCalled();
+    expect(clientMock.ensurePersonalDedicatedEliza).not.toHaveBeenCalled();
     expect(clientMock.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
   });
 
@@ -424,7 +426,7 @@ describe("listOrAutoProvisionCloudAgent / runFirstRunFinish routing", () => {
       requireClientAuth: true,
     });
     expect(outcome.kind).toBe("done");
-    expect(clientMock.ensurePersonalDedicatedEliza).toHaveBeenCalledWith(
+    expect(clientMock.getPersonalSharedEliza).toHaveBeenCalledWith(
       expect.objectContaining({ authToken: "fresh-client-token" }),
     );
     expect(clientMock.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
@@ -440,6 +442,7 @@ describe("listOrAutoProvisionCloudAgent / runFirstRunFinish routing", () => {
       requireClientAuth: true,
     });
     expect(outcome.kind).toBe("needs-cloud-login");
+    expect(clientMock.getPersonalSharedEliza).not.toHaveBeenCalled();
     expect(clientMock.ensurePersonalDedicatedEliza).not.toHaveBeenCalled();
     expect(clientMock.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
   });
