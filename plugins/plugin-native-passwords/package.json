@@ -1,0 +1,68 @@
+{
+  "name": "@elizaos/capacitor-passwords",
+  "version": "2.0.3-beta.7",
+  "description": "On-device password vault, Android Autofill provider and metadata-only vault client for Eliza apps.",
+  "main": "./dist/plugin.cjs.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "eliza-source": "./src/index.ts",
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/plugin.cjs.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "unpkg": "dist/plugin.js",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "dist/"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza.git"
+  },
+  "scripts": {
+    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-passwords -- bun run build:unlocked",
+    "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "test": "node --test test/client.node.mjs test/native-host/policy.node.mjs"
+  },
+  "capacitor": {
+    "android": {
+      "src": "android"
+    }
+  },
+  "devDependencies": {
+    "@capacitor/core": "^8.3.1",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "rollup": "^4.63.5",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.3.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "elizaos": {
+    "platforms": [
+      "browser"
+    ],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Unavailable fallback; the vault is never emulated with script-readable storage.",
+      "android": "Keystore-bound vault (strong biometric or device credential), Android Autofill provider with exact origin/app binding and save capture.",
+      "ios": false
+    }
+  }
+}

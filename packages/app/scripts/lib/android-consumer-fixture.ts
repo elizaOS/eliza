@@ -12,14 +12,17 @@ export async function runConsumerFixture({
   adb,
   build,
   parseInstrumentation,
+  parseNativeArtifacts,
 }) {
   const directory = path.join(outputDir, plugin.directory);
   fs.mkdirSync(directory, { recursive: true });
   const project = path.join(root, plugin.consumerProject);
   const notifications = plugin.directory === "plugin-native-notifications";
+  const passwords = plugin.directory === "plugin-native-passwords";
   const variants = [
     "host/debug",
     "host/androidTest/debug",
+    ...(passwords ? ["fixture/debug"] : []),
     ...(notifications
       ? ["fixture/selected/debug", "fixture/excluded/debug"]
       : []),
@@ -89,7 +92,11 @@ export async function runConsumerFixture({
     };
   };
   try {
-    if (!notifications && plugin.directory !== "plugin-native-media")
+    if (
+      !notifications &&
+      !passwords &&
+      plugin.directory !== "plugin-native-media"
+    )
       throw new Error(`No consumer install protocol for ${plugin.directory}`);
     if (build) {
       const gradle =
@@ -111,6 +118,7 @@ export async function runConsumerFixture({
             "--max-workers=1",
             ":host:assembleDebug",
             ":host:assembleDebugAndroidTest",
+            ...(passwords ? [":fixture:assembleDebug"] : []),
             ...(notifications
               ? [
                   ":fixture:assembleSelectedDebug",
@@ -206,6 +214,17 @@ export async function runConsumerFixture({
         "RUNNING_UNLOCKED",
       "Consumer user did not unlock",
     );
+    if (passwords)
+      adb(
+        "shell",
+        "settings",
+        "--user",
+        user,
+        "put",
+        "secure",
+        "user_setup_complete",
+        "1",
+      );
     for (const apk of apks) {
       ownedPackages.push(apk.applicationId);
       entry.ownedPackages = ownedPackages;
@@ -221,9 +240,18 @@ export async function runConsumerFixture({
       "-w",
       "-r",
       ...(notifications ? ["-e", "disposableMirrorFixture", "1"] : []),
+      ...(passwords ? ["-e", "disposablePasswordFixture", "1"] : []),
       `${apks[1].applicationId}/androidx.test.runner.AndroidJUnitRunner`,
     );
     fs.writeFileSync(path.join(directory, "instrumentation.txt"), output);
+    entry.artifacts = parseNativeArtifacts(output).map(({ name, bytes }) => {
+      const file = path.join(directory, name);
+      fs.writeFileSync(file, bytes);
+      return {
+        path: path.relative(root, file),
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+      };
+    });
     Object.assign(entry, parseInstrumentation(output, entry.expectedTests));
   } catch (error) {
     entry.pass = false;

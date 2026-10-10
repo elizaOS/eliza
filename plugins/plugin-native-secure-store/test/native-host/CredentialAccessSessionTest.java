@@ -16,11 +16,13 @@ public final class CredentialAccessSessionTest {
     check(session.pending() && !session.authenticated());
     check(session.complete(first, true));
     check(session.authenticated() && session.remainingMillis() == 110000);
+    check(session.currentTicket() == first && session.authenticated(first));
     now[0] += 109999;
     check(session.authenticated() && session.remainingMillis() == 1);
     check(!session.complete(first, true)); // Duplicate result cannot extend the grant.
     now[0]++;
     check(!session.authenticated()); // Enforced without waiting for Handler delivery.
+    check(session.currentTicket() == 0 && !session.authenticated(first));
     long second = session.begin();
     check(second > first && session.complete(second, true));
     session.stop();
@@ -28,9 +30,17 @@ public final class CredentialAccessSessionTest {
     long abandoned = session.begin();
     session.lock();
     long replacement = session.begin();
+    session.lock(abandoned);
+    check(session.pending());
     check(!session.complete(abandoned, true) && session.pending());
     check(session.complete(replacement, true));
     check(!session.complete(abandoned, false) && session.authenticated());
+    check(!session.authenticated(first) && !session.authenticated(abandoned));
+    check(session.authenticated(replacement));
+    session.lock(abandoned);
+    check(session.authenticated(replacement));
+    session.lock(replacement);
+    check(!session.authenticated(replacement) && session.currentTicket() == 0);
     long rejected = session.begin();
     check(!session.authenticated());
     check(!session.complete(rejected, false) && !session.pending());

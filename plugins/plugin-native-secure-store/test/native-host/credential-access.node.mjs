@@ -32,5 +32,5 @@ test("device credential grants fence stale results and expire by elapsed time", 
     ["-cp", classes, "CredentialAccessSessionTest"],
     { timeout: 60000, encoding: "utf8" },
   );
-  assert.match(output, /27 assertions passed/);
+  assert.match(output, /34 assertions passed/);
 });

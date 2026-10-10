@@ -88,6 +88,10 @@ instances; writers in separate Android processes need separate coordination.
 The device suite checks old-frame compatibility, backup recovery, tampering,
 byte limits, concurrent cold writes and competing admissions with synthetic JSON.
 
+`CredentialAccessSession.currentTicket()` binds queued work to the grant that admitted it.
+Check `authenticated(ticket)` before use. `lock(ticket)` cancels only that owner; an old
+Activity cannot revoke a newer challenge or grant. The host must serialize access to the session.
+
 `PasswordVaultStore.KeyPolicy` selects the vault key's user-authentication window and whether
 strong biometrics are accepted besides the device credential. The boolean constructor keeps
 the deployed `KeyPolicy.LEGACY` (device credential, 120 s); an alias is never reused under a
