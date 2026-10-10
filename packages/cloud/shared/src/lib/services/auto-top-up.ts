@@ -39,6 +39,7 @@ import {
   autoTopUpChargeBreakdownFromCents,
   computeAutoTopUpChargeCents,
 } from "./auto-top-up-charge-breakdown";
+import { billingHoldService } from "./billing-hold";
 import { CreatorMonetizationRetiredError } from "./creator-monetization-retirement";
 import { emailService } from "./email";
 import { invalidateOrgTierCache } from "./org-rate-limits";
@@ -1353,6 +1354,21 @@ export class AutoTopUpService {
         settled.attempt,
         recovered,
         "Credit applied; cache synchronization will be retried",
+      );
+    }
+
+    try {
+      await billingHoldService.settleOutstandingShortfalls(attempt.organizationId);
+    } catch (error) {
+      logger.error("[AutoTopUp] Credit applied but billing hold settlement failed", {
+        organizationId: attempt.organizationId,
+        attemptId: attempt.id,
+        error: safeErrorMessage(error),
+      });
+      return resultFromAttempt(
+        settled.attempt,
+        recovered,
+        "Credit applied; billing hold settlement will be retried",
       );
     }
 
