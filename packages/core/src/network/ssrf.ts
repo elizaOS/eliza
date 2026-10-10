@@ -146,6 +146,7 @@ function parseIpv4FromMappedIpv6(mapped: string): number[] | null {
 	}
 	const parts = mapped.split(":").filter(Boolean);
 	if (parts.length === 1) {
+		if (!/^[0-9a-f]+$/i.test(parts[0])) return null;
 		const value = Number.parseInt(parts[0], 16);
 		if (Number.isNaN(value) || value < 0 || value > 0xffff_ffff) {
 			return null;
@@ -158,6 +159,9 @@ function parseIpv4FromMappedIpv6(mapped: string): number[] | null {
 		];
 	}
 	if (parts.length !== 2) {
+		return null;
+	}
+	if (!/^[0-9a-f]+$/i.test(parts[0]) || !/^[0-9a-f]+$/i.test(parts[1])) {
 		return null;
 	}
 	const high = Number.parseInt(parts[0], 16);
