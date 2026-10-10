@@ -58,6 +58,19 @@ describe("commitment ledger extraction and audit", () => {
     expect(rows[0]?.dueAt).toBe("2026-07-10T17:00:00.000Z");
   });
 
+  it("uses the deadline weekday over tomorrow's in the sentence", () => {
+    const rows = extractCommitmentLedgerRecords({
+      agentId: AGENT_ID,
+      source: "sent_mail",
+      sourceKey: "gmail:msg-tomorrows-by",
+      observedAt: OBSERVED_AT,
+      text: "I'll send tomorrow's agenda by Friday.",
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.dueAt).toBe("2026-07-10T17:00:00.000Z");
+  });
+
   it("keeps a by-deadline when a later on-weekday is only a discussion day", () => {
     const rows = extractCommitmentLedgerRecords({
       agentId: AGENT_ID,
