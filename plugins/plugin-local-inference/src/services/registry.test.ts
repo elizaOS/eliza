@@ -290,6 +290,41 @@ describe("local inference registry removal", () => {
 		expect(await listInstalledModels()).toEqual([]);
 	});
 
+	it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+		"rejects and keeps the registry entry when the files cannot be deleted",
+		async () => {
+			const stateDir = useTempStateDir();
+			const bundleRoot = path.join(
+				stateDir,
+				"local-inference",
+				"models",
+				"eliza-1-2b",
+			);
+			const textDir = path.join(bundleRoot, "text");
+			const modelPath = path.join(textDir, "model.gguf");
+			fs.mkdirSync(textDir, { recursive: true });
+			fs.writeFileSync(modelPath, "fake-model");
+			await upsertElizaModel(
+				installedModel("eliza-1-2b", modelPath, { bundleRoot }),
+			);
+
+			// A read-only directory makes unlinking its file fail with EACCES.
+			fs.chmodSync(textDir, 0o555);
+			try {
+				await expect(removeElizaModel("eliza-1-2b")).rejects.toMatchObject({
+					code: "EACCES",
+				});
+			} finally {
+				fs.chmodSync(textDir, 0o755);
+			}
+
+			expect(fs.existsSync(modelPath)).toBe(true);
+			expect((await listInstalledModels()).map((model) => model.id)).toEqual([
+				"eliza-1-2b",
+			]);
+		},
+	);
+
 	it.skipIf(process.platform === "win32")(
 		"refuses a registry path that escapes through a symlinked parent",
 		async () => {
