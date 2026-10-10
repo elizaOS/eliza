@@ -521,6 +521,11 @@ export const blooioAdapter: PlatformAdapter = {
       return null;
     }
 
+    if (event.event === "message.failed") {
+      logger.error("Blooio reported a failed delivery", {
+        messageId: event.message_id ?? null,
+      });
+    }
     if (event.event !== "message.received") return null;
 
     // Blooio documents message_id as the stable identifier for message
