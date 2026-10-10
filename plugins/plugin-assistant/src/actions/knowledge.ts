@@ -26,6 +26,7 @@ import {
   ElizaError,
   type HandlerCallback,
   type HandlerOptions,
+  hasOwnerAccess,
   type IAgentRuntime,
   inspectSendHandlerResult,
   logger,
@@ -98,18 +99,21 @@ async function roomIsPublic(
 
 /**
  * The requester's authorization role for the scope wall, derived from the
- * triggering message: the configured owner entity is OWNER, the agent itself is
- * AGENT, everyone else is USER. Mirrors the header-derived role the REST routes
- * resolve so both surfaces enforce the same wall.
+ * triggering message: the agent itself is AGENT, a sender core resolves as
+ * owner (admin entity, owner contacts, linked identity, or world OWNER grant)
+ * is OWNER, everyone else is USER. Uses the same owner resolution as document
+ * ingest, so a document stored as owner-private is readable by that owner.
  */
-function actorFromMessage(runtime: IAgentRuntime, message: Memory): RouteActor {
+async function actorFromMessage(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<RouteActor> {
   const agentId = runtime.agentId;
-  const ownerEntityId = asUuid(runtime.getSetting?.("ELIZA_ADMIN_ENTITY_ID"));
   const entityId = (message.entityId ?? agentId) as UUID;
   let role: RouteActorRole = "USER";
   if (entityId === agentId) role = "AGENT";
-  else if (ownerEntityId && entityId === ownerEntityId) role = "OWNER";
-  return { entityId, role, ownerEntityId };
+  else if (await hasOwnerAccess(runtime, message)) role = "OWNER";
+  return { entityId, role };
 }
 
 function parseSearchMode(value: unknown): DocumentSearchMode | undefined {
@@ -491,7 +495,7 @@ export const searchKnowledgeAction: Action = {
       );
     }
 
-    const actor = actorFromMessage(runtime, message);
+    const actor = await actorFromMessage(runtime, message);
     const filters = filtersFromParams(params);
     // Filter-only surfacing (#13595): a tag/room/sender/media-format query with
     // no free text is valid — it lists every item matching those facets. Only a
@@ -661,7 +665,7 @@ export const attachToChatAction: Action = {
     if (!item)
       return fail(`No knowledge item for "${itemRef}".`, "ATTACH_NOT_FOUND");
 
-    const actor = actorFromMessage(runtime, message);
+    const actor = await actorFromMessage(runtime, message);
     if (!canReadDocumentMemory(item.memory, actor)) {
       return fail(
         "You do not have access to that knowledge item.",
@@ -773,7 +777,7 @@ export const sendMediaToAction: Action = {
     if (!item)
       return fail(`No knowledge item for "${itemRef}".`, "SEND_NOT_FOUND");
 
-    const actor = actorFromMessage(runtime, message);
+    const actor = await actorFromMessage(runtime, message);
     if (!canReadDocumentMemory(item.memory, actor)) {
       return fail(
         "You do not have access to that knowledge item.",
