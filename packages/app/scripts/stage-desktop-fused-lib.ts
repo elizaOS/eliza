@@ -178,7 +178,14 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--variant") out.variant = argv[++i];
     else if (argv[i] === "--out") out.outDir = argv[++i];
-    else if (argv[i] === "--jobs") out.jobs = parseInt(argv[++i], 10);
+    else if (argv[i] === "--jobs") {
+      // parseInt stops at the first non-digit ("1e3" -> 1), so a typo was
+      // silently accepted as the job count. Require the whole trimmed value
+      // to be decimal; malformed -> null falls through to the os.cpus()
+      // default, mirroring the --jobs parsing in compile-libllama.ts (#34770).
+      const jobsRaw = (argv[++i] ?? "").trim();
+      out.jobs = /^\+?\d+$/.test(jobsRaw) ? Number(jobsRaw) : null;
+    }
     else if (argv[i] === "--portable-cpu") out.portableCpu = true;
     else if (argv[i] === "--force") out.force = true;
     else if (argv[i] === "--check") out.check = true;
