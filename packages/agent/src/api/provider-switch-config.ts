@@ -301,7 +301,7 @@ function clearElizaCloudCliProxyEnv(): void {
   ] as const;
   for (const [baseKey, apiKey] of pairs) {
     const v = process.env[baseKey];
-    if (v === ELIZA_CLOUD_CLI_PROXY_BASE_URL) {
+    if (v === ELIZA_CLOUD_CLI_PROXY_BASE_URL || (v && /elizacloud/i.test(v))) {
       delete process.env[baseKey];
       delete process.env[apiKey];
     }
