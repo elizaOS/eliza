@@ -47,7 +47,7 @@ export function createSharedGoogleContextPlugin(
       },
       {
         name: "timeZone",
-        description: "Owner-requested IANA timezone.",
+        description: "Optional owner-requested IANA timezone. Defaults to UTC when omitted.",
         schema: { type: "string" },
       },
     ],
