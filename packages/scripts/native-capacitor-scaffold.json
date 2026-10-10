@@ -80,6 +80,10 @@
       "globalName": "capacitorNetworkPolicy"
     },
     {
+      "packageName": "plugin-native-passwords",
+      "globalName": "capacitorElizaPasswords"
+    },
+    {
       "packageName": "plugin-native-secure-store",
       "globalName": "capacitorElizaSecureStore"
     },

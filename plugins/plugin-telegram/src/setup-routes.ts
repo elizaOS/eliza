@@ -67,7 +67,9 @@ function sendSetupError(
   code: string,
   message: string,
 ): void {
-  res.status(status).json({ error: { code, message } });
+  // `message` is the string the UI client reads; `error` keeps the setup
+  // error contract ({ code, message }) for callers that read the code.
+  res.status(status).json({ error: { code, message }, message });
 }
 function sendStatus(res: RouteResponse, body: SetupStatusResponse): void {
   res.status(200).json(body);

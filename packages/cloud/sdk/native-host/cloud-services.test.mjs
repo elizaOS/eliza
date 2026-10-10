@@ -454,6 +454,61 @@ for (const [checkoutPath, requestBody] of [
   }
 }
 
+test("billing confirmation start forwards only the verification purpose to native auth", async (t) => {
+  const handled = [];
+  const routes = createCloudRoutes({
+    hostPolicy: {
+      ...policy,
+      createNativeCloudAuth: () => ({
+        billingAuthority: async () => null,
+        handle: async (operation, input) => {
+          handled.push({ operation, input });
+          return { status: "sent", sessionId: "fixture-session" };
+        },
+      }),
+    },
+    pendingCredentialStore: { read: async () => null },
+    speechVoice: { voiceId: "voice", modelId: "model" },
+    fetchImpl: async () => {
+      throw Error("Unexpected provider request");
+    },
+  });
+  const server = http.createServer((req, res) =>
+    routes(req, res, new URL(req.url, "http://localhost")),
+  );
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const post = (route, value) =>
+    fetch(base + route, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(value),
+    });
+  assert.equal((await post("/cloud/account/billing/start", {})).status, 200);
+  assert.equal(
+    (await post("/cloud/account/billing/start", { purpose: "account" })).status,
+    200,
+  );
+  assert.deepEqual(handled, [
+    { operation: "billing-start", input: {} },
+    { operation: "billing-start", input: { purpose: "account" } },
+  ]);
+  for (const [route, value] of [
+    ["/cloud/account/billing/start", { purpose: "account", sessionId: "x" }],
+    [
+      "/cloud/account/billing/verify",
+      { sessionId: "x", code: "1", purpose: "account" },
+    ],
+  ])
+    assert.equal((await post(route, value)).status, 400);
+  assert.equal(handled.length, 2);
+});
+
 test("a service-only host composes CLI login and provider-default voice without billing routes", async (t) => {
   const calls = [];
   const routes = createCloudRoutes({

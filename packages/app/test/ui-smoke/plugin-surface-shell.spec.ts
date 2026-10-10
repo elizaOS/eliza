@@ -253,3 +253,101 @@ for (const width of [1440, 390]) {
     });
   });
 }
+
+for (const width of [1440, 390]) {
+  test(`plugin timezone accepts an IANA name and duration labels preserve units at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await seedAppStorage(page);
+    await installDefaultAppRoutes(page);
+    await page.route("**/api/plugins", (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          plugins: [
+            {
+              id: "review-time",
+              name: "Scheduling settings",
+              description: "Timezone and interval configuration",
+              enabled: true,
+              configured: true,
+              envKey: null,
+              category: "feature",
+              source: "bundled",
+              validationErrors: [],
+              validationWarnings: [],
+              parameters: [
+                {
+                  key: "DEFAULT_TIMEZONE",
+                  type: "string",
+                  description: "Default timezone",
+                  required: false,
+                  sensitive: false,
+                },
+                {
+                  key: "RSS_CHECK_INTERVAL_MINUTES",
+                  type: "string",
+                  description: "Feed interval",
+                  required: false,
+                  sensitive: false,
+                },
+                {
+                  key: "COPILOT_PROXY_TIMEOUT_SECONDS",
+                  type: "string",
+                  description: "Request timeout",
+                  required: false,
+                  sensitive: false,
+                },
+              ],
+            },
+          ],
+        }),
+      }),
+    );
+    await page.route("**/api/plugins/review-time", (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true }),
+      }),
+    );
+    await openAppPath(page, "/apps/plugins");
+    await page.locator('li[data-plugin-id="review-time"]').click();
+    const zone = page
+      .locator("#field-review-time-DEFAULT_TIMEZONE")
+      .getByRole("textbox");
+    await zone.fill("America/New_York");
+    await expect(zone).toHaveValue("America/New_York");
+    await expect(
+      page.locator("#field-review-time-RSS_CHECK_INTERVAL_MINUTES"),
+    ).toContainText("min");
+    await expect(
+      page.locator("#field-review-time-COPILOT_PROXY_TIMEOUT_SECONDS"),
+    ).toContainText("s");
+    await expect(
+      page.getByRole("dialog").getByText("ms", { exact: true }),
+    ).toHaveCount(0);
+    await page.screenshot({
+      path: testInfo.outputPath(`plugin-timezone-${width}.jpg`),
+      type: "jpeg",
+      fullPage: true,
+    });
+    const saved = page.waitForRequest(
+      (request) =>
+        request.method() === "PUT" &&
+        request.url().endsWith("/api/plugins/review-time"),
+    );
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Save settings", exact: true })
+      .click();
+    expect((await saved).postDataJSON()).toEqual({
+      config: { DEFAULT_TIMEZONE: "America/New_York" },
+    });
+    await expect(
+      page
+        .getByRole("dialog")
+        .getByRole("button", { name: "Save settings", exact: true }),
+    ).toContainText("Saved");
+  });
+}

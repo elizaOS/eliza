@@ -1,0 +1,12 @@
+plugins { id 'com.android.application' }
+android {
+ namespace 'example.passwords.host'
+ compileSdk 36
+ defaultConfig { applicationId 'example.passwords.host'; minSdk 29; targetSdk 35; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
+ compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+dependencies {
+ implementation project(':passwords')
+ androidTestImplementation 'androidx.test:runner:1.6.2'
+ androidTestImplementation 'androidx.test.ext:junit:1.3.0'
+}

@@ -402,6 +402,61 @@ describe("browser workspace web-mode real-code command flow", () => {
     ).resolves.toMatchObject({ tab: { url: "https://example.test/empty" } });
   });
 
+  it("preserves Enter editing and explicit submitter behavior", async () => {
+    const tab = await openBrowserWorkspaceTab({ url: "about:blank" }, webEnv);
+    const page = "https://example.test/compose";
+    const destination = "https://example.test/save?body=&subject=&choice=draft";
+    const html = `<form id="compose" action="/send" method="post">
+      <textarea id="body" name="body"></textarea><input id="subject" name="subject">
+      <button id="save" name="choice" value="draft" formaction="/save" formmethod="get">Save</button>
+      </form><form id="multiple"><input id="first"><input></form>
+      <form id="blocked"><input id="blocked-input"><button disabled>Disabled</button></form>`;
+    for (const [url, responseBody] of [
+      [page, html],
+      [destination, "<h1>Saved</h1>"],
+    ]) {
+      await executeBrowserWorkspaceCommand(
+        {
+          id: tab.id,
+          subaction: "network",
+          networkAction: "route",
+          url,
+          responseBody,
+        },
+        webEnv,
+      );
+    }
+    const navigate = () =>
+      executeBrowserWorkspaceCommand(
+        { id: tab.id, subaction: "navigate", url: page },
+        webEnv,
+      );
+    const press = (selector: string) =>
+      executeBrowserWorkspaceCommand(
+        { id: tab.id, subaction: "press", selector, key: "Enter" },
+        webEnv,
+      );
+    await navigate();
+    await press("#body");
+    const body = await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "get", selector: "#body", getMode: "value" },
+      webEnv,
+    );
+    expect(body.value).toBe("\n");
+    await navigate();
+    expect((await press("#save")).tab?.url).toBe(destination);
+    await navigate();
+    expect((await press("#subject")).tab?.url).toBe(destination);
+    await navigate();
+    await press("#first");
+    await press("#blocked-input");
+    const title = await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "get", selector: "#body", getMode: "value" },
+      webEnv,
+    );
+    expect(title.value).toBe("");
+  });
+
   it("preserves semantic page content beyond the former fixed snapshot ceiling", async () => {
     const tab = await openBrowserWorkspaceTab(
       { show: true, url: "about:blank" },

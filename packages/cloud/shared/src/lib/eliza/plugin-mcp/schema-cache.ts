@@ -71,8 +71,7 @@ export class McpSchemaCache {
     // resolveGenerationTimeoutMs in the discord plugin.
     const ttlRaw = (process.env.MCP_SCHEMA_CACHE_TTL ?? "").trim();
     const ttlParsed = /^\+?\d+$/.test(ttlRaw) ? Number(ttlRaw) : Number.NaN;
-    this.ttl =
-      Number.isFinite(ttlParsed) && ttlParsed > 0 ? ttlParsed : DEFAULT_TTL;
+    this.ttl = Number.isFinite(ttlParsed) && ttlParsed > 0 ? ttlParsed : DEFAULT_TTL;
 
     if (!enabled) {
       logger.debug("[McpSchemaCache] Disabled");

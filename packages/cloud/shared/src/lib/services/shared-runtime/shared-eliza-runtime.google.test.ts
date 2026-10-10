@@ -44,7 +44,14 @@ function model(content: string | null, tool?: { name: string; args: object }) {
   });
 }
 async function exercise(
-  kind: "general" | "weather" | "weather-missing" | "compound-missing" | "private" | "ordinary" | "connect",
+  kind:
+    | "general"
+    | "weather"
+    | "weather-missing"
+    | "compound-missing"
+    | "private"
+    | "ordinary"
+    | "connect",
 ) {
   const ordinary = kind === "ordinary";
   const connecting = kind === "connect";
@@ -186,11 +193,14 @@ async function exercise(
     if (
       /(?:^|\n)planner_stage:\n/.test(system) &&
       names.includes("GOOGLE_CONTEXT") &&
-      reads === 0 && connects === 0
+      reads === 0 &&
+      connects === 0
     ) {
       return model(null, {
         name: "GOOGLE_CONTEXT",
-        args: connecting ? { operation: "connect" } : { operation: "gmail_search", query: "invoices" },
+        args: connecting
+          ? { operation: "connect" }
+          : { operation: "gmail_search", query: "invoices" },
       });
     }
     return model(currentReply);
@@ -295,20 +305,28 @@ async function exercise(
             },
           ]
         : [],
-      message: connecting ? "Connect Google" : ordinary ? "Hello." : compoundMissing
-        ? "What is the weather in Phoenix, AZ? Show a checklist."
-        : weatherRead
-          ? "What is the weather in Phoenix, AZ?"
-          : publicRead
-            ? `Search the web for ${publicTopic}?`
-            : "Search Gmail for API documentation invoices.",
-      capabilityText: connecting ? "Connect Google" : ordinary ? "Hello." : compoundMissing
-        ? "What is the weather in Phoenix, AZ? Show a checklist."
-        : weatherRead
-          ? "What is the weather in Phoenix, AZ?"
-          : publicRead
-            ? `Search the web for ${publicTopic}?`
-            : "Search Gmail for API documentation invoices.",
+      message: connecting
+        ? "Connect Google"
+        : ordinary
+          ? "Hello."
+          : compoundMissing
+            ? "What is the weather in Phoenix, AZ? Show a checklist."
+            : weatherRead
+              ? "What is the weather in Phoenix, AZ?"
+              : publicRead
+                ? `Search the web for ${publicTopic}?`
+                : "Search Gmail for API documentation invoices.",
+      capabilityText: connecting
+        ? "Connect Google"
+        : ordinary
+          ? "Hello."
+          : compoundMissing
+            ? "What is the weather in Phoenix, AZ? Show a checklist."
+            : weatherRead
+              ? "What is the weather in Phoenix, AZ?"
+              : publicRead
+                ? `Search the web for ${publicTopic}?`
+                : "Search Gmail for API documentation invoices.",
       execution: {
         agentKey,
         roomKey: agentKey,
@@ -429,10 +447,16 @@ async function exercise(
       expect(reads).toBe(0);
       expect(publicCalls).toBe(0);
       expect(turn.reply).toContain(authUrl);
-      expect(turn.actionResults).toContainEqual(expect.objectContaining({
-        success: true,
-        data: expect.objectContaining({ actionName: "GOOGLE_CONTEXT", operation: "connect", authUrl }),
-      }));
+      expect(turn.actionResults).toContainEqual(
+        expect.objectContaining({
+          success: true,
+          data: expect.objectContaining({
+            actionName: "GOOGLE_CONTEXT",
+            operation: "connect",
+            authUrl,
+          }),
+        }),
+      );
     } else {
       expect(webRegistered).toBe(false);
       expect(googleRegistered).toBe(true);

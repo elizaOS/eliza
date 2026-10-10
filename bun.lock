@@ -2578,6 +2578,19 @@
         "typescript": "^6.0.3",
       },
     },
+    "plugins/plugin-native-passwords": {
+      "name": "@elizaos/capacitor-passwords",
+      "version": "2.0.3-beta.7",
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "rollup": "^4.63.5",
+        "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
     "plugins/plugin-native-phone": {
       "name": "@elizaos/plugin-native-phone",
       "version": "2.0.3-beta.7",
@@ -3891,6 +3904,8 @@
     "@elizaos/capacitor-notification-mirror": ["@elizaos/capacitor-notification-mirror@workspace:plugins/plugin-native-notifications"],
 
     "@elizaos/capacitor-owned-media": ["@elizaos/capacitor-owned-media@workspace:plugins/plugin-native-media"],
+
+    "@elizaos/capacitor-passwords": ["@elizaos/capacitor-passwords@workspace:plugins/plugin-native-passwords"],
 
     "@elizaos/capacitor-secure-store": ["@elizaos/capacitor-secure-store@workspace:plugins/plugin-native-secure-store"],
 
@@ -9777,6 +9792,8 @@
     "@elizaos/capacitor-mobile-signals/@capacitor/core": ["@capacitor/core@8.5.2", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-agnQbGdhGw/KZFuLf7H9SY2o+oE7upkr/WPQsYaokXP6f9chaE8iVmbKkfN6SVl4w3pmz7oZ3Ur1hbkmy1hx+w=="],
 
     "@elizaos/capacitor-network-policy/@capacitor/core": ["@capacitor/core@8.5.2", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-agnQbGdhGw/KZFuLf7H9SY2o+oE7upkr/WPQsYaokXP6f9chaE8iVmbKkfN6SVl4w3pmz7oZ3Ur1hbkmy1hx+w=="],
+
+    "@elizaos/capacitor-passwords/@capacitor/core": ["@capacitor/core@8.5.2", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-agnQbGdhGw/KZFuLf7H9SY2o+oE7upkr/WPQsYaokXP6f9chaE8iVmbKkfN6SVl4w3pmz7oZ3Ur1hbkmy1hx+w=="],
 
     "@elizaos/capacitor-secure-store/@capacitor/core": ["@capacitor/core@8.5.2", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-agnQbGdhGw/KZFuLf7H9SY2o+oE7upkr/WPQsYaokXP6f9chaE8iVmbKkfN6SVl4w3pmz7oZ3Ur1hbkmy1hx+w=="],
 

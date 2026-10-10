@@ -877,7 +877,19 @@ export async function handleCharacterRoutes(
         path: issue.path.join("."),
         message: issue.message,
       }));
-      json(res, { ok: false, validationErrors: issues }, 422);
+      json(
+        res,
+        {
+          ok: false,
+          error: issues
+            .map((issue) =>
+              issue.path ? `${issue.path}: ${issue.message}` : issue.message,
+            )
+            .join("; "),
+          validationErrors: issues,
+        },
+        422,
+      );
       return true;
     }
 

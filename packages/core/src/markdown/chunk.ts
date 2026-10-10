@@ -401,10 +401,27 @@ function scanParenAwareBreakpoints(
 	window: string,
 	isAllowed: (index: number) => boolean = () => true,
 ): { lastNewline: number; lastWhitespace: number } {
-	let lastNewline = -1;
-	let lastWhitespace = -1;
-	let depth = 0;
+	// Breaks outside every "(" keep a parenthetical whole. A "(" that never
+	// closes in the window (":(", "(see below:") blocks every later break, so
+	// when no such break exists, fall back to breaks outside closed pairs only
+	// instead of cutting mid-word or inside a code fence.
+	const closes = new Map<number, number>();
+	const open: number[] = [];
+	for (let i = 0; i < window.length; i++) {
+		if (!isAllowed(i)) {
+			continue;
+		}
+		if (window[i] === "(") {
+			open.push(i);
+		} else if (window[i] === ")" && open.length > 0) {
+			closes.set(open.pop() as number, i);
+		}
+	}
 
+	const outside = { lastNewline: -1, lastWhitespace: -1 };
+	const outsideClosed = { lastNewline: -1, lastWhitespace: -1 };
+	let depth = 0;
+	let closedUntil = -1;
 	for (let i = 0; i < window.length; i++) {
 		if (!isAllowed(i)) {
 			continue;
@@ -412,23 +429,29 @@ function scanParenAwareBreakpoints(
 		const char = window[i];
 		if (char === "(") {
 			depth += 1;
+			closedUntil = Math.max(closedUntil, closes.get(i) ?? -1);
 			continue;
 		}
 		if (char === ")" && depth > 0) {
 			depth -= 1;
 			continue;
 		}
-		if (depth !== 0) {
+		const key =
+			char === "\n" ? "lastNewline" : /\s/.test(char) ? "lastWhitespace" : null;
+		if (!key) {
 			continue;
 		}
-		if (char === "\n") {
-			lastNewline = i;
-		} else if (/\s/.test(char)) {
-			lastWhitespace = i;
+		if (depth === 0) {
+			outside[key] = i;
+		}
+		if (i > closedUntil) {
+			outsideClosed[key] = i;
 		}
 	}
 
-	return { lastNewline, lastWhitespace };
+	return outside.lastNewline > 0 || outside.lastWhitespace > 0
+		? outside
+		: outsideClosed;
 }
 
 function describeInvalidLimit(limit: number): string {

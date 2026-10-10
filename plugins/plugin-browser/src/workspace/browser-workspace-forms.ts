@@ -284,8 +284,13 @@ export async function submitWebBrowserWorkspaceForm(
 ): Promise<void> {
   const state = getBrowserWorkspaceRuntimeState("web", tab.id);
   const dom = ensureBrowserWorkspaceDom(tab);
-  const action = form.getAttribute("action")?.trim() || tab.url;
-  const method = (form.getAttribute("method")?.trim() || "get").toLowerCase();
+  // A submit button's formaction/formmethod override the form's own.
+  const attr = (name: string) =>
+    submitter?.hasAttribute(`form${name}`)
+      ? submitter.getAttribute(`form${name}`)
+      : form.getAttribute(name);
+  const action = attr("action")?.trim() || tab.url;
+  const method = (attr("method")?.trim() || "get").toLowerCase();
   const submitUrl = new URL(action, form.baseURI).toString();
   // Submit interception (issue #19882): the resolved submit URL is only known
   // here, after the form's action/base resolution — so per-domain policies get

@@ -2161,8 +2161,7 @@ vaultRoutes.post("/:agentId/sign", async (c) => {
     );
   }
 
-  const resolvedChainId =
-    request.chainId || parseChainIdEnv();
+  const resolvedChainId = request.chainId || parseChainIdEnv();
   if (!hasCalldata(request.data)) {
     const gasGuard = await nativeTransferGasAccountingGuard(
       c,

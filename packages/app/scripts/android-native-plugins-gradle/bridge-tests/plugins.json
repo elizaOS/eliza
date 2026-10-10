@@ -63,6 +63,9 @@
   "plugin-native-notifications": {
     "kind": "host-configured-library"
   },
+  "plugin-native-passwords": {
+    "kind": "host-configured-library"
+  },
   "plugin-native-phone": {
     "name": "ElizaPhone",
     "class": "ai.eliza.plugins.phone.PhonePlugin"

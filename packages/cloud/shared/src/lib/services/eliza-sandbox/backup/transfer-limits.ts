@@ -39,10 +39,7 @@ export const SNAPSHOT_MAX_FILES = (() => {
   return parsePositiveIntOr(process.env.ELIZA_SNAPSHOT_MAX_FILES, 5000);
 })();
 export const SNAPSHOT_MAX_EXPANDED_BYTES = (() => {
-  return parsePositiveIntOr(
-    process.env.ELIZA_SNAPSHOT_MAX_EXPANDED_BYTES,
-    384 * 1024 * 1024,
-  );
+  return parsePositiveIntOr(process.env.ELIZA_SNAPSHOT_MAX_EXPANDED_BYTES, 384 * 1024 * 1024);
 })();
 /**
  * Stream a Response body, enforcing a hard byte budget (#16639): the read is

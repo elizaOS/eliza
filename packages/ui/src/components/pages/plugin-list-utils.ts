@@ -344,7 +344,12 @@ export function paramsToSchema(
       keyUpper.includes("INTERVAL") ||
       keyUpper.includes("_MS")
     ) {
-      hint.unit = "ms";
+      // The key's last token names its unit when it is not milliseconds.
+      hint.unit = /_(SECONDS|SECS|SEC)$/.test(keyUpper)
+        ? "s"
+        : /_(MINUTES|MINS)$/.test(keyUpper)
+          ? "min"
+          : "ms";
       prop.minimum = 0;
       hint.min = 0;
     }
@@ -376,11 +381,9 @@ export function paramsToSchema(
     if (keyUpper.includes("MODEL") && p.options?.length) {
       hint.advanced = false;
     }
-    // Region/zone — suggest common cloud regions when no options provided
-    if (
-      (keyUpper.includes("REGION") || keyUpper.includes("ZONE")) &&
-      !p.options?.length
-    ) {
+    // Cloud region — suggest common regions when no options provided. ZONE
+    // is not matched: DEFAULT_TIMEZONE is a timezone, not a cloud region.
+    if (hasKeyToken(keyUpper, "REGION") && !p.options?.length) {
       hint.type = "select";
       hint.options = [
         { value: "us-east-1", label: "US East (N. Virginia)" },
