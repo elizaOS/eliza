@@ -157,7 +157,15 @@ export function createNativeWebsiteBlockerBackend(
       if (result.success) {
         return { success: true, endsAt: result.endsAt };
       }
-      return { success: false, error: result.error };
+      // The failure variant carries the block status (a block already
+      // running, a block that needs elevation) — the same variant the
+      // engine's own failure paths return and stopBlock resolves below.
+      // The plugin's partial failure status cannot satisfy
+      // SelfControlStatus, so read the full status the same way stopBlock
+      // does; dropping it here made the route's 409 body lose the status
+      // through the native backend while the hosts-file engine keeps it.
+      const status = toSelfControlStatus(await plugin.getStatus());
+      return { success: false, error: result.error, status };
     },
     async stopBlock() {
       const result = await plugin.stopBlock();
