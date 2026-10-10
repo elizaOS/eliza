@@ -39,7 +39,10 @@ import type {
   WhitelistStatus,
 } from "./client-types-cloud";
 import type { WalletExportResult } from "./client-types-config";
-import type { ApplyProductionWalletDefaultsResponse } from "./client-types-core";
+import {
+  ApiError,
+  type ApplyProductionWalletDefaultsResponse,
+} from "./client-types-core";
 import type {
   StewardApprovalActionResponse,
   StewardHistoryResponse,
@@ -359,12 +362,49 @@ ElizaClient.prototype.getStewardHistory = async function (
   return this.fetch(`/api/wallet/steward-tx-records${qs ? `?${qs}` : ""}`);
 };
 ElizaClient.prototype.getStewardPending = async function (this: ElizaClient) {
-  // The route returns a paginated page ({ approvals, total, offset, limit });
-  // callers use the approvals array.
-  const res = await this.fetch<
-    StewardPendingResponse | { approvals?: StewardPendingResponse }
-  >("/api/wallet/steward-pending-approvals");
-  return Array.isArray(res) ? res : (res.approvals ?? []);
+  const path = "/api/wallet/steward-pending-approvals";
+  const approvals: StewardPendingResponse = [];
+  let offset = 0;
+  for (;;) {
+    const res = await this.fetch<
+      | StewardPendingResponse
+      | {
+          approvals: StewardPendingResponse;
+          total: number;
+          offset: number;
+          limit: number;
+        }
+    >(offset === 0 ? path : `${path}?offset=${offset}`);
+    // Older local hosts return the complete array directly.
+    if (Array.isArray(res)) {
+      if (offset === 0) return res;
+      throw new ApiError({
+        kind: "http",
+        path,
+        message: "Approval pagination changed during loading",
+      });
+    }
+    if (
+      !res ||
+      !Array.isArray(res.approvals) ||
+      !Number.isSafeInteger(res.total) ||
+      res.total < 0 ||
+      res.offset !== offset ||
+      !Number.isSafeInteger(res.limit) ||
+      res.limit <= 0 ||
+      res.approvals.length > res.limit ||
+      (res.approvals.length === 0 && offset < res.total)
+    ) {
+      throw new ApiError({
+        kind: "http",
+        path,
+        message: "Invalid pending approvals response",
+      });
+    }
+    approvals.push(...res.approvals);
+    offset += res.approvals.length;
+    if (offset >= res.total) return approvals;
+  }
 };
 ElizaClient.prototype.approveStewardTx = async function (
   this: ElizaClient,
