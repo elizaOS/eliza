@@ -82,16 +82,20 @@ function normalizeTextInput(
 /**
  * Pull an ElevenLabs `modelId` out of (in order):
  *   1. options.modelId — explicit ElevenLabs model id
- *   2. options.model with `elevenlabs/` prefix or `eleven_*` shape
+ *   2. options.model, else the ELIZAOS_CLOUD_TTS_MODEL setting, with an
+ *      `elevenlabs/` prefix or `eleven_*` shape
  *
  * Returns `undefined` when nothing usable was provided so the upstream
  * can apply its own default (currently `eleven_flash_v2_5`).
  */
-function resolveModelId(options: CloudTextToSpeechParams): string | undefined {
+function resolveModelId(
+  options: CloudTextToSpeechParams,
+  setting: string | undefined,
+): string | undefined {
   if (options.modelId && options.modelId.trim()) {
     return options.modelId.trim();
   }
-  const model = options.model?.trim();
+  const model = options.model?.trim() || setting?.trim();
   if (!model) return undefined;
   if (model.startsWith("elevenlabs/")) {
     return model.split("/").slice(1).join("/");
@@ -105,17 +109,20 @@ function resolveModelId(options: CloudTextToSpeechParams): string | undefined {
 /**
  * Pull an ElevenLabs `voiceId` out of (in order):
  *   1. options.voiceId — explicit ElevenLabs voice id (preferred)
- *   2. options.voice — OpenAI-style voice name (rejected unless it looks
- *      like an ElevenLabs id, i.e. not a known OpenAI voice alias)
+ *   2. options.voice, else the ELIZAOS_CLOUD_TTS_VOICE setting — rejected
+ *      when it is a known OpenAI voice alias
  *
  * Returns `undefined` when nothing usable was provided so the upstream
  * can apply its own default voice.
  */
-function resolveVoiceId(options: CloudTextToSpeechParams): string | undefined {
+function resolveVoiceId(
+  options: CloudTextToSpeechParams,
+  setting: string | undefined,
+): string | undefined {
   if (options.voiceId && options.voiceId.trim()) {
     return options.voiceId.trim();
   }
-  const voice = options.voice?.trim();
+  const voice = options.voice?.trim() || setting?.trim();
   if (!voice) return undefined;
   // Let the upstream choose its default for provider-specific aliases.
   if (isOpenAiVoiceAlias(voice)) return undefined;
@@ -127,8 +134,14 @@ async function fetchTextToSpeech(
   options: CloudTextToSpeechParams,
 ): Promise<ReadableStream<Uint8Array> | Readable> {
   const format = options.format || "mp3";
-  const modelId = resolveModelId(options);
-  const voiceId = resolveVoiceId(options);
+  const modelId = resolveModelId(
+    options,
+    getSetting(runtime, "ELIZAOS_CLOUD_TTS_MODEL"),
+  );
+  const voiceId = resolveVoiceId(
+    options,
+    getSetting(runtime, "ELIZAOS_CLOUD_TTS_VOICE"),
+  );
 
   try {
     // Ride through the cloud's transient cold-cache warming 503 — the
@@ -327,15 +340,6 @@ export async function handleTextToSpeech(
     input !== null &&
     (input as { audioStream?: boolean }).audioStream === true;
 
-  const resolvedModel =
-    options.modelId ||
-    options.model ||
-    (getSetting(
-      runtime,
-      "ELIZAOS_CLOUD_TTS_MODEL",
-      "eleven_flash_v2_5",
-    ) as string);
-  logger.log(`[ELIZAOS_CLOUD] Using TEXT_TO_SPEECH model: ${resolvedModel}`);
   try {
     const speechStream = await fetchTextToSpeech(runtime, options);
     if (wantsStream) {
