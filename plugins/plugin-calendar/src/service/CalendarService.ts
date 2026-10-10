@@ -114,6 +114,7 @@ import {
 } from "../ics/fetch.js";
 import { parseIcsCalendar } from "../ics/parser.js";
 import {
+  expandIcsCalendarEvents,
   icsCalendarSummary,
   lifeOpsCalendarEventFromIcs,
   publicIcsCalendarSource,
@@ -5103,22 +5104,29 @@ export class CalendarService extends Service {
     if (!hasSnapshot && !fresh) {
       return null;
     }
-    const events = (
-      await this.repo.listCalendarEvents(
+    // Recurring series are stored once at DTSTART, which can precede timeMin;
+    // read every event that starts before timeMax and expand the series.
+    const expansion = expandIcsCalendarEvents({
+      events: await this.repo.listCalendarEvents(
         this.agentId(),
         "ics",
-        args.timeMin,
+        undefined,
         args.timeMax,
         "owner",
         args.source.id,
-      )
-    ).filter((event) => event.status !== "cancelled");
+      ),
+      timeMin: args.timeMin,
+      timeMax: args.timeMax,
+    });
+    const events = expansion.events.filter(
+      (event) => event.status !== "cancelled",
+    );
     const calendar = icsCalendarSummary(args.source);
     return {
       calendarId: args.source.id,
       events,
       source: args.sourceKind ?? "cache",
-      state: fresh ? "complete" : "partial",
+      state: fresh && expansion.complete ? "complete" : "partial",
       sources: [
         calendarSourceHealth({
           calendar,

@@ -713,6 +713,65 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     ]);
   });
 
+  it("expands a recurring series inside the window, minus EXDATE and overridden instances", async () => {
+    const source = await createSource();
+    await syncBody(
+      source.id,
+      calendar(
+        [
+          "BEGIN:VEVENT",
+          "UID:soccer",
+          "DTSTAMP:20260901T000000Z",
+          "DTSTART;TZID=America/New_York:20260901T160000",
+          "DTEND;TZID=America/New_York:20260901T170000",
+          "RRULE:FREQ=WEEKLY;BYDAY=TU;UNTIL=20261215T235959Z",
+          "EXDATE;TZID=America/New_York:20261020T160000",
+          "SUMMARY:Soccer practice",
+          "END:VEVENT",
+          "BEGIN:VEVENT",
+          "UID:soccer",
+          "DTSTAMP:20260901T000000Z",
+          "RECURRENCE-ID;TZID=America/New_York:20261027T160000",
+          "DTSTART;TZID=America/New_York:20261028T160000",
+          "DTEND;TZID=America/New_York:20261028T170000",
+          "SUMMARY:Soccer practice (moved)",
+          "END:VEVENT",
+        ].join("\r\n"),
+      ),
+    );
+    const feed = await service.getCalendarFeed(
+      new URL("http://internal.test/api/calendar"),
+      {
+        grantId: source.id,
+        timeMin: "2026-10-12T00:00:00.000Z",
+        timeMax: "2026-11-05T00:00:00.000Z",
+      },
+      new Date(),
+    );
+
+    expect(feed.state).toBe("complete");
+    // 16:00 New York each Tuesday: EDT until Nov 1, then EST.
+    expect(
+      feed.events.map((event) => [event.title, event.startAt, event.endAt]),
+    ).toEqual([
+      [
+        "Soccer practice",
+        "2026-10-13T20:00:00.000Z",
+        "2026-10-13T21:00:00.000Z",
+      ],
+      [
+        "Soccer practice (moved)",
+        "2026-10-28T20:00:00.000Z",
+        "2026-10-28T21:00:00.000Z",
+      ],
+      [
+        "Soccer practice",
+        "2026-11-03T21:00:00.000Z",
+        "2026-11-03T22:00:00.000Z",
+      ],
+    ]);
+  });
+
   it("rejects an older SEQUENCE without overwriting the current event", async () => {
     const source = await createSource();
     await syncBody(
