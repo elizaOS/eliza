@@ -622,6 +622,53 @@ function recurrenceLines(component: IcsComponent): string[] {
   return lines;
 }
 
+/**
+ * Instants named by the EXDATE lines of a stored recurrence line set, parsed
+ * like DTSTART (TZID, floating values in `timezone`, all-day at UTC midnight).
+ */
+export function icsExceptionDateInstants(
+  recurrence: readonly string[],
+  timezone: string | null,
+): Set<number> {
+  return readIcsExceptionDates(recurrence, timezone).instants;
+}
+
+/** Parse every usable EXDATE while reporting whether any value was invalid. */
+export function readIcsExceptionDates(
+  recurrence: readonly string[],
+  timezone: string | null,
+): { instants: Set<number>; complete: boolean; invalidValueCount: number } {
+  const instants = new Set<number>();
+  let invalidValueCount = 0;
+  for (const line of recurrence) {
+    if (!/^EXDATE[:;]/i.test(line.trim())) continue;
+    let property: IcsContentLine;
+    try {
+      property = parseContentLine(line);
+    } catch {
+      invalidValueCount += 1;
+      continue;
+    }
+    for (const value of splitOutsideQuotes(property.value, ",")) {
+      try {
+        const parsed = parseDateProperty(
+          { ...property, value: value.trim() },
+          timezone,
+          "EXDATE",
+        );
+        instants.add(Date.parse(parsed.instant));
+      } catch {
+        invalidValueCount += 1;
+      }
+    }
+  }
+  return {
+    instants,
+    complete: invalidValueCount === 0,
+    invalidValueCount,
+  };
+}
+
 function parseEvent(
   component: IcsComponent,
   calendarTimezone: string | null,

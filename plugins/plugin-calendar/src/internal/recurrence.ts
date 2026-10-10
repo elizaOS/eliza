@@ -365,7 +365,50 @@ function daysInMonth(year: number, month: number): number {
   return d.getUTCDate();
 }
 
-const MAX_GENERATED_OCCURRENCES = 1000;
+export const MAX_EXPANDED_RECURRENCE_OCCURRENCES = 1000;
+const MAX_ICS_RECURRENCE_INSTANT = new Date("9999-12-31T23:59:59.999Z");
+
+function invalidExpansionDate(detail: string, cause?: unknown): never {
+  throw new CalendarServiceError(
+    400,
+    `Recurrence expansion produced an invalid date: ${detail}`,
+    "CALENDAR_RECURRENCE_EXPANSION_INVALID_DATE",
+    cause === undefined ? undefined : { cause },
+  );
+}
+
+function assertValidLocalDate(date: LocalDateOnly): void {
+  if (
+    !Number.isSafeInteger(date.year) ||
+    !Number.isSafeInteger(date.month) ||
+    !Number.isSafeInteger(date.day) ||
+    date.month < 1 ||
+    date.month > 12 ||
+    date.day < 1 ||
+    date.day > 31
+  ) {
+    invalidExpansionDate(
+      "the candidate local date is outside the supported range",
+    );
+  }
+  const probe = new Date(0);
+  probe.setUTCFullYear(date.year, date.month - 1, date.day);
+  probe.setUTCHours(12, 0, 0, 0);
+  if (
+    !Number.isFinite(probe.getTime()) ||
+    probe.getUTCFullYear() !== date.year ||
+    probe.getUTCMonth() !== date.month - 1 ||
+    probe.getUTCDate() !== date.day
+  ) {
+    invalidExpansionDate("the candidate local date cannot be represented");
+  }
+}
+
+function compareLocalDates(left: LocalDateOnly, right: LocalDateOnly): number {
+  return (
+    left.year - right.year || left.month - right.month || left.day - right.day
+  );
+}
 
 /**
  * Generate occurrence instants for a rule, DST-correct: every occurrence keeps
@@ -376,8 +419,9 @@ function* generateOccurrences(args: {
   rule: ParsedCalendarRecurrenceRule;
   startAt: Date;
   timeZone: string;
+  rangeEnd: Date;
 }): Generator<Date> {
-  const { rule, startAt, timeZone } = args;
+  const { rule, startAt, timeZone, rangeEnd } = args;
   if (rule.beyondExpansionSubset) {
     throw new CalendarServiceError(
       400,
@@ -385,7 +429,19 @@ function* generateOccurrences(args: {
       "CALENDAR_RECURRENCE_EXPANSION_UNSUPPORTED",
     );
   }
-  const anchor = getZonedDateParts(startAt, timeZone);
+  const startMs = startAt.getTime();
+  const rangeEndMs = rangeEnd.getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(rangeEndMs)) {
+    invalidExpansionDate("DTSTART or the expansion boundary is invalid");
+  }
+  let anchor: ZonedDateParts;
+  let rangeEndParts: ZonedDateParts;
+  try {
+    anchor = getZonedDateParts(startAt, timeZone);
+    rangeEndParts = getZonedDateParts(rangeEnd, timeZone);
+  } catch (error) {
+    invalidExpansionDate("the timezone boundary cannot be resolved", error);
+  }
   const anchorDate: LocalDateOnly = {
     year: anchor.year,
     month: anchor.month,
@@ -396,23 +452,48 @@ function* generateOccurrences(args: {
     minute: anchor.minute,
     second: anchor.second,
   };
-  const startMs = startAt.getTime();
+  const rangeEndDate: LocalDateOnly = {
+    year: rangeEndParts.year,
+    month: rangeEndParts.month,
+    day: rangeEndParts.day,
+  };
 
   let emitted = 0;
-  const emitBudget = Math.min(
-    rule.count ?? MAX_GENERATED_OCCURRENCES,
-    MAX_GENERATED_OCCURRENCES,
-  );
+  const emitBudget = rule.count ?? Number.POSITIVE_INFINITY;
 
   function toInstant(date: LocalDateOnly): Date {
-    return buildUtcDateFromLocalParts(timeZone, { ...date, ...timeOfDay });
+    assertValidLocalDate(date);
+    try {
+      const instant = buildUtcDateFromLocalParts(timeZone, {
+        ...date,
+        ...timeOfDay,
+      });
+      if (!Number.isFinite(instant.getTime())) {
+        invalidExpansionDate("the candidate instant cannot be represented");
+      }
+      return instant;
+    } catch (error) {
+      if (error instanceof CalendarServiceError) throw error;
+      invalidExpansionDate("the candidate instant cannot be resolved", error);
+    }
+  }
+
+  function beyondRangeEnd(date: LocalDateOnly): boolean {
+    assertValidLocalDate(date);
+    return compareLocalDates(date, rangeEndDate) > 0;
   }
 
   function* localDates(): Generator<LocalDateOnly> {
     switch (rule.freq) {
       case "DAILY": {
         for (let index = 0; ; index += 1) {
-          yield addDaysToLocalDate(anchorDate, index * rule.interval);
+          const dayDelta = index * rule.interval;
+          if (!Number.isSafeInteger(dayDelta)) {
+            invalidExpansionDate("the DAILY interval exceeds date arithmetic");
+          }
+          const date = addDaysToLocalDate(anchorDate, dayDelta);
+          if (beyondRangeEnd(date)) return;
+          yield date;
         }
       }
       case "WEEKLY": {
@@ -425,7 +506,15 @@ function* generateOccurrences(args: {
           .sort((a, b) => a - b);
         for (let week = 0; ; week += rule.interval) {
           for (const offset of dayOffsets) {
-            yield addDaysToLocalDate(anchorWeekStart, week * 7 + offset);
+            const dayDelta = week * 7 + offset;
+            if (!Number.isSafeInteger(dayDelta)) {
+              invalidExpansionDate(
+                "the WEEKLY interval exceeds date arithmetic",
+              );
+            }
+            const date = addDaysToLocalDate(anchorWeekStart, dayDelta);
+            if (beyondRangeEnd(date)) return;
+            yield date;
           }
         }
       }
@@ -433,6 +522,8 @@ function* generateOccurrences(args: {
         const byMonthDay = rule.byMonthDay ?? [anchorDate.day];
         for (let step = 0; ; step += rule.interval) {
           const { year, month } = addMonthsToLocalMonth(anchorDate, step);
+          const monthStart = { year, month, day: 1 };
+          if (beyondRangeEnd(monthStart)) return;
           const monthLength = daysInMonth(year, month);
           const days = byMonthDay
             .map((day) => (day < 0 ? monthLength + day + 1 : day))
@@ -446,6 +537,8 @@ function* generateOccurrences(args: {
       case "YEARLY": {
         for (let step = 0; ; step += rule.interval) {
           const year = anchorDate.year + step;
+          const yearStart = { year, month: 1, day: 1 };
+          if (beyondRangeEnd(yearStart)) return;
           // Skip invalid anniversaries (Feb 29 in non-leap years) per RFC 5545.
           if (anchorDate.day > daysInMonth(year, anchorDate.month)) continue;
           yield { year, month: anchorDate.month, day: anchorDate.day };
@@ -456,6 +549,7 @@ function* generateOccurrences(args: {
 
   // DTSTART is always the first occurrence.
   if (rule.untilMs !== undefined && startMs > rule.untilMs) return;
+  if (startMs >= rangeEndMs) return;
   yield new Date(startMs);
   emitted += 1;
   if (emitted >= emitBudget) return;
@@ -463,6 +557,7 @@ function* generateOccurrences(args: {
   for (const date of localDates()) {
     if (daysBetweenLocalDates(anchorDate, date) < 0) continue;
     const instant = toInstant(date);
+    if (instant.getTime() >= rangeEndMs) return;
     if (instant.getTime() <= startMs) continue;
     if (rule.untilMs !== undefined && instant.getTime() > rule.untilMs) return;
     yield instant;
@@ -480,16 +575,18 @@ export function expandRecurrenceOccurrences(args: {
   rule: ParsedCalendarRecurrenceRule;
   startAt: Date;
   timeZone: string;
+  rangeStart?: Date;
   rangeEnd: Date;
   maxOccurrences?: number;
 }): Date[] {
   const cap = Math.min(
-    args.maxOccurrences ?? MAX_GENERATED_OCCURRENCES,
-    MAX_GENERATED_OCCURRENCES,
+    args.maxOccurrences ?? MAX_EXPANDED_RECURRENCE_OCCURRENCES,
+    MAX_EXPANDED_RECURRENCE_OCCURRENCES,
   );
+  const rangeStartMs = args.rangeStart?.getTime() ?? Number.NEGATIVE_INFINITY;
   const occurrences: Date[] = [];
   for (const instant of generateOccurrences(args)) {
-    if (instant.getTime() >= args.rangeEnd.getTime()) break;
+    if (instant.getTime() < rangeStartMs) continue;
     occurrences.push(instant);
     if (occurrences.length >= cap) break;
   }
@@ -507,7 +604,13 @@ export function nextRecurrenceOccurrence(args: {
   after: Date;
 }): Date | null {
   if (args.rule.beyondExpansionSubset) return null;
-  for (const instant of generateOccurrences(args)) {
+  const ruleEnd =
+    args.rule.untilMs === undefined
+      ? MAX_ICS_RECURRENCE_INSTANT
+      : new Date(
+          Math.min(args.rule.untilMs + 1, MAX_ICS_RECURRENCE_INSTANT.getTime()),
+        );
+  for (const instant of generateOccurrences({ ...args, rangeEnd: ruleEnd })) {
     if (instant.getTime() > args.after.getTime()) return instant;
   }
   return null;
@@ -668,15 +771,15 @@ export function buildRecurrenceSplitPlan(args: {
     startAt: args.seriesStartAt,
     timeZone: args.timeZone,
     rangeEnd: new Date(targetStartMs + 1),
-    maxOccurrences: MAX_GENERATED_OCCURRENCES,
+    maxOccurrences: MAX_EXPANDED_RECURRENCE_OCCURRENCES,
   });
   const targetOccurrenceIndex = occurrences.findIndex(
     (occurrence) => occurrence.getTime() === targetStartMs,
   );
   if (targetOccurrenceIndex < 0) {
     invalidRecurrenceSplit(
-      occurrences.length >= MAX_GENERATED_OCCURRENCES
-        ? `The selected occurrence is beyond the ${MAX_GENERATED_OCCURRENCES}-occurrence verified split horizon.`
+      occurrences.length >= MAX_EXPANDED_RECURRENCE_OCCURRENCES
+        ? `The selected occurrence is beyond the ${MAX_EXPANDED_RECURRENCE_OCCURRENCES}-occurrence verified split horizon.`
         : "The selected time is not an occurrence generated by the series rule.",
       "CALENDAR_RECURRENCE_SPLIT_TARGET_INVALID",
     );

@@ -10,7 +10,14 @@ import type {
   LifeOpsCalendarSummary,
   LifeOpsIcsCalendarSource,
 } from "@elizaos/contracts";
+import { CalendarServiceError } from "../internal/errors.js";
+import {
+  expandRecurrenceOccurrences,
+  firstRecurrenceRule,
+  MAX_EXPANDED_RECURRENCE_OCCURRENCES,
+} from "../internal/recurrence.js";
 import type { IcsCalendarSourceRecord } from "../service/CalendarRepository.js";
+import { readIcsExceptionDates } from "./parser.js";
 import type { IcsParsedEvent } from "./types.js";
 
 export function publicIcsCalendarSource(
@@ -119,4 +126,117 @@ export function lifeOpsCalendarEventFromIcs(args: {
     syncedAt: args.syncedAt,
     updatedAt: args.event.revisionAt ?? args.syncedAt,
   };
+}
+
+/**
+ * A subscribed feed stores each recurring VEVENT once, at DTSTART. Expand
+ * every series into its occurrences inside [timeMin, timeMax), minus EXDATEs
+ * and instances replaced by a RECURRENCE-ID override. A series this module
+ * cannot expand exactly (RDATE, rule parts outside the local subset, the
+ * generator cap) keeps its stored event and makes the result incomplete.
+ */
+export function expandIcsCalendarEvents(args: {
+  events: readonly LifeOpsCalendarEvent[];
+  timeMin: string;
+  timeMax: string;
+}): {
+  events: LifeOpsCalendarEvent[];
+  complete: boolean;
+  diagnostics: Array<
+    "CALENDAR_ICS_EXDATE_INVALID" | "CALENDAR_RECURRENCE_EXPANSION_INVALID_DATE"
+  >;
+} {
+  const minMs = Date.parse(args.timeMin);
+  const maxMs = Date.parse(args.timeMax);
+  const overlaps = (startMs: number, endMs: number) =>
+    endMs > minMs && startMs < maxMs;
+  const overridden = new Set<string>();
+  for (const event of args.events) {
+    const recurrenceId = event.metadata.icsRecurrenceId;
+    if (typeof recurrenceId === "string") {
+      overridden.add(`${event.metadata.icsUid}\0${Date.parse(recurrenceId)}`);
+    }
+  }
+  let complete = true;
+  const diagnostics = new Set<
+    "CALENDAR_ICS_EXDATE_INVALID" | "CALENDAR_RECURRENCE_EXPANSION_INVALID_DATE"
+  >();
+  const expanded: LifeOpsCalendarEvent[] = [];
+  for (const event of args.events) {
+    const startMs = Date.parse(event.startAt);
+    const endMs = Date.parse(event.endAt);
+    const recurrence = event.recurrence ?? [];
+    const rule = firstRecurrenceRule(recurrence);
+    if (
+      !rule ||
+      typeof event.metadata.icsRecurrenceId === "string" ||
+      !recurrence.some((line) => /^RRULE[:;]/i.test(line))
+    ) {
+      if (overlaps(startMs, endMs)) expanded.push(event);
+      continue;
+    }
+    if (
+      rule.beyondExpansionSubset ||
+      recurrence.some((line) => /^RDATE[:;]/i.test(line))
+    ) {
+      complete = false;
+      if (overlaps(startMs, endMs)) expanded.push(event);
+      continue;
+    }
+    const durationMs = endMs - startMs;
+    const excluded = readIcsExceptionDates(recurrence, event.timezone);
+    if (excluded.invalidValueCount > 0) {
+      complete = false;
+      diagnostics.add("CALENDAR_ICS_EXDATE_INVALID");
+    }
+    let starts: Date[];
+    try {
+      starts = expandRecurrenceOccurrences({
+        rule,
+        startAt: new Date(startMs),
+        timeZone: event.isAllDay ? "UTC" : (event.timezone ?? "UTC"),
+        rangeStart: new Date(minMs - durationMs + 1),
+        rangeEnd: new Date(maxMs),
+      });
+    } catch (error) {
+      if (
+        error instanceof CalendarServiceError &&
+        error.code === "CALENDAR_RECURRENCE_EXPANSION_INVALID_DATE"
+      ) {
+        complete = false;
+        diagnostics.add("CALENDAR_RECURRENCE_EXPANSION_INVALID_DATE");
+        if (overlaps(startMs, endMs)) expanded.push(event);
+        continue;
+      }
+      throw error;
+    }
+    if (starts.length >= MAX_EXPANDED_RECURRENCE_OCCURRENCES) {
+      complete = false;
+    }
+    for (const start of starts) {
+      const occurrenceMs = start.getTime();
+      if (!overlaps(occurrenceMs, occurrenceMs + durationMs)) continue;
+      if (excluded.instants.has(occurrenceMs)) continue;
+      if (overridden.has(`${event.metadata.icsUid}\0${occurrenceMs}`)) continue;
+      const occurrenceStart = start.toISOString();
+      if (occurrenceMs === startMs) {
+        expanded.push({
+          ...event,
+          recurringEventId: event.id,
+          metadata: { ...event.metadata, originalStartTime: occurrenceStart },
+        });
+        continue;
+      }
+      expanded.push({
+        ...event,
+        id: `${event.id}:${occurrenceStart}`,
+        startAt: occurrenceStart,
+        endAt: new Date(occurrenceMs + durationMs).toISOString(),
+        recurringEventId: event.id,
+        metadata: { ...event.metadata, originalStartTime: occurrenceStart },
+      });
+    }
+  }
+  expanded.sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt));
+  return { events: expanded, complete, diagnostics: [...diagnostics] };
 }

@@ -114,6 +114,7 @@ import {
 } from "../ics/fetch.js";
 import { parseIcsCalendar } from "../ics/parser.js";
 import {
+  expandIcsCalendarEvents,
   icsCalendarSummary,
   lifeOpsCalendarEventFromIcs,
   publicIcsCalendarSource,
@@ -5103,22 +5104,38 @@ export class CalendarService extends Service {
     if (!hasSnapshot && !fresh) {
       return null;
     }
-    const events = (
-      await this.repo.listCalendarEvents(
-        this.agentId(),
-        "ics",
-        args.timeMin,
-        args.timeMax,
-        "owner",
-        args.source.id,
-      )
-    ).filter((event) => event.status !== "cancelled");
+    const expansion = expandIcsCalendarEvents({
+      events: await this.repo.listIcsCalendarEventsForExpansion({
+        agentId: this.agentId(),
+        sourceId: args.source.id,
+        timeMin: args.timeMin,
+        timeMax: args.timeMax,
+      }),
+      timeMin: args.timeMin,
+      timeMax: args.timeMax,
+    });
+    for (const code of expansion.diagnostics) {
+      this.runtime.reportError(
+        "calendar:ics-expansion",
+        new CalendarServiceError(
+          422,
+          code === "CALENDAR_ICS_EXDATE_INVALID"
+            ? "The subscribed calendar contains an invalid EXDATE value."
+            : "The subscribed calendar recurrence exceeds supported date arithmetic.",
+          code,
+        ),
+        { sourceId: args.source.id },
+      );
+    }
+    const events = expansion.events.filter(
+      (event) => event.status !== "cancelled",
+    );
     const calendar = icsCalendarSummary(args.source);
     return {
       calendarId: args.source.id,
       events,
       source: args.sourceKind ?? "cache",
-      state: fresh ? "complete" : "partial",
+      state: fresh && expansion.complete ? "complete" : "partial",
       sources: [
         calendarSourceHealth({
           calendar,
@@ -5584,7 +5601,9 @@ export class CalendarService extends Service {
       ...discoveryFailures,
       ...sources.flatMap((source) => source.feed.sources),
     ];
-    const allFresh = health.every((source) => source.status === "fresh");
+    const allFresh =
+      health.every((source) => source.status === "fresh") &&
+      sources.every((source) => source.feed.state === "complete");
     const hasUsableSource = health.some(
       (source) => source.status === "fresh" || source.status === "stale",
     );
