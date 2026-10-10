@@ -65,6 +65,8 @@ interface InboxWire {
   fetchedAt: string;
   /** Per-source connector health (`LifeOpsInboxSourceStatus` in shared). */
   sources: InboxSourceStatusWire[];
+  /** `false` only from the host fallback route, when no inbox backend is loaded. */
+  available?: boolean;
 }
 // ---------------------------------------------------------------------------
 // Fetcher seam — default to a real GET; tests inject an offline fake.
@@ -256,6 +258,16 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
       .fetchInbox(channels, controller.signal)
       .then((wire) => {
         if (controller.signal.aborted) return;
+        if (wire.available === false) {
+          // The host answers with an empty payload when no inbox backend is
+          // loaded. That is not an empty inbox, and connecting a channel
+          // cannot fix it, so show it as an error.
+          setState({
+            kind: "error",
+            message: "Inbox is not available on this agent.",
+          });
+          return;
+        }
         const items = wire.messages
           .map(mapMessage)
           .filter((item): item is InboxItem => item !== null);
