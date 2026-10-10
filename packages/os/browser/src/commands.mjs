@@ -214,27 +214,33 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         node.isContentEditable
           ? { edited: monitor.editedFields.has(node) }
           : {}),
-        // Whether the person (or the page) already put text here. Only this
-        // boolean leaves the page; the text itself stays behind the boundary.
-        ...((node instanceof HTMLInputElement &&
-          ![
-            "button",
-            "submit",
-            "reset",
-            "image",
-            "checkbox",
-            "radio",
-            "file",
-            "hidden",
-            "range",
-            "color",
-          ].includes(node.type)) ||
-        node instanceof HTMLTextAreaElement ||
-        node instanceof HTMLSelectElement
-          ? { hasInput: node.value !== "" }
-          : node.isContentEditable
-            ? { hasInput: (node.textContent ?? "").trim() !== "" }
-            : {}),
+        // A select can have a valid choice whose internal value is empty.
+        // Only selection/occupancy leaves the page, never the field value.
+        ...(node instanceof HTMLSelectElement
+          ? {
+              hasInput:
+                node.selectedIndex >= 0 &&
+                !node.validity.valueMissing &&
+                !node.options[node.selectedIndex].disabled,
+            }
+          : (node instanceof HTMLInputElement &&
+                ![
+                  "button",
+                  "submit",
+                  "reset",
+                  "image",
+                  "checkbox",
+                  "radio",
+                  "file",
+                  "hidden",
+                  "range",
+                  "color",
+                ].includes(node.type)) ||
+              node instanceof HTMLTextAreaElement
+            ? { hasInput: node.value !== "" }
+            : node.isContentEditable
+              ? { hasInput: (node.textContent ?? "").trim() !== "" }
+              : {}),
       };
     };
     const nodes = new Map();
