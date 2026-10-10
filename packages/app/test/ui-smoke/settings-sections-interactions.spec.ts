@@ -30,7 +30,9 @@ function countRequests(
   return () => n;
 }
 
-test("voice settings: the wake-word toggle flips state", async ({ page }) => {
+test("voice settings: the wake-word toggle is off and disabled on web, where no detector runs", async ({
+  page,
+}) => {
   await openAppPath(page, "/settings");
   await openSettingsSection(page, /^Voice$/);
   await expect(page.getByTestId("voice-section")).toBeVisible({
@@ -39,9 +41,11 @@ test("voice settings: the wake-word toggle flips state", async ({ page }) => {
 
   const wakeWord = page.getByTestId("voice-section-wake-toggle");
   await expect(wakeWord).toBeVisible({ timeout: 15_000 });
-  const before = await wakeWord.isChecked();
-  await wakeWord.click();
-  await expect.poll(() => wakeWord.isChecked()).toBe(!before);
+  await expect(wakeWord).toBeDisabled();
+  await expect(wakeWord).not.toBeChecked();
+  await expect(
+    page.getByText("Wake word is not available on this device."),
+  ).toBeVisible();
 });
 
 test("voice settings: rapid preference changes persist in user order", async ({
