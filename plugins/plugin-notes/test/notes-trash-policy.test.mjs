@@ -54,6 +54,19 @@ test("host options are required and malformed rows are refused, never guessed", 
     },
   ])
     assert.throws(() => policy.validate(bad));
+  for (const [field, message] of [
+    ["target", "Invalid Notes Trash target"],
+    ["audio", "Invalid Notes Trash recording"],
+  ]) {
+    assert.throws(
+      () =>
+        policy.validate({
+          version: 1,
+          entries: [entry(voice, "a", t0, { [field]: null })],
+        }),
+      { name: "Error", message },
+    );
+  }
   const noRecordings = createNotesTrashPolicy({
     retentionMs: DAY,
     maxEntries: 1,
@@ -68,10 +81,10 @@ test("host options are required and malformed rows are refused, never guessed", 
   );
   assert.throws(
     () =>
-      noRecordings.validate({
-        version: 1,
-        entries: [entry(voice, "a", t0), entry(text, "b", t0)],
-      }),
+      noRecordings.add(
+        noRecordings.add(noRecordings.empty(), entry(voice, "a", t0)),
+        entry({ ...voice, id: "voice-2" }, "b", t0),
+      ),
     /full/,
   );
 });

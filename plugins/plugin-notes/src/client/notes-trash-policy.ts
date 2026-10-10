@@ -124,11 +124,6 @@ export function createNotesTrashPolicy<
       Object.keys(doc).some((key) => key !== "version" && key !== "entries")
     )
       throw Error("Invalid Notes Trash");
-    if (
-      doc.entries.length > maxEntries ||
-      new TextEncoder().encode(JSON.stringify(doc)).length > maxBytes
-    )
-      throw Error("Notes Trash is full");
     const ids = new Set<string>(),
       notes = new Set<string>();
     for (const entry of doc.entries) {
@@ -154,7 +149,8 @@ export function createNotesTrashPolicy<
         throw Error("Invalid Notes Trash entry");
       if (
         entry.target !== undefined &&
-        (typeof entry.target !== "object" ||
+        (entry.target === null ||
+          typeof entry.target !== "object" ||
           entry.target.noteId !== note.id ||
           typeof entry.target.revision !== "string" ||
           typeof entry.target.sourceId !== "string")
@@ -162,7 +158,8 @@ export function createNotesTrashPolicy<
         throw Error("Invalid Notes Trash target");
       if (
         entry.audio !== undefined &&
-        (recordingKind === undefined ||
+        (entry.audio === null ||
+          recordingKind === undefined ||
           note.kind !== recordingKind ||
           typeof entry.audio.audioId !== "string" ||
           !entry.audio.audioId ||
@@ -193,13 +190,20 @@ export function createNotesTrashPolicy<
       const current = validate(doc);
       if (current.entries.some((x) => x.id === entry.id))
         throw Error("Deletion already recorded");
-      return validate({
+      const next = validate({
         version: 1,
         entries: [
           entry,
           ...current.entries.filter((x) => x.note.id !== entry.note.id),
         ],
       });
+      // Limits admit new content; older documents must remain readable and shrinkable.
+      if (
+        next.entries.length > maxEntries ||
+        new TextEncoder().encode(JSON.stringify(next)).length > maxBytes
+      )
+        throw Error("Notes Trash is full");
+      return next;
     },
     remove(doc, ids) {
       const drop = new Set(ids);

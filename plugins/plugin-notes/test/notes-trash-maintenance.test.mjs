@@ -215,6 +215,26 @@ test("persisted deletion, restart, restore and expiry preserve live recordings",
     });
     assert.equal((await read()).entries.length, 0);
     assert.equal(open().list.length, 0);
+    // A later host version lowers both limits below the already saved document.
+    const prior = policy.add(
+      policy.add(policy.empty(), row("old-1", "a", t0)),
+      row("old-2", "b", t0),
+    );
+    writeFileSync(trashFile, JSON.stringify(prior));
+    const narrower = createNotesTrashPolicy({
+      retentionMs: DAY,
+      maxEntries: 1,
+      maxBytes: 32,
+      kinds: ["text"],
+    });
+    assert.equal(narrower.sorted(await read()).length, 2);
+    assert.equal(narrower.remove(await read(), ["old-1"]).entries.length, 1);
+    assert.throws(() => narrower.add(prior, row("new", "c", t0)), /full/);
+    assert.deepEqual(
+      await maintainNotesTrash({ ...maintenance, policy: narrower }, t0 + DAY),
+      { removed: ["old-2", "old-1"], retained: [] },
+    );
+    assert.equal((await read()).entries.length, 0);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

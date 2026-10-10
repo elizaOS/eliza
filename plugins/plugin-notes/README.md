@@ -42,3 +42,7 @@ lock and recording cleanup. Maintenance checks saved live notes again under that
 It retains expired entries when owned content cannot be erased and removes stale
 Trash rows without erasing a restored note. These helpers do not change Cloud deletion
 or start a background service.
+
+Capacity limits apply when adding to Trash. Existing documents remain readable and
+can be restored or purged after a host lowers its limits. A full Trash refuses new
+additions; hosts must explain that the user can empty Trash to free space.
