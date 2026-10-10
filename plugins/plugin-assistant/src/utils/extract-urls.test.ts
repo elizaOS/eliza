@@ -28,5 +28,14 @@ describe("extractUrls", () => {
     expect(extractUrls("Local http://[::1]:8080/path ok")).toEqual([
       "http://[::1]:8080/path",
     ]);
+    expect(extractUrls("fetch('https://a.com/x').then(r => r)")).toEqual([
+      "https://a.com/x",
+    ]);
+    expect(extractUrls("urls = ['https://a.com/x','https://b.com/y']")).toEqual(
+      ["https://a.com/x", "https://b.com/y"],
+    );
+    expect(extractUrls("curl 'https://a.com/x?q=1'&&echo")).toEqual([
+      "https://a.com/x?q=1",
+    ]);
   });
 });

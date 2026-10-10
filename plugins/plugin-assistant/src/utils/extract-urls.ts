@@ -3,10 +3,11 @@
  */
 export function extractUrls(text: string): string[] {
   const matches = text.match(
-    // A bracket pair and an apostrophe stay in the URL (filter[status]=open,
-    // Schindler's_List); an unmatched "]" ends it, so a Markdown link
-    // [https://a/x](https://b/y) still splits.
-    /https?:\/\/(?:\[[0-9a-f:.%]+\])?(?:[^\s<>"`[\]]|\[[^\s<>"`[\]]*\])+/gi,
+    // A bracket pair stays in the URL (filter[status]=open); an unmatched "]"
+    // ends it, so a Markdown link [https://a/x](https://b/y) still splits. An
+    // apostrophe stays only before a word character (Schindler's_List), so a
+    // closing quote in code ('https://a/x').then or ['…','…'] ends the URL.
+    /https?:\/\/(?:\[[0-9a-f:.%]+\])?(?:[^\s<>"'`[\]]|'(?=\w)|\[[^\s<>"'`[\]]*\])+/gi,
   );
   if (!matches) return [];
   const seen = new Set<string>();
@@ -34,7 +35,7 @@ function stripTrailingPunctuation(url: string): string {
     else if (char === "]") {
       if (brackets === 0) continue;
       brackets--;
-    } else if (/[.,;:!?}>*_']/u.test(char)) continue;
+    } else if (/[.,;:!?}>*_]/u.test(char)) continue;
     end = i + 1;
   }
   return url.slice(0, end);
