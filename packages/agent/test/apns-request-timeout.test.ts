@@ -7,7 +7,6 @@ import {
   type ServerHttp2Session,
   type ServerHttp2Stream,
 } from "node:http2";
-import type { AddressInfo } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 import { expect, it, vi } from "vitest";
 import {
@@ -39,9 +38,9 @@ function configuredProvider(): ApnsProvider {
 function postHttp2(provider: ApnsProvider): PostHttp2 {
   // Reach the real transport method. Adding a production seam that only a test
   // would use costs more than one cast here.
-  return (
-    provider as unknown as { postHttp2: PostHttp2 }
-  ).postHttp2.bind(provider);
+  return (provider as unknown as { postHttp2: PostHttp2 }).postHttp2.bind(
+    provider,
+  );
 }
 
 interface LocalServer {
