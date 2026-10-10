@@ -91,6 +91,8 @@ interface ServiceTrajectoryStep {
 interface ServiceTrajectory {
   trajectoryId: string;
   agentId: string;
+  scenarioId?: string;
+  batchId?: string;
   startTime: number;
   endTime?: number;
   steps: ServiceTrajectoryStep[];
@@ -335,6 +337,8 @@ function detailToUi(
       ...(typeof metadata.source === "string"
         ? { source: metadata.source }
         : {}),
+      scenarioId: traj.scenarioId ?? null,
+      batchId: traj.batchId ?? null,
       roomId: metadataRoomId(metadata),
       entityId: metadataEntityId(metadata),
       metadata,
