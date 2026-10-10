@@ -772,6 +772,59 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     ]);
   });
 
+  it("rejects malformed EXDATE values before replacing the stored snapshot", async () => {
+    const source = await createSource();
+    const validBody = calendar(
+      [
+        "BEGIN:VEVENT",
+        "UID:exdate-validation",
+        "DTSTAMP:20260901T000000Z",
+        "DTSTART:20261012T160000Z",
+        "DTEND:20261012T170000Z",
+        "RRULE:FREQ=DAILY",
+        "SUMMARY:Valid recurring event",
+        "END:VEVENT",
+      ].join("\r\n"),
+    );
+    await syncBody(source.id, validBody);
+
+    await expect(
+      syncBody(
+        source.id,
+        calendar(
+          [
+            "BEGIN:VEVENT",
+            "UID:exdate-validation",
+            "DTSTAMP:20260902T000000Z",
+            "DTSTART:20261012T160000Z",
+            "DTEND:20261012T170000Z",
+            "RRULE:FREQ=DAILY",
+            "EXDATE:not-a-date",
+            "SUMMARY:Malformed recurring event",
+            "END:VEVENT",
+          ].join("\r\n"),
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "ICS_FEED_PARSE_ERROR" });
+
+    const listed = await service.listIcsCalendarSources();
+    expect(listed[0]?.error?.code).toBe("ICS_FEED_PARSE_ERROR");
+
+    const feed = await service.getCalendarFeed(
+      new URL("http://internal.test/api/calendar"),
+      {
+        grantId: source.id,
+        timeMin: "2026-10-12T00:00:00.000Z",
+        timeMax: "2026-10-14T00:00:00.000Z",
+      },
+      new Date(),
+    );
+    expect(feed.events.map((event) => event.startAt)).toEqual([
+      "2026-10-12T16:00:00.000Z",
+      "2026-10-13T16:00:00.000Z",
+    ]);
+  });
+
   it("seeks past more than 1000 historical daily occurrences", async () => {
     const source = await createSource();
     await syncBody(

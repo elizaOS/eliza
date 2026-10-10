@@ -678,6 +678,11 @@ function parseEvent(
     ? parseDateProperty(recurrenceIdProperty, calendarTimezone, "RECURRENCE-ID")
         .instant
     : null;
+  const recurrence = recurrenceLines(component);
+  // Validate EXDATE values while the untrusted feed is still at the sync
+  // boundary. A malformed exception must reject or quarantine this event
+  // before its recurrence lines can be stored and read later.
+  icsExceptionDateInstants(recurrence, start.timezone);
   const rawSequence = propertyValue(component, "SEQUENCE") ?? "0";
   if (!/^\d+$/.test(rawSequence)) {
     throw new Error("VEVENT SEQUENCE must be a non-negative integer.");
@@ -710,7 +715,7 @@ function parseEvent(
     attendees: (component.properties.get("ATTENDEE") ?? []).map((property) =>
       attendeeFromProperty(property, false),
     ),
-    recurrence: recurrenceLines(component),
+    recurrence,
     transparency:
       propertyValue(component, "TRANSP")?.toLowerCase() === "transparent"
         ? "transparent"
