@@ -1,0 +1,10 @@
+apply plugin: 'com.android.library'
+android {
+ namespace 'ai.eliza.plugins.actionjournal'
+ compileSdk rootProject.ext.compileSdkVersion
+ defaultConfig { minSdk 26; targetSdk rootProject.ext.targetSdkVersion }
+ compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
+}
+dependencies {
+ implementation project(':capacitor-android')
+}
