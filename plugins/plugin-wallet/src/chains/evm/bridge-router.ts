@@ -21,7 +21,7 @@ import {
   type RouteExtended,
   resumeRoute,
 } from "@lifi/sdk";
-import { type Address, type Chain, parseAbi, parseUnits } from "viem";
+import { type Address, type Chain, parseAbi } from "viem";
 import * as viemChains from "viem/chains";
 import {
   BRIDGE_POLL_INTERVAL_MS,
@@ -42,6 +42,7 @@ import type {
   WalletRouterExecution,
   WalletRouterParams,
 } from "../../types/wallet-router.js";
+import { parseEvmBaseUnits } from "./exact-units";
 
 type LiFiGetWalletClient = NonNullable<
   Parameters<typeof EVM>[0]
@@ -378,7 +379,10 @@ export class BridgeAction {
       resolvedFromToken,
       params.fromChain,
     );
-    const fromAmountParsed = parseUnits(params.amount, fromTokenDecimals);
+    const fromAmountParsed = parseEvmBaseUnits(
+      params.amount,
+      fromTokenDecimals,
+    );
 
     const walletClient = this.walletProvider.getWalletClient(params.fromChain);
     const [fromAddress] = await walletClient.getAddresses();
