@@ -423,7 +423,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     // not through the page's own script (an auto-submitting code field, or
     // a button that calls form.submit()). For 30 seconds, or until the next
     // task fill or click, watch what the page does before the person takes
-    // over with trusted input:
+    // over by activating a control:
     // - a form submit or a page change to another document is stopped,
     //   except a click on a link that opens that link;
     // - a same-document address change (history.pushState) is recorded;
@@ -436,7 +436,8 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     globalThis[watchKey]?.stop();
     const anchor =
       command.subaction === "click" ? node.closest("a[href]") : null;
-    let personAt = Number.POSITIVE_INFINITY;
+    let personAt = Number.NEGATIVE_INFINITY;
+    let activationAt = Number.POSITIVE_INFINITY;
     const startedAt = performance.now();
     const controller = new AbortController();
     const watch = {
@@ -446,10 +447,11 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
           : null,
       stop: () => controller.abort(),
     };
-    // Human submission can finish well after 1.5 seconds. Keep the first
-    // trusted input as the handoff boundary until the next helper action.
+    // A person's activated control can finish after the short typing window.
+    // Stray taps, scrolling and ordinary typing do not create that handoff.
     // Resource start times still expose older requests delivered afterward.
-    const byPerson = (at) => at >= personAt;
+    const byPerson = (at) =>
+      at >= activationAt || (at - personAt >= 0 && at - personAt <= 1500);
     const record = (kind) => {
       watch.violation ??= { kind, scope: policy.guidanceScope };
     };
@@ -461,10 +463,31 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     };
     const options = { capture: true, signal: controller.signal };
     const person = (event) => {
-      if (event.isTrusted) personAt = Math.min(personAt, performance.now());
+      if (event.isTrusted) personAt = performance.now();
     };
     window.addEventListener("pointerdown", person, options);
     window.addEventListener("keydown", person, options);
+    const activate = (event) => {
+      if (!event.isTrusted || !(event.target instanceof Element)) return;
+      const target = event.target;
+      const control = target.closest(
+        'button,input[type="submit"],input[type="button"],input[type="reset"],a[href],[role="button"],[role="link"]',
+      );
+      if (control?.matches(':disabled,[aria-disabled="true"]')) return;
+      const keyboard = event.type === "keydown";
+      const enterForm =
+        event.key === "Enter" &&
+        target instanceof HTMLInputElement &&
+        target.form;
+      const controlKey =
+        control &&
+        (event.key === "Enter" ||
+          (event.key === " " && !control.matches('a[href],[role="link"]')));
+      if (keyboard ? !controlKey && !enterForm : !control) return;
+      activationAt = Math.min(activationAt, performance.now());
+    };
+    window.addEventListener("click", activate, options);
+    window.addEventListener("keydown", activate, options);
     window.addEventListener(
       "submit",
       (event) => report("submit", event),

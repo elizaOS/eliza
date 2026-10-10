@@ -374,6 +374,8 @@ document.getElementById('ping').addEventListener('input',()=>navigator.sendBeaco
   await page.evaluate(() =>
     window.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })),
   );
+  // An unrelated trusted tap must not hide the helper's delayed POST.
+  await page.mouse.click(1100, 650);
   await page.waitForTimeout(4000);
   assert.ok(posted.includes("/api/later"));
   assert.equal(await fetchRead("22"), "request");
@@ -401,6 +403,25 @@ document.getElementById('ping').addEventListener('input',()=>navigator.sendBeaco
     undefined,
     "Delayed person receipt must not pause the task",
   );
+  // Keyboard activation has the same handoff as a click.
+  for (const [scope, key] of [
+    ["29", "Enter"],
+    ["30", "Space"],
+  ]) {
+    await fetchAct(scope, "Note", "#note", "ready");
+    const receipt = page.waitForResponse((response) =>
+      response.url().endsWith("/api/receipt"),
+    );
+    await page.locator("#person").focus();
+    await page.keyboard.press(key);
+    await receipt;
+    await page.waitForTimeout(300);
+    assert.equal(
+      await fetchRead(scope),
+      undefined,
+      `Delayed receipt after ${key}`,
+    );
+  }
   // A helper-started request still belongs to the helper if it finishes after
   // the person takes over. Use its start time, not its delivery time.
   const slowStarted = page.waitForRequest((request) =>
