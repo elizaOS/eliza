@@ -1264,15 +1264,19 @@ export function mapAcpSessionsToCodingAgentSessions(
     status:
       s.status === "ready" || s.status === "busy"
         ? ("active" as const)
-        : s.status === "error" || s.status === "errored"
-          ? ("error" as const)
-          : s.status === "stopped" ||
-              s.status === "cancelled" ||
-              s.status === "done" ||
-              s.status === "completed" ||
-              s.status === "exited"
-            ? ("stopped" as const)
-            : ("active" as const),
+        : // Kept as is so the 5 s poll does not overwrite the "blocked" the
+          // live event set (sidebar badge, terminal focus, "waiting" text).
+          s.status === "blocked" || s.status === "tool_running"
+          ? s.status
+          : s.status === "error" || s.status === "errored"
+            ? ("error" as const)
+            : s.status === "stopped" ||
+                s.status === "cancelled" ||
+                s.status === "done" ||
+                s.status === "completed" ||
+                s.status === "exited"
+              ? ("stopped" as const)
+              : ("active" as const),
     decisionCount: 0,
     autoResolvedCount: 0,
   }));
