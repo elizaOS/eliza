@@ -8,6 +8,14 @@ may own a bot token. DMs default to pairing; configure `TELEGRAM_DM_POLICY` and
 `TELEGRAM_ALLOWED_CHATS` deliberately. Attachment references must never expose bot
 tokens.
 
+## Replies
+
+The bot stores inbound messages but does not answer them unless
+`TELEGRAM_AUTO_REPLY=true` is set. Slash commands are always answered. Replies also
+stay off while passive-connectors mode is on (`ELIZA_LIFEOPS_PASSIVE_CONNECTORS`,
+on by default when the personal-assistant plugin is loaded). The service logs a
+warning at startup when replies are off.
+
 ## Chat access
 
 `TELEGRAM_DM_POLICY` accepts `pairing` (the default), `open`, `allowlist`, or
