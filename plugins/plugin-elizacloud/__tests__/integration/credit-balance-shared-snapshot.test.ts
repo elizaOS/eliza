@@ -89,30 +89,30 @@ describe("creditBalanceProvider shared snapshot", () => {
   });
 
   it("fails closed when the organization changes during the balance fetch", async () => {
-    let org = "org-A"
-    let releaseBalance: () => void = () => undefined
-    let requestStarted: () => void = () => undefined
+    let org = "org-A";
+    let releaseBalance: () => void = () => undefined;
+    let requestStarted: () => void = () => undefined;
     const balanceReady = new Promise<void>((resolve) => {
-      releaseBalance = resolve
-    })
+      releaseBalance = resolve;
+    });
     const requestReady = new Promise<void>((resolve) => {
-      requestStarted = resolve
-    })
-    server.state.balance = 500
+      requestStarted = resolve;
+    });
+    server.state.balance = 500;
     server.state.beforeBalanceReply = async () => {
-      requestStarted()
-      await balanceReady
-    }
-    const runtime = makeRuntime({ baseUrl: server.url, organizationId: () => org })
-    const pending = creditBalanceProvider.get(runtime, MESSAGE, STATE)
-    await requestReady
-    org = "org-B"
-    releaseBalance()
+      requestStarted();
+      await balanceReady;
+    };
+    const runtime = makeRuntime({ baseUrl: server.url, organizationId: () => org });
+    const pending = creditBalanceProvider.get(runtime, MESSAGE, STATE);
+    await requestReady;
+    org = "org-B";
+    releaseBalance();
 
-    const result = await pending
-    expect(result.text).toBe("")
-    expect(result.values?.cloudCreditsUnavailable).toBe(true)
-  })
+    const result = await pending;
+    expect(result.text).toBe("");
+    expect(result.values?.cloudCreditsUnavailable).toBe(true);
+  });
   it("flags low and critical balances with the top-up pointer", async () => {
     server.state.balance = 1.5;
     const low = await creditBalanceProvider.get(
