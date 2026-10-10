@@ -4775,6 +4775,7 @@ export class AgentRuntime implements IAgentRuntime {
 		channelId,
 		messageServerId,
 		worldId,
+		metadata,
 	}: Room): Promise<UUID> {
 		if (!worldId) throw new Error("worldId is required");
 		const res = await this.createRooms([
@@ -4786,6 +4787,7 @@ export class AgentRuntime implements IAgentRuntime {
 				channelId,
 				messageServerId,
 				worldId,
+				metadata,
 			},
 		]);
 		if (!res.length) throw new Error("Failed to create room");
