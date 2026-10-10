@@ -33,7 +33,7 @@ interface EvmActionValidatorConfig {
 
 export function hasEvmPrivateKey(runtime: IAgentRuntime): boolean {
   const privateKey = runtime.getSetting("EVM_PRIVATE_KEY");
-  return typeof privateKey === "string" && privateKey.startsWith("0x");
+  return typeof privateKey === "string" && /^0x/i.test(privateKey);
 }
 
 /**
