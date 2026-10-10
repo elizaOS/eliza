@@ -164,7 +164,7 @@ function buildFrameEvents(
 	};
 	for (const seg of segments) {
 		if (seg.endMs <= seg.startMs) continue;
-		const first = Math.ceil(seg.startMs / frameMs);
+		const first = Math.floor(seg.startMs / frameMs);
 		const afterLast = Math.min(numFrames, Math.ceil(seg.endMs / frameMs));
 		if (first >= afterLast) continue;
 		eventAt(first).add.push(seg.speaker);
