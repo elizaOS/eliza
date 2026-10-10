@@ -20,6 +20,7 @@ import {
   configureTelegramIdentity,
   resetTelegramIdentityAttestation,
   TELEGRAM_TEST_BOT_ID,
+  TELEGRAM_TEST_BOT_USERNAME,
   TELEGRAM_TEST_WEBHOOK_SECRET,
   telegramGetMeResponse,
 } from "./telegram-identity-fixture";
@@ -171,9 +172,33 @@ function startCloud(
       if (url.pathname !== "/api/internal/eliza-app/personal-shared/messages") {
         return new Response("not found", { status: 404 });
       }
-      turns.push((await request.json()) as Record<string, unknown>);
+      const body = (await request.json()) as Record<string, unknown>;
+      turns.push(body);
       if (status !== 200) {
         return Response.json({ success: false }, { status });
+      }
+      if (body.eventType === "delivery_authorization") {
+        return Response.json({
+          success: true,
+          data: {
+            code: "group_delivery_authorization",
+            authorized: true,
+            leaseToken: body.leaseToken,
+            expiresAt: new Date(Date.now() + 30_000).toISOString(),
+          },
+        });
+      }
+      if (body.eventType === "delivery_commit") {
+        return Response.json({
+          success: true,
+          data: { code: "group_delivery_committed", committed: true },
+        });
+      }
+      if (body.eventType === "delivery_receipt") {
+        return Response.json({
+          success: true,
+          data: { code: "group_delivery_receipt_recorded", recorded: true },
+        });
       }
       return Response.json({ success: true, data });
     },
@@ -210,6 +235,92 @@ function telegramPrivateUpdate(updateId: number): Request {
     }),
   });
 }
+
+function telegramGroupUpdate(updateId: number): Request {
+  return new Request("http://gateway.test/webhook/eliza-app/telegram", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-telegram-bot-api-secret-token": TELEGRAM_TEST_WEBHOOK_SECRET,
+    },
+    body: JSON.stringify({
+      update_id: updateId,
+      message: {
+        message_id: 8,
+        date: Math.floor(Date.now() / 1000),
+        chat: { id: -1005550002, type: "supergroup", title: "Trip" },
+        from: { id: 5550001, is_bot: false, first_name: "Ada" },
+        text: `@${TELEGRAM_TEST_BOT_USERNAME} draw a lighthouse`,
+      },
+    }),
+  });
+}
+
+const GROUP_BINDING = {
+  kind: "binding",
+  authority: {
+    bindingId: "binding-1",
+    ownerUserId: "owner-1",
+    personalAgentId: "agent-1",
+    version: 1,
+  },
+};
+
+describe("Telegram group Personal Shared egress", () => {
+  test("generated media reaches the group reply as links", async () => {
+    configureTelegramIdentity();
+    const cloud = startCloud({
+      reply: "here's your image.",
+      mediaUrls: ["https://cdn.example.test/lighthouse.png"],
+      groupDelivery: GROUP_BINDING,
+    });
+
+    const response = await handleWebhook(
+      telegramGroupUpdate(9101),
+      telegramAdapter,
+      deps(cloud.origin, new MemoryRedis()),
+      "eliza-app",
+    );
+
+    expect(response.status).toBe(200);
+    const sends = providerCalls.filter((call) =>
+      call.url.endsWith("/sendMessage"),
+    );
+    expect(sends.map((call) => call.body.text)).toEqual([
+      "here's your image.\nhttps://cdn.example.test/lighthouse.png",
+    ]);
+    expect(cloud.turns.map((turn) => turn.eventType)).toEqual([
+      undefined,
+      "delivery_authorization",
+      "delivery_commit",
+      "delivery_receipt",
+    ]);
+  });
+
+  test("a reply that is only the media link is still delivered", async () => {
+    configureTelegramIdentity();
+    const cloud = startCloud({
+      reply: "https://cdn.example.test/lighthouse.png",
+      mediaUrls: ["https://cdn.example.test/lighthouse.png"],
+      groupDelivery: GROUP_BINDING,
+    });
+
+    const response = await handleWebhook(
+      telegramGroupUpdate(9102),
+      telegramAdapter,
+      deps(cloud.origin, new MemoryRedis()),
+      "eliza-app",
+    );
+
+    expect(response.status).toBe(200);
+    const sends = providerCalls.filter((call) =>
+      call.url.endsWith("/sendMessage"),
+    );
+    expect(sends.map((call) => call.body.text)).toEqual([
+      "https://cdn.example.test/lighthouse.png",
+    ]);
+  });
+});
 
 describe("private Telegram Personal Shared egress", () => {
   test("a terminal no-response turn sends one visible notice through the attested bot", async () => {
@@ -388,6 +499,30 @@ describe("private Blooio Personal Shared egress", () => {
       text: "Hi Ada.",
       to: "+15551234567",
       from: "+15550001111",
+    });
+  });
+
+  test("media past the attachment count is sent as links instead of dropped", async () => {
+    const urls = ["a", "b", "c", "d", "e", "f"].map(
+      (name) => `https://cdn.example.test/${name}.png`,
+    );
+    const cloud = startCloud({
+      reply: "here are your images.",
+      mediaUrls: [urls[0], ...urls],
+    });
+
+    const response = await handleWebhook(
+      blooioPrivateMessage("/webhook/eliza-app/blooio", "msg_inbound_media"),
+      blooioAdapter,
+      deps(cloud.origin, new MemoryRedis()),
+      "eliza-app",
+    );
+    expect(response.status).toBe(200);
+
+    const send = await providerSent;
+    expect(send.body).toMatchObject({
+      text: ["here are your images.", urls[4], urls[5]].join("\n"),
+      attachments: urls.slice(0, 4),
     });
   });
 
