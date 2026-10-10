@@ -532,9 +532,10 @@ export async function deliverInternalMessage(
       { status: 409, headers: { "Retry-After": "1" } },
     );
   }
+  const pendingClaim = `pending:${crypto.randomUUID()}`;
   let claimed: unknown;
   try {
-    claimed = await dependencies.redis.set(dedupeKey, "pending", {
+    claimed = await dependencies.redis.set(dedupeKey, pendingClaim, {
       ex: 60,
       nx: true,
     });
@@ -591,13 +592,21 @@ export async function deliverInternalMessage(
     // Provider dispatch may succeed before any transport error becomes visible.
     // Persist the tombstone first for every connector; only a proven rejection
     // or a validated receipt may replace it with retryable/complete state.
-    await dependencies.redis.set(
-      dedupeKey,
-      JSON.stringify({ state: "indeterminate", hash }),
-      {
-        ex: DELIVERY_RECEIPT_TTL_SECONDS,
-      },
+    const dispatchClaimed = await dependencies.redis.eval(
+      'if redis.call("get", KEYS[1]) == ARGV[1] then redis.call("set", KEYS[1], ARGV[2], "EX", ARGV[3]); return 1 end return 0',
+      [dedupeKey],
+      [
+        pendingClaim,
+        JSON.stringify({ state: "indeterminate", hash }),
+        String(DELIVERY_RECEIPT_TTL_SECONDS),
+      ],
     );
+    if (Number(dispatchClaimed) !== 1) {
+      return Response.json(
+        { success: false, acceptance: "unknown", retryable: false },
+        { status: 202 },
+      );
+    }
     connectorAttempted = true;
     const receipt = await adapter.sendReplyWithReceipt(
       config,
@@ -696,7 +705,7 @@ export async function deliverInternalMessage(
     // accepted the message even if its response or our receipt write failed.
     if (!connectorAttempted) {
       try {
-        await dependencies.redis.del(dedupeKey);
+        await dependencies.redis.delIfEquals(dedupeKey, pendingClaim);
       } catch {
         // error-policy:J6 the bounded claim expires; the primary acceptance result wins.
       }
