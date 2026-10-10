@@ -2547,6 +2547,15 @@
         "@capacitor/core": "^8.3.1",
       },
     },
+    "plugins/plugin-native-notifications": {
+      "name": "@elizaos/capacitor-notification-mirror",
+      "version": "2.0.3-beta.7",
+      "devDependencies": {
+        "@types/node": "^25.6.0",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "typescript": "^6.0.3",
+      },
+    },
     "plugins/plugin-native-phone": {
       "name": "@elizaos/plugin-native-phone",
       "version": "2.0.3-beta.7",
@@ -3849,6 +3858,8 @@
     "@elizaos/capacitor-mobile-signals": ["@elizaos/capacitor-mobile-signals@workspace:plugins/plugin-native-mobile-signals"],
 
     "@elizaos/capacitor-network-policy": ["@elizaos/capacitor-network-policy@workspace:plugins/plugin-native-network-policy"],
+
+    "@elizaos/capacitor-notification-mirror": ["@elizaos/capacitor-notification-mirror@workspace:plugins/plugin-native-notifications"],
 
     "@elizaos/capacitor-secure-store": ["@elizaos/capacitor-secure-store@workspace:plugins/plugin-native-secure-store"],
 
