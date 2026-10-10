@@ -225,6 +225,75 @@ describe("OWNER_GOALS action (deterministic model-provider runtime)", () => {
     expect(() => harness.assertFixturesConsumed()).not.toThrow();
   });
 
+  it("asks for the planner's delete id instead of borrowing the id the extractor pulled for review", async () => {
+    const harness = track(
+      await createTestRuntimeWithModelProvider({
+        plugins: [goalsPlugin],
+        fixtures: [
+          {
+            name: "goal-extraction-review-for-planner-delete",
+            match: { modelType: ModelType.TEXT_LARGE },
+            response: JSON.stringify({
+              action: "review",
+              params: { id: "goal-1" },
+              missing: [],
+              confidence: 0.9,
+            }),
+            times: 1,
+          },
+        ],
+      }),
+    );
+
+    const { result, reply } = await runOwnerGoals(
+      harness,
+      "How is goal-1 going? Also drop that old goal.",
+      { action: "delete" },
+    );
+
+    expect(result.success, reply).toBe(false);
+    expect(result.data?.action).toBe("clarify");
+    expect(result.data?.missing).toEqual(["id"]);
+    expect(reply).toBe("To OWNER_GOALS (delete) I still need: id.");
+    expect(() => harness.assertFixturesConsumed()).not.toThrow();
+  });
+
+  it("asks for the planner's create title instead of borrowing the title the extractor pulled for update", async () => {
+    const harness = track(
+      await createTestRuntimeWithModelProvider({
+        plugins: [goalsPlugin],
+        fixtures: [
+          {
+            name: "goal-extraction-update-for-planner-create",
+            match: { modelType: ModelType.TEXT_LARGE },
+            response: JSON.stringify({
+              action: "update",
+              params: { id: "goal-1", title: "Later" },
+              missing: [],
+              confidence: 0.9,
+            }),
+            times: 1,
+          },
+        ],
+      }),
+    );
+    await provisionAuditTable(harness);
+
+    const { result, reply } = await runOwnerGoals(
+      harness,
+      "Rename goal-1 to Later and add a new goal.",
+      { action: "create" },
+    );
+
+    expect(result.success, reply).toBe(false);
+    expect(result.data?.action).toBe("clarify");
+    expect(result.data?.missing).toEqual(["title"]);
+    expect(reply).toBe("To OWNER_GOALS (create) I still need: title.");
+    const goals = await createOwnerGoalsService(harness.runtime).listGoals();
+    expect(goals).toEqual([]);
+    expect(() => harness.assertFixturesConsumed()).not.toThrow();
+  });
+
   it("degrades to a clarification when the deterministic model provider extraction is low-confidence", async () => {
     const harness = track(
       await createTestRuntimeWithModelProvider({

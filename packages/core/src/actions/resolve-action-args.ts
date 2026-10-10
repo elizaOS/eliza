@@ -386,7 +386,11 @@ export async function resolveActionArgs<
 
 	// Merge planner-provided params (which take precedence) with extracted params,
 	// but only retain keys this subaction actually declares.
-	const allowedExtracted = pickKnownParams(chosen, subactions, parsed.params);
+	const extractedParams =
+		parsed.subaction === null || parsed.subaction === chosen
+			? parsed.params
+			: {};
+	const allowedExtracted = pickKnownParams(chosen, subactions, extractedParams);
 	const allowedPlanner = pickKnownParams(chosen, subactions, plannerParams);
 	const mergedParams: Record<string, unknown> = {
 		...allowedExtracted,
