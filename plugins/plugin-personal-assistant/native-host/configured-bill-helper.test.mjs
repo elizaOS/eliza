@@ -419,6 +419,21 @@ test("configured emailed-code policy reaches the helper and fills only one curre
     google.accountForTask({ ...task, goalRef: "other" }),
     /Unconfigured bill task/,
   );
+  // Bill search scope carries the connected address with its grant, so a
+  // search of another mailbox can say so. The code check reads uncached.
+  googleReadPort.currentAccount = async () => ({
+    accountId: connected,
+    email: "person@example.org",
+  });
+  const scope = await f.options.billDiscovery.scopeForTask({
+    ...task,
+    epoch: 3,
+  });
+  assert.equal(scope.accountId, "grant-a");
+  assert.equal(scope.accountEmail, "person@example.org");
+  connected = "grant-c";
+  assert.equal(await google.checkAccount(), "grant-c");
+  connected = "grant-a";
 
   const filled = [];
   let coordinator;

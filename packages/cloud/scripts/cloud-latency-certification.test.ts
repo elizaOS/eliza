@@ -303,6 +303,7 @@ test("parseCertificationArgs requires an exact SHA and explicit output directory
     ]),
     {
       deploySha: SHA,
+      environment: "staging",
       probeCase: "qwen-3.8-27b@high@max",
       outputDir: join(process.cwd(), "artifacts/cert"),
       acknowledgedContractDigest: "",
@@ -806,4 +807,57 @@ test("probe budgets preserve provider maximum and explicit caller limits", async
       /max_tokens/,
     );
   }
+});
+
+test("production certification uses only its fixed endpoint and rejects staging identity", async () => {
+  const args = [
+    "--deploy-sha",
+    SHA,
+    "--output-dir",
+    "artifacts/cert",
+    "--environment",
+    "production",
+  ];
+  assert.equal(parseCertificationArgs(args).environment, "production");
+  assert.throws(
+    () => parseCertificationArgs([...args, "--auth"]),
+    /only in staging/,
+  );
+  assert.throws(
+    () =>
+      parseCertificationArgs([
+        ...args.slice(0, -1),
+        "https://untrusted.invalid",
+      ]),
+    /Unsupported/,
+  );
+  let calls = 0;
+  const result = await verifyExactDeployment(
+    SHA,
+    async (url) => {
+      calls++;
+      assert.equal(url, "https://api.eliza.app/api/health");
+      return Response.json({ commit: SHA, environment: "production" });
+    },
+    "production",
+  );
+  assert.equal(calls, 1);
+  assert.equal(result.environment, "production");
+  await assert.rejects(
+    verifyExactDeployment(
+      SHA,
+      async () => Response.json({ commit: SHA, environment: "staging" }),
+      "production",
+    ),
+    /wrong environment/,
+  );
+  await assert.rejects(
+    verifyExactDeployment(
+      SHA,
+      async () =>
+        Response.json({ commit: "b".repeat(40), environment: "production" }),
+      "production",
+    ),
+    /expected commit/,
+  );
 });

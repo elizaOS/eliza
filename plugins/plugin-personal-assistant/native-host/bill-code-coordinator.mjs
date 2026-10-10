@@ -1,7 +1,31 @@
 import { createHash } from "node:crypto";
 import { BillHostError } from "./errors.mjs";
 
-const manual = (message) => ({ kind: "human-verification", message });
+const manual = (message, codeReason) => ({
+  kind: "human-verification",
+  message,
+  ...(codeReason ? { codeReason } : {}),
+});
+/**
+ * Why Google could not give the code, from the connector's fixed reasons.
+ * Only these words reach the person; a provider message never does.
+ */
+const GOOGLE_REASONS = {
+  reauth_required:
+    "Google needs you to connect your account again before the code can be found. Reconnect Google, or complete verification on the website yourself.",
+  insufficient_scope:
+    "Google did not allow reading this email. Connect Google again with email reading allowed, or complete verification on the website yourself.",
+  account_changed:
+    "A different Google account is connected now. Check which account gets this code, or complete verification on the website yourself.",
+  cloud_sign_in_required:
+    "Your account sign-in ended, so the code cannot be found. Sign in again, or complete verification on the website yourself.",
+  timeout:
+    "Google did not answer in time. Try again later, or complete verification on the website yourself.",
+};
+const googleReason = (error) =>
+  typeof error?.code === "string" && Object.hasOwn(GOOGLE_REASONS, error.code)
+    ? error.code
+    : null;
 const sameOwner = (task, context, taskAccountId) =>
   task.id === context.taskId &&
   task.epoch === context.epoch &&
@@ -20,6 +44,7 @@ export class BillCodeCoordinator {
     resolver,
     challengeProvider,
     resolveGoogleAccount,
+    checkGoogleAccount = null,
     stillAuthorized = async () => true,
     now = () => Date.now(),
   }) {
@@ -32,9 +57,24 @@ export class BillCodeCoordinator {
       resolver,
       challengeProvider,
       resolveGoogleAccount,
+      // Optional uncached read of the connected Google account. It names why
+      // a code search failed: reconnect, permission or another account.
+      checkGoogleAccount,
       stillAuthorized,
       now,
     });
+  }
+  async #googleFailure(error, task, googleAccountId) {
+    let reason = googleReason(error);
+    if (!reason && typeof this.checkGoogleAccount === "function")
+      try {
+        const current = await this.checkGoogleAccount(task);
+        if (googleAccountId !== undefined && current !== googleAccountId)
+          reason = "account_changed";
+      } catch (check) {
+        reason = googleReason(check);
+      }
+    return reason ? manual(GOOGLE_REASONS[reason], reason) : null;
   }
   /** Wire this into NativeTaskActuator.resolveValue; never expose it as a route. */
   async resolveValue(reference, task) {
@@ -95,8 +135,24 @@ export class BillCodeCoordinator {
         return manual(
           "No supported verification challenge was found. Complete verification on the website yourself.",
         );
+      // Her own typing comes first: a field she has started is never filled.
+      const field = snapshot.elements.filter(
+        (element) => element.selector === challenge.targetRef,
+      );
+      if (field.length === 1 && field[0].hasInput === true)
+        return manual(
+          "You have started typing the code. Finish it on the website, then press Verify yourself.",
+          "typed",
+        );
       const taskAccountId = task.owner.connector.accountId;
-      const googleAccountId = await this.resolveGoogleAccount(task);
+      let googleAccountId;
+      try {
+        googleAccountId = await this.resolveGoogleAccount(task);
+      } catch (error) {
+        const failure = await this.#googleFailure(error, task);
+        if (failure) return failure;
+        throw error;
+      }
       if (typeof googleAccountId !== "string" || !googleAccountId.trim())
         throw new BillHostError("Google account unavailable");
       const context = {
@@ -143,7 +199,15 @@ export class BillCodeCoordinator {
         return manual(
           "This verification challenge was already handled. Check the code on the website and press Verify yourself, or request a new code there.",
         );
-      const result = await this.resolver.resolve(context, signal);
+      let result;
+      try {
+        result = await this.resolver.resolve(context, signal);
+      } catch (error) {
+        if (signal.aborted) throw error;
+        const failure = await this.#googleFailure(error, task, googleAccountId);
+        if (failure) return failure;
+        throw error;
+      }
       if (result.status !== "ready") {
         const messages = {
           missing:

@@ -27,6 +27,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     return denied();
   const key = "__elizaBrowserControlV1";
   const monitorKey = "__elizaBrowserObservationV1";
+  const watchKey = "__elizaTaskEffectWatchV1";
   let monitor = globalThis[monitorKey];
   if (!monitor || monitor.document !== document) {
     monitor = {
@@ -201,6 +202,26 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
             .filter(Boolean)
             .join(" ") || null,
         sensitive: sensitivity(node),
+        // Whether the person (or the page) already put text here. Only this
+        // boolean leaves the page; the text itself stays behind the boundary.
+        ...((node instanceof HTMLInputElement &&
+          ![
+            "button",
+            "submit",
+            "reset",
+            "image",
+            "checkbox",
+            "radio",
+            "file",
+            "hidden",
+            "range",
+            "color",
+          ].includes(node.type)) ||
+        node instanceof HTMLTextAreaElement
+          ? { hasInput: node.value !== "" }
+          : node.isContentEditable
+            ? { hasInput: (node.textContent ?? "").trim() !== "" }
+            : {}),
       };
     };
     const nodes = new Map();
@@ -243,7 +264,13 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       inputRevision: monitor.inputRevision,
       viewport: viewport(),
     };
+    // A submit or page change that a task fill or click set off in this
+    // document, under this binding. The watch below stopped it.
+    const violation = globalThis[watchKey]?.violation;
     return {
+      ...(policy && violation && violation.scope === policy.guidanceScope
+        ? { effectViolation: violation.kind }
+        : {}),
       url: location.href,
       title: document.title,
       readyState: document.readyState,
@@ -292,6 +319,12 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     // grant an action. Re-check the actual node immediately before the effect.
     if (
       !policy.targets.some((target) => {
+        // A host can bind one action to the one reviewed control it chose.
+        if (
+          policy.expectedSelector !== undefined &&
+          target.selector !== policy.expectedSelector
+        )
+          return false;
         const permission =
           command.subaction === "fill" &&
           policy.protectedValueKind === "verification-code"
@@ -336,9 +369,17 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         node instanceof HTMLSelectElement
       ) ||
         (node instanceof HTMLInputElement &&
-          !["text", "email", "tel", "number", "search", "url"].includes(
+          !["text", "email", "tel", "number", "search", "url", "date"].includes(
             node.type,
           )) ||
+        // A date field takes only a real calendar day, as YYYY-MM-DD.
+        (node instanceof HTMLInputElement &&
+          node.type === "date" &&
+          (!/^\d{4}-\d{2}-\d{2}$/.test(command.text) ||
+            command.text.startsWith("0000-") ||
+            Number.isNaN(Date.parse(`${command.text}T00:00:00Z`)) ||
+            new Date(`${command.text}T00:00:00Z`).toISOString().slice(0, 10) !==
+              command.text)) ||
         (policy.protectedValueKind === "verification-code"
           ? !(node instanceof HTMLInputElement) ||
             node.autocomplete !== "one-time-code" ||
@@ -364,6 +405,58 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     feedback.markActed();
   }
   delete globalThis[key];
+  if (policy && ["click", "fill"].includes(command.subaction)) {
+    // A task fill or click must not submit a form or leave the page, also
+    // not through the page's own script (an auto-submitting code field, or
+    // a button that calls form.submit()). For a short time, stop every
+    // submit and page change that recent input by the person did not start,
+    // except a click on a link that opens that link. The next snapshot
+    // reports what was stopped, so the host can pause the task.
+    globalThis[watchKey]?.stop();
+    const anchor =
+      command.subaction === "click" ? node.closest("a[href]") : null;
+    let personAt = Number.NEGATIVE_INFINITY;
+    const controller = new AbortController();
+    const watch = {
+      violation:
+        globalThis[watchKey]?.violation?.scope === policy.guidanceScope
+          ? (globalThis[watchKey]?.violation ?? null)
+          : null,
+      stop: () => controller.abort(),
+    };
+    const report = (kind, event) => {
+      if (performance.now() - personAt <= 1500) return;
+      if (event.cancelable) event.preventDefault();
+      event.stopImmediatePropagation();
+      watch.violation ??= { kind, scope: policy.guidanceScope };
+    };
+    const options = { capture: true, signal: controller.signal };
+    const person = (event) => {
+      if (event.isTrusted) personAt = performance.now();
+    };
+    window.addEventListener("pointerdown", person, options);
+    window.addEventListener("keydown", person, options);
+    window.addEventListener(
+      "submit",
+      (event) => report("submit", event),
+      options,
+    );
+    globalThis.navigation?.addEventListener(
+      "navigate",
+      (event) => {
+        if (
+          event.userInitiated ||
+          event.destination.sameDocument ||
+          (anchor && !event.formData && event.destination.url === anchor.href)
+        )
+          return;
+        report(event.formData ? "submit" : "navigation", event);
+      },
+      { signal: controller.signal },
+    );
+    setTimeout(() => controller.abort(), 3000);
+    globalThis[watchKey] = watch;
+  }
   if (command.subaction === "click") {
     node.click();
   } else if (command.subaction === "fill") {

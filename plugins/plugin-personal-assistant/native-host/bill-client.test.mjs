@@ -114,6 +114,19 @@ test("response admission preserves detached metadata and validates shared money,
     "task1",
   );
   assert.throws(() => readBillDecision(decision(), "different", validators));
+  const undated = decision();
+  undated.decision.review.paymentDate = null;
+  assert.equal(
+    readBillDecision(undated, "task1", validators).review.paymentDate,
+    null,
+  );
+  for (const date of [undefined, "", "2026-02-30", "2026-13-01", 20261003]) {
+    undated.decision.review.paymentDate = date;
+    assert.throws(
+      () => readBillDecision(undated, "task1", validators),
+      /payment date/,
+    );
+  }
   for (const mutate of [
     (v) => (v.decision.choice.contextKey = "e".repeat(64)),
     (v) => (v.decision.review.currencyDigits = 0),
@@ -680,4 +693,81 @@ test("a background guide check never makes the panel pending or refuses a choice
   assert.equal(calls.length, 6);
   calls[5].resolve({ decision: { kind: "human-review" } });
   assert.equal(await again, true);
+});
+
+test("a hold for a question stops re-checks and sends a waiting command only after release", async () => {
+  const time = 1000;
+  const pending = [];
+  const timers = {
+    set: (callback, ms) => {
+      const handle = { callback, at: time + ms };
+      pending.push(handle);
+      return handle;
+    },
+    clear: (handle) => {
+      const index = pending.indexOf(handle);
+      if (index >= 0) pending.splice(index, 1);
+    },
+  };
+  const calls = [];
+  const client = new BillDecisionClient({
+    validators,
+    now: () => time,
+    timers,
+    changed: () => {},
+    request: (path, body) => {
+      const d = deferred();
+      calls.push({ path, body, ...d });
+      return d.promise;
+    },
+  });
+  const guided = {
+    decision: {
+      kind: "human-sign-in",
+      guidance: {
+        instruction: "Sign in yourself.",
+        available: true,
+        expiresAt: time + 60000,
+      },
+    },
+  };
+  client.start("task1");
+  await tick();
+  calls[0].resolve(guided);
+  await tick();
+  assert.equal(pending.length, 1);
+  client.hold();
+  assert.equal(client.held, true);
+  assert.equal(pending.length, 0, "no re-check while a question is answered");
+  const shown = client.restoreGuidance();
+  await tick();
+  assert.equal(calls.length, 1, "the command waits for release");
+  client.release();
+  await tick();
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[1].body, { action: "show-guidance" });
+  calls[1].resolve(guided);
+  assert.equal(await shown, true);
+  assert.equal(pending.length, 1, "re-checks resume");
+  // A hold can start while a command is waiting behind an in-flight check.
+  pending.shift().callback();
+  await tick();
+  assert.equal(calls.length, 3);
+  const queued = client.restoreGuidance();
+  await tick();
+  client.hold();
+  calls[2].resolve(guided);
+  await tick();
+  assert.equal(calls.length, 3, "a later hold fences the queued command");
+  client.release();
+  await tick();
+  assert.equal(calls.length, 4);
+  calls[3].resolve(guided);
+  assert.equal(await queued, true);
+  // A command waiting in a hold is dropped when the task stops.
+  client.hold();
+  const dropped = client.refresh();
+  client.stop();
+  assert.equal(await dropped, false);
+  assert.equal(calls.length, 4);
 });

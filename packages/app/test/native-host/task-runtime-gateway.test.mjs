@@ -380,11 +380,12 @@ async function actuatorFixture(t, { leaseMs = 60000 } = {}) {
         bindingRevision: binding.bindingRevision,
       };
     },
-    execute: async (command) => {
+    execute: async (command, options) => {
       if (command.subaction !== "snapshot") {
         if (state.refusal)
           throw Object.assign(new Error("refused"), { kind: state.refusal });
         state.effects++;
+        state.options = options;
       }
       const snapshotId = `00000000-0000-0000-0000-${String(++sequence).padStart(12, "0")}`;
       return {
@@ -401,6 +402,9 @@ async function actuatorFixture(t, { leaseMs = 60000 } = {}) {
                       complete: true,
                       inputRevision: 0,
                       elements: [{ selector: `${snapshotId}:0:0` }],
+                      ...(state.violation && state.effects
+                        ? { effectViolation: state.violation }
+                        : {}),
                     },
                   ],
                 }
@@ -466,10 +470,11 @@ async function actuatorFixture(t, { leaseMs = 60000 } = {}) {
     201,
   );
   const runtime = await gateway.forCurrentOwner();
-  const click = async (id) => {
+  const click = async (id, extra = {}) => {
     let current = runtime.current();
     current = await runtime.observe(current.id, current.revision);
     return runtime.execute(current.id, current.revision, {
+      ...extra,
       id,
       taskId: current.id,
       epoch: current.epoch,
@@ -537,4 +542,25 @@ test("a pause while preparing the action sentence prevents dispatch", async (t) 
   const task = await f.click("paused-before-dispatch");
   assert.equal(task.status, "paused");
   assert.equal(f.state.effects, 0);
+});
+
+test("a host-chosen target must be a reviewed target, and a stopped page submit is an unknown outcome", async (t) => {
+  const f = await actuatorFixture(t);
+  const refused = await f.click("other-target", {
+    expectedSelector: "#unreviewed",
+  });
+  assert.equal(refused.operations.at(-1).status, "failed");
+  assert.equal(refused.operations.at(-1).evidenceRef, "not-dispatched");
+  assert.equal(f.state.effects, 0);
+  const sent = await f.click("reviewed-target", {
+    expectedSelector: "#ordinary",
+  });
+  assert.equal(sent.operations.at(-1).status, "succeeded");
+  assert.equal(f.state.options.expectedSelector, "#ordinary");
+  // The browser stopped a submit that the click set off. The page is not
+  // the reviewed page any more, so the result is not trusted.
+  f.state.violation = "submit";
+  const stopped = await f.click("set-off-submit");
+  assert.equal(stopped.operations.at(-1).status, "unknown");
+  assert.equal(stopped.status, "blocked");
 });

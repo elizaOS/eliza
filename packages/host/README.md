@@ -79,7 +79,8 @@ explicit configuration and host factories. It reads selected token/binding files
 chooses the file store or native credential broker, prepares desktop task runtime,
 and hands resources to the shared gateway lifecycle. It does not read environment
 variables or choose product identities. Native admission validates the private
-inbound token, broker endpoint and gateway port before acquiring helpers.
+inbound token, broker endpoint and gateway port before acquiring helpers. A
+desktop host sets `requireInboundToken: true` to require the same inbound token.
 
 `@elizaos/host/voice/*` contains the reusable realtime voice transport, Cartesia
 Ink/Sonic adapters, Fish adapter, and canonical conversation SSE bridge. Hosts

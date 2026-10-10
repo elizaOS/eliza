@@ -1,6 +1,29 @@
 /** Device-client contracts. No prototype place, route or location is a fallback. */
 export type Coordinate = Readonly<{ latitude: number; longitude: number }>;
 export type TravelMode = "drive" | "walk" | "bicycle" | "transit";
+/** Provider-neutral turn vocabulary for a route step. A step without one is still valid. */
+export const MANEUVERS = [
+  "depart",
+  "continue",
+  "slight-left",
+  "left",
+  "sharp-left",
+  "slight-right",
+  "right",
+  "sharp-right",
+  "keep-left",
+  "keep-right",
+  "u-turn",
+  "roundabout",
+  "arrive",
+] as const;
+export type Maneuver = (typeof MANEUVERS)[number];
+export function isManeuver(value: unknown): value is Maneuver {
+  return (
+    typeof value === "string" &&
+    (MANEUVERS as readonly string[]).includes(value)
+  );
+}
 export type MapsFailureCode =
   | "unconfigured"
   | "unavailable"
@@ -57,8 +80,17 @@ export type Place = Readonly<{
   address?: string;
   website?: string;
   phone?: string;
+  /** Source opening-hours text (for example OSM `opening_hours`), shown verbatim. */
+  openingHours?: string;
   attribution: string;
   fetchedAt: number;
+}>;
+export type RouteStep = Readonly<{
+  instruction: string;
+  coordinate: Coordinate;
+  /** Length of this step, from its maneuver to the next one. */
+  distanceMeters: number;
+  maneuver?: Maneuver;
 }>;
 export type Route = Readonly<{
   providerId: string;
@@ -69,11 +101,7 @@ export type Route = Readonly<{
   geometry: readonly Coordinate[];
   distanceMeters: number;
   durationSeconds: number;
-  steps: readonly Readonly<{
-    instruction: string;
-    coordinate: Coordinate;
-    distanceMeters: number;
-  }>[];
+  steps: readonly RouteStep[];
   attribution: string;
   fetchedAt: number;
   traffic: ProviderCapabilities["traffic"];
@@ -142,6 +170,11 @@ export function place(value: unknown, expectedProvider?: string): Place {
       "invalid-response",
       "The place phone number is invalid.",
     );
+  if (p.openingHours !== undefined && !boundedText(p.openingHours, 255))
+    throw new MapsFailure(
+      "invalid-response",
+      "The place opening hours are invalid.",
+    );
   if (p.website !== undefined) {
     let url: URL;
     try {
@@ -171,6 +204,7 @@ export function place(value: unknown, expectedProvider?: string): Place {
     ...(p.address ? { address: p.address } : {}),
     ...(p.phone ? { phone: p.phone } : {}),
     ...(p.website ? { website: p.website } : {}),
+    ...(p.openingHours ? { openingHours: p.openingHours } : {}),
     attribution: p.attribution,
     fetchedAt: p.fetchedAt,
   };
