@@ -47,6 +47,39 @@ describe("Shared participant name projection", () => {
     expect(sharedOwnerProfileName({})).toBeUndefined();
   });
 
+  test("technical profile placeholders fall back without overriding owner self-identification", () => {
+    expect(sharedOwnerProfileName({ nickname: "Shared agent user", name: "Nubs" })).toBe("Nubs");
+    expect(sharedOwnerProfileName({ nickname: "Nubs", name: "Shared agent user" })).toBe("Nubs");
+    expect(sharedOwnerProfileName({ name: "SHARED AGENT USER" })).toBeUndefined();
+    expect(
+      resolveSharedParticipantName({
+        message: "hello",
+        preferredName: "Shared agent user",
+        history: [{ role: "user", content: 'Please call me "Nubs".' }],
+      }),
+    ).toBe("Nubs");
+    expect(
+      resolveSharedParticipantName({
+        message: "hello",
+        preferredName: "Shared agent user",
+        history: [{ role: "assistant", content: 'My name is "Nubs".' }],
+      }),
+    ).toBeUndefined();
+    expect(
+      resolveSharedParticipantName({
+        message: 'Please call me "Shared agent user".',
+        preferredName: "Nubs",
+        history: [],
+      }),
+    ).toBe("Shared agent user");
+    expect(
+      resolveSharedParticipantName({
+        message: "hello",
+        history: [{ role: "user", content: 'Please call me "Shared agent user".' }],
+      }),
+    ).toBe("Shared agent user");
+  });
+
   test("callback and ordinary commands are not self-identification", () => {
     for (const message of [
       "Call me tomorrow",
