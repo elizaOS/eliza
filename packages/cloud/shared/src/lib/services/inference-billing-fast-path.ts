@@ -79,7 +79,11 @@ export function isOptimisticBackstopAvailable(): boolean {
 /** Resolve the non-Worker optimistic-lane balance cushion in USD. */
 export function resolveSafeBalanceThresholdUsd(env: StringEnv = getCloudAwareEnv()): number {
   const raw = (env.SAFE_BALANCE_THRESHOLD ?? "").trim();
-  const n = Number.parseFloat(raw);
+  // Number.parseFloat stops at the first non-digit ("5junk" -> 5), so a typo
+  // was silently honored as a finite threshold instead of the documented
+  // invalid -> +Inf fail-safe. Require the whole trimmed value to be decimal,
+  // mirroring parseAndValidateCredits in stripe-event.ts.
+  const n = /^\+?\d+(?:\.\d+)?$/.test(raw) ? Number(raw) : Number.NaN;
   return Number.isFinite(n) && n > 0 ? n : Number.POSITIVE_INFINITY;
 }
 
