@@ -95,7 +95,14 @@ async function invoke(
   }
   const envelope = value as unknown as BrokerEnvelope;
   if (!envelope.success) {
-    throw new Error(errorMessage(envelope.error, "Maps request failed."));
+    // The view broker wraps a failed interact result as { success: false,
+    // result: { error } } with no top-level error.
+    const resultError = isRecord(envelope.result)
+      ? envelope.result.error
+      : undefined;
+    throw new Error(
+      errorMessage(envelope.error ?? resultError, "Maps request failed."),
+    );
   }
   if (!isRecord(envelope.result) || envelope.result.success !== true) {
     throw new Error(
