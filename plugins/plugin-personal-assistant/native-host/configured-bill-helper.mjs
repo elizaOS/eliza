@@ -289,7 +289,7 @@ export async function createConfiguredBillHelper({
       return hostPolicy.describeHelper(config);
     },
     /**
-     * The page open in the configured browser profile: HTTPS origin and a short
+     * The page open in the configured browser profile: HTTPS origin and the complete
      * title only (see NativeSocketBrowserTarget.currentPage). Null for another
      * owner, a changed account or profile, a closed helper, an older browser, or
      * an unknown page. It is conversation context, never task authority.
@@ -313,7 +313,13 @@ export async function createConfiguredBillHelper({
         // error-policy:J1 An unreadable page is reported as unknown, never guessed.
         return null;
       }
-      if (!current() || !page) return null;
+      if (
+        !current() ||
+        !page ||
+        (await credentialGate()) !== config.actorId ||
+        !current()
+      )
+        return null;
       return { origin: page.origin, title: page.title };
     },
     close,

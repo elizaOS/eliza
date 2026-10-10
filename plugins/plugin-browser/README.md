@@ -116,8 +116,7 @@ actuator records such an action as an unknown outcome. `showGuidance` accepts
 `NativeSocketBrowserTarget.currentPage()` is a trusted host read of the page the
 person sees in the connected profile. It sends one `list` command and returns the
 single active HTTPS tab as `{ tabId, origin, title }`: the origin without path,
-query or fragment, and the title without control characters, at most 120
-characters. It returns `null` when no single active HTTPS page is known (no
+query or fragment, and the complete title without control characters. It returns `null` when no single active HTTPS page is known (no
 active web tab, active tabs in more than one window, or a non-HTTPS page). The
 result is conversation context only. It binds no task and permits no action.
 

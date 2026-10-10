@@ -112,13 +112,12 @@ interface NativeReply {
   reject(error: Error): void;
   timer: ReturnType<typeof setTimeout>;
 }
-/** The page a person sees: its HTTPS origin and a short title, nothing else. */
+/** The page a person sees: its HTTPS origin and the complete title, nothing else. */
 export interface NativeCurrentPage {
   tabId: string;
   origin: string;
   title: string;
 }
-const CURRENT_PAGE_TITLE_LIMIT = 120;
 /**
  * Reduce a tab inventory to the one active HTTPS page, or null when it is
  * unknown or ambiguous. Exported for hosts that read the inventory themselves.
@@ -150,7 +149,7 @@ export function currentPageFromTabs(
   return {
     tabId: tab.id,
     origin: url.origin,
-    title: [...title].slice(0, CURRENT_PAGE_TITLE_LIMIT).join("").trim(),
+    title,
   };
 }
 /** One short sentence, no control or format characters. */
@@ -555,7 +554,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
 
   /**
    * Trusted host only: the page the person sees in this profile, reduced to its
-   * HTTPS origin and a short title. The path, query, fragment and page content
+   * HTTPS origin and the complete title. The path, query, fragment and page content
    * never leave. Returns null when no single active HTTPS page is known: no
    * active web tab, active tabs in more than one window, or a non-HTTPS page.
    * This is an observation for conversation context. It is not a task binding

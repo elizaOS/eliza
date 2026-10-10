@@ -917,7 +917,7 @@ it("requires the guide-label capability for labels, offers, pause and a configur
   }
 });
 
-it("reduces the one active HTTPS page to its origin and a short title", () => {
+it("reduces the one active HTTPS page to its origin and the complete title", () => {
   const tab = {
     id: "7",
     url: "https://pay.example.test/account/123?token=secret#review",
@@ -937,7 +937,7 @@ it("reduces the one active HTTPS page to its origin and a short title", () => {
   });
   expect(
     currentPageFromTabs([{ ...tab, title: "x".repeat(400) }])?.title,
-  ).toHaveLength(120);
+  ).toHaveLength(400);
   expect(currentPageFromTabs([{ ...tab, title: undefined }])?.title).toBe("");
   // Unknown or ambiguous pages are not guessed.
   expect(currentPageFromTabs([])).toBeNull();

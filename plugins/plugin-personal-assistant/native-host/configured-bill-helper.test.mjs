@@ -209,12 +209,14 @@ test("the current page is origin and title only, for the configured owner and pr
   };
   let profile = "profile";
   let reads = 0;
+  let changeAccountDuringRead = false;
   class Target extends f.args.runtimeModule.NativeSocketBrowserTarget {
     getProfileId() {
       return profile;
     }
     async currentPage() {
       reads++;
+      if (changeAccountDuringRead) account = "other";
       if (page instanceof Error) throw page;
       return page;
     }
@@ -236,6 +238,10 @@ test("the current page is origin and title only, for the configured owner and pr
   assert.equal(await helper.currentPage({ actorId: "owner" }), null);
   profile = "profile";
   assert.equal(reads, 1);
+  changeAccountDuringRead = true;
+  assert.equal(await helper.currentPage({ actorId: "owner" }), null);
+  changeAccountDuringRead = false;
+  account = "owner";
   page = null;
   assert.equal(await helper.currentPage({ actorId: "owner" }), null);
   page = new Error("browser gone");
@@ -243,7 +249,7 @@ test("the current page is origin and title only, for the configured owner and pr
   await helper.close();
   page = { tabId: "3", origin: "https://bills.example.test", title: "" };
   assert.equal(await helper.currentPage({ actorId: "owner" }), null);
-  assert.equal(reads, 3);
+  assert.equal(reads, 4);
 });
 
 test("an older browser target reports no current page", async (t) => {
