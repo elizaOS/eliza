@@ -216,7 +216,15 @@ function parseOptionalPositiveInteger(
   value: string | undefined,
 ): number | undefined {
   if (value === undefined || !value.trim()) return undefined;
-  const parsed = Number(value);
+  const trimmed = value.trim();
+  // Canonical decimal digits only, mirroring resolvePtyDisconnectGraceMs:
+  // Number("0x10") is 16, Number("1e3") is 1000, and Number("+5") is 5 —
+  // all used to silently become maxAgeMs instead of throwing like other
+  // malformed ELIZA_TEE_MAX_AGE_MS values.
+  if (!/^[1-9]\d*$/.test(trimmed)) {
+    throw new Error("ELIZA_TEE_MAX_AGE_MS must be a positive integer.");
+  }
+  const parsed = Number(trimmed);
   if (!Number.isSafeInteger(parsed) || parsed <= 0) {
     throw new Error("ELIZA_TEE_MAX_AGE_MS must be a positive integer.");
   }
