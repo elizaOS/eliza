@@ -111,7 +111,12 @@ function asBool(value: unknown): boolean | undefined {
 function asNumber(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
-    const n = Number(value);
+    const trimmed = value.trim();
+    // Canonical decimal strings only: Number("") is 0, Number("0x10") is 16,
+    // and Number("1e3") is 1000 — all used to silently become limit/sinceMs
+    // values instead of being dropped like other malformed planner params.
+    if (!/^-?\d+(\.\d+)?$/.test(trimmed)) return undefined;
+    const n = Number(trimmed);
     if (Number.isFinite(n)) return n;
   }
   return undefined;
