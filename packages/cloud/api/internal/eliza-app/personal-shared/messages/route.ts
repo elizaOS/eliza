@@ -878,10 +878,16 @@ app.post("/", async (c) => {
           ? (command as "stop" | "help" | "start")
           : undefined;
       if (!admitted.accountEligible) {
-        // Policy acknowledgements for an ineligible sender do not provision an
-        // account or persist their private text. The collected service response
-        // and authenticated inbound channel are the only authority to send.
-        if (admitted.replyKind !== "compliance")
+        // The canonical join prompt is account-free until the sender states
+        // their age. It uses ordinary consent checks, never a compliance exemption.
+        const onboarding =
+          admitted.reason === "onboarding_asked" &&
+          admitted.replyKind === "reply" &&
+          admitted.memberId === null &&
+          admitted.app !== null;
+        // Only authenticated service-generated onboarding and policy replies
+        // may leave without creating an account or recording private history.
+        if (admitted.replyKind !== "compliance" && !onboarding)
           return jsonError(c, 403, "Sender is not eligible", "access_denied");
         if (!text)
           return c.json({
@@ -914,6 +920,7 @@ app.post("/", async (c) => {
           phoneNumber: inbound.from,
           text,
           idempotencyKey,
+          ...(onboarding ? { app: admitted.app } : {}),
           ...(complianceCommand
             ? {
                 networkCompliance: {
