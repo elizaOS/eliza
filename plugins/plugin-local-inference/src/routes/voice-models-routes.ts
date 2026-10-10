@@ -20,9 +20,10 @@
  *
  *   POST /api/local-inference/voice-models/:id/update
  *     → { ok: true, finalPath, sha256, sizeBytes }
- *     Triggers `downloadVoiceModel()` for the named id, gated on
- *     `NetworkPolicy` evaluation per R5 §4. Refuses when the policy
- *     decision is not `allow=true`.
+ *     Triggers `downloadVoiceModel()` for the named id as an explicit user
+ *     request. The `NetworkPolicy` decision (R5 §4) gates automatic updates
+ *     only; its ask outcomes are answered by this request. Returns 409 for
+ *     ids with no standalone install path (everything but `wakeword`).
  *
  *   POST /api/local-inference/voice-models/:id/pin
  *     Body: { pinned: boolean }
@@ -50,6 +51,7 @@ import { logger, resolveStateDir } from "@elizaos/core";
 import { sendJson, sendJsonError } from "@elizaos/host";
 import type { NetworkPolicyPreferences } from "@elizaos/plugin-native-inference/model-catalog/network-policy";
 import {
+	compareVoiceModelSemver,
 	VOICE_MODEL_VERSIONS,
 	type VoiceModelId,
 	type VoiceModelVersion,
@@ -60,7 +62,10 @@ import {
 	voiceNetworkPreferencesPath as voicePrefsPath,
 } from "@elizaos/plugin-native-inference/voice-network-preferences";
 import { evaluateRuntimePolicy } from "../services/network-policy";
-import { stageWakeWordModel } from "../services/voice/wake-word-staging";
+import {
+	hasStandaloneVoiceModelStaging,
+	stageWakeWordModel,
+} from "../services/voice/wake-word-staging";
 import {
 	downloadVoiceModel,
 	VoiceModelDownloadError,
@@ -203,6 +208,19 @@ function requireVoiceModelId(id: string | undefined, op: string): VoiceModelId {
 	}
 	return trimmed as VoiceModelId;
 }
+/**
+ * The requested sub-model has no standalone install path: no loader reads a
+ * flat download of it, so reporting it as updated would be false.
+ */
+export class VoiceModelNotStandaloneError extends Error {
+	readonly code = "voice-model-not-standalone";
+	constructor(id: VoiceModelId) {
+		super(
+			`voice model ${id} cannot be updated on its own: it ships inside the Eliza-1 bundle and no loader reads a standalone download`,
+		);
+		this.name = "VoiceModelNotStandaloneError";
+	}
+}
 export async function applyVoiceModelManagementMutation(
 	input: VoiceModelManagementInput,
 ): Promise<VoiceModelManagementResult> {
@@ -241,6 +259,9 @@ export async function applyVoiceModelManagementMutation(
 		return { op: input.op, preferences };
 	}
 	const id = requireVoiceModelId(input.id, input.op);
+	if (!hasStandaloneVoiceModelStaging(id)) {
+		throw new VoiceModelNotStandaloneError(id);
+	}
 	const updater = getUpdater();
 	const [installed, pins] = await Promise.all([
 		resolveInstalledVersions(),
@@ -262,9 +283,6 @@ export async function applyVoiceModelManagementMutation(
 		prefs,
 		estimatedBytes: totalBytes,
 	});
-	if (!networkPolicy.allow) {
-		throw new Error(`network policy refused (reason=${networkPolicy.reason})`);
-	}
 	if (status.latestKnown.ggufAssets.length === 0) {
 		throw new Error(`no assets published for ${id}`);
 	}
@@ -285,6 +303,7 @@ export async function applyVoiceModelManagementMutation(
 				bundleVoiceDir: bundleVoiceDir(),
 				stagingDir: voiceStagingDir(),
 				assetIndex,
+				trigger: "explicit",
 				networkPolicy,
 				signal: controller.signal,
 			}),
@@ -309,11 +328,45 @@ export async function applyVoiceModelManagementMutation(
 /* ----------------------------------------------------------------- *
  * Installed-version resolution                                       *
  * Filenames written by `downloadVoiceModel` follow the pattern        *
- *   `<id>-<version>-<original-asset-name>`                            *
- * so we can recover `installedVersion` by directory listing.          *
+ *   `<id>-<version>-<asset-basename>`                                 *
+ * so we can recover `installedVersion` by directory listing. Only     *
+ * ids whose download is staged into a loader path are reported.       *
  * ----------------------------------------------------------------- */
-const INSTALLED_FILENAME_RE =
-	/^([a-z0-9-]+)-(\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?)-/;
+/**
+ * Asset basenames per standalone-staged id. The version is recovered by
+ * stripping the known `<id>-` prefix and `-<asset-basename>` suffix: a regex
+ * cannot split `wakeword-0.3.0-hey-eliza.melspec.gguf` on its own, because
+ * `-hey` also reads as a semver pre-release tag.
+ */
+const STANDALONE_ASSET_BASENAMES: ReadonlyMap<
+	VoiceModelId,
+	ReadonlySet<string>
+> = (() => {
+	const out = new Map<VoiceModelId, Set<string>>();
+	for (const v of VOICE_MODEL_VERSIONS) {
+		if (!hasStandaloneVoiceModelStaging(v.id)) continue;
+		const names = out.get(v.id) ?? new Set<string>();
+		for (const asset of v.ggufAssets) names.add(path.basename(asset.filename));
+		out.set(v.id, names);
+	}
+	return out;
+})();
+function parseInstalledFilename(
+	entry: string,
+): { id: VoiceModelId; version: string } | null {
+	for (const [id, basenames] of STANDALONE_ASSET_BASENAMES) {
+		if (!entry.startsWith(`${id}-`)) continue;
+		const rest = entry.slice(id.length + 1);
+		for (const basename of basenames) {
+			if (!rest.endsWith(`-${basename}`)) continue;
+			const version = rest.slice(0, -(basename.length + 1));
+			if (compareVoiceModelSemver(version, version) === 0) {
+				return { id, version };
+			}
+		}
+	}
+	return null;
+}
 export async function resolveInstalledVersions(
 	dir: string = bundleVoiceDir(),
 ): Promise<Map<VoiceModelId, string>> {
@@ -326,13 +379,14 @@ export async function resolveInstalledVersions(
 		throw err;
 	}
 	for (const entry of entries) {
-		const m = INSTALLED_FILENAME_RE.exec(entry);
-		if (!m) continue;
-		const id = m[1] as VoiceModelId;
-		const version = m[2] as string;
-		if (!KNOWN_VOICE_MODEL_IDS.has(id)) continue;
-		const prior = installed.get(id);
-		if (!prior || prior < version) installed.set(id, version);
+		// A flat download no loader reads is not an installed model, so only
+		// standalone-staged ids parse.
+		const parsed = parseInstalledFilename(entry);
+		if (!parsed) continue;
+		const prior = installed.get(parsed.id);
+		if (!prior || compareVoiceModelSemver(prior, parsed.version) === -1) {
+			installed.set(parsed.id, parsed.version);
+		}
 	}
 	return installed;
 }
@@ -534,6 +588,10 @@ export async function handleVoiceModelsRoutes(
 			return true;
 		}
 		// action === "update"
+		if (!hasStandaloneVoiceModelStaging(id)) {
+			sendJsonError(res, new VoiceModelNotStandaloneError(id).message, 409);
+			return true;
+		}
 		const updater = getUpdater();
 		const [installed, pins] = await Promise.all([
 			resolveInstalledVersions(),
@@ -559,7 +617,9 @@ export async function handleVoiceModelsRoutes(
 			sendJsonError(res, `no candidate version for ${id}`, 404);
 			return true;
 		}
-		// R5 §4 — gate the download on the network policy decision.
+		// R5 §4 — the policy decision gates automatic updates. This request is
+		// the user's explicit answer to its ask outcomes, so it is recorded on
+		// the download but does not refuse it.
 		const prefs = await readPreferences();
 		const totalBytes = status.latestKnown.ggufAssets.reduce(
 			(sum, a) => sum + a.sizeBytes,
@@ -569,14 +629,6 @@ export async function handleVoiceModelsRoutes(
 			prefs,
 			estimatedBytes: totalBytes,
 		});
-		if (!networkPolicy.allow) {
-			sendJsonError(
-				res,
-				`network policy refused (reason=${networkPolicy.reason})`,
-				409,
-			);
-			return true;
-		}
 		if (status.latestKnown.ggufAssets.length === 0) {
 			sendJsonError(res, `no assets published for ${id}`, 409);
 			return true;
@@ -602,6 +654,7 @@ export async function handleVoiceModelsRoutes(
 						bundleVoiceDir: bundleVoiceDir(),
 						stagingDir: voiceStagingDir(),
 						assetIndex,
+						trigger: "explicit",
 						networkPolicy,
 						signal: controller.signal,
 					}),
