@@ -10,11 +10,13 @@ import type {
   Memory,
   ResponseHandlerFieldContext,
   ResponseHandlerResult,
+  Service,
   State,
 } from "@elizaos/core";
 import {
   AgentEventService,
   ChannelType,
+  ModelType,
   runWithActionRoutingContext,
   setEntityRole,
   stringToUuid,
@@ -265,6 +267,22 @@ describe("LifeOps work threads", () => {
 
   it("routes, guards, follows up, and caps active thread work", async () => {
     const runtime = await createRuntime();
+    const notifications: unknown[] = [];
+    const sink = {
+      serviceType: "notification",
+      capabilityDescription: "Synthetic test notification sink",
+      async notify(input: unknown) {
+        notifications.push(input);
+        return { id: `test-followup-${notifications.length}` };
+      },
+      async stop() {},
+    };
+    runtime.services.set("notification", [sink as unknown as Service]);
+    runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      async () => "Which visa document is next?",
+      "test-followup-render",
+    );
     const idleRoom = message(runtime, "room-idle", "hello there");
     expect(await workThreadAction.validate?.(runtime, idleRoom)).toBe(false);
     expect(
@@ -506,6 +524,7 @@ describe("LifeOps work threads", () => {
     });
     expect(secondProcess.fires).toEqual([]);
     expect(secondProcess.errors).toEqual([]);
+    expect(notifications).toHaveLength(1);
 
     for (let i = 1; i < 30; i += 1) {
       const fill = await runThreadAction(runtime, roomA, [

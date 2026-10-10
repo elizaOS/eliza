@@ -363,3 +363,56 @@ test("an invalid company is refused before it is stored", async () => {
     rmSync(f.directory, { recursive: true, force: true });
   }
 });
+
+test("a submission attempt whose INSERT fails is journaled first and written at the next start", async () => {
+  const f = await journalFixture();
+  let { db, tasks, runtime } = f.first;
+  try {
+    const store = createBillOutcomeStore(db, tasks, {
+      journalPath: f.journalPath,
+    });
+    db.exec(
+      "CREATE TRIGGER fail_attempt BEFORE INSERT ON bill_attempts_v1 BEGIN SELECT RAISE(ABORT, 'injected disk write error'); END;",
+    );
+    const attempt = store.forTask(runtime, f.task.id).recordSubmission(
+      {
+        kind: "submission-pending",
+        source: "https://example.test/payment",
+        billSource: "mail:test",
+      },
+      "observation",
+    );
+    assert.equal(attempt.billSource, "mail:test");
+    assert.equal(
+      db.prepare("SELECT COUNT(*) AS n FROM bill_attempts_v1").get().n,
+      0,
+    );
+    assert.match(readFileSync(f.journalPath, "utf8"), /"kind":"attempt"/);
+    // The process dies here. Nothing reached the database.
+    db.exec("DROP TRIGGER fail_attempt");
+    db.close();
+    ({ db, tasks, runtime } = f.open());
+    const recovered = createBillOutcomeStore(db, tasks, {
+      journalPath: f.journalPath,
+    }).forTask(runtime, f.task.id);
+    assert.deepEqual(recovered.loadAttempt(), attempt);
+    assert.equal(
+      db.prepare("SELECT COUNT(*) AS n FROM bill_attempts_v1").get().n,
+      1,
+    );
+    // The written attempt leaves the journal at the next start.
+    assert.equal(readFileSync(f.journalPath, "utf8"), "");
+    // A later task for the same bill sees this attempt as payment history.
+    assert.equal(
+      recovered.hasPriorPayment({
+        sourceRef: "mail:test",
+        origin: "https://example.test",
+      }),
+      false,
+      "the same task is not its own prior payment",
+    );
+  } finally {
+    db.close();
+    rmSync(f.directory, { recursive: true, force: true });
+  }
+});

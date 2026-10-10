@@ -50,6 +50,11 @@ export interface TaskActionProposal {
 	observationVersion: number;
 	inputRevision: number;
 	targetRef: string;
+	/**
+	 * The one reviewed adapter target the host chose for this action. When it
+	 * is set, the adapter refuses the action unless `targetRef` is that target.
+	 */
+	expectedSelector?: string;
 	valueRef?: string;
 	/** Capability comes from a trusted adapter's classification, never page/model assertions. */
 	capability: string;
@@ -189,7 +194,7 @@ function validateProposal(value: TaskActionProposal): void {
 			"authorizationId",
 			"expiresAt",
 		],
-		["valueRef"],
+		["valueRef", "expectedSelector"],
 	);
 	id(value.id);
 	id(value.taskId);
@@ -198,6 +203,15 @@ function validateProposal(value: TaskActionProposal): void {
 	id(value.capability);
 	id(value.authorizationId);
 	if (value.valueRef !== undefined) id(value.valueRef);
+	if (
+		value.expectedSelector !== undefined &&
+		(typeof value.expectedSelector !== "string" ||
+			!value.expectedSelector ||
+			value.expectedSelector.length > 256 ||
+			// biome-ignore lint/suspicious/noControlCharactersInRegex: Reject control characters in selectors.
+			/[\x00-\x1f\x7f]/.test(value.expectedSelector))
+	)
+		reject("Invalid expected target");
 	counter(value.epoch);
 	counter(value.observationVersion);
 	counter(value.inputRevision);

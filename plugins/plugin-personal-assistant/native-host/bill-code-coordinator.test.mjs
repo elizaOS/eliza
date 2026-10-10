@@ -225,3 +225,55 @@ test("Google connector identity is explicit and separate from the app task accou
   await missing.fill();
   assert.equal(missing.stats.reads, 0);
 });
+
+test("a code field she has started typing in is never filled", async () => {
+  const f = fixture();
+  f.snapshot.elements = [{ selector: "otp", hasInput: true }];
+  const result = await f.fill();
+  assert.equal(result.kind, "human-verification");
+  assert.equal(result.codeReason, "typed");
+  assert.match(result.message, /started typing/);
+  assert.deepEqual(f.stats, { reads: 0, fills: 0, consumes: 0 });
+});
+
+test("a Google failure keeps its fixed reason instead of a generic message", async () => {
+  const google = (code) =>
+    Object.assign(new Error(`Google task read failed (${code})`), { code });
+  // The account read itself fails with a connector reason.
+  let f = fixture();
+  f.coordinator.resolveGoogleAccount = async () => {
+    throw google("reauth_required");
+  };
+  let result = await f.fill();
+  assert.equal(result.codeReason, "reauth_required");
+  assert.match(result.message, /connect your account again/);
+  assert.equal(f.stats.reads, 0);
+  // The search fails without a reason; an uncached check names it.
+  for (const [check, reason] of [
+    [async () => "another-google-account", "account_changed"],
+    [
+      async () => {
+        throw google("insufficient_scope");
+      },
+      "insufficient_scope",
+    ],
+  ]) {
+    f = fixture();
+    f.resolver.resolve = async () => {
+      throw new Error("Google task code lookup unavailable");
+    };
+    f.coordinator.checkGoogleAccount = check;
+    result = await f.fill();
+    assert.equal(result.codeReason, reason);
+    assert.equal(f.stats.fills, 0);
+  }
+  // Without a known reason, the generic message stays and nothing leaks.
+  f = fixture();
+  f.resolver.resolve = async () => {
+    throw new Error("provider said: code 123456");
+  };
+  f.coordinator.checkGoogleAccount = async () => "google-account";
+  result = await f.fill();
+  assert.equal(result.codeReason, undefined);
+  assert.doesNotMatch(result.message, /123456/);
+});

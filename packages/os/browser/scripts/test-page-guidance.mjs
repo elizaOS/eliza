@@ -23,6 +23,14 @@ const server = createServer((req, res) => {
     );
     return;
   }
+  if (req.url === "/far") {
+    // The step's control is below the visible page; a Pay button sits where
+    // the label would go under the date field.
+    res.end(
+      '<!doctype html><style>body{margin:0;height:3000px;font:22px Arial}button,input{position:absolute;font:22px Arial;padding:16px}</style><input id="date" aria-label="Payment date" style="left:40px;top:40px"><button id="pay" style="left:40px;top:130px">Pay now</button><button id="far" style="left:40px;top:2200px">Account details</button>',
+    );
+    return;
+  }
   res.end(
     '<!doctype html><style>body{height:2400px;font:22px system-ui}button{margin:100px 20px;padding:20px}</style><button id="target">Continue on this website</button><input type="password" value="private-secret"><p>Provider content</p>',
   );
@@ -598,6 +606,93 @@ try {
   );
   await call(pageGuidance, { kind: "hide" });
   cases.push("a page font claiming the overlay family is refused");
+  // ---- Placement: off-screen target, keep-clear controls, dismissal -------
+  await page.emulateMediaFeatures([
+    { name: "prefers-reduced-motion", value: "reduce" },
+  ]);
+  await page.goto(`${origin}/far`);
+  await isolate();
+  element = await read("far-1");
+  const scrolledFrom = await page.evaluate(() => scrollY);
+  const far = await show("far-1", element("Account details"), {
+    id: "far",
+  });
+  assert.equal(far.accepted, true);
+  assert.equal(far.placement, "scrolled");
+  await until(shown);
+  assert.ok((await page.evaluate(() => scrollY)) > scrolledFrom);
+  const farBox = await page.$eval("#far", (n) => {
+    const r = n.getBoundingClientRect();
+    return { top: r.top, bottom: r.bottom };
+  });
+  assert.ok(farBox.top >= 0 && farBox.bottom <= 800);
+  await call(pageGuidance, { kind: "hide" });
+  await page.evaluate(() => scrollTo(0, 0));
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  element = await read("far-2");
+  // An action guide never moves the page it is about to act on.
+  const action = await show("far-2", element("Account details"), {
+    id: "far-action",
+    action: "click",
+  });
+  assert.equal(action.placement, "off-screen");
+  assert.equal(await page.evaluate(() => scrollY), 0);
+  await call(pageGuidance, { kind: "hide" });
+  cases.push(
+    "an off-screen step is scrolled into view and shown; an action guide reports off-screen and never scrolls",
+  );
+  const overlaps = async () => {
+    const box = await part(
+      ".label",
+      "(()=>{const r=n.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height}})()",
+    );
+    const pay = await page.$eval("#pay", (n) => {
+      const r = n.getBoundingClientRect();
+      return { x: r.x, y: r.y, w: r.width, h: r.height };
+    });
+    return !(
+      box.x + box.w <= pay.x ||
+      box.x >= pay.x + pay.w ||
+      box.y + box.h <= pay.y ||
+      box.y >= pay.y + pay.h
+    );
+  };
+  element = await read("clear-1");
+  await show("clear-1", element("Payment date"), { id: "clear" });
+  await until(shown);
+  assert.equal(await overlaps(), true, "fixture: the label would cover Pay");
+  await call(pageGuidance, { kind: "hide" });
+  element = await read("clear-2");
+  await show("clear-2", element("Payment date"), {
+    id: "clear",
+    keepClear: [element("Pay now")],
+  });
+  await until(shown);
+  assert.equal(await overlaps(), false);
+  await page.screenshot({ path: `${output}/keep-clear.png` });
+  cases.push("a keep-clear control is never covered by the label");
+  // A step the person dismissed before a reload starts dismissed; an
+  // explicit restore shows it again.
+  await call(pageGuidance, { kind: "hide" });
+  element = await read("dismissed-1");
+  const again = await show("dismissed-1", element("Payment date"), {
+    id: "clear",
+    dismissed: true,
+  });
+  assert.equal(again.dismissed, true);
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.equal(await part(".label", "n.hidden"), true);
+  await call(pageGuidance, { kind: "hide" });
+  element = await read("dismissed-2");
+  const restored = await show("dismissed-2", element("Payment date"), {
+    id: "clear",
+    dismissed: true,
+    restore: true,
+  });
+  assert.equal(restored.dismissed, false);
+  await until(shown);
+  await call(pageGuidance, { kind: "hide" });
+  cases.push("a remembered dismissal keeps the step hidden until restored");
   await writeFile(
     `${output}/verification.json`,
     JSON.stringify(

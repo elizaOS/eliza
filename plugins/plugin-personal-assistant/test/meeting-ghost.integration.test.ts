@@ -17,16 +17,14 @@ import { join } from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { AgentEventService, getConnectorAccountManager } from "@elizaos/core";
 import type { TranscriptSegment } from "@elizaos/core/protocol";
-import { schedulingPlugin } from "@elizaos/plugin-scheduling";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createRealTestRuntime } from "../../../packages/app/test/helpers/real-runtime.ts";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
 import type { ApprovalQueue } from "../src/lifeops/approval-queue.types.js";
 import { runMeetingGhostForTranscript } from "../src/lifeops/meeting-ghost/consumer.js";
 import { handleMeetingTranscriptFinalized } from "../src/lifeops/meeting-ghost/event-handler.js";
 import { resolveOwnerFactStore } from "../src/lifeops/owner/fact-store.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
-import { personalAssistantPlugin } from "../src/plugin.js";
+import { createLifeOpsTestRuntime } from "./helpers/runtime.js";
 
 let runtime: AgentRuntime;
 let cleanup: () => Promise<void>;
@@ -91,9 +89,7 @@ function seg(
 
 beforeAll(async () => {
   setIsolatedEnv();
-  const result = await createRealTestRuntime({
-    plugins: [schedulingPlugin, personalAssistantPlugin],
-  });
+  const result = await createLifeOpsTestRuntime();
   runtime = result.runtime;
   cleanup = result.cleanup;
   if (!runtime.getService(AgentEventService.serviceType)) {

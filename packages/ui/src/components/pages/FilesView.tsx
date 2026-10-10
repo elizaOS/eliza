@@ -31,6 +31,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { client } from "../../api/client";
 import type { StoredFile } from "../../api/client-files";
+import { useActiveAgentAuthority } from "../../hooks/useActiveAgentAuthority";
 import {
   FramedPage,
   FramedPageBody,
@@ -309,9 +310,10 @@ const FileCard = memo(function FileCard({
 /* ── main view ────────────────────────────────────────────────────────── */
 
 export function FilesView() {
+  const authority = useActiveAgentAuthority();
   return (
     <ShellViewAgentSurface viewId="files">
-      <FilesViewBody />
+      <FilesViewBody key={authority} />
     </ShellViewAgentSurface>
   );
 }
