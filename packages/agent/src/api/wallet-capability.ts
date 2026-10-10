@@ -4,7 +4,7 @@
  * never has to reconstruct the gate itself. Resolves the effective wallet source
  * (local / managed / none), network, EVM and Solana addresses, whether
  * @elizaos/plugin-wallet (or a managed EVM bridge, or a live EVM service) is
- * loaded, BSC RPC readiness, connectors-only vs full automation mode, and the EVM
+ * loaded, EVM RPC readiness, connectors-only vs full automation mode, and the EVM
  * signing capability, then folds them into an executionReady flag plus a
  * human-readable executionBlockedReason.
  */
@@ -227,7 +227,12 @@ export function resolveWalletCapabilityStatus(state: {
   const hasEvm = Boolean(addrs.evmAddress);
   const pluginEvmLoaded = resolvePluginEvmLoaded(state.runtime);
   const pluginEvmRequired = hasEvm || localSignerAvailable;
-  const rpcReady = Boolean(rpcReadiness.managedBscRpcReady);
+  const rpcReady = [
+    rpcReadiness.bscRpcUrls,
+    rpcReadiness.ethereumRpcUrls,
+    rpcReadiness.baseRpcUrls,
+    rpcReadiness.avalancheRpcUrls,
+  ].some((urls) => urls.length > 0);
   const primaryEvmSource = readPrimaryWalletSource(state.config, "evm");
   const primarySolanaSource = readPrimaryWalletSource(state.config, "solana");
   const hasCloudPrimary =
@@ -252,7 +257,7 @@ export function resolveWalletCapabilityStatus(state: {
     // so the UI can tell users the cloud wallet is visible but not signable.
     executionBlockedReason = evmSigning.reason;
   } else if (!rpcReady) {
-    executionBlockedReason = "BSC RPC is not configured.";
+    executionBlockedReason = "No EVM RPC is configured.";
   } else if (!pluginEvmLoaded) {
     executionBlockedReason =
       "@elizaos/plugin-wallet is not loaded, so EVM wallet execution is unavailable.";
