@@ -31,10 +31,13 @@ export function parseBrowserAddressInput(
   // Bracketed IPv6 literals ([::1]:8080) are the same shape: without the
   // bracket form they fall through to the search fallback even though the
   // user typed a complete address. The port is optional — a bare literal
-  // ([::1]) is a complete loopback address, not a search query.
+  // ([::1]) is a complete loopback address, not a search query. The bracket
+  // contents must be IPv6-shaped (at least one colon): a colon-less token
+  // like [1] or [abc] is a search query, and routing it to new URL() would
+  // turn valid searches into invalid-url rejections.
   const hostPort =
     /^[^\s/:]+:\d+(?:[/?#]|$)/.test(value) ||
-    /^\[[0-9a-fA-F:.%]+\](?::\d+)?(?:[/?#]|$)/.test(value);
+    /^\[[0-9a-fA-F.%]*:[0-9a-fA-F:.%]*\](?::\d+)?(?:[/?#]|$)/.test(value);
   const explicit = !hostPort && /^[a-z][a-z\d+.-]*:/i.test(value);
   const domain = /^[^\s/?#]+\.[^\s/?#]+(?:[/?#].*)?$/.test(value);
   if (!explicit && !domain && !hostPort && !value.startsWith("//")) {
