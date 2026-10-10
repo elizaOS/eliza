@@ -191,7 +191,14 @@ function normalizeDurationMinutes(value: unknown): number | null | undefined {
     ) {
       return null;
     }
-    const parsed = Number.parseFloat(trimmed);
+    // Number.parseFloat stops at the first non-digit ("30junk" -> 30), so a
+    // malformed duration was silently accepted as the block duration instead
+    // of failing validation. Require the whole trimmed value to be decimal,
+    // mirroring TWILIO_SMS_COST_PATTERN in
+    // packages/cloud/sdk/src/browser-contracts/markup.ts.
+    const parsed = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(trimmed)
+      ? Number(trimmed)
+      : Number.NaN;
     if (Number.isFinite(parsed) && parsed > 0) {
       return Math.round(parsed);
     }
