@@ -49,7 +49,21 @@ export function bindingKind(facet: string): "web" | "android" | null {
     )
   )
     return "android";
-  if (/^https:\/\/[a-z0-9.-]+(:\d{1,5})?$/.test(facet)) return "web";
+  // A web facet is the exact origin `normalizeWebsite` and the native
+  // `PasswordFacets.web` produce: the same strict per-label host grammar and
+  // a real port. A loose `[a-z0-9.-]+` host and a `\d{1,5}` port classified
+  // facets no in-repo path can create or accept — empty labels, hyphen-edge
+  // labels, a trailing root dot, ports above 65535 — as "web".
+  const web =
+    /^https:\/\/([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*)(?::(\d{1,5}))?$/.exec(
+      facet,
+    );
+  if (
+    web &&
+    web[1].length <= 253 &&
+    (web[2] === undefined || Number(web[2]) <= 65535)
+  )
+    return "web";
   return null;
 }
 
