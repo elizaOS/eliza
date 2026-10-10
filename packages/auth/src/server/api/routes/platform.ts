@@ -687,14 +687,22 @@ function getPlatformMetadataValidationError(
 
 function clampLimit(value: string | null, fallback = 50): number {
   if (!value) return fallback;
-  const parsed = Number.parseInt(value, 10);
+  // Number.parseInt("1e3", 10) === 1 would silently under-read a client page
+  // size as 1 (see parseLimit in approval-routes.ts). Require the whole
+  // trimmed value to be decimal.
+  const limitText = value.trim();
+  const parsed = /^\+?\d+$/.test(limitText) ? Number(limitText) : Number.NaN;
   if (!Number.isFinite(parsed)) return fallback;
   return Math.max(1, Math.min(parsed, 100));
 }
 
 function parseOffset(value: string | null): number {
   if (!value) return 0;
-  const parsed = Number.parseInt(value, 10);
+  // Number.parseInt stops at the first non-digit ("10junk" -> 10), so a
+  // malformed offset was silently honored instead of falling back to 0.
+  // Require the whole trimmed value to be decimal.
+  const offsetText = value.trim();
+  const parsed = /^\+?\d+$/.test(offsetText) ? Number(offsetText) : Number.NaN;
   if (!Number.isFinite(parsed)) return 0;
   return Math.max(0, parsed);
 }
