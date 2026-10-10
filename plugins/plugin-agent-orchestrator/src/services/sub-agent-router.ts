@@ -3776,7 +3776,12 @@ export async function annotateUnverifiedUrls(
   const settleRaw = runtime
     ? readSetting(runtime, "ELIZA_URL_VERIFY_SETTLE_MS")
     : process.env.ELIZA_URL_VERIFY_SETTLE_MS;
-  const settleParsed = settleRaw ? Number.parseInt(settleRaw, 10) : 2500;
+  // Number.parseInt stops at the first non-digit ("1e3" -> 1), so a typo
+  // was silently accepted as the settle delay instead of the 2500ms
+  // default. Require the whole trimmed value to be decimal, mirroring
+  // resolveGenerationTimeoutMs in the discord plugin.
+  const settleText = (settleRaw ?? "").trim();
+  const settleParsed = /^\+?\d+$/.test(settleText) ? Number(settleText) : Number.NaN;
   const settleMs =
     Number.isFinite(settleParsed) && settleParsed >= 0 ? settleParsed : 2500;
   const probe = async (
