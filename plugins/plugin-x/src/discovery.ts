@@ -202,6 +202,14 @@ export class TwitterDiscoveryClient {
     return sanitized.includes(" ") ? `"${sanitized}"` : sanitized;
   }
 
+/** Parse a whole-decimal integer; NaN when malformed.
+ * parseInt stops at the first non-digit ("1e3" -> 1), silently truncating
+ * a typo into a deliberate setting instead of treating it as invalid. */
+function strictDiscoveryInt(raw: string): number {
+  const text = raw.trim();
+  return /^\+?\d+$/.test(text) ? Number(text) : NaN;
+}
+
   private buildDiscoveryConfig(): DiscoveryConfig {
     const character = this.runtime?.character;
 
@@ -237,27 +245,24 @@ export class TwitterDiscoveryClient {
 
     return {
       topics,
-      minFollowerCount: parseInt(
+      minFollowerCount: strictDiscoveryInt(
         (getSetting(this.runtime, "TWITTER_MIN_FOLLOWER_COUNT") as string) ||
           process.env.TWITTER_MIN_FOLLOWER_COUNT ||
           "100",
-        10,
       ),
-      maxFollowsPerCycle: parseInt(
+      maxFollowsPerCycle: strictDiscoveryInt(
         (getSetting(this.runtime, "TWITTER_MAX_FOLLOWS_PER_CYCLE") as string) ||
           process.env.TWITTER_MAX_FOLLOWS_PER_CYCLE ||
           "5",
-        10,
       ),
-      maxEngagementsPerCycle: parseInt(
+      maxEngagementsPerCycle: strictDiscoveryInt(
         (getSetting(
           this.runtime,
           "TWITTER_MAX_ENGAGEMENTS_PER_RUN",
         ) as string) ||
           process.env.TWITTER_MAX_ENGAGEMENTS_PER_RUN ||
           "5",
-        10, // Reduced from 10 to 5
-      ),
+      ), // Reduced from 10 to 5
       likeThreshold: 0.5, // Increased from 0.3 (be more selective)
       replyThreshold: 0.7, // Increased from 0.5 (be more selective)
       quoteThreshold: 0.85, // Increased from 0.7 (be more selective)
