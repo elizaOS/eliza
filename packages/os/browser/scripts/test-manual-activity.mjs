@@ -19,7 +19,7 @@ try {
   await page.route("https://manual.example/**", (route) =>
     route.fulfill({
       contentType: "text/html",
-      body: '<form><input name="private" value="never-record-this"><button>Submit test</button></form><script>document.querySelector("form").onsubmit=event=>event.preventDefault();</script>',
+      body: '<form><input name="private" value="never-record-this"><button>Submit test</button></form><form id="signin"><input autocomplete="username" name="user" value="private-user"><button>Next</button></form><script>for(const form of document.forms)form.onsubmit=event=>event.preventDefault();</script>',
     }),
   );
   await page.goto("https://manual.example/form");
@@ -49,7 +49,15 @@ try {
   await page.waitForTimeout(100);
   assert.equal(messages.length, 1);
   assert.equal(messages[0].kind, "form-submit");
+  assert.equal(messages[0].credential, undefined);
   assert.equal(JSON.stringify(messages).includes("never-record-this"), false);
+  // A user-name step of a sign-in is marked as a sign-in form, value-free.
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.waitForTimeout(100);
+  assert.equal(messages.length, 2);
+  assert.equal(messages[1].credential, true);
+  assert.equal(JSON.stringify(messages).includes("private-user"), false);
+  messages.pop();
   await install(2, Date.now() + 60000);
   await page.getByRole("button", { name: "Submit test" }).click();
   await page.waitForTimeout(100);
@@ -76,8 +84,28 @@ try {
     true,
     "failed transport remains an explicit capture gap",
   );
+  for (const failure of ["unrecorded", "rejected", "thrown"]) {
+    await page.evaluate((mode) => {
+      globalThis.__elizaManualActivityV1.abort();
+      delete globalThis.__elizaManualActivityV1;
+      chrome.runtime.sendMessage = () => {
+        if (mode === "thrown") throw new Error("test transport lost");
+        if (mode === "rejected")
+          return Promise.reject(new Error("test transport lost"));
+        return Promise.resolve({ recorded: false });
+      };
+    }, failure);
+    await install(6, Date.now() + 60000);
+    await page.getByRole("button", { name: "Next" }).click();
+    await page.waitForTimeout(100);
+    assert.equal(
+      (await install(7, Date.now() + 60000)).captureGap,
+      true,
+      `a credential field cannot erase a ${failure} activity delivery`,
+    );
+  }
   console.log(
-    "PASS: Chromium trusted activation, script-only refusal, value exclusion, rebind, expiry and failed transport gap; simulated message transport only.",
+    "PASS: Chromium trusted activation, script-only refusal, value exclusion, sign-in form marking, rebind, expiry and failed transport gap; simulated message transport only.",
   );
 } finally {
   await browser.close();

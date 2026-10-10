@@ -5874,7 +5874,7 @@ export function ChatOverlay({
                       // gap on the sides as top/bottom.
                       // No divider above the composer — spacing separates it from the
                       // thread; the sheet is one continuous glass surface (#10710).
-                      "relative z-10 flex min-w-0 shrink-0 items-center gap-[clamp(0.125rem,1.25vw,0.5rem)] px-[clamp(0.25rem,1.5vw,0.5rem)] py-[clamp(0.125rem,0.75dvh,0.375rem)] [&_textarea]:max-h-[8.5rem] [&_textarea]:min-h-8 [&_textarea]:border-none [&_textarea]:bg-transparent [&_textarea]:px-1.5 [&_textarea]:py-1 [&_textarea]:text-left [&_textarea]:text-sm [&_textarea]:text-txt [&_textarea]:outline-none [&_textarea]:placeholder:text-muted-strong pointer-coarse:[&_textarea]:text-base",
+                      "relative z-10 flex min-w-0 shrink-0 items-center gap-[clamp(0.125rem,1.25vw,0.5rem)] px-[clamp(0.25rem,1.5vw,0.5rem)] py-[clamp(0.125rem,0.75dvh,0.375rem)] [&_textarea]:max-h-[8.5rem] [&_textarea]:min-h-8 [&_textarea]:border-none [&_textarea]:bg-transparent [&_textarea]:px-1.5 [&_textarea]:py-1 [&_textarea]:text-left [&_textarea]:text-sm [&_textarea]:text-txt [&_textarea]:outline-none [&_textarea]:placeholder:text-muted-strong pointer-coarse:[&_textarea]:text-base pointer-coarse:[&_textarea]:min-h-11",
                       // While INSET the composer dissolves into the sheet (one
                       // continuous glass surface, #10710) — border/fill are morph-
                       // driven inline (transparent at rest). At FULL-BLEED they fade

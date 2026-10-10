@@ -1,5 +1,5 @@
 /**
- * Binds a trusted staging verifier to a served ancestor without checking out
+ * Binds a trusted environment verifier to a served ancestor without checking out
  * older code. Changed verifier contracts require an exact operator acknowledgement;
  * source and deployment identities remain distinct throughout the evidence.
  */
@@ -19,11 +19,31 @@ const CONTRACT_PATHS = [
   "packages/cloud/scripts/latency-certification-provenance.ts",
 ];
 
+/** Closed destinations prevent a credentialed probe from reaching an arbitrary host. */
+export function certificationTarget(environment = "staging") {
+  if (environment === "staging")
+    return {
+      environment,
+      sourceRef: "refs/heads/staging",
+      baseUrl: "https://api-staging.eliza.app",
+      worker: "eliza-cloud-api-staging",
+    };
+  if (environment === "production")
+    return {
+      environment,
+      sourceRef: "refs/heads/main",
+      baseUrl: "https://api.eliza.app",
+      worker: "eliza-cloud-api",
+    };
+  throw new Error("Unsupported certification environment");
+}
+
 /** Read deployment policy from committed bytes, never from the newer checkout. */
 export async function readDeploymentPlacement(
   deploySha,
-  { cwd = process.cwd() } = {},
+  { cwd = process.cwd(), environment = "staging" } = {},
 ) {
+  certificationTarget(environment);
   if (!SHA.test(deploySha))
     throw new Error("Invalid placement deployment identity");
   const source = await git(
@@ -31,7 +51,7 @@ export async function readDeploymentPlacement(
     cwd,
   );
   let config: {
-    staging: boolean;
+    targetPresent: boolean;
     placement: { mode: string; region: string } | null;
     rootPlacement: unknown;
   };
@@ -46,8 +66,8 @@ export async function readDeploymentPlacement(
           `
       const config = Bun.TOML.parse(await Bun.stdin.text());
       console.log(JSON.stringify({
-        staging: Boolean(config.env?.staging),
-        placement: config.env?.staging?.placement ?? null,
+        targetPresent: ${JSON.stringify(environment)} === "production" ? config.vars?.ENVIRONMENT === "production" : Boolean(config.env?.staging),
+        placement: ${JSON.stringify(environment)} === "production" ? (config.placement ?? null) : (config.env?.staging?.placement ?? null),
         rootPlacement: config.placement ?? null,
       }));
     `,
@@ -69,10 +89,14 @@ export async function readDeploymentPlacement(
     });
   }
   if (
-    config.staging !== true ||
-    (config.placement === null && config.rootPlacement !== null)
+    config.targetPresent !== true ||
+    (environment === "staging" &&
+      config.placement === null &&
+      config.rootPlacement !== null)
   )
-    throw new Error("Deployment requires an explicit staging placement policy");
+    throw new Error(
+      "Deployment requires an explicit environment placement policy",
+    );
   const placement = config.placement;
   if (
     placement !== null &&
@@ -110,16 +134,22 @@ async function git(args, cwd) {
 }
 
 export async function verifyCertificationSource(
-  { sourceRef, sourceSha, deploySha, acknowledgedContractDigest = "" },
+  {
+    sourceRef,
+    sourceSha,
+    deploySha,
+    acknowledgedContractDigest = "",
+    environment = "staging",
+  },
   { cwd = process.cwd() } = {},
 ) {
   if (
-    sourceRef !== "refs/heads/staging" ||
+    sourceRef !== certificationTarget(environment).sourceRef ||
     !SHA.test(sourceSha) ||
     !SHA.test(deploySha)
   ) {
     throw new Error(
-      "Certification requires trusted staging source and exact commit identities",
+      "Certification requires trusted environment source and exact commit identities",
     );
   }
   if (

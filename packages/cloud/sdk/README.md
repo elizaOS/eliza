@@ -60,6 +60,13 @@ paid USD auto-top-up receipts whose exact sum equals both due and paid totals;
 malformed optional lines do not suppress valid invoice facts. Hosts own presentation
 and explicit link opening. This route does not pay an invoice or change allowances.
 
+`GET /cloud/account/plans` relays a plan allowance's catalog terms with its
+amount: `fundingClass`, `rollover` and `expiresAt`, only with their catalog values.
+`POST /cloud/gmail/disconnect-others` takes the `connectionId` that Cloud reports as
+current and removes every other owner Google connection, so one account is used
+at a time. The task Google port's `currentAccount()` returns the grant and, when
+Cloud reports one, its address.
+
 Service-only consumers set `hostPolicy.accountBilling: false` to exclude billing
 routes. Enrollment requires its factory when a pending credential store is supplied.
 Explicit `providerDefaultVoice: true` permits omitted voice IDs; `speechLanguage: null`

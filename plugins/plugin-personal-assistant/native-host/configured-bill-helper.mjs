@@ -98,18 +98,35 @@ export async function createConfiguredBillHelper({
   // account that was connected when it first searched, and every read checks
   // that this is still the connected account.
   const grants = new Map();
+  const bindGrant = async (task) => {
+    requireTask(task);
+    const bound = grants.get(task.id);
+    if (bound?.epoch === task.epoch) return bound;
+    if (
+      typeof googleReadPort.currentAccount !== "function" &&
+      typeof googleReadPort.currentAccountId !== "function"
+    )
+      throw new BillHostError("Google account binding unavailable");
+    // The connected account's address, when the port reports it, lets bill
+    // search say that another account is connected.
+    const account =
+      typeof googleReadPort.currentAccount === "function"
+        ? await googleReadPort.currentAccount()
+        : { accountId: await googleReadPort.currentAccountId() };
+    const current = grants.get(task.id);
+    if (current?.epoch === task.epoch) return current;
+    const entry = {
+      epoch: task.epoch,
+      accountId: account.accountId,
+      ...(typeof account.email === "string" ? { email: account.email } : {}),
+    };
+    grants.set(task.id, entry);
+    return entry;
+  };
   const grantForTask = async (task) => {
     requireTask(task);
     if (config.googleSource.grantId) return config.googleSource.grantId;
-    const bound = grants.get(task.id);
-    if (bound?.epoch === task.epoch) return bound.accountId;
-    if (typeof googleReadPort.currentAccountId !== "function")
-      throw new BillHostError("Google account binding unavailable");
-    const accountId = await googleReadPort.currentAccountId();
-    const current = grants.get(task.id);
-    if (current?.epoch === task.epoch) return current.accountId;
-    grants.set(task.id, { epoch: task.epoch, accountId });
-    return accountId;
+    return (await bindGrant(task)).accountId;
   };
   let host;
   let closing;
@@ -160,8 +177,13 @@ export async function createConfiguredBillHelper({
                 : {}),
               scopeForTask: async (task) => {
                 const source = config.googleSource;
+                const accountId = await grantForTask(task);
+                const email = source.grantId
+                  ? undefined
+                  : (await bindGrant(task)).email;
                 return {
-                  accountId: await grantForTask(task),
+                  accountId,
+                  ...(email ? { accountEmail: email } : {}),
                   billingAccountRef: source.billingAccountRef,
                   recipient: source.recipient,
                   senders: source.senders,
@@ -183,6 +205,10 @@ export async function createConfiguredBillHelper({
               parse: googleCode.parse,
               challengeForBill: googleCode.challengeForBill,
               accountForTask: grantForTask,
+              // Uncached, to name why a code search failed.
+              ...(typeof googleReadPort.currentAccountId === "function"
+                ? { checkAccount: () => googleReadPort.currentAccountId() }
+                : {}),
             },
           }
         : {}),
