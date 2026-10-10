@@ -35,6 +35,7 @@ import {
   type BridgeParams,
   EVMError,
   EVMErrorCode,
+  isPositiveDecimalAmount,
   type SupportedChain,
 } from "./types";
 import type {
@@ -414,8 +415,9 @@ export class BridgeAction {
   }
 
   async bridge(params: BridgeParams) {
-    const amount = parseFloat(params.amount);
-    if (Number.isNaN(amount) || amount <= 0) {
+    // parseFloat silently truncates trailing garbage ("0.5abc" -> 0.5), so
+    // require the whole string to be a positive decimal, like AmountSchema.
+    if (!isPositiveDecimalAmount(params.amount)) {
       throw new EVMError(
         EVMErrorCode.INVALID_PARAMS,
         "Amount must be a positive number",

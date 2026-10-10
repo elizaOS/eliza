@@ -60,7 +60,7 @@ export const PrivateKeySchema = z
   .transform((key) => `0x${key.slice(2)}` as `0x${string}`);
 
 // Keep the decimal string exact for viem's unit conversion.
-function isPositiveDecimalAmount(value: string): boolean {
+export function isPositiveDecimalAmount(value: string): boolean {
   return (
     value.trim() === value &&
     /^(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)$/.test(value) &&
