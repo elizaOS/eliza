@@ -26,13 +26,17 @@ import {
   type Character,
   type Content,
   checkPairingAllowed,
+  contentTypeForMime,
   createUniqueUuid,
+  DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES,
   ElizaError,
   type EventPayload,
   EventType,
+  type FetchLike,
   getConnectorAdminWhitelist,
   type HandlerCallback,
   type IAgentRuntime,
+  type IFileStorageService,
   type IMessageService,
   type Media,
   type Memory,
@@ -47,6 +51,7 @@ import {
   type SendHandlerOutcome,
   type SendHandlerReceipt,
   Service,
+  ServiceType,
   stringToUuid,
   summarizeOutboundAttachmentUrl,
   type TargetInfo,
@@ -425,6 +430,7 @@ interface SlackAppMentionEventType {
   ts: string;
   thread_ts?: string;
   event_ts: string;
+  files?: unknown[];
 }
 
 interface SlackReactionEventType {
@@ -504,7 +510,11 @@ import {
   resolveDefaultSlackAccountId,
 } from "./accounts";
 import { markdownToSlackMrkdwn, splitSlackText } from "./formatting";
-import { normalizeSlackFiles, slackFilesToMedia } from "./inbound-files";
+import {
+  fetchSlackFileBytes,
+  normalizeSlackFiles,
+  slackFilesToMedia,
+} from "./inbound-files";
 import {
   extractSlackEventWorkspace,
   SlackAccountPolicyResolver,
@@ -524,6 +534,7 @@ import {
   type SlackBlock,
   type SlackChannel,
   SlackEventTypes,
+  type SlackFile,
   type SlackMessage,
   type SlackMessageSendOptions,
   type SlackReactionPayload,
@@ -631,6 +642,7 @@ export class SlackService extends Service implements ISlackService {
   private userCache: Map<string, SlackUser> = new Map();
   private channelCache: Map<string, SlackChannel> = new Map();
   private isConnected = false;
+  protected inboundFileFetch: FetchLike | undefined = undefined;
 
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
@@ -1639,6 +1651,7 @@ export class SlackService extends Service implements ISlackService {
         channel: event.channel,
         ts: event.ts,
         thread_ts: event.thread_ts,
+        files: event.files,
       },
       accountId,
     );
@@ -2237,6 +2250,97 @@ export class SlackService extends Service implements ISlackService {
     }
   }
 
+  private async rehostInboundFiles(
+    files: SlackFile[] | undefined,
+    context: { channelId: string; messageTs: string },
+    accountId: string,
+  ): Promise<Media[]> {
+    if (!files || files.length === 0) return [];
+    const storage = this.runtime.getService<IFileStorageService>(
+      ServiceType.REMOTE_FILES,
+    );
+    if (!storage) {
+      const error = new ElizaError(
+        "Slack inbound files are unavailable because the runtime file-storage service is missing",
+        {
+          code: "SLACK_INBOUND_FILE_STORAGE_MISSING",
+          context: { accountId, ...context, fileCount: files.length },
+        },
+      );
+      this.runtime.reportError("slack-inbound-file", error);
+      return [];
+    }
+    const botToken = this.getAccountState(accountId)?.account.botToken;
+
+    const media: Media[] = [];
+    let remainingBytes = DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES;
+    for (const file of files) {
+      const url = file.urlPrivateDownload || file.urlPrivate;
+      if (!url) {
+        this.runtime.logger.warn(
+          {
+            src: "plugin:slack",
+            agentId: this.runtime.agentId,
+            accountId,
+            fileId: file.id,
+            ...context,
+          },
+          "Inbound Slack file has no url_private or url_private_download; attachment omitted",
+        );
+        continue;
+      }
+      try {
+        if (!botToken) {
+          throw new ElizaError(
+            "Slack account has no bot token for file download",
+            {
+              code: "SLACK_FILE_TOKEN_MISSING",
+              context: { accountId },
+            },
+          );
+        }
+        const fetched = await fetchSlackFileBytes(url, botToken, {
+          maxBytes: remainingBytes,
+          expectedMimeType: file.mimetype || undefined,
+          fetchImpl: this.inboundFileFetch,
+        });
+        remainingBytes -= fetched.buffer.byteLength;
+        const stored = await storage.store(
+          fetched.buffer,
+          file.mimetype || fetched.contentType || "application/octet-stream",
+        );
+        media.push({
+          id: file.id,
+          url: stored.url,
+          title: file.title || file.name || stored.fileName,
+          filename: file.name || stored.fileName,
+          mimeType: stored.mimeType,
+          contentType: contentTypeForMime(stored.mimeType),
+          size: stored.size,
+          source: "slack",
+        });
+      } catch (error) {
+        this.runtime.logger.warn(
+          {
+            src: "plugin:slack",
+            agentId: this.runtime.agentId,
+            accountId,
+            fileId: file.id,
+            ...context,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Failed to import inbound Slack file",
+        );
+        this.runtime.reportError("slack-inbound-file", error, {
+          accountId,
+          fileId: file.id,
+          ...context,
+        });
+      }
+    }
+    return media;
+  }
+
   private async buildMemoryFromMessage(
     message: SlackMessageEventType,
     accountId = this.defaultAccountId,
@@ -2259,9 +2363,10 @@ export class SlackService extends Service implements ISlackService {
 
     // Slack sends url_private / url_private_download; normalize at the boundary
     // so every attachment carries a fetchable url (#31767).
-    const media: Media[] = slackFilesToMedia(
+    const media: Media[] = await this.rehostInboundFiles(
       "files" in message ? normalizeSlackFiles(message.files) : undefined,
       { channelId: message.channel, messageTs: message.ts },
+      accountId,
     );
 
     const memory: Memory = {
@@ -2326,6 +2431,7 @@ export class SlackService extends Service implements ISlackService {
       channel: string;
       ts: string;
       thread_ts?: string;
+      files?: unknown[];
     },
     accountId = this.defaultAccountId,
   ): Promise<Memory | null> {
@@ -2343,6 +2449,12 @@ export class SlackService extends Service implements ISlackService {
     const cleanText = event.text
       .replace(`<@${this.getBotUserIdForAccount(accountId)}>`, "")
       .trim();
+
+    const media: Media[] = await this.rehostInboundFiles(
+      normalizeSlackFiles(event.files),
+      { channelId: event.channel, messageTs: event.ts },
+      accountId,
+    );
 
     const memory: Memory = {
       id: createUniqueUuid(
@@ -2362,6 +2474,7 @@ export class SlackService extends Service implements ISlackService {
         name: displayName,
         metadata: { accountId },
         mentionContext: { isMention: true, isReply: false, isThread: false },
+        ...(media.length > 0 ? { attachments: media } : {}),
       },
       metadata: {
         type: "message",

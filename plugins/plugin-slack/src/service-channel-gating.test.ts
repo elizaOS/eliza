@@ -4,6 +4,7 @@
  * Downstream agent work is replaced only after startup so admission exercises
  * the production boot and handler path.
  */
+import { createHash } from "node:crypto";
 import {
   createUniqueUuid,
   type HandlerCallback,
@@ -13,6 +14,7 @@ import {
 } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { projectConnectorSettings } from "../../../packages/agent/src/runtime/project-connector-settings";
+import { MessageAttachments } from "../../plugin-assistant/src/services/message/attachments";
 
 const bolt = vi.hoisted(() => ({
   apps: [] as Array<{
@@ -60,6 +62,9 @@ function createClient() {
     },
     users: {
       list: vi.fn().mockImplementation(async () => ({ members: bolt.users })),
+      info: vi.fn().mockImplementation(async ({ user }: { user: string }) => ({
+        user: bolt.users.find((entry) => entry.id === user),
+      })),
     },
     chat: {
       postMessage: vi.fn().mockResolvedValue({ ok: true, ts: "1.000001" }),
@@ -154,6 +159,48 @@ function slackEnvelope(event: Record<string, unknown>) {
 
 type SlackConnectorInput = Record<string, unknown>;
 
+const BOT_TOKEN = "xoxb-test-token";
+
+function createMediaStore() {
+  const files = new Map<string, { bytes: Buffer; mimeType: string }>();
+  return {
+    files,
+    store: vi.fn(async (bytes: Buffer | Uint8Array, mimeType: string) => {
+      const buffer = Buffer.from(bytes);
+      const hash = createHash("sha256").update(buffer).digest("hex");
+      const ext = mimeType === "image/png" ? "png" : "txt";
+      const fileName = `${hash}.${ext}`;
+      files.set(fileName, { bytes: buffer, mimeType });
+      return {
+        url: `/api/media/${fileName}`,
+        hash,
+        fileName,
+        mimeType,
+        size: buffer.byteLength,
+      };
+    }),
+  };
+}
+
+function slackFilesEndpoint(filesByUrl: Record<string, [Buffer, string]>) {
+  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const file = filesByUrl[String(input)];
+    if (!file) return new Response("not found", { status: 404 });
+    if (
+      new Headers(init?.headers).get("authorization") !== `Bearer ${BOT_TOKEN}`
+    ) {
+      return new Response("<!DOCTYPE html><html>Sign in to Slack</html>", {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
+    return new Response(file[0], {
+      status: 200,
+      headers: { "content-type": file[1] },
+    });
+  });
+}
+
 function createPersistedConfig(slack: SlackConnectorInput) {
   return {
     logging: { level: "error" },
@@ -170,6 +217,7 @@ function createRuntime(slack: SlackConnectorInput): IAgentRuntime {
     secrets: projection.secrets,
   };
   const memories = new Map<string, Memory>();
+  const mediaStore = createMediaStore();
   const runtime = {
     agentId: "agent-slack-policy-integration",
     character,
@@ -192,7 +240,20 @@ function createRuntime(slack: SlackConnectorInput): IAgentRuntime {
     createEntity: vi.fn().mockResolvedValue(undefined),
     getEntityById: vi.fn().mockResolvedValue({ id: "entity-existing" }),
     reportError: vi.fn(),
+    getService: vi.fn((type: string) =>
+      type === "aws_s3" ? mediaStore : null,
+    ),
+    fetch: vi.fn(async (input: RequestInfo | URL) => {
+      const fileName = String(input).split("/api/media/")[1] ?? "";
+      const stored = mediaStore.files.get(fileName);
+      if (!stored) return new Response("missing", { status: 404 });
+      return new Response(stored.bytes, {
+        status: 200,
+        headers: { "content-type": stored.mimeType },
+      });
+    }),
     __testMemories: memories,
+    __mediaStore: mediaStore,
   };
   return runtime as unknown as IAgentRuntime;
 }
@@ -200,7 +261,7 @@ function createRuntime(slack: SlackConnectorInput): IAgentRuntime {
 async function startHarness(overrides: SlackConnectorInput = {}) {
   const runtime = createRuntime({
     enabled: true,
-    botToken: "xoxb-test-token",
+    botToken: BOT_TOKEN,
     appToken: "xapp-test-token",
     groupPolicy: "allowlist",
     requireMention: true,
@@ -227,6 +288,11 @@ async function startHarness(overrides: SlackConnectorInput = {}) {
       ): Promise<Memory | null>;
     }
   ).buildMemoryFromMessage.bind(service);
+  const buildRawMentionMemory = (
+    service as unknown as {
+      buildMemoryFromMention: (...args: unknown[]) => Promise<Memory | null>;
+    }
+  ).buildMemoryFromMention.bind(service);
   Object.assign(service, {
     processAgentMessage,
     buildMemoryFromMessage: vi.fn().mockResolvedValue({
@@ -252,6 +318,7 @@ async function startHarness(overrides: SlackConnectorInput = {}) {
     throw new Error("Bolt message handler was not registered");
   return {
     app,
+    buildRawMentionMemory,
     buildRawMessageMemory,
     processAgentMessage,
     runtime,
@@ -362,6 +429,163 @@ describe("persisted Slack policy through Bolt handlers", () => {
     expect(first?.id).toBeDefined();
     expect(second?.id).toBeDefined();
     expect(first?.id).not.toBe(second?.id);
+  });
+
+  it("rehosts files attached to a channel mention with the account bot token", async () => {
+    const harness = await startHarness();
+    const downloadUrl =
+      "https://files.slack.com/files-pri/T0-F0123ABCD/download/error.png";
+    const png = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
+    const endpoint = slackFilesEndpoint({ [downloadUrl]: [png, "image/png"] });
+    Object.assign(harness.service, {
+      buildMemoryFromMention: harness.buildRawMentionMemory,
+      inboundFileFetch: endpoint,
+    });
+    const appMention = harness.app.eventHandlers.get("app_mention");
+    const messageHandler = harness.app.messageHandler;
+    if (!appMention || !messageHandler)
+      throw new Error("Slack handlers were not registered");
+    const files = [
+      {
+        id: "F0123ABCD",
+        name: "error.png",
+        title: "error.png",
+        mimetype: "image/png",
+        filetype: "png",
+        size: 16,
+        url_private: "https://files.slack.com/files-pri/T0-F0123ABCD/error.png",
+        url_private_download: downloadUrl,
+      },
+    ];
+
+    await messageHandler({
+      message: message({
+        subtype: "file_share",
+        text: "<@U0BOTBOT0> what is this error?",
+        files,
+      }),
+      client: harness.app.client,
+    });
+    await appMention({
+      event: mention({ text: "<@U0BOTBOT0> what is this error?", files }),
+      client: harness.app.client,
+    });
+
+    expect(endpoint).toHaveBeenCalledTimes(1);
+    expect(String(endpoint.mock.calls[0][0])).toBe(downloadUrl);
+    expect(harness.processAgentMessage).toHaveBeenCalledTimes(1);
+    const processed = harness.processAgentMessage.mock.calls[0][0] as Memory;
+    expect(processed.content.text).toBe("what is this error?");
+    expect(processed.content.attachments).toEqual([
+      {
+        id: "F0123ABCD",
+        url: "/api/media/02a3e298f1533f62558c58e4c70edcab9af5a50d62d925fd5390942020fb0fb8.png",
+        title: "error.png",
+        filename: "error.png",
+        mimeType: "image/png",
+        contentType: "image",
+        size: 16,
+        source: "slack",
+      },
+    ]);
+    expect(JSON.stringify(processed)).not.toContain(BOT_TOKEN);
+    expect(harness.runtime.reportError).not.toHaveBeenCalled();
+  });
+
+  it("rehosts a DM file so the attachment processor can read it", async () => {
+    const harness = await startHarness();
+    const downloadUrl =
+      "https://files.slack.com/files-pri/T0-F0NOTES01/download/notes.txt";
+    const endpoint = slackFilesEndpoint({
+      [downloadUrl]: [
+        Buffer.from("deploy window is Friday 14:00 UTC"),
+        "text/plain",
+      ],
+    });
+    Object.assign(harness.service, {
+      buildMemoryFromMessage: harness.buildRawMessageMemory,
+      inboundFileFetch: endpoint,
+    });
+
+    await harness.app.messageHandler?.({
+      message: message({
+        channel: DM,
+        channel_type: "im",
+        subtype: "file_share",
+        text: "summarize this",
+        files: [
+          {
+            id: "F0NOTES01",
+            name: "notes.txt",
+            title: "notes.txt",
+            mimetype: "text/plain",
+            filetype: "text",
+            size: 33,
+            url_private:
+              "https://files.slack.com/files-pri/T0-F0NOTES01/notes.txt",
+            url_private_download: downloadUrl,
+          },
+        ],
+      }),
+      client: harness.app.client,
+    });
+
+    expect(harness.processAgentMessage).toHaveBeenCalledTimes(1);
+    const processed = harness.processAgentMessage.mock.calls[0][0] as Memory;
+    const attachments = processed.content.attachments ?? [];
+    expect(attachments).toHaveLength(1);
+    expect(attachments[0]).toMatchObject({
+      id: "F0NOTES01",
+      filename: "notes.txt",
+      mimeType: "text/plain",
+      contentType: "document",
+      size: 33,
+    });
+    expect(attachments[0].url.startsWith("/api/media/")).toBe(true);
+    expect(JSON.stringify(processed)).not.toContain(BOT_TOKEN);
+
+    const [enriched] = await new MessageAttachments().processAttachments(
+      harness.runtime,
+      attachments,
+    );
+    expect(enriched.text).toBe("deploy window is Friday 14:00 UTC");
+  });
+
+  it("reports a Slack sign-in page as a failed file import and keeps the text", async () => {
+    const harness = await startHarness({ botToken: "xoxb-other-workspace" });
+    const downloadUrl =
+      "https://files.slack.com/files-pri/T0-F0123ABCD/download/error.png";
+    const endpoint = slackFilesEndpoint({
+      [downloadUrl]: [Buffer.from("png"), "image/png"],
+    });
+    Object.assign(harness.service, {
+      buildMemoryFromMention: harness.buildRawMentionMemory,
+      inboundFileFetch: endpoint,
+    });
+
+    await harness.app.eventHandlers.get("app_mention")?.({
+      event: mention({
+        files: [
+          {
+            id: "F0123ABCD",
+            name: "error.png",
+            mimetype: "image/png",
+            url_private_download: downloadUrl,
+          },
+        ],
+      }),
+      client: harness.app.client,
+    });
+
+    expect(harness.processAgentMessage).toHaveBeenCalledTimes(1);
+    const processed = harness.processAgentMessage.mock.calls[0][0] as Memory;
+    expect(processed.content.text).toBe("status?");
+    expect(processed.content.attachments).toBeUndefined();
+    expect(harness.runtime.reportError).toHaveBeenCalledWith(
+      "slack-inbound-file",
+      expect.objectContaining({ code: "SLACK_FILE_DOWNLOAD_UNAUTHORIZED" }),
+      expect.objectContaining({ fileId: "F0123ABCD" }),
+    );
   });
 
   it("projects canonical connector config and enforces name-resolved policy", async () => {
