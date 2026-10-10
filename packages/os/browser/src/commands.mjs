@@ -221,7 +221,8 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
               hasInput:
                 node.selectedIndex >= 0 &&
                 !node.validity.valueMissing &&
-                !node.options[node.selectedIndex].disabled,
+                !node.options[node.selectedIndex].disabled &&
+                (node.value !== "" || monitor.editedFields.has(node)),
             }
           : (node instanceof HTMLInputElement &&
                 ![
