@@ -194,7 +194,7 @@ describe("current US weather evidence", () => {
     expect(result.text).toContain("Fair");
     expect(result.text).toContain(value.timestamp);
   });
-  it("sends an accented city to the geocoder without accents", async () => {
+  it("sends an accented or ligature city to the geocoder in plain letters", async () => {
     // The USGS geocoder answers [] for "Española" and finds "Espanola".
     const terms: string[] = [];
     const fetchImpl = (async (input: RequestInfo | URL) => {
@@ -207,6 +207,12 @@ describe("current US weather evidence", () => {
       cache: false,
     });
     expect(terms[0]).toBe("Espanola");
+    // NFKD leaves the ligature; GNIS spells it "Coeur d'Alene".
+    await runCurrentUsWeatherSearch("current public weather in Cœur d'Alene, Idaho", {
+      fetchImpl,
+      cache: false,
+    });
+    expect(terms[1]).toBe("Coeur d'Alene");
   });
 
   it("accepts named US states/abbreviations without city hardcoding", () => {

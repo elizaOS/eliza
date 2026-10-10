@@ -192,14 +192,34 @@ const metadataCache = new Map<string, { expiresAt: number; value: Metadata }>();
 export function clearCurrentWeatherMetadataCacheForTests(): void {
   metadataCache.clear();
 }
-const fold = (v: string) =>
+// Latin letters NFKD does not decompose, spelled as US place names write them
+// without diacritics (Cœur d'Alene is "Coeur d'Alene" in GNIS).
+const PLAIN_LETTERS: Readonly<Record<string, string>> = {
+  œ: "oe",
+  Œ: "Oe",
+  æ: "ae",
+  Æ: "Ae",
+  ß: "ss",
+  ø: "o",
+  Ø: "O",
+  ł: "l",
+  Ł: "L",
+  đ: "d",
+  Đ: "D",
+  ð: "d",
+  Ð: "D",
+  þ: "th",
+  Þ: "Th",
+  ı: "i",
+};
+/** The name in plain Latin letters: marks removed, ligatures spelled out. */
+const plainLetters = (v: string) =>
   v
     .normalize("NFKD")
     .replace(/\p{M}/gu, "")
-    .toLowerCase()
-    .replace(/[.'’]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+    .replace(/[œŒæÆßøØłŁđĐðÐþÞı]/g, (c) => PLAIN_LETTERS[c] ?? c);
+const fold = (v: string) =>
+  plainLetters(v).toLowerCase().replace(/[.'’]/g, "").replace(/\s+/g, " ").trim();
 const record = (v: unknown): Record<string, unknown> | undefined =>
   v !== null && typeof v === "object" && !Array.isArray(v)
     ? (v as Record<string, unknown>)
@@ -542,9 +562,10 @@ export async function runCurrentUsWeatherSearch(
     if (cached && cached.expiresAt > now()) metadata = cached.value;
     if (!metadata) {
       const geo = new URL("https://dashboard.waterdata.usgs.gov/service/geocoder/get/location/1.0");
-      // The USGS geocoder finds "Espanola" but returns nothing for "Española";
-      // the place filter below already compares accent-folded names.
-      geo.searchParams.set("term", target.city.normalize("NFKD").replace(/\p{M}/gu, ""));
+      // The USGS geocoder finds "Espanola" and "Coeur d'Alene" but returns
+      // nothing for "Española" or "Cœur d'Alene"; the place filter below
+      // compares names folded the same way.
+      geo.searchParams.set("term", plainLetters(target.city));
       geo.searchParams.set("include", "gnis");
       geo.searchParams.set("states", target.state);
       geo.searchParams.set("maxSuggestions", "20");
