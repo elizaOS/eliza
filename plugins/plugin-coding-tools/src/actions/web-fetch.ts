@@ -35,7 +35,7 @@ export function isCodingWebFetchEnabled(): boolean {
 
 function decodeHtmlEntity(entity: string): string {
   if (entity.startsWith("#")) {
-    const code = entity.startsWith("#x")
+    const code = /^#x/i.test(entity)
       ? Number.parseInt(entity.slice(2), 16)
       : Number.parseInt(entity.slice(1), 10);
     // Exclude the UTF-16 surrogate range as well as values outside Unicode.
@@ -45,10 +45,11 @@ function decodeHtmlEntity(entity: string): string {
       code >= 0 &&
       code <= 0x10ffff &&
       (code < 0xd800 || code > 0xdfff);
-    // The numeric spellings of U+00A0 (&#160; / &#xA0;) decode to the same
+    // decodeHTML applies the HTML remapping (&#146; is ’, not U+0092). The
+    // numeric spellings of U+00A0 (&#160; / &#xA0;) decode to the same
     // character as &nbsp;, so they must become the same readable plain space.
     return isUnicodeScalarValue
-      ? String.fromCodePoint(code).replace(/\u00a0/g, " ")
+      ? decodeHTML(`&${entity};`).replace(/\u00a0/g, " ")
       : `&${entity};`;
   }
   return decodeHTML(`&${entity};`).replace(/\u00a0/g, " ");
@@ -58,7 +59,6 @@ function normalizeWhitespace(text: string): string {
   return text
     .replace(/\r/g, "")
     .replace(/[ \t\f\v]+/g, " ")
-    .replace(/ +([.,;:!?])/g, "$1")
     .replace(/ *\n */g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
@@ -75,16 +75,21 @@ export function htmlToReadableText(html: string): string {
       /<\/?(?:h[1-6]|p|div|section|article|main|header|footer|li|ul|ol|tr|br)\b[^>]*>/gi,
       "\n",
     )
-    .replace(/<[^>]+>/g, " ")
+    // A removed inline tag becomes a space unless punctuation follows it
+    // (`<a>link</a>.`); a space the page wrote stays (`git add .`).
+    .replace(/\0/g, "\ufffd")
+    .replace(/<[^>]+>/g, "\0")
+    .replace(/\0+(?=[.,;:!?])/g, "")
+    .replace(/\0/g, " ")
     .replace(
-      /&([a-zA-Z][a-zA-Z0-9]+|#[0-9]+|#x[0-9a-fA-F]+);/g,
+      /&([a-zA-Z][a-zA-Z0-9]+|#[0-9]+|#[xX][0-9a-fA-F]+);/g,
       (_m, entity: string) => decodeHtmlEntity(entity),
     );
   const body = normalizeWhitespace(text);
   const normalizedTitle = title
     ? normalizeWhitespace(
         title.replace(
-          /&([a-zA-Z][a-zA-Z0-9]+|#[0-9]+|#x[0-9a-fA-F]+);/g,
+          /&([a-zA-Z][a-zA-Z0-9]+|#[0-9]+|#[xX][0-9a-fA-F]+);/g,
           (_m, entity: string) => decodeHtmlEntity(entity),
         ),
       )
