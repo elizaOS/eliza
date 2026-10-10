@@ -920,7 +920,10 @@ export function createCloudRoutes({
             503,
           );
         const input = await body(req, 4096),
-          fields = billingMatch[1] === "start" ? [] : ["sessionId", "code"];
+          // Start carries only the verification purpose; the native enrollment
+          // host validates its value (billing or account).
+          fields =
+            billingMatch[1] === "start" ? ["purpose"] : ["sessionId", "code"];
         if (Object.keys(input).some((key) => !fields.includes(key)))
           throw fail(message("unexpectedConfirmationFields"));
         send(
