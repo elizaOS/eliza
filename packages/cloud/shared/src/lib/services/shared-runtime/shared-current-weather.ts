@@ -141,6 +141,10 @@ const STATES: Record<string, string> = {
   WI: "Wisconsin",
   WY: "Wyoming",
 };
+// "Charleston West Virginia" must not end at "Virginia".
+const STATES_LONGEST_FIRST = Object.entries(STATES).sort(
+  ([, a], [, b]) => b.length - a.length,
+);
 type Place = {
   city: string;
   state: string;
@@ -233,7 +237,7 @@ export function parseExplicitUsWeatherQuery(
     .trim()
     .replace(/,\s*(?:USA|United States(?: of America)?)$/iu, "");
   if (location.length > 160 || /[^\p{L} .'’,-]/u.test(location)) return undefined;
-  for (const [state, name] of Object.entries(STATES)) {
+  for (const [state, name] of STATES_LONGEST_FIRST) {
     for (const suffix of [name, state]) {
       const pattern = new RegExp("(?:,\\s*|\\s+)" + suffix + "$", "i");
       const match = pattern.exec(location);
