@@ -106,7 +106,9 @@ export function parseAndValidateCredits(creditsStr: string): number | null {
   // amount instead of being rejected. Require the whole trimmed value to
   // be decimal, mirroring resolveGenerationTimeoutMs in the discord plugin.
   const trimmed = creditsStr.trim();
-  const credits = /^\+?\d+(?:\.\d+)?$/.test(trimmed) ? Number(trimmed) : Number.NaN;
+  const credits = /^\+?\d+(?:\.\d+)?$/.test(trimmed)
+    ? Number(trimmed)
+    : Number.NaN;
   if (!Number.isFinite(credits) || credits <= 0 || credits > MAX_CREDITS) {
     return null;
   }

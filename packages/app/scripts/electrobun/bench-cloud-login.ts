@@ -50,7 +50,10 @@ function errorMessage(error: unknown): string {
 // silently accepted as the flag value. Require the whole trimmed value
 // to be decimal; malformed -> documented default, mirroring
 // resolveGenerationTimeoutMs in the discord plugin.
-const parseBenchIntArg = (raw: string | undefined, fallback: number): number => {
+const parseBenchIntArg = (
+  raw: string | undefined,
+  fallback: number,
+): number => {
   const text = (raw ?? "").trim();
   const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
   return Number.isFinite(parsed) ? parsed : fallback;
