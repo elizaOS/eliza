@@ -21,7 +21,8 @@ const ABBREVIATIONS = new Set([
 	...TIME_ABBREVIATIONS,
 ]);
 
-const SENTENCE_END = new Set([".", "?", "!"]);
+const UNSPACED_SENTENCE_END = new Set(["。", "？", "！"]);
+const SENTENCE_END = new Set([".", "?", "!", ...UNSPACED_SENTENCE_END]);
 const BOUNDARY_FOLLOWERS = new Set([
 	'"',
 	"'",
@@ -30,8 +31,14 @@ const BOUNDARY_FOLLOWERS = new Set([
 	")",
 	"]",
 	"}",
+	"」",
+	"』",
+	"）",
+	"］",
+	"｝",
+	"】",
 ]);
-const TRAILING_CLOSERS = "\"'\u201D\u2019)]}";
+const TRAILING_CLOSERS = "\"'\u201D\u2019)]}」』）］｝】";
 
 function isAsciiWordChar(ch: string): boolean {
 	return (
@@ -75,7 +82,12 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 	// A time can end a reply, but only EOF proves it does not continue.
 	let terminalTimeBoundary: number | undefined;
 	let pendingBoundary:
-		| { boundary: number; normalizedWord: string; sawCloser: boolean }
+		| {
+				boundary: number;
+				normalizedWord: string;
+				sawCloser: boolean;
+				unspaced: boolean;
+		  }
 		| undefined;
 
 	return {
@@ -84,16 +96,27 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 			if (pendingBoundary && (chunk.length > 0 || endOfInput)) {
 				if (!ABBREVIATIONS.has(pendingBoundary.normalizedWord)) {
 					let closerOffset = 0;
+					if (pendingBoundary.unspaced && !pendingBoundary.sawCloser) {
+						while (
+							closerOffset < chunk.length &&
+							SENTENCE_END.has(chunk[closerOffset])
+						) {
+							closerOffset += 1;
+						}
+						pendingBoundary.boundary += closerOffset;
+						scanned += closerOffset;
+					}
+					const terminatorOffset = closerOffset;
 					while (
 						closerOffset < chunk.length &&
 						TRAILING_CLOSERS.includes(chunk[closerOffset])
 					) {
 						closerOffset += 1;
 					}
-					if (closerOffset > 0) {
-						pendingBoundary.boundary += closerOffset;
+					if (closerOffset > terminatorOffset) {
+						pendingBoundary.boundary += closerOffset - terminatorOffset;
 						pendingBoundary.sawCloser = true;
-						scanned += closerOffset;
+						scanned += closerOffset - terminatorOffset;
 					}
 					if (closerOffset === chunk.length) {
 						if (!endOfInput) return undefined;
@@ -101,6 +124,7 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 						return completeAt;
 					}
 					if (
+						pendingBoundary.unspaced ||
 						pendingBoundary.sawCloser ||
 						isBoundaryFollower(chunk[closerOffset])
 					) {
@@ -141,16 +165,27 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 						// the sentence at "?").
 						normalizedWord: char === "." ? word.toLowerCase() : "",
 						sawCloser: false,
+						unspaced: UNSPACED_SENTENCE_END.has(char),
 					};
 				} else if (
 					SENTENCE_END.has(char) &&
-					isBoundaryFollower(chunk[offset + 1])
+					(UNSPACED_SENTENCE_END.has(char) ||
+						isBoundaryFollower(chunk[offset + 1]))
 				) {
 					const word = lastWord.endsWith(".")
 						? lastWord.slice(0, -1)
 						: lastWord;
 					if (char !== "." || !ABBREVIATIONS.has(word.toLowerCase())) {
 						let boundary = offset + 1;
+						if (UNSPACED_SENTENCE_END.has(char)) {
+							while (
+								boundary < chunk.length &&
+								SENTENCE_END.has(chunk[boundary])
+							) {
+								boundary += 1;
+							}
+						}
+						const terminatorBoundary = boundary;
 						while (
 							boundary < chunk.length &&
 							TRAILING_CLOSERS.includes(chunk[boundary])
@@ -161,7 +196,8 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 							pendingBoundary = {
 								boundary: scanned + boundary,
 								normalizedWord: char === "." ? word.toLowerCase() : "",
-								sawCloser: boundary > offset + 1,
+								sawCloser: boundary > terminatorBoundary,
+								unspaced: UNSPACED_SENTENCE_END.has(char),
 							};
 							break;
 						}
