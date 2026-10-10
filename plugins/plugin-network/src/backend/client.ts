@@ -139,28 +139,24 @@ export class NetworkServiceClient {
 
   /** Ask the service to relay the member's message to a match. Idempotent by messageId. */
   async relay(req: RelaySendRequest): Promise<RelaySendResponse> {
-    const result = await this.#post<unknown>(
+    const result = await this.#post<RelaySendResponse>(
       RELAY_PATH,
       `${req.messageId}:relay`,
       req,
     );
-    if (!result || typeof result !== "object")
-      throw new NetworkServiceError(200, "Invalid Network relay response");
-    const receipt = result as Record<string, unknown>;
     if (
-      typeof receipt.decision !== "string" ||
-      !["pass", "hold", "block", "none"].includes(receipt.decision) ||
-      typeof receipt.senderNotice !== "string" ||
-      typeof receipt.delivered !== "boolean" ||
-      typeof receipt.replayed !== "boolean" ||
-      (receipt.delivered && receipt.decision !== "pass")
+      !result ||
+      typeof result !== "object" ||
+      !["pass", "hold", "block", "none"].includes(result.decision) ||
+      typeof result.senderNotice !== "string" ||
+      typeof result.delivered !== "boolean" ||
+      typeof result.replayed !== "boolean" ||
+      (result.delivered && result.decision !== "pass")
     )
-      throw new NetworkServiceError(200, "Invalid Network relay response");
-    return {
-      decision: receipt.decision as RelaySendResponse["decision"],
-      senderNotice: receipt.senderNotice,
-      delivered: receipt.delivered,
-      replayed: receipt.replayed,
-    };
+      throw new NetworkServiceError(
+        200,
+        "Network service returned an invalid relay receipt",
+      );
+    return result;
   }
 }

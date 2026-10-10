@@ -125,7 +125,7 @@ describe("RELAY action", () => {
   it("does not claim delivery for a passed but undelivered relay", async () => {
     const { store } = serviceSetup({
       decision: "pass",
-      senderNotice: "",
+      senderNotice: "Sent.",
       delivered: false,
       replayed: false,
     });
@@ -136,6 +136,7 @@ describe("RELAY action", () => {
     assert.equal(result?.success, false);
     assert.doesNotMatch(result?.text ?? "", /Passed on|Sent to/i);
     assert.equal(result?.data?.delivered, false);
+    assert.equal(result?.error, "delivery_unconfirmed");
   });
 
   it("rejects malformed service receipts instead of treating truthy values as delivery", async () => {
@@ -158,7 +159,7 @@ describe("RELAY action", () => {
       const { store } = serviceSetup(response);
       await assert.rejects(
         relayAction(store).handler(runtime, message("tell Sam I am late")),
-        /relay response/,
+        /invalid relay receipt/,
       );
     }
   });

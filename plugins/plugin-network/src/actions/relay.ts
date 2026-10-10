@@ -108,6 +108,20 @@ export function createRelayAction(options: RelayActionOptions): Action {
         text,
       });
 
+      if (result.decision === "pass" && !result.delivered)
+        return {
+          ...failure(
+            "delivery_unconfirmed",
+            "The service accepted the relay, but delivery is not confirmed. Do not report it as sent.",
+          ),
+          data: {
+            actionName: "RELAY",
+            decision: result.decision,
+            delivered: false,
+            replayed: result.replayed,
+          },
+        };
+
       if (result.decision === "none") {
         return {
           success: false,
@@ -118,14 +132,11 @@ export function createRelayAction(options: RelayActionOptions): Action {
           data: { actionName: "RELAY", decision: "none" },
         };
       }
-      const delivered = result.decision === "pass" && result.delivered;
       return {
-        success: delivered,
+        success: result.decision === "pass",
         text:
-          result.decision === "pass" && !delivered
-            ? "The Network has not confirmed delivery."
-            : result.senderNotice ||
-              (delivered ? "Passed on." : "That wasn't sent."),
+          result.senderNotice ||
+          (result.decision === "pass" ? "Passed on." : "That wasn't sent."),
         modelReplyRequired: true,
         continueChain: false,
         data: {
