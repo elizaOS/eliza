@@ -25,18 +25,42 @@ function readConfiguredApiBase(): string | undefined {
   return typeof base === "string" && base.trim().length > 0 ? base : undefined;
 }
 
-const HOSTNAME_RE =
-  /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$/;
+// Single engine-parity label grammar for every bare hostname, replacing the
+// ASCII-only HOSTNAME_RE:
+// plugins/plugin-blocker/src/services/website-blocker/engine.ts validates
+// each label against [a-z0-9-] with hyphen edges rejected — including the TLD,
+// so punycode TLDs such as xn--p1ai (пример.рф) pass on the server while a
+// letters-only TLD rule rejects them here. The TLD must still carry at least
+// one letter: the engine rejects IP literals (node:net isIP), and an
+// all-numeric dotted quad is the only punycode-reachable shape the engine
+// refuses — verified that node's domainToASCII itself returns "" for
+// all-numeric TLDs (e.g. café.123), so the letter test keeps web at parity
+// without a node:net import in browser code. One path, one grammar: every
+// bare hostname below punycode-encodes through the WHATWG URL parser (IDNA
+// ToASCII — the same primitive the engine's domainToASCII uses), so the ASCII
+// and unicode spellings of an IDN name ("xn--e1afmkfd.xn--p1ai" and "пример.рф")
+// validate identically.
+const ENGINE_PARITY_HOSTNAME_RE =
+  /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?=[a-z0-9-]*[a-z])[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
 function isString(value: string | null): value is string {
   return typeof value === "string";
 }
 
-function normalizeHostname(value: unknown): string | null {
+/**
+ * Normalizes one bare hostname candidate to its engine-canonical ASCII form
+ * (IDNA ToASCII), or null when the input is not a valid public hostname.
+ * Exported for the unit test (src/web.test.ts); not re-exported from the
+ * package entry point.
+ */
+export function normalizeHostname(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
-  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+  // The engine's scheme check requires "://" (engine.ts normalizeWebsiteTarget),
+  // so "example.com:8080" is a bare hostname with a port — not a URL — and
+  // punycode-encodes through the shared path below exactly like the engine.
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) {
     if (!/^https?:\/\//i.test(trimmed)) return null;
     try {
       return normalizeHostname(new URL(trimmed).hostname);
@@ -48,11 +72,30 @@ function normalizeHostname(value: unknown): string | null {
   }
   const withoutWildcard = trimmed.replace(/^\*\./, "");
   const withoutTrailingDot = withoutWildcard.replace(/\.$/, "");
-  const ascii = withoutTrailingDot.toLowerCase();
-  return HOSTNAME_RE.test(ascii) ? ascii : null;
+  // One path for every bare hostname: the URL parser punycode-encodes
+  // .hostname (IDNA ToASCII — the same primitive the engine's domainToASCII
+  // uses) and the single engine-parity grammar above validates the result.
+  // This strips ports and userinfo exactly like the engine's
+  // `new URL(...).hostname` normalization (engine.ts normalizeWebsiteTarget),
+  // so "example.com:8080" and "user@example.com" normalize to "example.com"
+  // on both sides — previously the ASCII path rejected them outright.
+  try {
+    const encoded = new URL(`https://${withoutTrailingDot}`).hostname;
+    return ENGINE_PARITY_HOSTNAME_RE.test(encoded) ? encoded : null;
+  } catch {
+    // error-policy:J3 untrusted hostname input — an unparseable hostname is
+    // reported as an explicit invalid (null), never a fake-valid default.
+    return null;
+  }
 }
 
-function validateStartBlockOptions(
+/**
+ * Validates startBlock options: collects hostname candidates from `websites`
+ * and `text`, normalizes each through normalizeHostname, and drops invalid
+ * entries. Throws when nothing valid remains. Exported for the unit test
+ * (src/web.test.ts); not re-exported from the package entry point.
+ */
+export function validateStartBlockOptions(
   options: StartWebsiteBlockOptions,
 ): StartWebsiteBlockOptions {
   const candidates = [
