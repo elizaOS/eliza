@@ -163,7 +163,10 @@ import {
   stopMemorySampler,
 } from "./boot-telemetry.ts";
 import { BootTimer } from "./boot-timer.ts";
-import { buildCharacterFromConfig } from "./build-character-config.ts";
+import {
+  agentIdentityName,
+  buildCharacterFromConfig,
+} from "./build-character-config.ts";
 import { BLOCKING_CORE_PLUGINS, CORE_PLUGINS } from "./core-plugins.ts";
 import { maybeInjectFault } from "./crash-injection.ts";
 import {
@@ -6063,7 +6066,7 @@ export async function startEliza(
     return runtime;
   }
   // ── Interactive chat loop ────────────────────────────────────────────────
-  const agentName = character.name ?? "Eliza";
+  const agentName = agentIdentityName(character) ?? "Eliza";
   const userId = crypto.randomUUID() as UUID;
   // Use `let` so the fallback path can reassign to fresh IDs.
   let roomId = stringToUuid(`${agentName}-chat-room`);

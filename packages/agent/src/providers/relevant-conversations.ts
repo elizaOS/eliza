@@ -48,6 +48,7 @@ import {
   isAutomationConversationMetadata,
 } from "../api/conversation-metadata.ts";
 import { HASH_MEMORY_SOURCE, rankByKeyword } from "../api/memory-routes.ts";
+import { agentIdentityName } from "../runtime/build-character-config.ts";
 import {
   formatRelativeTimestampPrefix,
   formatSpeakerLabel,
@@ -89,7 +90,7 @@ async function loadHashMemories(
   query: string,
   accessContext: AccessContext,
 ): Promise<Memory[]> {
-  const agentName = runtime.character.name?.trim() || "Eliza";
+  const agentName = agentIdentityName(runtime.character)?.trim() || "Eliza";
   const roomId = stringToUuid(`${agentName}-hash-memory-room`) as UUID;
   const memories = await runtime.getMemories({
     roomId,

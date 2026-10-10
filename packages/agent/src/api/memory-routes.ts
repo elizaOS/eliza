@@ -40,6 +40,7 @@ import {
   getDocumentsService,
 } from "@elizaos/plugin-assistant";
 import { composePrompt } from "@elizaos/plugin-assistant/text/template-rendering";
+import { agentIdentityName } from "../runtime/build-character-config.ts";
 import { memoryContextQaTemplate } from "./memory-context-prompt.js";
 import { decodePathComponent } from "./server-helpers.ts";
 export const HASH_MEMORY_SOURCE = "hash_memory";
@@ -101,7 +102,9 @@ type DocumentSearchMatch = {
   metadata?: Record<string, unknown>;
 };
 function resolveAgentName(runtime: AgentRuntime, fallbackName: string): string {
-  return runtime.character.name?.trim() || fallbackName || "Eliza";
+  return (
+    agentIdentityName(runtime.character)?.trim() || fallbackName || "Eliza"
+  );
 }
 async function ensureMemoryConnection(
   runtime: AgentRuntime,

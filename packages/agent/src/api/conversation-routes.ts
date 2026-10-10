@@ -107,6 +107,7 @@ import {
   isScheduledTask,
   type ScheduledTask,
 } from "@elizaos/plugin-scheduling";
+import { agentIdentityName } from "../runtime/build-character-config.ts";
 import {
   type AgentHttpRequestAuthorization,
   getAgentHostBridge,
@@ -150,7 +151,6 @@ import {
   resolveTrustedApiPrincipal,
   setChatMessageIdOutcome,
 } from "./chat-routes.ts";
-
 import {
   createChatTokenStreamWriter,
   initSse,
@@ -1329,9 +1329,10 @@ function captureConversationConnection(
   requestFence?: () => void,
 ): ConversationConnectionDescriptor {
   const agentName = runtime.character.name ?? "Eliza";
+  const identityName = agentIdentityName(runtime.character) ?? "Eliza";
   const ownerId = ensureAdminEntityIdForRuntime(state, runtime);
-  const worldId = stringToUuid(`${agentName}-web-chat-world`);
-  const messageServerId = stringToUuid(`${agentName}-web-server`) as UUID;
+  const worldId = stringToUuid(`${identityName}-web-chat-world`);
+  const messageServerId = stringToUuid(`${identityName}-web-server`) as UUID;
   const descriptor = captureConversationConnectionDescriptor({
     runtime,
     conversationId: conv.id,

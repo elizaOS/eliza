@@ -84,6 +84,7 @@ import {
   persistInferenceTimingSummary,
   shouldSkipResponseMemoryPersistence,
 } from "@elizaos/plugin-assistant";
+import { agentIdentityName } from "../runtime/build-character-config.ts";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {
   type CapturedModelUsage,
@@ -139,13 +140,11 @@ import {
   resolveAppUserName,
   validateChatImages,
 } from "./server-helpers.ts";
-
 import {
   isAuthorized,
   isServerTokenAuthorized,
 } from "./server-helpers-auth.ts";
 import { readUiLanguageHeader } from "./server-helpers-config.ts";
-
 import { listViews } from "./views-registry.ts";
 import { updateWorldMetadataWithRetry } from "./world-metadata-retry.ts";
 
@@ -3903,7 +3902,7 @@ export async function handleChatRoutes(
         {
           const runtime = state.runtime;
           if (!runtime) throw new Error("Agent is not running");
-          const agentName = runtime.character.name ?? "Eliza";
+          const agentName = agentIdentityName(runtime.character) ?? "Eliza";
           const { userId, roomId } = await ensureCompatChatConnection(
             state,
             runtime,
@@ -4051,7 +4050,7 @@ export async function handleChatRoutes(
           return true;
         }
         const runtime = state.runtime;
-        const agentName = runtime.character.name ?? "Eliza";
+        const agentName = agentIdentityName(runtime.character) ?? "Eliza";
         const { userId, roomId } = await ensureCompatChatConnection(
           state,
           runtime,
@@ -4297,7 +4296,7 @@ export async function handleChatRoutes(
         {
           const runtime = state.runtime;
           if (!runtime) throw new Error("Agent is not running");
-          const agentName = runtime.character.name ?? "Eliza";
+          const agentName = agentIdentityName(runtime.character) ?? "Eliza";
           const { userId, roomId } = await ensureCompatChatConnection(
             state,
             runtime,
@@ -4436,7 +4435,7 @@ export async function handleChatRoutes(
           return true;
         }
         const runtime = state.runtime;
-        const agentName = runtime.character.name ?? "Eliza";
+        const agentName = agentIdentityName(runtime.character) ?? "Eliza";
         const { userId, roomId } = await ensureCompatChatConnection(
           state,
           runtime,
@@ -4577,7 +4576,7 @@ export async function handleChatRoutes(
     }
     try {
       const runtime = state.runtime;
-      const agentName = runtime.character.name ?? "Eliza";
+      const agentName = agentIdentityName(runtime.character) ?? "Eliza";
       const messagePrincipal: TrustedApiPrincipal =
         trustedApiPrincipal.kind === "service_gateway"
           ? {

@@ -23,6 +23,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import { agentIdentityName } from "../runtime/build-character-config.ts";
 
 export interface MessageCorpusOptions {
   /** Number of conversations to generate. */
@@ -481,7 +482,7 @@ export async function seedMessageCorpus(
   corpus: GeneratedMessageCorpus,
   options: MessageCorpusSeedOptions = {},
 ): Promise<MessageCorpusSeedSummary> {
-  const agentName = runtime.character.name ?? "Eliza";
+  const agentName = agentIdentityName(runtime.character) ?? "Eliza";
   const worldId = stringToUuid(`${agentName}-web-chat-world`);
   const messageServerId = stringToUuid(`${agentName}-web-server`) as UUID;
   const ownerEntityId =

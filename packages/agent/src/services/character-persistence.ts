@@ -53,10 +53,17 @@ export function syncCharacterIntoConfig(
     default: true,
   };
 
+  const identityName = character.settings?.identityName;
   const nextAgent = {
     ...primaryAgent,
     ...(typeof character.name === "string" && character.name.trim()
       ? { name: character.name.trim() }
+      : {}),
+    // Keep the name the ids were derived from before the first rename.
+    ...(!primaryAgent.identityName &&
+    typeof identityName === "string" &&
+    identityName.trim()
+      ? { identityName: identityName.trim() }
       : {}),
     ...(typeof character.username === "string" && character.username.trim()
       ? { username: character.username.trim() }

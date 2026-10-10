@@ -20,6 +20,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import { agentIdentityName } from "../runtime/build-character-config.ts";
 import { extractConversationMetadataFromRoom } from "./conversation-metadata.ts";
 import type { ConversationMeta } from "./server-types.ts";
 
@@ -50,7 +51,7 @@ export async function restoreConversationsFromDb(
   target: ConversationRestoreTarget,
 ): Promise<number> {
   const { conversations, deletedConversationIds, log } = target;
-  const agentName = rt.character.name ?? "Eliza";
+  const agentName = agentIdentityName(rt.character) ?? "Eliza";
   const worldId = webChatWorldId(agentName);
   const rooms = await rt.getRoomsByWorld(worldId);
   if (!rooms.length) return 0;
@@ -121,7 +122,8 @@ export async function restoreConversationFromDb(
   );
   if (
     !room ||
-    room.worldId !== webChatWorldId(rt.character.name ?? "Eliza") ||
+    room.worldId !==
+      webChatWorldId(agentIdentityName(rt.character) ?? "Eliza") ||
     room.channelId !== `${WEB_CONVERSATION_CHANNEL_PREFIX}${convId}`
   ) {
     return undefined;

@@ -37,6 +37,12 @@ export type AgentConfig = {
   id: string;
   default?: boolean;
   name?: string;
+  /**
+   * The name the agent id and chat ids were first derived from. Written when
+   * the character is first edited, so a later rename keeps the same agent id,
+   * conversations, and memories.
+   */
+  identityName?: string;
   username?: string;
   workspace?: string;
   agentDir?: string;
