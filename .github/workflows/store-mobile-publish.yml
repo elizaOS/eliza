@@ -189,6 +189,11 @@ jobs:
       # VITE_ELIZA_IOS_RUNTIME_MODE=cloud-hybrid), never the store default.
       VITE_ELIZA_IOS_RUNTIME_MODE: cloud
       ELIZA_IOS_RUNTIME_MODE: cloud
+      # The Release entitlement always carries aps-environment=production, so
+      # the store build must also compile the renderer and Info.plist APNs gate
+      # on. Without it the app never registers a device token and Cloud push
+      # has no recipient.
+      VITE_ELIZA_APNS_ENABLED: "1"
       APPLE_ID: ${{ secrets.APPLE_ID }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       ITC_TEAM_ID: ${{ secrets.ITC_TEAM_ID }}

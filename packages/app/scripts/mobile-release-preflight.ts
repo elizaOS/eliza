@@ -10,6 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { evaluateIosStoreEngineGate } from "./ios-store-engine-gate.ts";
 import { evaluateStagedIosSideloadBundle } from "./lib/mobile-lane-stamp.ts";
+import { IOS_APNS_ENABLED_KEY } from "./mobile/ios-plist.ts";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(scriptDir, "..");
@@ -197,6 +198,26 @@ function checkIos() {
         ? "ELIZA_BUILD_VARIANT=store / ELIZA_RELEASE_AUTHORITY=apple-app-store is set"
         : "store build is not flagged as a store variant",
       "Set ELIZA_BUILD_VARIANT=store and ELIZA_RELEASE_AUTHORITY=apple-app-store on the build job.",
+    );
+
+    // The Release entitlement always signs aps-environment=production, but the
+    // app only registers for remote push when the renderer and the staged
+    // Info.plist were both built with the APNs gate on. A store build with the
+    // gate off ships a push entitlement that never yields a device token.
+    const rendererApnsEnabled = process.env.VITE_ELIZA_APNS_ENABLED === "1";
+    const infoPlistPath = path.join(iosRoot, "App", "Info.plist");
+    const nativeApnsEnabled =
+      fs.existsSync(infoPlistPath) &&
+      new RegExp(
+        `<key>${IOS_APNS_ENABLED_KEY}</key>\\s*<string>1</string>`,
+      ).test(fs.readFileSync(infoPlistPath, "utf8"));
+    addCheck(
+      "iOS remote push gate",
+      rendererApnsEnabled && nativeApnsEnabled,
+      rendererApnsEnabled && nativeApnsEnabled
+        ? `VITE_ELIZA_APNS_ENABLED=1 and Info.plist ${IOS_APNS_ENABLED_KEY}=1`
+        : `store build would never register for APNs (VITE_ELIZA_APNS_ENABLED=1: ${rendererApnsEnabled}, Info.plist ${IOS_APNS_ENABLED_KEY}=1: ${nativeApnsEnabled})`,
+      "Set VITE_ELIZA_APNS_ENABLED=1 on the build job before the web build, `cap:sync:ios`, and `ios-overlay`.",
     );
 
     // A store build that opted into the local runtime must actually contain
