@@ -38,7 +38,6 @@ import {
   type ReadJsonBodyOptions,
   type ServiceRoutingConfig,
 } from "@elizaos/host/protocol";
-import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
 import { getCloudSecret } from "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets";
 import { configFileExists, loadElizaConfig } from "../config/config.ts";
 import {
@@ -692,7 +691,7 @@ export async function handleFirstRunRoutes(
         isCloudInferenceSelectedInConfig(config as Record<string, unknown>) &&
         normalizeDeploymentTargetConfig(config.deploymentTarget)?.runtime !==
           "cloud" &&
-        !isCloudProvisionedContainer() &&
+        !ctx.isCloudProvisionedContainer() &&
         !hasCloudApiKeyForInference(config)
       ) {
         restoreProcessEnvironment(preCommitEnvironment, { ...process.env });
