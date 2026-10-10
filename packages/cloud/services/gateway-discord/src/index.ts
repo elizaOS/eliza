@@ -32,7 +32,12 @@ if (!process.env.POD_NAME) {
   );
 }
 
-const port = parseInt(process.env.PORT ?? "3000", 10);
+// parseInt stops at the first non-digit ("8080junk" -> 8080), so a typo
+// silently bound the gateway to the wrong port instead of falling back
+// to the 3000 default. Require the whole trimmed value to be decimal,
+// mirroring resolveGenerationTimeoutMs in the discord plugin.
+const portRaw = (process.env.PORT ?? "").trim();
+const port = /^\+?\d+$/.test(portRaw) ? Number(portRaw) : 3000;
 
 // Validate required environment variables - fail fast on misconfiguration
 // GATEWAY_BOOTSTRAP_SECRET is required for initial JWT token acquisition
