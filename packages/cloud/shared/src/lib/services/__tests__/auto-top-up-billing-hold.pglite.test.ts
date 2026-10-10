@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, spyOn, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { sql } from "drizzle-orm";
@@ -194,6 +194,18 @@ test(
     const { holdId } = await seedHeldOrganization();
     const { AutoTopUpService } = await import("../auto-top-up");
     const { billingHoldService } = await import("../billing-hold");
+    const { emailService } = await import("../email");
+    const { organizationsRepository, usersRepository } = await import("../../../db/repositories");
+    spyOn(organizationsRepository, "findById").mockResolvedValue({
+      id: ORG,
+      name: "Held",
+    } as never);
+    spyOn(usersRepository, "listByOrganization").mockResolvedValue([
+      { email: "owner@held.test" },
+    ] as never);
+    const sendSuccessEmail = spyOn(emailService, "sendAutoTopUpSuccessEmail").mockResolvedValue(
+      true,
+    );
 
     expect((await billingHoldService.getState(ORG)).status).toBe("held");
 
@@ -211,6 +223,9 @@ test(
           create: async (params: Stripe.PaymentIntentCreateParams) =>
             succeededPaymentIntent(params),
         },
+        paymentMethods: {
+          retrieve: async () => ({ card: { brand: "visa", last4: "4242" } }),
+        },
       })) as never,
       customerAuthority: { ensure: async () => ({}) as never },
       lifecycleAuthority: async () => lifecycle,
@@ -219,7 +234,20 @@ test(
     });
 
     const result = await service.executeAutoTopUpForOrganization(ORG, { source: "cron" });
-    expect(result).toMatchObject({ success: true, status: "credited", amount: 10 });
+    expect(result).toMatchObject({
+      success: true,
+      status: "credited",
+      amount: 10,
+      previousBalance: 0,
+      newBalance: 6,
+    });
+    expect(sendSuccessEmail).toHaveBeenCalledTimes(1);
+    expect(sendSuccessEmail.mock.calls[0]?.[0]).toMatchObject({
+      email: "owner@held.test",
+      amount: 10,
+      previousBalance: 0,
+      newBalance: 6,
+    });
 
     expect(await billingHoldService.getState(ORG)).toEqual({ status: "clear" });
 

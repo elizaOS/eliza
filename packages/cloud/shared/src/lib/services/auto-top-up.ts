@@ -1357,8 +1357,11 @@ export class AutoTopUpService {
       );
     }
 
+    let repaidShortfallUsd: string;
     try {
-      await billingHoldService.settleOutstandingShortfalls(attempt.organizationId);
+      ({ appliedUsd: repaidShortfallUsd } = await billingHoldService.settleOutstandingShortfalls(
+        attempt.organizationId,
+      ));
     } catch (error) {
       logger.error("[AutoTopUp] Credit applied but billing hold settlement failed", {
         organizationId: attempt.organizationId,
@@ -1391,7 +1394,9 @@ export class AutoTopUpService {
       status: credited.status,
     });
 
-    const newBalance = canonicalBalanceNumber(settled.newBalance);
+    const newBalance = canonicalBalanceNumber(
+      new Decimal(settled.newBalance).minus(repaidShortfallUsd).toFixed(6),
+    );
     const amount = centsToNumber(credited.creditAmountCents);
     if (settled.outcome === "applied") {
       const previousBalance = new Decimal(settled.newBalance)
