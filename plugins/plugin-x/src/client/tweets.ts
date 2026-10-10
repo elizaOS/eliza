@@ -1210,11 +1210,14 @@ export async function createQuoteTweetRequest(
   } catch (cause) {
     // error-policy:J2 Preserve the provider or request-assembly failure at the
     // connector boundary so callers can distinguish it from an accepted write.
-    throw new ElizaError("Failed to create quote tweet", {
-      code: "X_QUOTE_REQUEST_FAILED",
-      cause,
-      context: { quotedTweetId },
-    });
+    throw new ElizaError(
+      `Failed to create quote tweet: ${errorMessage(cause)}`,
+      {
+        code: "X_QUOTE_REQUEST_FAILED",
+        cause,
+        context: { quotedTweetId },
+      },
+    );
   }
 }
 
