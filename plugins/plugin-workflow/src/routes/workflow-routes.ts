@@ -239,7 +239,11 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
         lifecycleMutationProtocol: 1,
         typedAuthoringProtocol: 1,
         hostedDigestProtocol: 1,
-        ...(hostedNativeSourcesAvailable() ? { hostedNativeSourceProtocol: 1 } : {}),
+        // Lapsed-source schedules pause (one unavailable result, schedule removed) and loops report sourceState.
+        hostedDigestSourcePauseProtocol: 1,
+        ...(hostedNativeSourcesAvailable()
+          ? { hostedNativeSourceProtocol: 1, hostedNativeEveningProtocol: 1 }
+          : {}),
       });
       return;
     }

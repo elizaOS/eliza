@@ -7,6 +7,7 @@ export default defineConfig({
     include: [
       '__tests__/integration/hosted-digests-http.test.ts',
       '__tests__/integration/hosted-native-source-http.test.ts',
+      '__tests__/integration/hosted-native-evening-http.test.ts',
     ],
     testTimeout: 240000,
     hookTimeout: 120000,
