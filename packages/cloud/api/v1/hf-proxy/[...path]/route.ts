@@ -83,8 +83,11 @@ const app = new Hono<AppEnv>();
 
 function monthlyEgressLimitBytes(env: AppEnv["Bindings"]): number {
   const raw = env.HF_PROXY_MONTHLY_EGRESS_LIMIT_BYTES;
-  const parsed =
-    typeof raw === "string" ? Number.parseInt(raw.trim(), 10) : Number.NaN;
+  // Number.parseInt stops at the first non-digit ("1e9" -> 1), so a typo
+  // was silently accepted as the egress cap instead of the 500 GiB default.
+  // Require the whole trimmed value to be decimal.
+  const rawText = typeof raw === "string" ? raw.trim() : "";
+  const parsed = /^\+?\d+$/.test(rawText) ? Number(rawText) : Number.NaN;
   return Number.isFinite(parsed) && parsed > 0
     ? parsed
     : DEFAULT_MONTHLY_EGRESS_LIMIT_BYTES;
