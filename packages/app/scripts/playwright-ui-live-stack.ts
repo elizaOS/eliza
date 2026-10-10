@@ -48,6 +48,7 @@ import {
   formatSafeLiveStackStartupFailure,
   type LiveStackDiagnosticComponent,
 } from "./lib/live-stack-safe-diagnostics.ts";
+import { resolvePlaywrightPortEnv } from "./lib/playwright-port.ts";
 import { shouldForceStubStack } from "./lib/ui-smoke-stub-decision.ts";
 import {
   rendererDistMatchesPlaywrightTestAuth,
@@ -88,8 +89,16 @@ const REAL_LOCAL_AGENT_SCRIPT = path.join(
 );
 const NODE_TSX_RUNNER = path.join(import.meta.dirname, "run-node-tsx.ts");
 const READY_TIMEOUT_MS = 180_000;
-const API_PORT = Number(process.env.ELIZA_UI_SMOKE_API_PORT ?? "31337");
-const UI_PORT = Number(process.env.ELIZA_UI_SMOKE_PORT ?? "2138");
+const API_PORT = resolvePlaywrightPortEnv(
+  process.env,
+  "ELIZA_UI_SMOKE_API_PORT",
+  31337,
+);
+const UI_PORT = resolvePlaywrightPortEnv(
+  process.env,
+  "ELIZA_UI_SMOKE_PORT",
+  2138,
+);
 const UI_SMOKE_RUN_ID = process.env.ELIZA_UI_SMOKE_RUN_ID?.trim() ?? "";
 const EXPECTED_PLAYWRIGHT_TEST_AUTH = resolvePlaywrightTestAuth(APP_DIR);
 const LIVE_PROVIDER = await selectLiveProviderAsync();
