@@ -15,8 +15,14 @@ export type RequestExpiryOptions = {
 };
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  if (value === undefined) return fallback;
+  // Canonical decimal digits only, mirroring resolvePtyDisconnectGraceMs:
+  // Number("0x10") is 16 and Number("1e3") is 1000 — both used to silently
+  // reconfigure the request-expiry security windows instead of falling back.
+  const trimmed = value.trim();
+  if (!/^[1-9]\d*$/.test(trimmed)) return fallback;
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) ? parsed : fallback;
 }
 
 export function requestExpiry(options?: RequestExpiryOptions) {
