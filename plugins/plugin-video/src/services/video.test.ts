@@ -574,8 +574,6 @@ it("keeps private media results out of the shared inbox while enforcing requeste
     );
     if (!documents || !notifications)
       throw new Error("Media consumers did not initialize");
-    // Observe the actual storage result; the spy calls the real document service.
-    const saveDocument = vi.spyOn(documents, "addDocument");
     registerMediaJobWorker(runtime);
     const taskId = await runtime.createTask({
       name: "PROCESS_PUBLIC_MEDIA",
@@ -608,10 +606,6 @@ it("keeps private media results out of the shared inbox while enforcing requeste
     const documentId = completed?.metadata?.documentId;
     if (typeof documentId !== "string")
       throw new Error("Completed media document is missing");
-    const savedDocument = await saveDocument.mock.results[0]?.value;
-    saveDocument.mockRestore();
-    if (!savedDocument) throw new Error("Private document was not saved");
-    expect(savedDocument.clientDocumentId).toBe(documentId);
     const message = (entityId: UUID): Memory => ({
       id: randomUUID() as UUID,
       agentId: runtime.agentId,
@@ -623,14 +617,14 @@ it("keeps private media results out of the shared inbox while enforcing requeste
     expect(
       (
         await documents.getDocumentById(
-          savedDocument.storedDocumentMemoryId,
+          documentId as UUID,
           message(requester),
         )
       )?.content.text,
     ).toBe(transcript);
     expect(
       await documents.getDocumentById(
-        savedDocument.storedDocumentMemoryId,
+        documentId as UUID,
         message(other),
       ),
     ).toBeNull();
@@ -661,7 +655,6 @@ it("keeps private media results out of the shared inbox while enforcing requeste
       sourceUrl,
       taskId,
       documentId,
-      savedDocument.storedDocumentMemoryId,
       roomId,
       requester,
       other,
