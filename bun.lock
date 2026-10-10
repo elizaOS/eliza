@@ -181,7 +181,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@capacitor-community/sqlite": "^8.1.0",
-        "@capacitor/android": "8.5.0",
+        "@capacitor/android": "8.5.1",
         "@capacitor/app": "8.1.1",
         "@capacitor/background-runner": "^3.0.0",
         "@capacitor/barcode-scanner": "3.1.2",
@@ -190,7 +190,7 @@
         "@capacitor/device": "8.0.3",
         "@capacitor/filesystem": "^8.0.0",
         "@capacitor/haptics": "8.0.2",
-        "@capacitor/ios": "8.5.0",
+        "@capacitor/ios": "8.5.3",
         "@capacitor/keyboard": "8.0.5",
         "@capacitor/local-notifications": "^8.0.0",
         "@capacitor/network": "^8.0.0",
@@ -790,9 +790,9 @@
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.15",
+        "@elizaos/plugin-network": "workspace:*",
         "@elizaos/plugin-sqlite": "workspace:*",
         "@elizaos/plugin-todos": "workspace:*",
-        "@elizaos/plugin-network": "workspace:*",
         "@elizaos/plugin-web-search": "workspace:*",
         "@types/pg": "^8.23.1",
         "@types/ws": "^8.18.1",
@@ -2490,7 +2490,7 @@
       "name": "@elizaos/capacitor-owned-media",
       "version": "2.0.3-beta.7",
       "devDependencies": {
-        "@capacitor/android": "8.5.0",
+        "@capacitor/android": "8.5.1",
         "@types/node": "^25.6.0",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
@@ -3363,7 +3363,6 @@
     "@solana/assertions@5.5.1": "patches/@solana%2Fassertions@5.5.1.patch",
     "@solana/options@5.5.1": "patches/@solana%2Foptions@5.5.1.patch",
     "@solana/subscribable@5.5.1": "patches/@solana%2Fsubscribable@5.5.1.patch",
-    "@capacitor/ios@8.5.0": "patches/@capacitor%2Fios@8.5.0.patch",
     "@solana/accounts@5.5.1": "patches/@solana%2Faccounts@5.5.1.patch",
     "@solana/instruction-plans@5.5.1": "patches/@solana%2Finstruction-plans@5.5.1.patch",
     "telegraf@4.16.3": "patches/telegraf@4.16.3.patch",
@@ -3607,7 +3606,7 @@
 
     "@capacitor-community/sqlite": ["@capacitor-community/sqlite@8.1.1", "", { "dependencies": { "jeep-sqlite": "^2.7.2" }, "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-wsqscMOMveDeIvB9WHLm38jkUV2317LmuWvvbhvmOB1REdr8GH6weFZpAiKmLimbpP2CQ2eVs8nmRcrTqbd9ng=="],
 
-    "@capacitor/android": ["@capacitor/android@8.5.0", "", { "peerDependencies": { "@capacitor/core": "^8.5.0" } }, "sha512-Rb3prJeQiTp0pQhSSOReJuG9VgibOGMG4ECs+UhMwr6TCCHZ3NCZO811bDA0HxD0xrT/gCrJAsY5yfEATu84JQ=="],
+    "@capacitor/android": ["@capacitor/android@8.5.1", "", { "peerDependencies": { "@capacitor/core": "^8.5.0" } }, "sha512-o8fUIPDSEASeXHHrDz26WU7OlyiRb+QqtI9KFdnLS1jUL77o5iGrvegibaZX8rWpiCyDJ6jlUhhhHlfeq3ou9A=="],
 
     "@capacitor/app": ["@capacitor/app@8.1.1", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-xM2ZTX5jK60tFtmjsmJv+Cdj1Qsb6NcavkqmdEnCPQBeya9oKhamZJxYOnQNj1ZvcJM7sWfG6BEtSLx42pisbA=="],
 
@@ -3629,7 +3628,7 @@
 
     "@capacitor/haptics": ["@capacitor/haptics@8.0.2", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-c2hZzRR5Fk1tbTvhG1jhh2XBAf3EhnIerMIb2sl7Mt41Gxx1fhBJFDa0/BI1IbY4loVepyyuqNC9820/GZuoWQ=="],
 
-    "@capacitor/ios": ["@capacitor/ios@8.5.0", "", { "peerDependencies": { "@capacitor/core": "^8.5.0" } }, "sha512-7k1TfohJu5BzRXc1F3g04Q8QQ0fyQgms6h1AvhnHb04VaNr9EdHOx03hL8O+OigEKMQnyJd1ZOjTPPNHCqL5Yw=="],
+    "@capacitor/ios": ["@capacitor/ios@8.5.3", "", { "peerDependencies": { "@capacitor/core": "^8.5.0" } }, "sha512-HnnV92Jl8+3x0JUloXUMjFcUsQI8wHFVsKwkLn72DfRZXYGZW11tQbmNOWOnRTljaU18FdI1b9ipT09SzzPDNw=="],
 
     "@capacitor/keyboard": ["@capacitor/keyboard@8.0.5", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-oFXygC4eKYA5l2MdpTR06L2M/4x6e2SLD5yS1T9+UBDKTkzyvhWKEhbYLUaTIBPpLKqlfGudJw1X73S1H9eUzQ=="],
 

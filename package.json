@@ -279,7 +279,6 @@
     "sql.js@1.14.2": "patches/sql.js@1.14.2.patch",
     "telegraf@4.16.3": "patches/telegraf@4.16.3.patch",
     "tsup@8.5.1": "patches/tsup@8.5.1.patch",
-    "@capacitor/ios@8.5.0": "patches/@capacitor%2Fios@8.5.0.patch",
     "@solana/accounts@5.5.1": "patches/@solana%2Faccounts@5.5.1.patch",
     "@solana/addresses@5.5.1": "patches/@solana%2Faddresses@5.5.1.patch",
     "@solana/assertions@5.5.1": "patches/@solana%2Fassertions@5.5.1.patch",
