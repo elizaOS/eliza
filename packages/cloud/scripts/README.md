@@ -15,3 +15,8 @@ production. Select the matching environment and exact served commit. Both use
 `qwen-3.8-27b@high@max` by default and retain sanitized request traces. Auth cache
 probes are available only in staging. Production uses the protected production
 environment and the root Worker placement policy from the deployed commit.
+
+The staging database identity report can query the recorded Hetzner server IDs
+for agents blocked by migration 0398. Enable `read_only_agent_provider_state` to
+emit hashed subjects and provider-state comparisons. A server absent from the
+configured project does not establish historical billing or authorize a repair.
