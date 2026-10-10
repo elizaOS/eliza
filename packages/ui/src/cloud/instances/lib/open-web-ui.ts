@@ -28,8 +28,29 @@ interface PairingTokenResponse {
 }
 
 function isInternalBrowserHost(hostname: string): boolean {
-  const normalized = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  let normalized = hostname.replace(/^\[|\]$/g, "").toLowerCase();
   if (normalized === "localhost" || normalized === "::1") return false;
+  // IPv4-mapped IPv6 ("::ffff:192.0.2.1", which WHATWG URL serializes as the
+  // hex-group form "::ffff:c000:201") denotes the embedded IPv4 host, so
+  // decode the last 32 bits and run the same private-range check below.
+  // Loopback stays allowed here, matching the localhost/::1 carve-out above.
+  const mappedDotted = /^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(
+    normalized,
+  );
+  const mappedHex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(normalized);
+  if (mappedDotted) {
+    normalized = mappedDotted[1];
+  } else if (mappedHex) {
+    const bits =
+      (Number.parseInt(mappedHex[1], 16) << 16) |
+      Number.parseInt(mappedHex[2], 16);
+    normalized = [
+      (bits >>> 24) & 0xff,
+      (bits >>> 16) & 0xff,
+      (bits >>> 8) & 0xff,
+      bits & 0xff,
+    ].join(".");
+  }
   if (
     [".corp", ".home", ".internal", ".lan", ".local", ".private"].some(
       (suffix) => normalized.endsWith(suffix),
