@@ -3903,7 +3903,12 @@ function parseDateParam(value: string | undefined): number | undefined {
   if (!value) return undefined;
   const parsed = Date.parse(value);
   if (!Number.isNaN(parsed)) return parsed;
-  const num = Number(value);
+  const trimmed = value.trim();
+  // Canonical decimal strings only: Number("0x10") is 16 and
+  // Number("1e2") is 100 — both used to silently become fabricated
+  // timestamps instead of being dropped like other malformed planner params.
+  if (!/^-?\d+(\.\d+)?$/.test(trimmed)) return undefined;
+  const num = Number(trimmed);
   if (!Number.isNaN(num)) return num > 1e12 ? num : num * 1000;
   return undefined;
 }
