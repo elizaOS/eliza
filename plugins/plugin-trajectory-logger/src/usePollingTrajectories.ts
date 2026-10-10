@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import {
   fetchTrajectoryDetail,
   fetchTrajectoryList,
+  isTrajectoryRequestTimeout,
   isTrajectoryRouteUnavailable,
   type TrajectoryDetail,
   type TrajectoryListItem,
@@ -102,6 +103,7 @@ export function usePollingTrajectories(
           }));
           return;
         }
+        if (isTrajectoryRequestTimeout(err)) return;
         setState((prev) => ({
           ...prev,
           ready: true,

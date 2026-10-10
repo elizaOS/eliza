@@ -94,6 +94,15 @@ export function isTrajectoryRouteUnavailable(err: unknown): boolean {
   return isApiError(err) && (err.status === 404 || err.status === 503);
 }
 
+/**
+ * True when the shared client ended a polling hop at its request deadline.
+ * A slow trajectory endpoint is not a polling failure and should stay quiet
+ * until the next scheduled hop.
+ */
+export function isTrajectoryRequestTimeout(err: unknown): boolean {
+  return isApiError(err) && err.kind === "timeout";
+}
+
 /** Each GET is an independent hop with its own 15s deadline. */
 const TRAJECTORY_FETCH_TIMEOUT_MS = 15_000;
 
