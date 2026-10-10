@@ -201,11 +201,6 @@ export class ElizaCloudClient {
     this.apiKey = apiKey;
   }
 
-  async listAgents(): Promise<CloudAgent[]> {
-    const res = await this.request<CloudAgent[]>("GET", "/api/v1/eliza/agents");
-    return res.data ?? [];
-  }
-
   async createAgent(params: CloudAgentCreateParams): Promise<CloudAgent> {
     const res = await this.request<CloudAgent>(
       "POST",
@@ -225,14 +220,6 @@ export class ElizaCloudClient {
     if (!res.success || !res.data)
       throw new Error(res.error ?? "Agent not found");
     return res.data;
-  }
-
-  async deleteAgent(agentId: string): Promise<void> {
-    const res = await this.request<void>(
-      "DELETE",
-      `/api/v1/eliza/agents/${agentId}`,
-    );
-    if (!res.success) throw new Error(res.error ?? "Failed to delete agent");
   }
 
   async provision(
@@ -365,23 +352,6 @@ export class ElizaCloudClient {
     if (!res.success || !res.data)
       throw new Error(res.error ?? "Snapshot failed");
     return res.data;
-  }
-
-  async listBackups(agentId: string): Promise<BackupInfo[]> {
-    const res = await this.request<BackupInfo[]>(
-      "GET",
-      `/api/v1/eliza/agents/${agentId}/backups`,
-    );
-    return res.data ?? [];
-  }
-
-  async restore(agentId: string, backupId?: string): Promise<void> {
-    const res = await this.request<void>(
-      "POST",
-      `/api/v1/eliza/agents/${agentId}/restore`,
-      backupId ? { backupId } : {},
-    );
-    if (!res.success) throw new Error(res.error ?? "Restore failed");
   }
 
   async heartbeat(
