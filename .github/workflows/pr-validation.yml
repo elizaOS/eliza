@@ -182,6 +182,107 @@ jobs:
           TURBO_SCM_BASE: ${{ steps.affected.outputs.base }}
         run: node packages/scripts/run-turbo.ts run build --concurrency=4 --output-logs=errors-only
 
+      # Opt in before a synchronize event; adding the label alone does not rerun CI.
+      # Reuse this job's already-built workspace closure, without deployment credentials.
+      - name: Build matching staging API and frontend artifacts
+        id: staging_artifacts
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          contains(github.event.pull_request.labels.*.name, 'staging-artifacts') &&
+          steps.affected.outputs.cloud == 'true' && steps.affected.outputs.app == 'true'
+        timeout-minutes: 10
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          CLOUDFLARE_API_TOKEN: ""
+          CLOUDFLARE_API_KEY: ""
+          CLOUDFLARE_EMAIL: ""
+          WRANGLER_SEND_METRICS: "false"
+          VITE_API_URL: https://api-staging.eliza.app
+          NEXT_PUBLIC_API_URL: https://api-staging.eliza.app
+          VITE_OIDC_ISSUER_URL: https://api-staging.eliza.app
+          VITE_ELIZA_CLOUD_BASE: https://cloud-staging.eliza.app
+          VITE_APP_URL: https://staging.eliza.app
+          NEXT_PUBLIC_APP_URL: https://cloud-staging.eliza.app
+          VITE_ELIZA_APP_URL: https://cloud-staging.eliza.app
+          VITE_STEWARD_TENANT_ID: elizacloud-staging
+          NEXT_PUBLIC_STEWARD_TENANT_ID: elizacloud-staging
+          VITE_ENVIRONMENT: staging
+          VITE_VOICE_REALTIME_WS: "0"
+          VITE_VOICE_REALTIME_FORCE: "0"
+          VITE_PLAYWRIGHT_TEST_AUTH: "false"
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          artifact_root="$RUNNER_TEMP/cloud-staging-artifacts"
+          mkdir -p "$artifact_root/api" "$artifact_root/ui"
+          # Same frontend command and staging origins as cloud-cf-release.yml.
+          bun run --cwd packages/app build:web
+          # Only local bundling: no upload, deployment, login, or resource provisioning.
+          (
+            cd packages/cloud/api
+            bunx wrangler@4.100.0 deploy --env staging --dry-run --outdir "$artifact_root/api"
+          )
+          # Ship the real Pages Functions bundle, not a static-only preview.
+          (
+            cd packages/app
+            bunx wrangler@4.100.0 pages functions build functions \
+              --outdir "$artifact_root/functions" --project-directory . \
+              --build-output-directory web-dist
+            test -s "$artifact_root/functions/index.js"
+            install -m 0644 "$artifact_root/functions/index.js" web-dist/_worker.js
+            node --check web-dist/_worker.js
+          )
+          test -s packages/app/web-dist/index.html
+          test -s "$artifact_root/api/index.js"
+          cp -a packages/app/web-dist/. "$artifact_root/ui/"
+          cp packages/app/wrangler.toml "$artifact_root/ui-wrangler.toml"
+          cp packages/cloud/api/wrangler.toml "$artifact_root/api-wrangler.toml"
+          git diff --exit-code
+          export ARTIFACT_ROOT="$artifact_root"
+          python3 - <<'PYMANIFEST'
+          import hashlib, json, os, pathlib, subprocess
+          root = pathlib.Path(os.environ["ARTIFACT_ROOT"])
+          files = {}
+          for path in sorted(root.rglob("*")):
+              if path.is_file():
+                  files[str(path.relative_to(root))] = {
+                      "bytes": path.stat().st_size,
+                      "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                  }
+          manifest = {
+              "sourceSha": os.environ["SOURCE_SHA"],
+              "sourceTree": subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip(),
+              "target": "staging",
+              "runId": os.environ["GITHUB_RUN_ID"],
+              "runAttempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "tools": {
+                  "node": subprocess.check_output(["node", "--version"], text=True).strip(),
+                  "bun": subprocess.check_output(["bun", "--version"], text=True).strip(),
+                  "wrangler": "4.100.0",
+              },
+              "frontendEnv": {key: value for key, value in os.environ.items()
+                              if key.startswith("VITE_") or key.startswith("NEXT_PUBLIC_")},
+              "qualification": "Build-only; requires successful PR checks and separate staging admission before use.",
+              "publicProviderConfiguration": "Not supplied by protected environments; release preflight must compare final public provider inputs.",
+              "deployments": 0,
+              "files": files,
+          }
+          (root / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          PYMANIFEST
+          echo "path=$artifact_root" >> "$GITHUB_OUTPUT"
+          echo "name=cloud-staging-${SOURCE_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload matching staging build artifacts
+        if: steps.staging_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ${{ steps.staging_artifacts.outputs.name }}
+          path: ${{ steps.staging_artifacts.outputs.path }}
+          if-no-files-found: error
+          retention-days: 3
+
       - name: Verify personal Shared chat entry without paid activation
         if: steps.affected.outputs.app == 'true'
         timeout-minutes: 1
