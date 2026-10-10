@@ -288,7 +288,12 @@ function parseProactiveJudgeObject(
 function parseOptionalNumber(raw: unknown): number | null {
   if (typeof raw === "number" && Number.isFinite(raw)) return raw;
   if (typeof raw !== "string") return null;
-  const parsed = Number(raw.trim());
+  const trimmed = raw.trim();
+  // Canonical decimal strings only: Number("") is 0, Number("0x10") is 16,
+  // and Number("1e3") is 1000 — all used to silently become a confidence
+  // value instead of being treated as absent.
+  if (!/^-?\d+(\.\d+)?$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
