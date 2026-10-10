@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { testOutputPath } from "../../scripts/lib/test-output.ts";
+import { runConsumerFixture } from "./lib/android-consumer-fixture.ts";
 import { acquireDeviceLease } from "./lib/device-lease.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
@@ -198,13 +199,6 @@ async function main() {
       (!args.includes("--plugin") || plugin.directory === value("--plugin")),
   );
   if (!selected.length) throw new Error("No matching Android plugins");
-  // A multi-app consumer fixture has its own install and permission protocol. Never
-  // count its tests as assertions in the generic library APK or fabricate a pass.
-  const external = selected.filter((plugin) => plugin.expectedTests === 0);
-  if (external.length)
-    throw new Error(
-      `Run the dedicated consumer fixtures first: ${external.map((plugin) => plugin.consumerProject ?? plugin.directory).join(", ")}. Select a generic module with --plugin for this runner.`,
-    );
   const outputDir = testOutputPath(
     "android-native-plugins",
     new Date().toISOString().replaceAll(":", "-"),
@@ -291,7 +285,10 @@ async function main() {
       fingerprint: adb("shell", "getprop", "ro.build.fingerprint").trim(),
       webView: adb("shell", "dumpsys", "webviewupdate").trim(),
     };
-    if (!args.includes("--no-build")) {
+    if (
+      !args.includes("--no-build") &&
+      selected.some((plugin) => plugin.expectedTests > 0)
+    ) {
       console.log(`Building ${selected.length} Android native test APKs`);
       let build;
       try {
@@ -302,9 +299,9 @@ async function main() {
             "packages/app/scripts/android-native-plugins-gradle",
             "--no-daemon",
             "--max-workers=4",
-            ...selected.map(
-              (plugin) => `:${plugin.project}:assembleDebugAndroidTest`,
-            ),
+            ...selected
+              .filter((plugin) => plugin.expectedTests > 0)
+              .map((plugin) => `:${plugin.project}:assembleDebugAndroidTest`),
             ...(selected.some(
               (plugin) => plugin.directory === "plugin-native-appblocker",
             )
@@ -331,6 +328,25 @@ async function main() {
         problems: [],
       };
       report.results.push(entry);
+      if (plugin.expectedTests === 0 && plugin.consumerProject) {
+        await runConsumerFixture({
+          root,
+          plugin,
+          entry,
+          outputDir,
+          adb,
+          build: !args.includes("--no-build"),
+          parseInstrumentation,
+        });
+        console.log(
+          `${entry.pass ? "PASS" : "FAIL"} ${plugin.directory}: consumer fixture`,
+        );
+        fs.writeFileSync(
+          path.join(outputDir, "report.json"),
+          JSON.stringify(report, null, 2),
+        );
+        continue;
+      }
       let applicationId;
       let fixtureInstalled = false;
       let preservePackageForRecovery = false;
