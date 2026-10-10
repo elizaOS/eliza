@@ -1715,16 +1715,24 @@ async function generateTextWithModel(
         );
         return normalizedUsage;
       });
-      const finishReasonPromise = Promise.resolve(streamResult.finishReason).then(
-        (finishReason) => {
-          assertModelOutputComplete({
-            finishReason,
-            provider: "anthropic",
-            model: modelName,
-          });
-          return finishReason;
-        }
-      );
+      // The finish-reason check waits for the usage promise, which emits
+      // MODEL_USED, so billed tokens are reported before an incomplete
+      // output is rejected, and the rejection carries the usage and the
+      // output cap as evidence. A usage rejection maps to undefined, so it
+      // cannot change the finish result.
+      const finishReasonPromise = Promise.all([
+        Promise.resolve(streamResult.finishReason),
+        usagePromise.catch((): undefined => undefined),
+      ]).then(([finishReason, usage]) => {
+        assertModelOutputComplete({
+          finishReason,
+          provider: "anthropic",
+          model: modelName,
+          maxTokens: resolved.maxTokens,
+          usage,
+        });
+        return finishReason;
+      });
       // error-policy:J5 unhandled-rejection suppression — usage emission is
       // telemetry; the underlying stream failure is observed in
       // `textStreamWithUsage` (finishReason await rethrows), never here.
@@ -1800,11 +1808,12 @@ async function generateTextWithModel(
       paramsWithAttachments.signal
     );
 
-    assertModelOutputComplete({
-      finishReason: response.finishReason,
-      provider: "anthropic",
-      model: modelName,
-    });
+    const normalizedUsage = response.usage
+      ? normalizeAnthropicUsage(
+          response.usage as AnthropicUsageWithCache,
+          response.providerMetadata
+        )
+      : undefined;
 
     if (response.usage) {
       // Normalize BEFORE emitting so MODEL_USED (and the structured cache
@@ -1813,13 +1822,20 @@ async function generateTextWithModel(
         runtime,
         modelType,
         resolved.prompt,
-        normalizeAnthropicUsage(
-          response.usage as AnthropicUsageWithCache,
-          response.providerMetadata
-        ) ?? (response.usage as AnthropicUsageWithCache),
+        normalizedUsage ?? (response.usage as AnthropicUsageWithCache),
         modelName
       );
     }
+
+    // Billed tokens are reported before an incomplete output is rejected,
+    // and the rejection carries the usage and the output cap as evidence.
+    assertModelOutputComplete({
+      finishReason: response.finishReason,
+      provider: "anthropic",
+      model: modelName,
+      maxTokens: resolved.maxTokens,
+      usage: normalizedUsage,
+    });
 
     if (shouldReturnNativeResult) {
       return buildNativeTextResult(response, modelName) as string & NativeGenerateTextResult;
