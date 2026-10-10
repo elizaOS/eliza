@@ -227,9 +227,13 @@ export function resolveWindow(text: string, now: Date): DateWindow {
     return { from: iso(nextMonday), until: iso(addDays(nextMonday, 6)) };
   }
   if (/\bthis\s+week\b/.test(t)) {
+    // "this week" ends on this Sunday (structured-field.ts). Weeks start on
+    // Monday, so on a Sunday this Sunday is today itself. The `|| 7`
+    // next-occurrence shift used for weekdays must not apply here: it would
+    // move the end to next Sunday and extend the window by a full week.
     return {
       from: null,
-      until: iso(addDays(today, (7 - today.getUTCDay()) % 7 || 7)),
+      until: iso(addDays(today, (7 - today.getUTCDay()) % 7)),
     };
   }
   return out;
