@@ -45,6 +45,7 @@ import {
 } from "../goal-grounding.js";
 import { evaluateGoalProgressWithLlm } from "../goal-semantic-evaluator.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
+import { resolveOwnerTimeZone } from "../owner/fact-store.js";
 import {
   createLifeOpsAuditEvent,
   type LifeOpsScheduleMergedStateRecord,
@@ -483,7 +484,18 @@ export class GoalsDomain {
     summary: LifeOpsGoalReview["summary"];
     now: Date;
   }): Promise<Record<string, unknown>> {
-    const timeZone = resolveDefaultTimeZone();
+    const timeZoneByInstant = new Map<number, Promise<string>>();
+    const resolveTimeZoneFor = (instant: Date): Promise<string> => {
+      const key = instant.getTime();
+      const cached = timeZoneByInstant.get(key);
+      if (cached) {
+        return cached;
+      }
+      const pending = resolveOwnerTimeZone(this.ctx.runtime, instant);
+      timeZoneByInstant.set(key, pending);
+      return pending;
+    };
+    const timeZone = await resolveTimeZoneFor(args.now);
     const linkedDefinitionSummaries = args.linkedDefinitions.map(
       (definition) => ({
         id: definition.id,
@@ -500,25 +512,38 @@ export class GoalsDomain {
         ).toISOString(),
       })
     ).filter((signal) => signal.health?.sleep);
-    const sleepSessions = sleepSignals
-      .map((signal) => {
-        const sleep = signal.health?.sleep;
-        if (!sleep) {
-          return null;
-        }
-        return {
-          observedAt: signal.observedAt,
-          asleepAt: sleep.asleepAt,
-          awakeAt: sleep.awakeAt,
-          durationMinutes: sleep.durationMinutes,
-          localBedtime: this.formatLocalHourMinute(sleep.asleepAt, timeZone),
-          localWakeTime: this.formatLocalHourMinute(sleep.awakeAt, timeZone),
-          stage: sleep.stage,
-        };
-      })
-      .filter(
-        (session): session is NonNullable<typeof session> => session !== null,
-      );
+    const sleepSessions = (
+      await Promise.all(
+        sleepSignals.map(async (signal) => {
+          const sleep = signal.health?.sleep;
+          if (!sleep) {
+            return null;
+          }
+          const observedAt = new Date(signal.observedAt);
+          const sessionTimeZone = await resolveTimeZoneFor(
+            Number.isNaN(observedAt.getTime()) ? args.now : observedAt,
+          );
+          return {
+            observedAt: signal.observedAt,
+            asleepAt: sleep.asleepAt,
+            awakeAt: sleep.awakeAt,
+            durationMinutes: sleep.durationMinutes,
+            timeZone: sessionTimeZone,
+            localBedtime: this.formatLocalHourMinute(
+              sleep.asleepAt,
+              sessionTimeZone,
+            ),
+            localWakeTime: this.formatLocalHourMinute(
+              sleep.awakeAt,
+              sessionTimeZone,
+            ),
+            stage: sleep.stage,
+          };
+        }),
+      )
+    ).filter(
+      (session): session is NonNullable<typeof session> => session !== null,
+    );
     const sleepStartHours = sleepSessions
       .map((session) => {
         const localBedtime = session.localBedtime;
