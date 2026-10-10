@@ -6,6 +6,7 @@
 import { expect, spyOn, test } from "bun:test";
 import { AgentRuntime, ChannelType, stringToUuid } from "@elizaos/core";
 import type { TodoStore } from "@elizaos/plugin-todos";
+import { executePlannedToolCall } from "../../../../../../core/src/runtime/execute-planned-tool-call";
 import { personalSharedAgentId } from "./personal-shared-identity";
 import { runSharedAgentTurn } from "./run-shared-agent-turn";
 import { resolveSharedCapabilityIntent } from "./shared-capability-wall";
@@ -43,9 +44,11 @@ function model(content: string | null, tool?: { name: string; args: object }) {
   });
 }
 async function exercise(
-  kind: "general" | "weather" | "weather-missing" | "compound-missing" | "private",
+  kind: "general" | "weather" | "weather-missing" | "compound-missing" | "private" | "ordinary" | "connect",
 ) {
-  const publicRead = kind !== "private";
+  const ordinary = kind === "ordinary";
+  const connecting = kind === "connect";
+  const publicRead = kind !== "private" && !ordinary && !connecting;
   const compoundMissing = kind === "compound-missing";
   const weatherRead = kind === "weather" || kind === "weather-missing" || compoundMissing;
   const savedFetch = globalThis.fetch;
@@ -56,6 +59,7 @@ async function exercise(
   };
   let reads = 0,
     binds = 0,
+    connects = 0,
     publicCalls = 0,
     modelCalls = 0,
     todoReads = 0;
@@ -67,13 +71,16 @@ async function exercise(
   const weatherQuery = "current public weather in Phoenix, AZ";
   const publicUrl = "https://developers.google.com/gmail/api/reference/quotas";
   const todoContent = "Stretch fixture shoulders";
-  const reply = compoundMissing
-    ? `Your checklist includes ${todoContent}. I could not verify current weather.`
-    : weatherRead
-      ? "I could not verify current weather from the available source."
-      : publicRead
-        ? `Gmail API documentation describes API rate limits. [[SOURCE_URL:${publicUrl}]]`
-        : "No matching invoices were found.";
+  const reply = ordinary
+    ? "Hello."
+    : compoundMissing
+      ? `Your checklist includes ${todoContent}. I could not verify current weather.`
+      : weatherRead
+        ? "I could not verify current weather from the available source."
+        : publicRead
+          ? `Gmail API documentation describes API rate limits. [[SOURCE_URL:${publicUrl}]]`
+          : "No matching invoices were found.";
+  const authUrl = "https://accounts.google.com/o/oauth2/auth?state=offline-owned-connect";
   process.env.CEREBRAS_API_KEY = "offline-google-unit-key";
   delete process.env.OPENROUTER_API_KEY;
   process.env.NODE_ENV = "production";
@@ -137,11 +144,11 @@ async function exercise(
           contexts: [kind === "general" ? "web" : compoundMissing ? "todos" : "general"],
           intents: [],
           candidateActionNames:
-            kind === "weather-missing"
+            kind === "weather-missing" || ordinary
               ? []
               : [compoundMissing ? "TODO" : publicRead ? "WEB_SEARCH" : "GOOGLE_CONTEXT"],
-          requiresTool: kind !== "weather-missing",
-          replyText: kind === "weather-missing" ? reply : "",
+          requiresTool: kind !== "weather-missing" && !ordinary,
+          replyText: kind === "weather-missing" || ordinary ? reply : "",
           replyEffectStatus: "none",
           facts: [],
           relationships: [],
@@ -178,14 +185,14 @@ async function exercise(
     if (
       /(?:^|\n)planner_stage:\n/.test(system) &&
       names.includes("GOOGLE_CONTEXT") &&
-      reads === 0
+      reads === 0 && connects === 0
     ) {
       return model(null, {
         name: "GOOGLE_CONTEXT",
-        args: { operation: "gmail_search", query: "invoices" },
+        args: connecting ? { operation: "connect" } : { operation: "gmail_search", query: "invoices" },
       });
     }
-    return model(reply);
+    return model(connecting && connects === 1 ? `Continue with Google: ${authUrl}` : reply);
   }) as typeof fetch;
   let runtimeSpy: ReturnType<typeof spyOn> | undefined;
   try {
@@ -201,6 +208,21 @@ async function exercise(
         service.handleMessage = async (...args) => {
           const result = await handle(...args);
           actualResults = result.actionResults ?? [];
+          if (ordinary) {
+            const denied = await executePlannedToolCall(
+              this,
+              { message: args[1] },
+              {
+                id: "offline-unrequested-google",
+                name: "GOOGLE_CONTEXT",
+                params: { operation: "gmail_search", query: "invoices" },
+              },
+            );
+            expect(denied.success).toBe(false);
+            expect(denied.text).toContain("Action not found: GOOGLE_CONTEXT");
+            expect(binds).toBe(0);
+            expect(reads).toBe(0);
+          }
           if (kind === "general") {
             // Exercise the actual registered action's equivalent-query boundary
             // separately from Core's server-deterministic first call. No handler,
@@ -272,14 +294,14 @@ async function exercise(
             },
           ]
         : [],
-      message: compoundMissing
+      message: connecting ? "Connect Google" : ordinary ? "Hello." : compoundMissing
         ? "What is the weather in Phoenix, AZ? Show a checklist."
         : weatherRead
           ? "What is the weather in Phoenix, AZ?"
           : publicRead
             ? `Search the web for ${publicTopic}?`
             : "Search Gmail for API documentation invoices.",
-      capabilityText: compoundMissing
+      capabilityText: connecting ? "Connect Google" : ordinary ? "Hello." : compoundMissing
         ? "What is the weather in Phoenix, AZ? Show a checklist."
         : weatherRead
           ? "What is the weather in Phoenix, AZ?"
@@ -294,10 +316,12 @@ async function exercise(
         ...(compoundMissing ? { todos: { scope: todoScope, store: todoStore } } : {}),
         google: async () => {
           binds += 1;
-          if (publicRead) throw new Error("PUBLIC_READ_MUST_NOT_BIND_PRIVATE_GOOGLE");
+          if (publicRead || ordinary) throw new Error("UNREQUESTED_PRIVATE_GOOGLE_BIND");
           return {
             connect: async () => {
-              throw new Error("OFFLINE_UNREQUESTED_CONNECT");
+              if (!connecting) throw new Error("OFFLINE_UNREQUESTED_CONNECT");
+              connects += 1;
+              return { authUrl };
             },
             read: async (request) => {
               expect(request).toEqual({ kind: "gmail_search", query: "invoices" });
@@ -388,6 +412,26 @@ async function exercise(
         ).toBe(publicTopic);
       }
       expect(turn.reply).not.toContain("PRIVATE_HISTORY_MARKER");
+    } else if (ordinary) {
+      expect(webRegistered).toBe(false);
+      expect(googleRegistered).toBe(false);
+      expect(googleCapabilityOffered).toBe(true);
+      expect(reads).toBe(0);
+      expect(binds).toBe(0);
+      expect(publicCalls).toBe(0);
+      expect(turn.reply).toBe("Hello.");
+    } else if (connecting) {
+      expect(webRegistered).toBe(false);
+      expect(googleRegistered).toBe(true);
+      expect(binds).toBe(1);
+      expect(connects).toBe(1);
+      expect(reads).toBe(0);
+      expect(publicCalls).toBe(0);
+      expect(turn.reply).toContain(authUrl);
+      expect(turn.actionResults).toContainEqual(expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({ actionName: "GOOGLE_CONTEXT", operation: "connect", authUrl }),
+      }));
     } else {
       expect(webRegistered).toBe(false);
       expect(googleRegistered).toBe(true);
@@ -423,5 +467,7 @@ test("actual Core keeps complete public Google queries separate from consented o
   await exercise("weather-missing");
   await exercise("compound-missing");
   await exercise("private");
+  await exercise("ordinary");
+  await exercise("connect");
 });
 const initializeOriginal = AgentRuntime.prototype.initialize;
