@@ -47,10 +47,12 @@ describe("Shared participant name projection", () => {
     expect(sharedOwnerProfileName({})).toBeUndefined();
   });
 
-  test("an unquoted name keeps surname particles", () => {
-    expect(
-      resolveSharedParticipantName({ message: "My name is Ana de la Cruz.", history: [] }),
-    ).toBe("Ana de la Cruz");
+  test("an unquoted name keeps surname particles and caseless scripts", () => {
+    for (const name of ["Ana de la Cruz", "李明", "محمد", "יוסי", "さくら", "Мария"]) {
+      expect(resolveSharedParticipantName({ message: `My name is ${name}.`, history: [] })).toBe(
+        name,
+      );
+    }
   });
 
   test("callback and ordinary commands are not self-identification", () => {
