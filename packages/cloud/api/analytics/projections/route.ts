@@ -6,6 +6,7 @@
 
 import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import {
+  fillIdleUsageDays,
   generateProjectionAlerts,
   generateProjections,
 } from "@elizaos/cloud-shared/lib/analytics/projections";
@@ -48,7 +49,7 @@ app.get("/", async (c) => {
     const now = new Date();
     const startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    const [historicalData, organization] = await Promise.all([
+    const [activeDays, organization] = await Promise.all([
       analyticsService.getUsageTimeSeries(user.organization_id, {
         startDate,
         endDate: now,
@@ -60,6 +61,7 @@ app.get("/", async (c) => {
     if (!organization) {
       throw new Error(`Organization ${user.organization_id} not found`);
     }
+    const historicalData = fillIdleUsageDays(activeDays, now);
 
     const creditBalance = Number(organization.credit_balance ?? 0);
     const projections = generateProjections(historicalData, periods);

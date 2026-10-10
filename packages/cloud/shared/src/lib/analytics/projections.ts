@@ -118,6 +118,43 @@ export function calculateLinearRegression(values: number[]): LinearRegressionRes
   return { slope, intercept };
 }
 
+/**
+ * Day series with a zero-usage point for every UTC day from the first observed
+ * day through endDate. Usage queries group by day and return only active days,
+ * while the projections and runway alerts assume one point per day. Rows past
+ * endDate extend the range so input is never silently dropped.
+ */
+export function fillIdleUsageDays(
+  points: readonly TimeSeriesDataPoint[],
+  endDate: Date,
+): TimeSeriesDataPoint[] {
+  if (points.length === 0) return [];
+  const dayMs = 24 * 60 * 60 * 1000;
+  const byDay = new Map<number, TimeSeriesDataPoint>();
+  let firstDay = Number.POSITIVE_INFINITY;
+  let lastDay = Math.floor(endDate.getTime() / dayMs);
+  for (const point of points) {
+    const day = Math.floor(point.timestamp.getTime() / dayMs);
+    byDay.set(day, point);
+    firstDay = Math.min(firstDay, day);
+    lastDay = Math.max(lastDay, day);
+  }
+  const filled: TimeSeriesDataPoint[] = [];
+  for (let day = firstDay; day <= lastDay; day += 1) {
+    filled.push(
+      byDay.get(day) ?? {
+        timestamp: new Date(day * dayMs),
+        totalRequests: 0,
+        totalCost: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        successRate: 1,
+      },
+    );
+  }
+  return filled;
+}
+
 export function generateProjections(
   historicalData: TimeSeriesDataPoint[],
   periods: number,

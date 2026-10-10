@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { enforceTlsForRemote } from "@elizaos/cloud-shared/db/client";
 import { Pool } from "pg";
 import {
+  fillIdleUsageDays,
   generateProjectionAlerts,
   generateProjections,
 } from "../../shared/src/lib/analytics/projections";
@@ -169,14 +170,17 @@ export async function loadDashboardInputs(
     ]);
 
     return {
-      historicalData: usage.rows.map((row) => ({
-        timestamp: new Date(row.timestamp),
-        totalRequests: Number(row.total_requests),
-        totalCost: Number(row.total_cost),
-        inputTokens: tokenSumToNumber(row.input_tokens, "input_tokens"),
-        outputTokens: tokenSumToNumber(row.output_tokens, "output_tokens"),
-        successRate: Number(row.success_rate),
-      })),
+      historicalData: fillIdleUsageDays(
+        usage.rows.map((row) => ({
+          timestamp: new Date(row.timestamp),
+          totalRequests: Number(row.total_requests),
+          totalCost: Number(row.total_cost),
+          inputTokens: tokenSumToNumber(row.input_tokens, "input_tokens"),
+          outputTokens: tokenSumToNumber(row.output_tokens, "output_tokens"),
+          successRate: Number(row.success_rate),
+        })),
+        endDate,
+      ),
       creditBalance:
         org.rows[0]?.credit_balance === undefined
           ? null
