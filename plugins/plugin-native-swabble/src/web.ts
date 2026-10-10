@@ -845,17 +845,12 @@ export class SwabbleWeb extends WebPlugin {
       // error-policy:J4 Permissions API cannot query microphone here; keep the "prompt" default
       /* permissions.query not supported for microphone in some browsers */
     }
-    let speechRecognition: SwabblePermissionStatus["speechRecognition"] =
+    // Note: there is intentionally no Whisper-availability check here. The
+    // desktop native module removed its whisper.cpp path, and no host registers
+    // a "swabbleIsWhisperAvailable" route, so speech recognition support is
+    // determined by the Web Speech API alone.
+    const speechRecognition: SwabblePermissionStatus["speechRecognition"] =
       getSpeechRecognition() ? "granted" : "not_supported";
-    const whisperStatus = await this.invokeDesktopRequest<{
-      available: boolean;
-    }>({
-      rpcMethod: "swabbleIsWhisperAvailable",
-      ipcChannel: "swabble:isWhisperAvailable",
-    });
-    if (whisperStatus?.available) {
-      speechRecognition = "granted";
-    }
 
     return {
       microphone,
