@@ -153,6 +153,11 @@ export interface VoiceSectionProps {
    * the row says so.
    */
   onWakeWordToggle?: (next: boolean) => void;
+  /**
+   * Why the wake-word detector is not running although the setting is on, as
+   * reported by the native host (e.g. `wakeword-model-not-staged`).
+   */
+  wakeWordInactiveReason?: string;
   /** Shared controls that should lead the canonical Voice stack. */
   leadingContent?: React.ReactNode;
   className?: string;
@@ -168,6 +173,7 @@ export function VoiceSection({
   showModelsPanel = true,
   wakeWordEnabled = false,
   onWakeWordToggle,
+  wakeWordInactiveReason,
   leadingContent,
   className,
 }: VoiceSectionProps): React.ReactElement {
@@ -232,7 +238,13 @@ export function VoiceSection({
             label={t("voicesection.wakeWord", { defaultValue: "Wake word" })}
             description={
               onWakeWordToggle
-                ? undefined
+                ? wakeWordInactiveReason
+                  ? t("voicesection.wakeWordInactive", {
+                      reason: wakeWordInactiveReason,
+                      defaultValue:
+                        "Wake word detector is not running: {{reason}}",
+                    })
+                  : undefined
                 : t("voicesection.wakeWordUnavailable", {
                     defaultValue: "Wake word is not available on this device.",
                   })

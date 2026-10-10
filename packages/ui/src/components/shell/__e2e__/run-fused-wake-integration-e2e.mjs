@@ -129,7 +129,7 @@ try {
   assert((await p.getByTestId("shell-chat-surface").count()) === 0, "RESTING: no composer before wake");
   assert(
     await p.evaluate(() => window.__ELIZA_FUSED_WAKE__ === true),
-    "registerDesktopFusedWake set the capability flag",
+    "fusedWakeStart reported started, so the capability flag is set",
   );
   await snap(p, "resting-homepill");
 

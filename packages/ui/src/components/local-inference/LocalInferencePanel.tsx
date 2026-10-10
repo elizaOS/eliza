@@ -25,9 +25,12 @@ import { isApiError } from "../../api/client-types-core";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useRole } from "../../hooks/useRole";
 import { useAppSelectorShallow } from "../../state/app-store";
+import { loadWakeWordEnabled } from "../../state/persistence";
 import { resolveApiUrl } from "../../utils/asset-url.js";
 import { openEventSource } from "../../utils/event-source";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
+import { getFusedWakeStatus } from "../../voice/fused-wake-bridge";
+import { armDesktopFusedWake } from "../../voice/fused-wake-desktop-bridge";
 import { AdvancedSettingsDisclosure } from "../settings/settings-control-primitives";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
@@ -556,6 +559,15 @@ function VoiceModelUpdatesSection() {
     async (id: VoiceModelId) => {
       try {
         await client.triggerVoiceModelUpdate(id);
+        // The desktop wake detector reports `wakeword-model-not-staged` until
+        // these files exist. Start it now instead of at the next app launch.
+        if (
+          id === "wakeword" &&
+          loadWakeWordEnabled() &&
+          getFusedWakeStatus().bridged
+        ) {
+          void armDesktopFusedWake();
+        }
         const list = await client.listVoiceModels();
         setInstallations(list.installations);
       } catch (err) {
