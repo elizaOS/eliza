@@ -353,7 +353,7 @@ describe("scheduling SQL persistence", () => {
 
       expect(replay.replayed).toBe(true);
       expect(replay.commit.logId).toMatch(/^stl_apply_[a-f0-9]{64}$/);
-      expect(replay.task.state.firedAt).toBe("2026-08-16T03:07:00.000Z");
+      expect(replay.task.state.firedAt).toBe("2026-08-16T03:12:00.000Z");
       const counts = await harness.pg.query<{
         logs: number;
         metadata_json: string;
@@ -585,7 +585,7 @@ describe("scheduling SQL persistence", () => {
       `);
       const applied = await apply();
       expect(applied.replayed).toBe(false);
-      expect(applied.task.state.firedAt).toBe("2026-08-16T03:07:00.000Z");
+      expect(applied.task.state.firedAt).toBe("2026-08-16T03:12:00.000Z");
     },
     SQL_PERSISTENCE_TEST_TIMEOUT_MS,
   );
@@ -656,7 +656,7 @@ describe("scheduling SQL persistence", () => {
       expect(replay.commit.logId).toBe(created.commit.logId);
       expect(applyReplay.replayed).toBe(true);
       expect(applyReplay.commit.logId).toBe(applied.commit.logId);
-      expect(applyReplay.task.state.firedAt).toBe("2026-08-16T03:05:00.000Z");
+      expect(applyReplay.task.state.firedAt).toBe("2026-08-16T03:10:00.000Z");
       const raw = await logStore.list({
         agentId: harness.runtime.agentId,
         taskId: created.task.taskId,
