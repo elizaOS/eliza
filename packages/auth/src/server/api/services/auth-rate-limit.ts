@@ -257,7 +257,12 @@ function allowAuthRateLimitSoftFail(): boolean {
 function authRateLimitOutageValveMax(): number {
   const raw = process.env.STEWARD_AUTH_RATE_LIMIT_OUTAGE_VALVE_MAX;
   if (raw === undefined || raw === "") return 300;
-  const parsed = Number.parseInt(raw, 10);
+  // Number.parseInt stops at the first non-digit ("1e3" -> 1), so a typo
+  // was silently accepted as the outage valve cap instead of the 300
+  // default. Require the whole trimmed value to be decimal, mirroring
+  // trustedProxyHops above.
+  const rawText = raw.trim();
+  const parsed = /^\+?\d+$/.test(rawText) ? Number(rawText) : Number.NaN;
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : 300;
 }
 
