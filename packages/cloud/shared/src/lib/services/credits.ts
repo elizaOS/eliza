@@ -530,7 +530,15 @@ function metadataNumber(value: unknown): number | null {
     return value;
   }
   if (typeof value === "string" && value.trim() !== "") {
-    const parsed = Number.parseFloat(value);
+    // Number.parseFloat stops at the first non-digit ("1e" -> 1), so a
+    // malformed metadata value was silently kept as the settle cost instead
+    // of being treated as absent. Require the whole trimmed value to be
+    // decimal, mirroring TWILIO_SMS_COST_PATTERN in
+    // packages/cloud/sdk/src/browser-contracts/markup.ts.
+    const text = value.trim();
+    const parsed = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(text)
+      ? Number(text)
+      : Number.NaN;
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
