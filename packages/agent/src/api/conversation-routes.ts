@@ -2919,6 +2919,12 @@ function parseMessageSearchTime(
     const epochMs = Number(trimmed);
     return Number.isSafeInteger(epochMs) ? epochMs : "invalid";
   }
+  // Date.parse("1.5") is implementation-defined and must not become a
+  // silent time window ("1.5" parsed as 2001-01-05 in V8). Only ISO-shaped
+  // timestamps fall through, mirroring the diagnostics since-filter.
+  if (!/^\d{4}-\d{2}-\d{2}(?:[T\s].*)?$/.test(trimmed)) {
+    return "invalid";
+  }
   const parsed = Date.parse(trimmed);
   return Number.isNaN(parsed) ? "invalid" : parsed;
 }
