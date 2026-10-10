@@ -91,11 +91,17 @@ vi.mock("@elizaos/login", async () => ({
   },
 }));
 
-vi.mock("../../../shell/steward-url", () => ({
+vi.mock("../../../shell/steward-url", async () => ({
+  ...(await vi.importActual<typeof import("../../../shell/steward-url")>(
+    "../../../shell/steward-url",
+  )),
   resolveBrowserStewardApiUrl: () => "https://api.example.test",
 }));
 
-vi.mock("../../../shell/steward-config", () => ({
+vi.mock("../../../shell/steward-config", async () => ({
+  ...(await vi.importActual<typeof import("../../../shell/steward-config")>(
+    "../../../shell/steward-config",
+  )),
   configuredStewardTenantId: () => "elizacloud",
   DEFAULT_STEWARD_TENANT_ID: "elizacloud",
 }));
