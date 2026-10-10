@@ -594,6 +594,10 @@ export function useChatSend(deps: UseChatSendDeps) {
     pollCloudCredits,
   } = deps;
   const chatSendQueueRef = useRef<QueuedChatSend[]>([]);
+  const chatSendIdleWaitersRef = useRef<Array<() => void>>([]);
+  const notifyChatSendIdle = useCallback(() => {
+    for (const wake of chatSendIdleWaitersRef.current.splice(0)) wake();
+  }, []);
   const admittedSendKeysRef = useRef(new Map<string, number>());
   const sendCancellationGenerationRef = useRef(0);
   const activeChatTurnRef = useRef<ActiveChatTurn | null>(null);
@@ -914,8 +918,9 @@ export function useChatSend(deps: UseChatSendDeps) {
       chatAbortRef.current = null;
       chatSendBusyRef.current = false;
       chatSendQueueRef.current.splice(0);
+      notifyChatSendIdle();
     };
-  }, [chatAbortRef, chatSendBusyRef]);
+  }, [chatAbortRef, chatSendBusyRef, notifyChatSendIdle]);
   const resolveQueuedChatSends = useCallback(
     (conversationId: string | null): RestoredQueuedDraft => {
       const queued: QueuedChatSend[] = [];
@@ -2419,9 +2424,11 @@ export function useChatSend(deps: UseChatSendDeps) {
       chatSendBusyRef.current = false;
       setChatSending(false);
       setChatFirstTokenReceived(false);
+      notifyChatSendIdle();
     }
   }, [
     chatSendBusyRef,
+    notifyChatSendIdle,
     runQueuedChatSend,
     setChatFirstTokenReceived,
     setChatSending,
@@ -2694,7 +2701,13 @@ export function useChatSend(deps: UseChatSendDeps) {
       const admissionGeneration = sendCancellationGenerationRef.current;
       if ((await settleConversationHydrationForSend?.()) === false) return;
       if (admissionGeneration !== sendCancellationGenerationRef.current) return;
-      if (chatSendBusyRef.current) return;
+      while (chatSendBusyRef.current) {
+        await new Promise<void>((resolve) => {
+          chatSendIdleWaitersRef.current.push(resolve);
+        });
+        if (admissionGeneration !== sendCancellationGenerationRef.current)
+          return;
+      }
       chatSendBusyRef.current = true;
       const sendNonce = ++chatSendNonceRef.current;
       let controller: AbortController | null = null;
@@ -2972,6 +2985,7 @@ export function useChatSend(deps: UseChatSendDeps) {
               setChatSending(false);
               setChatFirstTokenReceived(false);
             }
+            notifyChatSendIdle();
             if (chatSendQueueRef.current.length > 0) {
               void flushQueuedChatSends();
             }
@@ -2983,6 +2997,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         }
         if (controller == null && chatSendNonceRef.current === sendNonce) {
           chatSendBusyRef.current = false;
+          notifyChatSendIdle();
           if (chatSendQueueRef.current.length > 0) {
             void flushQueuedChatSends();
           }
@@ -2998,6 +3013,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       elizaCloudEnabled,
       elizaCloudConnected,
       flushQueuedChatSends,
+      notifyChatSendIdle,
       loadConversationMessages,
       loadConversations,
       pollCloudCredits,
