@@ -154,3 +154,59 @@ test("canonical STOP, scoped START, replay order and signed compliance retain on
     blooioAdapter.sendReplyWithReceipt = original;
   }
 });
+
+test("abandoned recovery survives an expired delayed dispatch claim", async () => {
+  const { readInternalDeliveryReceipt } = await import(
+    "../src/internal-delivery"
+  );
+  const { blooioAdapter } = await import("../src/adapters/blooio");
+  const redis = createRedis();
+  const payload = {
+    platform: "blooio",
+    project: "eliza-app",
+    phoneNumber: "+14155550100",
+    text: "Controlled recovery fixture",
+    idempotencyKey: "recovery-expired-claim",
+  };
+  const request = (abandon = false) =>
+    new Request("https://gateway.test/internal/deliver", {
+      method: "POST",
+      body: JSON.stringify({
+        ...payload,
+        ...(abandon ? { abandonUnclaimed: true } : {}),
+      }),
+    });
+  const original = blooioAdapter.sendReplyWithReceipt;
+  let sends = 0;
+  blooioAdapter.sendReplyWithReceipt = async () => ({
+    providerMessageIds: [`fixture-${++sends}`],
+  });
+  const originalEval = redis.eval.bind(redis);
+  redis.eval = async (script, keys, args) => {
+    if (script.includes('redis.call("set"')) {
+      // Simulate Redis expiring the 60-second claim while the dispatch command is delayed.
+      await redis.del(keys[0]);
+      expect(
+        (await readInternalDeliveryReceipt(request(true), { redis })).status,
+      ).toBe(422);
+    }
+    return originalEval(script, keys, args);
+  };
+  try {
+    expect(
+      (await readInternalDeliveryReceipt(request(), { redis })).status,
+    ).toBe(202);
+    expect((await deliverInternalMessage(request(), { redis })).status).toBe(
+      202,
+    );
+    expect(
+      (await readInternalDeliveryReceipt(request(true), { redis })).status,
+    ).toBe(422);
+    expect((await deliverInternalMessage(request(), { redis })).status).toBe(
+      422,
+    );
+    expect(sends).toBe(0);
+  } finally {
+    blooioAdapter.sendReplyWithReceipt = original;
+  }
+});
