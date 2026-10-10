@@ -116,13 +116,15 @@ public final class MediaConsumerTest {
       assertEquals(initial + 1, count(resolver, context.getPackageName()));
 
       String revision;
-      try (Cursor row = resolver.query(item(saved.id),
-               new String[] {"date_added", "_size", "generation_modified", "is_trashed"}, null,
-               null, null)) {
+      boolean modern = Build.VERSION.SDK_INT >= 30;
+      String[] columns = modern
+          ? new String[] {"date_added", "_size", "generation_modified", "is_trashed"}
+          : new String[] {"date_added", "_size"};
+      try (Cursor row = resolver.query(item(saved.id), columns, null, null, null)) {
         assertNotNull(row);
         assertTrue(row.moveToFirst());
-        revision = OwnedMediaSelection.revision(
-            Build.VERSION.SDK_INT, row.getLong(0), row.getLong(1), row.getLong(2), row.getInt(3));
+        revision = OwnedMediaSelection.revision(Build.VERSION.SDK_INT, row.getLong(0),
+            row.getLong(1), modern ? row.getLong(2) : 0, modern ? row.getInt(3) : 0);
       }
       String session = edits.begin(saved.id, revision).getString("sessionId");
       JSONObject preview = edits.preview(session, 90, false, "mono");
