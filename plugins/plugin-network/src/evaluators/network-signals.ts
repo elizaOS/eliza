@@ -20,7 +20,9 @@ const PATTERNS: Array<{ kind: NetworkSignal["kind"]; re: RegExp }> = [
   },
   {
     kind: "travel",
-    re: /\b(?:i'?m|i am|will be) (?:in|visiting|traveling to|flying to) ([A-Z][\w .'-]{1,40})/i,
+    // No `i` flag: the place must start with a capital letter, so "I'm in a
+    // meeting" or "I will be in touch" is not travel.
+    re: /\b(?:[Ii]'?m|[Ii] am|[Ww]ill be) (?:in|visiting|traveling to|flying to) ([A-Z][\w .'-]{1,40})/,
   },
   {
     kind: "safety_concern",
