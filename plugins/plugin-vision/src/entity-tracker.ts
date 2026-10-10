@@ -214,6 +214,9 @@ export class EntityTracker {
         if (entity.attributes.faceId === faceProfileId) {
           return entity; // Direct face match
         }
+        // A known face that differs is a different person: the identity is
+        // decisive in both directions, so position must not merge them.
+        continue;
       }
 
       // Calculate position distance
