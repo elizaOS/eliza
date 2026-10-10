@@ -195,7 +195,7 @@ for (const status of ["supported", "unsupported"] as const) {
         calls = 0;
         quoteCalls = 0;
         const streamParts: Array<{ type: string; text?: string }> = [];
-        for await (const part of runSharedElizaRuntimeTurnStream({
+        const stream = await runSharedElizaRuntimeTurnStream({
           character: {
             name: "Eliza",
             system: "You are Eliza.",
@@ -228,7 +228,8 @@ for (const status of ["supported", "unsupported"] as const) {
             roomKey: "offline-public-quote-stream",
             agentKey: "offline-public-quote-stream",
           },
-        })) {
+        });
+        for await (const part of stream.parts) {
           streamParts.push(part);
         }
         const streamedText = streamParts
