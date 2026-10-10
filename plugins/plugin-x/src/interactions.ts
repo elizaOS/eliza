@@ -114,12 +114,19 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 function normalizePositiveInteger(value: unknown, fallback: number): number {
-  const parsed =
-    typeof value === "number"
-      ? value
-      : typeof value === "string"
-        ? Number.parseInt(value, 10)
-        : Number.NaN;
+  // Number.parseInt stops at the first non-digit ("1e2" -> 1), so a typo was
+  // silently accepted as the engagement cap instead of falling back to the
+  // default. Require the whole trimmed value to be decimal, mirroring
+  // parseStrictPositiveInt in environment.ts.
+  let parsed: number;
+  if (typeof value === "number") {
+    parsed = value;
+  } else if (typeof value === "string") {
+    const text = value.trim();
+    parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
+  } else {
+    parsed = Number.NaN;
+  }
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 /**
