@@ -249,11 +249,7 @@ const MAX_CALL_BYTES = 1024 * 1024;
 const MAX_DEPTH = 24;
 const MAX_NODES = 30_000;
 const encoder = new TextEncoder();
-const forbidden = new Set([
-  "authorization",
-  "headers",
-  "rawresponse",
-  "rawrequest",
+const reasoningKeys = new Set([
   "reasoning",
   "reasoningtext",
   "reasoning_text",
@@ -262,6 +258,13 @@ const forbidden = new Set([
   "scratchpad",
   "chainofthought",
   "chain_of_thought",
+]);
+const forbidden = new Set([
+  "authorization",
+  "headers",
+  "rawresponse",
+  "rawrequest",
+  ...reasoningKeys,
   "signal",
   "execute",
   "__proto__",
@@ -439,13 +442,6 @@ export function createOwnerCaptureBuffer(
       ) {
         try {
           const parsed: unknown = JSON.parse(descriptor.value);
-          const reasoningKeys = new Set([
-            "thought",
-            "reasoning",
-            "analysis",
-            "scratchpad",
-            "chainOfThought",
-          ]);
           let inspected = 0;
           let uninspected = false;
           const hasReasoning = (part: unknown, level = 0): boolean => {
@@ -463,7 +459,8 @@ export function createOwnerCaptureBuffer(
                 uninspected = true;
                 break;
               }
-              if (reasoningKeys.has(name) || hasReasoning(item, level + 1)) return true;
+              if (reasoningKeys.has(name.toLowerCase()) || hasReasoning(item, level + 1))
+                return true;
             }
             return false;
           };
