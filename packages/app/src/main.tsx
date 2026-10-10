@@ -211,6 +211,7 @@ import {
   installMobileRemoteFallback,
 } from "./mobile-remote-fallback";
 import { installNativeTranscriptPlatformBridge } from "./native-transcript-bridge";
+import { NETWORK_HOME_ENABLED } from "./network-home/network-home-flag";
 import { installPackagedShellStorageTestBridge } from "./packaged-shell-storage-test-bridge";
 import {
   SIDE_EFFECT_APP_MODULE_LOADERS,
@@ -1776,6 +1777,15 @@ const ManagedCloudPage = lazy(async () => {
 });
 
 /**
+ * The Network home page for the eliza.app apex `/` (DRAFT copy, pending founder
+ * approval). Built in only when VITE_NETWORK_HOME=1; otherwise undefined and
+ * the apex `/` keeps redirecting to /login as before.
+ */
+const NetworkHomePage = NETWORK_HOME_ENABLED
+  ? lazy(() => import("./network-home/NetworkHomePage"))
+  : null;
+
+/**
  * Simulator-only production chat gallery. Keeping this behind the literal
  * build flag makes the harness (and its fixture providers) unreachable from
  * ordinary web and native bundles.
@@ -1856,6 +1866,7 @@ function mountReactApp(): void {
     ) : shouldMountWebShell() && !isSpecialWindowShell ? (
       <CloudRouterShell
         cloudManagementElement={<ManagedCloudPage />}
+        marketingHomeElement={NetworkHomePage ? <NetworkHomePage /> : undefined}
         appElement={
           <AppProvider branding={APP_BRANDING}>{appSubtree}</AppProvider>
         }
