@@ -11,6 +11,7 @@ import {
   type State,
 } from "@elizaos/core";
 import { usersRepository } from "../../../db/repositories/users";
+import { parseOrganizationCreditBalance } from "../../../db/repositories/organizations-credit-balance-numeric";
 import { oauthService } from "../../services/oauth/index";
 import { capitalize, formatConnectionIdentifier } from "./utils";
 
@@ -46,8 +47,17 @@ export const userAuthStatusProvider: Provider = {
       });
       const active = connections.filter((c) => c.status === "active");
 
+      // `credit_balance` is a Postgres NUMERIC (string at the row boundary).
+      // A bare parseFloat fails open on a corrupt read: "100abc" became 100
+      // credits and "NaN" produced an internally inconsistent context
+      // ("Fully authenticated" with NaN credits). Fail closed with the
+      // field-named error like the mutation paths — the provider's try/catch
+      // already degrades this to the "Status: unavailable" fallback.
       const creditBalance = user.organization?.credit_balance
-        ? parseFloat(user.organization.credit_balance)
+        ? parseOrganizationCreditBalance(
+            user.organization.credit_balance,
+            "credit_balance",
+          )
         : 0;
 
       const googleConnection = active.find((c) => c.platform === "google");
