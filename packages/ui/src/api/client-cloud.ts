@@ -2504,6 +2504,7 @@ ElizaClient.prototype.createCloudBillingCheckout = async function (
 ) {
   return this.fetch("/api/cloud/billing/checkout", {
     method: "POST",
+    headers: { "Idempotency-Key": ElizaClient.generateMessageId() },
     body: JSON.stringify(request),
   });
 };
