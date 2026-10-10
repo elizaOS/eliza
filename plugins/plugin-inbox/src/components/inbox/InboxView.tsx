@@ -78,22 +78,6 @@ export interface InboxFetchers {
 }
 /** Maximum time allowed for one inbox request. */
 export const INBOX_VIEW_JSON_TIMEOUT_MS = 15000;
-export async function getInboxJsonWithFetch<T>(
-  url: string,
-  fetchImpl: typeof fetch,
-  timeoutMs: number = INBOX_VIEW_JSON_TIMEOUT_MS,
-  callerSignal?: AbortSignal,
-): Promise<T> {
-  const deadline = AbortSignal.timeout(timeoutMs);
-  const response = await fetchImpl(url, {
-    method: "GET",
-    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
-  });
-  if (!response.ok) {
-    throw new Error(`Inbox request failed (${response.status})`);
-  }
-  return (await response.json()) as T;
-}
 async function getInbox(
   channels: InboxChannel[],
   signal?: AbortSignal,
@@ -101,12 +85,10 @@ async function getInbox(
   const params = new URLSearchParams();
   if (channels.length > 0) params.set("channels", channels.join(","));
   const query = params.toString();
-  const path = `/api/lifeops/inbox${query ? `?${query}` : ""}`;
-  return getInboxJsonWithFetch<InboxWire>(
-    `${client.getBaseUrl()}${path}`,
-    globalThis.fetch,
-    INBOX_VIEW_JSON_TIMEOUT_MS,
-    signal,
+  return client.fetch<InboxWire>(
+    `/api/lifeops/inbox${query ? `?${query}` : ""}`,
+    { method: "GET", signal },
+    { timeoutMs: INBOX_VIEW_JSON_TIMEOUT_MS },
   );
 }
 const defaultFetchers: InboxFetchers = {

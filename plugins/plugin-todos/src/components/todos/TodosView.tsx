@@ -40,29 +40,11 @@ export interface TodosFetchers {
 /** Todos JSON GET is a short UI read — same 15s family as GoalsView / FocusView. */
 export const TODOS_VIEW_JSON_TIMEOUT_MS = 15_000;
 
-export async function getTodosJsonWithFetch<T>(
-  url: string,
-  fetchImpl: typeof fetch,
-  timeoutMs: number = TODOS_VIEW_JSON_TIMEOUT_MS,
-  callerSignal?: AbortSignal,
-): Promise<T> {
-  const deadline = AbortSignal.timeout(timeoutMs);
-  const response = await fetchImpl(url, {
-    method: "GET",
-    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
-  });
-  if (!response.ok) {
-    throw new Error(`Todos request failed (${response.status})`);
-  }
-  return (await response.json()) as T;
-}
-
 async function getTodos(signal?: AbortSignal): Promise<TodosWire> {
-  return getTodosJsonWithFetch<TodosWire>(
-    `${client.getBaseUrl()}/api/lifeops/todos`,
-    globalThis.fetch,
-    TODOS_VIEW_JSON_TIMEOUT_MS,
-    signal,
+  return client.fetch<TodosWire>(
+    "/api/lifeops/todos",
+    { method: "GET", signal },
+    { timeoutMs: TODOS_VIEW_JSON_TIMEOUT_MS },
   );
 }
 
