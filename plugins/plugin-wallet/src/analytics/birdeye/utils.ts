@@ -162,7 +162,7 @@ export const extractAddresses = (text: string): BaseAddress[] => {
   if (suiAddresses) {
     addresses.push(
       ...suiAddresses.map((address) => ({
-        address,
+        address: `0x${address.slice(2)}`,
         chain: "sui" as BirdeyeSupportedChain,
       })),
     );
@@ -178,11 +178,11 @@ export const extractAddresses = (text: string): BaseAddress[] => {
             !addresses.some(
               (existing) =>
                 existing.chain === "sui" &&
-                existing.address.startsWith(address),
+                existing.address.startsWith(`0x${address.slice(2)}`),
             ),
         )
         .map((address) => ({
-          address,
+          address: `0x${address.slice(2)}`,
           chain: "evm" as BirdeyeSupportedChain, // we don't yet know the chain but can assume it's EVM-compatible
         })),
     );

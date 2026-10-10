@@ -59,25 +59,25 @@ export const PrivateKeySchema = z
   .regex(/^0[xX][a-fA-F0-9]{64}$/, "Invalid private key format")
   .transform((key) => `0x${key.slice(2)}` as `0x${string}`);
 
-export const AmountSchema = z.string().refine(
-  (val) => {
-    const num = Number(val);
-    return Number.isFinite(num) && num > 0;
-  },
-  { message: "Amount must be a positive number" }
-);
+// Keep the decimal string exact for viem's unit conversion.
+function isPositiveDecimalAmount(value: string): boolean {
+  return (
+    value.trim() === value &&
+    /^(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)$/.test(value) &&
+    /[1-9]/.test(value)
+  );
+}
+
+export const AmountSchema = z
+  .string()
+  .refine(isPositiveDecimalAmount, { message: "Amount must be a positive number" });
 
 export const OptionalAmountSchema = z
   .string()
   .optional()
-  .refine(
-    (val) => {
-      if (val === undefined) return true;
-      const num = Number(val);
-      return Number.isFinite(num) && num > 0;
-    },
-    { message: "If provided, amount must be a positive number" }
-  );
+  .refine((val) => val === undefined || isPositiveDecimalAmount(val), {
+    message: "If provided, amount must be a positive number",
+  });
 
 export interface Transaction {
   readonly hash: Hash;
