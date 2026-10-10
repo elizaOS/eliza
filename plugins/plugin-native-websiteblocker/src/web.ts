@@ -28,6 +28,19 @@ function readConfiguredApiBase(): string | undefined {
 const HOSTNAME_RE =
   /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$/;
 
+// Engine-parity label grammar for the IDN (punycode) path:
+// plugins/plugin-blocker/src/services/website-blocker/engine.ts checks each
+// label against [a-z0-9-] with hyphen edges rejected — including the TLD, so
+// punycode TLDs such as xn--p1ai (пример.рф) pass on the server while
+// HOSTNAME_RE's letters-only TLD rejects them here. The TLD must still carry
+// at least one letter: the engine rejects IP literals (isIP), and an
+// all-numeric dotted quad is the only punycode-reachable shape the engine
+// would refuse — verified that node's domainToASCII itself returns "" for
+// all-numeric TLDs (e.g. café.123), so the engine rejects those too and the
+// letter test keeps web at parity without a node:net import in browser code.
+const IDN_HOSTNAME_RE =
+  /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?=[a-z0-9-]*[a-z])[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
 function isString(value: string | null): value is string {
   return typeof value === "string";
 }
@@ -48,7 +61,7 @@ function normalizeHostname(value: unknown): string | null {
   }
   const withoutWildcard = trimmed.replace(/^\*\./, "");
   const withoutTrailingDot = withoutWildcard.replace(/\.$/, "");
-  let ascii = withoutTrailingDot.toLowerCase();
+  const ascii = withoutTrailingDot.toLowerCase();
   const hasNonAscii = [...ascii].some(
     (character) => (character.codePointAt(0) ?? 0) > 0x7f,
   );
@@ -56,8 +69,11 @@ function normalizeHostname(value: unknown): string | null {
     // The engine IDNA-encodes unicode hostnames (domainToASCII) before its
     // label checks, so a unicode hostname the API accepts must not be
     // rejected here. The URL parser punycode-encodes .hostname the same way.
+    // Validated against the engine's label grammar (IDN_HOSTNAME_RE covers
+    // punycode TLDs) instead of the ASCII path's letters-only TLD rule.
     try {
-      ascii = new URL(`https://${ascii}`).hostname;
+      const encoded = new URL(`https://${ascii}`).hostname;
+      return IDN_HOSTNAME_RE.test(encoded) ? encoded : null;
     } catch {
       // error-policy:J3 untrusted hostname input — an unparseable hostname is
       // reported as an explicit invalid (null), never a fake-valid default.
