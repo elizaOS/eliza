@@ -483,7 +483,13 @@ export function readAsrStepSecondsFromEnv(
 ): number | null {
 	const raw = env.ELIZA_ASR_STEP_SECONDS?.trim();
 	if (!raw) return null;
-	const value = Number.parseFloat(raw);
+	// Number.parseFloat stops at the first non-digit ("1.2junk" -> 1.2), so a
+	// typo was silently accepted as the step duration instead of falling back
+	// to the default. Require the whole trimmed value to be decimal, mirroring
+	// TWILIO_SMS_COST_PATTERN in packages/cloud/sdk/src/browser-contracts/markup.ts.
+	const value = /^\+?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(raw)
+		? Number(raw)
+		: Number.NaN;
 	return Number.isFinite(value) && value > 0 ? value : null;
 }
 
