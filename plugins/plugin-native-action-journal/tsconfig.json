@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "declaration": true,
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "outDir": "dist/esm",
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": "src",
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2022"
+  },
+  "include": ["src"]
+}
