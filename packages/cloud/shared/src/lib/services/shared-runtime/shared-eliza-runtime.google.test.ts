@@ -192,7 +192,7 @@ async function exercise(
         args: connecting ? { operation: "connect" } : { operation: "gmail_search", query: "invoices" },
       });
     }
-    return model(reply);
+    return model(connecting && connects === 1 ? `Continue with Google: ${authUrl}` : reply);
   }) as typeof fetch;
   let runtimeSpy: ReturnType<typeof spyOn> | undefined;
   try {
