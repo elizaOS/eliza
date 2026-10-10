@@ -6806,7 +6806,12 @@ vaultRoutes.get("/:agentId/eip7702-delegation", async (c) => {
     return c.json<ApiResponse>({ ok: false, error: "Agent not found" }, 404);
   }
 
-  const chainId = Number(c.req.query("chainId"));
+  // Number("1e2") is 100 and Number("0x10") is 16, so a malformed chainId
+  // silently switched the delegation lookup to a different chain (e.g. "1e2"
+  // -> Gnosis) instead of failing with 400. Require the whole trimmed value
+  // to be decimal, mirroring parseChainIdEnv in this file.
+  const chainIdRaw = (c.req.query("chainId") ?? "").trim();
+  const chainId = /^\+?\d+$/.test(chainIdRaw) ? Number(chainIdRaw) : Number.NaN;
   if (!Number.isSafeInteger(chainId) || chainId <= 0) {
     return c.json<ApiResponse>(
       { ok: false, error: "chainId must be a positive integer" },
