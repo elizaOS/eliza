@@ -70,7 +70,7 @@ const RUNTIME_STUBS = {
       return await response.json();
     }
   `,
-  usersRepository: `export const usersRepository = { async findByPhoneNumberWithOrganization(phone) { const owner = { "+14155550802": ["handled-user", "handled-org"], "+14155550804": ["retryable-refusal-user", "retryable-refusal-org"] }[phone] ?? ["continuity-user", "continuity-org"]; return { id: owner[0], organization_id: owner[1], phone_number: phone, phone_verified: true, is_active: true, deleted_at: null, organization: { is_active: true } }; } };`,
+  usersRepository: `export const usersRepository = { async findByPhoneNumberWithOrganization(phone) { const owner = { "+14155550802": ["handled-user", "handled-org"], "+14155550803": ["legacy-intent-user", "legacy-intent-org"], "+14155550804": ["retryable-refusal-user", "retryable-refusal-org"] }[phone] ?? ["continuity-user", "continuity-org"]; return { id: owner[0], organization_id: owner[1], phone_number: phone, phone_verified: true, is_active: true, deleted_at: null, organization: { is_active: true } }; } };`,
 
   apiErrors: `
     export class InsufficientCreditsError extends Error {}
@@ -290,9 +290,11 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
   let fallbackResolution = "pending";
   let fallbackAuthorityReads = 0;
   const gatewayRequests: Array<Record<string, unknown>> = [];
-  // "store_down": the gateway sent nothing and released its claim (consent
-  // ledger or receipt store unavailable), answering retryable not_accepted.
+  // When set, the gateway never records a send: /internal/deliver answers 502
+  // and a receipt read finds no claim.
   let gatewayMode: "accepted" | "store_down" = "accepted";
+  let gatewayDown: Array<{ path: string; abandonUnclaimed: boolean }> | null =
+    null;
   const serviceAcknowledgements: Array<Record<string, unknown>> = [];
   let gatewayJWT: string;
   let publicKey: string;
@@ -361,6 +363,15 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
               return Response.json(body.messages
                 ? await store.merge(body.agentId, body.channelId, body.messages)
                 : await store.load(body.agentId, body.channelId));
+            }
+            if (new URL(request.url).pathname === "/__test/legacy-intents") {
+              // Rewrite delivery intents as stored before dispatchedAt existed.
+              const intents = await this.testState.storage.list({ prefix: "network-delivery:" });
+              for (const [key, intent] of intents) {
+                const { dispatchedAt: _dispatchedAt, ...legacy } = intent;
+                await this.testState.storage.put(key, legacy);
+              }
+              return Response.json({ success: true });
             }
             if (new URL(request.url).pathname === "/__test/seed") {
               const body = await request.json();
@@ -564,6 +575,29 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
         }
         if (new URL(request.url).hostname === "gateway-probe.test") {
           const body = (await request.json()) as Record<string, unknown>;
+          if (gatewayDown) {
+            const path = new URL(request.url).pathname;
+            gatewayDown.push({
+              path,
+              abandonUnclaimed: body.abandonUnclaimed === true,
+            });
+            if (path === "/internal/deliver")
+              return new Response("Bad Gateway", { status: 502 });
+            if (body.abandonUnclaimed === true)
+              return Response.json(
+                {
+                  success: false,
+                  acceptance: "not_accepted",
+                  code: "not_claimed",
+                  retryable: false,
+                },
+                { status: 422 },
+              );
+            return Response.json(
+              { success: false, acceptance: "unknown", retryable: false },
+              { status: 202 },
+            );
+          }
           if (gatewayMode === "store_down")
             return Response.json(
               {
@@ -1528,7 +1562,6 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
     );
     expect(modelRequests.length).toBe(before);
   });
-
   test("canonical Network delivery extends Personal history once and honors ownership fences before dispatch", async () => {
     const account = {
       userId: "continuity-user",
@@ -1852,6 +1885,55 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
     });
     expect(await count()).toBe(calls);
     expect(modelRequests).toEqual([]);
+  }, 120000);
+  test("a legacy dispatching intent without dispatchedAt keeps the claim grace window", async () => {
+    const account = {
+      userId: "legacy-intent-user",
+      organizationId: "legacy-intent-org",
+    };
+    const agentId = personalSharedAgentId(account);
+    const name = `${agentId}:${agentId}`;
+    await post(name, "/__test/seed", {
+      conversation: {
+        agentId,
+        channelId: agentId,
+        history: [],
+        dirty: false,
+        version: 1,
+      },
+    });
+    const payload = {
+      operation: "network-delivery",
+      agentId,
+      roomId: agentId,
+      delivery: {
+        project: "network",
+        app: "slop",
+        ...account,
+        phoneNumber: "+14155550803",
+        platform: "blooio",
+        idempotencyKey: "legacy-dispatching-intent",
+        text: "Legacy intro.",
+      },
+    };
+    const calls: Array<{ path: string; abandonUnclaimed: boolean }> = [];
+    gatewayDown = calls;
+    try {
+      expect((await post(name, "/network-delivery", payload)).status).toBe(202);
+      await post(name, "/__test/legacy-intents", {});
+      const recovery = await post(name, "/network-delivery", payload);
+      expect(recovery.status).toBe(202);
+      expect(await recovery.json()).toMatchObject({ error: "unknown" });
+      // The alarm may add plain receipt reads; none may abandon the claim.
+      expect(calls[0]).toEqual({
+        path: "/internal/deliver",
+        abandonUnclaimed: false,
+      });
+      expect(calls.slice(1).length).toBeGreaterThan(0);
+      expect(calls.filter((call) => call.abandonUnclaimed)).toEqual([]);
+    } finally {
+      gatewayDown = null;
+    }
   }, 120000);
   test("a retryable gateway refusal leaves the delivery sendable on retry", async () => {
     const account = {

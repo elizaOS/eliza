@@ -1917,6 +1917,11 @@ export class SharedRuntimeConversation {
       if (!recovering) {
         intent = { ...intent, state: "dispatching", dispatchedAt: Date.now() };
         await this.state.storage.put(key, intent);
+      } else if (intent.dispatchedAt === undefined) {
+        // An intent stored before dispatchedAt existed: its claim window
+        // starts now, so a claim still in flight is not abandoned at once.
+        intent = { ...intent, dispatchedAt: Date.now() };
+        await this.state.storage.put(key, intent);
       }
       // A send the gateway never received (502, refused connection, early
       // timeout) leaves no claim, and a plain receipt read answers "unknown"
@@ -1924,7 +1929,7 @@ export class SharedRuntimeConversation {
       // ask the gateway to settle an unclaimed key as not sent.
       const abandonUnclaimed =
         recovering &&
-        Date.now() - (intent.dispatchedAt ?? 0) >=
+        Date.now() - (intent.dispatchedAt ?? Date.now()) >=
           NETWORK_DELIVERY_UNCLAIMED_GRACE_MS;
       const gatewayBody = JSON.stringify({
         platform: d.platform,
