@@ -416,7 +416,7 @@ export function decideRevalidation(prev: RevalidationState, probe: ApiKeyProbe, 
 }
 export class CloudAuthService extends Service {
     static serviceType = "CLOUD_AUTH";
-    capabilityDescription = "Eliza Cloud device authentication and SSO session helpers";
+    capabilityDescription = "Eliza Cloud API key authentication and SSO session helpers";
     private client: CloudApiClient;
     private credentials: CloudCredentials | null = null;
     private revalidationTimer: ReturnType<typeof setTimeout> | null = null;

@@ -313,7 +313,7 @@ export const elizaOSCloudPlugin: Plugin = {
   //   1. CloudAuthService — must start first (other services depend on it)
   //   2. CloudBootstrapServiceImpl — pure trust-anchor accessor; no deps
   //   3. CloudManagedGatewayRelayService — optional local-runtime relay via shared cloud ingress
-  //   4. CloudContainerService — needs auth to list/create containers
+  //   4. CloudContainerService — needs auth to list containers
   //   5. CloudBridgeService — needs auth for WebSocket connections
   services: [
     CloudAuthService,

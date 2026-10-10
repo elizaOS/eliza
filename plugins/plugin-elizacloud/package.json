@@ -384,13 +384,6 @@
         "required": false,
         "default": false,
         "sensitive": false
-      },
-      "ELIZAOS_CLOUD_APP_VERSION": {
-        "type": "string",
-        "description": "Application version sent during device authentication.",
-        "required": false,
-        "default": "2.0.0-beta.0",
-        "sensitive": false
       }
     }
   },
