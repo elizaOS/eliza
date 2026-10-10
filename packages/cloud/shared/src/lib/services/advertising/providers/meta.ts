@@ -16,6 +16,7 @@ import type {
   UpdateCampaignInput,
   UploadMediaInput,
 } from "../types";
+import { buildMetaTargeting } from "./meta-targeting";
 
 const GRAPH_API_VERSION = process.env.META_GRAPH_API_VERSION || "v24.0";
 const GRAPH_API_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
@@ -379,72 +380,7 @@ export const metaAdsProvider: AdProvider = {
         adSetParams.timezone_type = "advertiser";
       }
 
-      // Build targeting
-      const targeting: Record<string, unknown> = {};
-
-      if (input.targeting?.locations?.length) {
-        targeting.geo_locations = {
-          countries: input.targeting.locations,
-        };
-      } else {
-        // Default to US
-        targeting.geo_locations = { countries: ["US"] };
-      }
-
-      if (input.targeting?.ageMin || input.targeting?.ageMax) {
-        targeting.age_min = input.targeting.ageMin || 18;
-        targeting.age_max = input.targeting.ageMax || 65;
-      }
-
-      if (input.targeting?.genders?.length) {
-        const genderMap: Record<string, number> = {
-          male: 1,
-          female: 2,
-        };
-        targeting.genders = input.targeting.genders
-          .filter((g) => g !== "all")
-          .map((g) => genderMap[g]);
-      }
-
-      if (input.targeting?.interests?.length) {
-        const flexibleSpec: Record<string, unknown> = {
-          interests: input.targeting.interests.map((i) => ({ name: i })),
-        };
-        if (input.targeting.behaviors?.length) {
-          flexibleSpec.behaviors = input.targeting.behaviors.map((behavior) => ({
-            name: behavior,
-          }));
-        }
-        targeting.flexible_spec = [flexibleSpec];
-      } else if (input.targeting?.behaviors?.length) {
-        targeting.flexible_spec = [
-          {
-            behaviors: input.targeting.behaviors.map((behavior) => ({
-              name: behavior,
-            })),
-          },
-        ];
-      }
-
-      if (input.targeting?.customAudiences?.length) {
-        targeting.custom_audiences = input.targeting.customAudiences.map((id) => ({ id }));
-      }
-
-      if (input.targeting?.excludedAudiences?.length) {
-        targeting.excluded_custom_audiences = input.targeting.excludedAudiences.map((id) => ({
-          id,
-        }));
-      }
-
-      if (input.targeting?.placements?.length) {
-        targeting.publisher_platforms = input.targeting.placements;
-      }
-
-      if (input.targeting?.languages?.length) {
-        targeting.locales = input.targeting.languages;
-      }
-
-      adSetParams.targeting = JSON.stringify(targeting);
+      adSetParams.targeting = JSON.stringify(buildMetaTargeting(input.targeting));
 
       await graphApiRequest(
         `/${actAccountId}/adsets?${new URLSearchParams(adSetParams)}`,
