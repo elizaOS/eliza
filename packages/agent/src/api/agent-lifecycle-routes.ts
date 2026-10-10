@@ -13,6 +13,9 @@
  * deferral funnels into a single-flight boot. Reporting "running" with a null
  * runtime would be fake-ready: a host that cannot boot answers 503, and a
  * failed boot answers 500 with the reported state flipped to "error".
+ * POST /api/agent/stop disposes the live runtime, so a stopped agent runs no
+ * connectors, autonomy or scheduled tasks; a host with no `onRestart` answers
+ * 501 because it could not start the agent again.
  */
 
 import { PostAgentAutonomyRequestSchema } from "@elizaos/contracts";
@@ -37,6 +40,8 @@ export interface AgentLifecycleRouteState {
   agentName: string;
   model: string | undefined;
   startedAt: number | undefined;
+  chatConnectionReady: unknown;
+  chatConnectionPromise: Promise<void> | null;
 }
 
 export interface AgentLifecycleRouteContext
@@ -164,6 +169,23 @@ export async function handleAgentLifecycleRoutes(
   }
 
   if (method === "POST" && pathname === "/api/agent/stop") {
+    if (state.runtime) {
+      // Stopping only the reported state would leave connectors, autonomy and
+      // scheduled tasks running. Dispose the runtime like /api/agent/reset;
+      // POST /api/agent/start then boots a new one through onRestart.
+      if (!ctx.onRestart) {
+        error(
+          res,
+          "Stop is not supported in this mode: this server cannot start the agent again",
+          501,
+        );
+        return true;
+      }
+      await state.runtime.stop({ fast: true });
+      state.runtime = null;
+      state.chatConnectionReady = null;
+      state.chatConnectionPromise = null;
+    }
     state.agentState = "stopped";
     state.startedAt = undefined;
     state.model = undefined;
