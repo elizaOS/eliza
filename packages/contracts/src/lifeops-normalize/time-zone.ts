@@ -41,12 +41,12 @@ export function normalizeTimeZone(timeZone?: string | null): string {
   if (UTC_ALIAS_RE.test(candidate)) {
     return "UTC";
   }
+  if (candidate && isValidTimeZone(candidate)) {
+    return candidate;
+  }
   const aliasKey = candidate.toLowerCase();
   if (Object.hasOwn(LIFEOPS_TIME_ZONE_ALIASES, aliasKey)) {
     return LIFEOPS_TIME_ZONE_ALIASES[aliasKey];
-  }
-  if (candidate && isValidTimeZone(candidate)) {
-    return candidate;
   }
   return resolveDefaultTimeZone();
 }
