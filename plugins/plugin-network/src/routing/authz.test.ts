@@ -42,5 +42,8 @@ describe("Network own-word boundary", () => {
     assert.deepEqual(detectNetworkSignals("I'm in Lisbon until Friday"), [
       { kind: "travel", evidence: "I'm in Lisbon until Friday" },
     ]);
+    assert.deepEqual(detectNetworkSignals("I'M In Lisbon"), [
+      { kind: "travel", evidence: "I'M In Lisbon" },
+    ]);
   });
 });
