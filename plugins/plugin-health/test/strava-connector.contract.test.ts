@@ -163,4 +163,77 @@ describe("Strava connector — recorded real API contract", () => {
       expect(s.localDate).toBe(s.startAt.slice(0, 10));
     }
   });
+
+  it("fetches and filters a single day by the athlete's local date", async () => {
+    const activities = [
+      {
+        id: 11500000009,
+        name: "Early Morning Run",
+        sport_type: "Run",
+        start_date: "2026-10-09T16:30:00Z",
+        start_date_local: "2026-10-10T00:30:00Z",
+        moving_time: 1800,
+        distance: 5000,
+      },
+      {
+        id: 11500000010,
+        name: "Late Evening Run",
+        sport_type: "Run",
+        start_date: "2026-10-11T07:30:00Z",
+        start_date_local: "2026-10-10T23:30:00Z",
+        moving_time: 1800,
+        distance: 5000,
+      },
+      {
+        id: 11500000011,
+        name: "Previous Local Day",
+        sport_type: "Run",
+        start_date: "2026-10-10T07:30:00Z",
+        start_date_local: "2026-10-09T23:30:00Z",
+        moving_time: 1800,
+        distance: 5000,
+      },
+      {
+        id: 11500000012,
+        name: "Next Local Day",
+        sport_type: "Run",
+        start_date: "2026-10-10T16:30:00Z",
+        start_date_local: "2026-10-11T00:30:00Z",
+        moving_time: 1800,
+        distance: 5000,
+      },
+    ];
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/athlete/activities")) {
+        const after = Number(url.searchParams.get("after"));
+        const before = Number(url.searchParams.get("before"));
+        return jsonResponse(
+          activities.filter((activity) => {
+            const startedAt = Date.parse(activity.start_date) / 1_000;
+            return startedAt > after && startedAt < before;
+          }),
+        );
+      }
+      if (url.pathname.endsWith("/athlete")) {
+        return jsonResponse(recorded.athlete);
+      }
+      throw new Error(`unexpected Strava fetch: ${url}`);
+    });
+
+    const payload = await syncHealthConnectorData({
+      token,
+      grantId: "grant-strava",
+      startDate: "2026-10-10",
+      endDate: "2026-10-10",
+    });
+
+    expect(payload.workouts.map((workout) => workout.sourceExternalId)).toEqual(
+      ["11500000009", "11500000010"],
+    );
+    expect(payload.samples.length).toBeGreaterThan(0);
+    for (const s of payload.samples) {
+      expect(s.localDate).toBe("2026-10-10");
+    }
+  });
 });
