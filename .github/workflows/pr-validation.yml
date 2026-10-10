@@ -427,6 +427,8 @@ jobs:
     name: Subscription authority PostgreSQL
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      SUBSCRIPTION_AUTHORITY_POSTGRES_IMAGE: postgres:16-alpine
     steps:
       - name: Checkout candidate source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -457,6 +459,50 @@ jobs:
       - name: Configure Docker Hub cache for required PostgreSQL
         if: steps.authority-diff.outputs.run == 'true'
         uses: ./.github/actions/setup-public-image-cache
+      - name: Pull required PostgreSQL image before builds
+        if: steps.authority-diff.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Public pulls must not inherit registry credentials from this runner.
+          public_pull_config="$(mktemp -d "$RUNNER_TEMP/public-postgres-pull.XXXXXX")"
+          trap 'rm -rf "$public_pull_config"' EXIT
+          printf '{}\n' > "$public_pull_config/config.json"
+          pull_status=0
+          docker --config "$public_pull_config" pull "$SUBSCRIPTION_AUTHORITY_POSTGRES_IMAGE" || pull_status=$?
+          if [ "$pull_status" -eq 0 ]; then exit 0; fi
+          echo "::error::Required PostgreSQL image pull failed before dependency and core builds."
+          # Keep only recent daemon errors; never print credential/header lines
+          # or URL user-info/query strings from other configured mirrors.
+          if ! timeout 5s sudo journalctl --unit docker.service --since '2 minutes ago' \
+            --no-pager --lines 80 --output cat \
+            | grep -Ei 'error|failed|mirror\.gcr\.io|toomanyrequests|429' \
+            | grep -Eiv 'authorization|cookie|password|secret|credential|header|bearer|basic|authconfig|(token|auth)["[:space:]]*[:=]' \
+            | sed -E 's#(https?://)[^/@[:space:]]+@#\1[REDACTED]@#g; s#\?[^[:space:]"]*#?[REDACTED]#g' \
+            | tail -n 30; then
+            echo "::warning::No safe daemon error detail was available."
+          fi
+          # Probe from this runner, without Docker credentials or private headers.
+          headers="$RUNNER_TEMP/subscription-cache-head.headers"
+          curl_status=0
+          curl --disable --silent --show-error --head --fail \
+            --connect-timeout 5 --max-time 15 \
+            --header 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json' \
+            --dump-header "$headers" --output /dev/null \
+            --write-out 'Public GCR manifest HEAD status: %{http_code}\n' \
+            "https://mirror.gcr.io/v2/library/${SUBSCRIPTION_AUTHORITY_POSTGRES_IMAGE%:*}/manifests/${SUBSCRIPTION_AUTHORITY_POSTGRES_IMAGE#*:}" \
+            || curl_status=$?
+          if [ "$curl_status" -ne 0 ]; then
+            echo "::warning::Public cache HEAD failed with curl exit $curl_status."
+          fi
+          digest="$(awk 'tolower($1) == "docker-content-digest:" {gsub("\r", "", $2); print $2}' "$headers" 2>/dev/null)" || digest=""
+          if [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Public GCR manifest digest: $digest"
+          else
+            echo "::warning::Public cache HEAD supplied no valid manifest digest."
+          fi
+          rm -f "$headers"
+          exit "$pull_status"
       - if: steps.authority-diff.outputs.run == 'true'
         uses: ./.github/actions/setup-bun-workspace
         with:
@@ -482,7 +528,7 @@ jobs:
           container="eliza-subscription-authority-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           trap 'docker stop "$container" >/dev/null 2>&1 || true' EXIT
           docker run --rm --detach --name "$container" \
-            --env POSTGRES_HOST_AUTH_METHOD=trust --publish 5432:5432 postgres:16-alpine
+            --env POSTGRES_HOST_AUTH_METHOD=trust --publish 5432:5432 "$SUBSCRIPTION_AUTHORITY_POSTGRES_IMAGE"
           for attempt in $(seq 1 60); do
             if [ "$(docker inspect --format '{{.State.Running}}' "$container")" != "true" ]; then
               docker logs "$container"

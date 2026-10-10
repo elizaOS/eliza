@@ -41,36 +41,36 @@ interface QuotedSpanRange {
   end: number;
 }
 
+const FIRST_PERSON_REPORTING_SUBJECT =
+  /\b(?:I|we)(?:['’](?:ve|d))?(?:\s+(?:have|had|just|also|still|never|already|once|both|\p{L}+ly))*\s*$/iu;
+
 function capturedRange(
   match: RegExpMatchArray,
-  value: string,
+  group: number,
 ): QuotedSpanRange | null {
-  const start = (match.index ?? 0) + match[0].indexOf(value);
-  return start >= (match.index ?? 0)
-    ? { start, end: start + value.length }
-    : null;
+  const range = match.indices?.[group];
+  return range ? { start: range[0], end: range[1] } : null;
 }
 
 function quotedSpanRanges(text: string): QuotedSpanRange[] {
   const ranges: QuotedSpanRange[] = [];
-  for (const match of text.matchAll(/"([^"]{3,})"|“([^”]{3,})”/g)) {
-    const value = match[1] ?? match[2];
-    const range = value ? capturedRange(match, value) : null;
+  for (const match of text.matchAll(/"([^"]{3,})"|“([^”]{3,})”/dg)) {
+    const range = capturedRange(match, match[1] ? 1 : 2);
     if (range) ranges.push(range);
   }
   for (const match of text.matchAll(
-    /(?<![\p{L}\p{N}])['‘]([^'‘’\n]{3,}?)['’](?![\p{L}\p{N}])/gu,
+    /(?<![\p{L}\p{N}])['‘]([^'‘’\n]{3,}?)['’](?![\p{L}\p{N}])/dgu,
   )) {
-    const range = match[1] ? capturedRange(match, match[1]) : null;
+    const range = capturedRange(match, 1);
     if (range) ranges.push(range);
   }
   for (const match of text.matchAll(
-    /\b(?:said|says|wrote|writes|texted|messaged|told me|asked me)\b\s*:?\s*([^\n.;!?]*?)(?=\s+but\b|[\n.;!?]|$)/gi,
+    /\b(?:said|says|wrote|writes|texted|messaged|told me|asked me)\b\s*:?\s*([^\n.;!?]*?)(?=,\s*(?:and|but)\s+(?:I|we)\b|\s+but\b|[\n.;!?]|$)/dgi,
   )) {
+    if (FIRST_PERSON_REPORTING_SUBJECT.test(text.slice(0, match.index)))
+      continue;
     const range =
-      match[1] && match[1].trim().length >= 2
-        ? capturedRange(match, match[1])
-        : null;
+      match[1] && match[1].trim().length >= 2 ? capturedRange(match, 1) : null;
     if (range) ranges.push(range);
   }
   const fwd =

@@ -1,6 +1,7 @@
 /** Service-backed Network effects; Cloud never owns a parallel membership/state store. */
 import {
   createServiceNetworkStore,
+  type NetworkAppId,
   type NetworkRouting,
   NetworkServiceClient,
   type NetworkStore,
@@ -25,6 +26,18 @@ export function serviceNetworkStoreFactory(
   return () => createServiceNetworkStore(client, turn);
 }
 
+/**
+ * The character flag (NETWORK_AGENT_VOICE=1, off by default): the app whose voice the shared agent
+ * speaks in for this service-admitted open turn. Undefined leaves the Eliza character unchanged.
+ */
+export function networkVoiceApp(
+  trustedNetworkTurn: unknown,
+  env: Record<string, string | undefined> = getCloudAwareEnv(),
+): NetworkAppId | undefined {
+  if (env.NETWORK_AGENT_VOICE?.trim() !== "1") return undefined;
+  return parseServiceTurn(trustedNetworkTurn)?.app;
+}
+
 export function sharedNetworkExecution(
   agent: Pick<
     SharedRuntimeAgent,
@@ -34,7 +47,15 @@ export function sharedNetworkExecution(
   isNoncanonicalRoom: boolean,
   storeFactory: (() => NetworkStore) | undefined,
   routing?: NetworkRouting,
-): { memberId: string; store: NetworkStore; routing?: NetworkRouting } | undefined {
+  voiceApp?: NetworkAppId,
+):
+  | {
+      memberId: string;
+      store: NetworkStore;
+      routing?: NetworkRouting;
+      voiceApp?: NetworkAppId;
+    }
+  | undefined {
   if (
     !storeFactory ||
     !personalShared ||
@@ -43,5 +64,10 @@ export function sharedNetworkExecution(
     personalSharedProjectScope(agent.project) !== "network"
   )
     return undefined;
-  return { memberId: agent.user_id, store: storeFactory(), ...(routing ? { routing } : {}) };
+  return {
+    memberId: agent.user_id,
+    store: storeFactory(),
+    ...(routing ? { routing } : {}),
+    ...(voiceApp ? { voiceApp } : {}),
+  };
 }

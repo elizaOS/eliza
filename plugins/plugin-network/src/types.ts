@@ -49,7 +49,8 @@ export interface NetworkMemberContext {
   stateUntil: string | null;
   /** Shareable profile facets only; private facets never reach the plugin. */
   facets: string[];
-  activeItems: Array<{ kind: string; summary: string }> | null;
+  /** `id` is the service's item id (present for service-backed turns); RELAY targets it. */
+  activeItems: Array<{ id?: string; kind: string; summary: string }> | null;
 }
 
 export interface SetStateInput {
@@ -91,10 +92,28 @@ export interface NetworkUpdatesRead {
   items: Array<{ summary: string }>;
 }
 
+/** Outcome of a RELAY request; only the service's `rendered` wording reaches the other member. */
+export interface NetworkRelayResult {
+  decision: "pass" | "hold" | "block" | "none";
+  senderNotice: string;
+  delivered: boolean;
+  replayed: boolean;
+}
+
 export interface NetworkStore {
   getMemberContext(memberId: string): Promise<NetworkMemberContext | null>;
   /** Optional: hosts wired to the single inbox implement it, and GET_UPDATES is registered only then. */
   readUpdates?(memberId: string): Promise<NetworkUpdatesRead>;
+  /**
+   * Optional: hosts backed by the Network service implement it, and RELAY is registered only then.
+   * `text` is the member's own message; `itemId` must be one of the turn's active item ids or null.
+   */
+  relay?(input: {
+    memberId: string;
+    messageId: string;
+    itemId: string | null;
+    text: string;
+  }): Promise<NetworkRelayResult>;
   setState(input: SetStateInput): Promise<SetStateExecution>;
   recordSignals(input: {
     memberId: string;

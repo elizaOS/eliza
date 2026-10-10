@@ -252,33 +252,32 @@ for (const { viewport, networkHandoff } of VIEWPORTS.flatMap((viewport) =>
     const state = "a".repeat(64);
     const challenge = "b".repeat(64);
     const handoffCode = `enso_${"c".repeat(64)}`;
-    let mints = 0;
-    if (networkHandoff) {
-      await page.route("**/api/auth/sso-bridge/mint", async (route) => {
-        expect(syncs).toHaveLength(1);
-        expect(route.request().headers().authorization).toBe(`Bearer ${token}`);
-        expect(route.request().postDataJSON()).toEqual({
-          codeChallenge: challenge,
-          destination,
-        });
-        mints++;
-        await route.fulfill({
-          json: { ok: true, code: handoffCode, expiresIn: 60 },
-        });
+    const mints: Array<{
+      syncCount: number;
+      authorization: string | undefined;
+      body: unknown;
+    }> = [];
+    const callbacks: URL[] = [];
+    await page.route("**/api/auth/sso-bridge/mint", async (route) => {
+      mints.push({
+        syncCount: syncs.length,
+        authorization: route.request().headers().authorization,
+        body: route.request().postDataJSON(),
       });
-      await page.route(
-        `${destination}/api/auth/cloud/callback?**`,
-        async (route) => {
-          const url = new URL(route.request().url());
-          expect(url.searchParams.get("code")).toBe(handoffCode);
-          expect(url.searchParams.get("state")).toBe(state);
-          await route.fulfill({
-            contentType: "text/html",
-            body: "<h1>Network callback received</h1><p>Local browser handoff fixture</p>",
-          });
-        },
+      await route.fulfill(
+        networkHandoff
+          ? { json: { ok: true, code: handoffCode, expiresIn: 60 } }
+          : { status: 503, json: { error: "No handoff configured" } },
       );
-    }
+    });
+    await page.route(`${destination}/**`, async (route) => {
+      const url = new URL(route.request().url());
+      callbacks.push(url);
+      await route.fulfill({
+        contentType: "text/html",
+        body: "<h1>Network callback received</h1><p>Local browser handoff fixture</p>",
+      });
+    });
     const parameters = networkHandoff
       ? new URLSearchParams({
           switchAccount: "1",
@@ -306,7 +305,7 @@ for (const { viewport, networkHandoff } of VIEWPORTS.flatMap((viewport) =>
         ).toBeVisible();
         expect(sent).toBe(0);
         expect(syncs).toHaveLength(0);
-        expect(mints).toBe(0);
+        expect(mints).toHaveLength(0);
       }
       await page.goto(`${managed.origin}/network/sign-in?${parameters}`);
       await expect.poll(() => logoutStarted).toBe(true);
@@ -355,11 +354,21 @@ for (const { viewport, networkHandoff } of VIEWPORTS.flatMap((viewport) =>
         await expect(
           page.getByRole("heading", { name: "Network callback received" }),
         ).toBeVisible();
-        expect(mints).toBe(1);
+        expect(mints).toEqual([
+          {
+            syncCount: 1,
+            authorization: `Bearer ${token}`,
+            body: { codeChallenge: challenge, destination },
+          },
+        ]);
+        expect(callbacks).toHaveLength(1);
+        expect(callbacks[0].pathname).toBe("/api/auth/cloud/callback");
+        expect(callbacks[0].searchParams.get("code")).toBe(handoffCode);
+        expect(callbacks[0].searchParams.get("state")).toBe(state);
         expect(new URL(page.url()).origin).toBe(destination);
       } else {
         await expect(page).toHaveURL(/\/join(?:[?#]|$)/);
-        expect(mints).toBe(0);
+        expect(mints).toHaveLength(0);
       }
       expect(sent).toBe(1);
       expect(attempts).toBe(2);

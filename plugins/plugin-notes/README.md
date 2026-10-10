@@ -35,3 +35,14 @@ fails instead of merging or replacing another view's saved Notes.
 The encrypted adapter delegates commits to this same document engine. Its opaque
 revision binds the complete encrypted envelope, including migration archives.
 Authorization and cancellation are rechecked after edit preparation and before CAS.
+
+The device client also provides Trash retention, maintenance and foreground scheduling.
+Hosts supply retention and size limits, note kinds, durable storage, a shared mutation
+lock and recording cleanup. Maintenance checks saved live notes again under that lock.
+It retains expired entries when owned content cannot be erased and removes stale
+Trash rows without erasing a restored note. These helpers do not change Cloud deletion
+or start a background service.
+
+Capacity limits apply when adding to Trash. Existing documents remain readable and
+can be restored or purged after a host lowers its limits. A full Trash refuses new
+additions; hosts must explain that the user can empty Trash to free space.

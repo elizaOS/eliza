@@ -141,19 +141,31 @@ function languageFromAcceptLanguage(header: string | null): UiLanguage | null {
   if (typeof header !== "string" || !header.trim()) return null;
   const ranked = header
     .split(",")
-    .map((part) => {
+    .map((part): { tag: string; q: number } | null => {
       const [tag, ...params] = part.trim().split(";");
-      const q = params
+      const trimmedTag = tag.trim();
+      if (!trimmedTag || trimmedTag === "*") return null;
+      const qParam = params
         .map((p) => p.trim())
-        .find((p) => p.toLowerCase().startsWith("q="))
-        ?.slice(2);
-      return { tag: tag.trim(), q: q ? Number.parseFloat(q) : 1 };
+        .find((p) => p.toLowerCase().startsWith("q="));
+      const rawQ = qParam?.slice(2);
+      // RFC 9110 §12.4.2: qvalue is 0..1 with at most 3 decimals. Malformed
+      // q-values are ignored (mirrors parseAcceptLanguage in
+      // packages/app/src/api/i18n-locale-routes.ts).
+      if (
+        rawQ !== undefined &&
+        !/^(?:0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/.test(rawQ)
+      ) {
+        return null;
+      }
+      const q = rawQ === undefined ? 1 : Number(rawQ);
+      // `q=0` means "not acceptable" — such tags must be excluded, not merely
+      // ranked last, or a lone `ja;q=0` would still select Japanese.
+      // Mirrors `languageFromAcceptLanguage` in `@elizaos/ui/i18n/region`.
+      if (q <= 0) return null;
+      return { tag: trimmedTag, q };
     })
-    // `q=0` means "not acceptable" (RFC 9110 §12.4.2) — such tags must be
-    // excluded, not merely ranked last, or a lone `ja;q=0` would still select
-    // Japanese. Unparseable q-values are dropped with them (`NaN > 0` is false).
-    // Mirrors `languageFromAcceptLanguage` in `@elizaos/ui/i18n/region`.
-    .filter((entry) => entry.tag && entry.tag !== "*" && entry.q > 0)
+    .filter((entry): entry is { tag: string; q: number } => entry !== null)
     .sort((a, b) => b.q - a.q);
   for (const { tag } of ranked) {
     const matched = matchSupported(tag);

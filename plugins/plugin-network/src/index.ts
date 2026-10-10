@@ -1,4 +1,5 @@
 export { createGetUpdatesAction } from "./actions/get-updates.js";
+export { createRelayAction } from "./actions/relay.js";
 export { createSetStateAction } from "./actions/set-state.js";
 export {
   NetworkServiceClient,
@@ -19,6 +20,12 @@ export {
   detectNetworkSignals,
 } from "./evaluators/network-signals.js";
 export { InMemoryNetworkStore } from "./memory-store.js";
+export {
+  createNetworkVoiceProvider,
+  NETWORK_APP_VOICES,
+  type NetworkAppVoice,
+  networkAgentVoice,
+} from "./providers/agent-voice.js";
 export { createMemberContextProvider } from "./providers/member-context.js";
 export {
   authorizeSetState,

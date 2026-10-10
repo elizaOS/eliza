@@ -6,6 +6,10 @@
  *   POST /internal/turn     Eliza → service   one inbound message on the shared line
  *   POST /api/internal/network/deliver  service → Eliza Cloud  a message the service wants sent
  *        (proactive, relay): delivered through the gateway and appended to the member's agent history
+ *   POST /internal/relay    Eliza → service   RELAY action: the member asks to pass something to a match
+ *
+ * eliza-research/thenetwork keeps a byte-for-byte copy of this file and svc-auth.ts in
+ * packages/core/src/svc/. contract-mirror.test.ts pins both files' hashes; see it before changing either.
  */
 
 /** Standalone wire app IDs; mirrors the platform app owner without importing the host. */
@@ -19,6 +23,7 @@ export const DELIVER_PATH = "/api/internal/network/deliver";
 export const SET_STATE_PATH = "/internal/set-state";
 export const SIGNALS_PATH = "/internal/signals";
 export const UPDATES_PATH = "/internal/updates";
+export const RELAY_PATH = "/internal/relay";
 
 export interface TurnRequest {
   /** The provider message id (Blooio msg_… / Twilio SM…). Idempotency key: a replay returns the stored result and runs nothing. */
@@ -182,4 +187,29 @@ export interface UpdatesRequest {
 /** Unseen inbox items; reading marks them seen on every surface. Summaries are member-safe. */
 export interface UpdatesResponse {
   items: Array<{ summary: string }>;
+}
+
+/**
+ * RELAY: the member asks the agent to pass something to a match ("tell Sam I'm running late").
+ * `text` is the member's own inbound message, never model output: the service parses the request
+ * (parseRelayRequest), builds the item and runs relayItemAsync with the relay classifier. Only
+ * `rendered` ever reaches the other member, through /api/internal/network/deliver (kind "relay").
+ */
+export interface RelaySendRequest {
+  channel: TurnRequest["channel"];
+  messageId: string;
+  app: NetworkAppId;
+  memberId: string;
+  /** An active item id from the open turn's context; null lets the service pick the newest open item. */
+  itemId: string | null;
+  text: string;
+}
+export interface RelaySendResponse {
+  /** "none": no relay request in the message (nothing sent). hold: staff review. block: never sent. */
+  decision: "pass" | "hold" | "block" | "none";
+  /** What the agent tells the sender. Never repeats matched text or names a rule; "" for "none". */
+  senderNotice: string;
+  /** True once `rendered` was handed to deliver (pass only). */
+  delivered: boolean;
+  replayed: boolean;
 }

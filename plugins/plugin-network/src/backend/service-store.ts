@@ -37,8 +37,11 @@ export function createServiceNetworkStore(
         stateUntil: ctx.stateUntil,
         facets: ctx.facets,
         activeItems:
-          ctx.activeItems?.map(({ kind, summary }) => ({ kind, summary })) ??
-          null,
+          ctx.activeItems?.map(({ id, kind, summary }) => ({
+            id,
+            kind,
+            summary,
+          })) ?? null,
       };
     },
     async readUpdates() {
@@ -47,6 +50,21 @@ export function createServiceNetworkStore(
         channel: turn.channel,
         memberId: turn.memberId,
         messageId: turn.messageId,
+      });
+    },
+    async relay(input) {
+      // The item must be one the service put in this turn's context; anything else goes as null
+      // and the service picks the newest open item itself.
+      const known =
+        input.itemId !== null &&
+        (ctx.activeItems ?? []).some((i) => i.id === input.itemId);
+      return client.relay({
+        channel: turn.channel,
+        messageId: turn.messageId,
+        app: turn.app,
+        memberId: turn.memberId,
+        itemId: known ? input.itemId : null,
+        text: input.text,
       });
     },
     async setState(input): Promise<SetStateExecution> {

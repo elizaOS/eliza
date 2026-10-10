@@ -40,8 +40,14 @@ export function pageGuidance(request) {
     return { visible: false, reason };
   };
   const answers = request.answers ?? [];
+  const keepClear = request.keepClear ?? [];
   if (
     request.kind !== "show" ||
+    (request.dismissed !== undefined &&
+      typeof request.dismissed !== "boolean") ||
+    !Array.isArray(keepClear) ||
+    keepClear.length > 8 ||
+    keepClear.some((id) => typeof id !== "string" || !/^\d+$/.test(id)) ||
     (request.action !== undefined &&
       !["click", "fill", "scroll"].includes(request.action)) ||
     (request.restore !== undefined && typeof request.restore !== "boolean") ||
@@ -106,8 +112,17 @@ export function pageGuidance(request) {
   const target = snapshot.nodes.get(request.nodeId)?.node;
   if (!target?.isConnected || target.getRootNode() !== document)
     return fail("missing-target");
+  // Controls the label must not cover, for example the button she presses
+  // next. A control that is gone is simply not avoided.
+  const clear = keepClear
+    .map((id) => snapshot.nodes.get(id)?.node)
+    .filter((node) => node?.isConnected && node !== target);
+  // The person's Dismiss holds for this step, also after a reload of the
+  // page (the extension remembers it), until she asks to see it again.
   const dismissed =
-    previous?.id === request.id && previous.dismissed && !request.restore;
+    !request.restore &&
+    (request.dismissed === true ||
+      (previous?.id === request.id && previous.dismissed));
   // A later revision of a shown step at the same target (for example its
   // success tone) replaces the words in place: no cursor travel or slide.
   const continued =
@@ -116,6 +131,34 @@ export function pageGuidance(request) {
     previous.appeared === true &&
     !previous.paused;
   previous?.destroy();
+  // A step whose control is outside the visible page brings it into view, so
+  // the guide never waits unseen. An action guide never scrolls: the action
+  // needs the page exactly as observed.
+  const placed = target.getBoundingClientRect();
+  const view0 = window.visualViewport;
+  const placement =
+    placed.width <= 0 ||
+    placed.height <= 0 ||
+    getComputedStyle(target).visibility !== "visible"
+      ? "hidden"
+      : placed.left >= (view0?.offsetLeft ?? 0) &&
+          placed.top >= (view0?.offsetTop ?? 0) &&
+          placed.right <=
+            (view0?.offsetLeft ?? 0) + (view0?.width ?? innerWidth) &&
+          placed.bottom <=
+            (view0?.offsetTop ?? 0) + (view0?.height ?? innerHeight)
+        ? "in-view"
+        : request.action || dismissed
+          ? "off-screen"
+          : "scrolled";
+  if (placement === "scrolled")
+    target.scrollIntoView({
+      block: "center",
+      inline: "nearest",
+      behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "instant"
+        : "smooth",
+    });
   // The page shares document.fonts. Each document gets an unguessable family
   // added from bytes (no network or page CSP); any other face that claims it
   // makes the overlay use the generic system font for the rest of the document.
@@ -428,10 +471,19 @@ export function pageGuidance(request) {
       state.visible = false;
     },
   };
-  close.onclick = () => {
+  close.onclick = (event) => {
     state.dismissed = true;
     state.visible = false;
     hide();
+    // Value-free: only this guide's ID returns, so a reload keeps it hidden.
+    if (event.isTrusted && !request.action)
+      try {
+        void chrome.runtime
+          .sendMessage({ type: "task-guide-dismissed", guideId: request.id })
+          .catch(() => {});
+      } catch {
+        // Without the extension transport the dismissal lasts for this page.
+      }
   };
   globalThis[key] = state;
   const update = () => {
@@ -531,10 +583,13 @@ export function pageGuidance(request) {
           (p) =>
             p.y >= view.top + 8 &&
             p.y + height <= view.top + view.height - 8 &&
-            (p.x + width <= rect.left - 8 ||
-              p.x >= rect.right + 8 ||
-              p.y + height <= rect.top - 8 ||
-              p.y >= rect.bottom + 8),
+            [rect, ...clear.map((node) => node.getBoundingClientRect())].every(
+              (avoid) =>
+                p.x + width <= avoid.left - 8 ||
+                p.x >= avoid.right + 8 ||
+                p.y + height <= avoid.top - 8 ||
+                p.y >= avoid.bottom + 8,
+            ),
         );
       if (position) {
         label.style.left = `${position.x}px`;
@@ -601,5 +656,10 @@ export function pageGuidance(request) {
     frame = requestAnimationFrame(update);
   };
   frame = requestAnimationFrame(update);
-  return { accepted: true, visible: false, dismissed: state.dismissed };
+  return {
+    accepted: true,
+    visible: false,
+    dismissed: state.dismissed,
+    placement,
+  };
 }

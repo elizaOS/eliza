@@ -8,13 +8,16 @@ import {
 } from "./contracts.ts";
 export type RegionalMap = {
   base: string;
+  /** Provider identity reported by the configured gateway's capabilities. */
+  providerId: string;
   region: string;
   bounds: [number, number, number, number];
   attribution: string;
 };
 export interface RegionalOptions {
   baseUrl?: string;
-  providerId: string;
+  /** Optional pin. When omitted, the configured gateway's reported provider id is used. */
+  providerId?: string;
   nativeGateway: string;
   developmentHosts: readonly string[];
   development: boolean;
@@ -31,6 +34,39 @@ export interface RegionalOptions {
     config: import("./contracts.ts").ProviderConfig,
     provider: MapsProvider,
   ): void;
+}
+/** West, south, east, north in degrees; a non-empty box that does not cross the antimeridian. */
+function validBounds(
+  value: unknown,
+): value is [number, number, number, number] {
+  if (
+    !Array.isArray(value) ||
+    value.length !== 4 ||
+    !value.every((v) => typeof v === "number" && Number.isFinite(v))
+  )
+    return false;
+  const [west, south, east, north] = value as number[];
+  return (
+    west >= -180 &&
+    east <= 180 &&
+    south >= -90 &&
+    north <= 90 &&
+    west < east &&
+    south < north
+  );
+}
+/** Whether a coordinate lies inside the configured gateway's reported coverage. */
+export function insideRegion(
+  region: Pick<RegionalMap, "bounds">,
+  point: Coordinate,
+): boolean {
+  const [west, south, east, north] = region.bounds;
+  return (
+    point.longitude >= west &&
+    point.longitude <= east &&
+    point.latitude >= south &&
+    point.latitude <= north
+  );
 }
 /** Explicit trusted host configuration; no storage, chat, or public-provider discovery. */
 export function createRegionalMaps(options: RegionalOptions) {
@@ -220,12 +256,13 @@ export function createRegionalMaps(options: RegionalOptions) {
         meta = await request(base, "/capabilities", signal);
       diagnostic.stage = "capabilities-validation";
       if (
-        meta.providerId !== options.providerId ||
+        typeof meta.providerId !== "string" ||
+        !/^[a-z0-9][a-z0-9._-]{0,79}$/.test(meta.providerId) ||
+        (options.providerId !== undefined &&
+          meta.providerId !== options.providerId) ||
         typeof meta.region !== "string" ||
         meta.region.length > 100 ||
-        !Array.isArray(meta.bounds) ||
-        meta.bounds.length !== 4 ||
-        !meta.bounds.every(Number.isFinite) ||
+        !validBounds(meta.bounds) ||
         typeof meta.attribution !== "string" ||
         meta.attribution.length > 1000
       )
@@ -249,6 +286,7 @@ export function createRegionalMaps(options: RegionalOptions) {
         throw new Error("Invalid regional capabilities");
       region = {
         base,
+        providerId: meta.providerId,
         region: meta.region,
         bounds: meta.bounds,
         attribution: meta.attribution,

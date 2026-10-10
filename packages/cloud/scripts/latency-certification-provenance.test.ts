@@ -56,6 +56,26 @@ test("placement policy is read from the deployed commit and participates in cont
       ),
       /require acknowledgement/,
     );
+    const productionSha = await commit(
+      'placement = { mode = "targeted", region = "aws:us-east-1" }\n[vars]\nENVIRONMENT = "production"\n[env.staging]\nplacement = { mode = "targeted", region = "gcp:us-west2" }\n',
+    );
+    assert.equal(
+      (
+        await readDeploymentPlacement(productionSha, {
+          cwd,
+          environment: "production",
+        })
+      ).region,
+      "aws:us-east-1",
+    );
+    assert.equal(
+      (await readDeploymentPlacement(productionSha, { cwd })).region,
+      "gcp:us-west2",
+    );
+    await assert.rejects(
+      readDeploymentPlacement(sourceSha, { cwd, environment: "production" }),
+      /explicit environment/,
+    );
     for (const source of [
       '[env.staging]\nplacement = { mode = "smart" }',
       '[env.staging]\nplacement = { mode = "targeted" }',
@@ -114,6 +134,33 @@ test("real Git ancestry rejects untrusted revisions and binds changed verifier c
         )
       ).relationship,
       "identical",
+    );
+    assert.equal(
+      (
+        await verifyCertificationSource(
+          {
+            ...config,
+            sourceRef: "refs/heads/main",
+            environment: "production",
+          },
+          { cwd },
+        )
+      ).deploySha,
+      base,
+    );
+    await assert.rejects(
+      verifyCertificationSource(
+        { ...config, environment: "production" },
+        { cwd },
+      ),
+      /trusted environment/,
+    );
+    await assert.rejects(
+      verifyCertificationSource(
+        { ...config, sourceRef: "refs/heads/main" },
+        { cwd },
+      ),
+      /trusted environment/,
     );
     const unrelated = git("commit-tree", "HEAD^{tree}", "-m", "unrelated");
     const descendant = git(

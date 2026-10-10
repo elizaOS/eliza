@@ -30,7 +30,11 @@ import { cache } from "../../cache/client";
 import { InMemoryLRUCache } from "../../cache/in-memory-lru-cache";
 import { CacheTTL } from "../../cache/keys";
 import { enforceOrgRateLimit, OrgRateLimitCacheNotReadyError } from "../../middleware/rate-limit";
-import { serviceNetworkStoreFactory, sharedNetworkExecution } from "../../network/member-store";
+import {
+  networkVoiceApp,
+  serviceNetworkStoreFactory,
+  sharedNetworkExecution,
+} from "../../network/member-store";
 import { getProviderFromModel } from "../../pricing";
 import {
   collectVideoProviderApiKeys,
@@ -630,6 +634,8 @@ export function sharedElizaRuntimeExecution(
     personalShared,
     runtimeChannel.type !== ChannelType.DM || roomId !== sharedRuntimeRoomKey(agent.id, agent.id),
     serviceNetworkStoreFactory(personalShared ? trustedNetworkTurn : undefined),
+    undefined,
+    personalShared ? networkVoiceApp(trustedNetworkTurn) : undefined,
   );
   return {
     agentKey: agent.id,

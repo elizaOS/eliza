@@ -184,7 +184,7 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
     name: "computer sessions app shell page",
     path: "/computer-use-sessions",
-    readyChecks: [{ text: "Computer sessions" }],
+    readyChecks: [{ text: "No active computer-use sessions." }],
     timeoutMs: 90_000,
   },
   {

@@ -12,6 +12,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { readFile } from "node:fs/promises";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -1566,6 +1567,71 @@ describe("CreditsService.clawbackCredits (#10920)", () => {
       // Balance: 100 - 10 + 4 - 4 = 90 — the org holds exactly what the fiat
       // flows imply (grant refunded in full, only $4 was ever reinstated).
       expect(await getBalance()).toBeCloseTo(90, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+});
+
+describe("direct inference debit settlement (#30806)", () => {
+  test(
+    "returns the committed balance revision and republishes without reading the cache",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const migration = await readFile(
+        new URL("../../../db/migrations/0177_organization_balance_revision.sql", import.meta.url),
+        "utf8",
+      );
+      for (const statement of migration.split("--> statement-breakpoint")) {
+        if (statement.trim()) await dbWrite.execute(statement);
+      }
+      await seedOrg("1");
+      const { debitInferenceCost } = await import("../inference-billing-fast-path");
+      const { cache } = await import("../../cache/client");
+      const { CacheKeys } = await import("../../cache/keys");
+      const cacheRead = spyOn(cache, "get");
+      const snapshotRead = spyOn(creditsService, "getOrganizationBalanceSnapshot");
+      const inferenceBalanceFence = {
+        lowerCommittedBalance: mock(async (_balance: number, _revision: string) => undefined),
+        publishAuthoritativeBalance: mock(async (_balance: number, _revision: string) => undefined),
+      };
+      const context = {
+        organizationId: ORG_ID,
+        userId: USER_ID,
+        requestId: "req-direct-readback-30806",
+        model: "test-model",
+        provider: "test-provider",
+        billingSource: "test",
+      };
+      try {
+        const result = await debitInferenceCost(context, 0.9, "deferred", {
+          preserveBalanceHintDuringFencedHandoff: true,
+          inferenceBalanceFence,
+        });
+        expect(result).toMatchObject({ status: "collected", collectedAmountUsd: 0.9 });
+        expect(result.newBalanceUsd).toBeCloseTo(0.1, 6);
+        expect(BigInt(result.balanceRevision)).toBeGreaterThan(0n);
+        expect(snapshotRead).not.toHaveBeenCalled();
+        expect(
+          cacheRead.mock.calls.filter(([key]) => key === CacheKeys.inference.orgBalance(ORG_ID)),
+        ).toHaveLength(0);
+        const authoritative = await creditsService.getOrganizationBalanceSnapshot(ORG_ID);
+        expect(result.balanceRevision).toBe(authoritative.revision);
+        expect(inferenceBalanceFence.publishAuthoritativeBalance.mock.calls).toEqual([
+          [result.newBalanceUsd, result.balanceRevision],
+        ]);
+
+        // A lost settlement acknowledgement may replay the debit. It retains
+        // the original charge and returns a current, authoritative observation.
+        const replay = await debitInferenceCost(context, 0.9, "deferred", {
+          preserveBalanceHintDuringFencedHandoff: true,
+          inferenceBalanceFence,
+        });
+        expect(replay).toEqual(result);
+        expect(await countByType("debit")).toBe(1);
+      } finally {
+        cacheRead.mockRestore();
+        snapshotRead.mockRestore();
+      }
     },
     PGLITE_TIMEOUT,
   );
