@@ -929,65 +929,94 @@ export async function handleWebhook(
           });
         }
       }
-      let failure: unknown = err;
-      if (
-        err instanceof PersonalSharedPreEgressError &&
-        !agentId &&
-        isPersonalElizaTransport(adapter.platform) &&
-        !isNetworkProject(project) &&
-        isDirectChat(event)
-      ) {
-        // The provider already received its acknowledgement and will not
-        // retry, and nothing reached the sender. Send the same notice a
-        // private Telegram turn gets, so the failed turn is not silent. A
-        // Network turn is excluded: its consent state can be unknown here.
-        logger.warn("Personal Shared turn failed; delivering failure notice", {
-          project,
-          platform: adapter.platform,
-          messageId: event.messageId,
-          traceId: trace.traceId,
-          error: err.message,
-          status: err.failure?.status ?? null,
-          failureStage: err.failure?.stage ?? null,
-          failureName: err.failure?.name ?? null,
-          failureCauseName: err.failure?.causeName ?? null,
-          retryable: err.failure?.retryable ?? false,
-        });
-        try {
-          await sendDirectReply(
-            adapter,
-            config,
-            event,
-            deps,
-            project,
-            personalSharedFailureReply(err.failure),
-          );
-          await redis.set(dedupKey, CONNECTOR_DELIVERED, {
-            ex: TELEGRAM_DELIVERY_TTL_SECONDS,
-          });
-          return;
-        } catch (noticeError) {
-          // error-policy:J2 the turn failure is logged above; the ledger now
-          // records the outcome of the notice send, which is the only egress.
-          failure = noticeError;
-        }
-      }
-      await settleBackgroundDeliveryFailure(redis, failure, {
-        dedupKey,
+      await settleAcknowledgedTurnFailure(
+        adapter,
+        config,
+        event,
+        deps,
         project,
-        platform: adapter.platform,
-        messageId: event.messageId,
-        traceId: trace.traceId,
-      });
+        trace.traceId,
+        dedupKey,
+        err,
+        agentId,
+      );
     });
 
   return ackResponse(adapter.platform);
 }
 
 /**
+ * Settle an acknowledged turn that failed in the background, on its first
+ * delivery or after a cutover hold. The provider already received its
+ * acknowledgement and will not retry, so a Personal Shared direct turn that
+ * failed before any egress gets the same notice a private Telegram turn gets.
+ * A Network turn is excluded: its consent state can be unknown here.
+ */
+async function settleAcknowledgedTurnFailure(
+  adapter: PlatformAdapter,
+  config: WebhookConfig,
+  event: ChatEvent,
+  deps: HandlerDeps,
+  project: string,
+  traceId: string,
+  dedupKey: string,
+  err: unknown,
+  agentId?: string,
+): Promise<void> {
+  let failure: unknown = err;
+  if (
+    err instanceof PersonalSharedPreEgressError &&
+    !agentId &&
+    isPersonalElizaTransport(adapter.platform) &&
+    !isNetworkProject(project) &&
+    isDirectChat(event)
+  ) {
+    logger.warn("Personal Shared turn failed; delivering failure notice", {
+      project,
+      platform: adapter.platform,
+      messageId: event.messageId,
+      traceId,
+      error: err.message,
+      status: err.failure?.status ?? null,
+      failureStage: err.failure?.stage ?? null,
+      failureName: err.failure?.name ?? null,
+      failureCauseName: err.failure?.causeName ?? null,
+      retryable: err.failure?.retryable ?? false,
+    });
+    try {
+      await sendDirectReply(
+        adapter,
+        config,
+        event,
+        deps,
+        project,
+        personalSharedFailureReply(err.failure),
+      );
+      await deps.redis.set(dedupKey, CONNECTOR_DELIVERED, {
+        ex: TELEGRAM_DELIVERY_TTL_SECONDS,
+      });
+      return;
+    } catch (noticeError) {
+      // error-policy:J2 the turn failure is logged above; the ledger now
+      // records the outcome of the notice send, which is the only egress.
+      failure = noticeError;
+    }
+  }
+  await settleBackgroundDeliveryFailure(deps.redis, failure, {
+    dedupKey,
+    project,
+    platform: adapter.platform,
+    messageId: event.messageId,
+    traceId,
+  });
+}
+
+/**
  * Terminal ledger handling for an acknowledged webhook whose background
- * processing failed: idempotent pre-egress failures reopen the delivery, and
- * anything that may have reached the provider is recorded as uncertain.
+ * processing failed: an idempotent pre-egress failure clears the delivery
+ * claim, and anything that may have reached the provider is recorded as
+ * uncertain. Blooio and Twilio were acknowledged before processing and do not
+ * retry, so clearing the claim does not by itself recover the turn.
  */
 async function settleBackgroundDeliveryFailure(
   redis: GatewayRedis,
@@ -1014,13 +1043,13 @@ async function settleBackgroundDeliveryFailure(
     (err instanceof PlatformDeliveryError && err.deliveryStatus === "failed")
   ) {
     try {
-      // The Shared endpoint is idempotent, including its pooled-key media
+      // Clearing the claim is safe if the same event arrives again. The
+      // Shared endpoint is idempotent, including its pooled-key media
       // enrichment: the Worker keys a durable description record by the
-      // forwarded `<platform>:<project>:<messageId>`, so a reopened
-      // delivery reuses the stored description instead of re-spending.
-      // Blooio also keys provider egress by the inbound message id, so a
-      // lost receipt response can safely reopen the webhook without
-      // sending a second text.
+      // forwarded `<platform>:<project>:<messageId>`, so a second delivery
+      // reuses the stored description instead of re-spending. Blooio also
+      // keys provider egress by the inbound message id, so it does not send
+      // a second text.
       await redis.del(dedupKey);
     } catch (cleanupError) {
       // error-policy:J7 The original delivery failure is already observed;
@@ -1071,15 +1100,9 @@ export async function redeliverHeldWebhook(
 ): Promise<HeldWebhookOutcome> {
   const { redis, cloudBaseUrl, getAuthHeader } = deps;
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
-  const failureContext = {
-    dedupKey: held.dedupKey,
-    project: held.project,
-    platform: adapter.platform,
-    messageId: held.event.messageId,
-    traceId: held.traceId,
-  };
+  let config: WebhookConfig | null = null;
   try {
-    const config = await resolveWebhookConfig(
+    config = await resolveWebhookConfig(
       redis,
       cloudBaseUrl,
       getAuthHeader(),
@@ -1107,7 +1130,8 @@ export async function redeliverHeldWebhook(
     // pre-execution failure must stay in the durable retry queue; reopening
     // the provider dedup key cannot cause a provider retry after its ACK. A
     // failure Cloud classified as not retryable would only be refused again
-    // until the hold budget ran out, so it settles like the first delivery.
+    // until the hold budget ran out, so it settles like the first delivery,
+    // including the failure notice to the sender.
     if (
       err instanceof PersonalSharedPreEgressError &&
       (err.hold !== null || err.failure?.retryable !== false)
@@ -1117,7 +1141,27 @@ export async function redeliverHeldWebhook(
         signal: err.hold ?? { code: held.code, retryAfterSeconds: null },
       };
     }
-    await settleBackgroundDeliveryFailure(redis, err, failureContext);
+    if (config) {
+      await settleAcknowledgedTurnFailure(
+        adapter,
+        config,
+        held.event,
+        deps,
+        held.project,
+        held.traceId,
+        held.dedupKey,
+        err,
+        held.agentId,
+      );
+    } else {
+      await settleBackgroundDeliveryFailure(redis, err, {
+        dedupKey: held.dedupKey,
+        project: held.project,
+        platform: adapter.platform,
+        messageId: held.event.messageId,
+        traceId: held.traceId,
+      });
+    }
     return { kind: "released" };
   }
   await redis.set(held.dedupKey, CONNECTOR_DELIVERED, {
@@ -1134,10 +1178,15 @@ export async function redeliverHeldWebhook(
   return { kind: "delivered" };
 }
 
-/** Release a hold that outlived the cutover budget to ordinary failure handling. */
+/**
+ * Release a hold that outlived the cutover budget. The turn was never
+ * executed and the provider will not retry, so the sender gets the failure
+ * notice through the same handling as a first-delivery failure.
+ */
 export async function releaseExpiredHeldWebhook(
   held: HeldWebhook,
-  redis: GatewayRedis,
+  adapter: PlatformAdapter,
+  deps: HandlerDeps,
 ): Promise<void> {
   logger.error("Held personal connector turn exceeded the cutover budget", {
     project: held.project,
@@ -1149,16 +1198,36 @@ export async function releaseExpiredHeldWebhook(
     operatorAction:
       "inspect the Dedicated target's attestation; the turn was never executed",
   });
-  await settleBackgroundDeliveryFailure(
-    redis,
-    new PersonalSharedPreEgressError("cutover hold expired"),
-    {
+  const expired = new PersonalSharedPreEgressError("cutover hold expired");
+  const config = await resolveWebhookConfig(
+    deps.redis,
+    deps.cloudBaseUrl,
+    deps.getAuthHeader(),
+    adapter.platform,
+    held.project,
+    held.agentId,
+    deps.reacquireAuthHeader ?? reacquireAuthHeader,
+  );
+  if (!config) {
+    await settleBackgroundDeliveryFailure(deps.redis, expired, {
       dedupKey: held.dedupKey,
       project: held.project,
-      platform: held.platform,
+      platform: adapter.platform,
       messageId: held.event.messageId,
       traceId: held.traceId,
-    },
+    });
+    return;
+  }
+  await settleAcknowledgedTurnFailure(
+    adapter,
+    config,
+    held.event,
+    deps,
+    held.project,
+    held.traceId,
+    held.dedupKey,
+    expired,
+    held.agentId,
   );
 }
 
@@ -1219,8 +1288,9 @@ async function processMessage(
         event,
       );
     } catch (error) {
-      // error-policy:J2 nothing has been sent; the provider retries and the
-      // service replays its stored result for this messageId.
+      // error-policy:J2 nothing has been sent. A provider that retries gets
+      // the service's stored result for this messageId; Blooio and Twilio
+      // were acknowledged already and do not retry.
       throw new PersonalSharedPreEgressError("network service unavailable", {
         cause: error,
       });
@@ -1325,8 +1395,9 @@ async function processMessage(
         event,
       );
     } catch (error) {
-      // error-policy:J2 a ledger outage reopens the webhook for a provider
-      // retry instead of guessing consent; nothing has been sent yet.
+      // error-policy:J2 a ledger outage fails the turn before egress instead
+      // of guessing consent. Blooio and Twilio were acknowledged already and
+      // do not retry.
       throw new PersonalSharedPreEgressError(
         "network consent ledger unavailable",
         { cause: error },
@@ -1817,7 +1888,7 @@ async function sendPersonalSharedReply(
   // execution. The Worker's per-message description claim makes the overlap
   // spend-safe (the second execution sees the live claim and keeps the raw
   // text), but that raw turn would only race the enriched one, so media turns
-  // still hand provider/transport failures to the durable redelivery path.
+  // still end provider/transport failures as a pre-egress failure.
   // Blooio private and group events share the same guarded cloud vision path.
   // Media URLs are forwarded only while that path is explicitly enabled.
   const isMediaTurn =
@@ -1826,8 +1897,8 @@ async function sendPersonalSharedReply(
     !!event.mediaUrls?.length;
   // Voice and media turns can spend most of the 120-second processing lease in
   // STT/vision + the model. Only a stale-auth retry is safe inline; provider/
-  // transport failures reopen the webhook for the platform's durable retry
-  // instead of overlapping it.
+  // transport failures end the turn as a pre-egress failure instead of
+  // overlapping the lease. Blooio and Twilio do not retry after their ACK.
   const isLongTurn = Boolean(voiceNote) || isMediaTurn;
   const maxAttempts = isLongTurn ? 2 : PERSONAL_SHARED_ATTEMPTS;
   const postMessage = async (authHeader: Record<string, string>) => {

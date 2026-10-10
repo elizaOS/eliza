@@ -267,7 +267,8 @@ function startCutoverHoldDrain(): void {
     cutoverHoldDrain = drainCutoverHolds(redis, {
       redeliver: (held) =>
         redeliverHeldWebhook(held, adapters[held.platform], deliveryDeps),
-      release: (held) => releaseExpiredHeldWebhook(held, redis),
+      release: (held) =>
+        releaseExpiredHeldWebhook(held, adapters[held.platform], deliveryDeps),
     })
       .then((stats) => {
         if (
