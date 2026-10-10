@@ -123,8 +123,7 @@ export type VoiceModelManagementResult =
 	  };
 /* ----------------------------------------------------------------- *
  * Owner gate — the cellular + metered toggles are OWNER-only.        *
- * The runtime writes `ELIZA_ADMIN_ENTITY_ID` after voice-first-run  *
- * completes (see voice-first-run-routes.ts §POST /complete).        *
+ * `ELIZA_ADMIN_ENTITY_ID` is the canonical owner setting.          *
  * ----------------------------------------------------------------- */
 /**
  * `isOwnerRequest()` strategy:
