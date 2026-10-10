@@ -35,7 +35,7 @@ export function assertCompleteAnthropicGeneration(finishReason: string | undefin
   throw new ElizaError(
     "Anthropic reached its output boundary; refusing to return partial model output",
     {
-      code: "MODEL_INCOMPLETE_OUTPUT",
+      code: "MODEL_OUTPUT_INCOMPLETE",
       context: { provider: "anthropic", finishReason },
     }
   );
