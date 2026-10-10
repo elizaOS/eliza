@@ -14,6 +14,7 @@
 
 import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import { organizationsRepository } from "@elizaos/cloud-shared/db/repositories/organizations";
+import { parseOrganizationCreditBalance } from "@elizaos/cloud-shared/db/repositories/organizations-credit-balance-numeric";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
@@ -32,7 +33,14 @@ app.get("/", async (c) => {
 
     const user = await requireUserOrApiKeyWithOrg(c);
     const org = await organizationsRepository.findById(user.organization_id);
-    const balance = org ? Number.parseFloat(String(org.credit_balance)) : 0;
+    // `credit_balance` is a Postgres NUMERIC (string at the row boundary). A
+    // bare parseFloat fails open on a corrupt read: "100abc" truncated to 100
+    // and "NaN" became a null balance with isLow: false. Fail closed with a
+    // 500 like the mutation paths, instead of reporting a success-shaped,
+    // wrong balance.
+    const balance = org
+      ? parseOrganizationCreditBalance(org.credit_balance, "credit_balance")
+      : 0;
 
     return c.json({
       success: true,
