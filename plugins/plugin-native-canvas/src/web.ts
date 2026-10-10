@@ -1518,12 +1518,16 @@ export class CanvasWeb extends WebPlugin {
       ctx.translate(transform.translateX || 0, transform.translateY || 0);
     }
 
-    if (transform.rotation) {
-      ctx.rotate(transform.rotation);
-    }
-
+    // Composition order matches the native bridges (iOS affineTransformFromObject
+    // and Android matrixFromTransformObject both compose translate -> scale ->
+    // rotate -> skewX -> skewY). Rotation and non-uniform scale do not commute,
+    // so composing scale before rotation renders identically on all platforms.
     if (transform.scaleX !== undefined || transform.scaleY !== undefined) {
       ctx.scale(transform.scaleX ?? 1, transform.scaleY ?? 1);
+    }
+
+    if (transform.rotation) {
+      ctx.rotate(transform.rotation);
     }
 
     // Native bridges compose the X shear before the Y shear. A single
