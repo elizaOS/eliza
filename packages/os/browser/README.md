@@ -338,3 +338,11 @@ domains and owns warning copy, suggested navigation and any bypass policy. It
 makes no network requests and is neither an allowlist nor a safety verdict.
 Run its contracts with `node --test protection/domain-lookalike.test.mjs` from
 this directory; the package browser suite includes them.
+
+The task-effect watch covers the interval from a helper action to the person's
+next trusted pointer or keyboard input, for at most 30 seconds. A person's
+submission may finish later than that input; its delayed receipt is not treated
+as an automated helper effect. Requests that started before the handoff remain
+reportable when they finish afterward. Synthetic page events do not end the
+interval, and a new helper action starts a new interval. This observation rule
+does not grant permission to execute payment or sign-in controls.
