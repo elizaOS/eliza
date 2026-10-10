@@ -994,8 +994,12 @@ export class GoalsDomain {
       "definition",
       definitionRecord.definition.id,
     );
-    // Attempts are oldest first (ORDER BY scheduled_for, step_index, attempted_at).
-    const lastReminderAttempt = reminderInspection.attempts.at(-1) ?? null;
+    // History is ordered by its planned slots; a delayed earlier slot can finish last.
+    const [lastReminderAttempt] =
+      await this.ctx.repository.listLatestReminderAttemptsForOccurrences(
+        this.ctx.agentId(),
+        [occurrence.id],
+      );
     const lastOccurrenceAudit = reminderInspection.audits[0] ?? null;
     const whyVisible =
       occurrence.state === "snoozed" && occurrence.snoozedUntil
