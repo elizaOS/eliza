@@ -258,6 +258,30 @@ it.each(["unrelated", "abstain"] as const)(
   },
 );
 
+it("keeps a failed message read retryable instead of recording owner silence", async () => {
+  const f = await reviewFixture("done");
+  const fault = new Error("message store unavailable");
+  vi.spyOn(fixture.runtime, "getMemoriesByRoomIds").mockRejectedValue(fault);
+  const reportError = vi
+    .spyOn(fixture.runtime, "reportError")
+    .mockImplementation(() => {});
+  const review = await service.reviewOwnerResponseAfterReminderAttempt({
+    subjectType: "owner",
+    attempt: f.attempt,
+    now: f.now,
+  });
+  expect(review).toMatchObject({
+    decision: "no_response",
+    classifierSource: "none",
+    reason: "review_evidence_unavailable",
+  });
+  expect(reportError).toHaveBeenCalledWith(
+    "lifeops:reminders:review-owner-response",
+    fault,
+    { attemptId: f.attempt.id },
+  );
+});
+
 it("leaves typed control replies to their action pipeline", async () => {
   const f = await reviewFixture("done", {
     inReplyTo: crypto.randomUUID() as UUID,
