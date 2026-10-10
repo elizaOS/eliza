@@ -4,7 +4,7 @@
  * Combines the authoritative runtime-mode snapshot from `useRuntimeMode`
  * with the build-time platform detector from `../platform` to produce
  * the device+mode-aware default {tts, asr} pair. Consumed by
- * `ProviderSwitcher` and `VoiceConfigView` when the user hasn't picked
+ * `useVoiceConfig` and `useResolvedTtsDefault` when the user hasn't picked
  * a provider explicitly.
  *
  * The hook is read-only — it never writes to user config. Callers are
