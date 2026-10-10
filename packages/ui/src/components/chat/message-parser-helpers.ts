@@ -123,7 +123,7 @@ const HIDDEN_TAG_NAMES = [...REASONING_TAG_NAMES, "tool_calls?", "tools?"].join(
   "|",
 );
 export const HIDDEN_TAG_BLOCK_RE = new RegExp(
-  `<(${HIDDEN_TAG_NAMES})\\b[^>]*>[\\s\\S]*?(?:<\\/\\1>|$)`,
+  `<(${HIDDEN_TAG_NAMES})(?=[\\s/>])[^>]*>[\\s\\S]*?(?:<\\/\\1>|$)`,
   "gi",
 );
 const HIDDEN_TAG_NAME_LIST: readonly string[] = [
