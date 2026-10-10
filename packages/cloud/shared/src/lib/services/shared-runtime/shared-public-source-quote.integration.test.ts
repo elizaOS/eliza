@@ -7,6 +7,97 @@ import {
   resolveSharedRealtimeRequirement,
 } from "./shared-realtime-grounding";
 
+function streamChatCompletion(args: {
+  model: string;
+  content?: string;
+  toolCall?: {
+    id: string;
+    name: string;
+    arguments: string;
+  };
+  finishReason: "stop" | "tool_calls";
+}): Response {
+  const id = "offline-public-quote-stream";
+  const chunks = [
+    {
+      id,
+      object: "chat.completion.chunk",
+      created: 0,
+      model: args.model,
+      choices: [
+        {
+          index: 0,
+          delta: { role: "assistant" },
+          finish_reason: null,
+        },
+      ],
+    },
+    ...(args.content
+      ? [
+          {
+            id,
+            object: "chat.completion.chunk",
+            created: 0,
+            model: args.model,
+            choices: [
+              {
+                index: 0,
+                delta: { content: args.content },
+                finish_reason: null,
+              },
+            ],
+          },
+        ]
+      : []),
+    ...(args.toolCall
+      ? [
+          {
+            id,
+            object: "chat.completion.chunk",
+            created: 0,
+            model: args.model,
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: args.toolCall.id,
+                      type: "function",
+                      function: {
+                        name: args.toolCall.name,
+                        arguments: args.toolCall.arguments,
+                      },
+                    },
+                  ],
+                },
+                finish_reason: null,
+              },
+            ],
+          },
+        ]
+      : []),
+    {
+      id,
+      object: "chat.completion.chunk",
+      created: 0,
+      model: args.model,
+      choices: [
+        {
+          index: 0,
+          delta: {},
+          finish_reason: args.finishReason,
+        },
+      ],
+    },
+  ];
+  return new Response(
+    `${chunks.map((chunk) => `data: ${JSON.stringify(chunk)}`).join("\n\n")}\n\ndata: [DONE]\n\n`,
+    { headers: { "Content-Type": "text/event-stream" } },
+  );
+}
+
 for (const status of ["supported", "unsupported"] as const) {
   test(`actual Core public source extraction: ${status}`, async () => {
     const originalFetch = globalThis.fetch;
@@ -45,6 +136,7 @@ for (const status of ["supported", "unsupported"] as const) {
       expect(calls).toBeLessThanOrEqual(3);
       const request = (await new Response(init?.body).json()) as {
         reasoning_effort?: unknown;
+        stream?: boolean;
         tools?: Array<{ function?: { name?: string } }>;
         messages?: Array<{ role: string; content?: unknown }>;
       };
@@ -62,7 +154,7 @@ for (const status of ["supported", "unsupported"] as const) {
       });
       if (evaluator) {
         expect(calls).toBe(2);
-        return Response.json({
+        const completion = {
           id: "offline-public-evaluator",
           object: "chat.completion",
           created: 0,
@@ -85,7 +177,14 @@ for (const status of ["supported", "unsupported"] as const) {
             },
           ],
           usage: { prompt_tokens: 8, completion_tokens: 4, total_tokens: 12 },
-        });
+        };
+        return request.stream
+          ? streamChatCompletion({
+              model: completion.model,
+              content: completion.choices[0]?.message.content,
+              finishReason: "stop",
+            })
+          : Response.json(completion);
       }
       let args: object;
       let name: string;
@@ -116,7 +215,7 @@ for (const status of ["supported", "unsupported"] as const) {
           quote: status === "supported" ? source.text : "",
         };
       }
-      return Response.json({
+      const completion = {
         id: "offline-public-quote",
         object: "chat.completion",
         created: 0,
@@ -142,7 +241,18 @@ for (const status of ["supported", "unsupported"] as const) {
           },
         ],
         usage: { prompt_tokens: 8, completion_tokens: 4, total_tokens: 12 },
-      });
+      };
+      return request.stream
+        ? streamChatCompletion({
+            model: completion.model,
+            toolCall: {
+              id: `offline-${calls}`,
+              name,
+              arguments: JSON.stringify(args),
+            },
+            finishReason: "tool_calls",
+          })
+        : Response.json(completion);
     }) as typeof fetch;
     try {
       const result = await runSharedElizaRuntimeTurn({
