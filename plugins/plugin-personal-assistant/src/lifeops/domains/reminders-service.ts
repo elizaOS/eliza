@@ -1416,7 +1416,13 @@ export class RemindersDomain {
           }),
         )
         .filter((line): line is string => typeof line === "string");
-    } catch {
+    } catch (error) {
+      // error-policy:J4 the conversation only styles the reminder body; the
+      // reminder still fires without it. Report the failed message read.
+      this.ctx.runtime.reportError(
+        "lifeops:reminders:recent-conversation",
+        error,
+      );
       return [];
     }
   }
@@ -1488,7 +1494,10 @@ export class RemindersDomain {
       return parseReminderOwnerResponseSemanticClassification(
         parsed ? normalizeSemanticClassifierModelRecord(parsed) : null,
       );
-    } catch {
+    } catch (error) {
+      // error-policy:J4 no verdict keeps the review retryable (the caller
+      // reads null as no_semantic_verdict). Report the model failure.
+      this.ctx.runtime.reportError("lifeops:reminders:classify-reply", error);
       return null;
     }
   }
@@ -1719,7 +1728,14 @@ export class RemindersDomain {
             ) {
               return { ...noResponse, reason: "foreground_request_pending" };
             }
-          } catch {
+          } catch (error) {
+            // error-policy:J4 an unreadable request stays unknown evidence and
+            // the review retries. Report the failed refresh.
+            this.ctx.runtime.reportError(
+              "lifeops:reminders:foreground-request-refresh",
+              error,
+              { attemptId: args.attempt.id },
+            );
             return {
               ...noResponse,
               reason: "foreground_request_refresh_unknown",
@@ -1853,8 +1869,16 @@ export class RemindersDomain {
           semanticReason: null,
         }
       );
-    } catch {
-      return noResponse;
+    } catch (error) {
+      // error-policy:J4 a failed plan, message or review-state read is not
+      // owner silence. Return unknown evidence so the caller retries instead
+      // of escalating to the next channel, and report the fault.
+      this.ctx.runtime.reportError(
+        "lifeops:reminders:review-owner-response",
+        error,
+        { attemptId: args.attempt.id },
+      );
+      return { ...noResponse, reason: "review_evidence_unavailable" };
     }
   }
 
@@ -1910,7 +1934,12 @@ export class RemindersDomain {
           ? normalizeGeneratedReminderBody(response)
           : null;
       return text ?? fallback;
-    } catch {
+    } catch (error) {
+      // error-policy:J4 the template body still delivers the reminder.
+      // Report the model failure that replaced the generated body.
+      this.ctx.runtime.reportError("lifeops:reminders:render-body", error, {
+        channel: args.channel,
+      });
       return fallback;
     }
   }
@@ -1974,7 +2003,13 @@ export class RemindersDomain {
           ? normalizeGeneratedWorkflowBody(response)
           : null;
       return text ?? fallback;
-    } catch {
+    } catch (error) {
+      // error-policy:J4 the template body still delivers the workflow update.
+      // Report the model failure that replaced the generated body.
+      this.ctx.runtime.reportError(
+        "lifeops:reminders:render-workflow-body",
+        error,
+      );
       return fallback;
     }
   }
@@ -4432,6 +4467,7 @@ export class RemindersDomain {
         (responseReview.reason === "no_semantic_verdict" ||
           responseReview.reason === "foreground_request_pending" ||
           responseReview.reason === "foreground_request_refresh_unknown" ||
+          responseReview.reason === "review_evidence_unavailable" ||
           responseReview.reason === "definition_inactive")
       ) {
         // Unknown evidence stays retryable. Inactive definitions already closed
