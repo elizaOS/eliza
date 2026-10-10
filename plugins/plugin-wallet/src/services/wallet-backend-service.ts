@@ -14,9 +14,12 @@
  * Li.Fi/CCTP routing can surface a real quote). If backend resolution fails
  * at boot, the service still starts so metadata/dry-run stays available;
  * `getWalletBackend()` throws the captured error only when a caller actually
- * needs signing. When Steward is the selected backend and it did not load,
- * `execute` requests are refused: the chain handlers sign with the runtime's
- * local keys, which belong to a different wallet than the Steward one.
+ * needs signing. `execute` requests are refused when the wallet the user sees
+ * is not the one the chain handlers would sign with (`getExecutionRefusal`):
+ * Steward is selected but did not load, or the chain's primary wallet is the
+ * Eliza Cloud one. The handlers sign with the runtime's local keys, which
+ * belong to a different wallet. `preflightWalletAction` applies the same
+ * refusal so it lands before the spend confirmation, not after it.
  */
 import {
   type IAgentRuntime,
@@ -35,6 +38,7 @@ import type {
   WalletRouterParams,
   WalletRouterResult,
   WalletRouterSubaction,
+  WalletSignerMetadata,
 } from "../types/wallet-router.js";
 import { normalizeWalletChainKey } from "../types/wallet-router.js";
 import type { WalletBackend } from "../wallet/backend.js";
@@ -43,6 +47,12 @@ import { resolveWalletBackend } from "../wallet/select-backend.js";
 import "../core-augmentation.js";
 
 export const WALLET_BACKEND_SERVICE_TYPE = "wallet-backend" as const;
+
+/** Settings that hold the primary wallet source (`local` / `cloud`) per chain family. */
+const PRIMARY_WALLET_SOURCE_SETTING = {
+  evm: { key: "WALLET_SOURCE_EVM", label: "EVM" },
+  solana: { key: "WALLET_SOURCE_SOLANA", label: "Solana" },
+} as const;
 
 /**
  * Runtime service exposing {@link WalletBackend}. Retrieve via
@@ -141,7 +151,34 @@ export class WalletBackendService extends Service {
     if (!handlerResult.ok) {
       return handlerResult;
     }
-    return this.validateRequiredParams(params);
+    const required = this.validateRequiredParams(params);
+    if (required) {
+      return required;
+    }
+    if (params.dryRun || params.mode !== "execute") {
+      return null;
+    }
+    return this.refuseExecution(handlerResult.handler);
+  }
+
+  /**
+   * Why `execute` requests for a signer family are refused, or null when they
+   * may run. Chain handlers sign with the runtime's local keys, so execution
+   * is refused whenever the wallet the user sees and funds is another one.
+   */
+  getExecutionRefusal(kind: WalletSignerMetadata["kind"]): string | null {
+    if (this.backendLoadError instanceof StewardUnavailableError) {
+      return `Steward is the selected wallet backend but it did not load: ${this.backendLoadError.message}`;
+    }
+    if (kind === "off-chain" || this.backend?.kind === "steward") {
+      return null;
+    }
+    const { key, label } = PRIMARY_WALLET_SOURCE_SETTING[kind];
+    const source = this.runtime.getSetting(key) ?? process.env[key];
+    if (source === "cloud") {
+      return `The primary ${label} wallet is the Eliza Cloud wallet, and this agent has no signer for it. Make the local ${label} wallet primary to send from it.`;
+    }
+    return null;
   }
 
   async routeWalletAction(
@@ -243,15 +280,9 @@ export class WalletBackendService extends Service {
       };
     }
 
-    // Chain handlers sign `execute` requests with the runtime's local keys.
-    // With Steward selected, the wallet the user sees and funds is the
-    // Steward one, so a local-key signature would spend from another address.
-    if (this.backendLoadError instanceof StewardUnavailableError) {
-      return {
-        ok: false,
-        error: "EXECUTION_FAILED",
-        detail: `Steward is the selected wallet backend but it did not load: ${this.backendLoadError.message}`,
-      };
+    const refusal = this.refuseExecution(handler);
+    if (refusal) {
+      return refusal;
     }
 
     try {
@@ -272,6 +303,13 @@ export class WalletBackendService extends Service {
 
   override async stop(): Promise<void> {
     // No persistent connections for local / Steward HTTP clients today.
+  }
+
+  private refuseExecution(
+    handler: WalletChainHandler,
+  ): WalletRouterFailure | null {
+    const detail = this.getExecutionRefusal(handler.signer.kind);
+    return detail ? { ok: false, error: "EXECUTION_FAILED", detail } : null;
   }
 
   private resolveHandler(
