@@ -246,7 +246,7 @@ export function prepareDraftForSave(
       .map(tokenize);
   }
 
-  if (draft.messageExamples != null) {
+  if (Array.isArray(draft.messageExamples)) {
     // Strip extra fields from content (schema is .strict() — only text + actions allowed)
     const cleaned = normalizeGeneratedMessageExamples(
       draft.messageExamples,
@@ -258,13 +258,9 @@ export function prepareDraftForSave(
         content: { ...msg.content, text: tokenize(msg.content.text) },
       })),
     }));
-    if (
-      cleaned.length > 0 ||
-      (Array.isArray(draft.messageExamples) &&
-        draft.messageExamples.length === 0)
-    ) {
-      result.messageExamples = cleaned;
-    }
+    // Rows the user emptied normalize away; send the result even when it is
+    // empty so the save clears them.
+    result.messageExamples = cleaned;
   }
 
   if (draft.style) {

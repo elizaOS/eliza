@@ -30,6 +30,17 @@ describe("prepareDraftForSave", () => {
     });
   });
 
+  it("clears message examples whose rows the user emptied", () => {
+    const body = prepareDraftForSave({
+      name: "Ada",
+      messageExamples: [
+        { examples: [{ name: "{{user1}}", content: { text: "" } }] },
+      ],
+    });
+
+    expect(body.messageExamples).toEqual([]);
+  });
+
   it("omits fields the draft never loaded", () => {
     expect(prepareDraftForSave({ name: "Ada" })).toEqual({
       name: "Ada",
