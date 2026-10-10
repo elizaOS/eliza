@@ -88,6 +88,24 @@ describe("creditBalanceProvider shared snapshot", () => {
     expect(credits.text).toContain("$3.00");
   });
 
+  it("does not return a balance fetched for the org that was signed out mid-request", async () => {
+    let org = "org-A";
+    server.state.balance = 500;
+    server.state.beforeBalanceReply = async () => {
+      org = "org-B";
+    };
+    const runtime = makeRuntime({ baseUrl: server.url, organizationId: () => org });
+
+    const credits = await creditBalanceProvider.get(runtime, MESSAGE, STATE);
+
+    expect(credits.text).toBe("");
+    expect(credits.values?.cloudCreditsUnavailable).toBe(true);
+    server.state.beforeBalanceReply = undefined;
+    server.state.balance = 3;
+    const next = await creditBalanceProvider.get(runtime, MESSAGE, STATE);
+    expect(next.values?.cloudCredits).toBe(3);
+  });
+
   it("flags low and critical balances with the top-up pointer", async () => {
     server.state.balance = 1.5;
     const low = await creditBalanceProvider.get(

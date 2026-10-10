@@ -62,9 +62,12 @@ export const creditBalanceProvider: Provider = {
       }
       return { text: "", values: { cloudCreditsUnavailable: true }, data: {} };
     }
-    if (organizationId === auth.getOrganizationId()) {
-      creditCaches.set(runtime, { value: balance, at: Date.now(), organizationId });
+    // A sign-in to another org while the request ran: this balance is not the
+    // current account's, so neither cache nor show it.
+    if (!auth.isAuthenticated() || organizationId !== auth.getOrganizationId()) {
+      return { text: "", values: { cloudCreditsUnavailable: true }, data: {} };
     }
+    creditCaches.set(runtime, { value: balance, at: Date.now(), organizationId });
 
     if (balance < 1.0) logger.warn(`[CloudCredits] Low balance: $${balance.toFixed(2)}`);
     const result = format(balance, topUpUrl);
