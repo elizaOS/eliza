@@ -123,8 +123,6 @@ import type {
   LifeOpsSocialHabitSummary as SocialHabitSummary,
   StartLifeOpsGoogleConnectorRequest,
   StartLifeOpsGoogleConnectorResponse,
-  StartLifeOpsHealthConnectorRequest,
-  StartLifeOpsHealthConnectorResponse,
   SyncLifeOpsHealthConnectorRequest,
   UpdateLifeOpsBrowserSessionProgressRequest,
   UpdateLifeOpsDefinitionRequest,
@@ -2005,19 +2003,6 @@ export class LifeOpsService extends LifeOpsServiceBase {
       requestedMode,
       requestedSide,
     );
-  }
-
-  startHealthConnector(
-    request: StartLifeOpsHealthConnectorRequest,
-    requestUrl: URL,
-  ): Promise<StartLifeOpsHealthConnectorResponse> {
-    return this.healthDomain.startHealthConnector(request, requestUrl);
-  }
-
-  completeHealthConnectorCallback(
-    callbackUrl: URL,
-  ): Promise<LifeOpsHealthConnectorStatus> {
-    return this.healthDomain.completeHealthConnectorCallback(callbackUrl);
   }
 
   disconnectHealthConnector(
