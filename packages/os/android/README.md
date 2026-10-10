@@ -21,9 +21,10 @@ commands. Building an image does not flash a physical device.
 The Pixel 11 Pro lock targets stock B1 (`CD1A.260905.001.B1`) with the pinned
 Android 17 `cp2a` release and vendor API `202604`. Its hashed vendor reference is
 a build input; physical installation still requires qualification and a signed contract.
-Pixel 10a (`stallion`) source preparation uses the signed GrapheneOS
-`2026100600` platform manifest in `pixel10a.lock.json`. Eliza remains the product
-and runtime. Initialize the source checkout without downloading or building it:
+Pixel 10a (`stallion`) source preparation uses Eliza's AOSP
+`android-17.0.0_r1` baseline in `pixel10a.lock.json`, matching Cuttlefish.
+GrapheneOS supplies pinned device-extraction tooling and a reference for the
+bootloader/release process; its platform manifest is not used. Initialize with:
 
 ```bash
 node packages/os/scripts/android/bootstrap-aosp.ts \
@@ -31,16 +32,14 @@ node packages/os/scripts/android/bootstrap-aosp.ts \
   --init-only --jobs 2
 ```
 
-The tag object and manifest commit are pinned. The upstream manifest pins its
-projects; use GrapheneOS's [source signature verification](https://grapheneos.org/build#stable-release)
-before the full sync. The lock includes the matching Google factory archive's
-size and checksum. It is a source-preparation input, not a built Eliza product,
-release-signing configuration, or qualified rollback image. Do not use grizzly
-images or its preparation script on this device. The existing OS installer does
-not flash firmware or enroll an AVB key. A complete stallion release needs the
-device product, production agent SELinux policy, signed factory/OTA packages,
-reviewed dual-slot firmware transition, and physical boot/update/recovery evidence.
-Both installation admission flags remain disabled in `hardware-targets.json`.
+The lock pins the AOSP manifest, device tooling, and matching Google factory
+archive. It is a source-preparation input, not a built Eliza product or a
+qualified rollback image. Do not use grizzly images or its preparation script
+on this device. The existing OS installer does not flash firmware or enroll an
+AVB key. A complete stallion release needs the device product, production agent
+SELinux policy, signed factory/OTA packages, reviewed dual-slot firmware
+transition, and physical boot/update/recovery evidence. Both installation
+admission flags remain disabled in `hardware-targets.json`.
 The `eliza_gsi_arm64` and `eliza_gsi_x86_64` lunch targets build system-only
 images from the `gsi-android17` (`cp2a`) profile in `aosp.lock.json`, not from the Cuttlefish
 checkout; `make build` does not select them. They use system_ext SELinux policy,

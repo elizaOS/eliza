@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "manifestUrl": "https://github.com/GrapheneOS/platform_manifest.git",
-  "manifestRevision": "2026100600",
-  "manifestTagObject": "bff830c5e298027889ec3bfa51ba1e48b23801f4",
-  "manifestCommit": "26f7e8a760d4343a501faf09773ec4cc61a6b56b",
+  "manifestUrl": "https://android.googlesource.com/platform/manifest",
+  "manifestRevision": "android-17.0.0_r1",
+  "manifestTagObject": "7a9e46ba6ed424f922a3457f4964e67e0b966201",
+  "manifestCommit": "5bc9a7ce1cd78dd53613bbfd0ebf506e1e4adb0f",
   "device": {
     "targetId": "pixel10a-stallion",
     "codename": "stallion",
@@ -18,8 +18,7 @@
     "vendor/adevtool/config/mk/google_devices/device/stallion/BoardConfig-base.mk",
     "vendor/adevtool/config/mk/google_devices/device/stallion/device.mk",
     "vendor/adevtool/vendor-specs/google_devices/stallion.yml",
-    "vendor/state/stallion.json",
-    "script/generate-release.sh"
+    "vendor/state/stallion.json"
   ],
   "referenceFactoryImage": {
     "filename": "stallion-cp3a.261005.005-factory-d1d25502.zip",
@@ -27,5 +26,19 @@
     "sha256": "d1d2550268de9fd4bfdd4ff0910cc4471fec6ba361506278c25f34f312106675",
     "sizeBytes": 4475372209,
     "buildId": "CP3A.261005.005"
-  }
+  },
+  "externalProjects": [
+    {
+      "path": "vendor/adevtool",
+      "url": "https://github.com/GrapheneOS/adevtool.git",
+      "ref": "refs/tags/2026100600",
+      "commit": "17df3b79a73e67ad68387b35c7d41c85e1d8103c"
+    },
+    {
+      "path": "vendor/state",
+      "url": "https://github.com/GrapheneOS/vendor_state.git",
+      "ref": "refs/tags/2026100600",
+      "commit": "1469180711293a5852bfda9a5f67b8f53d9828ad"
+    }
+  ]
 }
