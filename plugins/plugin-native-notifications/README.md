@@ -73,9 +73,10 @@ binding and content digest and never post again, including after dismissal or an
 uncertain result. `receipt` may resolve uncertainty from an exact active notice.
 Permission denial is retained as failure. This is not exactly-once delivery:
 process loss between intent and dispatch can leave a notice permanently unknown.
-Approval IDs have the form `approval-` plus 64 lowercase hex characters. Withdraw
-an existing approval before dropping its host route; its receipt prevents replay
-until expiry. Expiry removes approval receipts. Step receipts are bounded at 512
+Approval IDs have the form `approval-` plus 64 lowercase hex characters. Call `withdrawApproval(id, now)` before dropping a decided approval route, even
+if no notice was published. A withdrawal before publish stores an opaque-ID receipt
+for the configured maximum approval lifetime; it needs no missing binding or content.
+A known receipt retains its original expiry. Both forms prevent delayed publication. Expiry removes approval receipts. Step receipts are bounded at 512
 and approval receipts at 256; reaching capacity refuses new entries.
 
 `NoticeDeliveryTest` in the Android consumer exercises actual NotificationManager

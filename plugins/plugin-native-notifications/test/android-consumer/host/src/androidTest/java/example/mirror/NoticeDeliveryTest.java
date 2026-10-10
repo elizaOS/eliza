@@ -79,11 +79,17 @@ public final class NoticeDeliveryTest {
       rejects(() -> new NoticeDelivery(config, storage, poster).publishApproval(approval, binding, expiry, now));
       assertEquals(2, posts[0]);
       storage.write("approvals", original);
-      delivery.withdrawApproval(approval);
+      delivery.withdrawApproval(approval, now);
       assertEquals("withdrawn", new NoticeDelivery(config, storage, poster).publishApproval(approval, binding, expiry, now));
       assertEquals(2, posts[0]);
       assertEquals(java.util.List.of(approval), delivery.expireApprovals(expiry));
       assertEquals("expired", delivery.publishApproval(approval, binding, expiry, expiry));
+      String decidedFirst="approval-"+"c".repeat(64);
+      delivery.withdrawApproval(decidedFirst, now);
+      assertEquals("withdrawn",new NoticeDelivery(config,storage,poster).publishApproval(decidedFirst,binding,expiry,now));
+      assertEquals("Decision before publish must prevent an OS effect",2,posts[0]);
+      assertTrue(delivery.expireApprovals(expiry).isEmpty());
+      assertEquals(java.util.List.of(decidedFirst),delivery.expireApprovals(now+600000));
       assertFalse(storage.read("steps").contains("Synthetic"));
       assertEquals(2, posts[0]);
     } finally {

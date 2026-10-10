@@ -68,6 +68,10 @@ public final class NoticeDelivery {
   if(!approvalId(id))throw new IllegalArgumentException("Invalid approval notice identity");
   String digest=identity(id,binding,config.approvalTitle,config.approvalBody);long timeout=approvalTimeout(expiresAt,now);
   JSONObject ledger=approvals(),record=ledger.optJSONObject(id);
+  if(record!=null&&record.length()==2&&"withdrawn".equals(record.optString("status"))){
+   Object until=record.get("expiresAt");if(!(until instanceof Integer||until instanceof Long))throw new IllegalStateException("Invalid withdrawal receipt");
+   return "withdrawn";
+  }
   if(record!=null){approvalRecord(record,binding,digest);if(expiresAt!=record.getLong("expiresAt"))throw new IllegalStateException("Approval notice expiry changed");
    if(Set.of("applying","unknown").contains(record.getString("status"))){String status=poster.matches(id,config.approvalTitle,config.approvalBody)?"succeeded":"unknown";if(!status.equals(record.getString("status"))){record.put("status",status);storage.write(config.approvalSlot,ledger.toString());}}
    return record.getString("status");}
@@ -82,10 +86,16 @@ public final class NoticeDelivery {
   storage.write(config.approvalSlot,ledger.toString());return record.getString("status");
  }}
  /** A decision withdraws the notice. The receipt stays (as withdrawn) until expiry, so the notice is never reposted. */
- public void withdrawApproval(String id)throws Exception{synchronized(LOCK){
+ public void withdrawApproval(String id,long now)throws Exception{synchronized(LOCK){
   if(!approvalId(id))throw new IllegalArgumentException("Invalid approval notice identity");
   JSONObject ledger=approvals(),record=ledger.optJSONObject(id);
-  if(record!=null&&!"withdrawn".equals(record.getString("status"))){record.put("status","withdrawn");storage.write(config.approvalSlot,ledger.toString());}
+  if(record==null){
+   if(ledger.has(id)||ledger.length()>=256)throw new IllegalStateException("Approval notice history is full or unavailable");
+   // The host can receive a decision before it has seen the pending approval's binding/expiry.
+   // Retain the opaque ID for the maximum lifetime of any approval already issued at withdrawal.
+   record=new JSONObject().put("status","withdrawn").put("expiresAt",Math.addExact(now,config.maximumApprovalMs));
+   ledger.put(id,record);storage.write(config.approvalSlot,ledger.toString());
+  }else if(!"withdrawn".equals(record.getString("status"))){record.put("status","withdrawn");storage.write(config.approvalSlot,ledger.toString());}
   poster.cancel(id);
  }}
  /** Removes receipts whose approval expired (the OS already timed the notice out) and returns their IDs. */
