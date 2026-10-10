@@ -129,6 +129,50 @@ test("a signature header with a body walletAddress is rejected before the paymen
   });
 });
 
+test.each([
+  {
+    name: "an empty body",
+    body: {},
+    status: 400,
+    error: "walletAddress is required (body or wallet signature headers)",
+  },
+  {
+    name: "a whitespace-only walletAddress",
+    body: { walletAddress: "   " },
+    status: 400,
+    error: "walletAddress is required (body or wallet signature headers)",
+  },
+  {
+    name: "a non-EVM walletAddress",
+    body: { walletAddress: "not-an-evm-address" },
+    status: 400,
+    error: "Valid EVM walletAddress is required",
+  },
+])(
+  "an unsigned request with $name is rejected before the payment is settled",
+  async ({ body, status, error }) => {
+    const settle = stubSettlement();
+
+    const response = await topup(
+      new Request("https://cloud.test/api/v1/topup/10", {
+        method: "POST",
+        headers: { "X-PAYMENT": paymentHeader },
+        body: JSON.stringify(body),
+      }),
+    );
+
+    expect({
+      status: response.status,
+      body: await response.json(),
+      settleCalls: settle.mock.calls.length,
+    }).toEqual({
+      status,
+      body: { error },
+      settleCalls: 0,
+    });
+  },
+);
+
 test("a valid wallet signature is verified once and the settled payment is credited", async () => {
   const settle = stubSettlement();
   const organizationId = "30000000-0000-4000-8000-000000000001";
