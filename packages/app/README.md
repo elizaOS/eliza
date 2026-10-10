@@ -122,6 +122,10 @@ incomplete runs fail. It leases the selected emulator, installs isolated test
 packages, and removes them afterward. Physical phones are rejected because the
 suite seeds SMS, contacts, call logs, location, and credential fixtures. Results
 are under repository-root `test-results/android-native-plugins/` and collected by Device E2E.
+Owned media and notification mirrors run their existing consumer hosts in a fresh,
+unlocked Android user. The runner refuses existing fixture packages, restores the
+previous foreground user, and removes the test user and packages. Notification
+tests use two synthetic producer apps and grant access only inside that test user.
 The app-blocker lane also installs and removes a separate tap-counter fixture APK.
 Tests can export captured PNG/MP4 artifacts; the report records their paths, sizes,
 and SHA-256 checksums.

@@ -1101,10 +1101,16 @@ function assertRuntimeCopyDiskHeadroom() {
 
   const stat = fs.statfsSync(ROOT);
   const availableBytes = Number(stat.bavail) * Number(stat.bsize);
-  const minimumBytes = Number.parseInt(
-    process.env.ELIZA_DESKTOP_MIN_FREE_BYTES ?? `${4 * 1024 * 1024 * 1024}`,
-    10,
-  );
+  const minimumBytes = (() => {
+    // parseInt stops at the first non-digit ("1e9junk" -> 1), so a typo
+    // silently shrank or disabled the disk headroom check instead of
+    // falling back to the 4 GiB default. Require the whole trimmed value
+    // to be decimal; malformed -> default, mirroring
+    // resolveGenerationTimeoutMs in the discord plugin.
+    const raw = (process.env.ELIZA_DESKTOP_MIN_FREE_BYTES ?? "").trim();
+    const parsed = /^\+?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) ? parsed : 4 * 1024 * 1024 * 1024;
+  })();
   if (!Number.isFinite(minimumBytes) || minimumBytes <= 0) return;
   if (availableBytes >= minimumBytes) return;
 

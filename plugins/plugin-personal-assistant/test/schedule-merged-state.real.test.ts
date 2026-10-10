@@ -7,6 +7,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { createRealTestRuntime } from "../../../packages/app/test/helpers/real-runtime.ts";
 import { resolveDefaultTimeZone } from "../src/lifeops/defaults.js";
+import { resolveNextRelativeScheduleInstant } from "../src/lifeops/relative-schedule-resolver.js";
 import { resolveLifeOpsRelativeTime } from "../src/lifeops/relative-time.js";
 import {
   LifeOpsRepository,
@@ -248,6 +249,41 @@ describe("merged schedule state", () => {
         await fixture.service.updateWorkflow(workflow.definition.id, {
           status: "paused",
         });
+      }
+
+      // A concrete after-midnight bedtime target (Friday's sleep-day, carried
+      // to Saturday 02:00) is gated on the same sleep-day as the projection.
+      const concrete = buildCloudState(
+        String(fixture.runtime.agentId),
+        "2026-10-09T12:00:00.000Z",
+        "UTC",
+      );
+      concrete.relativeTime.bedtimeTargetAt = "2026-10-10T02:00:00.000Z";
+      concrete.baseline = {
+        medianWakeLocalHour: 8,
+        medianBedtimeLocalHour: 26,
+        medianSleepDurationMin: 360,
+        bedtimeStddevMin: 15,
+        wakeStddevMin: 15,
+        sampleCount: 10,
+        windowDays: 28,
+      };
+      for (const [onDays, expected] of [
+        [[5], "2026-10-10T02:00:00.000Z"],
+        [[6], "2026-10-11T02:00:00.000Z"],
+      ] as const) {
+        expect(
+          resolveNextRelativeScheduleInstant({
+            schedule: {
+              kind: "relative_to_bedtime",
+              timezone: "UTC",
+              offsetMinutes: 0,
+              onDays: [...onDays],
+            },
+            state: concrete,
+            nowMs: Date.parse("2026-10-09T12:00:00.000Z"),
+          }),
+        ).toBe(expected);
       }
     } finally {
       await fixture.cleanup();

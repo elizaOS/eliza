@@ -511,7 +511,12 @@ export function parseArgs(argv) {
     } else if (arg === "--dry-run") {
       args.dryRun = true;
     } else if (arg === "--jobs" || arg === "-j") {
-      const value = Number.parseInt(readFlagValue(arg, i), 10);
+      // Number.parseInt stops at the first non-digit, so "--jobs=4junk"
+      // parsed to 4 and was silently accepted instead of throwing. Require
+      // the whole trimmed value to be decimal, mirroring
+      // resolveGenerationTimeoutMs in the discord plugin.
+      const jobsRaw = readFlagValue(arg, i).trim();
+      const value = /^\+?\d+$/.test(jobsRaw) ? Number(jobsRaw) : Number.NaN;
       if (!Number.isFinite(value) || value <= 0) {
         throw new Error("--jobs must be a positive integer");
       }

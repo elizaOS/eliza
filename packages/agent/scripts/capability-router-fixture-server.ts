@@ -271,7 +271,12 @@ function parseArgs(args: string[]): Options {
     if (arg === "--host") {
       host = nextValue();
     } else if (arg === "--port") {
-      const value = Number.parseInt(nextValue(), 10);
+      // Number.parseInt stops at the first non-digit, so "--port=8080junk"
+      // parsed to 8080 and was silently accepted instead of throwing.
+      // Require the whole trimmed value to be decimal, mirroring
+      // resolveGenerationTimeoutMs in the discord plugin.
+      const portRaw = nextValue().trim();
+      const value = /^\+?\d+$/.test(portRaw) ? Number(portRaw) : Number.NaN;
       if (!Number.isInteger(value) || value < 0 || value > 65_535) {
         throw new Error("--port must be an integer from 0 to 65535.");
       }

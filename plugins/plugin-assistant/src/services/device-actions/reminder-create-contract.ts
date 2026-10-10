@@ -111,8 +111,13 @@ export function validateReminderCreateResult(
     v.alertMinutes !== s.alertMinutes ||
     (s.alertMinutes === null
       ? v.status !== "pending"
-      : !["scheduled", "permission-denied", "scheduling-failed"].includes(
-          String(v.status),
+      : // String() coercion would accept ["scheduled"], but the raw value is
+        // returned below. Require an actual string.
+        !(
+          typeof v.status === "string" &&
+          ["scheduled", "permission-denied", "scheduling-failed"].includes(
+            v.status,
+          )
         ))
   )
     throw Error("Reminder creation outcome changed");

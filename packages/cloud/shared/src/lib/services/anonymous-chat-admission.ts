@@ -111,7 +111,12 @@ function gateStub(
 }
 
 function hourlyLimit(): number {
-  const parsed = Number.parseInt(getCloudAwareEnv().ANON_HOURLY_LIMIT ?? "", 10);
+  // Number.parseInt stops at the first non-digit ("5junk" -> 5), so a typo
+  // silently lowered the admission limit instead of falling back to the
+  // default. Require the whole trimmed value to be decimal, mirroring the
+  // strict parsing of this same env var in auth-anonymous.ts.
+  const raw = (getCloudAwareEnv().ANON_HOURLY_LIMIT ?? "").trim();
+  const parsed = /^\+?\d+$/.test(raw) ? Number(raw) : Number.NaN;
   return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_ANONYMOUS_HOURLY_LIMIT;
 }
 

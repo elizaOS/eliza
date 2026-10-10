@@ -430,6 +430,14 @@ export class MapsService extends Service {
         },
       );
     }
+    if (request.label === undefined && place.name.length > 120) {
+      throw new MapsError(
+        "The place name is longer than 120 characters. Give a label with 120 characters or fewer.",
+        {
+          code: "MAPS_INVALID_INPUT",
+        },
+      );
+    }
     if (
       request.idempotencyKey !== undefined &&
       (!request.idempotencyKey.trim() || request.idempotencyKey.length > 200)

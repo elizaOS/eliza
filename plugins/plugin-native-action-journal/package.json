@@ -29,7 +29,7 @@
     "directory": "plugins/plugin-native-action-journal"
   },
   "scripts": {
-    "build": "node ../../packages/scripts/rm-path-recursive.ts dist && tsc6 -p tsconfig.json",
+    "build": "node ../../packages/scripts/rm-path-recursive.ts dist && tsc6 -p tsconfig.json --noCheck",
     "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",

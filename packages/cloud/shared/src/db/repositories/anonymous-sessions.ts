@@ -4,7 +4,7 @@
  * admission layers, so callers do not recalculate window state after mutation.
  */
 
-import { ElizaError } from "@elizaos/core/protocol";
+import { ElizaError, parseNonNegativeInteger } from "@elizaos/core/protocol";
 import { and, eq, gt, gte, lt, sql } from "drizzle-orm";
 import { mutateRowCount } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
@@ -222,7 +222,11 @@ export class AnonymousSessionsRepository {
    * @throws Error if session not found.
    */
   async incrementHourlyCount(sessionId: string): Promise<AnonymousHourlyRateLimitResult> {
-    const hourlyLimit = Number.parseInt(process.env.ANON_HOURLY_LIMIT || "10", 10);
+    // Loose parseInt stops at the first non-digit ("5junk" -> 5) and yields
+    // NaN for non-numeric input, which makes `count > hourlyLimit` always
+    // false and silently disables the rate limit. Parse strictly, mirroring
+    // auth-anonymous.ts which parses this same env var.
+    const hourlyLimit = parseNonNegativeInteger(process.env.ANON_HOURLY_LIMIT, 10);
     const now = new Date();
     const oneHourAgo = new Date(now.getTime() - HOUR_MS);
 

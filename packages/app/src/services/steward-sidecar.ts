@@ -830,7 +830,15 @@ export function createDesktopStewardSidecar(
       overrides?.dataDir ||
       path.join(resolveDesktopStewardStateRoot(), "steward"),
     port:
-      parseInt(process.env.STEWARD_PORT || "", 10) ||
+      (() => {
+        // parseInt stops at the first non-digit ("8080junk" -> 8080), so a
+        // typo silently overrode overrides?.port and DEFAULT_PORT. Require
+        // the whole trimmed value to be decimal; malformed -> NaN falls
+        // through the || chain as before, mirroring parsePortPreference in
+        // packages/app/scripts/dev-platform.ts.
+        const raw = (process.env.STEWARD_PORT ?? "").trim();
+        return /^\+?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+      })() ||
       overrides?.port ||
       DEFAULT_PORT,
     masterPassword:

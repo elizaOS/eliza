@@ -1446,7 +1446,11 @@ function evaluatorEnvelopeProtocolError(
           ) ||
           typeof item.intentId !== "string" ||
           !item.intentId.trim() ||
-          !["completed", "blocked", "pending"].includes(String(item.status)) ||
+          // String() coercion would accept ["completed"], but the coverage
+          // check below compares the un-coerced value strictly. Require an
+          // actual string.
+          typeof item.status !== "string" ||
+          !["completed", "blocked", "pending"].includes(item.status) ||
           !Array.isArray(item.evidenceStepIds) ||
           item.evidenceStepIds.some(
             (id) => typeof id !== "string" || !id.trim(),

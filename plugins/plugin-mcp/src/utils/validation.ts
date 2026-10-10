@@ -66,14 +66,17 @@ const SCHEMA_WORKER_SOURCE = `
         }
         Ajv = AjvLegacy;
       }
+      // "format" is an annotation by default; without format definitions Ajv
+      // refuses the whole schema ("unknown format"), so every call fails.
+      const options = { allErrors: true, validateFormats: false };
       let validate;
       try {
-        validate = new Ajv({ allErrors: true }).compile(schema);
+        validate = new Ajv(options).compile(schema);
       } catch (error) {
         // error-policy:J3 undeclared legacy schemas keep their original constraints.
         // Only compilation can fall back; failed argument validation never does.
         if (dialect !== undefined) throw error;
-        validate = new AjvLegacy({ allErrors: true }).compile(schema);
+        validate = new AjvLegacy(options).compile(schema);
       }
       const valid = validate(data);
       parentPort.postMessage({ success: Boolean(valid), errors: validate.errors ?? [] });

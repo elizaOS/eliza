@@ -1552,7 +1552,12 @@ const DEFAULT_PLUGIN_INSTANCE_KEEP = 3;
 function pluginInstanceKeepCount(): number {
   const raw = process.env.ELIZA_PLUGIN_INSTANCE_KEEP;
   if (!raw) return DEFAULT_PLUGIN_INSTANCE_KEEP;
-  const parsed = Number.parseInt(raw.trim(), 10);
+  // Number.parseInt stops at the first non-digit, so "5junk" parsed to a
+  // finite 5 and was accepted as a deliberate setting instead of falling
+  // back to the default. Require the whole trimmed value to be decimal,
+  // mirroring resolveGenerationTimeoutMs in the discord plugin.
+  const text = raw.trim();
+  const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
   if (!Number.isFinite(parsed) || parsed < 1) {
     return DEFAULT_PLUGIN_INSTANCE_KEEP;
   }

@@ -53,7 +53,8 @@ Build `:host:assembleDebug`, `:host:assembleDebugAndroidTest`,
 `:fixture:assembleSelectedDebug` and `:fixture:assembleExcludedDebug` with Gradle 8.13,
 Java 21 and Android SDK 36. Install them only on a disposable API 35 emulator;
 grant `POST_NOTIFICATIONS` to both fixture packages. Run the host instrumentation
-with `-e disposableMirrorFixture 1`. The test grants and revokes access for its own
-listener, posts synthetic notifications, verifies redaction and encrypted history,
+with `-e disposableMirrorFixture 1`. Synthetic preview markers use letters so Android 15 does not mistake test UUID
+digits for a one-time code. Android can still redact real sensitive previews.
+The test grants and revokes access for its own listener, posts synthetic notifications, verifies redaction and encrypted history,
 and dismisses one exact row. Uninstall all four APKs afterward. This does not
 certify physical-device behavior or a product's foreground policy.

@@ -13,6 +13,9 @@ import type {
   NetworkTurnAuthority,
 } from "../types.js";
 
+const anyCase = (words: string) =>
+  words.replace(/[a-z]/g, (c) => `[${c}${c.toUpperCase()}]`);
+
 const PATTERNS: Array<{ kind: NetworkSignal["kind"]; re: RegExp }> = [
   {
     kind: "opt_out",
@@ -20,7 +23,10 @@ const PATTERNS: Array<{ kind: NetworkSignal["kind"]; re: RegExp }> = [
   },
   {
     kind: "travel",
-    re: /\b(?:i'?m|i am|will be) (?:in|visiting|traveling to|flying to) ([A-Z][\w .'-]{1,40})/i,
+    // Cue in any case, place capitalized: "I'm in a meeting" is not travel.
+    re: new RegExp(
+      `\\b(?:${anyCase("i'?m|i am|will be")}) (?:${anyCase("in|visiting|traveling to|flying to")}) ([A-Z][\\w .'-]{1,40})`,
+    ),
   },
   {
     kind: "safety_concern",

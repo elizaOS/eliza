@@ -5929,8 +5929,14 @@ user.post("/me/wallet/sign", async (c) => {
 
   const tenantId = `personal-${userId}`;
   const agentId = wallet.id;
+  // parseInt stops at the first non-digit ("1e3" -> 1), so a malformed
+  // CHAIN_ID silently switched the signing chain (e.g. to mainnet).
+  // Require the whole trimmed value to be decimal, mirroring the strict
+  // Number() parsing of this same env var in global-wallet.ts.
+  const chainIdRaw = (process.env.CHAIN_ID ?? "").trim();
   const chainId =
-    signBody.chainId ?? parseInt(process.env.CHAIN_ID || "84532", 10);
+    signBody.chainId ??
+    (/^\+?\d+$/.test(chainIdRaw) ? Number(chainIdRaw) : 84532);
   let codeResponse: Awaited<ReturnType<Vault["rpcPassthrough"]>>;
   try {
     codeResponse = await vault.rpcPassthrough({
