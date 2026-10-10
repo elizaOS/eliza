@@ -1611,10 +1611,15 @@ async function primeAnthropicUsageThenRefresh(
 function resolveKeepAliveDeps(
   deps: AccountPoolKeepAliveDeps = {},
 ): Required<AccountPoolKeepAliveDeps> {
-  const envDelay = Number.parseInt(
-    process.env.ELIZA_ACCOUNT_POOL_USAGE_PRIMING_RETRY_DELAY_MS ?? "",
-    10,
-  );
+  // Number.parseInt stops at the first non-digit ("1e3" -> 1), so a typo
+  // was silently accepted as the retry delay instead of the 30000 default.
+  // Require the whole trimmed value to be decimal.
+  const envDelayText = (
+    process.env.ELIZA_ACCOUNT_POOL_USAGE_PRIMING_RETRY_DELAY_MS ?? ""
+  ).trim();
+  const envDelay = /^\+?\d+$/.test(envDelayText)
+    ? Number(envDelayText)
+    : Number.NaN;
   const usagePrimingRetryDelayMs =
     deps.usagePrimingRetryDelayMs ??
     (Number.isFinite(envDelay) && envDelay >= 0
