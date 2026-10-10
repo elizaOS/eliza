@@ -394,7 +394,7 @@ async function exercise(
       : await runSharedAgentTurn(input);
     if (kind === "weather-missing") {
       expect(modelCalls).toBe(0);
-      expect(turn.reply).toContain("complete, traceable live source");
+      expect(turn.reply).toBe("I couldn’t check that right now. Please try again in a moment.");
       expect(turn.usage?.totalTokens).toBe(0);
     } else expect(modelCalls).toBeGreaterThan(0);
     expect(modelCalls).toBeLessThanOrEqual(12);
