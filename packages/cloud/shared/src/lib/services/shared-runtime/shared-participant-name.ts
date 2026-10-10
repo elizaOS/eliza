@@ -5,6 +5,11 @@
 import type { SharedTurnMessage } from "./run-shared-agent-turn";
 
 const EXPLICIT_SELF_NAME = /^my(?: preferred)? name is\s+(.+?)[.!?]?$/iu;
+// An unquoted name is written as one: each word starts with a capital or a
+// digit, apart from surname particles. "My name is not important" or "my name
+// is on the account" is a phrase, not a name.
+const UNQUOTED_NAME_WORD =
+  /^(?:[\p{Lu}\p{N}]|(?:al|bin|da|de|del|della|der|di|du|la|le|van|von|y)$)/u;
 const QUOTED_SELF_NAME =
   /^(?:please\s+)?(?:call me|you can call me|i go by)\s+["“]([^"”]+)["”][.!?]?$/iu;
 
@@ -33,9 +38,15 @@ export function sharedOwnerProfileName(profile: {
 }
 
 function explicitSelfName(message: string): string | undefined {
-  return usableName(
-    EXPLICIT_SELF_NAME.exec(message.trim())?.[1] ?? QUOTED_SELF_NAME.exec(message.trim())?.[1],
-  );
+  const unquoted = EXPLICIT_SELF_NAME.exec(message.trim())?.[1];
+  if (unquoted)
+    return unquoted
+      .trim()
+      .split(/\s+/u)
+      .every((word) => UNQUOTED_NAME_WORD.test(word))
+      ? usableName(unquoted)
+      : undefined;
+  return usableName(QUOTED_SELF_NAME.exec(message.trim())?.[1]);
 }
 
 export function resolveSharedParticipantName(args: {

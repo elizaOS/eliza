@@ -47,6 +47,12 @@ describe("Shared participant name projection", () => {
     expect(sharedOwnerProfileName({})).toBeUndefined();
   });
 
+  test("an unquoted name keeps surname particles", () => {
+    expect(
+      resolveSharedParticipantName({ message: "My name is Ana de la Cruz.", history: [] }),
+    ).toBe("Ana de la Cruz");
+  });
+
   test("callback and ordinary commands are not self-identification", () => {
     for (const message of [
       "Call me tomorrow",
@@ -56,6 +62,10 @@ describe("Shared participant name projection", () => {
       "I'm tired.",
       "Call me Nubs",
       "I go by the office",
+      "My name is not important.",
+      "My name is on the account",
+      "my name is spelled wrong",
+      "My name is Bob and I'm lost",
     ]) {
       expect(resolveSharedParticipantName({ message, history: [] })).toBeUndefined();
       expect(
