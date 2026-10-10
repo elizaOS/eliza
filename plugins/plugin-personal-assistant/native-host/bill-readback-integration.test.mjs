@@ -227,13 +227,21 @@ async function checkReadback(asynchronous) {
           pageNote = "\nThe website changed during the policy call.";
         else effectViolation = "submit";
         release();
-        assert.equal((await pending).kind, "blocked");
+        assert.equal(
+          (await pending).kind,
+          change === "effect" ? "paused" : "blocked",
+        );
         assert.equal(effects, 0);
         assert.equal(outcomes.loadReview(), null);
         assert.equal(outcomes.loadAttempt(), null);
         waitForPolicy = null;
         pageNote = "";
         effectViolation = undefined;
+        if (change === "effect") {
+          const paused = runtime.get(task.id);
+          assert.equal(paused.status, "paused");
+          await runtime.observe(task.id, paused.revision, true);
+        }
       }
     let offer = await request();
     assert.equal(offer.kind, "choose-existing-method");
