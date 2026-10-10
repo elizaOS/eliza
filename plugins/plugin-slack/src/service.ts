@@ -2524,9 +2524,12 @@ export class SlackService extends Service implements ISlackService {
   }
 
   private parseSlackTimestamp(ts: string): number {
-    // Slack timestamps are in the format: 1234567890.123456
-    const [seconds] = ts.split(".");
-    return parseInt(seconds, 10) * 1000;
+    // Slack timestamps are in the format: 1234567890.123456. Keep the
+    // milliseconds: parts of one reply are often posted in the same second.
+    const [seconds, fraction = ""] = ts.split(".");
+    return (
+      parseInt(seconds, 10) * 1000 + parseInt(`${fraction}000`.slice(0, 3), 10)
+    );
   }
 
   private async ensureWorkspaceExists(
