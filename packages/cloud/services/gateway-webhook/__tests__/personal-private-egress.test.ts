@@ -14,6 +14,11 @@ import {
 import { blooioAdapter } from "../src/adapters/blooio";
 import { telegramAdapter } from "../src/adapters/telegram";
 import { twilioAdapter } from "../src/adapters/twilio";
+import {
+  type ChatEvent,
+  PlatformDeliveryError,
+  type WebhookConfig,
+} from "../src/adapters/types";
 import type { GatewayRedis } from "../src/redis";
 import { handleWebhook } from "../src/webhook-handler";
 import {
@@ -97,12 +102,15 @@ const savedEnv = new Map<string, string | undefined>();
 let providerCalls: ProviderCall[];
 let providerSent: Promise<ProviderCall>;
 let resolveProviderSent: (call: ProviderCall) => void;
+/** 1-based Twilio call index from which the provider answers 400. */
+let twilioRejectFromCall: number | undefined;
 
 beforeEach(() => {
   for (const key of envKeys) savedEnv.set(key, process.env[key]);
   process.env.ELIZA_APP_WEBHOOK_PROJECT = "eliza-app";
   resetTelegramIdentityAttestation();
   providerCalls = [];
+  twilioRejectFromCall = undefined;
   providerSent = new Promise((resolve) => {
     resolveProviderSent = resolve;
   });
@@ -139,8 +147,12 @@ beforeEach(() => {
         body: Object.fromEntries(new URLSearchParams(String(init?.body ?? ""))),
       } satisfies ProviderCall;
       providerCalls.push(call);
+      const rejection = twilioRejectFromCall;
+      if (rejection !== undefined && providerCalls.length >= rejection) {
+        return Response.json({ code: 21610 }, { status: 400 });
+      }
       resolveProviderSent(call);
-      return Response.json({ sid: "SMprovider1" });
+      return Response.json({ sid: `SMprovider${providerCalls.length}` });
     }
     return originalFetch(input, init);
   }) as typeof fetch;
@@ -624,6 +636,21 @@ function twilioInboundSms(messageSid: string): Request {
   });
 }
 
+const TWILIO_CONFIG = {
+  accountSid: "ACelizatest",
+  authToken: TWILIO_AUTH_TOKEN,
+  phoneNumber: "+15559990001",
+} satisfies WebhookConfig;
+
+const TWILIO_EVENT = {
+  platform: "twilio",
+  messageId: "SMinbound3",
+  chatId: "+15551234567",
+  senderId: "+15551234567",
+  text: "write me a detailed packing list",
+  rawPayload: {},
+} satisfies ChatEvent;
+
 describe("Twilio Personal Shared egress", () => {
   beforeEach(() => {
     process.env.ELIZA_APP_TWILIO_ACCOUNT_SID = "ACelizatest";
@@ -670,5 +697,56 @@ describe("Twilio Personal Shared egress", () => {
 
     const send = await providerSent;
     expect(send.body.Body).toBe("https://cdn.example.test/lighthouse.png");
+  });
+
+  test("a reply over the 1600-character Body limit is sent as ordered parts", async () => {
+    // The emoji straddles the first 1600-unit boundary.
+    const reply = `${"a".repeat(1599)}\u{1F5FC}${"b".repeat(1899)}`;
+    expect(reply).toHaveLength(3500);
+
+    const receipt = await twilioAdapter.sendReplyWithReceipt?.(
+      TWILIO_CONFIG,
+      TWILIO_EVENT,
+      reply,
+    );
+
+    const bodies = providerCalls.map((call) => String(call.body.Body));
+    expect(bodies).toHaveLength(3);
+    expect(bodies.every((body) => body.length <= 1600)).toBe(true);
+    expect(bodies.join("")).toBe(reply);
+    expect(bodies[0]).toBe("a".repeat(1599));
+    expect(receipt?.providerMessageIds).toEqual([
+      "SMprovider1",
+      "SMprovider2",
+      "SMprovider3",
+    ]);
+  });
+
+  test("a rejection after an accepted part is uncertain, not failed", async () => {
+    twilioRejectFromCall = 2;
+
+    const error = await twilioAdapter
+      .sendReplyWithReceipt?.(TWILIO_CONFIG, TWILIO_EVENT, "a".repeat(3500))
+      .catch((caught: unknown) => caught);
+
+    expect(providerCalls).toHaveLength(2);
+    expect(error).toBeInstanceOf(PlatformDeliveryError);
+    expect(error).toMatchObject({
+      deliveryStatus: "uncertain",
+      code: "DELIVERY_PROVIDER_REJECTED",
+      retryable: false,
+      providerStatus: 400,
+    });
+  });
+
+  test("a rejection of the first part stays failed", async () => {
+    twilioRejectFromCall = 1;
+
+    const error = await twilioAdapter
+      .sendReplyWithReceipt?.(TWILIO_CONFIG, TWILIO_EVENT, "a".repeat(3500))
+      .catch((caught: unknown) => caught);
+
+    expect(providerCalls).toHaveLength(1);
+    expect(error).toMatchObject({ deliveryStatus: "failed" });
   });
 });
