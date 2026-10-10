@@ -621,3 +621,58 @@ test("a bill the website already shows paid is not saved as this task's payment"
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("delayed bill policy is cancelled without saving review or outcome", async () => {
+  const controller = new AbortController();
+  let started;
+  const entered = new Promise((resolve) => {
+    started = resolve;
+  });
+  let clears = 0,
+    writes = 0;
+  const task = {
+    id: "task",
+    status: "active",
+    epoch: 1,
+    revision: 1,
+    operations: [],
+  };
+  const workflow = new BillWorkflow({
+    bill,
+    controls,
+    taskId: task.id,
+    signal: controller.signal,
+    runtime: { owner: {}, get: () => task, observe: async () => {} },
+    actuator: {
+      readObservation: () => ({
+        observation: { id: "observed" },
+        snapshot: snapshot(),
+      }),
+      quiesce: async () => {
+        clears++;
+      },
+    },
+    outcomes: {
+      load: () => null,
+      recordReview: () => {
+        writes++;
+      },
+      save: () => {
+        writes++;
+      },
+    },
+    deriveBillDecision: (_bill, _snapshot, context) => {
+      assert.equal(context.signal, controller.signal);
+      assert.equal(context.taskId, task.id);
+      assert.equal(context.epoch, task.epoch);
+      started();
+      return new Promise(() => {});
+    },
+  });
+  const pending = workflow.refresh();
+  await entered;
+  controller.abort();
+  await assert.rejects(pending, /Task authorization changed/);
+  assert.equal(writes, 0);
+  assert.equal(clears, 1);
+});

@@ -114,6 +114,19 @@ test("response admission preserves detached metadata and validates shared money,
     "task1",
   );
   assert.throws(() => readBillDecision(decision(), "different", validators));
+  const undated = decision();
+  undated.decision.review.paymentDate = null;
+  assert.equal(
+    readBillDecision(undated, "task1", validators).review.paymentDate,
+    null,
+  );
+  for (const date of [undefined, "", "2026-02-30", "2026-13-01", 20261003]) {
+    undated.decision.review.paymentDate = date;
+    assert.throws(
+      () => readBillDecision(undated, "task1", validators),
+      /payment date/,
+    );
+  }
   for (const mutate of [
     (v) => (v.decision.choice.contextKey = "e".repeat(64)),
     (v) => (v.decision.review.currencyDigits = 0),

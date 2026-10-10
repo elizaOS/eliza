@@ -20,7 +20,11 @@ const reconcileBillMethod = ({ bill, snapshot, record }) => ({
       : "unknown",
 });
 
-test("controlled bill host resolves only its persisted review through shared read-only reconciliation without replay", async () => {
+for (const asynchronous of [false, true])
+  test(`controlled bill host resolves only its persisted review without replay (${asynchronous ? "asynchronous" : "synchronous"} policy)`, () =>
+    checkReadback(asynchronous));
+
+async function checkReadback(asynchronous) {
   const dir = await mkdtemp(join(tmpdir(), "bill-readback-"));
   const bundle = join(dir, "runtime.mjs");
   buildTaskRuntime(bundle);
@@ -38,6 +42,8 @@ test("controlled bill host resolves only its persisted review through shared rea
     effects = 0,
     sequence = 0,
     guidanceAvailable = true;
+  let waitForPolicy = null,
+    pageNote = "";
   const bindings = [];
   const text = () =>
     Object.entries({
@@ -56,7 +62,7 @@ test("controlled bill host resolves only its persisted review through shared rea
       "Method selected": selected ? "Yes" : "No",
     })
       .map(([k, v]) => `${k}: ${v}`)
-      .join("\n");
+      .join("\n") + pageNote;
   const target = {
     guideTask: async (c) =>
       c.kind === "hide" ? { visible: false } : { accepted: guidanceAvailable },
@@ -101,7 +107,12 @@ test("controlled bill host resolves only its persisted review through shared rea
     },
   };
   const helper = createBillHelperHost({
-    deriveBillDecision,
+    deriveBillDecision: asynchronous
+      ? async (...args) => {
+          await waitForPolicy?.();
+          return deriveBillDecision(...args);
+        }
+      : deriveBillDecision,
     selectionGuidance: {
       unavailableMessage:
         "Bring the saved method into view. No method selection was sent.",
@@ -196,6 +207,28 @@ test("controlled bill host resolves only its persisted review through shared rea
         contextKey: choice.contextKey,
         value: "existing",
       });
+    if (asynchronous) {
+      let entered, release;
+      const started = new Promise((resolve) => {
+        entered = resolve;
+      });
+      waitForPolicy = () => {
+        entered();
+        return new Promise((resolve) => {
+          release = resolve;
+        });
+      };
+      const pending = request();
+      await started;
+      pageNote = "\nThe website changed during the policy call.";
+      release();
+      assert.equal((await pending).kind, "blocked");
+      assert.equal(effects, 0);
+      assert.equal(outcomes.loadReview(), null);
+      assert.equal(outcomes.loadAttempt(), null);
+      waitForPolicy = null;
+      pageNote = "";
+    }
     let offer = await request();
     assert.equal(offer.kind, "choose-existing-method");
     assert.equal(offer.choice.state, "pending");
@@ -254,4 +287,4 @@ test("controlled bill host resolves only its persisted review through shared rea
     helper.close();
     await rm(dir, { recursive: true, force: true });
   }
-});
+}

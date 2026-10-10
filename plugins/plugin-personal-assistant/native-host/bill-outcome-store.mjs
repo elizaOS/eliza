@@ -165,7 +165,15 @@ export function createBillOutcomeStore(db, tasks, { journalPath } = {}) {
       !Number.isInteger(review.currencyDigits) ||
       review.currencyDigits < 0 ||
       review.currencyDigits > 4 ||
-      !/^\d{4}-\d{2}-\d{2}$/.test(review.paymentDate)
+      // Null means the reviewed page did not show a payment date. Do not force
+      // hosts to invent one. Omission and malformed dates still fail admission.
+      (review.paymentDate !== null &&
+        (typeof review.paymentDate !== "string" ||
+          !/^\d{4}-\d{2}-\d{2}$/.test(review.paymentDate) ||
+          Number.isNaN(Date.parse(`${review.paymentDate}T00:00:00Z`)) ||
+          new Date(`${review.paymentDate}T00:00:00Z`)
+            .toISOString()
+            .slice(0, 10) !== review.paymentDate))
     )
       throw new BillHostError("Invalid payment review values");
     for (const value of [review.company, review.accountLabel, review.method])
