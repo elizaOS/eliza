@@ -125,7 +125,18 @@ export class ElevenLabsService {
     this.client = new ElevenLabsClient({ apiKey: config.apiKey });
   }
 
-  /**
+  /** Parse an optional 0..1 TTS voice setting; malformed values fall back to
+ * the configured default. Number.parseFloat stops at the first non-digit
+ * ("0.5junk" -> 0.5, "abc" -> NaN into the API), so the whole trimmed value
+ * must be decimal, mirroring parseAndValidateCredits in stripe-event.ts. */
+function parseVoiceSetting(value: string | undefined, fallback: number): number {
+  const text = (value ?? "").trim();
+  if (text === "") return fallback;
+  const parsed = /^\+?\d+(?:\.\d+)?$/.test(text) ? Number(text) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+/**
    * Initialize service with environment variables (following plugin patterns)
    */
   static fromEnv(env?: ElevenLabsEnv): ElevenLabsService {
@@ -139,11 +150,12 @@ export class ElevenLabsService {
       apiKey,
       voiceId: envValue(env, "ELEVENLABS_VOICE_ID") || "EXAVITQu4vr4xnSDxMaL",
       modelId: envValue(env, "ELEVENLABS_MODEL_ID") || "eleven_flash_v2_5",
-      voiceStability: Number.parseFloat(envValue(env, "ELEVENLABS_VOICE_STABILITY") || "0.5"),
-      voiceSimilarityBoost: Number.parseFloat(
-        envValue(env, "ELEVENLABS_VOICE_SIMILARITY_BOOST") || "0.75",
+      voiceStability: parseVoiceSetting(envValue(env, "ELEVENLABS_VOICE_STABILITY"), 0.5),
+      voiceSimilarityBoost: parseVoiceSetting(
+        envValue(env, "ELEVENLABS_VOICE_SIMILARITY_BOOST"),
+        0.75,
       ),
-      voiceStyle: Number.parseFloat(envValue(env, "ELEVENLABS_VOICE_STYLE") || "0"),
+      voiceStyle: parseVoiceSetting(envValue(env, "ELEVENLABS_VOICE_STYLE"), 0),
       voiceUseSpeakerBoost: envValue(env, "ELEVENLABS_VOICE_USE_SPEAKER_BOOST") !== "false",
       optimizeStreamingLatency: Number.parseInt(
         envValue(env, "ELEVENLABS_OPTIMIZE_STREAMING_LATENCY") || "4",
