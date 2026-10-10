@@ -330,18 +330,36 @@ function restoreCodeBlocks(text: string, codeSink: string[]): string {
 /**
  * Converts markdown to Slack mrkdwn format
  */
+/**
+ * Holds Slack angle tokens already in the text (`<https://…|label>`, as Slack
+ * delivers every inbound URL) aside like converted links, so the style passes
+ * cannot rewrite `*` or `~` in their URL. The label after `|` keeps its styles.
+ */
+function holdSlackAngleTokens(text: string, codeSink: string[]): string {
+  return text.replace(/<[^<>\n]+>/g, (token) => {
+    if (!isAllowedSlackAngleToken(token)) return token;
+    const bar = token.indexOf("|");
+    if (bar < 0) return holdAside(token, codeSink);
+    const label = convertStrikethrough(
+      convertItalic(convertBold(token.slice(bar + 1, -1))),
+    );
+    return holdAside(`${token.slice(0, bar + 1)}${label}>`, codeSink);
+  });
+}
+
 export function markdownToSlackMrkdwn(markdown: string): string {
   if (!markdown) {
     return "";
   }
 
-  // Process in order: code blocks -> links -> inline code -> headings -> text
-  // styles -> escape. Fenced bodies, links, and inline code are held aside for
-  // the whole pipeline and restored last.
+  // Process in order: code blocks -> links -> inline code -> Slack tokens ->
+  // headings -> text styles -> escape. Fenced bodies, links, inline code and
+  // Slack tokens are held aside for the whole pipeline and restored last.
   const codeSink: string[] = [];
   let result = convertCodeBlocks(stripSentinelDelimiters(markdown), codeSink);
   result = convertLinks(result, codeSink);
   result = convertInlineCode(result, codeSink);
+  result = holdSlackAngleTokens(result, codeSink);
   result = convertHeadings(result);
   result = convertBold(result);
   result = convertItalic(result);
