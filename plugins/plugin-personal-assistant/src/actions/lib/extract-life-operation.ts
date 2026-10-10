@@ -122,7 +122,12 @@ function normalizeConfidence(value: unknown): number | null {
     return Math.max(0, Math.min(1, value));
   }
   if (typeof value === "string" && value.trim().length > 0) {
-    const parsed = Number(value);
+    const trimmed = value.trim();
+    // Canonical decimal strings only: Number("0x1") is 1, Number("1e0") is 1,
+    // and Number(".5") is 0.5 — all used to silently become a confidence
+    // value instead of being rejected like other malformed model output.
+    if (!/^-?\d+(\.\d+)?$/.test(trimmed)) return null;
+    const parsed = Number(trimmed);
     if (Number.isFinite(parsed)) {
       return Math.max(0, Math.min(1, parsed));
     }
