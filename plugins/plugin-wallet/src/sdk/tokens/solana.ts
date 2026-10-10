@@ -162,32 +162,42 @@ export function formatSplBalance(rawBalance: bigint, decimals: number): string {
 }
 
 /**
- * Convert a SOL amount string into lamports.
- * Nine decimal places. An extra dot is not part of the amount.
+ * Convert a decimal amount string into base units with `decimals` places.
+ * An extra dot, a sign, precision past `decimals` or a value over u64 is an
+ * error, not a smaller transfer.
  */
-export function parseSolLamports(amount: string): bigint {
+export function parseSolanaBaseUnits(
+  amount: string,
+  decimals: number,
+  unit = "token",
+): bigint {
   if (!/^(?:\d+\.\d*|\d+|\.\d+)$/.test(amount)) {
-    throw new ElizaError(`invalid SOL amount "${amount}"`, {
+    throw new ElizaError(`invalid ${unit} amount "${amount}"`, {
       code: "SOLANA_TRANSFER_AMOUNT_INVALID",
     });
   }
   const [whole, fraction = ""] = amount.split(".");
-  if (/[1-9]/.test(fraction.slice(9))) {
+  if (/[1-9]/.test(fraction.slice(decimals))) {
     throw new ElizaError(
-      "SOL amount must be exactly representable in lamports.",
+      `${unit} amount must be exactly representable in ${decimals} decimal places.`,
       { code: "SOLANA_TRANSFER_AMOUNT_INVALID" },
     );
   }
-  const lamports =
-    BigInt(whole || "0") * 1_000_000_000n +
-    BigInt(fraction.slice(0, 9).padEnd(9, "0"));
-  if (lamports > 18_446_744_073_709_551_615n) {
+  const units =
+    BigInt(whole || "0") * 10n ** BigInt(decimals) +
+    BigInt(fraction.slice(0, decimals).padEnd(decimals, "0") || "0");
+  if (units > 18_446_744_073_709_551_615n) {
     throw new ElizaError(
-      "SOL amount exceeds the unsigned 64-bit transfer range.",
+      `${unit} amount exceeds the unsigned 64-bit transfer range.`,
       { code: "SOLANA_TRANSFER_AMOUNT_INVALID" },
     );
   }
-  return lamports;
+  return units;
+}
+
+/** Convert a SOL amount string into lamports (nine decimal places). */
+export function parseSolLamports(amount: string): bigint {
+  return parseSolanaBaseUnits(amount, 9, "SOL");
 }
 
 /**
@@ -369,10 +379,7 @@ export class SolanaWallet {
     // Parse amount
     let rawAmount: bigint;
     if (typeof amount === "string") {
-      const parts = amount.split(".");
-      const intPart = BigInt(parts[0] || "0");
-      const fracStr = (parts[1] ?? "").padEnd(decimals, "0").slice(0, decimals);
-      rawAmount = intPart * 10n ** BigInt(decimals) + BigInt(fracStr);
+      rawAmount = parseSolanaBaseUnits(amount, decimals);
     } else {
       rawAmount = amount;
     }

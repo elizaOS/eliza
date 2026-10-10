@@ -395,7 +395,18 @@ export async function waitForSpawnSlot(
           | string
           | undefined)
       : undefined) ?? process.env.ELIZA_MAX_CONCURRENT_SPAWNS;
-  const limit = limitRaw ? Number.parseInt(limitRaw, 10) : 2;
+  // Number.parseInt stops at the first non-digit, so "5junk" parsed to 5
+  // and silently changed the spawn concurrency limit instead of falling
+  // back to the default; "abc" yielded NaN and silently disabled the gate.
+  // Require the whole trimmed value to be decimal (sign allowed, since 0
+  // or a negative value documentedly disables the gate), mirroring
+  // resolveGenerationTimeoutMs in the discord plugin.
+  const limitText = limitRaw ? String(limitRaw).trim() : "";
+  const limit = limitRaw
+    ? /^[+-]?\d+$/.test(limitText)
+      ? Number(limitText)
+      : 2
+    : 2;
   if (!Number.isFinite(limit) || limit <= 0) return;
   const maxWaitMs = opts.maxWaitMs ?? 8 * 60_000;
   const pollMs = opts.pollMs ?? 3_000;

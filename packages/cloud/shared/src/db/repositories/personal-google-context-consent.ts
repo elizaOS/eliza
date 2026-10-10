@@ -164,7 +164,9 @@ export async function clearPersonalGoogleContextConsent(args: {
     .where(
       and(
         eq(users.organization_id, args.organizationId),
-        sql`${users.preferences}::jsonb->'personalGoogleContext'->>'grantId' = ${args.grantId}`,
+        // preferences is free text; a member's non-JSON value must not fail the revoke.
+        sql`CASE WHEN pg_input_is_valid(${users.preferences}, 'jsonb')
+          THEN ${users.preferences}::jsonb->'personalGoogleContext'->>'grantId' END = ${args.grantId}`,
         sql`EXISTS (SELECT 1 FROM ${platformCredentials} revoked_grant
       WHERE revoked_grant.id = ${args.grantId}::uuid
         AND revoked_grant.organization_id = ${args.organizationId}::uuid

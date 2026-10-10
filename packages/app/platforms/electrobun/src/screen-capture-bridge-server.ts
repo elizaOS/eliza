@@ -112,11 +112,14 @@ export async function startScreenCaptureBridgeServer({
 	env = process.env,
 	manager = getScreenCaptureManager(),
 }: ScreenCaptureBridgeServerOptions = {}): Promise<() => void> {
+	const rawPort = (env.ELIZA_DESKTOP_SCREEN_CAPTURE_BRIDGE_PORT ?? "").trim();
 	const requestedPort =
-		Number.parseInt(
-			(env.ELIZA_DESKTOP_SCREEN_CAPTURE_BRIDGE_PORT ?? "").trim(),
-			10,
-		) || DEFAULT_SCREEN_CAPTURE_BRIDGE_PORT;
+		// Number.parseInt stops at the first non-digit, so "8080junk" parsed
+		// to 8080 and was accepted as the requested port instead of falling
+		// back to the default. Require the whole trimmed value to be decimal,
+		// mirroring resolveGenerationTimeoutMs in the discord plugin.
+		(/^\+?\d+$/.test(rawPort) ? Number(rawPort) : Number.NaN) ||
+		DEFAULT_SCREEN_CAPTURE_BRIDGE_PORT;
 	const port = await findFirstAvailableLoopbackPort(requestedPort, {
 		host: "127.0.0.1",
 		maxHops: 32,

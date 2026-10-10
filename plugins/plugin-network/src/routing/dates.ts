@@ -178,8 +178,12 @@ export function resolveWindow(text: string, now: Date): DateWindow {
 
   const range = new RegExp(String.raw`\bfrom\s+(.+?)\s+${END}\s+(.+)$`).exec(t);
   if (range?.[1] && range[2]) {
-    out.from = iso(parseDateExpr(range[1], now));
-    out.until = iso(parseDateExpr(range[2], now));
+    const from = parseDateExpr(range[1], now);
+    let until = parseDateExpr(range[2], now);
+    // "from friday until monday": the end day comes next after the start day.
+    if (from && until && until <= from) until = parseDateExpr(range[2], from);
+    out.from = iso(from);
+    out.until = iso(until);
     if (out.until) return out;
   }
   const end = new RegExp(String.raw`\b${END}\s+(?:the\s+)?(.+)$`).exec(t);

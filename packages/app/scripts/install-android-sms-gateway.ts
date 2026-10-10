@@ -82,6 +82,15 @@ function usage() {
   ].join("\n");
 }
 
+// Number.parseInt stops at the first non-digit, so "--logcat-lines=10junk"
+// parsed to 10 and silently passed assertNonNegativeInteger instead of
+// throwing. Require the whole trimmed value to be decimal, mirroring
+// resolveGenerationTimeoutMs in the discord plugin.
+const parseNonNegativeIntFlag = (raw: string): number => {
+  const text = raw.trim();
+  return /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
+};
+
 function parseArgs(argv) {
   const args = {
     apk: null,
@@ -118,17 +127,17 @@ function parseArgs(argv) {
     else if (arg === "--message") args.message = next();
     else if (arg === "--clear-logcat") args.clearLogcat = true;
     else if (arg === "--logcat-lines")
-      args.logcatLines = Number.parseInt(next(), 10);
+      args.logcatLines = parseNonNegativeIntFlag(next());
     else if (arg === "--watch-logs")
-      args.watchLogsSeconds = Number.parseInt(next(), 10);
+      args.watchLogsSeconds = parseNonNegativeIntFlag(next());
     else if (arg === "--print-apk") args.printApk = true;
     else if (arg === "--doctor") args.doctor = true;
     else if (arg === "--wait-device")
-      args.waitDeviceSeconds = Number.parseInt(next(), 10);
+      args.waitDeviceSeconds = parseNonNegativeIntFlag(next());
     else if (arg === "--pair") args.pairEndpoint = next();
     else if (arg === "--pair-code") args.pairCode = next();
     else if (arg === "--wait-pair")
-      args.waitPairSeconds = Number.parseInt(next(), 10);
+      args.waitPairSeconds = parseNonNegativeIntFlag(next());
     else if (arg === "--connect") args.connectEndpoint = next();
     else if (arg === "--help" || arg === "-h") {
       console.log(usage());

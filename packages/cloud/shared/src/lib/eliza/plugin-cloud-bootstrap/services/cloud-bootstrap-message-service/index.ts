@@ -516,11 +516,21 @@ export class CloudBootstrapMessageService implements IMessageService {
     if (!runtime.character.system) {
       runtime.character.system = "Select and execute actions to fulfill user requests.";
     }
+    // parseInt stops at the first non-digit ("10junk" -> 10) and, without a
+    // radix, parses hex prefixes ("0x10" -> 16); non-numeric input yields NaN,
+    // which silently broke the planner loop bounds (NaN comparisons are always
+    // false). Require the whole trimmed value to be decimal, mirroring
+    // resolveGenerationTimeoutMs in the discord plugin.
+    const parsePlannerInt = (raw: unknown, fallback: number): number => {
+      const text = String(raw ?? "").trim();
+      return /^\+?\d+$/.test(text) ? Number(text) : fallback;
+    };
     const maxIterations =
       options?.maxNativePlannerIterations ??
-      parseInt(String(runtime.getSetting("NATIVE_PLANNER_MAX_ITERATIONS") ?? "6"));
-    const maxConsecutiveFailures = parseInt(
-      String(runtime.getSetting("NATIVE_PLANNER_MAX_CONSECUTIVE_FAILURES") ?? "2"),
+      parsePlannerInt(runtime.getSetting("NATIVE_PLANNER_MAX_ITERATIONS"), 6);
+    const maxConsecutiveFailures = parsePlannerInt(
+      runtime.getSetting("NATIVE_PLANNER_MAX_CONSECUTIVE_FAILURES"),
+      2,
     );
     let iterationCount = 0;
     let consecutiveFailures = 0;

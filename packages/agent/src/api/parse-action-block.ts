@@ -1,4 +1,4 @@
-import { extractJsonObjects } from "@elizaos/core/protocol";
+import { extractJsonObjectSpans } from "@elizaos/core/protocol";
 /**
  * Local compatibility type for CoordinationLLMResponse — removed from
  * @elizaos/plugin-agent-orchestrator 2.x.
@@ -163,14 +163,11 @@ interface ActionSpan {
 
 function findActionSpans(text: string): ActionSpan[] {
   const spans: ActionSpan[] = [];
-  let cursor = 0;
   let coveredEnd = 0;
-  // Core owns quote/escape-aware top-level object boundaries. Never rescan
+  // Core owns quote/escape-aware object boundaries in prose. Never rescan
   // inside a rejected object or reinterpret its nested data as an action.
-  for (const json of extractJsonObjects(text)) {
-    const start = text.indexOf(json, cursor);
-    const end = start + json.length;
-    cursor = end;
+  for (const { start, end } of extractJsonObjectSpans(text)) {
+    const json = text.slice(start, end);
     let value: unknown;
     try {
       value = JSON.parse(json);

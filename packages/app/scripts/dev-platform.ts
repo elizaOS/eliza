@@ -335,13 +335,25 @@ const screenshotServerOptOut = (() => {
   return v === "0" || v === "false" || v === "no" || v === "off";
 })();
 const screenshotServerEnabled = !screenshotServerOptOut;
-const preferredScreenshotPort = Number.parseInt(
-  process.env.ELIZA_SCREENSHOT_SERVER_PORT || "31339",
-  10,
+// Number.parseInt stops at the first non-digit, so "8080junk" parsed to
+// 8080 and was silently accepted instead of falling back to the default.
+// Require the whole trimmed value to be decimal, mirroring
+// resolveGenerationTimeoutMs in the discord plugin.
+const parsePortPreference = (
+  raw: string | undefined,
+  fallback: number,
+): number => {
+  const text = (raw ?? "").trim();
+  const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+const preferredScreenshotPort = parsePortPreference(
+  process.env.ELIZA_SCREENSHOT_SERVER_PORT,
+  31339,
 );
-const preferredBrowserWorkspacePort = Number.parseInt(
-  process.env.ELIZA_BROWSER_WORKSPACE_PORT || "31340",
-  10,
+const preferredBrowserWorkspacePort = parsePortPreference(
+  process.env.ELIZA_BROWSER_WORKSPACE_PORT,
+  31340,
 );
 const screenshotToken = screenshotServerEnabled
   ? randomBytes(24).toString("hex")
