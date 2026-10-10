@@ -10,10 +10,10 @@
  * This module is the missing seam: the native host forwards fused wake stages to
  * the renderer as a `window` CustomEvent, and `useWakeController` subscribes to
  * them through {@link subscribeFusedWake} when it declares the `openWakeWord`
- * capability. The host signals availability by setting
- * `window.__ELIZA_FUSED_WAKE__ = true` before the controller mounts (or it can
- * just start emitting events — {@link probeFusedWake} only gates the default
- * capability set, it does not invent a subscription).
+ * capability. The host reports its detector through {@link setFusedWakeStatus},
+ * which sets `window.__ELIZA_FUSED_WAKE__` only while the detector is running
+ * ({@link probeFusedWake} only gates the default capability set, it does not
+ * invent a subscription).
  *
  * Keeping the transport a plain DOM CustomEvent means it is identical to drive
  * from the native bridge, a WebSocket push handler, or a synthetic test — which
@@ -31,15 +31,55 @@ import { FUSED_WAKE_EVENT } from "@elizaos/core/protocol";
 export type FusedWakeEvent = FusedWakeEventDetail;
 declare global {
   interface Window {
-    /** Set by the native host when the fused on-device wake runtime is live. */
+    /** True while a fused on-device wake detector is running and can fire. */
     __ELIZA_FUSED_WAKE__?: boolean;
   }
 }
 
 export { FUSED_WAKE_EVENT };
+
+/** What the native host reported about its fused wake detector. */
+export interface FusedWakeStatus {
+  /** A native host owns a fused wake detector this renderer can arm. */
+  bridged: boolean;
+  /** The detector is running. Only then can a wake fire. */
+  listening: boolean;
+  /** Why the detector is not running, as reported by the host. */
+  reason?: string;
+}
+
+let fusedWakeStatus: FusedWakeStatus = { bridged: false, listening: false };
+const fusedWakeStatusListeners = new Set<() => void>();
+
+/** The last detector status the host reported. Stable between updates. */
+export function getFusedWakeStatus(): FusedWakeStatus {
+  return fusedWakeStatus;
+}
+
 /**
- * Whether the fused on-device wake runtime is available to the renderer. Only
- * used to seed the default capability set; emission still drives detection.
+ * Record the detector status reported by the native host. Mirrors `listening`
+ * onto `window.__ELIZA_FUSED_WAKE__`, so the capability {@link probeFusedWake}
+ * reports is the detector's real state, not the mere presence of a host.
+ */
+export function setFusedWakeStatus(next: FusedWakeStatus): void {
+  fusedWakeStatus = next;
+  if (typeof window !== "undefined") {
+    window.__ELIZA_FUSED_WAKE__ = next.listening;
+  }
+  for (const listener of fusedWakeStatusListeners) listener();
+}
+
+/** Subscribe to detector status changes. Returns an unsubscribe fn. */
+export function subscribeFusedWakeStatus(listener: () => void): () => void {
+  fusedWakeStatusListeners.add(listener);
+  return () => {
+    fusedWakeStatusListeners.delete(listener);
+  };
+}
+
+/**
+ * Whether a fused on-device wake detector is running. Seeds the default
+ * capability set; emission still drives detection.
  */
 export function probeFusedWake(): boolean {
   return typeof window !== "undefined" && window.__ELIZA_FUSED_WAKE__ === true;
