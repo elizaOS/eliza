@@ -207,6 +207,8 @@ export function walletFinancialPreview(
     | "proposalId"
     | "support"
     | "targets"
+    | "values"
+    | "calldatas"
     | "description"
     | "pool"
     | "position"
@@ -244,8 +246,8 @@ export function walletFinancialPreview(
     }
     case "gov": {
       // The governor is the contract the wallet signs a call to, and the
-      // vote direction / proposal targets are what that call does, so the
-      // user must see them before confirming.
+      // vote direction / proposal targets, values and calldatas are what that
+      // call does, so the user must see them before confirming.
       const proposal = params.proposalId
         ? ` proposal ${params.proposalId}`
         : "";
@@ -256,8 +258,14 @@ export function walletFinancialPreview(
       const targets = params.targets?.length
         ? ` targets ${params.targets.join(", ")}`
         : "";
+      const values = params.values?.length
+        ? ` values ${params.values.join(", ")}`
+        : "";
+      const calldatas = params.calldatas?.length
+        ? ` calldatas ${params.calldatas.join(", ")}`
+        : "";
       const description = params.description ? ` "${params.description}"` : "";
-      return `Governance ${params.op ?? "operation"}${proposal}${support}${targets}${description} at governor ${params.governor ?? "?"} on ${chainLabel}? Reply yes to submit or no to cancel.`;
+      return `Governance ${params.op ?? "operation"}${proposal}${support}${targets}${values}${calldatas}${description} at governor ${params.governor ?? "?"} on ${chainLabel}? Reply yes to submit or no to cancel.`;
     }
     case "pump_fun_buy":
       return `Buy ${params.amount ?? "?"} SOL of ${params.toToken ?? "the selected pump.fun token"} through pump.fun on ${chainLabel}? Reply yes to submit or no to cancel.`;
