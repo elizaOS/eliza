@@ -5774,9 +5774,10 @@ export async function startEliza(
     });
   }
   bootContext.enterPhase("attach-host");
+  let lifecycleRuntime: AgentRuntime | null = runtime;
   const processLifecycle = createAgentProcessLifecycle({
     disposeRuntime: (reason) =>
-      shutdownRuntime(runtime, reason, {
+      shutdownRuntime(lifecycleRuntime, reason, {
         fast: true,
         serviceStopTimeoutMs: SIGNAL_SERVICE_STOP_TIMEOUT_MS,
       }),
@@ -5932,9 +5933,19 @@ export async function startEliza(
       skipListen: skipApiListen,
       restartRequiresRuntimeDisposal: restoredGeneration !== undefined,
       onStop: async (runtimeToStop) => {
-        await shutdownRuntime(runtimeToStop, "API stop", {
-          requireQuiescence: true,
-        });
+        // A later signal shutdown must not close this adapter a second time.
+        if (lifecycleRuntime === runtimeToStop) {
+          lifecycleRuntime = null;
+        }
+        try {
+          await shutdownRuntime(runtimeToStop, "API stop", {
+            requireQuiescence: true,
+          });
+        } finally {
+          if (lifecycleRuntime === runtimeToStop) {
+            lifecycleRuntime = null;
+          }
+        }
       },
       onRestart: async (restartOptions) => {
         logger.info("[eliza] Hot-reload: building replacement runtime...");
@@ -5975,6 +5986,7 @@ export async function startEliza(
           );
         }
         runtime = activeRuntime;
+        lifecycleRuntime = activeRuntime;
         if (!previousRuntime || previousRuntime === activeRuntime) {
           return;
         }

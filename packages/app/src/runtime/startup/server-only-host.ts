@@ -177,13 +177,21 @@ export async function startServerOnlyHost({
         if (currentRuntime !== runtimeToStop) {
           throw new Error("Server-only runtime ownership changed before stop");
         }
-        await stopRuntime(runtimeToStop, "server-only API stop", {
-          requireQuiescence: true,
-        });
-        if (currentRuntime === runtimeToStop) {
-          currentRuntime = undefined;
-          runtimePublished = false;
-          postReadyPhase = "pending";
+        // Relinquish host ownership before teardown so signal shutdown cannot
+        // race a second close of the same adapter.
+        currentRuntime = undefined;
+        runtimePublished = false;
+        postReadyPhase = "pending";
+        try {
+          await stopRuntime(runtimeToStop, "server-only API stop", {
+            requireQuiescence: true,
+          });
+        } finally {
+          if (currentRuntime === runtimeToStop) {
+            currentRuntime = undefined;
+            runtimePublished = false;
+            postReadyPhase = "pending";
+          }
         }
       },
       onRestart: async () => {

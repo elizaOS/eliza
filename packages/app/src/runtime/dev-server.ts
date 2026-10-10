@@ -502,11 +502,19 @@ async function main() {
     initialAgentState: "starting",
     onStop: async (runtimeToStop) => {
       const { shutdownRuntime } = await loadElizaRuntimeModule();
-      await shutdownRuntime(runtimeToStop, "dev-server API stop", {
-        requireQuiescence: true,
-      });
+      // Relinquish host ownership before teardown so signal shutdown cannot
+      // race a second close of the same adapter.
       if (currentRuntime === runtimeToStop) {
         currentRuntime = null;
+      }
+      try {
+        await shutdownRuntime(runtimeToStop, "dev-server API stop", {
+          requireQuiescence: true,
+        });
+      } finally {
+        if (currentRuntime === runtimeToStop) {
+          currentRuntime = null;
+        }
       }
     },
     onRestart: async () => {

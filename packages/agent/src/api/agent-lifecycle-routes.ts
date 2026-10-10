@@ -20,7 +20,7 @@
  */
 
 import { PostAgentAutonomyRequestSchema } from "@elizaos/contracts";
-import type { AgentRuntime } from "@elizaos/core";
+import type { AgentRuntime, UUID } from "@elizaos/core";
 import type { RouteHelpers, RouteRequestMeta } from "@elizaos/host/protocol";
 
 import { AUTONOMY_SERVICE_TYPE } from "@elizaos/plugin-assistant";
@@ -41,7 +41,7 @@ export interface AgentLifecycleRouteState {
   agentName: string;
   model: string | undefined;
   startedAt: number | undefined;
-  chatConnectionReady: unknown;
+  chatConnectionReady: { userId: UUID; roomId: UUID; worldId: UUID } | null;
   chatConnectionPromise: Promise<void> | null;
   runtimeStopPromise: Promise<void> | null;
 }
@@ -210,6 +210,11 @@ export async function handleAgentLifecycleRoutes(
       try {
         await stopPromise;
       } catch (err) {
+        if (state.runtime === stoppedRuntime) {
+          state.runtime = null;
+          state.chatConnectionReady = null;
+          state.chatConnectionPromise = null;
+        }
         state.agentState = "error";
         state.startedAt = undefined;
         state.model = undefined;

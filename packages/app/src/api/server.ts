@@ -1090,11 +1090,19 @@ export async function startApiServer(
     ...(callerStop
       ? {
           onStop: async (runtime: AgentRuntime) => {
-            await callerStop(runtime);
             if (compatState.current === runtime) {
               stopStandaloneKokoro(compatState);
               voiceHost.reset();
               compatState.current = null;
+            }
+            try {
+              await callerStop(runtime);
+            } finally {
+              if (compatState.current === runtime) {
+                stopStandaloneKokoro(compatState);
+                voiceHost.reset();
+                compatState.current = null;
+              }
             }
           },
         }
