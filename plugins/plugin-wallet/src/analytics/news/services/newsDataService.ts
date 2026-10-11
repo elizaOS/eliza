@@ -159,6 +159,18 @@ export class NewsDataService extends Service {
       }
       return String.fromCodePoint(code);
     });
+    // Hexadecimal references (&#x27; for an apostrophe) name the same code
+    // points and were left raw in titles and summaries.
+    decoded = decoded.replace(/&#x([0-9a-f]+);/gi, (entity, hex) => {
+      const code = Number.parseInt(hex, 16);
+      if (!Number.isSafeInteger(code) || code <= 0 || code > 0x10ffff) {
+        return entity;
+      }
+      if (code >= 0xd800 && code <= 0xdfff) {
+        return entity;
+      }
+      return String.fromCodePoint(code);
+    });
 
     return decoded;
   }
