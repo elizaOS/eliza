@@ -26,7 +26,12 @@ import type {
 import type { QueryTweetsResponse } from "./api-types";
 import type { TwitterAuth } from "./auth";
 import { getEntityIdByScreenName } from "./profile";
-import { maxResultsFor, X_USER_TWEETS_MIN_RESULTS } from "./request-limits";
+import {
+  maxResultsFor,
+  X_LIKED_TWEETS_MIN_RESULTS,
+  X_LIST_TWEETS_MIN_RESULTS,
+  X_USER_TWEETS_MIN_RESULTS,
+} from "./request-limits";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -655,7 +660,7 @@ export async function fetchListTweets(
 
   try {
     const response = await client.v2.listTweets(listId, {
-      max_results: Math.min(maxTweets, 100),
+      max_results: maxResultsFor(maxTweets, X_LIST_TWEETS_MIN_RESULTS),
       "tweet.fields": [
         "id",
         "text",
@@ -924,7 +929,7 @@ export async function fetchLikedTweets(
 
   try {
     const response = await client.v2.userLikedTweets(userId, {
-      max_results: Math.min(maxTweets, 100),
+      max_results: maxResultsFor(maxTweets, X_LIKED_TWEETS_MIN_RESULTS),
       "tweet.fields": [
         "id",
         "text",

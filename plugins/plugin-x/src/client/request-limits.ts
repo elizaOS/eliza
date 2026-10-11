@@ -9,10 +9,14 @@
  *   https://docs.x.com/x-api/posts/search-recent-posts
  * - User posts timeline (`GET /2/users/:id/tweets`): 5–100.
  *   https://docs.x.com/x-api/users/get-posts
+ * - List posts (`GET /2/lists/:id/tweets`): 5–100.
+ * - Liked posts (`GET /2/users/:id/liked_tweets`): 5–100.
  */
 export const X_MAX_RESULTS_PER_PAGE = 100;
 export const X_RECENT_SEARCH_MIN_RESULTS = 10;
 export const X_USER_TWEETS_MIN_RESULTS = 5;
+export const X_LIST_TWEETS_MIN_RESULTS = 5;
+export const X_LIKED_TWEETS_MIN_RESULTS = 5;
 
 /**
  * The `max_results` to send for a caller limit: the full page when the caller
