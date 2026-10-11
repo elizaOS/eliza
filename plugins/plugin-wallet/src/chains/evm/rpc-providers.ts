@@ -7,6 +7,18 @@ import {
   resolveDevCloudEnvAuthority,
 } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 
+/**
+ * Setting names that hold a custom RPC URL for a viem chain key. The plugin
+ * settings form saves Ethereum mainnet as ETHEREUM_PROVIDER_ETHEREUM, while
+ * viem names the chain "mainnet", so mainnet also reads that name.
+ */
+function customRpcSettingKeys(chainName: string): string[] {
+  const suffix = chainName.toUpperCase();
+  const keys = [`ETHEREUM_PROVIDER_${suffix}`, `EVM_PROVIDER_${suffix}`];
+  if (chainName === "mainnet") keys.push("ETHEREUM_PROVIDER_ETHEREUM");
+  return keys;
+}
+
 function hasStringSetting(runtime: IAgentRuntime, key: string): boolean {
   const value = runtime.getSetting(key);
   return typeof value === "string" && value.trim().length > 0;
@@ -301,9 +313,9 @@ export function initRPCProviderManager(runtime: IAgentRuntime): RPCProviderManag
 
   return {
     resolveForChain(chainName: string): ResolvedRPCProvider | null {
-      const customRpc =
-        getStringSetting(runtime, `ETHEREUM_PROVIDER_${chainName.toUpperCase()}`) ??
-        getStringSetting(runtime, `EVM_PROVIDER_${chainName.toUpperCase()}`);
+      const customRpc = customRpcSettingKeys(chainName)
+        .map((key) => getStringSetting(runtime, key))
+        .find((value) => value !== undefined);
 
       if (customRpc) {
         return {
@@ -348,9 +360,9 @@ export function initRPCProviderManager(runtime: IAgentRuntime): RPCProviderManag
     },
 
     isChainCovered(chainName: string): boolean {
-      const hasCustom =
-        hasStringSetting(runtime, `ETHEREUM_PROVIDER_${chainName.toUpperCase()}`) ||
-        hasStringSetting(runtime, `EVM_PROVIDER_${chainName.toUpperCase()}`);
+      const hasCustom = customRpcSettingKeys(chainName).some((key) =>
+        hasStringSetting(runtime, key)
+      );
       return hasCustom || providers.some((p) => p.supportedChains.has(chainName));
     },
   };
@@ -388,10 +400,7 @@ export function validateRPCProviderConfig(runtime: IAgentRuntime): {
   }
 
   for (const chain of chainsToCheck) {
-    if (
-      hasStringSetting(runtime, `ETHEREUM_PROVIDER_${chain.toUpperCase()}`) ||
-      hasStringSetting(runtime, `EVM_PROVIDER_${chain.toUpperCase()}`)
-    ) {
+    if (customRpcSettingKeys(chain).some((key) => hasStringSetting(runtime, key))) {
       hasCustomRpc = true;
       break;
     }
