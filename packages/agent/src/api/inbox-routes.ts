@@ -2571,7 +2571,7 @@ export async function handleInboxRoute(
     const roomSourceHint = roomSourceParam.length > 0 ? roomSourceParam : null;
     const runtime = state.runtime;
     if (!runtime) {
-      helpers.json(res, { messages: [], count: 0 });
+      helpers.error(res, "runtime not ready", 503);
       return true;
     }
     try {
@@ -2888,7 +2888,7 @@ export async function handleInboxRoute(
   if (method === "GET" && pathname === "/api/inbox/chats") {
     const runtime = state.runtime;
     if (!runtime) {
-      helpers.json(res, { chats: [], count: 0 });
+      helpers.error(res, "runtime not ready", 503);
       return true;
     }
     const url = new URL(req.url ?? pathname, "http://localhost");
@@ -2910,7 +2910,7 @@ export async function handleInboxRoute(
   if (method === "GET" && pathname === "/api/inbox/sources") {
     const runtime = state.runtime;
     if (!runtime) {
-      helpers.json(res, { sources: [] });
+      helpers.error(res, "runtime not ready", 503);
       return true;
     }
     try {

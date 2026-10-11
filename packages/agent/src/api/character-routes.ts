@@ -756,7 +756,7 @@ export async function handleCharacterRoutes(
 
   if (method === "GET" && pathname === "/api/character/history") {
     if (!state.runtime) {
-      json(res, { history: [], agentName: state.agentName });
+      error(res, "Agent runtime not available. Start the agent first.", 503);
       return true;
     }
 

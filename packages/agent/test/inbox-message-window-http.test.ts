@@ -116,3 +116,41 @@ it("fills the inbox limit past newer persisted rows that cannot render", async (
     await rm(directory, { recursive: true, force: true });
   }
 }, 120_000);
+
+it("answers inbox and character history reads with 503 before the runtime exists", async () => {
+  const directory = await mkdtemp(
+    path.join(tmpdir(), "eliza-inbox-no-runtime-"),
+  );
+  for (const [key, value] of Object.entries({
+    ELIZA_STATE_DIR: directory,
+    ELIZA_CONFIG_PATH: path.join(directory, "config.json"),
+    ELIZA_PERSIST_CONFIG_PATH: path.join(directory, "config.json"),
+    ELIZA_API_BIND_HOST: "127.0.0.1",
+    ELIZA_API_TOKEN: "",
+    ELIZA_REQUIRE_LOCAL_AUTH: "0",
+  })) {
+    vi.stubEnv(key, value);
+  }
+  let server: Awaited<ReturnType<typeof startApiServer>> | undefined;
+  try {
+    server = await startApiServer({ port: 0, skipDeferredStartupWork: true });
+    const routes = [
+      "/api/inbox/messages",
+      "/api/inbox/chats",
+      "/api/inbox/sources",
+      "/api/character/history",
+    ];
+    const statuses: Record<string, number> = {};
+    for (const route of routes) {
+      const response = await fetch(`http://127.0.0.1:${server.port}${route}`);
+      statuses[route] = response.status;
+    }
+    expect(statuses).toEqual(
+      Object.fromEntries(routes.map((route) => [route, 503])),
+    );
+  } finally {
+    if (server) await server.close();
+    vi.unstubAllEnvs();
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 120_000);
