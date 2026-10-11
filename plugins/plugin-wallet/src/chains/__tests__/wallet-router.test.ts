@@ -416,6 +416,44 @@ describe("wallet router action", () => {
     expect(result?.data?.transactionHash).toBe("0xtest");
   });
 
+  it("refuses a malformed transfer recipient before the spend confirmation", async () => {
+    const { runtime, service } = createService();
+    const base = handler("base", "Base", "8453", "evm");
+    service.registerChainHandler(base);
+    const solana = handler("solana", "Solana", "solana-mainnet", "solana");
+    service.registerChainHandler(solana);
+
+    const badEvm = await run(runtime, {
+      subaction: "transfer",
+      chain: "base",
+      fromToken: "ETH",
+      amount: "0.5",
+      recipient: "0x123",
+      mode: "execute",
+    });
+    expect(badEvm?.success).toBe(false);
+    expect(badEvm?.data?.error).toBe("INVALID_PARAMS");
+    expect(badEvm?.data?.requiresConfirmation).toBeUndefined();
+    expect(badEvm?.text).toBe("recipient must be a valid EVM address.");
+    expect(base.execute).not.toHaveBeenCalled();
+
+    const badSolana = await run(runtime, {
+      subaction: "transfer",
+      chain: "solana",
+      fromToken: "SOL",
+      amount: "2",
+      recipient: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+      mode: "execute",
+    });
+    expect(badSolana?.success).toBe(false);
+    expect(badSolana?.data?.error).toBe("INVALID_PARAMS");
+    expect(badSolana?.data?.requiresConfirmation).toBeUndefined();
+    expect(badSolana?.text).toBe(
+      "recipient must be a valid Solana base58 address.",
+    );
+    expect(solana.execute).not.toHaveBeenCalled();
+  });
+
   it("refuses a transfer before the spend confirmation when the selected Steward backend did not load", async () => {
     const runtime = createRuntime();
     vi.mocked(runtime.getSetting).mockImplementation((key: string) =>
