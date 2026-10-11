@@ -5,6 +5,7 @@
  * under test is the real production path, not a stub.
  */
 import type { HandlerOptions, IAgentRuntime, Memory } from "@elizaos/core";
+import { decodeFunctionData, parseAbi } from "viem";
 import { describe, expect, it, vi } from "vitest";
 import { WalletBackendService } from "../../services/wallet-backend-service";
 import type {
@@ -14,6 +15,21 @@ import type {
 } from "../../types/wallet-router";
 import { registerDefaultWalletChainHandlers } from "../registry";
 import { walletRouterAction } from "../wallet-action";
+
+// The signer boundary is the only double: routing, validation, the
+// confirmation gate and calldata encoding all run for real.
+const govSigner = vi.hoisted(() => ({
+  account: { address: "0x1111111111111111111111111111111111111111" },
+  getWalletClient: vi.fn(),
+  sendTransaction: vi.fn(),
+}));
+
+vi.mock("../evm/providers/wallet", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../evm/providers/wallet")>()),
+  initWalletProvider: vi.fn(async () => ({
+    getWalletClient: govSigner.getWalletClient,
+  })),
+}));
 
 function createRuntime(): IAgentRuntime {
   const logger = {
@@ -242,6 +258,106 @@ describe("wallet router action", () => {
     expect(proposal?.text).toBe(
       `Governance propose targets ${target} values 0 calldatas 0xa9059cbb "Fund grants" at governor ${governor} on base? Reply yes to submit or no to cancel.`,
     );
+  });
+
+  it("signs only the confirmed gov vote and rejects a changed vote or proposal payload", async () => {
+    const { runtime, service } = createService();
+    runtime.character.settings = { chains: { evm: ["base"] } };
+    registerDefaultWalletChainHandlers(service, runtime);
+    govSigner.sendTransaction.mockReset().mockResolvedValue("0xgovhash");
+    govSigner.getWalletClient.mockReset().mockReturnValue({
+      account: govSigner.account,
+      sendTransaction: govSigner.sendTransaction,
+    });
+    const governor = "0x742d35Cc6634C0532925a3b844Bc454e4438f44e";
+    const target = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+    const vote = {
+      subaction: "gov",
+      chain: "base",
+      op: "vote",
+      governor,
+      proposalId: "12",
+      support: 1,
+      mode: "execute",
+    };
+    const confirm = (parameters: Record<string, unknown>) =>
+      walletRouterAction.handler(runtime, message("yes, confirm"), undefined, {
+        parameters,
+      } as HandlerOptions);
+
+    const pendingVote = await run(runtime, vote);
+    expect(pendingVote?.data?.requiresConfirmation).toBe(true);
+
+    // A "yes" carrying the opposite vote direction is a different action: it
+    // must re-prompt with the new direction instead of signing.
+    const flipped = await confirm({ ...vote, support: 0 });
+    expect(flipped?.data?.requiresConfirmation).toBe(true);
+    expect(flipped?.text).toContain("proposal 12 against");
+    expect(govSigner.sendTransaction).not.toHaveBeenCalled();
+
+    const submitted = await confirm(vote);
+    expect(submitted?.success).toBe(true);
+    expect(submitted?.data?.status).toBe("submitted");
+    expect(submitted?.data?.transactionHash).toBe("0xgovhash");
+    expect(govSigner.getWalletClient).toHaveBeenCalledWith("base");
+    expect(govSigner.sendTransaction).toHaveBeenCalledTimes(1);
+    const voteTx = govSigner.sendTransaction.mock.calls[0][0];
+    expect(voteTx.to).toBe(governor);
+    expect(voteTx.value).toBe(0n);
+    expect(voteTx.chain.id).toBe(8453);
+    expect(voteTx.account).toBe(govSigner.account);
+    expect(
+      decodeFunctionData({
+        abi: parseAbi(["function castVote(uint256,uint8) returns (uint256)"]),
+        data: voteTx.data,
+      }),
+    ).toEqual({ functionName: "castVote", args: [12n, 1] });
+
+    // The confirmation is single-use: replaying the "yes" re-prompts.
+    govSigner.sendTransaction.mockClear();
+    const replayed = await confirm(vote);
+    expect(replayed?.data?.requiresConfirmation).toBe(true);
+    expect(govSigner.sendTransaction).not.toHaveBeenCalled();
+
+    const proposal = {
+      subaction: "gov",
+      chain: "base",
+      op: "propose",
+      governor,
+      targets: [target],
+      values: ["0"],
+      calldatas: ["0xa9059cbb"],
+      description: "Fund grants",
+      mode: "execute",
+    };
+    const pendingProposal = await run(runtime, proposal);
+    expect(pendingProposal?.data?.requiresConfirmation).toBe(true);
+    for (const changed of [
+      { targets: [governor] },
+      { values: ["1000000000000000000"] },
+      { calldatas: ["0x095ea7b3"] },
+      { description: "Fund grants v2" },
+      { governor: target },
+    ]) {
+      const result = await confirm({ ...proposal, ...changed });
+      expect(result?.data?.requiresConfirmation).toBe(true);
+      expect(govSigner.sendTransaction).not.toHaveBeenCalled();
+    }
+
+    const proposed = await confirm(proposal);
+    expect(proposed?.data?.status).toBe("submitted");
+    expect(govSigner.sendTransaction).toHaveBeenCalledTimes(1);
+    const proposeTx = govSigner.sendTransaction.mock.calls[0][0];
+    expect(proposeTx.to).toBe(governor);
+    expect(proposeTx.value).toBe(0n);
+    expect(
+      decodeFunctionData({
+        abi: parseAbi([
+          "function propose(address[],uint256[],bytes[],string) returns (uint256)",
+        ]),
+        data: proposeTx.data,
+      }).args,
+    ).toEqual([[target], [0n], ["0xa9059cbb"], "Fund grants"]);
   });
 
   it("routes EVM transfer through the selected chain handler", async () => {
