@@ -141,6 +141,9 @@ function incompleteSelectionReason(op: McpOp, params: Record<string, unknown>): 
   }
   const toolName = given("toolName");
   if (toolName && !serverName) return "MCP call_tool needs serverName together with toolName.";
+  if (!toolName && given("uri")) {
+    return "MCP call_tool does not take uri. Use action=read_resource with serverName and uri.";
+  }
   if (serverName && !toolName) {
     return "MCP call_tool needs toolName together with serverName. Omit serverName to select the tool from the request text.";
   }
