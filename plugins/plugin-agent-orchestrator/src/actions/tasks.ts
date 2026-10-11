@@ -693,6 +693,16 @@ function taskWithResolvedRoute(
 const SPECIALIZED_CODING_TASK_TYPES: ReadonlySet<OrchestratorTaskType> =
   new Set(["view-create", "app-build", "deploy"]);
 
+const PLANNER_CODING_TARGET_FIELDS = [
+  "repo",
+  "workdir",
+  "agents",
+  "agentType",
+  "sessionId",
+  "threadId",
+  "taskId",
+] as const;
+
 function looksLikePersonalLifeOpsTask(text: string): boolean {
   if (
     !/\b(?:add|create|make|open|save|set)\s+(?:an?\s+)?(?:to-?do|task|reminder|note)\b/i.test(
@@ -5895,8 +5905,12 @@ export const tasksAction: Action & {
       schema: { type: "string" as const },
     },
   ],
-  validate: async (runtime, message) => {
+  validate: async (runtime, message, _state, options) => {
     const content = contentRecord(message);
+    // The executor passes the validated planner arguments in options. A user
+    // chat message carries none of these fields in its own content.
+    const params = paramsRecord(options as HandlerOptionsLike | undefined);
+    const op = readOp(params);
     // Registration starts services asynchronously. Validation is the first
     // consumer on a cold plugin load, so it owns the readiness wait before the
     // planner decides whether TASKS exists.
@@ -5905,7 +5919,7 @@ export const tasksAction: Action & {
         OrchestratorTaskService.serviceType,
       ) as OrchestratorTaskService | null | undefined;
       return (
-        readOp(content) === "history" &&
+        (op ?? readOp(content)) === "history" &&
         typeof taskService?.listTasks === "function"
       );
     }
@@ -5942,6 +5956,16 @@ export const tasksAction: Action & {
         "threadId",
         "taskId",
       ])
+    )
+      return true;
+    // Planner arguments that cannot describe a personal to-do: an operation on
+    // existing orchestrator work, or a named coding target. A bare
+    // create / spawn_agent with only task text stays under the text check.
+    if (op !== null && op !== "create" && op !== "spawn_agent") return true;
+    if (
+      PLANNER_CODING_TARGET_FIELDS.some(
+        (field) => typeof params[field] === "string",
+      )
     )
       return true;
     // Availability gate only: the orchestrator service is present and this is
