@@ -239,25 +239,18 @@ function sharedModelPlugin(
     params: GenerateTextParams,
     registeredModelType?: string,
   ) => Promise<string | NativeTextModelResult | TextStreamResult>,
-  captureTypes = false,
 ): Plugin {
   return {
     name: "shared-cerebras-model",
     description: "Platform-funded text generation for the Shared Workerd runtime.",
     services: [...SHARED_NOTIFICATION_SERVICES],
     models: {
-      [ModelType.RESPONSE_HANDLER]: captureTypes
-        ? (runtime, params) => handler(runtime, params, ModelType.RESPONSE_HANDLER)
-        : handler,
-      [ModelType.ACTION_PLANNER]: captureTypes
-        ? (runtime, params) => handler(runtime, params, ModelType.ACTION_PLANNER)
-        : handler,
-      [ModelType.TEXT_SMALL]: captureTypes
-        ? (runtime, params) => handler(runtime, params, ModelType.TEXT_SMALL)
-        : handler,
-      [ModelType.TEXT_LARGE]: captureTypes
-        ? (runtime, params) => handler(runtime, params, ModelType.TEXT_LARGE)
-        : handler,
+      [ModelType.RESPONSE_HANDLER]: (runtime, params) =>
+        handler(runtime, params, ModelType.RESPONSE_HANDLER),
+      [ModelType.ACTION_PLANNER]: (runtime, params) =>
+        handler(runtime, params, ModelType.ACTION_PLANNER),
+      [ModelType.TEXT_SMALL]: (runtime, params) => handler(runtime, params, ModelType.TEXT_SMALL),
+      [ModelType.TEXT_LARGE]: (runtime, params) => handler(runtime, params, ModelType.TEXT_LARGE),
     },
     modelMetadata: {
       [ModelType.RESPONSE_HANDLER]: { streamable: true },
@@ -690,6 +683,11 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         getTrajectoryContext()?.secretSwapSession?.entries.map((entry) => entry.value) ?? [],
       ),
     );
+    // Task identity is server-owned and independent of optional capture.
+    const factsValidation =
+      registeredModelType === ModelType.TEXT_LARGE &&
+      params.tools?.length === 1 &&
+      params.tools[0]?.name === "FACTS_AND_RELATIONSHIPS_VALIDATE";
     let selectedProvider: { provider: string; fallback: boolean } | undefined;
     const modelCall = timing.prepareModelCall();
     let captureCall: number | undefined;
@@ -763,12 +761,17 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       allowSystemInMessages: true,
       ...(params.messages
         ? {
-            messages: insertSharedRuntimeGroundingMessages(
-              params.messages as ModelMessage[],
-              persistedGroundingMessages(
-                params.tools?.some((tool) => tool.name === "WEB_SEARCH") === true,
-              ),
-            ),
+            // Keep the complete Core facts task. Only unrelated host-added
+            // public-read evidence belongs to response/action generation.
+            // Cost: no new I/O/model dispatch or context truncation.
+            messages: factsValidation
+              ? (params.messages as ModelMessage[])
+              : insertSharedRuntimeGroundingMessages(
+                  params.messages as ModelMessage[],
+                  persistedGroundingMessages(
+                    params.tools?.some((tool) => tool.name === "WEB_SEARCH") === true,
+                  ),
+                ),
           }
         : { prompt: params.prompt ?? "" }),
       ...(params.tools ? { tools: modelTools(params.tools) } : {}),
@@ -1050,7 +1053,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     } as NativeTextModelResult;
   };
 
-  const modelPlugin = sharedModelPlugin(modelHandler, Boolean(input.ownerCapture));
+  const modelPlugin = sharedModelPlugin(modelHandler);
   const actionsEnabled = input.messageRole !== "system";
   const realtimeRequirement =
     actionsEnabled && input.capabilityText && !isSharedGoogleContextRequest(input.capabilityText)
