@@ -2343,7 +2343,9 @@ async function resolveApprovalRequest(
     params,
     {
       requestId: extracted.requestId,
-      reason: extracted.reason,
+      // A supplied `reason` is the declared parameter; target inference only
+      // fills the reason when the caller gave none.
+      reason: explicitReason ?? extracted.reason,
     },
     callback,
   );
@@ -2762,6 +2764,13 @@ export const resolveRequestAction: Action & {
     {
       name: "reason",
       description: "Optional approve/reject reason, user language.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "providerReceiptId",
+      description:
+        "reconcile_delivered / reconcile_not_delivered only: the provider's receipt or message id that confirms the outcome.",
       required: false,
       schema: { type: "string" as const },
     },

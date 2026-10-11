@@ -16,6 +16,7 @@ import type {
   SendHandlerOutcome,
   UUID,
 } from "@elizaos/core";
+import { validateToolArgs } from "@elizaos/core";
 import { createApprovalQueue as createAgentApprovalQueue } from "@elizaos/plugin-assistant";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
@@ -385,6 +386,31 @@ describe("RESOLVE_REQUEST durable approval execution", () => {
     expect(dispatchState.sends).toBe(0);
   });
 
+  it("stores the supplied reason when the request id is inferred", async () => {
+    const request = await realQueue.enqueue(sendMessageInput());
+    const result = await resolveRequestAction.handler(
+      runtime,
+      {
+        ...message("reject", request.id),
+        content: { text: "no, don't send that" },
+      },
+      undefined,
+      {
+        parameters: { action: "reject", reason: "too expensive" },
+      } as unknown as Parameters<typeof resolveRequestAction.handler>[3],
+      undefined,
+    );
+    expect(result?.success).toBe(true);
+    const row = await pg.query<{ state: string; resolution_reason: string }>(
+      "SELECT state, resolution_reason FROM approval_requests WHERE id = $1",
+      [request.id],
+    );
+    expect(row.rows[0]).toEqual({
+      state: "rejected",
+      resolution_reason: "too expensive",
+    });
+  });
+
   it("returns indistinguishable not-found for a cross-subject explicit id", async () => {
     const request = await realQueue.enqueue(sendMessageInput(OWNER_A));
 
@@ -516,6 +542,13 @@ describe("RESOLVE_REQUEST durable approval execution", () => {
     const delivered = await realQueue.enqueue(sendMessageInput());
     dispatchState.mode = "ambiguous";
     await resolve("approve", delivered.id);
+    expect(
+      validateToolArgs(resolveRequestAction, {
+        action: "reconcile_delivered",
+        requestId: delivered.id,
+        providerReceiptId: "telegram-provider-receipt-7",
+      }).errors,
+    ).toEqual([]);
     const reconciledDelivered = await resolve(
       "reconcile_delivered",
       delivered.id,
