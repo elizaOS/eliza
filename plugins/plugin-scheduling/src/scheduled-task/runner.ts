@@ -2569,6 +2569,13 @@ export function createScheduledTaskRunner(
     if (gateOutcome.decision.kind === "deny") {
       task.state.status = "skipped";
       task.state.lastDecisionLog = `${gateOutcome.gateKind ?? "gate"}: ${gateOutcome.decision.reason}`;
+      // A denied occurrence of a recurring task is used up, as a fire would
+      // be: dueness counts the next occurrence from `firedAt`, so leaving it
+      // unchanged re-skips the same occurrence every tick and fires at the
+      // first tick after the gate opens instead of at the next occurrence.
+      if (isRecurringTrigger(task.trigger)) {
+        task.state.firedAt = now().toISOString();
+      }
       if (!(await persist(task))) return { kind: "raced", taskId };
       await logger.log(task.taskId, "skipped", {
         reason: task.state.lastDecisionLog,

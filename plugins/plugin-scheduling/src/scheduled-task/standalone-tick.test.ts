@@ -160,6 +160,71 @@ describe("standalone scheduling tick", () => {
     ]);
   });
 
+  it("uses up a gate-denied occurrence of a daily task, so it fires at its own time", async () => {
+    const runtime = makeFakeRuntime();
+    const service = await startServiceOn(runtime);
+    const runner = (iso: string) =>
+      service.getRunner({ agentId: runtime.agentId, now: () => new Date(iso) });
+    // 2026-10-09 is a Friday: Saturday and Sunday are denied by weekend_skip.
+    const task = await runner("2026-10-09T08:00:00.000Z").schedule({
+      kind: "reminder",
+      promptInstructions: "daily standup",
+      trigger: {
+        kind: "interval",
+        everyMinutes: 1440,
+        from: "2026-10-09T09:00:00.000Z",
+      },
+      shouldFire: { gates: [{ kind: "weekend_skip" }] },
+      pipeline: {
+        onSkip: [
+          {
+            kind: "reminder",
+            promptInstructions: "standup skipped",
+            trigger: { kind: "manual" },
+            priority: "low",
+            respectsGlobalPause: false,
+            source: "user_chat",
+            createdBy: runtime.agentId,
+            ownerVisible: true,
+          },
+        ],
+      },
+      priority: "low",
+      respectsGlobalPause: false,
+      source: "user_chat",
+      createdBy: runtime.agentId,
+      ownerVisible: true,
+    });
+    const fired: string[] = [];
+    let skipped = 0;
+    const start = Date.parse("2026-10-09T09:00:00.000Z");
+    const end = Date.parse("2026-10-12T10:00:00.000Z");
+    for (let ms = start; ms <= end; ms += 3_600_000) {
+      const iso = new Date(ms).toISOString();
+      const tick = await runStandaloneSchedulingTick(runtime, {
+        now: new Date(iso),
+      });
+      expect(tick.errors).toEqual([]);
+      for (const fire of tick.fires) {
+        if (fire.taskId !== task.taskId) continue;
+        if (fire.outcome === "skipped") skipped += 1;
+        if (fire.outcome === "fired") {
+          fired.push(iso);
+          await runner(iso).apply(task.taskId, "complete", { reason: "done" });
+        }
+      }
+    }
+    expect(fired).toEqual([
+      "2026-10-09T09:00:00.000Z",
+      "2026-10-12T09:00:00.000Z",
+    ]);
+    expect(skipped).toBe(2);
+    const skipChildren = (
+      await runner("2026-10-12T10:00:00.000Z").list()
+    ).filter((row) => row.state.pipelineParentId === task.taskId);
+    expect(skipChildren).toHaveLength(2);
+  });
+
   it("uses one durable core TaskService worker row and removes it on unload", async () => {
     const workerByName = new Map<string, TaskWorker>();
     const taskById = new Map<UUID, Task>();
