@@ -29,7 +29,6 @@ const WORKFLOW_OPS = [
   'modify',
   'activate',
   'deactivate',
-  'delete',
   'run',
   'dossier',
   'cancel_run',
@@ -104,7 +103,6 @@ export const workflowAction: Action = {
     'AUTOMATIONS',
     'CREATE_AUTOMATION',
     'EDIT_AUTOMATION',
-    'DELETE_AUTOMATION',
     'RUN_AUTOMATION',
     'CREATE_WORKFLOW',
     // Live planner output has used the noun-first form for the same supported
@@ -113,7 +111,6 @@ export const workflowAction: Action = {
     'WORKFLOW_CREATE',
     'EDIT_WORKFLOW',
     'UPDATE_WORKFLOW',
-    'DELETE_WORKFLOW',
     'RUN_WORKFLOW',
     'LIST_WORKFLOWS',
     'ACTIVATE_WORKFLOW',
@@ -121,7 +118,7 @@ export const workflowAction: Action = {
     'WORKFLOW_EXECUTIONS',
   ],
   description:
-    'Create, edit, inspect, activate, run, cancel, and delete native Smithers workflows. For an explicit on-demand current-day dossier or briefing from the owner’s reviewed phone Calendar and due/overdue reminders, use dossier. This reads only already reviewed native sources, creates no schedule and uses one existing summary pass. If no source has been reviewed, ask the owner to select it in digest settings; do not invent other sources. ' +
+    'Create, edit, inspect, activate, run, and cancel native Smithers workflows. Workflows cannot be deleted from chat. For an explicit on-demand current-day dossier or briefing from the owner’s reviewed phone Calendar and due/overdue reminders, use dossier. This reads only already reviewed native sources, creates no schedule and uses one existing summary pass. If no source has been reviewed, ask the owner to select it in digest settings; do not invent other sources. ' +
     `Provide action=${WORKFLOW_OPS.join('|')}.`,
   parameters: [
     {
@@ -165,8 +162,8 @@ export const workflowAction: Action = {
     {
       name: 'input',
       required: false,
-      description: 'Run input object.',
-      schema: { type: 'object' },
+      description: 'Run input object. Its keys are defined by the workflow.',
+      schema: { type: 'object', additionalProperties: true },
     },
     { name: 'limit', required: false, description: 'Result limit.', schema: { type: 'number' } },
     {
@@ -306,21 +303,6 @@ export const workflowAction: Action = {
           effectReceipts: [workflowDefinitionEffect(op, workflow)],
           data: { workflow },
         });
-      }
-      if (op === 'delete') {
-        // Legacy deletion is deliberately denied by the service: removal requires
-        // a reviewed version and receipt-preserving lifecycle mutation.
-        return {
-          success: false,
-          text: 'Use reviewed receipt-preserving removal.',
-          effectReceipts: [],
-          failureProvenance: {
-            kind: 'handler_error',
-            boundary: 'handler',
-            code: 'WORKFLOW_REVIEWED_REMOVAL_REQUIRED',
-            retryable: false,
-          },
-        };
       }
       if (op === 'run') {
         const workflow = await service.getWorkflow(workflowId as string, ownerId);
