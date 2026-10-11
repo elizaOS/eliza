@@ -5,6 +5,10 @@
  */
 
 import { requireUserWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  ApiError,
+  failureResponse,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
@@ -26,7 +30,12 @@ app.post("/", async (c) => {
       },
       410,
     );
-  } catch {
+  } catch (error) {
+    // A rejected credential or inactive account is a typed 401/403, not a
+    // server fault; only an authenticated caller reaches the 410 below.
+    if (error instanceof ApiError) {
+      return failureResponse(c, error);
+    }
     return c.json(
       { success: false, error: "Failed to track interaction" },
       500,
