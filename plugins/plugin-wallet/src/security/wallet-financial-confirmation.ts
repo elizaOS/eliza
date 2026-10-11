@@ -259,7 +259,7 @@ export function walletFinancialPreview(
         ? ` targets ${params.targets.join(", ")}`
         : "";
       const values = params.values?.length
-        ? ` values ${params.values.join(", ")}`
+        ? ` values (wei) ${params.values.join(", ")}`
         : "";
       const calldatas = params.calldatas?.length
         ? ` calldatas ${params.calldatas.join(", ")}`

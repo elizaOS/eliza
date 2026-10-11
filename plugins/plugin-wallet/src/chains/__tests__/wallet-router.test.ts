@@ -236,6 +236,18 @@ describe("wallet router action", () => {
     expect(missingGovernor?.data?.error).toBe("INVALID_PARAMS");
     expect(missingGovernor?.text).toBe("governor must be a valid EVM address.");
 
+    const badProposalId = await run(runtime, {
+      ...vote,
+      proposalId: "twelve",
+      mode: "execute",
+    });
+    expect(badProposalId?.success).toBe(false);
+    expect(badProposalId?.data?.error).toBe("INVALID_PARAMS");
+    expect(badProposalId?.data?.requiresConfirmation).toBeUndefined();
+    expect(badProposalId?.text).toBe(
+      "proposalId must be a base-10 integer string.",
+    );
+
     const pending = await run(runtime, { ...vote, mode: "execute" });
     expect(pending?.data?.requiresConfirmation).toBe(true);
     expect(pending?.text).toBe(
@@ -243,7 +255,7 @@ describe("wallet router action", () => {
     );
 
     const target = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-    const proposal = await run(runtime, {
+    const propose = {
       subaction: "gov",
       chain: "base",
       op: "propose",
@@ -253,10 +265,27 @@ describe("wallet router action", () => {
       calldatas: ["0xa9059cbb"],
       description: "Fund grants",
       mode: "execute",
-    });
+    };
+    for (const [change, detail] of [
+      [
+        { targets: ["treasury"] },
+        "targets must contain only valid EVM addresses.",
+      ],
+      [{ values: ["0.1"] }, "values must be a base-10 integer string."],
+      [
+        { calldatas: ["0xa9059cbb", "0x"] },
+        "targets, values and calldatas must have the same length for governance propose.",
+      ],
+    ] as const) {
+      const refused = await run(runtime, { ...propose, ...change });
+      expect(refused?.data?.error).toBe("INVALID_PARAMS");
+      expect(refused?.text).toBe(detail);
+    }
+
+    const proposal = await run(runtime, propose);
     expect(proposal?.data?.requiresConfirmation).toBe(true);
     expect(proposal?.text).toBe(
-      `Governance propose targets ${target} values 0 calldatas 0xa9059cbb "Fund grants" at governor ${governor} on base? Reply yes to submit or no to cancel.`,
+      `Governance propose targets ${target} values (wei) 0 calldatas 0xa9059cbb "Fund grants" at governor ${governor} on base? Reply yes to submit or no to cancel.`,
     );
   });
 
