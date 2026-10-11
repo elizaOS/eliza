@@ -47,10 +47,20 @@ export function agentIdentityName(character: {
   name?: string;
   settings?: Record<string, unknown>;
 }): string | undefined {
-  const identityName = character.settings?.identityName;
-  return typeof identityName === "string" && identityName.trim()
-    ? identityName
-    : character.name;
+  // Core character validation moves unknown settings keys into
+  // `settings.extra`, so a validated character (for example one restored
+  // from a backup) keeps the identity name there.
+  const extra = character.settings?.extra as
+    | Record<string, unknown>
+    | undefined;
+  for (const identityName of [
+    character.settings?.identityName,
+    extra?.identityName,
+  ]) {
+    if (typeof identityName === "string" && identityName.trim())
+      return identityName;
+  }
+  return character.name;
 }
 
 /** @internal Exported for testing. */
