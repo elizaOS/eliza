@@ -227,14 +227,17 @@ export function wrapSingleTurnVisibleCallback(
   // this catches the paraphrase class at the one funnel every visible
   // delivery passes through. Guarded tightly — ≥8 shared-vocabulary tokens
   // and ≥0.85 Jaccard — so progress updates that differ in the numbers or
-  // content keep flowing.
+  // content keep flowing. Tokens are Unicode letters and numbers, so the
+  // guard also sees non-Latin words; an ASCII-only split gave Korean and
+  // Cyrillic replies zero tokens and never suppressed them.
+
   const deliveredTokenSetsThisTurn: Array<Set<string>> = [];
   const nearDuplicateOfDeliveredThisTurn = (text: string): boolean => {
     const tokens = new Set(
       text
         .toLowerCase()
         .replace(/[*_`~#>]+/g, " ")
-        .split(/[^a-z0-9%.]+/)
+        .split(/[^\p{L}\p{N}%.]+/gu)
         .filter((token) => token.length > 0),
     );
     if (tokens.size < 8) return false;
@@ -337,7 +340,7 @@ export function wrapSingleTurnVisibleCallback(
           response.text
             .toLowerCase()
             .replace(/[*_`~#>]+/g, " ")
-            .split(/[^a-z0-9%.]+/)
+            .split(/[^\p{L}\p{N}%.]+/gu)
             .filter((token) => token.length > 0),
         ),
       );
