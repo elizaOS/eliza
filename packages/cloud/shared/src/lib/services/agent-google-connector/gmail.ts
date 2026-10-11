@@ -227,7 +227,7 @@ export function normalizeManagedGmailBodyText(value: string): string {
   if (!trimmed) {
     return "";
   }
-  if (/<\/?[a-z][\s\S]*>/i.test(trimmed)) {
+  if (/<\/?[a-z][a-z0-9:-]*(?:\s[^<>]*|\/?)>/i.test(trimmed)) {
     return htmlToPlainText(trimmed);
   }
   return trimmed.replace(/\r\n/g, "\n").trim();
