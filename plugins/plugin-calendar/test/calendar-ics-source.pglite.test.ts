@@ -1106,6 +1106,46 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     ]);
   });
 
+  it("keeps the previous local day when a DATE EXDATE names the UTC day of a 00:00Z occurrence", async () => {
+    const source = await createSource();
+    await syncBody(
+      source.id,
+      calendar(
+        [
+          "BEGIN:VEVENT",
+          "UID:evening-daily",
+          "DTSTAMP:20261101T000000Z",
+          "DTSTART;TZID=America/New_York:20261130T190000",
+          "DTEND;TZID=America/New_York:20261130T200000",
+          "RRULE:FREQ=DAILY;COUNT=5",
+          "EXDATE;VALUE=DATE:20261202",
+          "SUMMARY:Evening daily",
+          "END:VEVENT",
+        ].join("\r\n"),
+      ),
+    );
+    const feed = await service.getCalendarFeed(
+      new URL("http://internal.test/api/calendar"),
+      {
+        grantId: source.id,
+        timeMin: "2026-11-30T00:00:00.000Z",
+        timeMax: "2026-12-31T00:00:00.000Z",
+      },
+      new Date(),
+    );
+
+    expect(feed.state).toBe("complete");
+    // 19:00 New York is 00:00Z of the next UTC day. The Dec 1 occurrence
+    // starts at the UTC midnight of Dec 2 and must stay; only the Dec 2
+    // occurrence (2026-12-03T00:00Z) is excluded.
+    expect(feed.events.map((event) => event.startAt)).toEqual([
+      "2026-12-01T00:00:00.000Z",
+      "2026-12-02T00:00:00.000Z",
+      "2026-12-04T00:00:00.000Z",
+      "2026-12-05T00:00:00.000Z",
+    ]);
+  });
+
   it("keeps usable EXDATE values when another EXDATE is malformed", async () => {
     const source = await createSource();
     await syncBody(
