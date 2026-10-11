@@ -603,18 +603,19 @@ export const walletRouterAction: Action = {
     },
     {
       name: "fromToken",
-      description: "Source token symbol, native token alias, or token address.",
+      description:
+        "Source token: the chain's native token (ETH, SOL, native) or a token contract/mint address. Only bridge also accepts a non-native token symbol.",
       required: false,
       schema: { type: "string" },
-      examples: ["ETH", "SOL", "USDC"],
+      examples: ["ETH", "SOL", "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"],
     },
     {
       name: "toToken",
       description:
-        "Destination token symbol, native token alias, or token address. For pump_fun_buy, use the pump.fun token mint address.",
+        "Destination token: the chain's native token (ETH, SOL, native) or a token contract/mint address. Only bridge also accepts a non-native token symbol. For pump_fun_buy, use the pump.fun token mint address.",
       required: false,
       schema: { type: "string" },
-      examples: ["USDC", "SOL"],
+      examples: ["EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "SOL"],
     },
     {
       name: "amount",
@@ -788,7 +789,7 @@ export const walletRouterAction: Action = {
       {
         name: "{{user1}}",
         content: {
-          text: "Swap 1 SOL to USDC on Solana with a dry run first",
+          text: "Swap 1 SOL to EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v on Solana with a dry run first",
         },
       },
       {

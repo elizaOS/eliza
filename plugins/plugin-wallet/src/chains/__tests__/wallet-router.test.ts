@@ -21,6 +21,9 @@ import type {
 import { registerDefaultWalletChainHandlers } from "../registry";
 import { walletRouterAction } from "../wallet-action";
 
+const USDC_EVM = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+
 // The signer boundary is the only double: routing, validation, the
 // confirmation gate and calldata encoding all run for real.
 const govSigner = vi.hoisted(() => ({
@@ -603,7 +606,7 @@ describe("wallet router action", () => {
       subaction: "swap",
       chain: "solana",
       fromToken: "SOL",
-      toToken: "USDC",
+      toToken: USDC_MINT,
       amount: "3",
       mode: "execute",
     });
@@ -621,6 +624,60 @@ describe("wallet router action", () => {
       expect.objectContaining({ subaction: "swap" }),
       expect.any(Object),
     );
+  });
+
+  it("refuses a token symbol no handler can resolve before the spend confirmation", async () => {
+    const { runtime, service } = createService();
+    registerDefaultWalletChainHandlers(service, runtime);
+    const recipient = "0x742d35Cc6634C0532925a3b844Bc454e4438f44e";
+
+    for (const [parameters, text] of [
+      [
+        { action: "swap", target: "base", fromToken: "ETH", toToken: "USDC" },
+        'toToken "USDC" must be the native token or a token contract address on Base. No token data service is registered to resolve a symbol.',
+      ],
+      [
+        { action: "transfer", target: "base", fromToken: "USDC", recipient },
+        'fromToken "USDC" must be the native token or a token contract address on Base. No token data service is registered to resolve a symbol.',
+      ],
+      [
+        { action: "swap", target: "solana", fromToken: "SOL", toToken: "USDC" },
+        'toToken "USDC" must be SOL or a Solana token mint address. Token symbols are not resolved on Solana.',
+      ],
+      [
+        {
+          action: "transfer",
+          target: "solana",
+          fromToken: "USDC",
+          recipient: "9xQeWvG816bUx9EPfWJXn4xHLh1BaK7Z7QXDXuGpS9SW",
+        },
+        'fromToken "USDC" must be SOL or a Solana token mint address. Token symbols are not resolved on Solana.',
+      ],
+    ] as const) {
+      const result = await run(runtime, {
+        ...parameters,
+        amount: "1",
+        mode: "execute",
+      });
+      expect(result?.success).toBe(false);
+      expect(result?.data?.error).toBe("INVALID_PARAMS");
+      expect(result?.data?.requiresConfirmation).toBeUndefined();
+      expect(result?.text).toBe(text);
+    }
+
+    for (const parameters of [
+      { target: "base", fromToken: "ETH", toToken: USDC_EVM },
+      { target: "solana", fromToken: "SOL", toToken: USDC_MINT },
+    ]) {
+      const result = await run(runtime, {
+        ...parameters,
+        action: "swap",
+        amount: "1",
+        mode: "execute",
+      });
+      expect(result?.data?.error).toBeUndefined();
+      expect(result?.data?.requiresConfirmation).toBe(true);
+    }
   });
 
   it("returns unsupported chain details without executing", async () => {
@@ -695,7 +752,7 @@ describe("wallet router action", () => {
     const result = await runConfirmed(runtime, {
       subaction: "swap",
       fromToken: "ETH",
-      toToken: "USDC",
+      toToken: USDC_EVM,
       amount: "1",
       mode: "execute",
     });
@@ -856,7 +913,7 @@ describe("wallet router action", () => {
       subaction: "swap",
       chain: "solana",
       fromToken: "SOL",
-      toToken: "USDC",
+      toToken: USDC_MINT,
       amount: "1",
       mode: "simulate",
     });
@@ -918,7 +975,7 @@ describe("wallet router action", () => {
       subaction: "swap",
       chain: "solana",
       fromToken: "SOL",
-      toToken: "USDC",
+      toToken: USDC_MINT,
       amount: "1",
       mode: "simulate",
     });
@@ -939,7 +996,7 @@ describe("wallet router action", () => {
       subaction: "swap",
       chain: "base",
       fromToken: "ETH",
-      toToken: "USDC",
+      toToken: USDC_EVM,
       amount: "1",
       mode: "simulate",
     });

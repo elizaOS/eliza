@@ -174,14 +174,54 @@ export function validateWalletTransferParams(
   return null;
 }
 
-function isNativeEvmToken(value: string | undefined, chain: Chain): boolean {
+function isNativeEvmToken(
+  value: string | undefined,
+  nativeSymbol: string | undefined,
+): boolean {
   if (!value) return true;
   const normalized = value.toLowerCase();
   return (
     normalized === "native" ||
-    normalized === chain.nativeCurrency.symbol.toLowerCase() ||
+    normalized === nativeSymbol?.toLowerCase() ||
     normalized === NATIVE_TOKEN_ADDRESS.toLowerCase()
   );
+}
+
+/**
+ * Preflight counterpart to the token checks the transfer and swap executors
+ * run. `resolveEvmTokenAddress` takes the native token or a contract address,
+ * and resolves a symbol only through a registered token data service.
+ * `resolveSolanaMint` takes SOL or a mint address and resolves no symbol.
+ * Those checks run after the financial confirmation gate, so a symbol the
+ * planner produced ("USDC") was confirmed by the user before it failed.
+ */
+export function validateWalletTokenParams(
+  params: WalletRouterParams,
+  handler: Pick<WalletChainHandler, "name" | "signer" | "tokens">,
+  hasTokenDataService: boolean,
+): string | null {
+  const nativeSymbol = handler.tokens.find((token) => token.native)?.symbol;
+  for (const name of ["fromToken", "toToken"] as const) {
+    const token = params[name];
+    if (!token || (name === "toToken" && params.subaction !== "swap")) {
+      continue;
+    }
+    if (
+      handler.signer.kind === "solana" &&
+      !isSolanaMintAddress(resolveSolanaMint(token))
+    ) {
+      return `${name} "${token}" must be SOL or a Solana token mint address. Token symbols are not resolved on Solana.`;
+    }
+    if (
+      handler.signer.kind === "evm" &&
+      !hasTokenDataService &&
+      !isNativeEvmToken(token, nativeSymbol) &&
+      !isEvmAddress(token)
+    ) {
+      return `${name} "${token}" must be the native token or a token contract address on ${handler.name}. No token data service is registered to resolve a symbol.`;
+    }
+  }
+  return null;
 }
 
 async function resolveTokenViaService(
@@ -209,7 +249,7 @@ async function resolveEvmTokenAddress(
   chain: Chain,
   context: WalletRouterContext,
 ): Promise<Address> {
-  if (isNativeEvmToken(token, chain)) {
+  if (isNativeEvmToken(token, chain.nativeCurrency.symbol)) {
     return NATIVE_TOKEN_ADDRESS;
   }
   if (token && isEvmAddress(token)) {

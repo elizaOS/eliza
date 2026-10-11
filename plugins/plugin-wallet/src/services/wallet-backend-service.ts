@@ -33,6 +33,7 @@ import { validateWalletGovParams } from "../chains/evm/gov-router.js";
 import {
   registerDefaultWalletChainHandlers,
   validateWalletPumpFunBuyParams,
+  validateWalletTokenParams,
   validateWalletTransferParams,
 } from "../chains/registry.js";
 import type {
@@ -387,7 +388,13 @@ export class WalletBackendService extends Service {
       };
     }
     if (params.subaction === "transfer") {
-      const detail = validateWalletTransferParams(params, handler.signer.kind);
+      const detail =
+        validateWalletTransferParams(params, handler.signer.kind) ??
+        validateWalletTokenParams(
+          params,
+          handler,
+          this.getTokenDataService() !== null,
+        );
       return detail ? { ok: false, error: "INVALID_PARAMS", detail } : null;
     }
     if (params.subaction === "swap") {
@@ -405,6 +412,12 @@ export class WalletBackendService extends Service {
           detail: "toToken is required for swap.",
         };
       }
+      const detail = validateWalletTokenParams(
+        params,
+        handler,
+        this.getTokenDataService() !== null,
+      );
+      return detail ? { ok: false, error: "INVALID_PARAMS", detail } : null;
     }
     if (params.subaction === "pump_fun_buy") {
       const detail = validateWalletPumpFunBuyParams(params);
