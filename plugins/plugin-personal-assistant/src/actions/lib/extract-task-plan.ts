@@ -192,7 +192,7 @@ const WEEKDAY_NAMES = [
  * Human-readable current date/time in the owner's timezone, used to ground
  * absolute-date extraction ("april 17", "next friday") in the prompt.
  */
-function describeNowForPrompt(now: Date, timeZone: string): string {
+export function describeNowForPrompt(now: Date, timeZone: string): string {
   const parts = getZonedDateParts(now, timeZone);
   const weekday = new Date(
     Date.UTC(parts.year, parts.month - 1, parts.day, 12),

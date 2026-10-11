@@ -6,6 +6,7 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { parseJsonModelRecord, runExtractorPipeline } from "@elizaos/core";
+import { describeNowForPrompt } from "./extract-task-plan.js";
 
 const VALID_CADENCE_KINDS = new Set([
   "once",
@@ -229,6 +230,7 @@ function buildRepairPrompt(args: {
   currentTitle: string;
   currentCadenceKind: string;
   currentWindows: string[];
+  nowDescription: string;
   rawResponse: string;
 }): string {
   return [
@@ -244,6 +246,7 @@ function buildRepairPrompt(args: {
     `Current task: ${promptText(args.currentTitle)}`,
     `Current cadence kind: ${promptText(args.currentCadenceKind)}`,
     `Current windows: [${args.currentWindows.join(", ")}]`,
+    `Current date and time: ${args.nowDescription}`,
     `User request: ${promptText(args.intent)}`,
     "Previous invalid output:",
     promptText(args.rawResponse),
@@ -264,9 +267,16 @@ export async function extractUpdateFieldsWithLlm(args: {
   currentTitle: string;
   currentCadenceKind: string;
   currentWindows: string[];
+  /** Zone the extracted date fields are resolved in. */
+  timeZone: string;
+  now?: Date;
 }): Promise<ExtractedUpdateFields> {
   const { runtime, intent, currentTitle, currentCadenceKind, currentWindows } =
     args;
+  const nowDescription = describeNowForPrompt(
+    args.now ?? new Date(),
+    args.timeZone,
+  );
 
   const prompt = [
     "The user wants to update an existing task/habit. Extract ONLY the fields they want to change.",
@@ -274,6 +284,7 @@ export async function extractUpdateFieldsWithLlm(args: {
     "",
     `Current task: "${currentTitle}"`,
     `Current schedule: ${currentCadenceKind}, windows: [${currentWindows.join(", ")}]`,
+    `Current date and time: ${nowDescription}`,
     "",
     "Return a JSON object with these fields (null = no change requested):",
     "- title: new name if user wants to rename",
@@ -325,6 +336,7 @@ export async function extractUpdateFieldsWithLlm(args: {
         currentTitle,
         currentCadenceKind,
         currentWindows,
+        nowDescription,
         rawResponse: rawFirstPass,
       }),
   });
