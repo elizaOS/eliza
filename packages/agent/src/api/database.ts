@@ -37,6 +37,7 @@ import {
 } from "@elizaos/host";
 import {
   type DatabaseConfig,
+  type ElizaConfig,
   type PostgresCredentials,
   resolveApiBindHost,
 } from "@elizaos/host/protocol";
@@ -520,6 +521,7 @@ function handleGetConfig(
 async function handlePutConfig(
   req: http.IncomingMessage,
   res: http.ServerResponse,
+  liveConfig?: Pick<ElizaConfig, "database">,
 ): Promise<void> {
   const body = await readJsonBody<DatabaseConfig>(req, res);
   if (!body) return;
@@ -579,6 +581,9 @@ async function handlePutConfig(
   }
   config.database = merged;
   saveElizaConfig(config);
+  // Mirror into the live server config so a later full save of it does not
+  // write the previous database settings back to disk.
+  if (liveConfig) liveConfig.database = merged;
   logger.info(
     { src: "database-api", provider: merged.provider },
     "Database configuration saved",
@@ -1279,6 +1284,7 @@ export async function handleDatabaseRoute(
   res: http.ServerResponse,
   runtime: AgentRuntime | null,
   pathname: string,
+  liveConfig?: Pick<ElizaConfig, "database">,
 ): Promise<boolean> {
   const method = req.method ?? "GET";
   // ── GET /api/database/status ──────────────────────────────────────────
@@ -1293,7 +1299,7 @@ export async function handleDatabaseRoute(
   }
   // ── PUT /api/database/config ──────────────────────────────────────────
   if (method === "PUT" && pathname === "/api/database/config") {
-    await handlePutConfig(req, res);
+    await handlePutConfig(req, res, liveConfig);
     return true;
   }
   // ── POST /api/database/test ───────────────────────────────────────────
