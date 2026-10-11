@@ -49,6 +49,33 @@ import {
   requireRecord,
 } from "./goal-normalize.ts";
 
+/**
+ * A `times_per_day` slot's `key` is its identity: the check-in mapper turns it
+ * into the task's `slot-${key}` idempotency key, so two slots sharing a key
+ * collapse into one task and the second declared time never gets a check-in.
+ * Reject the repeat at the write boundary instead of losing it silently.
+ */
+function rejectDuplicateSlotKeys(cadence: Record<string, unknown>): void {
+  if (cadence.kind !== "times_per_day" || !Array.isArray(cadence.slots)) {
+    return;
+  }
+  const seen = new Set<string>();
+  for (const slot of cadence.slots) {
+    const key =
+      slot && typeof slot === "object" && !Array.isArray(slot)
+        ? (slot as Record<string, unknown>).key
+        : undefined;
+    if (typeof key !== "string" || key.length === 0) continue;
+    if (seen.has(key)) {
+      fail(
+        400,
+        `goal cadence times_per_day slots must have unique keys; duplicate key ${JSON.stringify(key)}`,
+      );
+    }
+    seen.add(key);
+  }
+}
+
 const GOAL_SIMILARITY_STOP_WORDS = new Set([
   "and",
   "the",
@@ -327,6 +354,7 @@ export class GoalsService {
         if (cadence && typeof cadence.kind !== "string") {
           fail(400, "goal cadence must include a 'kind' field when provided");
         }
+        if (cadence) rejectDuplicateSlotKeys(cadence);
         return cadence ?? null;
       })(),
       supportStrategy: (() => {
@@ -400,6 +428,7 @@ export class GoalsService {
         if (cadence && typeof cadence.kind !== "string") {
           fail(400, "goal cadence must include a 'kind' field when provided");
         }
+        if (cadence) rejectDuplicateSlotKeys(cadence);
         return cadence ?? null;
       })(),
       supportStrategy:

@@ -135,6 +135,46 @@ describe("GoalsService + GoalsRepository — real PGLite", () => {
     expect(after).toBe(before);
   });
 
+  it("rejects a times_per_day cadence that repeats a slot key on create and update", async () => {
+    const duplicateSlots = {
+      kind: "times_per_day",
+      slots: [
+        { key: "am", label: "Morning", minuteOfDay: 480 },
+        { key: "am", label: "Evening", minuteOfDay: 1200 },
+      ],
+    };
+
+    // Create: the repeat is a typed 400 and no goal row is written.
+    const before = (await service.listGoals()).length;
+    await expect(
+      service.createGoal({
+        title: "Stretch hamstrings twice daily",
+        cadence: duplicateSlots,
+      }),
+    ).rejects.toMatchObject({ name: "GoalsServiceError", status: 400 });
+    expect((await service.listGoals()).length).toBe(before);
+
+    // Distinct keys are still accepted.
+    const created = await service.createGoal({
+      title: "Stretch hamstrings twice daily",
+      cadence: {
+        kind: "times_per_day",
+        slots: [
+          { key: "am", label: "Morning", minuteOfDay: 480 },
+          { key: "pm", label: "Evening", minuteOfDay: 1200 },
+        ],
+      },
+    });
+    expect(created.goal.cadence).toMatchObject({ kind: "times_per_day" });
+
+    // Update: the repeat is a typed 400 and the stored cadence is unchanged.
+    await expect(
+      service.updateGoal(created.goal.id, { cadence: duplicateSlots }),
+    ).rejects.toMatchObject({ name: "GoalsServiceError", status: 400 });
+    const reread = await repository.getGoal(runtime.agentId, created.goal.id);
+    expect(reread?.cadence).toEqual(created.goal.cadence);
+  });
+
   it("creates + lists goal links, then deletes the goal and its links", async () => {
     const created = await service.createGoal({ title: "Ship the app" });
     await repository.upsertGoalLink({
