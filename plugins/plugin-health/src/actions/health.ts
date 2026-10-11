@@ -333,16 +333,23 @@ function formatSummary(summary: {
   steps: number;
   activeMinutes: number;
   sleepHours: number;
+  sleepUnavailable?: boolean;
   heartRateAvg?: number;
   calories?: number;
   distanceMeters?: number;
   source: string;
 }): string {
+  // A `sleepUnavailable` day carries `sleepHours: 0` only because the sleep
+  // sub-fetch failed; rendering the zero would fabricate a real-looking
+  // reading the bridge contract explicitly forbids (see HealthDailySummary).
+  const sleepLine = summary.sleepUnavailable
+    ? "- Sleep: unavailable (source error; sleep unknown for this day)"
+    : `- Sleep: ${summary.sleepHours.toFixed(1)}h`;
   const parts: string[] = [
     `${summary.date} (${summary.source}):`,
     `- Steps: ${summary.steps.toLocaleString()}`,
     `- Active minutes: ${summary.activeMinutes}`,
-    `- Sleep: ${summary.sleepHours.toFixed(1)}h`,
+    sleepLine,
   ];
   if (summary.heartRateAvg !== undefined) {
     parts.push(`- Heart rate avg: ${summary.heartRateAvg.toFixed(0)} bpm`);
@@ -911,12 +918,14 @@ export function createHealthActionRunner(
         steps: summary.steps,
         activeMinutes: summary.activeMinutes,
         sleepHours: summary.sleepHours,
+        ...(summary.sleepUnavailable ? { sleepUnavailable: true } : {}),
       },
       values: {
         success: true,
         steps: summary.steps,
         activeMinutes: summary.activeMinutes,
         sleepHours: summary.sleepHours,
+        ...(summary.sleepUnavailable ? { sleepUnavailable: true } : {}),
       },
       data: { subaction: "today", date, summary },
     });
