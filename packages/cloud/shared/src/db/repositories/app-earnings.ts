@@ -86,33 +86,21 @@ export class AppEarningsRepository {
   }
 
   /**
-   * Lists earnings transactions for an app, ordered by creation date.
+   * Lists earnings transactions for an app, newest first, optionally filtered by type.
    */
   async listTransactions(
     appId: string,
     limit: number = 50,
     offset: number = 0,
+    type?: string,
   ): Promise<AppEarningsTransaction[]> {
     return await dbRead.query.appEarningsTransactions.findMany({
-      where: eq(appEarningsTransactions.app_id, appId),
+      where: type
+        ? and(eq(appEarningsTransactions.app_id, appId), eq(appEarningsTransactions.type, type))
+        : eq(appEarningsTransactions.app_id, appId),
       orderBy: [desc(appEarningsTransactions.created_at)],
       limit,
       offset,
-    });
-  }
-
-  /**
-   * Lists earnings transactions filtered by type.
-   */
-  async listTransactionsByType(
-    appId: string,
-    type: string,
-    limit: number = 50,
-  ): Promise<AppEarningsTransaction[]> {
-    return await dbRead.query.appEarningsTransactions.findMany({
-      where: and(eq(appEarningsTransactions.app_id, appId), eq(appEarningsTransactions.type, type)),
-      orderBy: [desc(appEarningsTransactions.created_at)],
-      limit,
     });
   }
 

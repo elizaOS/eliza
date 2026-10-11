@@ -168,11 +168,12 @@ export class AppEarningsService {
     const rawLimit = options?.limit;
     const limit =
       typeof rawLimit === "number" && Number.isFinite(rawLimit) ? Math.max(0, rawLimit) : 50;
-    if (options?.type) {
-      return await appEarningsRepository.listTransactionsByType(appId, options.type, limit);
-    }
-
-    return await appEarningsRepository.listTransactions(appId, limit, options?.offset || 0);
+    return await appEarningsRepository.listTransactions(
+      appId,
+      limit,
+      options?.offset || 0,
+      options?.type,
+    );
   }
 
   async updatePayoutThreshold(appId: string, threshold: number): Promise<void> {
