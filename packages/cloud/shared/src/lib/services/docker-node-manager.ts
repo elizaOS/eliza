@@ -718,7 +718,7 @@ export class DockerNodeManager {
       await Promise.all(
         nodes.map(async (node) => {
           const allocated = await countAllocatedWorkloadsOnNode(node.node_id);
-          const canProbeForCapacity = node.status !== "offline";
+          const canProbeForCapacity = node.status !== "offline" && node.status !== "degraded";
           return {
             node,
             allocated,
