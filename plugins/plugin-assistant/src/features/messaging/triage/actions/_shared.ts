@@ -11,6 +11,7 @@ import type {
   ActionParameter,
   AgentContext,
   HandlerOptions,
+  IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
@@ -164,6 +165,7 @@ function parseSourceList(
  * empty.
  */
 export function unlistableSourcesError(
+  runtime: IAgentRuntime,
   service: TriageService,
   sources: readonly MessageSource[] | undefined,
 ): string | undefined {
@@ -175,12 +177,17 @@ export function unlistableSourcesError(
       problems.push(`${source} (no inbox adapter is connected)`);
     } else if (!adapter.capabilities().list) {
       problems.push(`${source} (its adapter cannot list messages)`);
+    } else if (!adapter.isAvailable(runtime)) {
+      // An unavailable adapter lists nothing, which reads as an empty inbox.
+      problems.push(`${source} (its connector is not connected)`);
     }
   }
   if (problems.length === 0) return undefined;
   const listable = service
     .listAdapters()
-    .filter((adapter) => adapter.capabilities().list)
+    .filter(
+      (adapter) => adapter.capabilities().list && adapter.isAvailable(runtime),
+    )
     .map((adapter) => adapter.source);
   return `Cannot read the inbox for: ${problems.join(", ")}. Sources that can be read: ${listable.length > 0 ? listable.join(", ") : "none"}.`;
 }

@@ -72,7 +72,7 @@ export const triageMessagesAction: Action = {
       return { success: false, text: params.error, error: params.error };
     }
     const service = getDefaultTriageService();
-    const unlistable = unlistableSourcesError(service, params.sources);
+    const unlistable = unlistableSourcesError(runtime, service, params.sources);
     if (unlistable) {
       logger.warn(`[TriageMessages] ${unlistable}`);
       return { success: false, text: unlistable, error: unlistable };

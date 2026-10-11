@@ -334,17 +334,23 @@ describe("triageMessagesAction", () => {
       }
     }
     getDefaultTriageService().register(new NoListAdapter());
+    class DisconnectedAdapter extends RecordingListAdapter {
+      override isAvailable(): boolean {
+        return false;
+      }
+    }
+    getDefaultTriageService().register(new DisconnectedAdapter("twitter"));
     const unread = await triageMessagesAction.handler(
       createFakeRuntime(),
       turn,
       undefined,
-      options({ sources: ["whatsapp", "telegram"] }),
+      options({ sources: ["whatsapp", "telegram", "twitter"] }),
     );
     expect(unread).toEqual({
       success: false,
-      text: "Cannot read the inbox for: whatsapp (no inbox adapter is connected), telegram (its adapter cannot list messages). Sources that can be read: gmail, discord.",
+      text: "Cannot read the inbox for: whatsapp (no inbox adapter is connected), telegram (its adapter cannot list messages), twitter (its connector is not connected). Sources that can be read: gmail, discord.",
       error:
-        "Cannot read the inbox for: whatsapp (no inbox adapter is connected), telegram (its adapter cannot list messages). Sources that can be read: gmail, discord.",
+        "Cannot read the inbox for: whatsapp (no inbox adapter is connected), telegram (its adapter cannot list messages), twitter (its connector is not connected). Sources that can be read: gmail, discord.",
     });
   });
 });

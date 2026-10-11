@@ -104,7 +104,11 @@ export const listInboxAction: Action = {
         };
       }
       const service = getDefaultTriageService();
-      const unlistable = unlistableSourcesError(service, params.sources);
+      const unlistable = unlistableSourcesError(
+        runtime,
+        service,
+        params.sources,
+      );
       if (unlistable) {
         logger.warn(`[ListInbox] ${unlistable}`);
         return {
