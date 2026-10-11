@@ -57,8 +57,9 @@ export function agentIdentityName(character: {
     character.settings?.identityName,
     extra?.identityName,
   ]) {
+    // Trimmed, so every caller seeds its ids from the same string.
     if (typeof identityName === "string" && identityName.trim())
-      return identityName;
+      return identityName.trim();
   }
   return character.name;
 }

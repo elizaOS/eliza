@@ -136,3 +136,19 @@ it("keeps a character-editor rename and username after the config is rebuilt on 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+it("trims a stored identity name, in settings and in settings.extra", () => {
+  expect(
+    agentIdentityName({ name: "Nova", settings: { identityName: " Eliza " } }),
+  ).toBe("Eliza");
+  expect(
+    agentIdentityName({
+      name: "Nova",
+      settings: { extra: { identityName: "Eliza\t" } },
+    }),
+  ).toBe("Eliza");
+  // A blank stored value is not an identity name.
+  expect(
+    agentIdentityName({ name: "Nova", settings: { identityName: "  " } }),
+  ).toBe("Nova");
+});
