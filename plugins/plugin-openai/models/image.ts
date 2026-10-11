@@ -245,6 +245,11 @@ export async function handleImageDescription(
     if (responseContent) {
       details.response = responseContent;
     }
+    // Record why the provider stopped, as models/text.ts does: without it a
+    // truncated ("length") reply is stored with no finish reason and reads
+    // as a complete, successful description. (On develop the throw inside
+    // this callback made the recorder store finishReason "error" instead.)
+    details.finishReason = responseData.choices[0]?.finish_reason;
     if (responseData.usage) {
       details.promptTokens = responseData.usage.prompt_tokens;
       details.completionTokens = responseData.usage.completion_tokens;
