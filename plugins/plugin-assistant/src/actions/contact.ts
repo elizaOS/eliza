@@ -117,18 +117,13 @@ export function createContactActions(dependencies: ContactActionDependencies): {
     // search
     platform?: string;
     limit?: number;
-    filters?: Record<string, unknown>;
     // search — search-by-criteria semantics from core
     searchTerm?: string;
     intent?: string;
-    // delete
-    confirm?: boolean;
-    confirmed?: boolean;
-    reason?: string;
     // activity
-    since?: string;
     offset?: number;
     // followup
+    reason?: string;
     scheduledAt?: string;
     priority?: string;
     message?: string;
@@ -141,6 +136,14 @@ export function createContactActions(dependencies: ContactActionDependencies): {
     summary: string;
     detail: string | null;
     timestamp: string | null;
+  }
+
+  interface ContactRecordLike {
+    entityId: UUID;
+    categories: string[];
+    tags: string[];
+    preferences?: Record<string, string>;
+    customFields: Record<string, unknown>;
   }
 
   interface RelationshipsServiceLike {
@@ -156,20 +159,12 @@ export function createContactActions(dependencies: ContactActionDependencies): {
       searchTerm?: string;
       categories?: string[];
       tags?: string[];
-    }): Promise<
-      Array<{
-        entityId: UUID;
-        categories: string[];
-        tags: string[];
-        preferences?: Record<string, string>;
-        customFields: Record<string, unknown>;
-      }>
-    >;
+    }): Promise<ContactRecordLike[]>;
     updateContact?(
       entityId: UUID,
       updates: Record<string, unknown>,
     ): Promise<boolean>;
-    getContact?(entityId: UUID): Promise<unknown | null>;
+    getContact?(entityId: UUID): Promise<ContactRecordLike | null>;
   }
 
   interface FollowUpServiceLike {
@@ -932,14 +927,33 @@ export function createContactActions(dependencies: ContactActionDependencies): {
         ? readRecord(params.customFields)
         : (params.customFields as Record<string, string> | undefined);
     const notes = readString(params.notes);
+    const email = readString(params.email);
+    const phone = readString(params.phone);
+    const hasAttributes =
+      typeof params.attributes === "object" &&
+      params.attributes !== null &&
+      Object.keys(params.attributes).length > 0;
 
+    const hasContactInfoFields = Boolean(
+      categories || tags || preferences || customFields,
+    );
     const isContactInfoUpdate =
-      Boolean(categories || tags || preferences || customFields) ||
-      (Boolean(notes) &&
-        !readString(params.email) &&
-        !readString(params.phone));
+      hasContactInfoFields || (Boolean(notes) && !email && !phone);
 
-    if (isContactInfoUpdate && targetName) {
+    // The contact_info write and the entity write are separate stores. One
+    // call that carries both would apply one group and drop the other.
+    if (hasContactInfoFields && (email || phone || hasAttributes)) {
+      return fail(
+        "CONTACT update cannot change email/phone/attributes and categories/tags/preferences/customFields in one call. Nothing was changed; send one update call for each group.",
+        "INVALID_PARAMETERS",
+        "update",
+      );
+    }
+
+    if (
+      isContactInfoUpdate &&
+      (targetName || (entityId && hasContactInfoFields))
+    ) {
       return handleUpdateContactInfo(runtime, params, callback);
     }
 
@@ -976,8 +990,6 @@ export function createContactActions(dependencies: ContactActionDependencies): {
         ? { ...(existing.metadata as Metadata) }
         : {};
 
-    const email = readString(params.email);
-    const phone = readString(params.phone);
     if (email) existingMeta.email = email;
     if (phone) existingMeta.phone = phone;
     if (notes) existingMeta.notes = notes;
@@ -1031,27 +1043,46 @@ export function createContactActions(dependencies: ContactActionDependencies): {
       );
     }
 
+    const entityId = readString(params.entityId);
     const contactName = readString(params.name);
-    if (!contactName) {
-      return fail(
-        "CONTACT update (contact_info path) requires a name to look up the contact.",
-        "INVALID_PARAMETERS",
-        "update",
-      );
+    let contact: ContactRecordLike;
+    if (entityId) {
+      if (!relationships.getContact) {
+        return fail(
+          "Relationships service does not support contact_info updates.",
+          "SERVICE_NOT_FOUND",
+          "update",
+        );
+      }
+      const found = await relationships.getContact(entityId as UUID);
+      if (!found) {
+        return fail(
+          `Contact ${entityId} was not found.`,
+          "NOT_FOUND",
+          "update",
+        );
+      }
+      contact = found;
+    } else {
+      if (!contactName) {
+        return fail(
+          "CONTACT update (contact_info path) requires entityId or a name to look up the contact.",
+          "INVALID_PARAMETERS",
+          "update",
+        );
+      }
+      const contacts = await relationships.searchContacts({
+        searchTerm: contactName,
+      });
+      if (contacts.length === 0) {
+        return fail(
+          `I couldn't find a contact named "${contactName}".`,
+          "NOT_FOUND",
+          "update",
+        );
+      }
+      contact = contacts[0];
     }
-
-    const contacts = await relationships.searchContacts({
-      searchTerm: contactName,
-    });
-    if (contacts.length === 0) {
-      return fail(
-        `I couldn't find a contact named "${contactName}".`,
-        "NOT_FOUND",
-        "update",
-      );
-    }
-
-    const contact = contacts[0];
     const operation =
       readString(params.update_mode) ??
       readString(params.operation) ??
@@ -1140,7 +1171,7 @@ export function createContactActions(dependencies: ContactActionDependencies): {
       );
     }
 
-    const responseText = `I've updated ${contactName}'s contact information.`;
+    const responseText = `I've updated ${contactName ?? `contact ${contact.entityId}`}'s contact information.`;
     return {
       success: true,
       text: responseText,
@@ -1283,16 +1314,92 @@ export function createContactActions(dependencies: ContactActionDependencies): {
   ): Promise<ActionResult> {
     const entityId = readString(params.entityId);
     const contactName = readString(params.name);
-    const deleteTarget = contactName ?? entityId ?? "contact";
-    const confirmPrompt = contactName
-      ? `Remove ${contactName} from your contacts permanently?`
-      : `Permanently delete contact ${entityId}?`;
+    if (!entityId && !contactName) {
+      return fail(
+        "CONTACT delete requires entityId or name.",
+        "INVALID_PARAMETERS",
+        "delete",
+      );
+    }
+
+    // Resolve the target before the prompt, so the user confirms the contact
+    // that is removed and a call that cannot run does not ask them anything.
+    const rt = runtime as RuntimeWithDeleteEntities;
+    const relationships = getRelationshipsService(runtime);
+    let namedContact: { entityId: UUID; label: string } | null = null;
+    if (!entityId && contactName) {
+      if (!relationships?.searchContacts || !relationships.removeContact) {
+        return fail(
+          "Relationships service does not support name-based delete.",
+          "SERVICE_NOT_FOUND",
+          "delete",
+        );
+      }
+      const contacts = await relationships.searchContacts({
+        searchTerm: contactName,
+      });
+      if (contacts.length === 0) {
+        return fail(
+          `I couldn't find a contact named "${contactName}".`,
+          "NOT_FOUND",
+          "delete",
+        );
+      }
+      const labelOf = (contact: ContactRecordLike): string =>
+        readString(contact.customFields.displayName) ?? contactName;
+      if (contacts.length > 1) {
+        const matches = contacts.map((contact) => ({
+          entityId: contact.entityId,
+          displayName: labelOf(contact),
+        }));
+        const choices = matches
+          .map((match) => `${match.displayName} (entityId: ${match.entityId})`)
+          .join(", ");
+        return {
+          success: false,
+          text: `"${contactName}" matched ${contacts.length} contacts: ${choices}. Ask which contact they mean, then retry with a name that matches one contact. Nothing was removed.`,
+          values: {
+            success: false,
+            error: "AMBIGUOUS_CONTACT",
+            matchCount: contacts.length,
+          },
+          data: {
+            actionName: CONTACT_ACTION,
+            op: "delete",
+            error: "AMBIGUOUS_CONTACT",
+            matches,
+          },
+          error: "AMBIGUOUS_CONTACT",
+        };
+      }
+      namedContact = {
+        entityId: contacts[0].entityId,
+        label: labelOf(contacts[0]),
+      };
+    } else if (typeof rt.deleteEntities !== "function") {
+      return fail(
+        "deleteEntities is not supported by this runtime version.",
+        "NOT_SUPPORTED",
+        "delete",
+      );
+    }
+
+    const deleteTarget = namedContact
+      ? `${namedContact.label} (entityId: ${namedContact.entityId})`
+      : `contact ${entityId}`;
+    const confirmPrompt = namedContact
+      ? `Remove ${deleteTarget} from your contacts permanently?`
+      : `Permanently delete ${deleteTarget}?`;
 
     const decision = await requireConfirmation({
       runtime,
       message,
       actionName: CONTACT_ACTION,
-      pendingKey: `delete:${deleteTarget}`,
+      // The two paths have different effects, so one confirmation must not
+      // authorize the other.
+      pendingKey: namedContact
+        ? `remove:${namedContact.entityId}`
+        : `delete:${entityId}`,
       prompt: `${confirmPrompt} Reply yes to confirm or no to cancel.`,
       callback,
     });
@@ -1318,27 +1425,10 @@ export function createContactActions(dependencies: ContactActionDependencies): {
     }
 
     // Path A: REMOVE_CONTACT semantics — name-based with RelationshipsService.
-    if (contactName && !entityId) {
-      const relationships = getRelationshipsService(runtime);
-      if (!relationships?.searchContacts || !relationships.removeContact) {
-        return fail(
-          "Relationships service does not support name-based delete.",
-          "SERVICE_NOT_FOUND",
-          "delete",
-        );
-      }
-      const contacts = await relationships.searchContacts({
-        searchTerm: contactName,
-      });
-      if (contacts.length === 0) {
-        return fail(
-          `I couldn't find a contact named "${contactName}".`,
-          "NOT_FOUND",
-          "delete",
-        );
-      }
-      const contact = contacts[0];
-      const removed = await relationships.removeContact(contact.entityId);
+    if (namedContact) {
+      const removed = await relationships?.removeContact?.(
+        namedContact.entityId,
+      );
       if (!removed) {
         return fail(
           "Failed to remove contact via RelationshipsService.",
@@ -1346,40 +1436,22 @@ export function createContactActions(dependencies: ContactActionDependencies): {
           "delete",
         );
       }
-      const removedText = `I've removed ${contactName} from your contacts.`;
       return {
         success: true,
-        text: removedText,
+        text: `I've removed ${namedContact.label} from your contacts.`,
         modelReplyRequired: true,
-        values: { contactId: contact.entityId },
+        values: { contactId: namedContact.entityId },
         data: {
           actionName: CONTACT_ACTION,
           op: "delete",
-          contactId: contact.entityId,
+          contactId: namedContact.entityId,
         },
       };
     }
 
     // Path B: DELETE_CONTACT semantics — id-based with runtime.deleteEntities.
-    if (!entityId) {
-      return fail(
-        "CONTACT delete requires entityId (or name for legacy REMOVE_CONTACT).",
-        "INVALID_PARAMETERS",
-        "delete",
-      );
-    }
-
-    const rt = runtime as RuntimeWithDeleteEntities;
-    if (typeof rt.deleteEntities !== "function") {
-      return fail(
-        "deleteEntities is not supported by this runtime version.",
-        "NOT_SUPPORTED",
-        "delete",
-      );
-    }
-
     try {
-      await rt.deleteEntities([entityId as UUID]);
+      await rt.deleteEntities?.([entityId as UUID]);
       return {
         text: `Deleted contact ${entityId}.`,
         success: true,
@@ -1753,7 +1825,7 @@ export function createContactActions(dependencies: ContactActionDependencies): {
       "  read     — load full identity, facts, recent conversations, and relationships by entityId or name.\n" +
       "  search   — search contacts by name/handle/platform; line-numbered results.\n" +
       "  update   — update entity-level fields (name/email/phone/notes), contact_info (categories/tags/preferences/customFields), or component data per source (UPDATE_ENTITY semantics).\n" +
-      "  delete   — permanently delete a contact (entityId or name; requires confirm:true).\n" +
+      "  delete   — permanently delete a contact (entityId or name). The user is asked to confirm in chat before anything is removed.\n" +
       "  activity — paginated activity timeline for the Rolodex.\n" +
       "  followup — schedule a follow-up with a contact (scheduledAt + name/entityId; optional reason/priority/message).\n" +
       "Identity claims, verification, and principal merges require the deterministic identity authority and are not CONTACT operations.",
@@ -1769,14 +1841,14 @@ export function createContactActions(dependencies: ContactActionDependencies): {
       {
         name: "entityId",
         description:
-          "Entity id (UUID). Required for read/update/delete/activity; optional for create.",
+          "Entity id (UUID). Identifies the contact for read/update/delete/followup; optional for create.",
         required: false,
         schema: { type: "string" as const },
       },
       {
         name: "name",
         description:
-          "Display name. Required for create; used as fallback look-up for read/update/delete.",
+          "Display name. Required for create. read/delete/followup: looks the contact up when entityId is absent. update: looks the contact up for a categories/tags/preferences/customFields or notes-only update; in an email/phone/attributes update, or sent alone with entityId, it is the new display name.",
         required: false,
         schema: { type: "string" as const },
       },
@@ -1803,12 +1875,6 @@ export function createContactActions(dependencies: ContactActionDependencies): {
         description: "activity: pagination offset.",
         required: false,
         schema: { type: "number" as const },
-      },
-      {
-        name: "filters",
-        description: "search: optional structured filter map.",
-        required: false,
-        schema: { type: "object" as const, additionalProperties: true },
       },
       {
         name: "email",
@@ -1898,27 +1964,8 @@ export function createContactActions(dependencies: ContactActionDependencies): {
         schema: { type: "object" as const, additionalProperties: true },
       },
       {
-        name: "confirm",
-        description: "delete: must be true to proceed with deletion.",
-        required: false,
-        schema: { type: "boolean" as const },
-      },
-      {
-        name: "confirmed",
-        description: "delete (legacy alias): same as confirm.",
-        required: false,
-        schema: { type: "boolean" as const },
-      },
-      {
         name: "reason",
         description: "followup: reason for the follow-up.",
-        required: false,
-        schema: { type: "string" as const },
-      },
-      {
-        name: "since",
-        description:
-          "activity: ISO timestamp lower bound (currently advisory).",
         required: false,
         schema: { type: "string" as const },
       },
