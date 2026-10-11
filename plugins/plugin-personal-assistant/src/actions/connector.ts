@@ -48,6 +48,20 @@ const VERBOSE_DISPATCHER_KINDS = [
   "health",
 ] as const;
 
+/**
+ * Verbose connectors whose dispatcher refuses `disconnect`: the grant is owned
+ * by the connector plugin's own setup controls, or no disconnect exists.
+ */
+const DISCONNECT_UNSUPPORTED_KINDS: ReadonlySet<string> = new Set([
+  "x",
+  "telegram",
+  "discord",
+  "imessage",
+  "whatsapp",
+  "wechat",
+  "health",
+] satisfies (typeof VERBOSE_DISPATCHER_KINDS)[number][]);
+
 const VALID_SUBACTIONS = [
   "connect",
   "disconnect",
@@ -1354,7 +1368,8 @@ export const connectorAction: Action & {
   description:
     "Installed connector account state: connect, disconnect, verify, status, list. " +
     `Actions: ${VALID_SUBACTIONS.join(", ")}. ` +
-    "External accounts: Google (Gmail/Drive package OAuth), Telegram, Discord, Slack, etc. " +
+    "External accounts: Google (Gmail/Drive package OAuth), Telegram, Discord, etc. " +
+    "disconnect works for google and registry-only connectors (e.g. twilio, duffel); x, telegram, discord, imessage, whatsapp, wechat, health cannot be disconnected here. " +
     "Do NOT use this for 'connect Google Calendar' / calendar feed authorization — use CALENDAR_SOURCES. " +
     "Connector kinds from runtime ConnectorRegistry; verify active upstream API probe. " +
     "Plugin install/uninstall/configure -> use PLUGIN.",
@@ -1432,29 +1447,6 @@ export const connectorAction: Action & {
         },
       };
     }
-    // F33: `disconnect` revokes a live grant — destructive and not instantly
-    // reversible (re-auth may need the owner's device). It previously executed
-    // on the FIRST ask with no gate (live matrix F33). Require an explicit
-    // confirmation cue in the owner's own message: the bare ask gets a
-    // question back; the follow-up ("yes" / "yes, disconnect it") re-invokes
-    // with the cue present and executes.
-    if (
-      subaction === "disconnect" &&
-      !CONNECTOR_DISCONNECT_CONFIRM_RE.test(messageText(message))
-    ) {
-      const connectorLabel = params.connector ?? "that connector";
-      return {
-        success: false,
-        text: `Disconnecting ${connectorLabel} revokes its access grant, and restoring it may require re-authenticating from your device. Confirm and I'll disconnect it.`,
-        data: {
-          actionName: ACTION_NAME,
-          connector: params.connector,
-          subaction,
-          requiresConfirmation: true,
-          awaitingUserInput: true,
-        },
-      };
-    }
     const legacyVerifySend = params as ConnectorActionParams & {
       sendTarget?: unknown;
       sendMessage?: unknown;
@@ -1522,6 +1514,31 @@ export const connectorAction: Action & {
       };
     }
 
+    // F33: `disconnect` revokes a live grant — destructive and not instantly
+    // reversible (re-auth may need the owner's device). Require an explicit
+    // confirmation cue in the owner's own message: the bare ask gets a
+    // question back; the follow-up ("yes" / "yes, disconnect it") re-invokes
+    // with the cue present and executes. The gate sits after the connector is
+    // resolved, and skips connectors that cannot be disconnected here, so the
+    // owner is never asked to confirm a call that can only be refused.
+    if (
+      subaction === "disconnect" &&
+      !DISCONNECT_UNSUPPORTED_KINDS.has(connector) &&
+      !CONNECTOR_DISCONNECT_CONFIRM_RE.test(messageText(message))
+    ) {
+      return {
+        success: false,
+        text: `Disconnecting ${connector} revokes its access grant, and restoring it may require re-authenticating from your device. Confirm and I'll disconnect it.`,
+        data: {
+          actionName: ACTION_NAME,
+          connector,
+          subaction,
+          requiresConfirmation: true,
+          awaitingUserInput: true,
+        },
+      };
+    }
+
     try {
       const verboseDispatcher = (
         VERBOSE_DISPATCHERS as Record<string, ConnectorDispatcher | undefined>
@@ -1563,7 +1580,7 @@ export const connectorAction: Action & {
     {
       name: "action",
       description:
-        "connect auth/pairing; disconnect revoke+clear grant; verify active read-only upstream probe; status/list read-only diagnostics. Omit ok: handler LLM-extracts.",
+        "connect auth/pairing; disconnect revoke+clear grant (google and registry-only connectors; not x, telegram, discord, imessage, whatsapp, wechat, health); verify active read-only upstream probe; status/list read-only diagnostics. Omit ok: handler LLM-extracts.",
       required: false,
       schema: { type: "string" as const, enum: [...VALID_SUBACTIONS] },
     },
@@ -1605,7 +1622,7 @@ export const connectorAction: Action & {
     },
     {
       name: "redirectUrl",
-      description: "google/x connect only: OAuth redirect URL override.",
+      description: "google connect only: OAuth redirect URL override.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -1652,12 +1669,12 @@ export const connectorAction: Action & {
     [
       {
         name: "{{name1}}",
-        content: { text: "Disconnect Telegram." },
+        content: { text: "Disconnect my Google account." },
       },
       {
         name: "{{agentName}}",
         content: {
-          text: "I'll disconnect the Telegram grant and clear local session state.",
+          text: "Disconnecting google revokes its access grant, and restoring it may require re-authenticating from your device. Confirm and I'll disconnect it.",
         },
       },
     ],

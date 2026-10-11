@@ -127,4 +127,40 @@ describe("CONNECTOR Google capability selection", () => {
       });
     },
   );
+
+  it("refuses a disconnect that can only fail without first asking the owner to confirm", async () => {
+    const disconnect = async (connector: string) => {
+      const parameters = { action: "disconnect", connector };
+      expect(validateToolArgs(connectorAction, parameters).valid).toBe(true);
+      const result = await connectorAction.handler(
+        runtime,
+        {
+          agentId: runtime.agentId,
+          entityId: runtime.agentId,
+          roomId: runtime.agentId,
+          content: { text: `disconnect my ${connector}` },
+        },
+        undefined,
+        { parameters },
+      );
+      return result as {
+        success: boolean;
+        data: Record<string, unknown>;
+      };
+    };
+
+    const unknown = await disconnect("slack");
+    expect(unknown.success).toBe(false);
+    expect(unknown.data.error).toBe("UNKNOWN_CONNECTOR");
+    expect(unknown.data.requiresConfirmation).toBeUndefined();
+
+    const unsupported = await disconnect("wechat");
+    expect(unsupported.success).toBe(false);
+    expect(unsupported.data.error).toBe("UNSUPPORTED_OPERATION");
+    expect(unsupported.data.requiresConfirmation).toBeUndefined();
+
+    const google = await disconnect("google");
+    expect(google.success).toBe(false);
+    expect(google.data.requiresConfirmation).toBe(true);
+  });
 });
