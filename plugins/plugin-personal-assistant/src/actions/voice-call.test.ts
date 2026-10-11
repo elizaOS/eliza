@@ -171,3 +171,126 @@ describe("VOICE_CALL external recipient with non-Latin contact names", () => {
     );
   });
 });
+
+describe("VOICE_CALL confirmation and recipient binding", () => {
+  const savedAllowList = process.env.TWILIO_CALL_EXTERNAL_ALLOWLIST;
+  const savedOwnerNumber = process.env.TWILIO_OWNER_NUMBER;
+
+  function dial(
+    runtime: IAgentRuntime,
+    text: string,
+    parameters: Record<string, unknown>,
+  ) {
+    return voiceCallAction.handler(runtime, makeMessage(text), undefined, {
+      parameters: { action: "dial", ...parameters },
+    });
+  }
+
+  beforeEach(() => {
+    process.env.TWILIO_CALL_EXTERNAL_ALLOWLIST = "+14155550111,+14155550222";
+    process.env.TWILIO_OWNER_NUMBER = "+14155550100";
+    twilio.sendTwilioVoiceCall.mockReset();
+    twilio.sendTwilioVoiceCall.mockResolvedValue({
+      ok: true,
+      sid: "CA123",
+      status: 201,
+    });
+    vi.spyOn(LifeOpsService.prototype, "listRelationships").mockResolvedValue([
+      relationship("rel-alice", "Alice", "+14155550111"),
+      relationship("rel-bob", "Bob", "+14155550222"),
+    ] as never);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    for (const [key, saved] of [
+      ["TWILIO_CALL_EXTERNAL_ALLOWLIST", savedAllowList],
+      ["TWILIO_OWNER_NUMBER", savedOwnerNumber],
+    ] as const) {
+      if (saved === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = saved;
+      }
+    }
+  });
+
+  it("previews a changed message instead of speaking it on yes", async () => {
+    const runtime = makeRuntime();
+    const e164 = { recipientKind: "e164", phoneNumber: "+14155550123" };
+
+    await dial(runtime, "call them", { ...e164, bodyText: "Running late" });
+    const changed = await dial(runtime, "yes", {
+      ...e164,
+      bodyText: "Wire the 5000 dollars today",
+    });
+
+    expect(twilio.sendTwilioVoiceCall).not.toHaveBeenCalled();
+    expect(changed?.data?.draft).toBe(true);
+    expect(changed?.text).toContain("Wire the 5000 dollars today");
+
+    const confirmed = await dial(runtime, "yes", {
+      ...e164,
+      bodyText: "Wire the 5000 dollars today",
+    });
+
+    expect(confirmed?.success).toBe(true);
+    expect(twilio.sendTwilioVoiceCall).toHaveBeenCalledTimes(1);
+    expect(twilio.sendTwilioVoiceCall.mock.calls[0]?.[0]?.message).toBe(
+      "Wire the 5000 dollars today",
+    );
+  });
+
+  it("speaks the previewed message when the confirming call omits bodyText", async () => {
+    const runtime = makeRuntime();
+
+    await dial(runtime, "call me about the build", {
+      recipientKind: "owner",
+      bodyText: "The build is done.",
+    });
+    const confirmed = await dial(runtime, "yes", { recipientKind: "owner" });
+
+    expect(confirmed?.success).toBe(true);
+    expect(twilio.sendTwilioVoiceCall.mock.calls[0]?.[0]?.message).toBe(
+      "The build is done.",
+    );
+  });
+
+  it("calls the declared recipient, not a contact the message only mentions", async () => {
+    const runtime = makeRuntime();
+    const external = {
+      recipientKind: "external",
+      recipient: "Bob",
+      bodyText: "Dinner at 7?",
+    };
+
+    const draft = await dial(
+      runtime,
+      "Alice asked me to call Bob about dinner",
+      external,
+    );
+
+    expect(draft?.data?.to).toBe("+14155550222");
+    expect(draft?.text).toContain("Bob (+14155550222)");
+
+    const confirmed = await dial(runtime, "yes", external);
+
+    expect(confirmed?.success).toBe(true);
+    expect(twilio.sendTwilioVoiceCall).toHaveBeenCalledTimes(1);
+    expect(twilio.sendTwilioVoiceCall.mock.calls[0]?.[0]?.to).toBe(
+      "+14155550222",
+    );
+  });
+
+  it("asks which contact when the message text names more than one", async () => {
+    const result = await dial(
+      makeRuntime(),
+      "Alice asked me to call Bob about dinner",
+      { recipientKind: "external" },
+    );
+
+    expect(result?.data?.error).toBe("AMBIGUOUS_RECIPIENT");
+    expect(result?.data?.candidates).toEqual(["Alice", "Bob"]);
+    expect(twilio.sendTwilioVoiceCall).not.toHaveBeenCalled();
+  });
+});

@@ -65,16 +65,6 @@ const SUBACTIONS: SubactionsMap<VoiceCallSubaction> = {
   },
 };
 
-type PendingCallActionName = "CALL_USER" | "CALL_EXTERNAL";
-
-interface PendingCallDraft {
-  actionName: PendingCallActionName;
-  to?: string | null;
-  message?: string | null;
-  approvalTaskId?: string | null;
-  createdAt: string;
-}
-
 function isE164(value: string): boolean {
   return E164_RE.test(value);
 }
@@ -196,58 +186,97 @@ function normalizePhoneAllowListKey(value: string): string {
   return value.replace(/[^0-9+]/g, "").replace(/^\+/, "");
 }
 
-function getPendingCallCacheKey(
-  roomId: string,
-  actionName: PendingCallActionName,
-): string {
-  return `lifeops:twilio-call:pending:${actionName}:${roomId}`;
+type SpokenMessageConfirmation =
+  | { status: "confirmed"; spokenMessage: string }
+  | { status: "pending" | "cancelled"; spokenMessage: string; prompt: string };
+
+/**
+ * Two-phase confirmation bound to the spoken message the owner was shown. The
+ * planner writes the arguments again on the confirming turn, so a yes places
+ * the call with the previewed message. A yes that arrives with a different
+ * bodyText previews that message instead of dialing.
+ */
+async function confirmSpokenMessage(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  actionName: string;
+  pendingKey: string;
+  /** How the prompt names the callee. */
+  target: string;
+  /** The message this call asks for: bodyText, or the path default. */
+  spokenMessage: string;
+  /** False when bodyText was omitted and `spokenMessage` is the default. */
+  explicit: boolean;
+}): Promise<SpokenMessageConfirmation> {
+  const { spokenMessage } = args;
+  const prompt = `Place voice call to ${args.target} with message: "${spokenMessage}"?`;
+  const ask = () =>
+    requireConfirmation({
+      runtime: args.runtime,
+      message: args.message,
+      actionName: args.actionName,
+      pendingKey: args.pendingKey,
+      prompt,
+      metadata: { spokenMessage },
+    });
+  const decision = await ask();
+  if (decision.status !== "confirmed") {
+    return { status: decision.status, spokenMessage, prompt };
+  }
+  const previewed = decision.metadata?.spokenMessage;
+  if (
+    typeof previewed === "string" &&
+    (!args.explicit || previewed === spokenMessage)
+  ) {
+    return { status: "confirmed", spokenMessage: previewed };
+  }
+  // The consumed record held another message; this call stores the new one.
+  await ask();
+  return { status: "pending", spokenMessage, prompt };
 }
 
-async function readPendingCallDraft(
-  runtime: IAgentRuntime,
-  roomId: string,
-  actionName: PendingCallActionName,
-): Promise<PendingCallDraft | null> {
-  return (
-    (await runtime.getCache<PendingCallDraft>(
-      getPendingCallCacheKey(roomId, actionName),
-    )) ?? null
-  );
-}
+type ExternalCallRecipient =
+  | {
+      kind: "resolved";
+      to: string;
+      name: string | null;
+      matchedRelationshipId: string | null;
+    }
+  | { kind: "ambiguous"; names: string[] }
+  | { kind: "missing" };
 
-async function clearPendingCallDraft(
-  runtime: IAgentRuntime,
-  roomId: string,
-  actionName: PendingCallActionName,
-): Promise<void> {
-  await runtime.deleteCache(getPendingCallCacheKey(roomId, actionName));
-}
-
+/**
+ * Resolve the callee. The declared `recipient` decides when it is supplied;
+ * the message text is searched only when it is absent, so a contact that is
+ * merely mentioned in the chat cannot replace the named one.
+ */
 async function resolveExternalCallRecipient(args: {
   runtime: IAgentRuntime;
-  providedTo?: string;
-  messageText?: string;
-}): Promise<{ to: string | null; matchedRelationshipId?: string | null }> {
-  const explicit = args.providedTo?.trim();
+  recipient?: string;
+  messageText: string;
+}): Promise<ExternalCallRecipient> {
+  const explicit = args.recipient?.trim();
   if (explicit && isE164PhoneNumber(explicit)) {
-    return { to: explicit, matchedRelationshipId: null };
+    return {
+      kind: "resolved",
+      to: explicit,
+      name: null,
+      matchedRelationshipId: null,
+    };
+  }
+
+  const haystack = normalizeLookup(explicit || args.messageText);
+  if (!haystack) {
+    return { kind: "missing" };
   }
 
   const service = new LifeOpsService(args.runtime);
   const relationships = await service.listRelationships();
-  const haystack = normalizeLookup(
-    [explicit ?? "", args.messageText ?? ""].join(" "),
-  );
-  if (!haystack) {
-    return { to: null, matchedRelationshipId: null };
-  }
-
-  const candidates = relationships.filter(
-    (relationship) =>
-      typeof relationship.phone === "string" && relationship.phone,
-  );
-  for (const relationship of candidates) {
-    const lookupValues = [
+  const matches = relationships.filter((relationship) => {
+    if (typeof relationship.phone !== "string" || !relationship.phone) {
+      return false;
+    }
+    return [
       relationship.name,
       relationship.primaryHandle,
       relationship.email ?? "",
@@ -255,20 +284,37 @@ async function resolveExternalCallRecipient(args: {
       ...relationship.tags,
     ]
       .map(normalizeLookup)
-      .filter((value) => value.length > 0);
+      .some(
+        (value) =>
+          value.length > 0 &&
+          (haystack.includes(value) || value.includes(haystack)),
+      );
+  });
 
-    const matched = lookupValues.some(
-      (value) => haystack.includes(value) || value.includes(haystack),
-    );
-    if (matched && relationship.phone) {
-      return {
-        to: relationship.phone,
-        matchedRelationshipId: relationship.id,
-      };
-    }
+  const [first] = matches;
+  if (!first?.phone) {
+    // An unmatched `recipient` is reported as an invalid number by the caller.
+    return explicit
+      ? {
+          kind: "resolved",
+          to: explicit,
+          name: null,
+          matchedRelationshipId: null,
+        }
+      : { kind: "missing" };
   }
-
-  return { to: explicit ?? null, matchedRelationshipId: null };
+  if (new Set(matches.map((relationship) => relationship.phone)).size > 1) {
+    return {
+      kind: "ambiguous",
+      names: matches.map((relationship) => relationship.name),
+    };
+  }
+  return {
+    kind: "resolved",
+    to: first.phone,
+    name: first.name,
+    matchedRelationshipId: first.id,
+  };
 }
 
 function deliveryToResult(
@@ -386,19 +432,20 @@ async function dialE164(
     };
   }
 
-  const callPrompt = `Place voice call to ${to} with message: "${messageBody}"?`;
-  const decision = await requireConfirmation({
+  const decision = await confirmSpokenMessage({
     runtime,
     message,
     actionName: ACTION_NAME,
     pendingKey: `e164:${to}`,
-    prompt: callPrompt,
+    target: to,
+    spokenMessage: messageBody,
+    explicit: true,
   });
   if (decision.status !== "confirmed") {
     return {
       text:
         decision.status === "pending"
-          ? `${callPrompt} Reply yes to confirm or no to cancel.`
+          ? `${decision.prompt} Reply yes to confirm or no to cancel.`
           : "Voice call cancelled.",
       success: false,
       values: {
@@ -427,7 +474,7 @@ async function dialE164(
   const result = await sendTwilioVoiceCall({
     credentials,
     to,
-    message: messageBody,
+    message: decision.spokenMessage,
   });
 
   if (!result.ok) {
@@ -481,12 +528,6 @@ async function dialOwner(
   if (policyAcknowledgement) {
     return policyAcknowledgement;
   }
-
-  const pendingDraft = await readPendingCallDraft(
-    runtime,
-    message.roomId,
-    "CALL_USER",
-  );
 
   if (isStandingOwnerCallPolicy(message)) {
     return {
@@ -554,23 +595,21 @@ async function dialOwner(
     };
   }
 
-  const spokenMessage =
-    params.bodyText?.trim() ||
-    pendingDraft?.message?.trim() ||
-    "Your agent is calling you.";
-  const ownerPrompt = `Place voice call to owner ${to} with message: "${spokenMessage}"?`;
-  const ownerDecision = await requireConfirmation({
+  const bodyText = params.bodyText?.trim();
+  const ownerDecision = await confirmSpokenMessage({
     runtime,
     message,
     actionName: "VOICE_CALL_OWNER",
     pendingKey: `owner:${to}`,
-    prompt: ownerPrompt,
+    target: `owner ${to}`,
+    spokenMessage: bodyText || "Your agent is calling you.",
+    explicit: Boolean(bodyText),
   });
   if (ownerDecision.status !== "confirmed") {
     return {
       text:
         ownerDecision.status === "pending"
-          ? `${ownerPrompt} Reply yes to confirm or no to cancel.`
+          ? `${ownerDecision.prompt} Reply yes to confirm or no to cancel.`
           : "Voice call cancelled.",
       success: false,
       values: {
@@ -590,16 +629,9 @@ async function dialOwner(
   const delivery = await sendTwilioVoiceCall({
     credentials,
     to,
-    message: spokenMessage,
+    message: ownerDecision.spokenMessage,
   });
-  const result = deliveryToResult(delivery, to, "owner");
-  if (result.success) {
-    await clearPendingCallDraft(runtime, message.roomId, "CALL_USER");
-    if (pendingDraft?.approvalTaskId) {
-      await runtime.deleteTask(pendingDraft.approvalTaskId as never);
-    }
-  }
-  return result;
+  return deliveryToResult(delivery, to, "owner");
 }
 
 async function dialExternal(
@@ -607,18 +639,27 @@ async function dialExternal(
   message: Memory,
   params: VoiceCallParams,
 ): Promise<ActionResult> {
-  const pendingDraft = await readPendingCallDraft(
-    runtime,
-    message.roomId,
-    "CALL_EXTERNAL",
-  );
   const resolvedRecipient = await resolveExternalCallRecipient({
     runtime,
-    providedTo: params.recipient ?? pendingDraft?.to ?? undefined,
+    recipient: params.recipient,
     messageText: messageText(message),
   });
-  const to = resolvedRecipient.to?.trim();
-  if (!to) {
+  if (resolvedRecipient.kind === "ambiguous") {
+    return {
+      text: `More than one saved contact matches: ${resolvedRecipient.names.join(", ")}. Which one should I call?`,
+      success: false,
+      values: { success: false, error: "AMBIGUOUS_RECIPIENT" },
+      data: {
+        actionName: ACTION_NAME,
+        action: "dial",
+        subaction: "dial",
+        recipientKind: "external",
+        error: "AMBIGUOUS_RECIPIENT",
+        candidates: resolvedRecipient.names,
+      },
+    };
+  }
+  if (resolvedRecipient.kind === "missing") {
     return {
       text: "Who should I call, or which saved contact/phone number should I use?",
       success: false,
@@ -637,6 +678,7 @@ async function dialExternal(
       },
     };
   }
+  const to = resolvedRecipient.to.trim();
   if (isPlaceholderOrNonNumeric(to)) {
     return invalidPhoneResult(
       to,
@@ -676,7 +718,7 @@ async function dialExternal(
         recipientKind: "external",
         reason: "disallowed-recipient",
         to,
-        matchedRelationshipId: resolvedRecipient.matchedRelationshipId ?? null,
+        matchedRelationshipId: resolvedRecipient.matchedRelationshipId,
       },
     };
   }
@@ -697,23 +739,21 @@ async function dialExternal(
     };
   }
 
-  const spokenMessage =
-    params.bodyText?.trim() ||
-    pendingDraft?.message?.trim() ||
-    "This is a call from an automated assistant.";
-  const externalPrompt = `Place voice call to ${to} with message: "${spokenMessage}"?`;
-  const externalDecision = await requireConfirmation({
+  const bodyText = params.bodyText?.trim();
+  const externalDecision = await confirmSpokenMessage({
     runtime,
     message,
     actionName: "VOICE_CALL_EXTERNAL",
     pendingKey: `external:${to}`,
-    prompt: externalPrompt,
+    target: resolvedRecipient.name ? `${resolvedRecipient.name} (${to})` : to,
+    spokenMessage: bodyText || "This is a call from an automated assistant.",
+    explicit: Boolean(bodyText),
   });
   if (externalDecision.status !== "confirmed") {
     return {
       text:
         externalDecision.status === "pending"
-          ? `${externalPrompt} Reply yes to confirm or no to cancel.`
+          ? `${externalDecision.prompt} Reply yes to confirm or no to cancel.`
           : "Voice call cancelled.",
       success: false,
       values: {
@@ -729,7 +769,7 @@ async function dialExternal(
         requiresConfirmation: externalDecision.status === "pending",
         awaitingUserInput: externalDecision.status === "pending",
         to,
-        matchedRelationshipId: resolvedRecipient.matchedRelationshipId ?? null,
+        matchedRelationshipId: resolvedRecipient.matchedRelationshipId,
       },
     };
   }
@@ -737,16 +777,9 @@ async function dialExternal(
   const delivery = await sendTwilioVoiceCall({
     credentials,
     to,
-    message: spokenMessage,
+    message: externalDecision.spokenMessage,
   });
-  const result = deliveryToResult(delivery, to, "external");
-  if (result.success) {
-    await clearPendingCallDraft(runtime, message.roomId, "CALL_EXTERNAL");
-    if (pendingDraft?.approvalTaskId) {
-      await runtime.deleteTask(pendingDraft.approvalTaskId as never);
-    }
-  }
-  return result;
+  return deliveryToResult(delivery, to, "external");
 }
 
 function normalizeRecipientKind(value: unknown): RecipientKind | null {
@@ -797,7 +830,7 @@ export const voiceCallAction: Action & {
     {
       name: "action",
       description: "dial.",
-      required: false,
+      required: true,
       schema: { type: "string" as const, enum: ["dial"] },
     },
     {
@@ -820,7 +853,7 @@ export const voiceCallAction: Action & {
     {
       name: "recipient",
       description:
-        "recipientKind=external: contact name or E.164; names via RelationshipStore.",
+        "recipientKind=external: contact name or E.164; names via RelationshipStore. When omitted, the saved contact named in the message text is used.",
       required: false,
       schema: { type: "string" as const },
     },
