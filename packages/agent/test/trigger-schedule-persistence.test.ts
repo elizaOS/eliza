@@ -271,6 +271,14 @@ it.each([
     expectedType: "interval",
     expectedInterval: 7_200_000,
   },
+  {
+    // The planner echoes the first fire as a delay beside the interval.
+    triggerType: "interval",
+    intervalMs: 7_200_000,
+    delayMinutes: 120,
+    expectedType: "interval",
+    expectedInterval: 7_200_000,
+  },
   { delayMinutes: 2, expectedType: "once" },
   { intervalMs: 300_000, expectedType: "interval", expectedInterval: 300_000 },
   { cronExpression: "0 9 * * *", expectedType: "cron" },
@@ -313,13 +321,24 @@ it.each([
 );
 
 it.each<{ label: string; schedule: JsonObject }>([
-  { label: "alone", schedule: { triggerType: "interval" } },
   {
-    label: "over a cron",
+    label: "triggerType=interval alone when intervalMs is absent",
+    schedule: { triggerType: "interval" },
+  },
+  {
+    label: "triggerType=interval over a cron when intervalMs is absent",
     schedule: { triggerType: "interval", cronExpression: "0 9 * * *" },
   },
+  {
+    label: "intervalMs with a delay and no triggerType",
+    schedule: { intervalMs: 7_200_000, delayMinutes: 120 },
+  },
+  {
+    label: "intervalMs with scheduledAtIso and no triggerType",
+    schedule: { intervalMs: 7_200_000, scheduledAtIso: "2099-01-01T09:00:00Z" },
+  },
 ])(
-  "refuses triggerType=interval $label when intervalMs is absent",
+  "refuses a trigger create with $label and writes no trigger task",
   async ({ schedule }) => {
     const before = await fixture.runtime.getTasks({ tags: ["trigger"] });
     const result = await triggerAction.handler(

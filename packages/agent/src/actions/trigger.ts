@@ -644,8 +644,14 @@ async function opCreate(
   // cannot block a valid recurring create.
   const hasDelayInput =
     params.delaySeconds !== undefined || params.delayMinutes !== undefined;
+  const parsedIntervalMs = parsePositiveInt(params.intervalMs);
+  // An explicit triggerType=interval with a usable intervalMs is a typed
+  // statement like a cron: the delay beside it is the planner's echo of the
+  // first fire, not a second schedule.
+  const wantsInterval =
+    explicitType === "interval" && parsedIntervalMs !== undefined;
   const parsedDelayMs =
-    wantsCron || explicitScheduledAtIso !== undefined
+    wantsCron || wantsInterval || explicitScheduledAtIso !== undefined
       ? undefined
       : readRelativeDelayMs(params);
   const delayGiven =
@@ -692,7 +698,18 @@ async function opCreate(
       ? "next_autonomy_cycle"
       : "inject_now";
   const creatorId = String(message.entityId);
-  const parsedIntervalMs = parsePositiveInt(params.intervalMs);
+  // A repeat period sent with a one-off time and no triggerType names two
+  // schedules. Writing the one-off dropped the period and turned "every 2
+  // hours" into one committed reminder.
+  if (
+    triggerType === "once" &&
+    explicitType !== "once" &&
+    parsedIntervalMs !== undefined
+  ) {
+    return missingSchedule(
+      "intervalMs (repeating) was sent with a one-off delay or scheduledAtIso. Nothing was created. Send intervalMs alone for a repeating trigger, or the delay or scheduledAtIso alone for a one-off.",
+    );
+  }
   // triggerType=interval names the schedule kind, not the cadence. Writing the
   // 12-hour default here turned "every 2 hours" with the number omitted into a
   // committed 12-hour reminder; once and cron already refuse a missing value.
