@@ -267,8 +267,9 @@ it("refuses trigger creation when ELIZA_TRIGGERS_ENABLED is FALSE in any case, l
 it.each([
   {
     triggerType: "interval",
+    intervalMs: 7_200_000,
     expectedType: "interval",
-    expectedInterval: 43_200_000,
+    expectedInterval: 7_200_000,
   },
   { delayMinutes: 2, expectedType: "once" },
   { intervalMs: 300_000, expectedType: "interval", expectedInterval: 300_000 },
@@ -311,6 +312,41 @@ it.each([
   },
 );
 
+it.each<{ label: string; schedule: JsonObject }>([
+  { label: "alone", schedule: { triggerType: "interval" } },
+  {
+    label: "over a cron",
+    schedule: { triggerType: "interval", cronExpression: "0 9 * * *" },
+  },
+])(
+  "refuses triggerType=interval $label when intervalMs is absent",
+  async ({ schedule }) => {
+    const before = await fixture.runtime.getTasks({ tags: ["trigger"] });
+    const result = await triggerAction.handler(
+      fixture.runtime,
+      {
+        entityId: fixture.runtime.agentId,
+        agentId: fixture.runtime.agentId,
+        roomId: randomUUID() as UUID,
+        content: { text: "Remind me every 2 hours to stretch." },
+      } as Memory,
+      undefined,
+      {
+        parameters: { action: "create", instructions: "stretch", ...schedule },
+      },
+    );
+    expect(result).toMatchObject({
+      success: false,
+      error: "MISSING_SCHEDULE",
+      data: { acceptance: "rejected", executionStatus: "not_started" },
+    });
+    expect(result?.effectReceipts).toBeUndefined();
+    expect(await fixture.runtime.getTasks({ tags: ["trigger"] })).toEqual(
+      before,
+    );
+  },
+);
+
 it("updates a trigger by the triggerId create returned and refuses fields it cannot apply", async () => {
   const message = {
     entityId: fixture.runtime.agentId,
@@ -337,6 +373,16 @@ it("updates a trigger by the triggerId create returned and refuses fields it can
     triggerId: UUID;
   };
   try {
+    // list is the only read; update can only be reached with an id it returns.
+    const listed = await triggerAction.handler(
+      fixture.runtime,
+      message,
+      undefined,
+      { parameters: { action: "list" } },
+    );
+    expect(
+      (listed?.data as { entries: unknown[] } | undefined)?.entries,
+    ).toContainEqual({ taskId, triggerId, displayName: "Water the orchid" });
     const update = (parameters: Record<string, unknown>) =>
       triggerAction.handler(fixture.runtime, message, undefined, {
         parameters: { action: "update", taskId: triggerId, ...parameters },

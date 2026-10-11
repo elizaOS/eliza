@@ -264,6 +264,24 @@ function okCommitted(
   };
 }
 
+function missingSchedule(text: string): ActionResult {
+  return {
+    ...failed("create", text, "MISSING_SCHEDULE", {
+      acceptance: "rejected",
+      executionStatus: "not_started",
+    }),
+    // No write has started: corrected schedule parameters can safely retry.
+    // Keep this validation rejection in the trace without giving it authority
+    // over a later committed creation with those corrected parameters.
+    failureProvenance: {
+      kind: "handler_error",
+      boundary: "handler",
+      code: "MISSING_SCHEDULE",
+      retryable: true,
+    },
+  };
+}
+
 function deriveTriggerType(p: TriggerParameters): TriggerType {
   const t = p.triggerType?.trim().toLowerCase();
   if (t === "interval" || t === "once" || t === "cron") return t;
@@ -597,23 +615,9 @@ async function opCreate(
     !readString(params.scheduledAtIso) &&
     !readString(params.cronExpression)
   ) {
-    return {
-      ...failed(
-        "create",
-        "Provide an explicit schedule before creating a trigger.",
-        "MISSING_SCHEDULE",
-        { acceptance: "rejected", executionStatus: "not_started" },
-      ),
-      // No write has started: corrected schedule parameters can safely retry.
-      // Keep this validation rejection in the trace without giving it authority
-      // over a later committed creation with those corrected parameters.
-      failureProvenance: {
-        kind: "handler_error",
-        boundary: "handler",
-        code: "MISSING_SCHEDULE",
-        retryable: true,
-      },
-    };
+    return missingSchedule(
+      "Provide an explicit schedule before creating a trigger.",
+    );
   }
 
   const cronExpression = readString(params.cronExpression);
@@ -681,6 +685,14 @@ async function opCreate(
   const creatorId = String(message.entityId);
   const messageTimeZone = resolveMessageTimeZone(runtime, message);
   const parsedIntervalMs = parsePositiveInt(params.intervalMs);
+  // triggerType=interval names the schedule kind, not the cadence. Writing the
+  // 12-hour default here turned "every 2 hours" with the number omitted into a
+  // committed 12-hour reminder; once and cron already refuse a missing value.
+  if (triggerType === "interval" && params.intervalMs === undefined) {
+    return missingSchedule(
+      "Interval trigger requires intervalMs (the repeat period in milliseconds).",
+    );
+  }
   if (
     triggerType === "interval" &&
     params.intervalMs !== undefined &&
@@ -1185,6 +1197,10 @@ async function opList(
   });
   const messageTimeZone = resolveMessageTimeZone(runtime, message);
   const lines: string[] = [];
+  // update takes only an id, and no other read returns one. The ids travel in
+  // the result data (model-facing), not in the user-facing lines.
+  const entries: { taskId: string; triggerId: string; displayName: string }[] =
+    [];
   // Rows tagged as triggers whose metadata will not parse are dropped here.
   // Silently dropping them turned "what reminders do I have" into a flat "none
   // are set" for a user whose reminder rows failed the parse, so the count of
@@ -1200,6 +1216,11 @@ async function opList(
     // it unmarked answers "when does my next reminder fire" with something
     // that never will, so the paused state travels with the line.
     const paused = trigger.enabled === false ? " (paused)" : "";
+    entries.push({
+      taskId: String(task.id),
+      triggerId: trigger.triggerId,
+      displayName: trigger.displayName,
+    });
     lines.push(
       `- "${displayLabel(trigger.displayName)}" — ${describeSchedule(
         trigger,
@@ -1225,7 +1246,7 @@ async function opList(
   return ok(
     "list",
     `${lines.length} scheduled item${lines.length === 1 ? "" : "s"}${skippedNote}:\n${lines.join("\n")}`,
-    { count: lines.length, unreadable },
+    { count: lines.length, unreadable, entries },
   );
 }
 
@@ -1385,7 +1406,7 @@ export const triggerAction: Action = {
     {
       name: "taskId",
       description:
-        "Trigger task UUID (or triggerId) for update / delete / run / toggle. delete/run/toggle also resolve by displayName fragment when omitted.",
+        "Trigger task UUID (or triggerId) for update / delete / run / toggle. delete/run/toggle also resolve by displayName fragment when omitted; update needs the id, which action=list returns for each trigger in its result data (entries[].taskId).",
       required: false,
       aliases: ["triggerId", "id"],
       schema: { type: "string" as const },
@@ -1442,7 +1463,8 @@ export const triggerAction: Action = {
     },
     {
       name: "intervalMs",
-      description: "Interval frequency in ms.",
+      description:
+        "Interval frequency in ms. Required when the trigger is an interval trigger; there is no default period.",
       required: false,
       schema: { type: "number" as const, minimum: 0 },
     },
