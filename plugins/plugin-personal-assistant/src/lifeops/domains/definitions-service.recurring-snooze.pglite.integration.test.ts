@@ -63,71 +63,115 @@ const cases: {
   },
 ];
 
+async function seedTodayOccurrence(cadence: LifeOpsCadence, at: Date) {
+  const { definition } = await service.createDefinition({
+    title: "Recurring snooze fixture",
+    kind: "habit",
+    timezone: "UTC",
+    cadence,
+    windowPolicy: {
+      timezone: "UTC",
+      windows: [
+        {
+          name: "morning",
+          label: "Morning",
+          startMinute: 480,
+          endMinute: 720,
+        },
+        {
+          name: "evening",
+          label: "Evening",
+          startMinute: 1200,
+          endMinute: 1320,
+        },
+      ],
+    },
+    metadata: { nativeProjection: "in_app_only" },
+    reminderPlan: {
+      steps: [{ channel: "in_app", offsetMinutes: 0, label: "Notify" }],
+    },
+  });
+  vi.setSystemTime(at);
+  const [occurrence] = (
+    await service.repository.listOccurrencesForDefinition(
+      fixture.runtime.agentId,
+      definition.id,
+    )
+  ).filter((row) => row.occurrenceKey.includes(":2026-10-12:"));
+  if (!occurrence) throw Error("Missing today's recurring occurrence");
+  return occurrence;
+}
+
+async function expectDeliveredAt(occurrenceId: string, snoozedUntil: string) {
+  const deliveryTick = new Date(Date.parse(snoozedUntil) + 30_000);
+  vi.setSystemTime(deliveryTick);
+  await service.processReminders({
+    now: deliveryTick.toISOString(),
+    scope: "definitions",
+  });
+  expect(
+    await service.repository.getOccurrence(
+      fixture.runtime.agentId,
+      occurrenceId,
+    ),
+  ).toMatchObject({ state: "visible", snoozedUntil });
+  expect(getRecordedTestNotifications(fixture.runtime)).toHaveLength(1);
+  expect(
+    await service.repository.listReminderAttempts(fixture.runtime.agentId),
+  ).toMatchObject([{ ownerId: occurrenceId, scheduledFor: snoozedUntil }]);
+}
+
 it.each(cases)(
   "delivers a $name when the snooze elapses",
   async ({ cadence, snoozeAt, request, snoozedUntil }) => {
-    const { definition } = await service.createDefinition({
-      title: "Recurring snooze fixture",
-      kind: "habit",
-      timezone: "UTC",
-      cadence,
-      windowPolicy: {
-        timezone: "UTC",
-        windows: [
-          {
-            name: "morning",
-            label: "Morning",
-            startMinute: 480,
-            endMinute: 720,
-          },
-          {
-            name: "evening",
-            label: "Evening",
-            startMinute: 1200,
-            endMinute: 1320,
-          },
-        ],
-      },
-      metadata: { nativeProjection: "in_app_only" },
-      reminderPlan: {
-        steps: [{ channel: "in_app", offsetMinutes: 0, label: "Notify" }],
-      },
-    });
-
     const snoozeInstant = new Date(snoozeAt);
-    vi.setSystemTime(snoozeInstant);
-    const [occurrence] = (
-      await service.repository.listOccurrencesForDefinition(
-        fixture.runtime.agentId,
-        definition.id,
-      )
-    ).filter((row) => row.occurrenceKey.includes(":2026-10-12:"));
-    if (!occurrence) throw Error("Missing today's recurring occurrence");
-
+    const occurrence = await seedTodayOccurrence(cadence, snoozeInstant);
     const snoozed = await service.snoozeOccurrence(
       occurrence.id,
       request,
       snoozeInstant,
     );
     expect(snoozed).toMatchObject({ state: "snoozed", snoozedUntil });
-
-    const deliveryTick = new Date(Date.parse(snoozedUntil) + 30_000);
-    vi.setSystemTime(deliveryTick);
-    await service.processReminders({
-      now: deliveryTick.toISOString(),
-      scope: "definitions",
-    });
-
-    expect(
-      await service.repository.getOccurrence(
-        fixture.runtime.agentId,
-        occurrence.id,
-      ),
-    ).toMatchObject({ state: "visible", snoozedUntil });
-    expect(getRecordedTestNotifications(fixture.runtime)).toHaveLength(1);
-    expect(
-      await service.repository.listReminderAttempts(fixture.runtime.agentId),
-    ).toMatchObject([{ ownerId: occurrence.id, scheduledFor: snoozedUntil }]);
+    await expectDeliveredAt(occurrence.id, snoozedUntil);
   },
   120_000,
 );
+
+it("rejects a count-per-day snooze past the end of its day and delivers one inside it", async () => {
+  const snoozeInstant = new Date("2026-10-12T18:00:00.000Z");
+  const occurrence = await seedTodayOccurrence(
+    {
+      kind: "count_per_day",
+      targetCount: 3,
+      unit: "glass",
+      perOccurrenceWork: "one glass of water",
+      timing: { kind: "anytime" },
+    },
+    snoozeInstant,
+  );
+  expect(occurrence.relevanceEndAt).toBe("2026-10-12T23:59:59.000Z");
+
+  await expect(
+    service.snoozeOccurrence(
+      occurrence.id,
+      { preset: "tomorrow_morning" },
+      snoozeInstant,
+    ),
+  ).rejects.toMatchObject({ status: 409 });
+  expect(
+    await service.repository.getOccurrence(
+      fixture.runtime.agentId,
+      occurrence.id,
+    ),
+  ).toMatchObject({ state: "visible", snoozedUntil: null });
+
+  const snoozedUntil = "2026-10-12T19:00:00.000Z";
+  expect(
+    await service.snoozeOccurrence(
+      occurrence.id,
+      { preset: "1h" },
+      snoozeInstant,
+    ),
+  ).toMatchObject({ state: "snoozed", snoozedUntil });
+  await expectDeliveredAt(occurrence.id, snoozedUntil);
+}, 120_000);
