@@ -1,5 +1,6 @@
 /** Handles character associations for an authenticated cloud application. */
 
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
 import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
@@ -31,28 +32,21 @@ async function __hono_GET(
     // Allow both authenticated users and API key access
     let organizationId: string;
 
-    try {
-      const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
+    const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
 
-      // If using API key, verify it belongs to this app
-      if (apiKey) {
-        const { id } = await params;
-        const app = await appsService.getById(id);
-        if (!app || app.api_key_id !== apiKey.id) {
-          return Response.json(
-            { success: false, error: "Invalid API key for this app" },
-            { status: 403 },
-          );
-        }
-        organizationId = app.organization_id;
-      } else {
-        organizationId = user.organization_id;
+    // If using API key, verify it belongs to this app
+    if (apiKey) {
+      const { id } = await params;
+      const app = await appsService.getById(id);
+      if (!app || app.api_key_id !== apiKey.id) {
+        return Response.json(
+          { success: false, error: "Invalid API key for this app" },
+          { status: 403 },
+        );
       }
-    } catch {
-      return Response.json(
-        { success: false, error: "Authentication required" },
-        { status: 401 },
-      );
+      organizationId = app.organization_id;
+    } else {
+      organizationId = user.organization_id;
     }
 
     const { id } = await params;
@@ -114,6 +108,9 @@ async function __hono_GET(
       characters: validCharacters,
     });
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
     logger.error("Failed to get app characters:", error);
     return Response.json(
       {
@@ -227,6 +224,9 @@ async function __hono_PUT(
       linked_character_ids: character_ids,
     });
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
     logger.error("Failed to update app characters:", error);
     return Response.json(
       {
