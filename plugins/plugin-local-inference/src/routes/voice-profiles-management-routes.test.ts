@@ -163,6 +163,20 @@ describe("voice profile management routes", () => {
 		expect(JSON.stringify(listedGuest)).not.toContain("wavSha256");
 	});
 
+	it("exports the profile document itself, not a navigation URL", async () => {
+		const result = await call("POST", "/api/voice/profiles/export");
+		expect(result.status).toBe(200);
+		expect(result.body.downloadUrl).toBeUndefined();
+		expect(result.body.schema).toBe("eliza.voice_profiles_export.v1");
+		expect(result.body.ownerEntityId).toBe(OWNER_ENTITY_ID);
+		expect(typeof result.body.exportedAt).toBe("string");
+		const profiles = result.body.profiles as Array<Record<string, unknown>>;
+		expect(profiles.map((profile) => profile.id).sort()).toEqual(
+			[owner.profileId, guest.profileId].sort(),
+		);
+		expect(JSON.stringify(result.body)).not.toContain("wavSha256");
+	});
+
 	it("binds and unbinds a non-owner profile", async () => {
 		const bound = await call(
 			"POST",
