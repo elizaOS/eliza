@@ -111,7 +111,7 @@ describe("browser workspace web-mode real-code command flow", () => {
         networkAction: "route",
         url: "https://example.test/text",
         responseBody:
-          '<html><body><h1>Rehearsal</h1><p>Keep all prose.</p><script>window.privateImplementation="script-noise";</script><style>.style-noise{color:red}</style><input name="query" value="visible-search"><input type="hidden" name="csrf" value="hidden-token"><input type="password" name="password" value="password-secret"></body></html>',
+          '<html><body><h1>Rehearsal</h1><p>Keep all prose.</p><p>First<br>Second<br><span>Third</span> <b>line</b></p><p>in<span>line</span></p><script>window.privateImplementation="script-noise";</script><style>.style-noise{color:red}</style><input name="query" value="visible-search"><input type="hidden" name="csrf" value="hidden-token"><input type="password" name="password" value="password-secret"></body></html>',
       },
       webEnv,
     );
@@ -123,7 +123,9 @@ describe("browser workspace web-mode real-code command flow", () => {
       { id: tab.id, subaction: "get", selector: "body" },
       webEnv,
     );
-    expect(text.value).toBe("RehearsalKeep all prose.");
+    expect(text.value).toBe(
+      "Rehearsal Keep all prose. First Second Third line inline",
+    );
     const snapshot = await executeBrowserWorkspaceCommand(
       { id: tab.id, subaction: "snapshot" },
       webEnv,
