@@ -10,6 +10,7 @@
  * $14.99. Override via ELIZA_CF_REGISTRAR_MARGIN_BPS env.
  */
 
+import { parseNonNegativeInteger } from "@elizaos/core/protocol";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 
 const DEFAULT_MARGIN_BPS = 3600;
@@ -17,9 +18,7 @@ const DEFAULT_MARGIN_BPS = 3600;
 function getMarginBps(): number {
   const raw =
     getCloudAwareEnv().ELIZA_CF_REGISTRAR_MARGIN_BPS ?? process.env.ELIZA_CF_REGISTRAR_MARGIN_BPS;
-  if (!raw) return DEFAULT_MARGIN_BPS;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_MARGIN_BPS;
+  return parseNonNegativeInteger(raw, DEFAULT_MARGIN_BPS);
 }
 
 export interface DomainPriceBreakdown {
