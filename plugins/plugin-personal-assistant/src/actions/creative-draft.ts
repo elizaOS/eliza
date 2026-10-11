@@ -622,7 +622,7 @@ export const creativeDraftAction: Action & {
     {
       name: "revision",
       description:
-        "Revision to apply: { instruction, acceptedEdit?, vetoedPhrase?, replacementText?, sectionId?, sectionIndex?, revisedAt }. Required for revise. instruction is the owner's requested change in their words and is given to the drafting model. sectionId or sectionIndex (0-based) names the section the revision targets: replacementText rewrites that section's text, and without replacementText the instruction becomes that section's directive. An unknown section is refused.",
+        "Revision to apply: { instruction, acceptedEdit?, vetoedPhrase?, replacementText?, sectionId?, sectionIndex?, revisedAt }. Required for revise. instruction is the owner's requested change in their words and is given to the drafting model. sectionId or sectionIndex (0-based) names the section that replacementText rewrites.",
       schema: {
         type: "object" as const,
         properties: {

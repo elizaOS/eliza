@@ -113,8 +113,7 @@ export interface CreativeDraftRevision {
    * positional fallback. Unspecified means the first section — the common case
    * of a single-section draft — but a memo maps to each section, so a revision
    * that only ever edited section 0 could not honor the owner's "keep the anger
-   * in the second section" directive. Named without `replacementText`, the
-   * section takes {@link instruction} as its directive.
+   * in the second section" directive.
    */
   readonly sectionId?: string;
   readonly sectionIndex?: number;
@@ -278,9 +277,7 @@ export function applyCreativeDraftRevision(
     ? normalizeWhitespace(revision.replacementText)
     : null;
   const targetIndex = resolveRevisionSectionIndex(draft.sections, revision);
-  const namesSection =
-    revision.sectionId !== undefined || revision.sectionIndex !== undefined;
-  if ((replacementText || namesSection) && targetIndex === null) {
+  if (replacementText && targetIndex === null) {
     throw new Error(
       `[creative-draft] revision targets an unknown section (sectionId=${
         revision.sectionId ?? "<none>"
@@ -294,16 +291,7 @@ export function applyCreativeDraftRevision(
             ? { ...section, text: replacementText }
             : section,
         )
-      : namesSection && targetIndex !== null
-        ? // An instruction aimed at a named section is that section's standing
-          // directive: later passes recompose from the sections, so the owner's
-          // direction has to live on the section to survive them.
-          draft.sections.map((section, index) =>
-            index === targetIndex
-              ? { ...section, directive: revision.instruction }
-              : section,
-          )
-        : draft.sections;
+      : draft.sections;
   const acceptedPassages = replacementText
     ? (draft.acceptedPassages ?? []).filter((passage) =>
         sections.some(
