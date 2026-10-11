@@ -44,6 +44,7 @@ import {
   captureDevCloudEnvAuthority,
   restoreDevCloudEnvAuthority,
 } from "../config/dev-cloud-env-authority.ts";
+import { agentIdentityName } from "../runtime/build-character-config.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import { syncDirectProviderCredentials } from "./accounts-routes.ts";
 import {
@@ -486,6 +487,11 @@ export async function handleFirstRunRoutes(
     }
     const agent = config.agents.list[0] as Record<string, unknown>;
     agent.name = (body.name as string).trim();
+    // A running agent keeps its id and chat ids when first-run renames it;
+    // save the name they came from so the next boot derives the same ids.
+    if (state.runtime && !agent.identityName) {
+      agent.identityName = agentIdentityName(state.runtime.character);
+    }
     agent.workspace = resolveDefaultAgentWorkspaceDir();
     let normalizedMessageExamples:
       | Array<{
