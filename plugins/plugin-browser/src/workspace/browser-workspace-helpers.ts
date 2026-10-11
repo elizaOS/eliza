@@ -66,15 +66,25 @@ export function readBrowserWorkspaceElementText(
   element: Element | null,
 ): string {
   if (!element || element.closest("script, style, template")) return "";
-  // SHOW_TEXT: walk without cloning or modifying the document being controlled.
-  // SHOW_ELEMENT | SHOW_TEXT: keep explicit line breaks without modifying the page.
-  const walker = element.ownerDocument.createTreeWalker(element, 5);
   const text: string[] = [];
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    if (!node.parentElement?.closest("script, style, template")) {
-      text.push(node.nodeName === "BR" ? " " : (node.nodeValue ?? ""));
+  const visit = (node: Node): void => {
+    if (node.nodeType === 3) {
+      text.push(node.nodeValue ?? "");
+      return;
     }
-  }
+    if (node.nodeType !== 1) return;
+    const child = node as Element;
+    if (child.matches("script, style, template")) return;
+    const display =
+      child.ownerDocument.defaultView?.getComputedStyle(child).display;
+    const boundary =
+      child.tagName === "BR" ||
+      /^(block|flex|grid|list-item|table(?:-.*)?)$/.test(display ?? "");
+    if (boundary) text.push(" ");
+    for (const descendant of child.childNodes) visit(descendant);
+    if (boundary) text.push(" ");
+  };
+  visit(element);
   return normalizeBrowserWorkspaceText(text.join(""));
 }
 
@@ -284,7 +294,7 @@ export function resolveBrowserWorkspaceRealPath(target: string): string {
   try {
     return fs.realpathSync(absolute);
   } catch {
-    // error-policy:J3 missing leaf — walk up to the longest existing prefix.
+    // error-policy:J3 missing leaf ? walk up to the longest existing prefix.
   }
   const tail: string[] = [];
   let current = absolute;
@@ -362,7 +372,7 @@ export function normalizeBrowserWorkspaceCommand(
   const raw = command as BrowserWorkspaceCommand & Record<string, unknown>;
   // A trimmed-empty `subaction` is absent, not a value: fall back to
   // `operation` before resolving so whitespace cannot mask a valid alias.
-  // Precedence is explicit — a non-empty `subaction` always wins over
+  // Precedence is explicit ? a non-empty `subaction` always wins over
   // `operation`; the raw `command.subaction` is only restored when neither
   // yields a usable token, preserving the executor's unsupported-subaction
   // diagnostic.
@@ -431,7 +441,7 @@ export function buildBrowserWorkspaceCssStringLiteral(value: string): string {
   return JSON.stringify(value);
 }
 
-/** GHSA-mhhr-9ph9-64j7 / elizaOS/eliza#6767 — arbitrary script must not run in Node (JSDOM). */
+/** GHSA-mhhr-9ph9-64j7 / elizaOS/eliza#6767 ? arbitrary script must not run in Node (JSDOM). */
 export const BROWSER_WORKSPACE_JSDOM_SCRIPT_FORBIDDEN =
   "Browser workspace arbitrary script execution is disabled in the JSDOM (web) backend because it runs in the Node.js agent process via unsafe eval patterns (GHSA-mhhr-9ph9-64j7). Use structured subactions (click, fill, get, wait on selector/url/text) or desktop browser workspace mode instead.";
 
