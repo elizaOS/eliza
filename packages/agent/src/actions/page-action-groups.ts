@@ -402,7 +402,7 @@ export const pageDelegateAction: PageActionGroup = {
     {
       name: "action",
       description:
-        "Child action name to run, e.g. BROWSER, WALLET, MODIFY_CHARACTER, UPDATE_AI_PROVIDER, LIST_CONNECTORS.",
+        "Child action name to run, e.g. BROWSER, CHECK_BALANCE, MODIFY_CHARACTER, UPDATE_AI_PROVIDER, LIST_CONNECTORS.",
       required: true,
       schema: { type: "string" as const },
     },
