@@ -253,6 +253,54 @@ export function createContactActions(dependencies: ContactActionDependencies): {
     return typeof value === "string" && UUID_REGEX.test(value);
   }
 
+  /**
+   * update: a supplied array is a value to write even when it is empty, so
+   * `replace` with `[]` clears the list.
+   */
+  function readSuppliedStringArray(value: unknown): string[] | undefined {
+    return Array.isArray(value)
+      ? value
+          .map((item) => readString(item))
+          .filter((item): item is string => Boolean(item))
+      : readStringArray(value);
+  }
+
+  function contactLabel(contact: ContactRecordLike, fallback: string): string {
+    return readString(contact.customFields.displayName) ?? fallback;
+  }
+
+  /** A name lookup that matches several contacts selects none of them. */
+  function ambiguousContact(
+    op: ContactOp,
+    contactName: string,
+    contacts: ContactRecordLike[],
+    outcome: string,
+  ): ActionResult {
+    const matches = contacts.map((contact) => ({
+      entityId: contact.entityId,
+      displayName: contactLabel(contact, contactName),
+    }));
+    const choices = matches
+      .map((match) => `${match.displayName} (entityId: ${match.entityId})`)
+      .join(", ");
+    return {
+      success: false,
+      text: `"${contactName}" matched ${contacts.length} contacts: ${choices}. Ask which contact they mean, then retry with a name that matches only that contact, or with its entityId. ${outcome}`,
+      values: {
+        success: false,
+        error: "AMBIGUOUS_CONTACT",
+        matchCount: contacts.length,
+      },
+      data: {
+        actionName: CONTACT_ACTION,
+        op,
+        error: "AMBIGUOUS_CONTACT",
+        matches,
+      },
+      error: "AMBIGUOUS_CONTACT",
+    };
+  }
+
   function getParams(options: unknown): ContactParams {
     const opts = options as HandlerOptions | undefined;
     return (opts?.parameters as ContactParams | undefined) ?? {};
@@ -813,7 +861,7 @@ export function createContactActions(dependencies: ContactActionDependencies): {
       const promoted = Boolean(
         categories || tags || preferences || customFields,
       );
-      let outcome: "created" | "saved" | "existing";
+      let outcome: "created" | "saved";
       let persistedEntity: Entity;
       let contact:
         | Awaited<
@@ -839,16 +887,24 @@ export function createContactActions(dependencies: ContactActionDependencies): {
         persistedEntity = receipt.entity;
         contact = receipt.contact;
       } else {
-        const existing = await runtime.getEntityById(entityId);
-        outcome = existing ? "existing" : "created";
-        if (!existing && !(await runtime.createEntity(entity))) {
+        // This path writes only a new entity. For an entity that exists it
+        // would store none of the supplied fields.
+        if (await runtime.getEntityById(entityId)) {
+          return fail(
+            `Entity ${entityId} already exists; nothing was saved. Use CONTACT update with this entityId to change its name, email, phone, notes or attributes.`,
+            "CONTACT_ALREADY_EXISTS",
+            "create",
+          );
+        }
+        if (!(await runtime.createEntity(entity))) {
           return fail(
             `Failed to create contact "${name}".`,
             "CREATE_FAILED",
             "create",
           );
         }
-        persistedEntity = existing ?? entity;
+        outcome = "created";
+        persistedEntity = entity;
       }
       return {
         text: `${outcome === "created" ? "Created" : "Saved"} contact "${name}" (entityId: ${entityId}).`,
@@ -916,8 +972,8 @@ export function createContactActions(dependencies: ContactActionDependencies): {
     const explicitName = readString(params.name);
     const targetName = explicitName;
 
-    const categories = readStringArray(params.categories);
-    const tags = readStringArray(params.tags);
+    const categories = readSuppliedStringArray(params.categories);
+    const tags = readSuppliedStringArray(params.tags);
     const preferences =
       typeof params.preferences === "string"
         ? readRecord(params.preferences)
@@ -974,6 +1030,13 @@ export function createContactActions(dependencies: ContactActionDependencies): {
     }
     if (!existing) {
       return fail(`Contact ${entityId} was not found.`, "NOT_FOUND", "update");
+    }
+    if (!explicitName && !email && !phone && !notes && !hasAttributes) {
+      return fail(
+        "CONTACT update received no field to change. Nothing was changed; send name, email, phone, notes, attributes, categories, tags, preferences or customFields.",
+        "INVALID_PARAMETERS",
+        "update",
+      );
     }
 
     const updated: Entity = { ...existing };
@@ -1081,6 +1144,14 @@ export function createContactActions(dependencies: ContactActionDependencies): {
           "update",
         );
       }
+      if (contacts.length > 1) {
+        return ambiguousContact(
+          "update",
+          contactName,
+          contacts,
+          "Nothing was changed.",
+        );
+      }
       contact = contacts[0];
     }
     const operation =
@@ -1090,7 +1161,7 @@ export function createContactActions(dependencies: ContactActionDependencies): {
 
     const updateData: Record<string, unknown> = {};
 
-    const newCategories = readStringArray(params.categories);
+    const newCategories = readSuppliedStringArray(params.categories);
     if (newCategories) {
       if (operation === "add_to" && contact.categories) {
         updateData.categories = [
@@ -1105,7 +1176,7 @@ export function createContactActions(dependencies: ContactActionDependencies): {
       }
     }
 
-    const newTags = readStringArray(params.tags);
+    const newTags = readSuppliedStringArray(params.tags);
     if (newTags) {
       if (operation === "add_to" && contact.tags) {
         updateData.tags = [...new Set([...contact.tags, ...newTags])];
@@ -1327,6 +1398,7 @@ export function createContactActions(dependencies: ContactActionDependencies): {
     const rt = runtime as RuntimeWithDeleteEntities;
     const relationships = getRelationshipsService(runtime);
     let namedContact: { entityId: UUID; label: string } | null = null;
+    let entityLabel: string | undefined;
     if (!entityId && contactName) {
       if (!relationships?.searchContacts || !relationships.removeContact) {
         return fail(
@@ -1345,48 +1417,49 @@ export function createContactActions(dependencies: ContactActionDependencies): {
           "delete",
         );
       }
-      const labelOf = (contact: ContactRecordLike): string =>
-        readString(contact.customFields.displayName) ?? contactName;
       if (contacts.length > 1) {
-        const matches = contacts.map((contact) => ({
-          entityId: contact.entityId,
-          displayName: labelOf(contact),
-        }));
-        const choices = matches
-          .map((match) => `${match.displayName} (entityId: ${match.entityId})`)
-          .join(", ");
-        return {
-          success: false,
-          text: `"${contactName}" matched ${contacts.length} contacts: ${choices}. Ask which contact they mean, then retry with a name that matches only that contact, or with its entityId. Nothing was removed.`,
-          values: {
-            success: false,
-            error: "AMBIGUOUS_CONTACT",
-            matchCount: contacts.length,
-          },
-          data: {
-            actionName: CONTACT_ACTION,
-            op: "delete",
-            error: "AMBIGUOUS_CONTACT",
-            matches,
-          },
-          error: "AMBIGUOUS_CONTACT",
-        };
+        return ambiguousContact(
+          "delete",
+          contactName,
+          contacts,
+          "Nothing was removed.",
+        );
       }
       namedContact = {
         entityId: contacts[0].entityId,
-        label: labelOf(contacts[0]),
+        label: contactLabel(contacts[0], contactName),
       };
-    } else if (typeof rt.deleteEntities !== "function") {
-      return fail(
-        "deleteEntities is not supported by this runtime version.",
-        "NOT_SUPPORTED",
-        "delete",
-      );
+    } else {
+      if (typeof rt.deleteEntities !== "function") {
+        return fail(
+          "deleteEntities is not supported by this runtime version.",
+          "NOT_SUPPORTED",
+          "delete",
+        );
+      }
+      if (!isLikelyUuid(entityId)) {
+        return fail(
+          `CONTACT delete requires entityId to be a UUID; "${entityId}" is not one. Nothing was removed. Send the contact's name in the name parameter to look it up.`,
+          "INVALID_PARAMETERS",
+          "delete",
+        );
+      }
+      const existing = await runtime.getEntityById(entityId);
+      if (!existing) {
+        return fail(
+          `Contact ${entityId} was not found.`,
+          "NOT_FOUND",
+          "delete",
+        );
+      }
+      entityLabel = existing.names[0];
     }
 
     const deleteTarget = namedContact
       ? `${namedContact.label} (entityId: ${namedContact.entityId})`
-      : `contact ${entityId}`;
+      : entityLabel
+        ? `${entityLabel} (entityId: ${entityId})`
+        : `contact ${entityId}`;
     const confirmPrompt = namedContact
       ? `Remove ${deleteTarget} from your contacts permanently?`
       : `Permanently delete ${deleteTarget}?`;
@@ -1453,7 +1526,7 @@ export function createContactActions(dependencies: ContactActionDependencies): {
     try {
       await rt.deleteEntities?.([entityId as UUID]);
       return {
-        text: `Deleted contact ${entityId}.`,
+        text: `Deleted ${deleteTarget}.`,
         success: true,
         values: { success: true, entityId },
         data: { actionName: CONTACT_ACTION, op: "delete", entityId },
@@ -1702,6 +1775,14 @@ export function createContactActions(dependencies: ContactActionDependencies): {
         (await relationships.searchContacts?.({
           searchTerm: contactName,
         })) ?? [];
+      if (contacts.length > 1) {
+        return ambiguousContact(
+          "followup",
+          contactName,
+          contacts,
+          "Nothing was scheduled.",
+        );
+      }
       entityId = contacts[0]?.entityId ?? null;
       if (!entityId) {
         return fail(

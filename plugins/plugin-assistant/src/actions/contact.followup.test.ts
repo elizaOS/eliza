@@ -10,12 +10,14 @@ import { createContactActions } from "./contact.ts";
 const CONTACT_ID = "00000000-0000-0000-0000-0000000000aa" as UUID;
 const TASK_ID = "00000000-0000-0000-0000-0000000000bb" as UUID;
 
-function createHarness(timeZone: string) {
+function createHarness(timeZone: string, contacts: unknown[] = []) {
   const scheduled: Date[] = [];
   const runtime = {
     getSetting: (key: string) => (key === "TIMEZONE" ? timeZone : undefined),
     getService: (name: string) => {
-      if (name === "relationships") return {};
+      if (name === "relationships") {
+        return { searchContacts: async () => contacts };
+      }
       if (name === "follow_up") {
         return {
           scheduleFollowUp: async (_entityId: UUID, scheduledAt: Date) => {
@@ -39,7 +41,15 @@ function createHarness(timeZone: string) {
         scheduledAt,
       },
     } as HandlerOptions);
-  return { run, scheduled };
+  const runByName = (name: string) =>
+    contactAction.handler(runtime, {} as Memory, undefined, {
+      parameters: {
+        action: "followup",
+        name,
+        scheduledAt: "2026-10-12T09:00",
+      },
+    } as HandlerOptions);
+  return { run, runByName, scheduled };
 }
 
 describe("CONTACT follow-up time", () => {
@@ -77,6 +87,29 @@ describe("CONTACT follow-up time", () => {
         data: { error: "INVALID_SCHEDULED_AT" },
       });
     }
+    expect(scheduled).toHaveLength(0);
+  });
+
+  it("schedules nothing when the name matches more than one contact", async () => {
+    const john = "00000000-0000-0000-0000-0000000000c1" as UUID;
+    const joanna = "00000000-0000-0000-0000-0000000000c2" as UUID;
+    const { runByName, scheduled } = createHarness("Asia/Kolkata", [
+      { entityId: john, customFields: { displayName: "John" } },
+      { entityId: joanna, customFields: { displayName: "Joanna" } },
+    ]);
+
+    const result = await runByName("Jo");
+
+    expect(result).toMatchObject({
+      success: false,
+      data: {
+        error: "AMBIGUOUS_CONTACT",
+        matches: [
+          { entityId: john, displayName: "John" },
+          { entityId: joanna, displayName: "Joanna" },
+        ],
+      },
+    });
     expect(scheduled).toHaveLength(0);
   });
 });
