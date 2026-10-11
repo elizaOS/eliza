@@ -79,6 +79,34 @@ interface CampaignResponse {
   objective: string;
 }
 
+interface MetaConversionActionStat {
+  action_type?: string;
+  value?: string;
+}
+
+function parseMetaConversionCount(conversions: MetaConversionActionStat[] | undefined): number {
+  if (!conversions?.length) {
+    return 0;
+  }
+
+  // Meta action types can overlap, so adding several rows can count the same
+  // conversion more than once. This service has no configured action type to
+  // select; fail instead of storing an invented aggregate.
+  if (conversions.length !== 1) {
+    throw new Error("Meta Ads returned multiple conversion action types");
+  }
+
+  const value = Number(conversions[0].value ?? "0");
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error("Meta Ads returned an invalid conversion count");
+  }
+
+  // Provider-attributed conversions can be fractional, while the campaign
+  // metric is an integer count. Match the integer policy used by the other ad
+  // providers and by ad_campaigns.total_conversions.
+  return Math.trunc(value);
+}
+
 interface MetaAdImagesResponse {
   images?: Record<
     string,
@@ -833,7 +861,7 @@ export const metaAdsProvider: AdProvider = {
           spend: string;
           impressions: string;
           clicks: string;
-          conversions?: Array<{ value?: string }>;
+          conversions?: MetaConversionActionStat[];
           ctr?: string;
           cpc?: string;
           cpm?: string;
@@ -857,11 +885,7 @@ export const metaAdsProvider: AdProvider = {
         spend: parseFloat(data.spend) || 0,
         impressions: parseInt(data.impressions) || 0,
         clicks: parseInt(data.clicks) || 0,
-        conversions:
-          data.conversions?.reduce(
-            (total, conversion) => total + (Number.parseFloat(conversion.value ?? "0") || 0),
-            0,
-          ) ?? 0,
+        conversions: parseMetaConversionCount(data.conversions),
         ctr: parseFloat(data.ctr || "0") || undefined,
         cpc: parseFloat(data.cpc || "0") || undefined,
         cpm: parseFloat(data.cpm || "0") || undefined,
