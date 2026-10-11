@@ -68,6 +68,19 @@ describe("sendTwilioSms", () => {
     expect(result.billing?.segments).toBe(13);
   });
 
+  test("a body with spaces and line breaks keeps every character across parts", async () => {
+    const body = Array.from({ length: 400 }, (_, i) => `w${i}`)
+      .join(" ")
+      .replace(/w(\d*0) /g, "w$1\n")
+      .slice(0, 1750);
+
+    await sendTwilioSms({ credentials, to: "+15551234567", body });
+
+    expect(bodies).toHaveLength(2);
+    expect(bodies.every((part) => part.length <= 1600)).toBe(true);
+    expect(bodies.join("")).toBe(body);
+  });
+
   test("a short body is sent as one message", async () => {
     const result = await sendTwilioSms({
       credentials,

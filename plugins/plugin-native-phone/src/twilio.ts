@@ -9,7 +9,7 @@
  * owned by the PA-hosted VOICE_CALL action.
  */
 
-import { chunkText, logger } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 
 export interface TwilioCredentials {
   accountSid: string;
@@ -51,6 +51,30 @@ const MAX_RETRIES = 2;
 const BASE_DELAY_MS = 1_000;
 /** Twilio rejects a longer Body with error 21617. */
 const TWILIO_BODY_MAX_LENGTH = 1600;
+
+/**
+ * Splits a body into parts of at most `TWILIO_BODY_MAX_LENGTH` characters.
+ * Each part is its own SMS, so every character is kept: a part ends after the
+ * last whitespace in its window when there is one, and never between the two
+ * halves of a surrogate pair.
+ */
+function splitSmsBody(body: string): string[] {
+  const parts: string[] = [];
+  let rest = body;
+  while (rest.length > TWILIO_BODY_MAX_LENGTH) {
+    const window = rest.slice(0, TWILIO_BODY_MAX_LENGTH);
+    let end = Math.max(window.lastIndexOf(" "), window.lastIndexOf("\n")) + 1;
+    if (end === 0) {
+      end = TWILIO_BODY_MAX_LENGTH;
+      const last = rest.charCodeAt(end - 1);
+      if (last >= 0xd800 && last <= 0xdbff) end -= 1;
+    }
+    parts.push(rest.slice(0, end));
+    rest = rest.slice(end);
+  }
+  parts.push(rest);
+  return parts;
+}
 
 function createTwilioTelemetrySpan(): TwilioTelemetrySpan {
   return {
@@ -321,7 +345,7 @@ export async function sendTwilioSms(args: {
 
   // One Body holds at most 1600 characters, so a longer body goes out as
   // several messages in order.
-  const parts = chunkText(body, TWILIO_BODY_MAX_LENGTH);
+  const parts = splitSmsBody(body);
   const sids: string[] = [];
   let lastResult: TwilioDeliveryResult | null = null;
   for (const part of parts) {
