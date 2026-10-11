@@ -9,7 +9,11 @@ import type {
   LifeOpsGoogleConnectorStatus,
 } from "@elizaos/contracts";
 import { SELF_ENTITY_ID } from "@elizaos/contracts";
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  type Memory,
+  validateToolArgs,
+} from "@elizaos/core";
 import { GoogleCalendarSyncTokenExpiredError } from "@elizaos/plugin-google-workspace";
 import { RuntimeMigrator } from "@elizaos/plugin-sql";
 import { drizzle } from "drizzle-orm/pglite";
@@ -697,6 +701,34 @@ describe("CalendarService source truth", () => {
       },
     ]);
     expect(JSON.stringify(result)).not.toContain(GUEST_MISSING_CALENDAR);
+  });
+
+  it("rejects a range object without both start and end instead of scanning the default window", async () => {
+    for (const range of [
+      { start: "2026-07-27T15:30:00.000Z" },
+      {
+        startISO: "2026-07-27T15:30:00.000Z",
+        endISO: "2026-07-27T16:00:00.000Z",
+      },
+    ]) {
+      expect(await runConflictAction({ action: "scan_week", range })).toEqual({
+        success: false,
+        text: "I need a valid range (today | week | { start, end }) to scan.",
+        data: { subaction: "scan_week", error: "INVALID_RANGE" },
+      });
+      expect(
+        validateToolArgs(createConflictDetectAction(), {
+          action: "scan_week",
+          range,
+        }).valid,
+      ).toBe(false);
+    }
+    expect(
+      validateToolArgs(createConflictDetectAction(), {
+        action: "scan_week",
+        policy: { ignoreTentative: true },
+      }).errors,
+    ).toEqual(["Unexpected argument 'policy.ignoreTentative'"]);
   });
 
   it("uses production free/busy by default and exposes only anonymous busy conflicts", async () => {
