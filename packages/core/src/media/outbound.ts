@@ -95,10 +95,22 @@ function decodeDataUrl(
 
 	let buffer: Buffer;
 	try {
+		// Data URL percent escapes represent bytes, including non-UTF-8 media.
+		const decoded = Buffer.from(
+			Buffer.from(payload, "utf8")
+				.toString("latin1")
+				.replace(/%([0-9a-f]{2})/gi, (_match, hex: string) =>
+					String.fromCharCode(Number.parseInt(hex, 16)),
+				),
+			"latin1",
+		);
 		if (isBase64) {
-			buffer = Buffer.from(payload.replace(/\s+/g, ""), "base64");
+			buffer = Buffer.from(
+				decoded.toString("utf8").replace(/\s+/g, ""),
+				"base64",
+			);
 		} else {
-			buffer = Buffer.from(decodeURIComponent(payload), "utf8");
+			buffer = decoded;
 		}
 	} catch (error) {
 		// error-policy:J3 malformed data-URL encoding is untrusted input; never
