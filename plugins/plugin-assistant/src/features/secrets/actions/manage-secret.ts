@@ -243,8 +243,11 @@ export const secretsAction: Action = {
 
     // `request` validates in any channel (it routes the user to the right
     // surface). Every other action is DM-only because the model may
-    // echo secret values into the chat.
-    if (resolved !== "request") {
+    // echo secret values into the chat. The planner tool surface calls
+    // validate without arguments; the DM rule cannot apply there or `request`
+    // is never offered outside a DM. It applies at execution, where the
+    // chosen action is known.
+    if (resolved !== undefined && resolved !== "request") {
       const channelType = message.content.channelType;
       if (channelType !== undefined && channelType !== ChannelType.DM) {
         return false;

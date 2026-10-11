@@ -93,6 +93,20 @@ describe("SECRETS umbrella action", () => {
     );
   });
 
+  test("stays offered in a public channel when validate gets no arguments", async () => {
+    // The planner tool surface calls validate with no options; `request`
+    // must remain selectable there.
+    expect(
+      await secretsAction.validate?.(
+        createRuntime() as never,
+        createMessage(ChannelType.GROUP, {
+          __responseContext: { primaryContext: "secrets" },
+        }) as never,
+        undefined,
+      ),
+    ).toBe(true);
+  });
+
   test.each(["get", "set", "delete", "list", "check", "mirror"])(
     "rejects action=%s in a public channel",
     async (action) => {
