@@ -67,11 +67,12 @@ export function readBrowserWorkspaceElementText(
 ): string {
   if (!element || element.closest("script, style, template")) return "";
   // SHOW_TEXT: walk without cloning or modifying the document being controlled.
-  const walker = element.ownerDocument.createTreeWalker(element, 4);
+  // SHOW_ELEMENT | SHOW_TEXT: keep explicit line breaks without modifying the page.
+  const walker = element.ownerDocument.createTreeWalker(element, 5);
   const text: string[] = [];
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
     if (!node.parentElement?.closest("script, style, template")) {
-      text.push(node.nodeValue ?? "");
+      text.push(node.nodeName === "BR" ? " " : (node.nodeValue ?? ""));
     }
   }
   return normalizeBrowserWorkspaceText(text.join(""));
