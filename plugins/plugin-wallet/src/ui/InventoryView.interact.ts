@@ -41,17 +41,5 @@ export async function interact(
     };
   }
 
-  if (capability === "wallet-trading-profile") {
-    const window =
-      params?.window === "24h" ||
-      params?.window === "7d" ||
-      params?.window === "30d"
-        ? params.window
-        : "30d";
-    return {
-      profile: await client.getWalletTradingProfile(window),
-    };
-  }
-
   throw new Error(`Unsupported capability "${capability}"`);
 }

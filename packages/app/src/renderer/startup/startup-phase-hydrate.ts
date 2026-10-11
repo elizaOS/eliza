@@ -15,6 +15,7 @@ import {
 } from "@elizaos/contracts";
 import {
   type AppEmoteEventDetail,
+  activityEventToPlaintext,
   MESSAGE_SOURCE_CLIENT_CHAT,
   normalizeShellNavigateViewPayload,
   SHELL_NAVIGATE_VIEW_WS_EVENT,
@@ -998,10 +999,28 @@ export function bindReadyPhase(
                 : s,
             );
           if (eventType === "tool_running") {
-            const td =
-              (dd?.description as string) ??
-              (dd?.toolName as string) ??
-              "external tool";
+            // ACP sends { toolCall: { title, status, rawInput, ... } } for both
+            // the start and the end of a tool. Use the shared activity summary
+            // for the label, and leave tool_running when the tool has ended.
+            const toolCall = dd?.toolCall as { status?: unknown } | undefined;
+            if (
+              toolCall?.status === "completed" ||
+              toolCall?.status === "failed" ||
+              toolCall?.status === "error"
+            ) {
+              return prev.map((s) =>
+                s.sessionId === sid
+                  ? {
+                      ...s,
+                      status: "active" as const,
+                      toolDescription: undefined,
+                      lastActivity: "Running",
+                    }
+                  : s,
+              );
+            }
+            const summary = activityEventToPlaintext(data, { maxLength: 60 });
+            const td = summary?.plaintext.replace(/^Running /, "") ?? "tool";
             return prev.map((s) =>
               s.sessionId === sid
                 ? {

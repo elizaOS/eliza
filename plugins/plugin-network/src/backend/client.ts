@@ -1,6 +1,8 @@
 /** Signed HTTP client for the Network service's /internal/* endpoints (the Eliza side's NetworkBackend). */
 import { boundedFetch } from "@elizaos/cloud-services-common/transport";
+import { NETWORK_MEMBER_STATES } from "../types.js";
 import {
+  NETWORK_APP_IDS,
   RELAY_PATH,
   type RelaySendRequest,
   type RelaySendResponse,
@@ -21,6 +23,91 @@ import {
   type UpdatesResponse,
 } from "./contract.js";
 import { svcSign } from "./svc-auth.js";
+
+const NETWORK_APPS = new Set<string>(NETWORK_APP_IDS);
+const MEMBER_STATES = new Set<string>(NETWORK_MEMBER_STATES);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isStringOrNull(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
+function isNetworkApp(value: unknown): boolean {
+  return typeof value === "string" && NETWORK_APPS.has(value);
+}
+
+function isTurnContext(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (
+    !isStringOrNull(value.firstName) ||
+    !isStringOrNull(value.city) ||
+    typeof value.state !== "string" ||
+    !MEMBER_STATES.has(value.state) ||
+    !isStringOrNull(value.stateFrom) ||
+    !isStringOrNull(value.stateUntil) ||
+    !Array.isArray(value.facets) ||
+    !value.facets.every((facet) => typeof facet === "string") ||
+    typeof value.singlePlayer !== "boolean"
+  )
+    return false;
+  return (
+    value.activeItems === null ||
+    (Array.isArray(value.activeItems) &&
+      value.activeItems.every(
+        (item) =>
+          isRecord(item) &&
+          typeof item.id === "string" &&
+          typeof item.kind === "string" &&
+          typeof item.summary === "string",
+      ))
+  );
+}
+
+function isConsent(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    (value.state === "opted_out" || value.state === "opted_in") &&
+    (value.scope === "all" || value.scope === "app") &&
+    (value.app === null || isNetworkApp(value.app)) &&
+    Number.isSafeInteger(value.at)
+  );
+}
+
+function isTurnResponse(value: unknown): value is TurnResponse {
+  if (!isRecord(value)) return false;
+  if (value.outcome === "ignored") return typeof value.reason === "string";
+  if (value.outcome === "open") {
+    return (
+      (value.channel === "blooio" || value.channel === "twilio") &&
+      isNetworkApp(value.app) &&
+      typeof value.memberId === "string" &&
+      isTurnContext(value.context)
+    );
+  }
+  if (value.outcome !== "handled") return false;
+  return (
+    Array.isArray(value.replies) &&
+    value.replies.every((reply) => typeof reply === "string") &&
+    Array.isArray(value.replyIds) &&
+    value.replyIds.every((id) => typeof id === "string") &&
+    value.delivery === "collected" &&
+    (value.replyKind === "reply" || value.replyKind === "compliance") &&
+    typeof value.accountEligible === "boolean" &&
+    (value.app === null || isNetworkApp(value.app)) &&
+    isStringOrNull(value.memberId) &&
+    typeof value.reason === "string" &&
+    (value.consent === undefined || isConsent(value.consent))
+  );
+}
+
+function isTurnReceiptResponse(value: unknown): value is TurnReceiptResponse {
+  return (
+    isRecord(value) && value.ok === true && typeof value.replayed === "boolean"
+  );
+}
 
 export interface NetworkServiceClientOptions {
   /** Service origin, e.g. https://network-service.up.railway.app (no trailing slash needed). */
@@ -100,17 +187,29 @@ export class NetworkServiceClient {
   }
 
   /** One inbound message. Idempotent by messageId. */
-  turn(req: TurnRequest): Promise<TurnResponse> {
-    return this.#post<TurnResponse>(TURN_PATH, req.messageId, req);
+  async turn(req: TurnRequest): Promise<TurnResponse> {
+    const result = await this.#post<unknown>(TURN_PATH, req.messageId, req);
+    if (!isTurnResponse(result))
+      throw new NetworkServiceError(
+        200,
+        "Network service returned an invalid turn response",
+      );
+    return result;
   }
 
   /** Acknowledge provider acceptance separately from collecting a reply. */
-  turnReceipt(req: TurnReceiptRequest): Promise<TurnReceiptResponse> {
-    return this.#post<TurnReceiptResponse>(
+  async turnReceipt(req: TurnReceiptRequest): Promise<TurnReceiptResponse> {
+    const result = await this.#post<unknown>(
       TURN_RECEIPT_PATH,
       `${req.messageId}:receipt`,
       req,
     );
+    if (!isTurnReceiptResponse(result))
+      throw new NetworkServiceError(
+        200,
+        "Network service returned an invalid turn receipt",
+      );
+    return result;
   }
 
   setState(req: SetStateRequest): Promise<SetStateResponse> {

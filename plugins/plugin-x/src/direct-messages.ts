@@ -29,6 +29,7 @@ import type { AuthenticatedTwitterSession } from "./client/auth";
 import { checkTwitterDmAccess, resolveTwitterDmPolicy } from "./dm-policy";
 import { parseTwitterInterval } from "./environment";
 import type { TwitterClientState } from "./types";
+import { splitXDirectMessageContent } from "./utils";
 import { resolveCloudApiKeyForXEndpoint } from "./utils/cloud-credential-boundary";
 import { createMemorySafe, reconcileTwitterWorld } from "./utils/memory";
 import { normalizeXReceiptId } from "./utils/provider-receipt";
@@ -516,7 +517,6 @@ export class TwitterDirectMessageClient {
         return [];
       }
 
-      let sent: unknown;
       // X's DM create endpoints do not accept an idempotency key. Persist a
       // no-replay barrier before the request so a crash, timeout, or receipt
       // persistence failure cannot cause a second externally visible reply.
@@ -527,38 +527,57 @@ export class TwitterDirectMessageClient {
         deliveryError = error;
         throw error;
       }
-      if (!this.isSessionCurrent(session)) {
-        await this.runtime.deleteCache(settledKey);
-        deliveryError = this.sessionRotationError(
-          "before the direct-message reply was sent",
-        );
-        throw deliveryError;
-      }
-      try {
-        sent = isGroup
-          ? await session.client.v2.sendDmInConversation(conversationId, {
-              text,
-            })
-          : await session.client.v2.sendDmToParticipant(senderId, { text });
-      } catch (error) {
-        // error-policy:J2 explicit HTTP rejection proves X did not accept the
-        // send, so reopen it for a later retry. Transport failures are
-        // indeterminate and retain the no-replay tombstone.
-        deliveryError = error;
-        if (isExplicitTwitterRejection(error)) {
-          await this.runtime.deleteCache(settledKey);
-        } else {
-          await this.runtime.setCache(settledKey, "indeterminate");
+      // X rejects DM text over X_MAX_DM_LENGTH, so a longer reply goes out as
+      // ordered parts. The response memory is keyed by the first part's event.
+      let sentId: string | undefined;
+      let partsAccepted = 0;
+      for (const part of splitXDirectMessageContent(text)) {
+        if (!this.isSessionCurrent(session)) {
+          // Nothing reached X yet: reopen the event. Once a part was accepted
+          // the tombstone stays so a retry cannot resend that part.
+          if (partsAccepted === 0) {
+            await this.runtime.deleteCache(settledKey);
+          } else {
+            await this.runtime.setCache(settledKey, "indeterminate");
+          }
+          deliveryError = this.sessionRotationError(
+            "before the direct-message reply was sent",
+          );
+          throw deliveryError;
         }
-        throw error;
+        let sent: unknown;
+        try {
+          sent = isGroup
+            ? await session.client.v2.sendDmInConversation(conversationId, {
+                text: part,
+              })
+            : await session.client.v2.sendDmToParticipant(senderId, {
+                text: part,
+              });
+        } catch (error) {
+          // error-policy:J2 explicit HTTP rejection proves X did not accept
+          // this part. With no earlier part accepted, reopen the event for a
+          // later retry. Transport failures, and any failure after an earlier
+          // part was accepted, retain the no-replay tombstone.
+          deliveryError = error;
+          if (partsAccepted === 0 && isExplicitTwitterRejection(error)) {
+            await this.runtime.deleteCache(settledKey);
+          } else {
+            await this.runtime.setCache(settledKey, "indeterminate");
+          }
+          throw error;
+        }
+        const sentResult = sent as {
+          data?: { dm_event_id?: string };
+          dm_event_id?: string;
+        };
+        if (partsAccepted === 0) {
+          sentId = normalizeXReceiptId(
+            sentResult.data?.dm_event_id ?? sentResult.dm_event_id,
+          );
+        }
+        partsAccepted += 1;
       }
-      const sentResult = sent as {
-        data?: { dm_event_id?: string };
-        dm_event_id?: string;
-      };
-      const sentId = normalizeXReceiptId(
-        sentResult.data?.dm_event_id ?? sentResult.dm_event_id,
-      );
       await this.runtime.setCache(
         settledKey,
         sentId ? `delivered:${sentId}` : "delivered",

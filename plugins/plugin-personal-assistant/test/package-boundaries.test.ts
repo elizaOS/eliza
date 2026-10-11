@@ -99,6 +99,10 @@ describe("LifeOps package boundaries", () => {
       expect(source).not.toContain(
         "^\\/api\\/lifeops\\/connectors\\/health\\/([^/]+)\\/disconnect$",
       );
+      expect(source).not.toContain("/health/:provider/callback");
+      expect(source).not.toContain("/health/:provider/success");
+      expect(source).not.toContain("\\/health\\/([^/]+)\\/callback$");
+      expect(source).not.toContain("\\/health\\/([^/]+)\\/success$");
     }
     expect(settingsSection).not.toContain("HealthProviderActionButton");
     expect(settingsSection).not.toContain("HealthPendingAuthActions");

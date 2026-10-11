@@ -112,6 +112,10 @@ export const LIFEOPS_TIME_ZONE_ALIASES: Record<string, string> = {
   eastern: "America/New_York",
   utc: "UTC",
   gmt: "UTC",
+  // A planner that reads "2026-08-19T14:00:00Z" stamps timeZone "Z". Intl
+  // rejects it, but it names UTC (same alias merged for plugin-calendar in
+  // #35276; the lenient normalizeTimeZone in this package already maps it).
+  z: "UTC",
 };
 export const PROACTIVE_TASK_QUERY_TAGS = [
   "queue",

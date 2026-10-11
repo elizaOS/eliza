@@ -459,6 +459,13 @@ export interface VoiceModelDownloadInputs {
 	 * caller's quant-selection policy (R8) decides which.
 	 */
 	readonly assetIndex: number;
+	/**
+	 * Who started the download. `"auto"` is a background update and proceeds
+	 * only when `networkPolicy.allow` is true. `"explicit"` is a request the
+	 * user made for this model: the policy's ask/explicit-only outcomes are
+	 * answered by that request, so the decision does not refuse it.
+	 */
+	readonly trigger: "auto" | "explicit";
 	/** Network policy decision attested by the caller. */
 	readonly networkPolicy: NetworkPolicyDecision;
 	/** AbortSignal — required so the cancel button stops downloads. */
@@ -490,8 +497,8 @@ const buildHfResolveUrl = (
 /**
  * Atomic-swap downloader for a single voice asset.
  *
- * Refuses to proceed when `networkPolicy.allow === false` so headless
- * environments and pre-OWNER cellular skip cleanly. Streams to a
+ * Refuses an `"auto"` download when `networkPolicy.allow === false` so
+ * headless environments and pre-OWNER cellular skip cleanly. Streams to a
  * `<id>-<version>.<filename>.part` file in the staging dir, hashes,
  * verifies against the catalog sha256, then renames into the bundle voice
  * dir using a `<id>-<version>.<filename>` final name so old + new
@@ -500,7 +507,7 @@ const buildHfResolveUrl = (
 export async function downloadVoiceModel(
 	args: VoiceModelDownloadInputs,
 ): Promise<{ finalPath: string; sha256: string; sizeBytes: number }> {
-	if (!args.networkPolicy.allow) {
+	if (args.trigger === "auto" && !args.networkPolicy.allow) {
 		throw new VoiceModelDownloadError(
 			`network policy refused download (reason=${args.networkPolicy.reason})`,
 			"ELIZA_VOICE_NET_POLICY_REFUSED",

@@ -21,16 +21,17 @@ import type {
   WalletBalancesResponse,
   WalletConfigStatus,
   WalletNftsResponse,
-  WalletTradingProfileResponse,
 } from "@elizaos/contracts";
 import {
-  type AppRunSummary,
   type IAgentRuntime,
   logger,
   type RegistryAppInfo,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import { createSelfApiRequestHeaders } from "@elizaos/host/protocol";
+import {
+  createSelfApiRequestHeaders,
+  resolveSelfApiBaseUrl,
+} from "@elizaos/host/protocol";
 
 async function renderCharacterLiveState(
   runtime: IAgentRuntime,
@@ -55,37 +56,24 @@ async function renderCharacterLiveState(
   lines.push(`- Message examples: ${exampleCount}`);
   return lines.join("\n");
 }
-function getLocalApiUrls(path: string): string[] {
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  const configuredPort = process.env.API_PORT || process.env.SERVER_PORT;
-  const ports = configuredPort
-    ? [configuredPort, configuredPort === "31337" ? "2138" : "31337"]
-    : ["2138", "31337"];
-  return [...new Set(ports)].map(
-    (port) => `http://127.0.0.1:${port}${normalizedPath}`,
-  );
-}
 async function fetchLocalJson<T>(
   path: string,
   timeoutMs = 1500,
 ): Promise<T | null> {
-  for (const url of getLocalApiUrls(path)) {
-    try {
-      const response = await fetch(url, {
-        headers: createSelfApiRequestHeaders(),
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-      if (response.ok) return (await response.json()) as T;
-    } catch (err) {
-      // error-policy:J4 local-API port failover — the dev API lives on one of a
-      // small candidate port set; a connection failure just means try the next
-      // port. Exhausting every port returns null, which every caller renders as
-      // an explicit "unavailable from the … API" line (agent-visible, not silence).
-      logger.debug(
-        { err, url },
-        "[PageScopedLiveState] local API port unreachable",
-      );
-    }
+  // The bearer goes only to this process's own listener, never to guessed
+  // candidate ports where an unrelated local process could capture it.
+  const url = `${resolveSelfApiBaseUrl(process.env)}${path}`;
+  try {
+    const response = await fetch(url, {
+      headers: createSelfApiRequestHeaders(),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (response.ok) return (await response.json()) as T;
+  } catch (err) {
+    // error-policy:J4 local-API unavailability — an unreachable self-API
+    // returns null, which every caller renders as an explicit "unavailable
+    // from the … API" line (agent-visible, not silence).
+    logger.debug({ err, url }, "[PageScopedLiveState] local API unreachable");
   }
   return null;
 }
@@ -142,52 +130,18 @@ async function renderBrowserLiveState(
     return null;
   }
 }
-function dedupeApps(
-  groups: Array<RegistryAppInfo[] | null>,
-): RegistryAppInfo[] {
-  const apps = new Map<string, RegistryAppInfo>();
-  for (const group of groups) {
-    if (!group) continue;
-    for (const app of group) {
-      if (!app.name || apps.has(app.name)) continue;
-      apps.set(app.name, app);
-    }
-  }
-  return [...apps.values()].sort((left, right) =>
-    left.displayName.localeCompare(right.displayName),
-  );
-}
 async function renderAppsLiveState(): Promise<string | null> {
-  const [catalogApps, serverApps, runs] = await Promise.all([
-    fetchLocalJson<RegistryAppInfo[]>("/api/catalog/apps"),
-    fetchLocalJson<RegistryAppInfo[]>("/api/apps"),
-    fetchLocalJson<AppRunSummary[]>("/api/apps/runs"),
-  ]);
-  if (!catalogApps && !serverApps && !runs) {
+  const catalogApps =
+    await fetchLocalJson<RegistryAppInfo[]>("/api/catalog/apps");
+  if (!catalogApps) {
     return "Live apps state: unavailable from the Apps API.";
   }
-  const apps = dedupeApps([catalogApps, serverApps]);
-  const activeRuns = runs ?? [];
+  const apps = [...catalogApps].sort((left, right) =>
+    left.displayName.localeCompare(right.displayName),
+  );
   const lines: string[] = [
-    `Live apps state: ${apps.length} catalog app${apps.length === 1 ? "" : "s"}, ${activeRuns.length} running app${activeRuns.length === 1 ? "" : "s"}.`,
+    `Live apps state: ${apps.length} catalog app${apps.length === 1 ? "" : "s"}.`,
   ];
-  if (activeRuns.length > 0) {
-    lines.push("Running apps:");
-    for (const run of activeRuns) {
-      const health = run.health.state ? ` health=${run.health.state}` : "";
-      const viewer = run.viewerAttachment
-        ? ` viewer=${run.viewerAttachment}`
-        : "";
-      const summary = run.summary
-        ? ` — ${toWellFormedUnicode(run.summary)}`
-        : "";
-      lines.push(
-        `- ${run.displayName} (${run.appName}) status=${run.status}${health}${viewer}${summary}`,
-      );
-    }
-  } else {
-    lines.push("Running apps: none.");
-  }
   if (apps.length > 0) {
     lines.push("Catalog sample:");
     for (const app of apps) {
@@ -217,15 +171,12 @@ function hasPositiveAmount(value: string | null | undefined): boolean {
   return Number.isFinite(parsed) && parsed > 0;
 }
 async function renderWalletLiveState(): Promise<string | null> {
-  const [config, balances, nfts, profile] = await Promise.all([
+  const [config, balances, nfts] = await Promise.all([
     fetchLocalJson<WalletConfigStatus>("/api/wallet/config"),
     fetchLocalJson<WalletBalancesResponse>("/api/wallet/balances"),
     fetchLocalJson<WalletNftsResponse>("/api/wallet/nfts"),
-    fetchLocalJson<WalletTradingProfileResponse>(
-      "/api/wallet/trading/profile?window=24h&source=all",
-    ),
   ]);
-  if (!config && !balances && !nfts && !profile) {
+  if (!config && !balances && !nfts) {
     return "Live wallet state: unavailable from the Wallet API.";
   }
   const lines: string[] = ["Live wallet state:"];
@@ -285,11 +236,6 @@ async function renderWalletLiveState(): Promise<string | null> {
     const solanaNftCount = nfts.solana?.nfts.length ?? 0;
     const nftCount = evmNftCount + solanaNftCount;
     lines.push(`- NFTs: ${nftCount} item${nftCount === 1 ? "" : "s"}.`);
-  }
-  if (profile) {
-    lines.push(
-      `- 24h activity: ${profile.summary.totalSwaps} swap${profile.summary.totalSwaps === 1 ? "" : "s"}, realized P&L ${profile.summary.realizedPnlBnb} BNB, volume ${profile.summary.volumeBnb} BNB.`,
-    );
   }
   return lines.join("\n");
 }

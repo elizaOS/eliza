@@ -4127,7 +4127,12 @@ user.delete("/me/accounts/:provider/:providerAccountId", async (c) => {
         .select()
         .from(refreshTokens)
         .where(eq(refreshTokens.userId, userId));
-      await revocationStore.revokeUserTokens(userId, issuedBefore);
+      await revocationStore.revokeUserTokens(
+        userId,
+        issuedBefore,
+        undefined,
+        tx,
+      );
       const [deleted] = account
         ? await tx
             .delete(accounts)
@@ -8886,8 +8891,12 @@ user.patch(
           .limit(1);
         if (!previous) return null;
 
-        const issuedBefore =
-          await revocationStore.revokeUserTokens(targetUserId);
+        const issuedBefore = await revocationStore.revokeUserTokens(
+          targetUserId,
+          undefined,
+          undefined,
+          tx,
+        );
         await tx
           .update(users)
           .set({

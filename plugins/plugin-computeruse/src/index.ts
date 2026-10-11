@@ -212,7 +212,6 @@ export {
   parseWindowsProcessJson,
 } from "./platform/process-list.js";
 export { sceneProvider } from "./providers/scene.js";
-export { handleComputerUseRoutes } from "./routes/computer-use-routes.js";
 export { handleSandboxRoute } from "./routes/sandbox-routes.js";
 export {
   type AccessibilityProvider,

@@ -50,9 +50,16 @@ encrypted-store identity and revocation policy.
 `LocalRuntimeHttp` supplies bounded JSON HTTP exchange with an absolute socket
 deadline and injected monotonic clock. It only connects to loopback; the host
 must authorize its route and provide its private token and response-size limit.
-It deliberately contains no product route catalog. The instrumented contract
+It deliberately contains no product route catalog. A second `exchange` overload
+takes up to eight host-chosen request headers, for example a correlation ID
+(`EmbeddedRuntimeService.exchangeHttp` has the same overload). A name must be
+letters, digits or hyphens; a value must be 1-256 printable ASCII characters.
+The transport's own headers (`Host`, `Authorization`, `Content-Type`,
+`Content-Length`, `Connection`, `Transfer-Encoding`) cannot be replaced, and a
+rejected header fails before any connection. The instrumented contract
 also covers this client with real fixed-length, chunked, close-delimited,
-oversized, truncated and delayed responses.
+oversized, truncated and delayed responses, and with accepted and rejected
+request headers.
 
 `AndroidRuntimeDirectories` supplies the Android durability adapter for runtime
 bundle publication and secures an app-owned parent directory to mode 0700.

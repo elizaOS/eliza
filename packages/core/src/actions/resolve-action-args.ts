@@ -320,8 +320,10 @@ export async function resolveActionArgs<
 
 	// 1. Planner trust path — fully populated subaction + required fields.
 	const plannerSubactionRaw = plannerParams.action ?? plannerParams.subaction;
-	if (isSubactionKey(plannerSubactionRaw, subactions)) {
-		const plannerSubaction = plannerSubactionRaw;
+	const plannerSubaction = isSubactionKey(plannerSubactionRaw, subactions)
+		? plannerSubactionRaw
+		: null;
+	if (plannerSubaction) {
 		const missingFromPlanner = missingRequiredKeys(
 			plannerSubaction,
 			subactions,
@@ -365,7 +367,7 @@ export async function resolveActionArgs<
 	}
 
 	// Resolve subaction (with default fallback).
-	let chosen: TSubaction | null = parsed.subaction;
+	let chosen: TSubaction | null = plannerSubaction ?? parsed.subaction;
 	if (!chosen && defaultSubaction) {
 		chosen = defaultSubaction;
 	}
@@ -384,7 +386,11 @@ export async function resolveActionArgs<
 
 	// Merge planner-provided params (which take precedence) with extracted params,
 	// but only retain keys this subaction actually declares.
-	const allowedExtracted = pickKnownParams(chosen, subactions, parsed.params);
+	const extractedParams =
+		parsed.subaction === null || parsed.subaction === chosen
+			? parsed.params
+			: {};
+	const allowedExtracted = pickKnownParams(chosen, subactions, extractedParams);
 	const allowedPlanner = pickKnownParams(chosen, subactions, plannerParams);
 	const mergedParams: Record<string, unknown> = {
 		...allowedExtracted,

@@ -112,10 +112,19 @@ export async function handleImageGeneration(
     throw new Error("OpenAI API returned no images");
   }
 
-  return data.data.map((item) => ({
-    url: item.url,
-    revisedPrompt: item.revised_prompt,
-  }));
+  const mimeType = `image/${data.output_format ?? "png"}`;
+  return data.data.map((item) => {
+    if (item.url) {
+      return { url: item.url, revisedPrompt: item.revised_prompt };
+    }
+    if (item.b64_json) {
+      return {
+        url: `data:${mimeType};base64,${item.b64_json}`,
+        revisedPrompt: item.revised_prompt,
+      };
+    }
+    throw new Error("OpenAI API returned an image without a URL or b64_json data");
+  });
 }
 
 const DEFAULT_IMAGE_TITLE = "Image Analysis";

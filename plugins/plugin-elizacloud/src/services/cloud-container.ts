@@ -1,9 +1,8 @@
 /**
  * CloudContainerService — Manages container lifecycle through ElizaCloud API.
  *
- * Handles creation, listing, status polling, health monitoring, and deletion
- * of ECS-backed containers. Deployments are async (CloudFormation takes 8-12
- * minutes), so `waitForDeployment` polls with exponential backoff.
+ * Handles listing, status polling, and deletion of the org's containers.
+ * Deployments are async, so `waitForDeployment` polls with exponential backoff.
  */
 
 import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
@@ -13,10 +12,7 @@ import type {
   CloudContainer,
   ContainerDeleteResponse,
   ContainerGetResponse,
-  ContainerHealthResponse,
   ContainerListResponse,
-  CreateContainerRequest,
-  CreateContainerResponse,
   PromoteVfsToCloudContainerRequest,
   PromoteVfsToCloudContainerResponse,
   RequestCodingAgentContainerRequest,
@@ -24,7 +20,6 @@ import type {
   SyncCloudCodingContainerRequest,
   SyncCloudCodingContainerResponse,
 } from "../types/cloud";
-import { DEFAULT_CLOUD_CONFIG } from "../types/cloud";
 import { type CloudApiClient, CloudApiError } from "../utils/cloud-api";
 import type { CloudAuthService } from "./cloud-auth";
 
@@ -35,7 +30,6 @@ const POLL_ERROR_SCOPE = "CloudContainerService.deploymentPolling";
 interface TrackedContainer {
   container: CloudContainer;
   pollingTimer: ReturnType<typeof setTimeout> | null;
-  healthTimer: ReturnType<typeof setInterval> | null;
 }
 
 export class CloudContainerService
@@ -46,7 +40,6 @@ export class CloudContainerService
   capabilityDescription = "ElizaCloud container provisioning and lifecycle management";
 
   private authService!: CloudAuthService;
-  private readonly containerDefaults = DEFAULT_CLOUD_CONFIG.container;
   private tracked: Map<string, TrackedContainer> = new Map();
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
@@ -58,7 +51,6 @@ export class CloudContainerService
   async stop(): Promise<void> {
     for (const [, tracked] of this.tracked) {
       if (tracked.pollingTimer) clearTimeout(tracked.pollingTimer);
-      if (tracked.healthTimer) clearInterval(tracked.healthTimer);
     }
     this.tracked.clear();
   }
@@ -81,7 +73,6 @@ export class CloudContainerService
         this.tracked.set(container.id, {
           container,
           pollingTimer: null,
-          healthTimer: null,
         });
 
         // Resume polling for containers that are still deploying
@@ -91,11 +82,6 @@ export class CloudContainerService
           container.status === "deploying"
         ) {
           this.startPolling(container.id);
-        }
-
-        // Start health monitoring for running containers
-        if (container.status === "running") {
-          this.startHealthMonitoring(container.id);
         }
       }
       logger.info(`[CloudContainer] Loaded ${containers.length} existing container(s)`);
@@ -107,45 +93,6 @@ export class CloudContainerService
   }
 
   // ─── CRUD ───────────────────────────────────────────────────────────────
-
-  async createContainer(request: CreateContainerRequest): Promise<CreateContainerResponse> {
-    const client = this.getClient();
-    const defaults = this.containerDefaults;
-
-    const payload: Record<string, unknown> = {
-      name: request.name,
-      project_name: request.project_name,
-      description: request.description,
-      port: request.port ?? defaults.defaultPort,
-      desired_count: request.desired_count ?? 1,
-      cpu: request.cpu ?? defaults.defaultCpu,
-      memory: request.memory ?? defaults.defaultMemory,
-      environment_vars: request.environment_vars ?? {},
-      health_check_path: request.health_check_path ?? "/health",
-      ecr_image_uri: request.ecr_image_uri,
-      ecr_repository_uri: request.ecr_repository_uri,
-      image_tag: request.image_tag,
-      architecture: request.architecture ?? defaults.defaultArchitecture,
-    };
-
-    const response = await client.requestData<CreateContainerResponse>("POST", "/containers", { json: payload });
-
-    // Track the new container
-    this.tracked.set(response.data.id, {
-      container: response.data,
-      pollingTimer: null,
-      healthTimer: null,
-    });
-
-    // Start polling for deployment completion
-    this.startPolling(response.data.id);
-
-    logger.info(
-      `[CloudContainer] Created container "${request.name}" (id=${response.data.id}, stack=${response.stackName})`
-    );
-
-    return response;
-  }
 
   async listContainers(): Promise<CloudContainer[]> {
     const client = this.getClient();
@@ -180,7 +127,6 @@ export class CloudContainerService
     const tracked = this.tracked.get(containerId);
     if (tracked) {
       if (tracked.pollingTimer) clearTimeout(tracked.pollingTimer);
-      if (tracked.healthTimer) clearInterval(tracked.healthTimer);
       this.tracked.delete(containerId);
     }
 
@@ -208,8 +154,8 @@ export class CloudContainerService
 
     // stop() and deleteContainer() clear the pending timer and drop the entry,
     // but cannot cancel a poll already awaiting the API. Once that request
-    // settles, the poll must not reschedule, report, or start health checks
-    // for an entry that is no longer the tracked one.
+    // settles, the poll must not reschedule or report for an entry that is no
+    // longer the tracked one.
     const stillTracked = (): boolean => {
       if (this.tracked.get(containerId) === tracked) return true;
       logger.debug(
@@ -287,7 +233,6 @@ export class CloudContainerService
         logger.info(
           `[CloudContainer] Container ${containerId} is now running at ${container.load_balancer_url}`
         );
-        this.startHealthMonitoring(containerId);
         return;
       }
 
@@ -333,37 +278,6 @@ export class CloudContainerService
     }
 
     throw new Error(`Container deployment timed out after ${Math.round(timeoutMs / 1000)}s`);
-  }
-
-  // ─── Health Monitoring ─────────────────────────────────────────────────
-
-  private startHealthMonitoring(containerId: string): void {
-    const tracked = this.tracked.get(containerId);
-    if (!tracked || tracked.healthTimer) return;
-
-    const interval = 60_000; // Check every 60 seconds
-
-    tracked.healthTimer = setInterval(() => {
-      this.getContainerHealth(containerId)
-        .then((health) => {
-          if (!health.data.healthy) {
-            logger.warn(
-              `[CloudContainer] Container ${containerId} unhealthy: ${health.data.status}`
-            );
-          }
-        })
-        .catch((err: Error) => {
-          logger.error(`[CloudContainer] Health check failed for ${containerId}: ${err.message}`);
-        });
-    }, interval);
-  }
-
-  async getContainerHealth(containerId: string): Promise<ContainerHealthResponse> {
-    const client = this.getClient();
-    return client.requestData<ContainerHealthResponse>(
-      "GET",
-      `/containers/${containerId}/health`,
-    );
   }
 
   // ─── Coding Containers / VFS Promotion ────────────────────────────────

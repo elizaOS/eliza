@@ -47,3 +47,33 @@ describe("url-ingest numeric HTML entities", () => {
     expect(doc.content).not.toContain("&#8217;");
   });
 });
+
+describe("url-ingest response charset", () => {
+  it("decodes the body with the Content-Type charset", async () => {
+    const pages: Array<[string, number[], string]> = [
+      // "Café crème" in ISO-8859-1
+      [
+        "text/html; charset=ISO-8859-1",
+        [0x43, 0x61, 0x66, 0xe9, 0x20, 0x63, 0x72, 0xe8, 0x6d, 0x65],
+        "Café crème",
+      ],
+      // "日本語" in Shift_JIS
+      [
+        "text/plain; charset=Shift_JIS",
+        [0x93, 0xfa, 0x96, 0x7b, 0x8c, 0xea],
+        "日本語",
+      ],
+    ];
+    for (const [contentType, bytes, expected] of pages) {
+      __setDocumentUrlFetchImplForTests(
+        async () =>
+          new Response(Uint8Array.from(bytes), {
+            status: 200,
+            headers: { "content-type": contentType },
+          }),
+      );
+      const doc = await fetchDocumentFromUrl("https://example.com/page");
+      expect(doc.content.trim()).toBe(expected);
+    }
+  });
+});

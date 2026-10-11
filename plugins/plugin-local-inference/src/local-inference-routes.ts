@@ -1259,27 +1259,11 @@ export async function handleLocalInferenceRoutes(
 	const method = (req.method ?? "GET").toUpperCase();
 	const url = new URL(req.url ?? "/", "http://localhost");
 	const pathname = url.pathname;
-	// Co-located voice-first-run namespace — runs alongside local-inference
-	// so the existing /api/local-inference/* mount point in server.ts also
-	// catches /api/voice/first-run/* without a second wire-up.
-	if (pathname.startsWith("/api/voice/first-run/")) {
-		const { handleVoiceFirstRunRoutes } = await import(
-			"./routes/voice-first-run-routes.js"
-		);
-		if (await handleVoiceFirstRunRoutes(req, res)) return true;
-	}
 	if (pathname === "/api/voice/native-pcm-turn") {
 		const { handleNativePcmTurnRoute } = await import(
 			"./routes/native-pcm-turn-route.js"
 		);
 		if (await handleNativePcmTurnRoute(req, res)) return true;
-	}
-	// Family-member capture route lives under /v1/voice/first-run/family-member.
-	if (pathname === "/v1/voice/first-run/family-member") {
-		const { handleFamilyMemberRoute } = await import(
-			"./routes/family-member-route.js"
-		);
-		if (await handleFamilyMemberRoute(req, res)) return true;
 	}
 	// Speaker voice-profile binding routes (bind/unbind a recognized voice to
 	// an elizaOS entity) live under /v1/voice/speaker-profiles.

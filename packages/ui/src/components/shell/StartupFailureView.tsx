@@ -16,6 +16,7 @@ import { useOptionalBugReport } from "../../hooks/useBugReport.hooks";
 import { useAppSelector } from "../../state/app-store";
 import type { StartupErrorState } from "../../state/types";
 import type { useApp } from "../../state/useApp";
+import { confirmDedicatedComputeStart } from "../../utils/dedicated-start-consent";
 import { MyRuntimesContainer } from "../cockpit/MyRuntimesContainer";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -108,6 +109,11 @@ export function StartupFailureView({
   useEffect(() => () => startAttempt.current?.abort(), []);
   const startAgent = async () => {
     if (!error.cloudAgentId || startAttempt.current) return;
+    // Starting a stopped Dedicated agent opens a new paid session.
+    const dedicatedPriceAcceptance = await confirmDedicatedComputeStart(
+      "your Dedicated agent",
+    );
+    if (!dedicatedPriceAcceptance || startAttempt.current) return;
     const attempt = new AbortController();
     startAttempt.current = attempt;
     setStarting(true);
@@ -116,6 +122,7 @@ export function StartupFailureView({
       await waitForCloudAgentRunning(client, {
         agentId: error.cloudAgentId,
         signal: attempt.signal,
+        dedicatedPriceAcceptance,
       });
       if (!attempt.signal.aborted) onRetry();
     } catch (cause) {

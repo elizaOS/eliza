@@ -181,6 +181,20 @@ export async function createConfiguredBillHelper({
                 const email = source.grantId
                   ? undefined
                   : (await bindGrant(task)).email;
+                // A fixed range stops finding bills that arrive after it.
+                // `windowDays` searches the last days up to now; `after`
+                // remains an optional earliest time.
+                const now = Date.now();
+                const window =
+                  source.windowDays === undefined
+                    ? { after: source.after, before: source.before }
+                    : {
+                        after: Math.max(
+                          source.after ?? 0,
+                          now - source.windowDays * 24 * 60 * 60 * 1000,
+                        ),
+                        before: now + 60 * 1000,
+                      };
                 return {
                   accountId,
                   ...(email ? { accountEmail: email } : {}),
@@ -188,8 +202,7 @@ export async function createConfiguredBillHelper({
                   recipient: source.recipient,
                   senders: source.senders,
                   searchQuery: source.query,
-                  after: source.after,
-                  before: source.before,
+                  ...window,
                   company: config.bill.company,
                   accountLabel: config.bill.accountLabel,
                   providerOrigin: config.bill.origin,
