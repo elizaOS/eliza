@@ -445,7 +445,16 @@ describe("scheduled-tasks REST seam (real reader, real service, real routes)", (
     // Feb 29 exists in a leap year. With both day fields restricted core fires
     // on either one, so `30 2 1` still runs on February Mondays.
     const seam = await makeSeam();
-    for (const expression of ["0 0 29 2 *", "0 0 30 2 1", "0 0 31 * *"]) {
+    // A step month (`*/2`) still includes January, and one listed month with
+    // the day is enough (`30 2,4` runs on April 30).
+    for (const expression of [
+      "0 0 29 2 *",
+      "0 0 30 2 1",
+      "0 0 31 2 7",
+      "0 0 31 * *",
+      "0 0 31 */2 *",
+      "0 0 30 2,4 *",
+    ]) {
       const res = await scheduleCron(seam, expression, "UTC");
       expect(res.statusCode).toBe(201);
     }
