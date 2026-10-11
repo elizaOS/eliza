@@ -7,7 +7,7 @@ Public JavaScript APIs use the package root; UI internals import owner files dir
 Batch voice hosts use `@elizaos/ui/voice/batch-conversation` to load the coordinator
 without the React UI root. This public entry owns no credentials, media or provider
 lifecycle. Hosts must await its stop promise before reporting media retirement;
-an idle state alone does not confirm cleanup. Run `test:batch-voice-package` for
+an idle state alone does not confirm cleanup. Run `bun run --cwd packages/ui test:batch-voice-package` for
 packed external types, runtime and browser-bundle verification.
 The app owns renderer composition and native transport selection. Consumers render
 domain DTOs imported from `@elizaos/contracts`; business logic belongs to domain services. Use `bun run --cwd packages/ui storybook` for
@@ -125,7 +125,7 @@ Browsers without MP3 MediaSource accumulate that same response, without another
 synthesis. Hosts must stop/discard failed sessions and must not invent timestamp
 offsets or infer word times from text length.
 
-`bun run test:progressive-speech-e2e` exercises actual Chromium MP3 decoding,
+`bun run --cwd packages/ui test:progressive-speech-e2e` exercises actual Chromium MP3 decoding,
 playback before EOF, mid-stream disposal, whole-clip fallback and Blob replay.
 The committed fixture is a synthetic four-second 440 Hz tone, generated with
 `ffmpeg -f lavfi -i sine=frequency=440:sample_rate=44100:duration=4 -ac 1 -b:a 32k -write_xing 0 -map_metadata -1 synthetic-tone.mp3`.
