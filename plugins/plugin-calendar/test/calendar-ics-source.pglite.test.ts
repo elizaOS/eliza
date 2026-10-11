@@ -678,6 +678,47 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     });
   });
 
+  it("keeps decoded parameter names through subscription sync and feed reads", async () => {
+    const source = await createSource();
+    const cases = [
+      ["George Herman ^'Babe^' Ruth", 'George Herman "Babe" Ruth'],
+      ["Team^nNorth", "Team\nNorth"],
+      ["A^^nB", "A^nB"],
+      ["A^xB^NB^", "A^xB^NB^"],
+    ];
+    const body = calendar(
+      ...cases.map(([encoded], index) =>
+        vevent({
+          uid: `parameter-${index}`,
+          title: `Parameter ${index}`,
+        }).replace(
+          "END:VEVENT",
+          [
+            `ORGANIZER;CN="${encoded}":mailto:organizer@example.com`,
+            `ATTENDEE;CN="${encoded}":mailto:attendee@example.com`,
+            "END:VEVENT",
+          ].join("\r\n"),
+        ),
+      ),
+    );
+    const sync = await syncBody(source.id, body);
+    expect(sync.acceptedEvents).toBe(cases.length);
+    const feed = await service.getCalendarFeed(
+      INTERNAL_URL,
+      { grantId: source.id, ...WINDOW },
+      new Date(),
+    );
+    expect(feed.events).toHaveLength(cases.length);
+    for (const [index, [, expected]] of cases.entries()) {
+      expect(
+        feed.events.find((event) => event.title === `Parameter ${index}`),
+      ).toMatchObject({
+        organizer: { displayName: expected },
+        attendees: [expect.objectContaining({ displayName: expected })],
+      });
+    }
+  });
+
   it("ends a day-length DURATION at the same local time across a DST change", async () => {
     const source = await createSource();
     await syncBody(
