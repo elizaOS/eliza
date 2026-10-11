@@ -337,7 +337,25 @@ export class TwitterClientInstance implements ITwitterClient {
 
     if (discoveryEnabled) {
       logger.info("Twitter discovery service is ENABLED");
-      this.discovery = new TwitterDiscoveryClient(this.client, runtime, state);
+      try {
+        this.discovery = new TwitterDiscoveryClient(
+          this.client,
+          runtime,
+          state,
+        );
+      } catch (error) {
+        if (
+          !(
+            error instanceof ElizaError &&
+            error.code === "X_DISCOVERY_NO_TOPICS"
+          )
+        ) {
+          throw error;
+        }
+        // error-policy:J7 discovery stays off and the misconfiguration is
+        // surfaced to the agent and owner; posting, replies and DMs still run.
+        runtime.reportError("XDiscoveryClient.start", error);
+      }
     } else {
       logger.info(
         "Twitter discovery service is DISABLED - set TWITTER_ENABLE_DISCOVERY=true to enable",

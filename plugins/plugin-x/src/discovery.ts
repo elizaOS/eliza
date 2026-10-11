@@ -205,33 +205,18 @@ export class TwitterDiscoveryClient {
   private buildDiscoveryConfig(): DiscoveryConfig {
     const character = this.runtime?.character;
 
-    // Default topics if character is not available
-    const defaultTopics = [
-      "ai",
-      "technology",
-      "blockchain",
-      "web3",
-      "crypto",
-      "programming",
-      "innovation",
-    ];
+    // Use the character's topics, or extract them from its bio. Discovery
+    // searches, follows, likes and replies on these topics, so it refuses to
+    // start without any rather than act on topics the operator never chose.
+    const topics =
+      Array.isArray(character?.topics) && character.topics.length > 0
+        ? character.topics
+        : this.extractTopicsFromBio(character?.bio);
 
-    // Use character topics, extract from bio, or use defaults
-    let topics: string[] = defaultTopics;
-
-    if (character) {
-      if (
-        character.topics &&
-        Array.isArray(character.topics) &&
-        character.topics.length > 0
-      ) {
-        topics = character.topics;
-      } else if (character.bio) {
-        topics = this.extractTopicsFromBio(character.bio);
-      }
-    } else {
-      logger.warn(
-        "Character not available in runtime, using default topics for discovery",
+    if (topics.length === 0) {
+      throw new ElizaError(
+        "X discovery has no topics: the character sets no `topics` and none could be derived from its `bio`. Set `topics` on the character, or set TWITTER_ENABLE_DISCOVERY=false to turn discovery off.",
+        { code: "X_DISCOVERY_NO_TOPICS" },
       );
     }
 
