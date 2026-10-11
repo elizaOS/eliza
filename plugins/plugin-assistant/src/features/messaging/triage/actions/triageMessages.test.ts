@@ -284,10 +284,34 @@ describe("triageMessagesAction", () => {
       createFakeRuntime(),
       turn,
       undefined,
-      options({ source: "gmail" }),
+      options({
+        source: "gmail",
+        worldIds: ["work@example.com"],
+        channelIds: "INBOX, Label_7",
+      }),
     );
     expect(single.data?.count).toBe(1);
     expect(discord.seenOptions).toEqual([]);
+    expect(gmail.seenOptions).toEqual([
+      {
+        sinceMs: undefined,
+        limit: undefined,
+        worldIds: ["work@example.com"],
+        channelIds: ["INBOX", "Label_7"],
+      },
+    ]);
+
+    const unsupported = await triageMessagesAction.handler(
+      createFakeRuntime(),
+      turn,
+      undefined,
+      options({ sources: ["gmail", "slack"] }),
+    );
+    expect(unsupported.success).toBe(false);
+    expect(unsupported.text).toBe(
+      'source "slack" is not a supported message source; use one of: gmail, discord, telegram, twitter, imessage, whatsapp, calendly, browser_bridge',
+    );
+    expect(gmail.seenOptions).toHaveLength(1);
 
     await expect(
       triageMessagesAction.handler(

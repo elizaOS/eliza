@@ -250,6 +250,19 @@ describe("searchMessagesAction", () => {
     });
   });
 
+  it("rejects an unsupported source instead of searching every source", async () => {
+    const gmail = new SearchAdapter("gmail", []);
+    getDefaultTriageService().register(gmail);
+
+    const result = await runSearch({ sources: ["email"], content: "invoice" });
+
+    expect(result.success).toBe(false);
+    expect(result.text).toBe(
+      'source "email" is not a supported message source; use one of: gmail, discord, telegram, twitter, imessage, whatsapp, calendly, browser_bridge',
+    );
+    expect(gmail.seenLimits).toEqual([]);
+  });
+
   it("propagates an all-failed connector search", async () => {
     getDefaultTriageService().register(
       new SearchAdapter("gmail", [], true, new Error("gmail unavailable")),

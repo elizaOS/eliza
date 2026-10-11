@@ -5724,7 +5724,8 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   {
     name: "source",
     description:
-      "Connector source: discord, slack, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail.",
+      "Connector source: discord, slack, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail. " +
+      `Inbox and draft ops (triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, manage, read_message) accept only: ${ALL_MESSAGE_SOURCES.join(", ")}.`,
     required: false,
     subactions: [
       "send",
@@ -5786,7 +5787,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   },
   {
     name: "sources",
-    description: "Inbox sources for triage, list_inbox, search_inbox.",
+    description: `Inbox sources for triage, list_inbox, search_inbox. One or more of: ${ALL_MESSAGE_SOURCES.join(", ")}.`,
     required: false,
     subactions: [
       "triage",
@@ -5796,7 +5797,10 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
       "respond",
       "manage",
     ],
-    schema: { type: "array", items: { type: "string" } },
+    schema: {
+      type: "array",
+      items: { type: "string", enum: [...ALL_MESSAGE_SOURCES] },
+    },
   },
   {
     name: "folder",
@@ -6193,7 +6197,8 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   },
   {
     name: "sendAt",
-    description: "Scheduled send time for op=schedule_draft_send.",
+    description:
+      "Send time for op=schedule_draft_send, as an ISO 8601 timestamp (2026-10-12T09:00:00Z) or epoch milliseconds.",
     required: false,
     subactions: ["schedule_draft_send"],
     schema: { type: "string" },
@@ -6308,6 +6313,14 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
     required: false,
     subactions: ["manage"],
     schema: { type: "string" },
+  },
+  {
+    name: "read",
+    description:
+      "For op=manage mark_read: false marks the message unread. Defaults to true.",
+    required: false,
+    subactions: ["manage"],
+    schema: { type: "boolean" },
   },
   {
     name: "attachments",

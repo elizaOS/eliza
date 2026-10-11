@@ -147,14 +147,22 @@ describe("manageMessageAction", () => {
   });
 
   it.each([
-    [{}, "operation.kind is required"],
+    [{}, "manageOperation is required (archive|trash|spam|mark_read|"],
     [
-      { source: "slack", operation: "archive" },
-      'source "slack" is not a supported message source',
+      { source: "slack", manageOperation: "archive" },
+      'source "slack" is not a supported message source; use one of: gmail, discord,',
     ],
     [
-      { messageId: "direct-1", operation: "label_add" },
-      "operation.kind is required",
+      { messageId: "direct-1", manageOperation: "label_add" },
+      "label is required for manageOperation=label_add",
+    ],
+    [
+      { messageId: "direct-1", manageOperation: "tag_remove" },
+      "tag is required for manageOperation=tag_remove",
+    ],
+    [
+      { sources: ["slack"], sender: "a@example.com", manageOperation: "trash" },
+      'source "slack" is not a supported message source',
     ],
   ])(
     "rejects invalid parameters before managing a message",

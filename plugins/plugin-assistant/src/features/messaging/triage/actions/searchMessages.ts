@@ -21,7 +21,11 @@ import type {
 import { logger } from "@elizaos/core";
 import { getDefaultTriageService } from "../triage-service.ts";
 import { ALL_MESSAGE_SOURCES } from "../types.ts";
-import { parseSearchMessagesParams, validateMessageAction } from "./_shared.ts";
+import {
+  parseSearchMessagesParams,
+  SUPPORTED_MESSAGE_SOURCES_TEXT,
+  validateMessageAction,
+} from "./_shared.ts";
 
 export const searchMessagesAction: Action = {
   name: "MESSAGE",
@@ -51,8 +55,7 @@ export const searchMessagesAction: Action = {
     },
     {
       name: "sources",
-      description:
-        "Optional message sources to search, such as email, slack, discord, imessage, whatsapp, telegram, or x.",
+      description: `Optional message sources to search. One or more of: ${SUPPORTED_MESSAGE_SOURCES_TEXT}.`,
       required: false,
       schema: {
         type: "array" as const,
@@ -116,6 +119,10 @@ export const searchMessagesAction: Action = {
     _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const filters = parseSearchMessagesParams(options);
+    if ("error" in filters) {
+      logger.warn(`[SearchMessages] ${filters.error}`);
+      return { success: false, text: filters.error, error: filters.error };
+    }
     const service = getDefaultTriageService();
     const { refs: hits, receipt } = await service.searchWithReceipt(
       runtime,

@@ -66,9 +66,15 @@ export const triageMessagesAction: Action = {
     _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const params = parseTriageParams(options);
+    if ("error" in params) {
+      logger.warn(`[TriageMessages] ${params.error}`);
+      return { success: false, text: params.error, error: params.error };
+    }
     const service = getDefaultTriageService();
     const ranked = await service.triage(runtime, {
       sources: params.sources,
+      worldIds: params.worldIds,
+      channelIds: params.channelIds,
       sinceMs: params.sinceMs,
       limit: params.limit,
     });

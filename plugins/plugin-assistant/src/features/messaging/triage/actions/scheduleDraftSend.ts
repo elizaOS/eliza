@@ -54,8 +54,7 @@ export const scheduleDraftSendAction: Action = {
   roleGate: { minRole: "ADMIN" },
   description:
     "Schedule a previously created draft to send at a future time. Uses authoritative adapter-native scheduling when supported and otherwise persists a one-shot task in the shared scheduler.",
-  descriptionCompressed:
-    "schedule draft send sendAtMs durable shared scheduler",
+  descriptionCompressed: "schedule draft send sendAt durable shared scheduler",
   tags: [
     "domain:messages",
     "capability:schedule",
@@ -68,7 +67,7 @@ export const scheduleDraftSendAction: Action = {
     {
       name: "sendAt",
       description:
-        "When to send the draft, as an ISO timestamp or parseable date.",
+        "When to send the draft, as an ISO 8601 timestamp or epoch milliseconds.",
       required: true,
       schema: { type: "string" as const },
     },

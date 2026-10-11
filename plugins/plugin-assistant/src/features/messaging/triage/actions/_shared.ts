@@ -17,6 +17,7 @@ import type {
 import { hasActionContext } from "@elizaos/core";
 import {
   ALL_MESSAGE_SOURCES,
+  MANAGE_OPERATION_KINDS,
   type ManageOperation,
   type MessageSource,
   type SearchMessagesFilters,
@@ -36,10 +37,12 @@ export function validateMessageAction(
   return hasActionContext(message, state, { contexts });
 }
 
+/** The exact source values the triage adapters accept, for schemas and errors. */
+export const SUPPORTED_MESSAGE_SOURCES_TEXT = ALL_MESSAGE_SOURCES.join(", ");
+
 export const messageSourceParameter: ActionParameter = {
   name: "sources",
-  description:
-    "Optional message sources to include, such as email, slack, discord, imessage, whatsapp, telegram, or x.",
+  description: `Optional message sources to include. One or more of: ${SUPPORTED_MESSAGE_SOURCES_TEXT}.`,
   required: false,
   schema: {
     type: "array" as const,
@@ -132,17 +135,26 @@ function asStringList(value: unknown): string[] | undefined {
   return out.length > 0 ? out : undefined;
 }
 
-function asSourceList(value: unknown): MessageSource[] | undefined {
+/**
+ * Parse a source filter. An unsupported value is an error, not a dropped
+ * filter: dropping it widens the request to every connected source.
+ */
+function parseSourceList(
+  value: unknown,
+): { sources: MessageSource[] | undefined } | { error: string } {
   const strings = asStringList(value);
-  if (!strings) return undefined;
+  if (!strings) return { sources: undefined };
   const out: MessageSource[] = [];
   for (const s of strings) {
     const lower = s.toLowerCase();
-    if ((ALL_MESSAGE_SOURCES as readonly string[]).includes(lower)) {
-      out.push(lower as MessageSource);
+    if (!(ALL_MESSAGE_SOURCES as readonly string[]).includes(lower)) {
+      return {
+        error: `source "${lower}" is not a supported message source; use one of: ${SUPPORTED_MESSAGE_SOURCES_TEXT}`,
+      };
     }
+    out.push(lower as MessageSource);
   }
-  return out.length > 0 ? out : undefined;
+  return { sources: out };
 }
 
 function parseSenderParam(
@@ -173,9 +185,11 @@ export interface MessageLookupHints {
 
 function parseMessageLookupHints(
   params: Record<string, unknown>,
-): MessageLookupHints {
+): MessageLookupHints | { error: string } {
+  const parsedSources = parseSourceList(params.sources ?? params.source);
+  if ("error" in parsedSources) return parsedSources;
   return {
-    sources: asSourceList(params.sources ?? params.source),
+    sources: parsedSources.sources,
     sender: parseSenderParam(params.sender ?? params.from),
     content: asString(params.content ?? params.query ?? params.q),
   };
@@ -201,10 +215,12 @@ export interface TriageParams {
 }
 export function parseTriageParams(
   options: HandlerOptions | undefined,
-): TriageParams {
+): TriageParams | { error: string } {
   const params = getParams(options);
+  const parsedSources = parseSourceList(params.sources ?? params.source);
+  if ("error" in parsedSources) return parsedSources;
   return {
-    sources: asSourceList(params.sources ?? params.source),
+    sources: parsedSources.sources,
     worldIds: asStringList(params.worldIds),
     channelIds: asStringList(params.channelIds),
     sinceMs: asNumber(params.sinceMs),
@@ -221,10 +237,12 @@ export interface ListInboxParams {
 }
 export function parseListInboxParams(
   options: HandlerOptions | undefined,
-): ListInboxParams {
+): ListInboxParams | { error: string } {
   const params = getParams(options);
+  const parsedSources = parseSourceList(params.sources ?? params.source);
+  if ("error" in parsedSources) return parsedSources;
   return {
-    sources: asSourceList(params.sources ?? params.source),
+    sources: parsedSources.sources,
     worldIds: asStringList(params.worldIds),
     channelIds: asStringList(params.channelIds),
     limit: asNumber(params.limit),
@@ -344,7 +362,9 @@ export function parseDraftReplyParams(
   );
   const body = asReplyBody(params);
   if (!body) return { error: "body is required" };
-  return { messageId, body, lookup: parseMessageLookupHints(params) };
+  const lookup = parseMessageLookupHints(params);
+  if ("error" in lookup) return lookup;
+  return { messageId, body, lookup };
 }
 
 export interface DraftFollowupParams {
@@ -365,7 +385,9 @@ export function parseDraftFollowupParams(
     !sourceStr ||
     !(ALL_MESSAGE_SOURCES as readonly string[]).includes(sourceStr)
   ) {
-    return { error: "source must be one of the supported message sources" };
+    return {
+      error: `source must be one of: ${SUPPORTED_MESSAGE_SOURCES_TEXT}`,
+    };
   }
   const source = sourceStr as MessageSource;
   const body = asString(params.body ?? params.text ?? params.message);
@@ -420,11 +442,13 @@ export function parseSendDraftParams(
 
 export function parseSearchMessagesParams(
   options: HandlerOptions | undefined,
-): SearchMessagesFilters {
+): SearchMessagesFilters | { error: string } {
   const params = getParams(options);
   const sender = parseSenderParam(params.sender);
+  const parsedSources = parseSourceList(params.sources ?? params.source);
+  if ("error" in parsedSources) return parsedSources;
   return {
-    sources: asSourceList(params.sources ?? params.source),
+    sources: parsedSources.sources,
     worldIds: asStringList(params.worldIds),
     channelIds: asStringList(params.channelIds),
     sender,
@@ -453,7 +477,7 @@ export function parseManageMessageParams(
   if (sourceStr) {
     if (!(ALL_MESSAGE_SOURCES as readonly string[]).includes(sourceStr)) {
       return {
-        error: `source "${sourceStr}" is not a supported message source`,
+        error: `source "${sourceStr}" is not a supported message source; use one of: ${SUPPORTED_MESSAGE_SOURCES_TEXT}`,
       };
     }
     source = sourceStr as MessageSource;
@@ -464,7 +488,7 @@ export function parseManageMessageParams(
     params.messageOperation ??
     (params.operation === "manage" ? undefined : params.operation) ??
     params.op;
-  let operation: ManageOperation | undefined;
+  let operation: ManageOperation | { error: string } | undefined;
   if (opRaw && typeof opRaw === "object" && !Array.isArray(opRaw)) {
     const r = opRaw as Record<string, unknown>;
     const kind = asString(r.kind)?.toLowerCase();
@@ -474,22 +498,19 @@ export function parseManageMessageParams(
   }
   if (!operation) {
     return {
-      error:
-        "operation.kind is required (archive|trash|spam|mark_read|label_add|label_remove|tag_add|tag_remove|mute_thread|unsubscribe)",
+      error: `manageOperation is required (${MANAGE_OPERATION_KINDS.join("|")})`,
     };
   }
-  return {
-    messageId,
-    source,
-    operation,
-    lookup: parseMessageLookupHints(params),
-  };
+  if ("error" in operation) return operation;
+  const lookup = parseMessageLookupHints(params);
+  if ("error" in lookup) return lookup;
+  return { messageId, source, operation, lookup };
 }
 
 function parseOperation(
   kind: string | undefined,
   params: Record<string, unknown>,
-): ManageOperation | undefined {
+): ManageOperation | { error: string } | undefined {
   switch (kind) {
     case "archive":
       return { kind: "archive" };
@@ -503,22 +524,30 @@ function parseOperation(
     }
     case "label_add": {
       const label = asString(params.label);
-      if (!label) return undefined;
+      if (!label) {
+        return { error: "label is required for manageOperation=label_add" };
+      }
       return { kind: "label_add", label };
     }
     case "label_remove": {
       const label = asString(params.label);
-      if (!label) return undefined;
+      if (!label) {
+        return { error: "label is required for manageOperation=label_remove" };
+      }
       return { kind: "label_remove", label };
     }
     case "tag_add": {
       const tag = asString(params.tag);
-      if (!tag) return undefined;
+      if (!tag) {
+        return { error: "tag is required for manageOperation=tag_add" };
+      }
       return { kind: "tag_add", tag };
     }
     case "tag_remove": {
       const tag = asString(params.tag);
-      if (!tag) return undefined;
+      if (!tag) {
+        return { error: "tag is required for manageOperation=tag_remove" };
+      }
       return { kind: "tag_remove", tag };
     }
     case "mute_thread":
@@ -545,7 +574,10 @@ export function parseScheduleDraftSendParams(
   if (!draftId) return { error: "draftId is required" };
   const sendAtMs = asTimestampMs(params.sendAtMs ?? params.sendAt ?? params.at);
   if (sendAtMs === undefined) {
-    return { error: "sendAtMs (number) or sendAt (ISO string) is required" };
+    return {
+      error:
+        "sendAt is required as an ISO 8601 timestamp or epoch milliseconds",
+    };
   }
   return { draftId, sendAtMs };
 }
@@ -563,5 +595,7 @@ export function parseRespondToMessageParams(
     params.messageId ?? params.inReplyToId ?? params.id,
   );
   const body = asReplyBody(params);
-  return { messageId, body, lookup: parseMessageLookupHints(params) };
+  const lookup = parseMessageLookupHints(params);
+  if ("error" in lookup) return lookup;
+  return { messageId, body, lookup };
 }

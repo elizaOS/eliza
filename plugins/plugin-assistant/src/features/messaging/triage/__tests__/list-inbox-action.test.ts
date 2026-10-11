@@ -115,6 +115,79 @@ describe("listInboxAction", () => {
     ).toEqual(["gmail-1", "whatsapp-1"]);
   });
 
+  it("scopes cached unread messages to the requested accounts and channels", async () => {
+    getDefaultMessageRefStore().saveMessages([
+      messageRef({
+        id: "work-inbox",
+        externalId: "work-inbox-external",
+        worldId: "work@example.com",
+        channelId: "INBOX",
+        receivedAtMs: 3_000,
+      }),
+      messageRef({
+        id: "work-promotions",
+        externalId: "work-promotions-external",
+        worldId: "work@example.com",
+        channelId: "CATEGORY_PROMOTIONS",
+        receivedAtMs: 2_000,
+      }),
+      messageRef({
+        id: "personal-inbox",
+        externalId: "personal-inbox-external",
+        worldId: "me@example.com",
+        channelId: "INBOX",
+      }),
+    ]);
+
+    const byWorld = await listInboxAction.handler(
+      createFakeRuntime(),
+      messageRef({ id: "turn" }) as never,
+      undefined,
+      { parameters: { worldIds: ["work@example.com"] } } as never,
+    );
+    expect(
+      (byWorld.data as { messages: Array<{ id: string }> }).messages.map(
+        (m) => m.id,
+      ),
+    ).toEqual(["work-inbox", "work-promotions"]);
+
+    const byChannel = await listInboxAction.handler(
+      createFakeRuntime(),
+      messageRef({ id: "turn" }) as never,
+      undefined,
+      {
+        parameters: {
+          worldIds: ["work@example.com"],
+          channelIds: ["INBOX"],
+        },
+      } as never,
+    );
+    expect(
+      (byChannel.data as { messages: Array<{ id: string }> }).messages.map(
+        (m) => m.id,
+      ),
+    ).toEqual(["work-inbox"]);
+  });
+
+  it("rejects an unsupported source instead of listing every source", async () => {
+    getDefaultMessageRefStore().saveMessages([
+      messageRef({ id: "gmail-1", externalId: "gmail-external-1" }),
+    ]);
+
+    const result = await listInboxAction.handler(
+      createFakeRuntime(),
+      messageRef({ id: "turn" }) as never,
+      undefined,
+      { parameters: { sources: ["slack"] } } as never,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.text).toBe(
+      'source "slack" is not a supported message source; use one of: gmail, discord, telegram, twitter, imessage, whatsapp, calendly, browser_bridge',
+    );
+    expect(result.data?.messages).toBeUndefined();
+  });
+
   it("validates messaging contexts and rejects unrelated contexts", async () => {
     const message = { content: { text: "show inbox" } } as never;
     const runtime = createFakeRuntime();
@@ -230,7 +303,13 @@ describe("listInboxAction", () => {
       messageRef({ id: "turn" }) as never,
       undefined,
       {
-        parameters: { sources: ["gmail"], sinceMs: 6_000, limit: 10 },
+        parameters: {
+          sources: ["gmail"],
+          sinceMs: 6_000,
+          limit: 10,
+          worldIds: ["work@example.com"],
+          channelIds: ["INBOX"],
+        },
       } as never,
     );
 
@@ -238,6 +317,8 @@ describe("listInboxAction", () => {
     expect(adapter.seenOptions[0]).toMatchObject({
       sinceMs: 6_000,
       limit: 10,
+      worldIds: ["work@example.com"],
+      channelIds: ["INBOX"],
     });
     expect(result.success).toBe(true);
     expect(result.data).toMatchObject({

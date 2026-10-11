@@ -22,10 +22,15 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { filterInMemory } from "../adapters/base.ts";
 import { rankScored } from "../triage-engine.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
 import { ALL_MESSAGE_SOURCES } from "../types.ts";
-import { parseListInboxParams, validateMessageAction } from "./_shared.ts";
+import {
+  parseListInboxParams,
+  SUPPORTED_MESSAGE_SOURCES_TEXT,
+  validateMessageAction,
+} from "./_shared.ts";
 
 export const listInboxAction: Action = {
   name: "MESSAGE",
@@ -37,8 +42,7 @@ export const listInboxAction: Action = {
   parameters: [
     {
       name: "sources",
-      description:
-        "Optional message sources to include, such as email, slack, discord, imessage, whatsapp, telegram, or x.",
+      description: `Optional message sources to include. One or more of: ${SUPPORTED_MESSAGE_SOURCES_TEXT}.`,
       required: false,
       schema: {
         type: "array" as const,
@@ -90,14 +94,25 @@ export const listInboxAction: Action = {
   ): Promise<ActionResult> => {
     try {
       const params = parseListInboxParams(options);
+      if ("error" in params) {
+        logger.warn(`[ListInbox] ${params.error}`);
+        return {
+          success: false,
+          text: params.error,
+          error: params.error,
+          data: { actionName: "MESSAGE" },
+        };
+      }
       const service = getDefaultTriageService();
       const store = service.getStore();
 
-      const cached = store.listMessages();
-      const requestedSources = params.sources;
-      let messages = requestedSources
-        ? cached.filter((m) => requestedSources.includes(m.source))
-        : cached;
+      // Same scope semantics as the adapters and the search path: a requested
+      // source, account, or channel excludes refs that do not carry it.
+      let messages = filterInMemory(store.listMessages(), {
+        sources: params.sources,
+        worldIds: params.worldIds,
+        channelIds: params.channelIds,
+      });
 
       messages = rankScored(messages);
       const sinceMs = params.sinceMs;
@@ -111,6 +126,8 @@ export const listInboxAction: Action = {
       if (unread.length === 0) {
         messages = await service.triage(runtime, {
           sources: params.sources,
+          worldIds: params.worldIds,
+          channelIds: params.channelIds,
           sinceMs: params.sinceMs,
           limit: params.limit,
           // The limit must apply after the read filter, or a newest page of

@@ -1,7 +1,7 @@
 /**
  * Triage action that mutates a single message or sender — archive, trash, spam,
- * mark read/unread, add/remove a label or tag, mute thread, unsubscribe, or
- * block. Registered under the shared `MESSAGE` action name; resolves the target
+ * mark read/unread, add/remove a label or tag, mute thread, or unsubscribe.
+ * Registered under the shared `MESSAGE` action name; resolves the target
  * by explicit `messageId` or by searching sender/content hints, then applies the
  * parsed operation through the TriageService's `manage`. The `unsubscribe`
  * operation first gates on user confirmation (`requireConfirmation`) before it
@@ -49,9 +49,9 @@ export const manageMessageAction: Action = {
   contexts: ["messaging", "email", "contacts"],
   roleGate: { minRole: "ADMIN" },
   description:
-    "Mutate a single message or sender: archive, trash, mark spam, mark read/unread, add or remove a label or tag, mute thread, unsubscribe, or block a sender. Use this for unsubscribe/block/archive/delete/label requests, including natural-language targets like newsletters@medium.com; pass messageId when known, otherwise pass sender/content hints.",
+    "Mutate a single message or sender: archive, trash, mark spam, mark read/unread, add or remove a label or tag, mute thread, or unsubscribe. Use this for unsubscribe/archive/delete/label requests, including natural-language targets like newsletters@medium.com; pass messageId when known, otherwise pass sender/content hints.",
   descriptionCompressed:
-    "mutate msg/sender archive|trash|spam|read|label|tag|mute|unsubscribe|block",
+    "mutate msg/sender archive|trash|spam|read|label|tag|mute|unsubscribe",
   similes: [
     "ARCHIVE_MESSAGE",
     "TAG_MESSAGE",
@@ -99,6 +99,13 @@ export const manageMessageAction: Action = {
       description: "Tag for tag_add or tag_remove.",
       required: false,
       schema: { type: "string" as const },
+    },
+    {
+      name: "read",
+      description:
+        "For mark_read: false marks the message unread. Defaults to true.",
+      required: false,
+      schema: { type: "boolean" as const },
     },
   ],
   examples: [

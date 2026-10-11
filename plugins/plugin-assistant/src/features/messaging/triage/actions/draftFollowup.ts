@@ -19,9 +19,11 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { getDefaultTriageService } from "../triage-service.ts";
+import { ALL_MESSAGE_SOURCES } from "../types.ts";
 import {
   bodyParameter,
   parseDraftFollowupParams,
+  SUPPORTED_MESSAGE_SOURCES_TEXT,
   validateMessageAction,
 } from "./_shared.ts";
 
@@ -35,9 +37,9 @@ export const draftFollowupAction: Action = {
   parameters: [
     {
       name: "source",
-      description: "Message source to draft for.",
+      description: `Message source to draft for. One of: ${SUPPORTED_MESSAGE_SOURCES_TEXT}.`,
       required: true,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, enum: [...ALL_MESSAGE_SOURCES] },
     },
     {
       name: "to",
@@ -58,6 +60,13 @@ export const draftFollowupAction: Action = {
     {
       name: "threadId",
       description: "Optional existing thread identifier.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "channelId",
+      description:
+        "Optional platform channel to draft into, for channel-based sources.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -108,6 +117,8 @@ export const draftFollowupAction: Action = {
       subject: parsed.subject,
       body: parsed.body,
       threadId: parsed.threadId,
+      worldId: parsed.worldId,
+      channelId: parsed.channelId,
     });
 
     const text = `Drafted follow-up on ${record.source}. Preview: ${record.preview}`;
