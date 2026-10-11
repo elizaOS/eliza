@@ -49,69 +49,86 @@ async function resolveConfiguredHost(host, lookup = dns.lookup) {
   return addresses
 }
 
-async function readInventory(token, fetchImpl, apiBaseUrl) {
+async function readInventory(
+  token,
+  fetchImpl,
+  apiBaseUrl,
+  requestTimeoutMs = REQUEST_TIMEOUT_MS,
+) {
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  let timeoutHandle
+  const timeoutError = new Error("hcloud request timeout")
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      controller.abort()
+      reject(timeoutError)
+    }, requestTimeoutMs)
+  })
   let response
   try {
-    response = await fetchImpl(
-      apiBaseUrl.replace(/\/+$/, "") +
-        "/servers?per_page=" +
-        String(INVENTORY_PAGE_SIZE),
-      {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-          Authorization: "Bearer " + token,
+    response = await Promise.race([
+      fetchImpl(
+        apiBaseUrl.replace(/\/+$/, "") +
+          "/servers?per_page=" +
+          String(INVENTORY_PAGE_SIZE),
+        {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+            Authorization: "Bearer " + token,
+          },
+          signal: controller.signal,
         },
-        signal: controller.signal,
-      },
-    )
-  } catch {
+      ),
+      timeoutPromise,
+    ])
+
+    if (response.status === 401 || response.status === 403) {
+      fail("hcloud_auth_failed")
+    }
+    if (!response.ok) fail("hcloud_http_failed")
+
+    let payload
+    try {
+      payload = await Promise.race([response.json(), timeoutPromise])
+    } catch (error) {
+      if (error === timeoutError) fail("hcloud_request_failed")
+      fail("hcloud_response_invalid")
+    }
+    if (!payload || !Array.isArray(payload.servers)) {
+      fail("hcloud_inventory_invalid")
+    }
+
+    const rawLastPage = payload.meta?.pagination?.last_page
+    const lastPage = Number(rawLastPage)
+    if (
+      (typeof rawLastPage !== "number" && typeof rawLastPage !== "string") ||
+      !String(rawLastPage).trim()
+    ) {
+      fail("hcloud_inventory_invalid")
+    }
+    if (!Number.isInteger(lastPage) || lastPage < 1) {
+      fail("hcloud_inventory_invalid")
+    }
+    if (lastPage > 1) fail("hcloud_inventory_too_large")
+
+    const servers = payload.servers.map(server => {
+      const addresses = [
+        server?.public_net?.ipv4?.ip,
+        server?.public_net?.ipv6?.ip,
+      ].filter(address => typeof address === "string" && isIP(address))
+      return safeUnique(addresses)
+    })
+
+    return {
+      serverCount: servers.length,
+      addresses: servers,
+    }
+  } catch (error) {
+    if (error instanceof DiagnosticError) throw error
     fail("hcloud_request_failed")
   } finally {
-    clearTimeout(timeout)
-  }
-
-  if (response.status === 401 || response.status === 403) {
-    fail("hcloud_auth_failed")
-  }
-  if (!response.ok) fail("hcloud_http_failed")
-
-  let payload
-  try {
-    payload = await response.json()
-  } catch {
-    fail("hcloud_response_invalid")
-  }
-  if (!payload || !Array.isArray(payload.servers)) {
-    fail("hcloud_inventory_invalid")
-  }
-
-  const rawLastPage = payload.meta?.pagination?.last_page
-  const lastPage = Number(rawLastPage)
-  if (
-    (typeof rawLastPage !== "number" && typeof rawLastPage !== "string") ||
-    !String(rawLastPage).trim()
-  ) {
-    fail("hcloud_inventory_invalid")
-  }
-  if (!Number.isInteger(lastPage) || lastPage < 1) {
-    fail("hcloud_inventory_invalid")
-  }
-  if (lastPage > 1) fail("hcloud_inventory_too_large")
-
-  const servers = payload.servers.map(server => {
-    const addresses = [
-      server?.public_net?.ipv4?.ip,
-      server?.public_net?.ipv6?.ip,
-    ].filter(address => typeof address === "string" && isIP(address))
-    return safeUnique(addresses)
-  })
-
-  return {
-    serverCount: servers.length,
-    addresses: servers,
+    clearTimeout(timeoutHandle)
   }
 }
 
@@ -183,12 +200,18 @@ export async function diagnose({
   lookupImpl = dns.lookup,
   fingerprintImpl = derivePublicKeyFingerprint,
   apiBaseUrl = API_BASE_URL,
+  requestTimeoutMs = REQUEST_TIMEOUT_MS,
 }) {
   if (typeof token !== "string" || token.trim().length === 0) {
     fail("hcloud_token_missing")
   }
   const configuredAddresses = await resolveConfiguredHost(deployHost, lookupImpl)
-  const inventory = await readInventory(token, fetchImpl, apiBaseUrl)
+  const inventory = await readInventory(
+    token,
+    fetchImpl,
+    apiBaseUrl,
+    requestTimeoutMs,
+  )
   const matches = inventory.addresses.filter(addresses =>
     addresses.some(address => configuredAddresses.includes(address)),
   ).length

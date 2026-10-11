@@ -124,3 +124,23 @@ test("rejects inventory without explicit pagination metadata", async () => {
       error.category === "hcloud_inventory_invalid",
   )
 })
+
+test("bounds an inventory response whose body never completes", async () => {
+  await assert.rejects(
+    () =>
+      diagnose({
+        token: "project-token",
+        deployHost: "203.0.113.10",
+        requestTimeoutMs: 20,
+        fetchImpl: async () => ({
+          ok: true,
+          status: 200,
+          json: () => new Promise(() => {}),
+        }),
+        fingerprintImpl: fingerprint,
+      }),
+    error =>
+      error instanceof DiagnosticError &&
+      error.category === "hcloud_request_failed",
+  )
+})
