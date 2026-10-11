@@ -170,8 +170,7 @@ export const replyAction = {
     },
     {
       name: "questions",
-      description:
-        "Every needed structured question: { question, header, options?: [{label, description?, preview?}], multiSelect? }. Returns requiresUserInteraction: true.",
+      description: `Structured questions, at most ${MAX_QUESTIONS}: { question, header, options?: [{label, description?, preview?}], multiSelect? }. Returns requiresUserInteraction: true. Omit or leave empty for a plain text reply.`,
       required: false,
       schema: {
         type: "array",
@@ -212,8 +211,13 @@ export const replyAction = {
     responses?: Memory[],
   ): Promise<ActionResult> => {
     // Structured-question branch.
+    // An empty array carries no question: strict tool schemas make the planner
+    // emit [] for an unused optional array, so it means "plain text reply".
     const rawQuestions = readQuestionsParam(_options);
-    if (rawQuestions !== undefined) {
+    if (
+      rawQuestions !== undefined &&
+      !(Array.isArray(rawQuestions) && rawQuestions.length === 0)
+    ) {
       if (!Array.isArray(rawQuestions)) {
         return {
           success: false,
@@ -226,10 +230,7 @@ export const replyAction = {
           error: new Error("questions must be an array when provided"),
         };
       }
-      if (
-        rawQuestions.length < MIN_QUESTIONS ||
-        rawQuestions.length > MAX_QUESTIONS
-      ) {
+      if (rawQuestions.length > MAX_QUESTIONS) {
         return {
           success: false,
           text: `questions must contain ${MIN_QUESTIONS}-${MAX_QUESTIONS} items, got ${rawQuestions.length}`,
