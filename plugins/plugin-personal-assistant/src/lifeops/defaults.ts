@@ -20,6 +20,7 @@ export {
   isValidTimeZone,
   normalizeTimeZone,
   resolveDefaultTimeZone,
+  resolveKnownTimeZone,
 } from "@elizaos/contracts";
 
 /** Resolve the configured IANA time zone before falling back to the host zone. */

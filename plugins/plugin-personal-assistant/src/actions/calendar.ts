@@ -77,8 +77,8 @@ import type {
 import { settleBriefEngagementReward } from "../lifeops/briefing/engagement-reward.js";
 import { buildApprovalChoiceText } from "../lifeops/choice-markers.js";
 import {
-  normalizeTimeZone,
   resolveDefaultTimeZone,
+  resolveKnownTimeZone,
 } from "../lifeops/defaults.js";
 import {
   runLifeOpsJsonModel,
@@ -1218,19 +1218,19 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
     description: "Update event.",
     descriptionCompressed: "update calendar event",
     required: [],
-    optional: ["title", "intent", "details"],
+    optional: ["title", "query", "intent", "details"],
   },
   delete_event: {
     description: "Delete event.",
     descriptionCompressed: "delete calendar event",
     required: [],
-    optional: ["intent", "details"],
+    optional: ["title", "query", "intent", "details"],
   },
   trip_window: {
     description: "List events during trip/place.",
     descriptionCompressed: "events trip-window place",
     required: [],
-    optional: ["intent", "query", "details"],
+    optional: ["intent", "query", "queries", "details"],
   },
   bulk_reschedule: {
     description: "Preview bulk reschedule. Push cohort to later window.",
@@ -1293,33 +1293,44 @@ function messageText(message: Memory): string {
  * then throws "Invalid time zone specified: Z" — which failed an entire
  * calendar create (observed live). All snake/camel/lower aliases of the
  * timezone field are rewritten in place, both top-level and inside `details`,
- * via {@link normalizeTimeZone}; unknown zone names pass through untouched so
- * genuine mistakes still surface downstream.
+ * via {@link resolveKnownTimeZone}. A supplied name that is not a UTC
+ * spelling, a valid IANA zone, or a known alias is returned as
+ * `unknownTimeZone` and the route refuses it: using the host zone in its
+ * place would read the caller's local clocks in the wrong zone. A blank value
+ * is not a supplied zone and resolves to the host default as before.
  */
 function normalizeCalendarTimeZoneParams<
   T extends Record<string, unknown> | undefined,
->(params: T): T {
-  if (!params || typeof params !== "object") return params;
+>(
+  params: T,
+): { params: T; unknownTimeZone?: { field: string; value: string } } {
+  if (!params || typeof params !== "object") return { params };
   const TZ_KEYS = ["timeZone", "timezone", "time_zone"] as const;
-  const normalized: Record<string, unknown> = { ...params };
-  for (const key of TZ_KEYS) {
-    if (typeof normalized[key] === "string") {
-      normalized[key] = normalizeTimeZone(normalized[key] as string);
+  let unknownTimeZone: { field: string; value: string } | undefined;
+  const rewrite = (record: Record<string, unknown>, prefix: string): void => {
+    for (const key of TZ_KEYS) {
+      const value = record[key];
+      if (typeof value !== "string") continue;
+      if (value.trim().length === 0) {
+        record[key] = resolveDefaultTimeZone();
+        continue;
+      }
+      const known = resolveKnownTimeZone(value);
+      if (known) record[key] = known;
+      else unknownTimeZone ??= { field: `${prefix}${key}`, value };
     }
-  }
+  };
+  const normalized: Record<string, unknown> = { ...params };
+  rewrite(normalized, "");
   const details = normalized.details;
   if (details && typeof details === "object" && !Array.isArray(details)) {
     const nextDetails: Record<string, unknown> = {
       ...(details as Record<string, unknown>),
     };
-    for (const key of TZ_KEYS) {
-      if (typeof nextDetails[key] === "string") {
-        nextDetails[key] = normalizeTimeZone(nextDetails[key] as string);
-      }
-    }
+    rewrite(nextDetails, "details.");
     normalized.details = nextDetails;
   }
-  return normalized as T;
+  return { params: normalized as T, unknownTimeZone };
 }
 
 function extractBulkRescheduleCohortLabel(text: string): string | null {
@@ -1533,7 +1544,23 @@ async function route(
   options: HandlerOptions | undefined,
   callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
-  const params = normalizeCalendarTimeZoneParams(getParams(options));
+  const { params, unknownTimeZone } = normalizeCalendarTimeZoneParams(
+    getParams(options),
+  );
+  if (unknownTimeZone) {
+    return {
+      text: `"${unknownTimeZone.value}" is not a time zone I recognize. Use an IANA name such as America/New_York. Nothing was read or changed.`,
+      success: false,
+      error: `INVALID_TIME_ZONE: ${unknownTimeZone.field} "${unknownTimeZone.value}" is not an IANA time zone or a known alias. No calendar read or write was performed. Supply an IANA zone such as America/New_York before retrying.`,
+      data: {
+        actionName: ACTION_NAME,
+        subaction,
+        error: "INVALID_TIME_ZONE",
+        field: unknownTimeZone.field,
+        noop: true,
+      },
+    };
+  }
   const { target, innerSubaction } = translateSubaction(subaction);
   const delegatedCallback: HandlerCallback | undefined = callback
     ? (content, actionName) => callback(content, actionName ?? ACTION_NAME)
@@ -1871,7 +1898,7 @@ export const calendarAction: Action & {
     {
       name: "durationMinutes",
       description:
-        "Requested length in minutes. For check_availability, supply the user's duration directly with startAt and omit endAt; code calculates the end. For propose_times, this is each suggested slot's length for legacy callers. Top-level field, not inside details.",
+        "Requested length in minutes. For check_availability, supply the user's duration directly with startAt and omit endAt; code calculates the end. For propose_times, this is each suggested slot's length for legacy callers (5-480; a value outside the range fails with INVALID_ARGUMENTS). Top-level field, not inside details.",
       required: false,
       subactions: ["propose_times", "check_availability"],
       schema: { type: "number" },
@@ -1905,14 +1932,15 @@ export const calendarAction: Action & {
     {
       name: "daysAhead",
       description:
-        "propose_times days ahead. Default 7. Ignored with windowStart/windowEnd.",
+        "propose_times days ahead, 1-60. Default 7. Ignored with windowStart/windowEnd. A value outside the range fails with INVALID_ARGUMENTS.",
       required: false,
       subactions: ["propose_times"],
       schema: { type: "number" as const },
     },
     {
       name: "slotCount",
-      description: "propose_times slot count. Default 3.",
+      description:
+        "propose_times slot count, 1-10. Default 3. A value outside the range fails with INVALID_ARGUMENTS.",
       required: false,
       subactions: ["propose_times"],
       schema: { type: "number" as const },
@@ -1952,7 +1980,7 @@ export const calendarAction: Action & {
     {
       name: "startAt",
       description:
-        "TOP-LEVEL flat. check_availability start. ISO-8601. " +
+        "TOP-LEVEL flat. check_availability start. ISO-8601. A value without an offset or Z is a local clock in timeZone (default: the meeting-preference zone). " +
         "Example: `{ action: 'check_availability', startAt: '2026-05-14T09:00:00Z', endAt: '2026-05-14T10:00:00Z' }`. " +
         "Do NOT wrap check_availability args in `details`.",
       required: false,
@@ -1971,7 +1999,7 @@ export const calendarAction: Action & {
     {
       name: "timeZone",
       description:
-        "IANA timezone for local proposal bounds, meeting preference hours, and the bulk_reschedule lookup window.",
+        "IANA timezone for local proposal bounds, check_availability startAt/endAt without an offset, meeting preference hours, and the bulk_reschedule lookup window. An unknown zone name fails with INVALID_TIME_ZONE.",
       required: false,
       // bulk_reschedule reads timeZone (and nothing from query); without this
       // entry the promoted CALENDAR_BULK_RESCHEDULE child rejects it.
@@ -1988,7 +2016,7 @@ export const calendarAction: Action & {
       description:
         "TOP-LEVEL flat for update_preferences. Earliest start local HH:MM 24h. " +
         "Example: `{ action: 'update_preferences', preferredStartLocal: '09:00', preferredEndLocal: '17:00', blackoutWindows: [...] }`. " +
-        "Do NOT wrap update_preferences args in `details`.",
+        "Do NOT wrap update_preferences args in `details`. One invalid field fails the whole update with INVALID_FIELDS; nothing is written.",
       required: false,
       subactions: ["update_preferences"],
       schema: { type: "string" as const },

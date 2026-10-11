@@ -395,6 +395,92 @@ describe("life-ops scheduling-with-others handlers (real PGLite)", () => {
     }
   });
 
+  it("CALENDAR.check_availability reads an offset-less start in the supplied timeZone", async () => {
+    const feedRequests: Array<{ timeMin?: string; timeMax?: string }> = [];
+    const originalGetService = runtime.getService.bind(runtime);
+    const getService = vi.spyOn(runtime, "getService").mockImplementation(((
+      serviceType: string,
+    ) =>
+      serviceType === "calendar"
+        ? {
+            getCalendarFeed: async (
+              _url: unknown,
+              request: { timeMin?: string; timeMax?: string },
+            ) => {
+              feedRequests.push(request);
+              return {
+                calendarId: "all",
+                events: [],
+                source: "synced",
+                state: "complete",
+                sources: [],
+                timeMin: request.timeMin,
+                timeMax: request.timeMax,
+                syncedAt: "2026-10-01T00:00:00.000Z",
+              };
+            },
+          }
+        : originalGetService(serviceType)) as typeof runtime.getService);
+    try {
+      const result = await runCheckAvailabilityHandler(
+        runtime,
+        makeMessage(runtime, "am I free") as never,
+        undefined,
+        {
+          parameters: {
+            startAt: "2026-10-12T09:00:00",
+            durationMinutes: 30,
+            timeZone: "America/New_York",
+          },
+        } as never,
+        async () => {},
+      );
+
+      expect(result.success).toBe(true);
+      // 09:00 in New York on 2026-10-12 (UTC-4), not 09:00 in the host zone.
+      expect(result.data).toMatchObject({
+        windowStart: "2026-10-12T13:00:00.000Z",
+        windowEnd: "2026-10-12T13:30:00.000Z",
+      });
+      expect(feedRequests).toMatchObject([
+        {
+          timeMin: "2026-10-12T13:00:00.000Z",
+          timeMax: "2026-10-12T13:30:00.000Z",
+        },
+      ]);
+    } finally {
+      getService.mockRestore();
+    }
+  });
+
+  it("CALENDAR.propose_times refuses out-of-range values before a calendar read", async () => {
+    const getService = vi.spyOn(runtime, "getService");
+    try {
+      const result = await runProposeMeetingTimesHandler(
+        runtime,
+        makeMessage(runtime, "find a time") as never,
+        undefined,
+        {
+          parameters: { slotCount: 12, daysAhead: 90, durationMinutes: 600 },
+        } as never,
+        async () => {},
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.data).toMatchObject({
+        error: "INVALID_ARGUMENTS",
+        outOfRange: [
+          "durationMinutes (5-480)",
+          "slotCount (1-10)",
+          "daysAhead (1-60)",
+        ],
+      });
+      expect(getService).not.toHaveBeenCalledWith("calendar");
+    } finally {
+      getService.mockRestore();
+    }
+  });
+
   it("CALENDAR.propose_times refuses candidates from an unavailable feed", async () => {
     const originalGetService = runtime.getService.bind(runtime);
     const getService = vi.spyOn(runtime, "getService").mockImplementation(((
