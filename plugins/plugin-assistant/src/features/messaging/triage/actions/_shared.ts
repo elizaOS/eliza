@@ -206,6 +206,28 @@ function asTimestampMs(value: unknown): number | undefined {
   return undefined;
 }
 
+/**
+ * Parse a search window bound. A supplied value that cannot be read is an
+ * error, not an absent bound: dropping it searches the whole history.
+ */
+function parseTimeBound(
+  value: unknown,
+  field: "since" | "until",
+): { ms: number | undefined } | { error: string } {
+  if (value === undefined || value === null) return { ms: undefined };
+  if (typeof value === "number" && Number.isFinite(value)) return { ms: value };
+  if (typeof value === "string") {
+    const text = value.trim();
+    if (text.length === 0) return { ms: undefined };
+    // Up to four digits is a calendar year; a longer digit run is epoch ms.
+    const ms = /^\d{5,}$/.test(text) ? Number(text) : Date.parse(text);
+    if (Number.isFinite(ms)) return { ms };
+  }
+  return {
+    error: `${field} must be an ISO 8601 date or epoch milliseconds`,
+  };
+}
+
 export interface TriageParams {
   sources?: MessageSource[];
   worldIds?: string[];
@@ -447,6 +469,10 @@ export function parseSearchMessagesParams(
   const sender = parseSenderParam(params.sender);
   const parsedSources = parseSourceList(params.sources ?? params.source);
   if ("error" in parsedSources) return parsedSources;
+  const since = parseTimeBound(params.sinceMs ?? params.since, "since");
+  if ("error" in since) return since;
+  const until = parseTimeBound(params.untilMs ?? params.until, "until");
+  if ("error" in until) return until;
   return {
     sources: parsedSources.sources,
     worldIds: asStringList(params.worldIds),
@@ -454,8 +480,8 @@ export function parseSearchMessagesParams(
     sender,
     content: asString(params.content ?? params.query ?? params.q),
     tags: asStringList(params.tags),
-    sinceMs: asTimestampMs(params.sinceMs ?? params.since),
-    untilMs: asTimestampMs(params.untilMs ?? params.until),
+    sinceMs: since.ms,
+    untilMs: until.ms,
     limit: asNumber(params.limit),
   };
 }

@@ -5803,19 +5803,6 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
     },
   },
   {
-    name: "folder",
-    description: "Inbox folder hint for triage/list/search/draft/respond.",
-    required: false,
-    subactions: [
-      "triage",
-      "list_inbox",
-      "search_inbox",
-      "draft_reply",
-      "respond",
-    ],
-    schema: { type: "string" },
-  },
-  {
     name: "target",
     description:
       "Loose target: user, handle, channel, room, group, server, contact, phone, email, platform ID.",
@@ -6359,7 +6346,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   },
   {
     name: "limit",
-    description: "Max items.",
+    description: "Max items (at least 1).",
     required: false,
     subactions: [
       "read_channel",
@@ -6372,7 +6359,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
       "list_worlds",
       "list_rooms",
     ],
-    schema: { type: "number" },
+    schema: { type: "number", minimum: 1 },
   },
   {
     name: "range",
@@ -6397,7 +6384,8 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   },
   {
     name: "channelIds",
-    description: "Channel/conversation scopes for inbox ops.",
+    description:
+      "Channel, conversation, label or folder ids that scope inbox ops.",
     required: false,
     subactions: ["triage", "list_inbox", "search_inbox"],
     schema: { type: "array", items: { type: "string" } },
@@ -6411,7 +6399,8 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   },
   {
     name: "since",
-    description: "Start date for op=search_inbox.",
+    description:
+      "Start of the op=search_inbox window: ISO 8601 date/timestamp or epoch milliseconds.",
     required: false,
     subactions: ["search_inbox"],
     schema: { type: "string" },
@@ -6419,7 +6408,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   {
     name: "until",
     description:
-      "End date/timestamp for read_channel range=dates or search_inbox.",
+      "End date/timestamp for read_channel range=dates or search_inbox. For search_inbox: ISO 8601 date/timestamp or epoch milliseconds.",
     required: false,
     subactions: ["read_channel", "search_inbox"],
     schema: { type: "string" },

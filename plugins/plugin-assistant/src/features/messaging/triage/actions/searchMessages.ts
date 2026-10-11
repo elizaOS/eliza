@@ -77,13 +77,15 @@ export const searchMessagesAction: Action = {
     },
     {
       name: "since",
-      description: "Start timestamp or parseable date for the search window.",
+      description:
+        "Start of the search window: ISO 8601 date/timestamp or epoch milliseconds.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "until",
-      description: "End timestamp or parseable date for the search window.",
+      description:
+        "End of the search window: ISO 8601 date/timestamp or epoch milliseconds.",
       required: false,
       schema: { type: "string" as const },
     },

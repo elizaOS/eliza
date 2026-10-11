@@ -6,8 +6,9 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { CONTEXT_ROUTING_STATE_KEY } from "@elizaos/core";
+import { CONTEXT_ROUTING_STATE_KEY, validateToolArgs } from "@elizaos/core";
 import { beforeEach, describe, expect, it } from "vitest";
+import { messageAction } from "../../../advanced-capabilities/actions/message.ts";
 import { listInboxAction } from "../actions/listInbox.ts";
 import { BaseMessageAdapter } from "../adapters/base.ts";
 import {
@@ -281,6 +282,44 @@ describe("listInboxAction", () => {
         },
       ],
     });
+  });
+
+  it("does not report an empty inbox when the limit trims every unread message", async () => {
+    getDefaultMessageRefStore().saveMessages([
+      messageRef({ id: "unread-1", receivedAtMs: 2_000 }),
+      messageRef({ id: "unread-2", receivedAtMs: 1_000 }),
+    ]);
+
+    const result = await listInboxAction.handler(
+      createFakeRuntime(),
+      messageRef({ id: "turn" }) as never,
+      undefined,
+      { parameters: { limit: 0 } } as never,
+    );
+
+    expect(result.text).toBe(
+      "2 unread message(s) across 1 platform(s); details in data.messages.",
+    );
+    expect(result.data).toMatchObject({ total: 2, returned: 0 });
+  });
+
+  it("rejects a limit below 1 and the removed folder hint at the MESSAGE schema", () => {
+    expect(
+      validateToolArgs(messageAction, { action: "list_inbox", limit: 0 })
+        .errors,
+    ).toEqual(["Argument 'limit' value 0 is below minimum 1"]);
+    expect(
+      validateToolArgs(messageAction, { action: "list_inbox", limit: 5 }).valid,
+    ).toBe(true);
+    for (const action of ["triage", "list_inbox", "search_inbox"]) {
+      expect(
+        validateToolArgs(messageAction, { action, folder: "Promotions" }).valid,
+      ).toBe(false);
+      expect(
+        validateToolArgs(messageAction, { action, channelIds: ["Promotions"] })
+          .valid,
+      ).toBe(true);
+    }
   });
 
   it("pulls and scores live adapter messages when the cache is empty", async () => {

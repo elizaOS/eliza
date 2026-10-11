@@ -155,7 +155,7 @@ export const listInboxAction: Action = {
       // evaluator's actual inbox rundown. The summary stays planner-facing
       // in the result text with the messages in data.
       const text =
-        trimmed.length === 0
+        unread.length === 0
           ? "No unread messages across connected platforms."
           : `${unread.length} unread message(s) across ${new Set(unread.map((m) => m.source)).size} platform(s); details in data.messages.`;
 
