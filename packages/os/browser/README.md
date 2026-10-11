@@ -170,6 +170,10 @@ The cursor travels from where it was last seen and hides before the ring and
 label appear. A show-only guide never plays a tap, because the person presses
 that control. An action cursor stays on its target, and the 800 ms readiness
 starts after it arrives. Reduced motion shows everything in place.
+When no label position is clear of the control, a show-only guide keeps only
+its ring: there is no label, cursor or Dismiss, `visible` stays false, and the
+ring ends with the request's expiry or the host's `hide`. An action guide shows
+nothing in that case, so it never becomes ready.
 The binding's optional `assistantName` (default "Eliza") names the cursor tag and
 label mark. A bound task action may carry the host's own preview sentence
 (`actionText`, at most 200 characters); otherwise the preview uses a generic line.
