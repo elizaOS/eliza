@@ -86,9 +86,15 @@ function readParameters(
     typeof parameters.page === "string" ? parameters.page : undefined;
   const explicitAction =
     typeof parameters.action === "string" ? parameters.action : undefined;
-  const childParameters: ActionParameters = {};
+  // The declared `parameters` object carries child fields. Unwrap it so the
+  // child reads them by name; child fields written at the top level win.
+  const nested = parameters.parameters;
+  const childParameters: ActionParameters =
+    typeof nested === "object" && nested !== null && !Array.isArray(nested)
+      ? { ...(nested as ActionParameters) }
+      : {};
   for (const [key, value] of Object.entries(parameters)) {
-    if (key === "page" || key === "action") continue;
+    if (key === "page" || key === "action" || key === "parameters") continue;
     childParameters[key] = value as ActionParameters[string];
   }
   return {
@@ -396,7 +402,7 @@ export const pageDelegateAction: PageActionGroup = {
     {
       name: "action",
       description:
-        "Child action name to run, e.g. BROWSER, CHECK_BALANCE, MODIFY_CHARACTER, UPDATE_AI_PROVIDER, LIST_CONNECTORS.",
+        "Child action name to run, e.g. BROWSER, WALLET, MODIFY_CHARACTER, UPDATE_AI_PROVIDER, LIST_CONNECTORS.",
       required: true,
       schema: { type: "string" as const },
     },
@@ -427,15 +433,15 @@ export const pageDelegateAction: PageActionGroup = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Show my wallet balance." },
+        content: { text: "Look up the SOL token." },
       },
       {
         name: "{{agentName}}",
         content: {
-          text: "Pulling wallet balances.",
+          text: "Looking up SOL.",
           actions: ["PAGE_DELEGATE"],
           thought:
-            "Balance request maps to the wallet page; PAGE_DELEGATE dispatches to the CHECK_BALANCE child action.",
+            "Token lookup maps to the wallet page; PAGE_DELEGATE dispatches to the WALLET child action with action=token_info.",
         },
       },
     ],
