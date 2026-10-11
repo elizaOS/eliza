@@ -29,6 +29,21 @@ import type {
 /** Default terminal geometry when a caller doesn't specify one. */
 const DEFAULT_COLS = 120;
 const DEFAULT_ROWS = 30;
+
+/**
+ * Normalize one spawn geometry dimension with the same rule `resize` applies:
+ * a finite value of at least 1 is floored; anything else (missing, non-finite,
+ * or below 1) falls back to the default, which is the geometry a fresh
+ * session would keep when `resize` ignores the same degenerate value.
+ */
+function normalizeDimension(
+  value: number | undefined,
+  fallback: number,
+): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 1
+    ? Math.floor(value)
+    : fallback;
+}
 /** Hard cap on concurrent live sessions — a runaway backstop, not a real limit. */
 const DEFAULT_MAX_SESSIONS = 24;
 /** Per-session scrollback retained for clients that subscribe after spawn. */
@@ -301,8 +316,8 @@ export class PtySessionStore {
       cwd,
       env,
       name: env.TERM,
-      cols: spec.cols ?? DEFAULT_COLS,
-      rows: spec.rows ?? DEFAULT_ROWS,
+      cols: normalizeDimension(spec.cols, DEFAULT_COLS),
+      rows: normalizeDimension(spec.rows, DEFAULT_ROWS),
     });
 
     const sessionId = randomUUID();
