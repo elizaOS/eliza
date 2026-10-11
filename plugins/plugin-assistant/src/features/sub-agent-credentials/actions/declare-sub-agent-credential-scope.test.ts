@@ -86,12 +86,28 @@ describe("DECLARE_SUB_AGENT_CREDENTIAL_SCOPE", () => {
     expect(ok).toBe(false);
   });
 
-  test("validate fails when credentialKeys is empty", async () => {
+  test("validate passes without arguments when the bridge is registered", async () => {
+    // The planner tool surface calls validate with no options.
     const bridge: SubAgentCredentialBridge = {
       declareScope: vi.fn(),
       tunnelCredential: vi.fn(),
-    };
+    }
     const ok = await declareSubAgentCredentialScopeAction.validate(
+      createRuntime({
+        [SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE]: bridge,
+      }) as never,
+      message() as never,
+      undefined,
+    )
+    expect(ok).toBe(true)
+  })
+
+  test("handler rejects empty credentialKeys before declaring a scope", async () => {
+    const bridge: SubAgentCredentialBridge = {
+      declareScope: vi.fn(),
+      tunnelCredential: vi.fn(),
+    }
+    const result = await declareSubAgentCredentialScopeAction.handler(
       createRuntime({
         [SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE]: bridge,
       }) as never,
@@ -100,10 +116,13 @@ describe("DECLARE_SUB_AGENT_CREDENTIAL_SCOPE", () => {
       {
         parameters: { childSessionId: "pty-1-abc", credentialKeys: [] },
       } as never,
-    );
-    expect(ok).toBe(false);
-  });
-
+    )
+    expect(result.success).toBe(false)
+    expect(result.text).toBe(
+      "Missing required parameters: childSessionId, credentialKeys",
+    )
+    expect(bridge.declareScope).not.toHaveBeenCalled()
+  })
   test("missing service surfaces a service-unavailable error from handler", async () => {
     const result = await declareSubAgentCredentialScopeAction.handler(
       createRuntime({}) as never,
