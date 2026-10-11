@@ -9,6 +9,7 @@ import type { ElizaCloudClient } from "./bridge-client.js";
 export class BackupScheduler {
   private timer: ReturnType<typeof setInterval> | null = null;
   private running = false;
+  private snapshotInFlight: Promise<void> | null = null;
 
   constructor(
     private client: ElizaCloudClient,
@@ -20,7 +21,9 @@ export class BackupScheduler {
     if (this.timer) return;
     this.running = true;
     this.timer = setInterval(() => {
-      this.client.snapshot(this.agentId).catch((err) => {
+      if (this.snapshotInFlight) return;
+
+      this.snapshot().catch((err) => {
         logger.warn(`[cloud-backup] Auto-backup failed: ${String(err)}`);
       });
     }, this.intervalMs);
@@ -39,8 +42,19 @@ export class BackupScheduler {
   }
 
   async finalSnapshot(): Promise<void> {
-    await this.client.snapshot(this.agentId).catch((err) => {
+    // A periodic snapshot may still be running when shutdown begins. Wait for
+    // it to settle before taking the final snapshot.
+    await this.snapshotInFlight?.catch(() => undefined);
+    await this.snapshot().catch((err) => {
       logger.warn(`[cloud-backup] Final snapshot failed: ${String(err)}`);
     });
+  }
+
+  private snapshot(): Promise<void> {
+    const snapshot = this.client.snapshot(this.agentId).then(() => undefined);
+    this.snapshotInFlight = snapshot.finally(() => {
+      this.snapshotInFlight = null;
+    });
+    return this.snapshotInFlight;
   }
 }

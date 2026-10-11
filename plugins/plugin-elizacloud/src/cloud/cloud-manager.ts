@@ -125,8 +125,8 @@ export class CloudManager {
 
   async disconnect(): Promise<void> {
     if (this.backupScheduler) {
-      await this.backupScheduler.finalSnapshot();
       this.backupScheduler.stop();
+      await this.backupScheduler.finalSnapshot();
       this.backupScheduler = null;
     }
     if (this.connectionMonitor) {
