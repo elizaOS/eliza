@@ -342,13 +342,14 @@ export const updateSettingsAction: Action = {
   parameters: [
     {
       name: "key",
-      description: "Optional setting key to update.",
+      description:
+        "Exact setting key to update. Send with value; omit both to read them from the message.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "value",
-      description: "Optional setting value to save.",
+      description: "Setting value to save for key.",
       required: false,
       schema: { type: "string" },
     },
@@ -382,7 +383,7 @@ export const updateSettingsAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State,
-    _options?: HandlerOptions,
+    options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     if (!state || !callback) {
@@ -424,17 +425,43 @@ export const updateSettingsAction: Action = {
       "SECRETS",
     ) as SecretsService | null;
 
-    // Extract settings from message
-    logger.info("[UpdateSettings] Extracting settings from message");
-    const extractedSettings = await extractSettingValues(
-      runtime,
-      message,
-      state,
-      settings,
-    );
-    logger.info(
-      `[UpdateSettings] Extracted ${extractedSettings.length} settings`,
-    );
+    // The planner's declared `key` + `value` pair is authoritative. The model
+    // only extracts from the message when the planner did not supply the pair.
+    const params =
+      options?.parameters && typeof options.parameters === "object"
+        ? (options.parameters as Record<string, unknown>)
+        : {};
+    const paramKey = typeof params.key === "string" ? params.key.trim() : "";
+    let extractedSettings: SettingUpdate[];
+    if (paramKey && typeof params.value === "string") {
+      if (!settings[paramKey]) {
+        await callback({
+          text: `I don't have a setting called ${paramKey}.`,
+          actions: ["SETTING_UPDATE_FAILED"],
+        });
+        return {
+          text: `Unknown setting key: ${paramKey}. Available keys: ${Object.keys(settings).join(", ")}`,
+          values: { success: false },
+          data: {
+            actionName: "SECRETS_UPDATE_SETTINGS",
+            action: "SETTING_UPDATE_FAILED",
+          },
+          success: false,
+        };
+      }
+      extractedSettings = [{ key: paramKey, value: params.value }];
+    } else {
+      logger.info("[UpdateSettings] Extracting settings from message");
+      extractedSettings = await extractSettingValues(
+        runtime,
+        message,
+        state,
+        settings,
+      );
+      logger.info(
+        `[UpdateSettings] Extracted ${extractedSettings.length} settings`,
+      );
+    }
 
     // Process updates
     const results = await processSettingUpdates(
