@@ -248,15 +248,6 @@ function buildRequest(
     audioKind:
       mediaType === "audio" ? (inferAudioKind(params) ?? "music") : undefined,
     size: readStringParam(params, "size"),
-    quality:
-      params.quality === "standard" || params.quality === "hd"
-        ? params.quality
-        : undefined,
-    style:
-      params.style === "natural" || params.style === "vivid"
-        ? params.style
-        : undefined,
-    negativePrompt: readStringParam(params, "negativePrompt"),
     seed: readNumberParam(params, "seed"),
     duration: readNumberParam(params, "duration"),
     aspectRatio: readStringParam(params, "aspectRatio"),
@@ -519,7 +510,7 @@ async function generateWithService(
 }
 
 const GENERATE_MEDIA_ROUTING_HINT =
-  "When the user asks to create/generate/make a video, animation, clip, image, music, sfx, or speech: call GENERATE_MEDIA with the matching mediaType (video/image/audio). If the turn includes an exact trusted attached image URL, pass it unchanged as imageUrl for image-to-video or image editing and use the attachment description to inform the prompt. Do not refuse, offer to 'craft a prompt for another tool', or claim there is no video generator when this action validates.";
+  "When the user asks to create/generate/make a video, animation, clip, image, music, sfx, or speech: call GENERATE_MEDIA with the matching mediaType (video/image/audio). For image-to-video, if the turn includes an exact trusted attached image URL, pass it unchanged as imageUrl with mediaType video and use the attachment description to inform the prompt. Image output does not accept a source image. Do not refuse, offer to 'craft a prompt for another tool', or claim there is no video generator when this action validates.";
 
 export const generateMediaAction = {
   name: spec.name,
@@ -596,6 +587,28 @@ export const generateMediaAction = {
         text: "Media prompt is required",
         values: { success: false, error: "MISSING_PROMPT" },
         data: { actionName: "GENERATE_MEDIA", error: "Missing prompt" },
+        success: false,
+      };
+    }
+
+    // No image provider reads a source image: the IMAGE model contract is
+    // {prompt, size, count} and the media service forwards imageUrl for video
+    // only. Generating here would return an unrelated new image as the edit.
+    if (request.mediaType === "image" && request.imageUrl) {
+      const text =
+        "Image generation cannot edit or start from a source image. Omit imageUrl to generate a new image from the prompt, or use mediaType video for image-to-video.";
+      return {
+        text,
+        values: {
+          success: false,
+          error: "IMAGE_SOURCE_UNSUPPORTED",
+          mediaType: request.mediaType,
+        },
+        data: {
+          actionName: "GENERATE_MEDIA",
+          mediaType: request.mediaType,
+          error: "IMAGE_SOURCE_UNSUPPORTED",
+        },
         success: false,
       };
     }
@@ -880,7 +893,7 @@ export const generateMediaAction = {
     {
       name: "imageUrl",
       description:
-        "Optional source image URL for image editing or image-to-video generation. Use the exact trusted attachment URL supplied in the turn context.",
+        "Optional source image URL for image-to-video generation (mediaType video only). Use the exact trusted attachment URL supplied in the turn context.",
       required: false,
       schema: { type: "string" as const },
     },
