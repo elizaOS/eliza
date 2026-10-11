@@ -9,6 +9,7 @@
 export function normalizeWerText(text: string): string {
   return text
     .toLowerCase()
+    .replace(/[\u2018\u2019]/g, "'")
     .replace(/[^\p{L}\p{N}'\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
