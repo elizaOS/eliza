@@ -11,6 +11,8 @@ import { createHash, randomUUID } from "node:crypto";
 import type http from "node:http";
 import {
   applyCanonicalFirstRunConfig,
+  CLOUD_INFERENCE_NO_API_KEY_ERROR,
+  hasCloudApiKeyForInference,
   loadEffectiveElizaConfig,
   loadElizaConfig,
   saveElizaConfig,
@@ -48,6 +50,7 @@ import {
   deriveFirstRunReplayBody,
   extractAndPersistFirstRunApiKey,
   hasDeprecatedFirstRunRequestFields,
+  isCloudProvisioned,
   persistFirstRunDefaults,
 } from "./server-first-run-helpers";
 
@@ -398,6 +401,19 @@ export async function handleFirstRunRoute(
               ok: false,
               status: 409,
               error: `Eliza Cloud inference with a local agent is not available under the ${devCloudAuthority} development Cloud target: this launch has no Cloud API key, so the local agent does not load the Cloud plugin. Choose another provider, or run \`bun run dev\` for the Eliza Cloud runtime.`,
+            };
+          }
+          if (
+            !devCloudAuthority &&
+            cloudInferenceSelected &&
+            replayDeploymentTarget?.runtime !== "cloud" &&
+            !isCloudProvisioned() &&
+            !hasCloudApiKeyForInference(config)
+          ) {
+            return {
+              ok: false,
+              status: 409,
+              error: CLOUD_INFERENCE_NO_API_KEY_ERROR,
             };
           }
           if (!resolvedCloudApiKey) {
