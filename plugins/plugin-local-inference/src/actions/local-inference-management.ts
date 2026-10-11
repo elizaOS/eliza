@@ -66,12 +66,16 @@ function paramsFromOptions(options?: HandlerOptions): Record<string, unknown> {
 	return isRecord(options?.parameters) ? options.parameters : {};
 }
 
-function fail(error: string, text: string): ActionResult {
+function fail(
+	error: string,
+	text: string,
+	data: Record<string, unknown> = {},
+): ActionResult {
 	return {
 		success: false,
 		text,
 		values: { success: false, error },
-		data: { actionName: "LOCAL_INFERENCE", error },
+		data: { actionName: "LOCAL_INFERENCE", ...data, error },
 	};
 }
 
@@ -121,9 +125,62 @@ function describeMutation(mutation: LocalInferenceManagementResult): string {
 			return mutation.modelId
 				? `Local model assignment for ${mutation.slot} is now ${mutation.modelId}.`
 				: `Local model assignment for ${mutation.slot} was cleared.`;
+		case "uninstall_model":
+			return `Removed local model ${mutation.modelId}.`;
+		case "cancel_download":
+			return mutation.modelId
+				? `Cancelled the download of ${mutation.modelId}.`
+				: "Cancelled the active downloads.";
+		case "verify_model":
+			return describeVerifyState(mutation.modelId, mutation.state);
 		default:
 			return `Local inference ${mutation.op} updated.`;
 	}
+}
+
+function describeVerifyState(
+	modelId: string,
+	state: Extract<
+		LocalInferenceManagementResult,
+		{ op: "verify_model" }
+	>["state"],
+): string {
+	switch (state) {
+		case "ok":
+			return `Model ${modelId} verified: the file matches its recorded hash.`;
+		case "unknown":
+			return `Model ${modelId} has no recorded hash to compare against, so the file could not be verified.`;
+		case "mismatch":
+			return `Model ${modelId} failed verification: the file does not match its recorded hash.`;
+		case "missing":
+			return `Model ${modelId} failed verification: the file is missing.`;
+		case "truncated":
+			return `Model ${modelId} failed verification: the file is truncated or not a GGUF file.`;
+	}
+}
+
+/**
+ * A mutation the route layer completed without doing what was asked. The
+ * reply must say so instead of reporting an update.
+ */
+function describeNoOp(
+	mutation: LocalInferenceManagementResult,
+): { error: string; text: string } | null {
+	if (mutation.op === "uninstall_model" && !mutation.removed) {
+		return {
+			error: "LOCAL_INFERENCE_NOT_REMOVED",
+			text: `Model ${mutation.modelId} was not removed: it is not installed, or it is an external model Eliza does not own.`,
+		};
+	}
+	if (mutation.op === "cancel_download" && !mutation.cancelled) {
+		return {
+			error: "LOCAL_INFERENCE_NO_DOWNLOAD",
+			text: mutation.modelId
+				? `No download in progress for ${mutation.modelId}.`
+				: "No download in progress.",
+		};
+	}
+	return null;
 }
 
 export const localInferenceManagementAction: Action = {
@@ -264,8 +321,10 @@ export const localInferenceManagementAction: Action = {
 				"../local-inference-routes.js"
 			);
 			const mutation = await applyLocalInferenceManagementMutation(input);
-			const text = describeMutation(mutation);
-			const result = ok(text, { ...mutation });
+			const noOp = describeNoOp(mutation);
+			const result = noOp
+				? fail(noOp.error, noOp.text, { ...mutation })
+				: ok(describeMutation(mutation), { ...mutation });
 			await callback?.({ text: result.text, actions: ["LOCAL_INFERENCE"] });
 			return result;
 		} catch (error) {

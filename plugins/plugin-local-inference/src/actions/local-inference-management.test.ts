@@ -81,6 +81,40 @@ describe("LOCAL_INFERENCE action twins", () => {
 		);
 	}, 15_000);
 
+	it("reports an uninstall or cancel that changed nothing as a failure", async () => {
+		const call = (parameters: Record<string, unknown>) =>
+			localInferenceManagementAction.handler(
+				{} as IAgentRuntime,
+				{} as Memory,
+				undefined,
+				{ parameters },
+			);
+
+		const uninstall = await call({
+			action: "uninstall_model",
+			modelId: "not-installed",
+		});
+		expect(uninstall?.success).toBe(false);
+		expect(uninstall?.text).toBe(
+			"Model not-installed was not removed: it is not installed, or it is an external model Eliza does not own.",
+		);
+		expect(uninstall?.data).toMatchObject({
+			op: "uninstall_model",
+			removed: false,
+		});
+
+		const cancel = await call({
+			action: "cancel_download",
+			modelId: "not-downloading",
+		});
+		expect(cancel?.success).toBe(false);
+		expect(cancel?.text).toBe("No download in progress for not-downloading.");
+		expect(cancel?.data).toMatchObject({
+			op: "cancel_download",
+			cancelled: false,
+		});
+	}, 15_000);
+
 	it("names the declared voiceModelId argument when it is missing", async () => {
 		const result = await localInferenceManagementAction.handler(
 			{} as IAgentRuntime,
