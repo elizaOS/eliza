@@ -430,6 +430,15 @@ function normalizeConnectorLimit(limit: number | undefined): number | undefined 
   return limit;
 }
 
+/** Orders memories newest-first; ties break on id for a stable order. */
+function compareNewestFirst(left: Memory, right: Memory): number {
+  const rightCreated =
+    typeof right.createdAt === "number" && Number.isFinite(right.createdAt) ? right.createdAt : 0;
+  const leftCreated =
+    typeof left.createdAt === "number" && Number.isFinite(left.createdAt) ? left.createdAt : 0;
+  return rightCreated - leftCreated || (left.id ?? "").localeCompare(right.id ?? "");
+}
+
 function filterMemoriesByQuery(memories: Memory[], query: string, limit?: number): Memory[] {
   const normalized = query.trim().toLowerCase();
   const matches = normalized
@@ -956,17 +965,7 @@ export class IMessageService extends Service implements IIMessageService {
             (createUniqueUuid(context.runtime, `imessage-read:${chatId ?? "recent"}`) as UUID);
           return platformMessages
             .map((message) => publicIMessageToMemory(context.runtime, message, roomId, accountId))
-            .sort((left, right) => {
-              const rightCreated =
-                typeof right.createdAt === "number" && Number.isFinite(right.createdAt)
-                  ? right.createdAt
-                  : 0;
-              const leftCreated =
-                typeof left.createdAt === "number" && Number.isFinite(left.createdAt)
-                  ? left.createdAt
-                  : 0;
-              return rightCreated - leftCreated || (left.id ?? "").localeCompare(right.id ?? "");
-            });
+            .sort(compareNewestFirst);
         }
         if (target?.roomId) {
           return context.runtime.getMemories({
@@ -995,11 +994,16 @@ export class IMessageService extends Service implements IIMessageService {
         const roomId =
           target?.roomId ??
           (createUniqueUuid(context.runtime, `imessage-read:${chatId ?? "recent"}`) as UUID);
+        // chat.db reads come back oldest-first; sort newest-first so `limit`
+        // keeps the most recent matches, like fetchMessages and the
+        // stored-memory fallback below.
         const memories =
           platformMessages.length > 0
-            ? platformMessages.map((message) =>
-                publicIMessageToMemory(context.runtime, message, roomId, accountId)
-              )
+            ? platformMessages
+                .map((message) =>
+                  publicIMessageToMemory(context.runtime, message, roomId, accountId)
+                )
+                .sort(compareNewestFirst)
             : target?.roomId
               ? await context.runtime.getMemories({
                   tableName: "messages",
