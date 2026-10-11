@@ -233,9 +233,6 @@ interface IosConversation {
   createdAt: string;
   updatedAt: string;
   metadata?: Record<string, unknown>;
-  lastUserText?: string;
-  lastAssistantText?: string;
-  lastAgentName?: string;
 }
 interface BufferedHttpResponse {
   status: number;
@@ -4080,9 +4077,6 @@ async function handleDirectConversationMessage(
       }
     }
     conversation.updatedAt = new Date().toISOString();
-    conversation.lastUserText = prompt.trim();
-    conversation.lastAssistantText = nativeText;
-    conversation.lastAgentName = agentName;
     return {
       ...nativeReply,
       agentName,
@@ -4115,9 +4109,6 @@ async function handleDirectConversationMessage(
   const text = stripReasoningBlocks(chunks.join("")).trim();
   const agentName = runtimeAgentName(backend.runtime);
   conversation.updatedAt = new Date().toISOString();
-  conversation.lastUserText = prompt.trim();
-  conversation.lastAssistantText = text;
-  conversation.lastAgentName = agentName;
   return {
     text,
     reply: text,
@@ -4179,33 +4170,6 @@ async function handleConversationMessagesRoute(
     ...(before === undefined ? {} : { hasMore: false }),
   });
 }
-function cachedConversationMessageResult(
-  conversation: IosConversation,
-  input: Record<string, unknown>,
-): Record<string, unknown> | null {
-  const prompt =
-    typeof input.text === "string"
-      ? input.text
-      : typeof input.message === "string"
-        ? input.message
-        : typeof input.prompt === "string"
-          ? input.prompt
-          : "";
-  if (
-    !conversation.lastAssistantText ||
-    !conversation.lastUserText ||
-    conversation.lastUserText !== prompt.trim()
-  ) {
-    return null;
-  }
-  return {
-    text: conversation.lastAssistantText,
-    reply: conversation.lastAssistantText,
-    agentName: conversation.lastAgentName ?? "Eliza",
-    conversationId: conversation.id,
-    cached: true,
-  };
-}
 function sseEvent(payload: Record<string, unknown>): string {
   return `data: ${JSON.stringify(payload)}\n\n`;
 }
@@ -4264,8 +4228,8 @@ function sseChunkBase64(payload: Record<string, unknown>): string {
  *
  * The emitter is the seam that reaches the WebView (via a `stream_emit`
  * host-call → `notifyListeners`); a fake emitter unit-tests the whole flow with
- * no device. A cached turn or a conversation lookup miss still resolves through
- * this path — the client sees the same `token`/`done` frames as a live turn.
+ * no device. A conversation lookup miss still resolves through this path as a
+ * 404 stream.
  */
 export async function streamConversationMessageResponse(
   backend: IosBridgeBackend,
@@ -4321,25 +4285,15 @@ export async function streamConversationMessageResponse(
   let streamedAny = false;
   let result: Record<string, unknown>;
   try {
-    const cached = cachedConversationMessageResult(conversation, body);
-    if (cached) {
-      result = cached;
-      const cachedText = typeof cached.text === "string" ? cached.text : "";
-      if (cachedText) {
+    result = await handleDirectConversationMessage(
+      backend,
+      conversation,
+      body,
+      (token, accumulated) => {
         streamedAny = true;
-        enqueueChunk({ type: "token", text: cachedText, fullText: cachedText });
-      }
-    } else {
-      result = await handleDirectConversationMessage(
-        backend,
-        conversation,
-        body,
-        (token, accumulated) => {
-          streamedAny = true;
-          enqueueChunk({ type: "token", text: token, fullText: accumulated });
-        },
-      );
-    }
+        enqueueChunk({ type: "token", text: token, fullText: accumulated });
+      },
+    );
   } catch (error) {
     await emitTail;
     await emitSafely({
@@ -4610,9 +4564,11 @@ export async function handleDirectCoreRoute(
       return jsonResponse(404, { error: "Conversation not found" });
     }
     const body = parseRequestBody(payload);
-    const result =
-      cachedConversationMessageResult(conversation, body) ??
-      (await handleDirectConversationMessage(backend, conversation, body));
+    const result = await handleDirectConversationMessage(
+      backend,
+      conversation,
+      body,
+    );
     return bufferedConversationStreamResponse(result);
   }
   if (method === "POST" && messageMatch) {

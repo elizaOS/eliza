@@ -250,6 +250,60 @@ describe("iOS bridge — streamConversationMessageResponse", () => {
     expect(String(done?.fullText)).toContain("unavailable");
     expect(frames.at(-1)).toMatchObject({ kind: "complete" });
   });
+
+  it("runs a new turn when the same text is sent twice in a row", async () => {
+    // Each turn is one handleMessage call. A null entry is a failed generation.
+    const turns: Array<string | null> = ["first reply", null, "third reply"];
+    const storedUserTexts: string[] = [];
+    let modelCalls = 0;
+    const runtime = {
+      agentId: "00000000-0000-0000-0000-0000000000aa" as UUID,
+      character: { name: "Eliza" },
+      async ensureConnection(): Promise<void> {},
+      async createMemory(memory: {
+        content: { text?: string };
+      }): Promise<UUID> {
+        storedUserTexts.push(memory.content.text ?? "");
+        return crypto.randomUUID() as UUID;
+      },
+      messageService: {
+        async handleMessage(
+          _runtime: IAgentRuntime,
+          _message: unknown,
+          onResponse: (content: { text?: string }) => Promise<unknown[]>,
+        ): Promise<void> {
+          const reply = turns[modelCalls];
+          modelCalls += 1;
+          if (reply === null) throw new Error("context lost");
+          await onResponse({ text: reply });
+        },
+      },
+    } as unknown as IAgentRuntime;
+    const backend = makeBackendWithConversation(runtime);
+    const send = async (streamId: string): Promise<string> => {
+      const { frames, emit } = collector();
+      await streamConversationMessageResponse(
+        backend,
+        CONVERSATION_ID,
+        { text: "continue" },
+        streamId,
+        emit,
+      );
+      const done = frames
+        .filter((f) => f.kind === "chunk")
+        .map(decodeChunk)
+        .find((p) => p.type === "done");
+      return String(done?.fullText);
+    };
+
+    expect(await send("stream-repeat-1")).toBe("first reply");
+    // The same text again is a new turn, not a replay of the first reply.
+    expect(await send("stream-repeat-2")).toContain("context lost");
+    // A failed turn is retried, not answered with the stored failure notice.
+    expect(await send("stream-repeat-3")).toBe("third reply");
+    expect(modelCalls).toBe(3);
+    expect(storedUserTexts).toEqual(["continue", "continue", "continue"]);
+  });
 });
 
 describe("iOS bridge — fetchBackendStream routing", () => {
