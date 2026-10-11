@@ -836,6 +836,21 @@ type SandboxFetchAuditEvent = {
   url: string;
   tokenIds: string[];
 };
+// configureLocalEmbeddingPlugin pins EMBEDDING_PROVIDER=local for the live
+// runtime. An in-process restart must decide the embedding owner again from
+// saved settings, so each boot puts back the value the pin replaced.
+let embeddingProviderBeforeLocalPin: { value: string | undefined } | undefined;
+
+/** @internal Exported for regression coverage. */
+export function releaseLocalEmbeddingProviderPin(): void {
+  if (!embeddingProviderBeforeLocalPin) return;
+  const { value } = embeddingProviderBeforeLocalPin;
+  embeddingProviderBeforeLocalPin = undefined;
+  if (process.env.EMBEDDING_PROVIDER !== "local") return;
+  if (value === undefined) delete process.env.EMBEDDING_PROVIDER;
+  else process.env.EMBEDDING_PROVIDER = value;
+}
+
 export async function configureLocalEmbeddingPlugin(
   _plugin: Plugin,
   config?: ElizaConfig,
@@ -956,6 +971,10 @@ export async function configureLocalEmbeddingPlugin(
   // available to cloud-hosted deployments, but an app-side OPENAI/GOOGLE value
   // must not turn a local boot into a network embedding path. The caller gates
   // this configuration off when cloud embeddings are explicitly enabled.
+  if (process.env.EMBEDDING_PROVIDER !== "local")
+    embeddingProviderBeforeLocalPin ??= {
+      value: process.env.EMBEDDING_PROVIDER,
+    };
   process.env.EMBEDDING_PROVIDER = "local";
   const embeddingConfigSummary =
     `${process.env.LOCAL_EMBEDDING_MODEL} (repo: ${process.env.LOCAL_EMBEDDING_MODEL_REPO ?? "auto"}, ` +
@@ -3895,6 +3914,7 @@ export async function startEliza(
   if (!process.env.LOG_LEVEL) {
     process.env.LOG_LEVEL = config.logging?.level ?? "error";
   }
+  releaseLocalEmbeddingProviderPin();
   // 2. Push channel secrets into process.env for plugin discovery
   applyConnectorSecretsToEnv(config);
   // Cloud sandbox (Path A / double-connect): in a provisioned container that
