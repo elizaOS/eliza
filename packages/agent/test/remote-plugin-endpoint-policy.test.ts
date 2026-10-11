@@ -2,7 +2,7 @@
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { RemotePluginModuleManifest } from "@elizaos/core";
+import type { JsonObject, RemotePluginModuleManifest } from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/testing/runtime";
 import { expect, it } from "vitest";
 import { bootstrapRemoteCapabilityPlugins } from "../src/services/remote-plugin-adapter.ts";
@@ -192,15 +192,17 @@ it.each(["a", "__proto__"])(
   120_000,
 );
 
-it("matches provenance digests over code-unit key order on every host locale", async () => {
-  // A signer outside this process hashes RFC 8785 / canonicalJsonString bytes:
-  // "PORT" sorts before "host" by UTF-16 code unit, unlike ICU collation.
-  const canonical =
-    '{"config":{"PORT":"8080","host":"127.0.0.1"},"id":"module-a","name":"provenance-order"}';
-  const module: RemotePluginModuleManifest = {
+it("matches provenance digests over code-unit key order up to the walk bounds", async () => {
+  const signed = (
+    fields: Pick<RemotePluginModuleManifest, "name" | "config" | "metadata">,
+    canonical = JSON.stringify({
+      id: "module-a",
+      metadata: fields.metadata,
+      name: fields.name,
+    }),
+  ): RemotePluginModuleManifest => ({
     id: "module-a",
-    name: "provenance-order",
-    config: { host: "127.0.0.1", PORT: "8080" },
+    ...fields,
     provenance: {
       issuer: "issuer-a",
       subject: "module-a",
@@ -208,11 +210,21 @@ it("matches provenance digests over code-unit key order on every host locale", a
       signatureAlgorithm: "ed25519",
       signature: "digest-only",
     },
+  });
+  // Three root keys and one metadata key leave 4092 of the 4096 node slots.
+  const wide = (name: string, slots: number) =>
+    signed({ name, metadata: { items: new Array<number>(slots).fill(0) } });
+  // `objects` nested objects below the root, metadata included, then a leaf.
+  const deep = (name: string, objects: number) => {
+    let metadata: JsonObject = { a: 1 };
+    for (let level = 1; level < objects; level += 1) metadata = { a: metadata };
+    return signed({ name, metadata });
   };
+  let supplied: RemotePluginModuleManifest[] = [];
   const server = createServer(async (request, response) => {
     for await (const _chunk of request);
     response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify({ modules: [module] }));
+    response.end(JSON.stringify({ modules: supplied }));
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const fixture = await createTestRuntime({
@@ -232,11 +244,35 @@ it("matches provenance digests over code-unit key order on every host locale", a
     },
   });
   try {
-    expect(
-      (await bootstrapRemoteCapabilityPlugins(fixture.runtime)).registered.map(
-        (plugin) => plugin.name,
+    for (const module of [wide("too-wide", 4093), deep("too-deep", 33)]) {
+      supplied = [module];
+      await expect(
+        bootstrapRemoteCapabilityPlugins(fixture.runtime),
+      ).rejects.toMatchObject({
+        details: { trustDecision: { reason: "provenance-walk-bound" } },
+      });
+    }
+    for (const module of [
+      // A signer outside this process hashes RFC 8785 / canonicalJsonString
+      // bytes: "PORT" sorts before "host" by UTF-16 code unit, unlike ICU
+      // collation.
+      signed(
+        {
+          name: "provenance-order",
+          config: { host: "127.0.0.1", PORT: "8080" },
+        },
+        '{"config":{"PORT":"8080","host":"127.0.0.1"},"id":"module-a","name":"provenance-order"}',
       ),
-    ).toEqual(["provenance-order"]);
+      wide("widest", 4092),
+      deep("deepest", 32),
+    ]) {
+      supplied = [module];
+      expect(
+        (
+          await bootstrapRemoteCapabilityPlugins(fixture.runtime)
+        ).registered.map((plugin) => plugin.name),
+      ).toEqual([module.name]);
+    }
   } finally {
     await fixture.cleanup();
     await new Promise<void>((resolve, reject) =>
