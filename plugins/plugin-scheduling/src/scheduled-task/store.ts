@@ -812,77 +812,80 @@ export function createSchedulingSqlScheduledTaskLogStore(
         args.taskIds === undefined
           ? ""
           : `AND task_id IN (${args.taskIds.map((id) => sqlQuote(id)).join(",")})`;
+      // One statement so the merge and the raw-row delete commit together.
+      // Rollup ids match the record store: `rollup:${JSON.stringify([taskId, day, transition])}`.
       const rows = await executeSql(
-        `SELECT *
-           FROM ${LOG_TABLE}
-          WHERE agent_id = ${sqlQuote(agentId)}
-            ${taskScope}
-            AND rolled_up = FALSE
-            AND transition <> 'scheduled'
-            AND NOT (
-              COALESCE(detail_json::jsonb, '{}'::jsonb) ? 'receiptKey'
-            )
-            AND occurred_at < ${sqlQuote(args.olderThanIso)}`,
-      );
-      if (rows.length === 0) return { rolledUp: 0, deletedRaw: 0 };
-      const summary = new Map<
-        string,
-        {
-          taskId: string;
-          transition: string;
-          dayIso: string;
-          count: number;
-          firstReason: string | null;
-        }
-      >();
-      for (const row of rows) {
-        const occurredAt = toText(row.occurred_at);
-        const dayIso = occurredAt.slice(0, 10);
-        const key = `${toText(row.task_id)}::${dayIso}::${toText(row.transition)}`;
-        const existing = summary.get(key);
-        if (existing) {
-          existing.count += 1;
-        } else {
-          summary.set(key, {
-            taskId: toText(row.task_id),
-            transition: toText(row.transition),
-            dayIso,
-            count: 1,
-            firstReason: typeof row.reason === "string" ? row.reason : null,
-          });
-        }
-      }
-      await executeSql(
-        `DELETE FROM ${LOG_TABLE}
-          WHERE agent_id = ${sqlQuote(agentId)}
-            ${taskScope}
-            AND rolled_up = FALSE
-            AND transition <> 'scheduled'
-            AND NOT (
-              COALESCE(detail_json::jsonb, '{}'::jsonb) ? 'receiptKey'
-            )
-            AND occurred_at < ${sqlQuote(args.olderThanIso)}`,
-      );
-      let counter = 0;
-      for (const item of summary.values()) {
-        counter += 1;
-        const id = `rollup-${item.taskId}-${item.dayIso}-${item.transition}-${counter}`;
-        await executeSql(
-          `INSERT INTO ${LOG_TABLE} (
+        `WITH expired AS (
+          SELECT id, task_id, transition, occurred_at, reason,
+                 LEFT(occurred_at, 10) AS day,
+                 'rollup:[' || to_json(task_id)::text || ',' ||
+                   to_json(LEFT(occurred_at, 10))::text || ',' ||
+                   to_json(transition)::text || ']' AS rollup_id
+            FROM ${LOG_TABLE}
+           WHERE agent_id = ${sqlQuote(agentId)}
+             ${taskScope}
+             AND rolled_up = FALSE
+             AND transition <> 'scheduled'
+             AND NOT (
+               COALESCE(detail_json::jsonb, '{}'::jsonb) ? 'receiptKey'
+             )
+             AND occurred_at < ${sqlQuote(args.olderThanIso)}
+           FOR UPDATE
+        ), grouped AS (
+          SELECT rollup_id, task_id, transition, day,
+                 COUNT(*)::int AS raw_count,
+                 (ARRAY_AGG(reason ORDER BY occurred_at, id))[1] AS first_reason
+            FROM expired
+           GROUP BY rollup_id, task_id, transition, day
+        ), merged AS (
+          INSERT INTO ${LOG_TABLE} AS existing (
             id, agent_id, task_id, occurred_at, transition, reason, rolled_up, detail_json
-          ) VALUES (
-            ${sqlQuote(id)},
-            ${sqlQuote(agentId)},
-            ${sqlQuote(item.taskId)},
-            ${sqlQuote(`${item.dayIso}T00:00:00.000Z`)},
-            ${sqlQuote(item.transition)},
-            ${sqlText(item.firstReason ?? null)},
-            ${sqlBoolean(true)},
-            ${sqlText(JSON.stringify({ rollupCount: item.count }))}
-          )`,
+          )
+          SELECT rollup_id,
+                 ${sqlQuote(agentId)},
+                 task_id,
+                 day || 'T00:00:00.000Z',
+                 transition,
+                 first_reason,
+                 ${sqlBoolean(true)},
+                 jsonb_build_object('rollupCount', raw_count)::text
+            FROM grouped
+          ON CONFLICT (id) DO UPDATE SET
+            reason = EXCLUDED.reason,
+            detail_json = jsonb_build_object(
+              'rollupCount',
+              COALESCE((existing.detail_json::jsonb ->> 'rollupCount')::int, 0) +
+                (EXCLUDED.detail_json::jsonb ->> 'rollupCount')::int
+            )::text
+           WHERE existing.agent_id = EXCLUDED.agent_id
+             AND existing.rolled_up = TRUE
+             AND existing.task_id = EXCLUDED.task_id
+             AND existing.transition = EXCLUDED.transition
+             AND existing.occurred_at = EXCLUDED.occurred_at
+          RETURNING id
+        ), deleted AS (
+          DELETE FROM ${LOG_TABLE} AS raw
+           USING expired, merged
+           WHERE raw.id = expired.id
+             AND expired.rollup_id = merged.id
+          RETURNING raw.id
+        )
+        SELECT (SELECT COUNT(*) FROM grouped)::int AS groups,
+               (SELECT COUNT(*) FROM merged)::int AS rolled_up,
+               (SELECT COUNT(*) FROM deleted)::int AS deleted_raw`,
+      );
+      const groups = Number(rows[0]?.groups ?? 0);
+      const rolledUp = Number(rows[0]?.rolled_up ?? 0);
+      if (rolledUp !== groups) {
+        throw new ElizaError(
+          "Scheduling rollup identity collides with another log",
+          {
+            code: "SCHEDULED_TASK_LOG_ROLLUP_COLLISION",
+            context: { agentId, olderThanIso: args.olderThanIso },
+          },
         );
       }
-      return { rolledUp: summary.size, deletedRaw: rows.length };
+      return { rolledUp, deletedRaw: Number(rows[0]?.deleted_raw ?? 0) };
     },
   };
 }
