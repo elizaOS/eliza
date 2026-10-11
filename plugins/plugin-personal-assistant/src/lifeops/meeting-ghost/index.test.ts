@@ -121,4 +121,33 @@ describe("meeting ghost care-about matching", () => {
     );
     expect(result.careHits.map((hit) => hit.careAbout)).toEqual(["Q4 budget"]);
   });
+  it("does not match a short Latin care-about inside a longer word", () => {
+    const result = analyze(
+      [alice],
+      [
+        seg("Alice Park", 0, "I'll book the room."),
+        seg("Alice Park", 5000, "ok, let's go."),
+      ],
+      ["ok"],
+    );
+    expect(result.careHits.map((hit) => hit.text)).toEqual(["ok, let's go."]);
+  });
+
+  it("matches a Korean two-character care-about followed by a particle", () => {
+    const result = analyze(
+      [minsu],
+      [seg("김민수", 0, "채용을 다음 주로 미루자")],
+      ["채용"],
+    );
+    expect(result.careHits.map((hit) => hit.careAbout)).toEqual(["채용"]);
+  });
+
+  it("still matches an English multi-word phrase inside a sentence", () => {
+    const result = analyze(
+      [alice],
+      [seg("Alice Park", 0, "We talked about the budget cut for Q4.")],
+      ["budget cut"],
+    );
+    expect(result.careHits.map((hit) => hit.careAbout)).toEqual(["budget cut"]);
+  });
 });

@@ -287,11 +287,35 @@ function speakerOf(segment: TranscriptSegment): string {
   return segment.speakerLabel ?? segment.speakerEntityId ?? "Unknown";
 }
 
+// Letters of space-separated scripts; Hangul/kana/Han may abut particles or
+// neighboring characters, so they never block a match.
+const SPACED_WORD_CHAR =
+  /[\p{Script=Latin}\p{Script=Cyrillic}\p{Script=Greek}\p{N}]/u;
+
+function includesWholePhrase(text: string, phrase: string): boolean {
+  const first = phrase[0] ?? "";
+  const last = phrase[phrase.length - 1] ?? "";
+  for (
+    let index = text.indexOf(phrase);
+    index !== -1;
+    index = text.indexOf(phrase, index + 1)
+  ) {
+    const before = text[index - 1] ?? "";
+    const after = text[index + phrase.length] ?? "";
+    const joinedBefore =
+      SPACED_WORD_CHAR.test(first) && SPACED_WORD_CHAR.test(before);
+    const joinedAfter =
+      SPACED_WORD_CHAR.test(last) && SPACED_WORD_CHAR.test(after);
+    if (!joinedBefore && !joinedAfter) return true;
+  }
+  return false;
+}
+
 function careAboutMatches(text: string, careAbout: string): boolean {
   const normalizedText = normalize(text);
   const normalizedCare = normalize(careAbout);
   if (!normalizedCare) return false;
-  if (normalizedText.includes(normalizedCare)) return true;
+  if (includesWholePhrase(normalizedText, normalizedCare)) return true;
   const tokens = normalizedCare.split(" ").filter((token) => token.length > 2);
   if (tokens.length === 0) return false;
   return tokens.every((token) => normalizedText.includes(token));
