@@ -148,13 +148,16 @@ export function parseTokenInfoParams(
     typeof message.content.text === "string" ? message.content.text : "";
   const address = readStringParam(raw, "address", "tokenAddress", "wallet");
   const explicitQuery = readStringParam(raw, "query", "token", "symbol");
-  // `raw.action` is the WALLET discriminator (`token_info`) on the planner
-  // path, not a token-info subaction, so it is consulted last and only matches
-  // when a direct caller put a real subaction there. With no explicit
-  // subaction, a declared `address` or `query` names the token to look up;
-  // only a request with neither is classified from the message text.
+  // `operation` is the declared planner argument. `raw.subaction` and
+  // `raw.action` carry the WALLET discriminator (`token_info`) on the planner
+  // path, not a token-info subaction, so they only match when a direct caller
+  // put a real subaction there. With no explicit subaction, a declared
+  // `address` or `query` names the token to look up; only a request with
+  // neither is classified from the message text.
   const subaction =
-    normalizeTokenInfoSubaction(raw.subaction ?? raw.operation ?? raw.kind) ??
+    normalizeTokenInfoSubaction(raw.operation) ??
+    normalizeTokenInfoSubaction(raw.subaction) ??
+    normalizeTokenInfoSubaction(raw.kind) ??
     normalizeTokenInfoSubaction(raw.action) ??
     (address || explicitQuery
       ? "token"

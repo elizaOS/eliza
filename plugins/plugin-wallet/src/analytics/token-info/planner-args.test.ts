@@ -9,6 +9,7 @@ import {
   type HandlerOptions,
   type IAgentRuntime,
   type Memory,
+  promoteSubactionsToActions,
   validateToolArgs,
 } from "@elizaos/core";
 import { afterEach, expect, it } from "vitest";
@@ -68,7 +69,15 @@ function message(text: string): Memory {
   } as Memory;
 }
 
-async function run(text: string, args: Record<string, unknown>) {
+async function run(
+  text: string,
+  args: Record<string, unknown>,
+  actionName = "WALLET",
+) {
+  const action = promoteSubactionsToActions(walletRouterAction).find(
+    (candidate) => candidate.name === actionName,
+  );
+  if (!action) throw new Error(`${actionName} is not registered`);
   globalThis.fetch = async (input) => {
     const url = String(input);
     calls.push(url);
@@ -82,14 +91,11 @@ async function run(text: string, args: Record<string, unknown>) {
       headers: { "content-type": "application/json" },
     });
   };
-  const validation = validateToolArgs(walletRouterAction, args);
+  const validation = validateToolArgs(action, args);
   expect(validation.errors).toEqual([]);
-  return walletRouterAction.handler(
-    await createRuntime(),
-    message(text),
-    undefined,
-    { parameters: validation.args } as HandlerOptions,
-  );
+  return action.handler(await createRuntime(), message(text), undefined, {
+    parameters: validation.args,
+  } as HandlerOptions);
 }
 
 it("searches DexScreener for a token named only by symbol", async () => {
@@ -127,6 +133,21 @@ it("classifies a request with no token from the message text", async () => {
 
   expect(result?.success).toBe(true);
   expect(result?.text).toContain("Trending tokens (24h)");
+});
+
+it("runs the lookup named by the declared operation argument", async () => {
+  // The message text alone classifies as a token lookup and fails with no
+  // address.
+  const args = { action: "token_info", operation: "trending", limit: 5 };
+  const result = await run("top tokens on base", args);
+
+  expect(result?.success).toBe(true);
+  expect(result?.text).toContain("Trending tokens (24h)");
+
+  // The promoted virtual adds subaction=token_info to the arguments.
+  const promoted = await run("top tokens on base", args, "WALLET_TOKEN_INFO");
+  expect(promoted?.success).toBe(true);
+  expect(promoted?.text).toContain("Trending tokens (24h)");
 });
 
 it("still reports a missing token when nothing names one", async () => {

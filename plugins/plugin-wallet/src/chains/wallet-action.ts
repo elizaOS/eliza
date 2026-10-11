@@ -545,7 +545,7 @@ async function runWalletRouter(
 export const walletRouterAction: Action = {
   name: "WALLET",
   description:
-    "Route wallet operations through registered chain handlers and analytics providers. Use action=transfer|swap|bridge|gov|pump_fun_buy for on-chain ops (params: target, toChain, fromToken, toToken, amount, recipient, slippageBps, mode, dryRun); action=token_info for token/market data (params: target, query, address, chain); action=search_address for Birdeye wallet/portfolio lookup (param: address).",
+    "Route wallet operations through registered chain handlers and analytics providers. Use action=transfer|swap|bridge|gov|pump_fun_buy for on-chain ops (params: target, toChain, fromToken, toToken, amount, recipient, slippageBps, mode, dryRun; pump_fun_buy takes toToken and amount and no target); action=token_info for token/market data (params: operation, target, query, address, chain, limit); action=search_address for Birdeye wallet/portfolio lookup (param: address).",
   descriptionCompressed:
     "WALLET transfer|swap|bridge|gov|pump_fun_buy|token_info|search_address; chain ops + market/portfolio",
   contexts: ["finance", "crypto", "wallet"],
@@ -589,7 +589,7 @@ export const walletRouterAction: Action = {
     {
       name: "target",
       description:
-        "Chain id/name for write ops (source chain for bridge); analytics provider for token_info (dexscreener, birdeye, coingecko). Omit only when one handler/provider supports the action.",
+        "Chain id/name for write ops (source chain for bridge); analytics provider for token_info (dexscreener, birdeye, coingecko). Omit only when one handler/provider supports the action. Omit for pump_fun_buy: the pump.fun handler is not the solana chain handler, and target solana is refused.",
       required: false,
       schema: { type: "string" },
       examples: ["base", "solana", "8453", "dexscreener", "birdeye"],
@@ -735,6 +735,35 @@ export const walletRouterAction: Action = {
       required: false,
       schema: { type: "string" },
       examples: ["base", "ethereum", "solana"],
+    },
+    {
+      name: "operation",
+      description:
+        "token_info only: which lookup to run. token looks up one token by address or query; search matches query text; trending, boosted, and profiles list tokens; new_pairs lists new pairs (optional chain); chain_pairs lists the top pairs on chain. When omitted, a call with address or query runs token.",
+      required: false,
+      subactions: ["token_info"],
+      schema: {
+        type: "string",
+        enum: [
+          "token",
+          "search",
+          "trending",
+          "new_pairs",
+          "chain_pairs",
+          "boosted",
+          "profiles",
+        ],
+      },
+      examples: ["trending", "chain_pairs"],
+    },
+    {
+      name: "limit",
+      description:
+        "token_info only: how many results a list lookup returns. Default 10.",
+      required: false,
+      subactions: ["token_info"],
+      schema: { type: "number" },
+      examples: [5],
     },
   ],
   validate: async (_runtime, message, state, options) => {
