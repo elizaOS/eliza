@@ -96,6 +96,7 @@ import { applyStreamingTextModification } from "./useStreamingText";
 // ── Types ────────────────────────────────────────────────────────────
 const CHAT_SEND_IDENTITY_OVERRIDE = Symbol("chat-send-identity-override");
 const CHAT_SEND_HYDRATION_SETTLED = Symbol("chat-send-hydration-settled");
+const CHAT_SEND_REPLAY = Symbol("chat-send-replay");
 type ConversationStreamResult = Awaited<
   ReturnType<typeof client.sendConversationMessageStream>
 >;
@@ -360,9 +361,22 @@ export interface ChatSendTextOptions {
 }
 interface ChatSendTextInternalOptions extends ChatSendTextOptions {
   [CHAT_SEND_HYDRATION_SETTLED]?: true;
+  [CHAT_SEND_REPLAY]?: true;
   [CHAT_SEND_IDENTITY_OVERRIDE]?: {
     clientMessageId: string;
     optimisticTurn: QueuedChatSend["optimisticTurn"];
+  };
+}
+function replayedTurnOptions(
+  conversationId: string | null,
+  message: ConversationMessage,
+): ChatSendTextInternalOptions {
+  return {
+    [CHAT_SEND_REPLAY]: true,
+    conversationId,
+    ...(message.replyToMessageId
+      ? { metadata: { replyToMessageId: message.replyToMessageId } }
+      : {}),
   };
 }
 /**
@@ -2529,7 +2543,9 @@ export function useChatSend(deps: UseChatSendDeps) {
       // (a retry replaying an earlier reply-turn's metadata). The id rides in
       // `metadata.replyToMessageId`; the API boundary lifts it onto
       // `content.inReplyTo`, which drives the REPLY_CONTEXT provider.
-      const replyTarget = chatReplyTargetRef.current;
+      const replyTarget = options?.[CHAT_SEND_REPLAY]
+        ? null
+        : chatReplyTargetRef.current;
       const metadata =
         replyTarget && !asRecord(options?.metadata)?.replyToMessageId
           ? { ...options?.metadata, replyToMessageId: replyTarget.messageId }
@@ -3151,7 +3167,10 @@ export function useChatSend(deps: UseChatSendDeps) {
         .slice(assistantIdx + 1)
         .some((m) => m.role === "user");
       if (canTruncate && convId && hasLaterUserTurn) {
-        await sendChatText(retryText, { conversationId: convId });
+        await sendChatTextInternal(
+          retryText,
+          replayedTurnOptions(convId, userMsg),
+        );
         return;
       }
       // Preferred path: re-run the turn IN PLACE. Truncate from the user message
@@ -3173,7 +3192,10 @@ export function useChatSend(deps: UseChatSendDeps) {
             removedMessages: removedTail,
             preservedMessages,
           });
-          await sendChatText(retryText, { conversationId: convId });
+          await sendChatTextInternal(
+            retryText,
+            replayedTurnOptions(convId, userMsg),
+          );
         } catch (err) {
           await loadConversationMessages(convId);
           setActionNotice(
@@ -3200,6 +3222,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         ),
       );
       void sendChatTextInternal(retryText, {
+        [CHAT_SEND_REPLAY]: true,
         ...(clientMessageId
           ? {
               [CHAT_SEND_IDENTITY_OVERRIDE]: {
@@ -3215,7 +3238,6 @@ export function useChatSend(deps: UseChatSendDeps) {
       });
     },
     [
-      sendChatText,
       sendChatTextInternal,
       applyStreamingModificationForConversation,
       setConversationMessages,
@@ -3275,7 +3297,10 @@ export function useChatSend(deps: UseChatSendDeps) {
           removedMessages: removedTail,
           preservedMessages,
         });
-        await sendChatText(nextText, { conversationId: convId });
+        await sendChatTextInternal(
+          nextText,
+          replayedTurnOptions(convId, targetMessage),
+        );
         return true;
       } catch (err) {
         await loadConversationMessages(convId);
@@ -3290,7 +3315,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     [
       loadConversationMessages,
       removeConversationMessageStateMessages,
-      sendChatText,
+      sendChatTextInternal,
       setActionNotice,
       activeConversationIdRef.current,
       conversationMessagesRef,
