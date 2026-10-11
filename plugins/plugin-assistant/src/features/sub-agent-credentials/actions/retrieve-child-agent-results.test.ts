@@ -50,6 +50,17 @@ describe("RETRIEVE_CHILD_AGENT_RESULTS", () => {
     expect(getResults).toHaveBeenCalledWith({ childSessionId: "pty-1-abc" });
   });
 
+  test("validate passes without arguments when the client is registered", async () => {
+    const client: SubAgentChildResultsClient = { getResults: vi.fn() }
+    const ok = await retrieveChildAgentResultsAction.validate(
+      createRuntime({
+        [SUB_AGENT_CHILD_RESULTS_CLIENT_SERVICE]: client,
+      }) as never,
+      message() as never,
+      undefined,
+    )
+    expect(ok).toBe(true)
+  })
   test("validate fails when results client is missing", async () => {
     const ok = await retrieveChildAgentResultsAction.validate(
       createRuntime({}) as never,
