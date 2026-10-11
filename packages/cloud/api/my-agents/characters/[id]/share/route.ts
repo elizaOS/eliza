@@ -11,6 +11,10 @@
  */
 
 import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  ApiError,
+  failureResponse,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { cache } from "@elizaos/cloud-shared/lib/cache/client";
 import { CacheKeys } from "@elizaos/cloud-shared/lib/cache/keys";
 import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
@@ -52,6 +56,11 @@ app.get("/", async (c) => {
       },
     });
   } catch (error) {
+    // A rejected credential or inactive account is a typed 401/403, not a
+    // server fault; the generic 500 below is only for character-service errors.
+    if (error instanceof ApiError) {
+      return failureResponse(c, error);
+    }
     logger.error("[Share API] Error getting share status:", error);
     return c.json({ success: false, error: "Failed to get share status" }, 500);
   }
@@ -130,6 +139,11 @@ app.put("/", async (c) => {
       },
     });
   } catch (error) {
+    // A rejected credential or inactive account is a typed 401/403, not a
+    // server fault; the generic 500 below is only for character-service errors.
+    if (error instanceof ApiError) {
+      return failureResponse(c, error);
+    }
     logger.error("[Share API] Error toggling share status:", error);
     return c.json(
       {

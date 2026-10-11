@@ -75,6 +75,76 @@ try {
     ),
     false,
   );
+  // A page that copies what was typed in its secret fields into its own text,
+  // title and control names. No copy leaves the page; other text is kept.
+  await page.locator("#password").fill("correct horse 42");
+  await page.locator("#name").fill("Visible Name");
+  await page.evaluate(() => {
+    const typed = ["#password", "#otp", "#name"].map(
+      (selector) => document.querySelector(selector).value,
+    );
+    const echo = document.createElement("p");
+    echo.id = "echo";
+    echo.textContent = `You typed ${typed.join(" / ")}. Reference 9123456.`;
+    const heading = document.createElement("h2");
+    heading.textContent = `Password ${typed[0]}`;
+    const use = document.createElement("a");
+    use.href = "https://otp.example/next";
+    use.append(heading, `Use ${typed[1]}`);
+    const help = document.createElement("button");
+    help.type = "button";
+    help.textContent = "Help";
+    help.setAttribute("aria-describedby", "echo");
+    const card = document.createElement("input");
+    card.setAttribute("autocomplete", "cc-number");
+    card.setAttribute("aria-label", "Card");
+    card.value = "4111 1111 1111 1111";
+    const short = document.createElement("input");
+    short.type = "password";
+    short.setAttribute("aria-label", "PIN");
+    short.value = "typ";
+    const cardEcho = document.createElement("p");
+    cardEcho.textContent = `Card ${card.value}`;
+    document.body.append(echo, use, help, card, short, cardEcho);
+    document.title = `Typed ${typed[0]}`;
+  });
+  const mirrored = await run({ subaction: "snapshot" }, "mirrored");
+  const mirroredJson = JSON.stringify(mirrored);
+  for (const secret of ["correct horse 42", "123456", "4111 1111 1111 1111"])
+    assert.equal(mirroredJson.includes(secret), false, secret);
+  // Text that only contains a typed value is replaced too ("Reference 9123456").
+  assert.ok(
+    mirrored.text
+      .split("\n")
+      .includes(
+        "You typed [hidden] / [hidden] / Visible Name. Reference 9[hidden].",
+      ),
+  );
+  assert.match(mirrored.text, /Card \[hidden\]/);
+  assert.equal(mirrored.title, "Typed [hidden]");
+  const named = (label) =>
+    mirrored.elements.find((element) => element.label === label);
+  assert.equal(
+    named("Password [hidden]\nUse [hidden]").heading,
+    "Password [hidden]",
+  );
+  assert.match(
+    named("Help").description,
+    /^You typed \[hidden\] \/ \[hidden\]/,
+  );
+  // A value too short to compare safely leaves ordinary words alone.
+  assert.match(mirrored.text, /You typed/);
+  assert.equal(named("Password").sensitive, "password");
+  assert.equal(named("Password").hasInput, true);
+  console.log(
+    "PASS: a password, code or card number the page copies into its text, title or control names is replaced in the snapshot.",
+  );
+  await page.evaluate(() => {
+    for (const node of [...document.body.children].slice(4)) node.remove();
+    document.querySelector("#password").value = "";
+    document.querySelector("#name").value = "";
+    document.title = "";
+  });
   assert.equal(
     (await attempt("#password", "fill-code", true)).error.kind,
     "POLICY_BLOCKED",
@@ -261,6 +331,83 @@ try {
     true,
   );
   await page.waitForURL("https://effects.example/account");
+  // ---- A custom control in a form is the person's own submit ------------
+  // The control has no button element or role, and its script sends the
+  // form two seconds after her press.
+  await page.route("https://custom.example/**", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: `<form id="pay" action="/paid" method="post" style="padding:20px"><input id="amount" aria-label="Amount"><div id="wrap" style="padding:20px"><input id="auto" aria-label="Auto"></div><p id="note" style="padding:20px">Check the amount</p><div id="send" style="padding:20px;cursor:pointer">Send my payment</div><div id="send-key" tabindex="0" style="padding:20px">Send it</div></form><p id="aside" style="padding:20px">Other content</p>
+<script>const pay=document.getElementById('pay');for(const id of ['send','send-key'])document.getElementById(id).addEventListener('click',()=>setTimeout(()=>pay.submit(),2000));document.getElementById('auto').addEventListener('input',()=>setTimeout(()=>pay.submit(),2000));</script>`,
+    }),
+  );
+  const customAct = async (label, selector) => {
+    const { frameTree: customTree } = await cdp.send("Page.getFrameTree");
+    const customWorld = await cdp.send("Page.createIsolatedWorld", {
+      frameId: customTree.frame.id,
+      worldName: "task-custom-test",
+    });
+    const runCustom = async (command, id) => {
+      const result = await cdp.send("Runtime.evaluate", {
+        contextId: customWorld.executionContextId,
+        expression: `(${pageCommand.toString()})(${JSON.stringify(command)},${JSON.stringify(id)})`,
+        returnByValue: true,
+      });
+      assert.equal(result.exceptionDetails, undefined);
+      return result.result.value;
+    };
+    const taskPolicy = {
+      origin: "https://custom.example",
+      expiresAt: Date.now() + 60000,
+      guidanceScope: "40",
+      targets: [{ selector, action: "fill" }],
+    };
+    const id = `custom-${++seq}`;
+    const state = await runCustom({ subaction: "snapshot", taskPolicy }, id);
+    const node = state.elements.find((value) => value.label === label);
+    assert.ok(node, label);
+    assert.equal(
+      (
+        await runCustom(
+          {
+            subaction: "fill",
+            snapshotId: id,
+            nodeId: node.id,
+            text: "42",
+            taskPolicy,
+          },
+          null,
+        )
+      ).dispatched,
+      true,
+    );
+    return () =>
+      runCustom({ subaction: "snapshot", taskPolicy }, `custom-${++seq}`);
+  };
+  await page.goto("https://custom.example/start");
+  await customAct("Amount", "#amount");
+  await page.click("#send");
+  await page.waitForURL("https://custom.example/paid", { timeout: 5000 });
+  await page.goto("https://custom.example/start");
+  await customAct("Amount", "#amount");
+  await page.click("#send-key");
+  await page.waitForURL("https://custom.example/paid", { timeout: 5000 });
+  // A stray press does not release a submit that the helper's own fill
+  // started: outside the form, on the form's own padding, on plain text in
+  // the form, or on the element that wraps a field.
+  for (const [selector, position] of [
+    ["#aside", undefined],
+    ["#pay", { x: 3, y: 3 }],
+    ["#note", undefined],
+    ["#wrap", { x: 3, y: 3 }],
+  ]) {
+    await page.goto("https://custom.example/start");
+    const readCustom = await customAct("Auto", "#auto");
+    await page.click(selector, { position });
+    await page.waitForTimeout(2500);
+    assert.equal(page.url(), "https://custom.example/start", selector);
+    assert.equal((await readCustom()).effectViolation, "submit", selector);
+  }
   // ---- Script requests and address changes after a task action ----------
   // A code field that verifies itself with fetch() never submits a form or
   // leaves the document. The request cannot be stopped, but it is reported,
@@ -520,7 +667,7 @@ document.getElementById('ping').addEventListener('input',()=>navigator.sendBeaco
     "request",
   );
   console.log(
-    "PASS: OTP requires protected host marker and dedicated field permission; ordinary, password, non-OTP and Verify paths denied; code excluded from snapshot; task fills and clicks cannot submit or navigate (auto-submit code field, script form.submit()), a link click opens its link, same-site fetch/beacon requests (also delayed) and same-document address changes after a task fill are reported while the person's own and third-party requests are not, violations are reported per binding; date fields take only real days; an expected target admits only that control; field input is reported as a boolean only.",
+    "PASS: OTP requires protected host marker and dedicated field permission; ordinary, password, non-OTP and Verify paths denied; code excluded from snapshot; task fills and clicks cannot submit or navigate (auto-submit code field, script form.submit()), the person's press on a custom control in a form lets that form's delayed script submit through while a press outside the form or on the form's padding, text or field wrapper does not, a link click opens its link, same-site fetch/beacon requests (also delayed) and same-document address changes after a task fill are reported while the person's own and third-party requests are not, violations are reported per binding; date fields take only real days; an expected target admits only that control; field input is reported as a boolean only.",
   );
 } finally {
   await browser.close();

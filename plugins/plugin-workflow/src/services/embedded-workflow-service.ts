@@ -1451,8 +1451,17 @@ export class EmbeddedWorkflowService extends Service {
     await this.removeSchedule(workflow.id);
     const schedule = workflow.schedule;
     if (!workflow.active || !schedule?.enabled) return;
+    // The cron scheduler evaluates a zone it cannot resolve on UTC, so an
+    // unrecognized zone (the model writes "PST") must be rejected here.
+    const timeZone: unknown = schedule.timezone;
+    try {
+      if (typeof timeZone !== 'string') throw new RangeError('missing time zone');
+      new Intl.DateTimeFormat('en-US', { timeZone }).format(0);
+    } catch {
+      throw new WorkflowApiError(`Invalid workflow schedule time zone: ${String(timeZone)}`, 400);
+    }
     const now = Date.now();
-    const nextRunAtMs = computeNextCronRunAtMs(schedule.cron, now, schedule.timezone);
+    const nextRunAtMs = computeNextCronRunAtMs(schedule.cron, now, timeZone);
     if (nextRunAtMs === null) {
       throw new WorkflowApiError(`Invalid workflow cron schedule: ${schedule.cron}`, 400);
     }

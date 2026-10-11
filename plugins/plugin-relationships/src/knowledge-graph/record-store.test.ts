@@ -266,3 +266,58 @@ it("returns the complete graph unless a caller requests pagination and refuses u
     code: "KNOWLEDGE_GRAPH_RECORD_STORE_INVALID",
   });
 });
+it("keeps the latest contact time and platform when an older interaction arrives late", async () => {
+  const { entities, relationships } = await open();
+  await entities.ensureSelf();
+  await entities.upsert(entity("late-contact"));
+  const interaction = (platform: string, occurredAt: string) => ({
+    platform,
+    direction: "inbound" as const,
+    summary: "synthetic",
+    occurredAt,
+  });
+  const observe = (occurredAt: string) =>
+    relationships.observe({
+      fromEntityId: "self",
+      toEntityId: "late-contact",
+      type: "knows",
+      confidence: 1,
+      evidence: [`synthetic:${occurredAt}`],
+      occurredAt,
+    });
+  const newer = "2026-10-10T12:00:00.000Z";
+  const older = "2026-09-20T12:00:00.000Z";
+
+  await entities.recordInteraction(
+    "late-contact",
+    interaction("discord", newer),
+  );
+  await observe(newer);
+  await entities.recordInteraction(
+    "late-contact",
+    interaction("telegram", older),
+  );
+  expect(await observe(older)).toMatchObject({
+    state: {
+      lastObservedAt: newer,
+      lastInteractionAt: newer,
+      interactionCount: 2,
+    },
+  });
+  expect((await entities.get("late-contact"))?.state).toMatchObject({
+    lastInboundAt: newer,
+    lastObservedAt: newer,
+    lastInteractionPlatform: "discord",
+  });
+
+  const newest = "2026-10-12T12:00:00.000Z";
+  await entities.recordInteraction(
+    "late-contact",
+    interaction("signal", newest),
+  );
+  expect((await entities.get("late-contact"))?.state).toMatchObject({
+    lastInboundAt: newest,
+    lastObservedAt: newest,
+    lastInteractionPlatform: "signal",
+  });
+});

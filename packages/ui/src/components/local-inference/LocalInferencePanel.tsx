@@ -290,7 +290,7 @@ export function LocalInferencePanel() {
           result.state === "ok"
             ? "success"
             : result.state === "unknown"
-              ? "success"
+              ? "info"
               : "error";
         const message =
           result.state === "ok"
@@ -298,7 +298,7 @@ export function LocalInferencePanel() {
             : result.state === "unknown"
               ? t("localinference.verifyUnknown", {
                   defaultValue:
-                    "Baseline hash recorded — future verifies will compare against it",
+                    "Model file is present and is a valid GGUF. No install-time hash is recorded to compare against.",
                 })
               : result.state === "missing"
                 ? t("localinference.verifyMissing", {

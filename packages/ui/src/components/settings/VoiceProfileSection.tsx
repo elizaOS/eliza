@@ -25,7 +25,7 @@ import type {
 } from "../../api/client-voice-profiles";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { cn } from "../../utils/cn";
-import { isSafeNavigationUrl } from "../../utils/navigation-url";
+import { downloadAttachment } from "../../utils/download-share";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
@@ -858,26 +858,23 @@ export function VoiceProfileSection({
     setError(null);
     setNotice(null);
     try {
-      const { downloadUrl } = await profilesClient.exportAll();
-      // The downloadUrl is a wire value — a non-http(s) target fails closed
-      // and surfaces the export error state instead of opening.
-      if (downloadUrl) {
-        if (!isSafeNavigationUrl(downloadUrl)) {
-          setError(
-            t("voiceprofile.error.invalidExportUrl", {
-              defaultValue:
-                "The export link returned by the server is not a valid URL.",
-            }),
-          );
-          return;
-        }
-        if (typeof window !== "undefined") {
-          window.open(downloadUrl, "_blank", "noopener,noreferrer");
-        }
+      const exported = await profilesClient.exportAll();
+      const url = URL.createObjectURL(
+        new Blob([JSON.stringify(exported, null, 2)], {
+          type: "application/json",
+        }),
+      );
+      try {
+        await downloadAttachment(
+          url,
+          `voice-profiles-${exported.exportedAt.slice(0, 10)}.json`,
+        );
+      } finally {
+        URL.revokeObjectURL(url);
       }
       setNotice(
         t("voiceprofile.notice.exported", {
-          defaultValue: "Voice profile export opened.",
+          defaultValue: "Voice profile export ready.",
         }),
       );
     } catch (err) {

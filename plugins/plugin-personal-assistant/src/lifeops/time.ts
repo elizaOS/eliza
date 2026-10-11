@@ -235,6 +235,24 @@ export function getWeekdayForLocalDate(
     Date.UTC(dateOnly.year, dateOnly.month - 1, dateOnly.day, 12, 0, 0),
   ).getUTCDay();
 }
+const WEEKDAY_NAMES = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+] as const;
+/**
+ * Human-readable date/time of an instant in the owner's timezone, used to
+ * ground date extraction ("april 17", "next friday") in a model prompt.
+ */
+export function describeNowForPrompt(now: Date, timeZone: string): string {
+  const parts = getZonedDateParts(now, timeZone);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${WEEKDAY_NAMES[getWeekdayForLocalDate(parts)]} ${parts.year}-${pad(parts.month)}-${pad(parts.day)} ${pad(parts.hour)}:${pad(parts.minute)} (${timeZone})`;
+}
 export function getLocalDateKey(
   dateOnly: Pick<ZonedDateParts, "year" | "month" | "day">,
 ): string {
