@@ -20,6 +20,7 @@ import {
   getLocalDateKey,
   getWeekdayForLocalDate,
   getZonedDateParts,
+  parseLocalDateKey,
   type ZonedDateParts,
 } from "./time.js";
 
@@ -641,10 +642,46 @@ export function materializeDefinitionOccurrences(
     day: localToday.day,
   };
 
+  const lookbackStartKey = getLocalDateKey(
+    addDaysToLocalDate(anchorDate, -lookbackDays),
+  );
+  // A snooze can outlast the lookback. Its occurrence is still owed a delivery,
+  // so its local date is rebuilt until the occurrence resolves; a date that is
+  // not rebuilt is pruned by the caller.
+  const heldSnoozeKeys = new Set<string>();
+  const localDates = new Map<
+    string,
+    Pick<ZonedDateParts, "year" | "month" | "day">
+  >();
+  for (const occurrence of existingOccurrences) {
+    if (
+      !occurrence.snoozedUntil ||
+      isTerminalOccurrenceState(occurrence.state) ||
+      occurrence.state === "expired"
+    ) {
+      continue;
+    }
+    const occurrenceDateKey = occurrence.metadata.localDateKey;
+    const occurrenceDate =
+      typeof occurrenceDateKey === "string"
+        ? parseLocalDateKey(occurrenceDateKey)
+        : null;
+    if (typeof occurrenceDateKey !== "string" || !occurrenceDate) {
+      throw new Error(
+        `snoozed occurrence ${occurrence.id} has no valid localDateKey`,
+      );
+    }
+    if (occurrenceDateKey < lookbackStartKey) {
+      heldSnoozeKeys.add(occurrence.occurrenceKey);
+      localDates.set(occurrenceDateKey, occurrenceDate);
+    }
+  }
   for (let offset = -lookbackDays; offset <= lookaheadDays; offset += 1) {
     const localDate = addDaysToLocalDate(anchorDate, offset);
-    const localDateKey = getLocalDateKey(localDate);
+    localDates.set(getLocalDateKey(localDate), localDate);
+  }
 
+  for (const [localDateKey, localDate] of localDates) {
     if (definition.cadence.kind === "count_per_day") {
       materialized.push(
         buildQuotaOccurrence(
@@ -846,10 +883,17 @@ export function materializeDefinitionOccurrences(
     }
   }
 
-  materialized.sort(
+  // Only the held occurrence is kept from a date before the lookback, not its
+  // long-expired siblings on that date.
+  const kept = materialized.filter(
+    (occurrence) =>
+      heldSnoozeKeys.has(occurrence.occurrenceKey) ||
+      String(occurrence.metadata.localDateKey) >= lookbackStartKey,
+  );
+  kept.sort(
     (left, right) =>
       new Date(left.relevanceStartAt).getTime() -
       new Date(right.relevanceStartAt).getTime(),
   );
-  return materialized;
+  return kept;
 }

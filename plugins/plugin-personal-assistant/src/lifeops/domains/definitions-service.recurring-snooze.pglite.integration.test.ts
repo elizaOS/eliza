@@ -210,3 +210,67 @@ it("rejects a count-per-day snooze past the end of its day and delivers one insi
     ),
   ).toMatchObject({ state: "visible", snoozedUntil });
 }, 120_000);
+
+it("keeps a daily habit snoozed for three days and delivers it when the snooze elapses", async () => {
+  const snoozeInstant = new Date("2026-10-12T09:00:00.000Z");
+  const occurrence = await seedTodayOccurrence(
+    { kind: "daily", windows: ["morning"] },
+    snoozeInstant,
+  );
+  const snoozedUntil = "2026-10-15T09:00:00.000Z";
+  expect(
+    await service.snoozeOccurrence(
+      occurrence.id,
+      { minutes: 3 * 24 * 60 },
+      snoozeInstant,
+    ),
+  ).toMatchObject({ state: "snoozed", snoozedUntil });
+
+  // 2026-10-12 is now before the two-day lookback; the refresh must not prune
+  // the occurrence that is still owed a delivery.
+  const beforeDelivery = new Date("2026-10-15T07:00:00.000Z");
+  vi.setSystemTime(beforeDelivery);
+  await service.processReminders({
+    now: beforeDelivery.toISOString(),
+    scope: "definitions",
+  });
+  expect(
+    await service.repository.getOccurrence(
+      fixture.runtime.agentId,
+      occurrence.id,
+    ),
+  ).toMatchObject({ state: "snoozed", snoozedUntil });
+  expect(getRecordedTestNotifications(fixture.runtime)).toHaveLength(0);
+
+  // 2026-10-15 has its own occurrence in the same window, so the held one is
+  // identified by its own reminder attempt.
+  const deliveryTick = new Date(Date.parse(snoozedUntil) + 30_000);
+  vi.setSystemTime(deliveryTick);
+  await service.processReminders({
+    now: deliveryTick.toISOString(),
+    scope: "definitions",
+  });
+  expect(
+    await service.repository.getOccurrence(
+      fixture.runtime.agentId,
+      occurrence.id,
+    ),
+  ).toMatchObject({ state: "visible", snoozedUntil });
+  expect(
+    (
+      await service.repository.listReminderAttempts(fixture.runtime.agentId)
+    ).filter((attempt) => attempt.ownerId === occurrence.id),
+  ).toMatchObject([{ scheduledFor: snoozedUntil, outcome: "delivered" }]);
+
+  // Once the delivered occurrence expires it leaves with its date.
+  for (const tick of ["2026-10-16T12:00:00.000Z", "2026-10-16T12:01:00.000Z"]) {
+    vi.setSystemTime(new Date(tick));
+    await service.processReminders({ now: tick, scope: "definitions" });
+  }
+  expect(
+    await service.repository.getOccurrence(
+      fixture.runtime.agentId,
+      occurrence.id,
+    ),
+  ).toBeNull();
+}, 120_000);
