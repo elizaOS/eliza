@@ -280,6 +280,7 @@ export async function handleCloudTtsPreviewRoute(req: http.IncomingMessage, res:
 }
 /** WAV bodies larger than this are rejected before proxying (cloud caps at 25MB). */
 const ELIZA_CLOUD_STT_MAX_BYTES = 25 * 1024 * 1024;
+export const ELIZA_CLOUD_STT_MAX_JSON_BODY_BYTES = Math.ceil(ELIZA_CLOUD_STT_MAX_BYTES / 3) * 4 + 1024;
 /**
  * Read the raw request body up to a byte cap, aborting past the limit. The STT
  * body is opaque audio bytes (a WAV), so it is streamed straight through rather
@@ -315,7 +316,28 @@ export async function handleCloudSttRoute(req: http.IncomingMessage, res: http.S
         sendJsonErrorResponse(res, 401, "Eliza Cloud is not connected. Connect your Eliza Cloud account first.");
         return true;
     }
-    const rawBody = await readCappedRequestBody(req, ELIZA_CLOUD_STT_MAX_BYTES);
+    const contentType = req.headers["content-type"];
+    const requestMime = typeof contentType === "string" && contentType.trim()
+        ? contentType.split(";", 1)[0]?.trim() || "audio/wav"
+        : "audio/wav";
+    const jsonBody = requestMime.toLowerCase() === "application/json";
+    let rawBody: Buffer | null;
+    if (jsonBody) {
+        let body: Record<string, unknown> | null;
+        try {
+            body = JSON.parse((await readRawRequestBody(req)).toString("utf8")) as Record<string, unknown> | null;
+        }
+        catch {
+            sendJsonErrorResponse(res, 400, "Invalid JSON request body");
+            return true;
+        }
+        rawBody = typeof body?.audioBase64 === "string" ? Buffer.from(body.audioBase64, "base64") : Buffer.alloc(0);
+        if (rawBody.length > ELIZA_CLOUD_STT_MAX_BYTES)
+            rawBody = null;
+    }
+    else {
+        rawBody = await readCappedRequestBody(req, ELIZA_CLOUD_STT_MAX_BYTES);
+    }
     if (rawBody === null) {
         sendJsonErrorResponse(res, 413, "Audio too large");
         return true;
@@ -324,10 +346,7 @@ export async function handleCloudSttRoute(req: http.IncomingMessage, res: http.S
         sendJsonErrorResponse(res, 400, "Missing audio body");
         return true;
     }
-    const contentType = req.headers["content-type"];
-    const mime = typeof contentType === "string" && contentType.trim()
-        ? contentType.split(";", 1)[0]?.trim() || "audio/wav"
-        : "audio/wav";
+    const mime = jsonBody ? "audio/wav" : requestMime;
     const filename = mime.includes("wav") ? "recording.wav" : "recording.bin";
     const cloudUrls = resolveCloudSttCandidateUrls();
     logger.debug(`[Cloud STT] proxying ${rawBody.length}B ${mime} to ${cloudUrls.length} candidate(s)`);

@@ -18,6 +18,7 @@ import {
 } from "@elizaos/core/protocol";
 import { getCloudAuthToken } from "../api/client-cloud";
 import { fetchWithCsrf, requestViaAgentTransport } from "../api/csrf-client";
+import { isMobileLocalAgentUrl } from "../first-run/mobile-runtime-mode";
 import { resolveApiUrl } from "../utils/asset-url";
 import {
   buildSharedRuntimeSttBody,
@@ -297,19 +298,33 @@ export async function transcribeCloudWav(
         body: buildSharedRuntimeSttBody(audio),
         signal: timeoutController.signal,
       };
+      const dedicatedProxyUrl = resolveApiUrl("/api/asr/cloud");
       const fetchDedicatedProxy = () =>
-        fetchWithCsrf(resolveApiUrl("/api/asr/cloud"), {
-          method: "POST",
-          headers: {
-            "Content-Type": "audio/wav",
-            Accept: "application/json",
-          },
-          // A Uint8Array is a valid BufferSource body; the cast bridges the
-          // DOM lib's stricter `ArrayBuffer` generic on BodyInit (runtime
-          // accepts it).
-          body: audio as BodyInit,
-          signal: timeoutController.signal,
-        });
+        fetchWithCsrf(
+          dedicatedProxyUrl,
+          isMobileLocalAgentUrl(dedicatedProxyUrl)
+            ? {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Accept: "application/json",
+                },
+                body: JSON.stringify({ audioBase64: bytesToBase64(audio) }),
+                signal: timeoutController.signal,
+              }
+            : {
+                method: "POST",
+                headers: {
+                  "Content-Type": "audio/wav",
+                  Accept: "application/json",
+                },
+                // A Uint8Array is a valid BufferSource body; the cast bridges the
+                // DOM lib's stricter `ArrayBuffer` generic on BodyInit (runtime
+                // accepts it).
+                body: audio as BodyInit,
+                signal: timeoutController.signal,
+              },
+        );
 
       let usedWorkerRoute = Boolean(workerOrigin);
       let res: Response;
