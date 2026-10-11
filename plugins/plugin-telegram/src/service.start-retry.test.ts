@@ -7,7 +7,7 @@
  */
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, TurnControllerRegistry } from "@elizaos/core";
 import { Telegraf } from "telegraf";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MessageManager } from "./messageManager";
@@ -505,6 +505,69 @@ describe("TelegramService poller lifecycle", () => {
       expect(stopped).toBe(false);
       turn.resolve();
       await deadline(stopping, "Expected shutdown to finish after the turn");
+    },
+    RETRY_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "aborts a turn that waits for a tap before it drains on stop",
+    async () => {
+      const api = await startStubBotApi();
+      const turnControllers = new TurnControllerRegistry();
+      const turnStarted = Promise.withResolvers<void>();
+      let abortReason: unknown;
+      const base = makeRuntime(api.apiRoot);
+      const runtime = {
+        ...base,
+        getSetting: (key: string) =>
+          key === "TELEGRAM_AUTO_REPLY" ? "true" : base.getSetting(key),
+        getCache: async () => undefined,
+        setCache: async () => true,
+        turnControllers,
+        // Stands in for a turn blocked in an approval request: it ends only
+        // when the turn's own abort signal fires.
+        messageService: {
+          handleMessage: (_runtime: unknown, memory: { roomId: string }) =>
+            turnControllers.runWith(
+              memory.roomId,
+              (signal) =>
+                new Promise<void>((_resolve, reject) => {
+                  signal.addEventListener("abort", () => {
+                    abortReason = signal.reason;
+                    reject(signal.reason);
+                  });
+                  turnStarted.resolve();
+                }),
+            ),
+        },
+      } as unknown as IAgentRuntime;
+      const service = await TelegramService.start(runtime);
+      services.push(service);
+      (
+        service as unknown as {
+          knownChats: Map<string, Record<string, unknown>>;
+        }
+      ).knownChats.set("42", { id: 42, type: "private", first_name: "Test" });
+      const chat = { id: 42, type: "private", first_name: "Test" };
+      const from = { id: 7, is_bot: false, first_name: "Sender" };
+
+      await api.deliverUpdate({
+        update_id: 1,
+        message: { message_id: 1, date: 1, text: "click it", chat, from },
+      });
+      await deadline(turnStarted.promise, "Expected the turn to start");
+      expect(turnControllers.activeRoomIds()).toHaveLength(1);
+
+      // Polling stops first, so no tap can resolve the wait. stop() must end
+      // the turn itself instead of waiting for it.
+      const stopping = service.stop();
+      services.length = 0;
+      await deadline(stopping, "Expected shutdown to abort the waiting turn");
+      expect(abortReason).toMatchObject({
+        code: "TURN_ABORTED",
+        reason: "telegram-service-stop",
+      });
+      expect(turnControllers.activeRoomIds()).toHaveLength(0);
     },
     RETRY_TEST_TIMEOUT_MS,
   );
