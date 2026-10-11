@@ -801,6 +801,59 @@ describe("CALENDAR receipt grounding over real PGlite", () => {
         outcome: "noop",
       });
     }
+    const read = (details: Record<string, unknown>) =>
+      executePlannedToolCall(
+        runtime,
+        {
+          message: {
+            id: MESSAGE_ID,
+            agentId: AGENT_ID,
+            entityId: ENTITY_ID,
+            roomId: ROOM_ID,
+            content: { text: "Read my calendar. Do not change any records." },
+          } as Memory,
+          userRoles: ["OWNER"],
+          activeContexts: ["calendar"],
+          callback: async () => [],
+        },
+        { name: action.name, params: { subaction: "feed", details } },
+        { actions: [action] },
+      );
+    const feedSpy = vi.spyOn(service, "getCalendarFeed");
+    const week = await read({ windowDays: 7, timeZone: "UTC" });
+    expect(week.success).toBe(true);
+    const weekRequest = feedSpy.mock.calls.at(-1)?.[1];
+    expect(
+      Date.parse(String(weekRequest?.timeMax)) -
+        Date.parse(String(weekRequest?.timeMin)),
+    ).toBe(7 * 24 * 60 * 60 * 1000);
+    const readsBeforeRejections = feedSpy.mock.calls.length;
+    for (const [details, error, message] of [
+      [
+        { date: "tomorrow", timeZone: "UTC" },
+        "CALENDAR_READ_DATE_INVALID",
+        "Read dates must be valid YYYY-MM-DD calendar dates.",
+      ],
+      [
+        { date: "2026-07-28", windowDays: 7, timeZone: "UTC" },
+        "CALENDAR_READ_DATE_CONFLICT",
+        "Supply date and optional endDate for whole local days, or explicit timestamp bounds, not both.",
+      ],
+      [
+        { timeMin: "2026-07-28T00:00:00", timeZone: "UTC" },
+        "CALENDAR_READ_DATE_INVALID",
+        "timeMin and timeMax must be supplied together",
+      ],
+    ] as const) {
+      const rejected = await read(details);
+      expect(rejected.success).toBe(false);
+      expect(rejected.data).toMatchObject({ error, coachingFailure: true });
+      expect(rejected.data).toMatchObject({
+        replyContext: { facts: expect.stringContaining(message) },
+      });
+    }
+    expect(feedSpy.mock.calls.length).toBe(readsBeforeRejections);
+    feedSpy.mockRestore();
     expect(
       (
         await pg.query(

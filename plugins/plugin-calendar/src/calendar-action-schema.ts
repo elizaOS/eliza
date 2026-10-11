@@ -351,7 +351,7 @@ export const CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
     date: {
       type: "string",
       description:
-        "For whole-day reads, use the first local YYYY-MM-DD date and timeZone. For multiple days, also set endDate to the final included date. Code calculates midnight boundaries and DST. Omit timeMin/timeMax and windowDays; use those only for partial-day reads.",
+        "For whole-day reads, use the first local YYYY-MM-DD date and timeZone. For multiple days, also set endDate to the final included date. Code calculates midnight boundaries and DST. Omit timeMin/timeMax and windowDays: use timeMin with timeMax only for partial-day reads, or windowDays alone for the next N local days starting today.",
     },
     endDate: {
       type: "string",
