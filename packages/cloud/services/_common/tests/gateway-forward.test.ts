@@ -210,7 +210,7 @@ describe("gateway forwarding", () => {
     expect(sent).toEqual(["primary"]);
   });
 
-  for (const status of [404, 503]) {
+  for (const status of [404, 408, 429, 503]) {
     test(`reaches the fallback after a ${status}`, async () => {
       const { outcome, sent } = await forwardAfterStatus(status, false);
       await expect(outcome).resolves.toBe("fallback result");

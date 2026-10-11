@@ -7,6 +7,7 @@ import {
 } from "../../gateway-discord/src/server-router";
 import {
   forwardToServer as forwardWebhook,
+  forwardEventToServer as forwardWebhookEvent,
   type RoutingRedis,
   resolveAgentServer as resolveWebhook,
 } from "../src/server-router";
@@ -94,5 +95,75 @@ describe("gateway routing facade conformance", () => {
       serverName: "server-1",
       serverUrl: "http://registered.example",
     });
+  });
+
+  test("does not send a final canonical ingress answer again to the registered sandbox target", async () => {
+    const agentId = "1f0e8a52-7c3d-4b9a-8e21-5d6c7b8a9f01";
+    const canonicalOrigin = "https://eliza-staging-1.eliza.app";
+    const registeredPosts: string[] = [];
+    const registered = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: (request) => {
+        registeredPosts.push(new URL(request.url).pathname);
+        return Response.json({ response: "registered target answered" });
+      },
+    });
+    servers.push(registered);
+    const canonicalPosts: string[] = [];
+    let canonicalStatus = 500;
+    const originalFetch = globalThis.fetch;
+    const originalEnv = {
+      AGENT_ROUTER_ORIGIN_HOST: process.env.AGENT_ROUTER_ORIGIN_HOST,
+      ELIZA_CLOUD_AGENT_BASE_DOMAIN: process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
+    };
+    process.env.AGENT_ROUTER_ORIGIN_HOST = "eliza-staging-1.eliza.app";
+    process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN = "cloud-staging.eliza.app";
+    // The canonical router host is fixed, so only its requests are answered
+    // here; the registered target stays a real loopback server.
+    globalThis.fetch = Object.assign(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = input instanceof Request ? input.url : String(input);
+        if (!url.startsWith(canonicalOrigin)) return originalFetch(input, init);
+        canonicalPosts.push(new URL(url).pathname);
+        return new Response(`canonical answered ${canonicalStatus}`, {
+          status: canonicalStatus,
+        });
+      },
+      originalFetch,
+    );
+    try {
+      await expect(
+        forwardWebhook(
+          registered.url.origin,
+          "sandbox-1",
+          agentId,
+          "user-1",
+          "hello",
+        ),
+      ).rejects.toThrow("Server returned 500: canonical answered 500");
+      canonicalStatus = 400;
+      await expect(
+        forwardWebhookEvent(
+          registered.url.origin,
+          "sandbox-1",
+          agentId,
+          "user-1",
+          "system",
+          {},
+        ),
+      ).rejects.toThrow("Server returned 400: canonical answered 400");
+      expect(canonicalPosts).toEqual([
+        `/api/agents/${agentId}/message`,
+        `/api/agents/${agentId}/event`,
+      ]);
+      expect(registeredPosts).toEqual([]);
+    } finally {
+      globalThis.fetch = originalFetch;
+      for (const [key, value] of Object.entries(originalEnv)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 });
