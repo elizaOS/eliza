@@ -805,6 +805,18 @@ describe("iOS bridge — first-run submit", () => {
     expect(status).toBe(409);
     expect(json).toEqual({ error: noKey });
   });
+  it("rejects a Cloud inference selection whose key only travels in the request body", async () => {
+    // The bridge does not apply the first-run body, so a key submitted with it
+    // never reaches the agent. A 200 here would be the same false success.
+    const { status, json } = await call(
+      backendWithKeyCheck(noKey),
+      "POST",
+      "/api/first-run",
+      { ...cloudRoute, credentialInputs: { cloudApiKey: "body-only-key" } },
+    );
+    expect(status).toBe(409);
+    expect(json).toEqual({ error: noKey });
+  });
   it("acknowledges a Cloud inference selection when the agent holds a Cloud API key", async () => {
     const { status, json } = await call(
       backendWithKeyCheck(null),
