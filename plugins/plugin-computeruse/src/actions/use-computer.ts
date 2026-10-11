@@ -305,7 +305,23 @@ export const useComputerAction: Action = {
       description:
         "Modifier keys for click_with_modifiers, e.g. ['cmd','shift'] or ['ctrl'].",
       required: false,
-      schema: { type: "array", items: { type: "string" } },
+      schema: {
+        type: "array",
+        items: {
+          type: "string",
+          enum: [
+            "cmd",
+            "command",
+            "meta",
+            "super",
+            "ctrl",
+            "control",
+            "alt",
+            "option",
+            "shift",
+          ],
+        },
+      },
     },
     {
       name: "key",

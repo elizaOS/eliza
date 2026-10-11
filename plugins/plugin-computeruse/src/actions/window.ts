@@ -114,9 +114,12 @@ export const windowAction: Action = {
     },
     {
       name: "arrangement",
-      description: "For arrange: tile, cascade, vertical, horizontal.",
+      description: "For arrange: layout to apply. Default tile.",
       required: false,
-      schema: { type: "string" },
+      schema: {
+        type: "string",
+        enum: ["tile", "cascade", "vertical", "horizontal"],
+      },
     },
     {
       name: "x",

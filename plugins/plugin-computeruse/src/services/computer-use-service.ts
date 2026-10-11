@@ -61,6 +61,7 @@ import { detectPlatformCapabilities } from "../platform/capabilities.js";
 import { captureDisplay, capturePrimaryDisplay } from "../platform/capture.js";
 import { localToGlobalDefault } from "../platform/coords.js";
 import {
+  findDisplay,
   getPrimaryDisplay,
   listDisplays,
   warmDisplaysCache,
@@ -84,6 +85,7 @@ import {
   driverRightClick,
   driverScroll,
   driverSetValue,
+  driverSupportsModifier,
   driverType,
 } from "../platform/driver.js";
 import {
@@ -128,6 +130,7 @@ import {
   moveWindow,
   refreshWindows,
   resizeWindow,
+  resolveWindowArrangement,
   restoreWindow,
   switchWindow,
   warmScreenSizeCache,
@@ -2201,9 +2204,36 @@ export class ComputerUseService extends Service {
     if (!KNOWN_DESKTOP_ACTIONS.has(action)) {
       throw new Error(`Unknown desktop action: ${action}`);
     }
+    // Coordinate actions translate through the named display after approval;
+    // an unknown id can only fail there, so reject it here.
+    if (
+      COORDINATE_BEARING_ACTIONS.has(action) &&
+      params.displayId !== undefined &&
+      !findDisplay(params.displayId)
+    ) {
+      throw new Error(
+        `Unknown displayId ${params.displayId}. Known displays: ${listDisplays()
+          .map((d) => `${d.id}(${d.name})`)
+          .join(", ")}`,
+      );
+    }
     if (action === "drag") {
       // A ≥2-point polyline supersedes the start→end pair (see the drag case).
-      if (params.path && params.path.length >= 2) return;
+      if (params.path && params.path.length >= 2) {
+        for (const [index, point] of params.path.entries()) {
+          if (
+            !Array.isArray(point) ||
+            point.length < 2 ||
+            !Number.isFinite(point[0]) ||
+            !Number.isFinite(point[1])
+          ) {
+            throw new Error(
+              `drag path point ${index} must be [x, y] with two finite numbers`,
+            );
+          }
+        }
+        return;
+      }
       this.requireCoordinate(params.startCoordinate, "drag", "startCoordinate");
       this.requireCoordinate(params.coordinate, "drag");
       return;
@@ -2213,6 +2243,11 @@ export class ComputerUseService extends Service {
     }
     switch (action) {
       case "click_with_modifiers":
+        for (const modifier of params.modifiers ?? []) {
+          if (!driverSupportsModifier(modifier)) {
+            throw new Error(`Unsupported modifier: "${modifier}"`);
+          }
+        }
         // The drivers click the left button only; a declared non-left button
         // would otherwise be dropped and reported as a successful click.
         if (params.button && params.button !== "left") {
@@ -2262,8 +2297,10 @@ export class ComputerUseService extends Service {
    */
   private validateWindowActionInput(params: WindowActionParams): void {
     switch (params.action) {
-      case "list":
       case "arrange":
+        resolveWindowArrangement(params.arrangement);
+        return;
+      case "list":
       case "get_current_window_id":
       case "get_window_size":
       case "get_window_position":

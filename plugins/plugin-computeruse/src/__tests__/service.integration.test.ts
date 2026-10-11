@@ -402,6 +402,54 @@ describe("ComputerUseService validates input before the approval gate", () => {
     expect(result.error).not.toContain("paused");
   }, 10_000);
 
+  it("rejects an unsupported click modifier at validation, not the gate", async () => {
+    const result = await service.executeDesktopAction({
+      action: "click_with_modifiers",
+      coordinate: [400, 300],
+      modifiers: ["hyper"],
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Unsupported modifier: "hyper"');
+    expect(result.error).not.toContain("paused");
+  }, 10_000);
+
+  it("rejects an unknown displayId at validation, not the gate", async () => {
+    const result = await service.executeDesktopAction({
+      action: "click",
+      coordinate: [10, 10],
+      displayId: 987654,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Unknown displayId 987654");
+    expect(result.error).not.toContain("paused");
+  }, 10_000);
+
+  it("rejects a drag path point without two numbers at validation, not the gate", async () => {
+    const result = await service.executeDesktopAction({
+      action: "drag",
+      path: [[1], [2]] as unknown as [number, number][],
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("drag path point 0 must be [x, y]");
+    expect(result.error).not.toContain("paused");
+  }, 10_000);
+
+  it("rejects an unsupported window arrangement at validation, not the gate", async () => {
+    const result = await service.executeWindowAction({
+      action: "arrange",
+      arrangement: "side_by_side",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain(
+      'Unsupported window arrangement "side_by_side"',
+    );
+    expect(result.error).not.toContain("paused");
+  }, 10_000);
+
   it("rejects a targetless window focus at validation, not the gate", async () => {
     const result = await service.executeWindowAction({ action: "focus" });
 

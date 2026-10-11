@@ -781,10 +781,38 @@ async function setWindowBounds(
   throw new Error(`Window move is not supported on ${os}`);
 }
 
-export async function arrangeWindows(arrangement = "tile"): Promise<{
+export const WINDOW_ARRANGEMENTS = [
+  "tile",
+  "cascade",
+  "vertical",
+  "horizontal",
+] as const;
+export type WindowArrangement = (typeof WINDOW_ARRANGEMENTS)[number];
+
+/**
+ * Resolve an arrange layout name. An omitted or blank name is the tile grid;
+ * any other name that is not a supported layout throws, so the caller is never
+ * told a layout was applied when the tile grid ran in its place.
+ */
+export function resolveWindowArrangement(
+  arrangement: string | undefined,
+): WindowArrangement {
+  const normalized = (arrangement ?? "").trim().toLowerCase();
+  if (normalized === "") return "tile";
+  const match = WINDOW_ARRANGEMENTS.find((name) => name === normalized);
+  if (!match) {
+    throw new Error(
+      `Unsupported window arrangement "${arrangement}". Supported: ${WINDOW_ARRANGEMENTS.join(", ")}.`,
+    );
+  }
+  return match;
+}
+
+export async function arrangeWindows(arrangement?: string): Promise<{
   success: true;
   message: string;
 }> {
+  const normalized = resolveWindowArrangement(arrangement);
   const windows = listWindows();
   if (windows.length === 0) {
     return {
@@ -794,7 +822,6 @@ export async function arrangeWindows(arrangement = "tile"): Promise<{
   }
 
   const screen = getScreenSize();
-  const normalized = arrangement.trim().toLowerCase();
   const count = windows.length;
   const cascadeOffset = 32;
 
@@ -848,7 +875,7 @@ export async function arrangeWindows(arrangement = "tile"): Promise<{
 
   return {
     success: true,
-    message: `Arranged ${windows.length} window${windows.length === 1 ? "" : "s"} using ${normalized || "tile"} layout.`,
+    message: `Arranged ${windows.length} window${windows.length === 1 ? "" : "s"} using ${normalized} layout.`,
   };
 }
 
