@@ -84,6 +84,8 @@ export interface TriggerFormState {
   enabled: boolean;
   durationValue: string;
   durationUnit: DurationUnit;
+  /** Zone stored on the trigger being edited or duplicated. */
+  timezone?: string;
 }
 export const emptyForm: TriggerFormState = {
   displayName: "",
@@ -240,7 +242,7 @@ export function formFromTrigger(trigger: TriggerSummary): TriggerFormState {
   return {
     displayName: trigger.displayName,
     instructions: trigger.instructions,
-    kind: "workflow",
+    kind: trigger.kind === "prompt" ? "text" : "workflow",
     workflowId: trigger.workflowId ?? "",
     workflowName: trigger.workflowName ?? "",
     triggerType: trigger.triggerType,
@@ -252,6 +254,7 @@ export function formFromTrigger(trigger: TriggerSummary): TriggerFormState {
     enabled: trigger.enabled,
     durationValue: String(value),
     durationUnit: unit,
+    timezone: trigger.timezone,
   };
 }
 export function buildCreateRequest(
@@ -278,19 +281,23 @@ export function buildCreateRequest(
     cronExpression:
       form.triggerType === "cron" ? form.cronExpression.trim() : undefined,
     eventKind: form.triggerType === "event" ? form.eventKind.trim() : undefined,
-    // The server reads a cron expression in UTC when no zone is given; the
-    // form previews it in the browser's zone, so send that zone.
     timezone:
-      form.triggerType === "cron" ? resolveDefaultTimeZone() : undefined,
+      form.triggerType === "cron" ? cronTimeZone(form.timezone) : undefined,
     maxRuns,
   };
 }
 export function buildUpdateRequest(
   form: TriggerFormState,
 ): UpdateTriggerRequest {
-  // An edit keeps the stored zone (the server keeps it when none is sent).
-  const { timezone: _timezone, ...request } = buildCreateRequest(form);
-  return request;
+  return { ...buildCreateRequest(form) };
+}
+/**
+ * The zone a cron schedule runs in: the zone stored on the trigger, or the
+ * browser's zone when it has none. The server reads a cron expression with no
+ * zone in UTC.
+ */
+export function cronTimeZone(stored: string | undefined): string {
+  return stored || resolveDefaultTimeZone();
 }
 // ── Cron validation ────────────────────────────────────────────────
 /**
@@ -339,19 +346,21 @@ export function nextRunsForInterval(
   return results;
 }
 /**
- * Compute the next N fire dates for a cron expression.
+ * Compute the next N fire dates for a cron expression read in `tz`.
  * Returns an empty array when parsing fails.
  */
 export function nextRunsForCron(
   expr: string,
   count: number,
-  from = new Date(),
+  from: Date,
+  tz: string,
 ): Date[] {
   const trimmed = expr.trim();
   if (!trimmed) return [];
   try {
     const schedule = CronExpressionParser.parse(trimmed, {
       currentDate: from,
+      tz,
     });
     const results: Date[] = [];
     for (let i = 0; i < count; i++) {
@@ -369,10 +378,12 @@ export function validateTriggerKind(
   form: TriggerFormState,
   t: TranslateFn,
 ): string | null {
-  if (!form.workflowId) {
-    return t("triggers.workflowPlaceholder");
+  if (form.kind === "workflow") {
+    return form.workflowId ? null : t("triggers.workflowPlaceholder");
   }
-  return null;
+  return form.instructions.trim()
+    ? null
+    : t("triggersview.validationInstructionsRequired");
 }
 export function validateForm(
   form: TriggerFormState,
