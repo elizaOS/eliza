@@ -1808,8 +1808,8 @@ export const calendarAction: Action & {
         "Event title for create_event, the NEW name when update_event renames an event, or the existing target title for delete_event when query and details.eventId are absent. " +
         "For update_event identify the existing event with `query` (its own words, e.g. 'piano lesson'), `details.oldTitle`, or `details.eventId` from a search_events/feed result; title never selects an update target. TOP-LEVEL flat. " +
         "NEVER inside `details`. " +
-        "Example: `{ subaction: 'create_event', title: 'Dentist', details: { start: '...', end: '...' } }`. " +
-        "Move example: `{ subaction: 'update_event', query: 'piano lesson', details: { start: '...', end: '...' } }`.",
+        "Example: `{ action: 'create_event', title: 'Dentist', details: { start: '...', end: '...' } }`. " +
+        "Move example: `{ action: 'update_event', query: 'piano lesson', details: { start: '...', end: '...' } }`.",
       descriptionCompressed:
         "title TOP-LEVEL; NOT details. create_event: title; update_event: NEW name only, target = query/oldTitle/eventId; delete_event: target title when query/eventId absent",
       required: false,
@@ -1822,7 +1822,7 @@ export const calendarAction: Action & {
     {
       name: "query",
       description:
-        "Event-content search phrase for search_events/travel_itinerary: flight, dentist, Denver. Dates and agenda/schedule words are not content filters; for a full day agenda use feed and omit query/queries. " +
+        "Event-content search phrase for search_events/trip_window: flight, dentist, Denver. Dates and agenda/schedule words are not content filters; for a full day agenda use feed and omit query/queries. " +
         "update_event/delete_event: the TARGET event in its own words (e.g. 'piano lesson') whenever details.eventId is not known. An update may also identify its target with details.oldTitle; a delete may use the existing title when query and eventId are absent.",
       required: false,
       subactions: [
@@ -1832,7 +1832,6 @@ export const calendarAction: Action & {
         "update_event",
         "delete_event",
         "trip_window",
-        "bulk_reschedule",
       ],
       schema: { type: "string" as const },
     },
@@ -1852,8 +1851,8 @@ export const calendarAction: Action & {
         "`start`/`end`: local wall-clock ISO-8601 WITHOUT any offset or Z (e.g. 2026-09-10T18:00:00 for 6pm); never convert to UTC. When supplying the owner's local new start/end, explicitly include `details.timeZone` with the owner's configured IANA timezone; an update otherwise interprets them in the existing event's timezone, which may differ. If the user names another timezone, use that IANA zone for these values. " +
         "For a move or reschedule the time the user names ('to 6pm') is the new `start`; keep the event's previous duration for `end` unless the user gives a new end. " +
         "`details.date` selects the target event's current day, never the destination day of a move. " +
-        "create_event: `{ subaction: 'create_event', title: 'Dentist', details: { calendarId: 'cal_primary', start: '...', end: '...', location: '...' } }`. " +
-        "update_event: `{ subaction: 'update_event', details: { eventId: 'event_00040', calendarId: 'cal_primary', start: '...', end: '...' } }`. " +
+        "create_event: `{ action: 'create_event', title: 'Dentist', details: { calendarId: 'cal_primary', start: '...', end: '...', location: '...' } }`. " +
+        "update_event: `{ action: 'update_event', details: { eventId: 'event_00040', calendarId: 'cal_primary', start: '...', end: '...' } }`. " +
         "check_availability/propose_times time-window fields TOP LEVEL, not `details`.",
       descriptionCompressed:
         "details create|update|delete: calendarId,start/end,eventId,location; owner-local start/end require owner's IANA timeZone; date = target's current day; title/window TOP",
@@ -1954,7 +1953,7 @@ export const calendarAction: Action & {
       name: "startAt",
       description:
         "TOP-LEVEL flat. check_availability start. ISO-8601. " +
-        "Example: `{ subaction: 'check_availability', startAt: '2026-05-14T09:00:00Z', endAt: '2026-05-14T10:00:00Z' }`. " +
+        "Example: `{ action: 'check_availability', startAt: '2026-05-14T09:00:00Z', endAt: '2026-05-14T10:00:00Z' }`. " +
         "Do NOT wrap check_availability args in `details`.",
       required: false,
       subactions: ["check_availability"],
@@ -1972,16 +1971,23 @@ export const calendarAction: Action & {
     {
       name: "timeZone",
       description:
-        "IANA timezone for local proposal bounds and meeting preference hours.",
+        "IANA timezone for local proposal bounds, meeting preference hours, and the bulk_reschedule lookup window.",
       required: false,
-      subactions: ["check_availability", "propose_times", "update_preferences"],
+      // bulk_reschedule reads timeZone (and nothing from query); without this
+      // entry the promoted CALENDAR_BULK_RESCHEDULE child rejects it.
+      subactions: [
+        "bulk_reschedule",
+        "check_availability",
+        "propose_times",
+        "update_preferences",
+      ],
       schema: { type: "string" as const },
     },
     {
       name: "preferredStartLocal",
       description:
         "TOP-LEVEL flat for update_preferences. Earliest start local HH:MM 24h. " +
-        "Example: `{ subaction: 'update_preferences', preferredStartLocal: '09:00', preferredEndLocal: '17:00', blackoutWindows: [...] }`. " +
+        "Example: `{ action: 'update_preferences', preferredStartLocal: '09:00', preferredEndLocal: '17:00', blackoutWindows: [...] }`. " +
         "Do NOT wrap update_preferences args in `details`.",
       required: false,
       subactions: ["update_preferences"],
