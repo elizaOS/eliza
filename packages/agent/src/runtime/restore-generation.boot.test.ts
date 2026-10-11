@@ -228,14 +228,20 @@ it(
       path.join(committed.paths.state, "eliza.json"),
     );
     let runtime: AgentRuntime | undefined;
+    let runtimeForCleanup: AgentRuntime | undefined;
     const startServer = apiServer.startApiServer;
     const start = vi
       .spyOn(apiServer, "startApiServer")
       .mockImplementation(async (options) => {
+        const activateRuntime = options?.onRuntimeActivated;
         server = await startServer({
           ...options,
           port: 0,
           skipDeferredStartupWork: true,
+          onRuntimeActivated: async (previousRuntime, activeRuntime) => {
+            await activateRuntime?.(previousRuntime, activeRuntime);
+            runtimeForCleanup = activeRuntime;
+          },
         });
         abort.abort();
         return server;
@@ -254,6 +260,7 @@ it(
         abortSignal: abort.signal,
         onRuntimeCreated: (created) => {
           runtime = created;
+          runtimeForCleanup = created;
         },
       });
       expect(started).toBe(runtime);
@@ -261,9 +268,10 @@ it(
       expect(start).toHaveBeenCalledOnce();
       expect(registry).not.toHaveBeenCalled();
       if (!server) throw new Error("HTTP server did not start");
-      const restartUrl = `http://127.0.0.1:${server.port}/api/agent/restart`;
-      const restart = (authenticated: boolean) =>
-        fetch(restartUrl, {
+      if (!started) throw new Error("Restored runtime did not start");
+      const serverPort = server.port;
+      const lifecycle = (action: "start" | "stop", authenticated = true) =>
+        fetch(`http://127.0.0.1:${serverPort}/api/agent/${action}`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -272,12 +280,31 @@ it(
           },
           body: "{}",
         });
-      expect((await restart(false)).status).toBe(401);
+      expect((await lifecycle("stop", false)).status).toBe(401);
+      const adapter = started.adapter;
+      if (!adapter) throw new Error("Runtime adapter was not initialized");
+      const closeAdapter = vi.spyOn(adapter, "close");
+      expect((await lifecycle("stop")).status).toBe(200);
+      runtimeForCleanup = undefined;
+      expect(closeAdapter).toHaveBeenCalledOnce();
+
+      const restarted = await lifecycle("start");
+      expect(restarted.status).toBe(200);
+      expect(await restarted.json()).toMatchObject({
+        status: { state: "running" },
+      });
+      // The restored-generation start must not dispose the runtime that the
+      // preceding API stop already closed.
+      expect(closeAdapter).toHaveBeenCalledOnce();
+      expect(runtimeForCleanup).toBeDefined();
+
+      expect((await lifecycle("stop")).status).toBe(200);
+      runtimeForCleanup = undefined;
       await authority.close();
-      const failed = await restart(true);
+      const failed = await lifecycle("start");
       expect(failed.status).toBe(500);
       expect(await failed.json()).toMatchObject({
-        error: expect.stringContaining("runtime failed to re-initialize"),
+        error: expect.stringContaining("runtime did not initialize"),
       });
       expect(registry).not.toHaveBeenCalled();
       const db = new PGlite(committed.paths.database);
@@ -291,9 +318,11 @@ it(
     } finally {
       abort.abort();
       await server?.close();
-      await shutdownRuntime(runtime, "restore server fixture cleanup", {
-        fast: true,
-      });
+      await shutdownRuntime(
+        runtimeForCleanup,
+        "restore server fixture cleanup",
+        { fast: true },
+      );
     }
   },
   TEST_BUDGET_MS,

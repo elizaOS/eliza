@@ -5950,7 +5950,14 @@ export async function startEliza(
       onRestart: async (restartOptions) => {
         logger.info("[eliza] Hot-reload: building replacement runtime...");
         try {
-          if (restartOptions?.disposeCurrentBeforeBuild || restoredGeneration) {
+          if (
+            lifecycleRuntime === runtime &&
+            (restartOptions?.disposeCurrentBeforeBuild || restoredGeneration)
+          ) {
+            // Stop owns this runtime from this point. Clear the process
+            // lifecycle reference before teardown so an API stop followed by
+            // start, or a failed teardown, cannot close the adapter again.
+            lifecycleRuntime = null;
             await shutdownRuntime(runtime, "pre-restore runtime disposal", {
               fast: true,
             });
@@ -5964,6 +5971,9 @@ export async function startEliza(
           logger.info("[eliza] Hot-reload: replacement runtime is ready");
           return replacement;
         } catch (err) {
+          // No activation follows a failed replacement build. Do not let this
+          // attempt suppress cleanup during a later, unrelated hot reload.
+          disposedRuntimeBeforeReplacement = false;
           // error-policy:J1 the API host receives an explicit failed replacement.
           runtime.reportError("eliza.hotReload.buildReplacement", err);
           logger.error(`[eliza] Hot-reload failed: ${formatError(err)}`);
