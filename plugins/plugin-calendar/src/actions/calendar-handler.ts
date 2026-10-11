@@ -3220,24 +3220,15 @@ function resolveCalendarWindow(
   }
 
   const windowDays = detailNumber(details, "windowDays");
-  if (forSearch) {
-    const days = windowDays && windowDays > 0 ? Math.min(windowDays, 90) : 30;
-    return {
-      request: {
-        calendarId,
-        timeZone,
-        forceSync,
-        ...buildLocalDayRange(timeZone, 0, days),
-      },
-      label: `across the next ${days} days`,
-      explicitWindow: false,
-    };
-  }
-
-  // The feed schema declares windowDays too: read it, with the same bound the
-  // search branch uses, instead of answering a multi-day request with today.
-  if (windowDays && windowDays > 0) {
-    const days = Math.min(windowDays, 90);
+  // Feed and search share the read schema, so both honour windowDays. Without
+  // it a search covers 30 days and a feed covers today.
+  const days =
+    windowDays && windowDays > 0
+      ? Math.min(windowDays, 90)
+      : forSearch
+        ? 30
+        : undefined;
+  if (days !== undefined) {
     return {
       request: {
         calendarId,
