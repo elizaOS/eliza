@@ -689,19 +689,45 @@ function isLowSurrogate(code: number): boolean {
   return code >= 0xdc00 && code <= 0xdfff;
 }
 
+// The pinned runtimes provide Intl.Segmenter, while this package's
+// declaration library does not expose its type.
+const GraphemeSegmenter = (
+  Intl as unknown as {
+    Segmenter: new (
+      locale: string,
+      options: { granularity: "grapheme" },
+    ) => { segment(text: string): Iterable<{ segment: string }> };
+  }
+).Segmenter;
+
+const telegramGraphemeSegmenter = new GraphemeSegmenter("en", {
+  granularity: "grapheme",
+});
+
 /**
- * `text.slice(0, maxLength)` that never ends on the lead half of a surrogate
- * pair. Combined with {@link assertValidTelegramChunkLength}, the chunk loop
- * always consumes at least one code unit.
+ * `text.slice(0, maxLength)` that never ends inside a grapheme cluster
+ * (a ZWJ emoji sequence, a regional-indicator flag, a combining mark, or a
+ * skin-tone modifier) or on the lead half of a surrogate pair, so a cluster
+ * is never split across two message parts. Combined with
+ * {@link assertValidTelegramChunkLength}, the chunk loop always consumes at
+ * least one code unit.
  */
 function truncateWellFormedTelegram(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
-  const end =
+  let end = 0;
+  for (const { segment } of telegramGraphemeSegmenter.segment(text)) {
+    if (end + segment.length > maxLength) break;
+    end += segment.length;
+  }
+  if (end > 0) return text.slice(0, end);
+  // A single grapheme cluster alone exceeds the limit, so fall back to the
+  // surrogate-safe cut; it is the only case with no clean boundary.
+  const fallbackEnd =
     isHighSurrogate(text.charCodeAt(maxLength - 1)) &&
     isLowSurrogate(text.charCodeAt(maxLength))
       ? maxLength - 1
       : maxLength;
-  return text.slice(0, end);
+  return text.slice(0, fallbackEnd);
 }
 
 export function splitTelegramMessage(
