@@ -131,7 +131,7 @@ writeAuditProjectPropagation(env, auditProjectsRequestedByArgs(playwrightArgs));
 delete env.NO_COLOR;
 delete env.FORCE_COLOR;
 delete env.CLICOLOR_FORCE;
-env.BUN = env.BUN || resolveBunCommand();
+env.BUN = resolveBunCommand();
 // Validated through app's shared resolver: an invalid or pre-24
 // ELIZA_NODE_PATH (or an environment with no usable Node 24+) throws here,
 // before Playwright or its webServer spawns, instead of dying late in boot.
