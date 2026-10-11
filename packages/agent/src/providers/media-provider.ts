@@ -80,6 +80,7 @@ import {
   sleepWithAbort,
   VISION_IMAGE_MAX_BYTES,
 } from "@elizaos/core";
+import { persistMediaStream } from "../api/media-store.ts";
 
 // ============================================================================
 // Fetch Utilities
@@ -493,7 +494,21 @@ export class GoogleVideoProvider implements VideoGenerationProvider {
             "Google Veo error: operation completed without a video URI in the response",
         };
       }
-      return { success: true, data: { videoUrl: videoUri } };
+      const download = await fetchWithTimeout(videoUri, {
+        signal: options.signal,
+
+        method: "GET",
+        headers: { "x-goog-api-key": this.apiKey },
+      });
+      if (!download.ok || !download.body) {
+        const text = await download.text();
+        return { success: false, error: `Google Veo error: ${text}` };
+      }
+      const stored = await persistMediaStream(
+        download.body,
+        download.headers.get("content-type") ?? "video/mp4",
+      );
+      return { success: true, data: { videoUrl: stored.url } };
     });
   }
 
