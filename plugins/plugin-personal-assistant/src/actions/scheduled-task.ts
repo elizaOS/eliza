@@ -1367,6 +1367,32 @@ async function handleCreate(
   };
 }
 
+/**
+ * Every ScheduledTask field an edit can change: the whole task except the
+ * read-only `taskId` and `state`. The runner assigns the patch onto the stored
+ * task and validates only these fields, so any other key changes nothing.
+ */
+const SCHEDULED_TASK_PATCH_FIELDS = Object.keys({
+  kind: true,
+  promptInstructions: true,
+  contextRequest: true,
+  trigger: true,
+  priority: true,
+  shouldFire: true,
+  completionCheck: true,
+  escalation: true,
+  output: true,
+  pipeline: true,
+  subject: true,
+  idempotencyKey: true,
+  respectsGlobalPause: true,
+  source: true,
+  createdBy: true,
+  ownerVisible: true,
+  metadata: true,
+  executionProfile: true,
+} satisfies Record<keyof Omit<ScheduledTask, "taskId" | "state">, true>);
+
 async function handleUpdate(
   scope: RunnerScope,
   params: ScheduledTaskParams,
@@ -1407,6 +1433,20 @@ async function handleUpdate(
         subaction: "update",
         error: "READ_ONLY_FIELD",
         message: `patch.${readOnlyKey} is read-only; use the snooze/skip/complete/acknowledge/dismiss/reopen ops to change task state.`,
+      },
+    };
+  }
+  const unknownKey = Object.keys(params.patch).find(
+    (key) => !SCHEDULED_TASK_PATCH_FIELDS.includes(key),
+  );
+  if (unknownKey !== undefined) {
+    return {
+      success: false,
+      text: "I could not update that scheduled item because the change names a field it does not have.",
+      data: {
+        subaction: "update",
+        error: "UNKNOWN_PATCH_FIELD",
+        message: `patch.${unknownKey} is not a ScheduledTask field. Editable fields: ${SCHEDULED_TASK_PATCH_FIELDS.join(", ")}.`,
       },
     };
   }
@@ -2039,7 +2079,7 @@ export const scheduledTaskAction: Action & {
     },
     {
       name: "patch",
-      description: "update-only: shallow patch editable ScheduledTask fields.",
+      description: `update-only: shallow patch of ScheduledTask fields: ${SCHEDULED_TASK_PATCH_FIELDS.join(", ")}. Reword with promptInstructions and retime with trigger (same shapes as create). Any other key fails with UNKNOWN_PATCH_FIELD.`,
       schema: { type: "object" as const, additionalProperties: true },
     },
     {

@@ -774,6 +774,18 @@ describe("SCHEDULED_TASK action", () => {
     expect(readOnly?.success).toBe(false);
     expect(errorOf(readOnly)).toBe("READ_ONLY_FIELD");
 
+    // A key the task does not have changes nothing, so it is refused instead
+    // of being reported as an applied edit.
+    for (const patch of [
+      { atIso: "2027-01-13T09:00:00Z" },
+      { text: "Check on the vendor invoice" },
+      { dueAt: "2027-01-13T09:00:00Z" },
+    ]) {
+      const unknownField = await call({ action: "update", taskId, patch });
+      expect(unknownField?.success).toBe(false);
+      expect(errorOf(unknownField)).toBe("UNKNOWN_PATCH_FIELD");
+    }
+
     // A subject is a kind and an id together; one half alone is refused
     // instead of being dropped from the filter or the new task.
     for (const half of [{ subjectKind: "thread" }, { subjectId: "wt-1" }]) {
