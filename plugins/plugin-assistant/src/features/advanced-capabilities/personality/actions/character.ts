@@ -173,15 +173,6 @@ export const characterAction: Action = {
       },
     },
     {
-      name: "op",
-      description: "Legacy alias for action.",
-      required: false,
-      schema: {
-        type: "string" as const,
-        enum: [...CHARACTER_OPS],
-      },
-    },
-    {
       name: "request",
       description:
         "modify: optional natural-language request describing the desired character or interaction change.",

@@ -304,12 +304,6 @@ export const personalityAction: Action = {
       schema: { type: "string", enum: [...PERSONALITY_OPS] },
     },
     {
-      name: "op",
-      description: "Legacy alias for `action`.",
-      required: false,
-      schema: { type: "string", enum: [...PERSONALITY_OPS] },
-    },
-    {
       name: "scope",
       description:
         "Required for set_trait/clear_trait/set_reply_gate/lift_reply_gate/clear_directives/show_state. add_directive and remove_directive are personal-only and need no scope. Use 'user' for the requester's slot. Use 'global' only when explicitly requested; agent-wide inspection requires ADMIN and reconfiguration requires OWNER.",
