@@ -546,10 +546,11 @@ export function chunkSlackText(
       breakPoint = straddledFence;
     }
 
-    // truncateWellFormed backs the cut off by one unit instead of splitting a
-    // surrogate pair; consumedLength (not breakPoint) is how far `remaining`
+    // truncateGraphemeSafe backs the cut off to a grapheme boundary instead
+    // of splitting a surrogate pair or a grapheme cluster, matching
+    // splitSlackText; consumedLength (not breakPoint) is how far `remaining`
     // must advance, since the fence suffix appended below isn't part of it.
-    let chunk = truncateWellFormed(remaining, breakPoint);
+    let chunk = truncateGraphemeSafe(remaining, breakPoint);
     if (chunk.length === 0) {
       chunkLimitTooSmall("chunkSlackText", breakPoint, maxChars);
     }
