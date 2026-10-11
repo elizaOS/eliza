@@ -71,6 +71,28 @@ interface WebsiteContext {
   productType?: string;
 }
 
+/**
+ * Content of the first `<meta>` whose `key` attribute equals `value`.
+ * HTML attributes are unordered, so `<meta content="..." name="description">`
+ * must read the same as the name-first spelling.
+ */
+function readMetaContent(html: string, key: "name" | "property", value: string): string {
+  for (const tag of html.matchAll(/<meta\s[^>]*>/gi)) {
+    let matched = false;
+    let content: string | undefined;
+    for (const attribute of tag[0].matchAll(
+      /\s([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g,
+    )) {
+      const name = attribute[1].toLowerCase();
+      const attributeValue = attribute[2] ?? attribute[3] ?? attribute[4] ?? "";
+      if (name === key && attributeValue.toLowerCase() === value) matched = true;
+      if (name === "content") content ??= attributeValue;
+    }
+    if (matched && content?.trim()) return content.trim();
+  }
+  return "";
+}
+
 class AppPromotionAssetsService {
   // Cache website context to avoid re-fetching
   private websiteContextCache = new Map<string, WebsiteContext>();
@@ -130,28 +152,20 @@ class AppPromotionAssetsService {
       const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
       if (titleMatch) context.title = titleMatch[1].trim();
 
-      const descMatch = html.match(
-        /<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i,
-      );
-      if (descMatch) context.description = descMatch[1].trim();
+      const description = readMetaContent(html, "name", "description");
+      if (description) context.description = description;
 
-      const ogDescMatch = html.match(
-        /<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i,
-      );
-      if (ogDescMatch && !context.description) {
-        context.description = ogDescMatch[1].trim();
+      const ogDescription = readMetaContent(html, "property", "og:description");
+      if (ogDescription && !context.description) {
+        context.description = ogDescription;
       }
 
-      const ogImageMatch = html.match(
-        /<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i,
-      );
-      if (ogImageMatch) context.ogImage = ogImageMatch[1].trim();
+      const ogImage = readMetaContent(html, "property", "og:image");
+      if (ogImage) context.ogImage = ogImage;
 
-      const keywordsMatch = html.match(
-        /<meta[^>]*name=["']keywords["'][^>]*content=["']([^"']+)["']/i,
-      );
-      if (keywordsMatch) {
-        context.keywords = keywordsMatch[1]
+      const keywords = readMetaContent(html, "name", "keywords");
+      if (keywords) {
+        context.keywords = keywords
           .split(",")
           .map((k) => k.trim())
           .filter(Boolean);
