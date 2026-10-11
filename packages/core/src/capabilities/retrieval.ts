@@ -77,9 +77,12 @@ const OPERATION_WEIGHT = 2;
 const SUMMARY_WEIGHT = 1;
 
 export function tokenizeCapabilityIntent(text: string): string[] {
+	// Split on Unicode letters, marks and digits, not ASCII only: an ASCII
+	// class drops every non-Latin intent and splits accented words apart.
 	return text
+		.normalize("NFC")
 		.toLowerCase()
-		.split(/[^a-z0-9]+/)
+		.split(/[^\p{L}\p{M}\p{N}]+/u)
 		.filter((token) => token.length > 1);
 }
 
