@@ -573,7 +573,9 @@ export const planAction: Action = {
       name: "plan",
       description: "Existing plan object for update, review, or finalize.",
       required: false,
-      schema: { type: "object" },
+      // The plan is the JSON this action returned from create; its fields are
+      // read by getPhases/reviewPlan, so the object stays open.
+      schema: { type: "object", additionalProperties: true },
     },
     {
       name: "planId",
@@ -582,8 +584,27 @@ export const planAction: Action = {
       schema: { type: "string" },
     },
     {
+      name: "name",
+      description: "create/update: plan name.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "status",
+      description:
+        "update: new plan status text. create sets draft; finalize sets finalized.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "successCriteria",
+      description: "create/update: success criteria, one string per item.",
+      required: false,
+      schema: { type: "array", items: { type: "string" } },
+    },
+    {
       name: "notes",
-      description: "Update, review, or finalization notes.",
+      description: "Update or finalization notes.",
       required: false,
       schema: { type: "string" },
     },
