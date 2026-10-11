@@ -73,6 +73,8 @@ export const CHAT_UPLOAD_MIME_TYPES = [
 	"audio/ogg",
 	"audio/webm",
 	"audio/mp4",
+	// Chromium and Safari report .m4a files (voice memos) as audio/x-m4a.
+	"audio/x-m4a",
 	"audio/aac",
 	"audio/flac",
 	"video/mp4",
