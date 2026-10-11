@@ -1,0 +1,93 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import type http from "node:http";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { AgentRuntime } from "@elizaos/core";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
+import { expect, it, vi } from "vitest";
+import { handleConfigRoutes } from "../src/api/config-routes.ts";
+import {
+  CONFIG_WRITE_ALLOWED_TOP_KEYS,
+  isBlockedEnvKey,
+} from "../src/api/plugin-discovery-helpers.ts";
+import {
+  isBlockedObjectKey,
+  redactConfigSecrets,
+  stripRedactedPlaceholderValuesDeep,
+} from "../src/api/server-helpers-config.ts";
+import { loadElizaConfig, saveElizaConfig } from "../src/config/config.ts";
+import { buildCharacterFromConfig } from "../src/runtime/build-character-config.ts";
+import { buildRuntimeSettingsProjection } from "../src/runtime/runtime-settings.ts";
+
+const KEY = "ELIZA_PROACTIVE_INTERACTIONS";
+
+it("applies a changed or cleared config env setting to the running agent", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "config-env-runtime-"));
+  const configPath = path.join(dir, "eliza.json");
+  vi.stubEnv("ELIZA_STATE_DIR", dir);
+  vi.stubEnv("ELIZA_CONFIG_PATH", configPath);
+  vi.stubEnv("ELIZA_PERSIST_CONFIG_PATH", configPath);
+  vi.stubEnv(KEY, "chatty");
+  saveElizaConfig({
+    agents: { list: [{ id: "main", default: true, name: "Eliza" }] },
+    env: { [KEY]: "chatty" },
+  });
+  const bootConfig = loadElizaConfig();
+  const runtime = new AgentRuntime({
+    character: buildCharacterFromConfig(bootConfig),
+    settings: buildRuntimeSettingsProjection(bootConfig, { env: process.env }),
+    logLevel: "fatal",
+  });
+  runtime.registerDatabaseAdapter(
+    SQLiteDatabaseAdapter.create(
+      path.join(dir, "state.sqlite"),
+      runtime.agentId,
+    ),
+  );
+  const config = loadElizaConfig();
+  const put = async (env: Record<string, string>) => {
+    let status = 0;
+    await handleConfigRoutes({
+      req: {} as http.IncomingMessage,
+      res: {} as http.ServerResponse,
+      method: "PUT",
+      pathname: "/api/config",
+      url: new URL("http://localhost/api/config"),
+      config,
+      runtime,
+      json: (_res, _data, code = 200) => {
+        status = code;
+      },
+      error: (_res, message) => {
+        throw new Error(message);
+      },
+      readJsonBody: async <T extends object>() => ({ env }) as unknown as T,
+      redactConfigSecrets,
+      isBlockedObjectKey,
+      stripRedactedPlaceholderValuesDeep,
+      patchTouchesProviderSelection: () => false,
+      isBlockedEnvKey,
+      CONFIG_WRITE_ALLOWED_TOP_KEYS,
+      resolveMcpServersRejection: async () => null,
+      resolveMcpTerminalAuthorizationRejection: () => null,
+    });
+    return status;
+  };
+  try {
+    await runtime.init();
+    expect(runtime.getSetting(KEY)).toBe("chatty");
+
+    expect(await put({ [KEY]: "off" })).toBe(200);
+    expect(loadElizaConfig().env?.[KEY]).toBe("off");
+    expect(process.env[KEY]).toBe("off");
+    expect(runtime.getSetting(KEY)).toBe("off");
+
+    expect(await put({ [KEY]: "" })).toBe(200);
+    expect(process.env[KEY]).toBeUndefined();
+    expect(runtime.getSetting(KEY)).toBeNull();
+  } finally {
+    await runtime.close();
+    vi.unstubAllEnvs();
+    await rm(dir, { recursive: true, force: true });
+  }
+});

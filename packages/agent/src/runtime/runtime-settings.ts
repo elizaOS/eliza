@@ -127,6 +127,31 @@ export function hydrateConfigEnvForBoot(
   }
 }
 
+function forwardedConfigEnvVars(config: ElizaConfig): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(collectConfigEnvVars(config)).filter(
+      ([key, value]) =>
+        isEnvKeyAllowedForForwarding(key) && !isUnresolvedVaultRef(value),
+    ),
+  );
+}
+
+export function reconcileConfigEnvSettings(
+  runtime: Pick<IAgentRuntime, "getSetting" | "setSetting">,
+  previous: ElizaConfig,
+  current: ElizaConfig,
+): void {
+  const before = forwardedConfigEnvVars(previous);
+  const after = forwardedConfigEnvVars(current);
+  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    if (before[key] === after[key]) continue;
+    const live = runtime.getSetting(key);
+    const ownsPrevious =
+      live === null ? before[key] === undefined : String(live) === before[key];
+    if (ownsPrevious) runtime.setSetting(key, after[key] ?? null);
+  }
+}
+
 /** Explicit direct text routing overrides legacy provider settings for this runtime only. */
 function directTextModelSettings(
   route: ServiceRouteConfig | undefined,
@@ -230,12 +255,7 @@ export function buildRuntimeSettingsProjection(
   return {
     VALIDATION_LEVEL: "fast",
     ...(env.SECRET_SALT ? { ENCRYPTION_SALT: env.SECRET_SALT } : {}),
-    ...Object.fromEntries(
-      Object.entries(collectConfigEnvVars(config)).filter(
-        ([key, value]) =>
-          isEnvKeyAllowedForForwarding(key) && !isUnresolvedVaultRef(value),
-      ),
-    ),
+    ...forwardedConfigEnvVars(config),
     ...(typeof env.EMBEDDING_PROVIDER === "string" &&
     env.EMBEDDING_PROVIDER.trim().length > 0
       ? { EMBEDDING_PROVIDER: env.EMBEDDING_PROVIDER.trim().toLowerCase() }
