@@ -83,6 +83,13 @@ export interface ParsedCalendarRecurrenceRule {
    */
   untilDate?: { year: number; month: number; day: number };
   /**
+   * Set with `untilDate` when UNTIL is a local date and time
+   * (`UNTIL=20261215T180000`, the form RFC 5545 requires for a local
+   * DTSTART). The series ends at this clock time of that day in the series
+   * time zone.
+   */
+  untilTime?: { hour: number; minute: number; second: number };
+  /**
    * True when the rule uses RFC 5545 parts that are valid for the provider but
    * outside this module's local expansion subset (ordinal BYDAY like `2MO`,
    * BYSETPOS, BYMONTH, …). Such rules pass validation and flow to the provider
@@ -99,9 +106,13 @@ function invalidRecurrence(detail: string): never {
   );
 }
 
-function parseUntilValue(value: string): {
+function parseUntilValue(
+  value: string,
+  allowLocalTime: boolean,
+): {
   ms: number;
   date?: { year: number; month: number; day: number };
+  time?: { hour: number; minute: number; second: number };
 } {
   const dateOnly = value.match(/^(\d{4})(\d{2})(\d{2})$/);
   if (dateOnly) {
@@ -124,9 +135,9 @@ function parseUntilValue(value: string): {
     return { ms, date: { year: y, month: mo, day: d0 } };
   }
   const dateTime = value.match(
-    /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/,
+    /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z)?$/,
   );
-  if (dateTime) {
+  if (dateTime && (dateTime[7] || allowLocalTime)) {
     const second = Number(dateTime[6]);
     // ECMAScript cannot represent leap seconds. RFC 5545 directs
     // implementations without that support to interpret second 60 as 59.
@@ -152,7 +163,12 @@ function parseUntilValue(value: string): {
     ) {
       invalidRecurrence(`UNTIL=${value}`);
     }
-    return { ms };
+    if (dateTime[7]) return { ms };
+    return {
+      ms,
+      date: { year: dtY, month: dtMo, day: dtD },
+      time: { hour: dtH, minute: dtMi, second: representedSecond },
+    };
   }
   invalidRecurrence(
     `UNTIL must be YYYYMMDD or YYYYMMDDTHHMMSSZ, got "${value}"`,
@@ -177,6 +193,7 @@ function parsePositiveInt(value: string, part: string): number {
  */
 export function parseRecurrenceRule(
   value: string,
+  options: { localUntil?: boolean } = {},
 ): ParsedCalendarRecurrenceRule {
   const body = value.trim().replace(/^RRULE:/i, "");
   if (body.length === 0) invalidRecurrence("empty rule");
@@ -188,6 +205,7 @@ export function parseRecurrenceRule(
   let count: number | undefined;
   let untilMs: number | undefined;
   let untilDate: ParsedCalendarRecurrenceRule["untilDate"];
+  let untilTime: ParsedCalendarRecurrenceRule["untilTime"];
   let beyondExpansionSubset = false;
 
   for (const segment of body.split(";")) {
@@ -218,9 +236,10 @@ export function parseRecurrenceRule(
         count = parsePositiveInt(raw, "COUNT");
         break;
       case "UNTIL": {
-        const until = parseUntilValue(raw);
+        const until = parseUntilValue(raw, options.localUntil === true);
         untilMs = until.ms;
         untilDate = until.date;
+        untilTime = until.time;
         break;
       }
       case "BYDAY": {
@@ -291,6 +310,7 @@ export function parseRecurrenceRule(
     count,
     untilMs,
     untilDate,
+    untilTime,
     beyondExpansionSubset,
   };
 }
@@ -336,12 +356,13 @@ export function normalizeRecurrence(value: unknown): string[] | undefined {
 /** First RRULE line from a recurrence line set, parsed; null when none. */
 export function firstRecurrenceRule(
   recurrence: readonly string[] | null | undefined,
+  options: { localUntil?: boolean } = {},
 ): ParsedCalendarRecurrenceRule | null {
   if (!recurrence) return null;
   for (const line of recurrence) {
     if (NON_RRULE_RECURRENCE_LINE.test(line.trim())) continue;
     try {
-      return parseRecurrenceRule(line);
+      return parseRecurrenceRule(line, options);
     } catch {
       // error-policy:J3 unparseable RRULE line -> "no usable rule" (null).
       return null;
@@ -587,10 +608,21 @@ function* generateOccurrences(args: {
   // comparison of instants ends it with that day in UTC, which drops the last
   // evening occurrence west of UTC and adds a morning one east of UTC.
   const untilDate = rule.untilDate;
-  const pastUntil = (instantMs: number, date: LocalDateOnly): boolean =>
-    untilDate
-      ? compareLocalDates(date, untilDate) > 0
-      : rule.untilMs !== undefined && instantMs > rule.untilMs;
+  const untilTime = rule.untilTime;
+  const pastUntil = (instantMs: number, date: LocalDateOnly): boolean => {
+    if (!untilDate) {
+      return rule.untilMs !== undefined && instantMs > rule.untilMs;
+    }
+    const days = compareLocalDates(date, untilDate);
+    if (days !== 0 || !untilTime) return days > 0;
+    // A local UNTIL also has a clock time. Each occurrence has the clock
+    // time of DTSTART, so that time decides the last day.
+    return (
+      (timeOfDay.hour - untilTime.hour ||
+        timeOfDay.minute - untilTime.minute ||
+        timeOfDay.second - untilTime.second) > 0
+    );
+  };
 
   // DTSTART is always the first occurrence.
   if (pastUntil(startMs, anchorDate)) return;

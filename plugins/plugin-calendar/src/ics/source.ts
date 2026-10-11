@@ -194,7 +194,12 @@ export function expandIcsCalendarEvents(args: {
     // The event repeats. A rule that does not parse (FREQ=HOURLY, COUNT with
     // UNTIL), a second RRULE line, an RDATE, or a rule outside the local
     // subset all leave occurrences this module cannot produce.
-    const rule = ruleLineCount === 1 ? firstRecurrenceRule(recurrence) : null;
+    // A feed can give UNTIL as a local date and time (RFC 5545 requires that
+    // form for a local DTSTART); it ends the series in the series time zone.
+    const rule =
+      ruleLineCount === 1
+        ? firstRecurrenceRule(recurrence, { localUntil: true })
+        : null;
     if (!rule || rule.beyondExpansionSubset || hasRdate) {
       complete = false;
       if (overlaps(startMs, endMs)) expanded.push(event);

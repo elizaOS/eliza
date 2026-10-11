@@ -1060,6 +1060,58 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     );
   });
 
+  it("ends a series with a local-time UNTIL at that time in the event time zone", async () => {
+    const source = await createSource();
+    const series = (uid: string, until: string) => [
+      "BEGIN:VEVENT",
+      `UID:${uid}`,
+      "DTSTAMP:20261101T000000Z",
+      "DTSTART:20261201T180000",
+      "DTEND:20261201T190000",
+      `RRULE:FREQ=WEEKLY;UNTIL=${until}`,
+      `SUMMARY:${uid}`,
+      "END:VEVENT",
+    ];
+    await syncBody(
+      source.id,
+      [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//elizaOS//ICS integration test//EN",
+        "X-WR-TIMEZONE:America/Los_Angeles",
+        ...series("until-at-the-start", "20261215T180000"),
+        ...series("until-before-the-start", "20261215T175959"),
+        "END:VCALENDAR",
+        "",
+      ].join("\r\n"),
+    );
+    const feed = await service.getCalendarFeed(
+      new URL("http://internal.test/api/calendar"),
+      {
+        grantId: source.id,
+        timeMin: "2026-12-01T00:00:00.000Z",
+        timeMax: "2026-12-31T00:00:00.000Z",
+      },
+      new Date(),
+    );
+
+    expect(feed.state).toBe("complete");
+    const startsOf = (title: string) =>
+      feed.events
+        .filter((event) => event.title === title)
+        .map((event) => event.startAt);
+    // RFC 5545 3.3.10: a local DTSTART has a local UNTIL, and it is inclusive.
+    expect(startsOf("until-at-the-start")).toEqual([
+      "2026-12-02T02:00:00.000Z",
+      "2026-12-09T02:00:00.000Z",
+      "2026-12-16T02:00:00.000Z",
+    ]);
+    expect(startsOf("until-before-the-start")).toEqual([
+      "2026-12-02T02:00:00.000Z",
+      "2026-12-09T02:00:00.000Z",
+    ]);
+  });
+
   it("reports a partial feed for a series it cannot expand", async () => {
     const source = await createSource();
     await syncBody(
