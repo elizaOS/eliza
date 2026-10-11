@@ -254,14 +254,12 @@ export function createContactActions(dependencies: ContactActionDependencies): {
   }
 
   /**
-   * update: a supplied array is a value to write even when it is empty, so
-   * `replace` with `[]` clears the list.
+   * update: an explicit `[]` is a value to write, so `replace` with `[]`
+   * clears the list. An array of blank items is not a request to clear.
    */
   function readSuppliedStringArray(value: unknown): string[] | undefined {
-    return Array.isArray(value)
-      ? value
-          .map((item) => readString(item))
-          .filter((item): item is string => Boolean(item))
+    return Array.isArray(value) && value.length === 0
+      ? []
       : readStringArray(value);
   }
 
