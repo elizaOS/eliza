@@ -371,8 +371,25 @@ async function loadTriggerTask(
   return trigger ? { task, trigger } : null;
 }
 
+async function loadTriggerByTriggerId(
+  runtime: IAgentRuntime,
+  triggerId: string,
+): Promise<{ task: Task; trigger: TriggerConfig } | null> {
+  const tasks = await runtime.getTasks({
+    tags: [...TRIGGER_TASK_TAGS],
+    agentIds: [runtime.agentId],
+  });
+  for (const task of tasks) {
+    const trigger = readTriggerConfig(task);
+    if (trigger && task.id && String(trigger.triggerId) === triggerId) {
+      return { task, trigger };
+    }
+  }
+  return null;
+}
+
 /**
- * Resolve which trigger an update/delete/run/toggle refers to. Accepts a task
+ * Resolve which trigger a delete/run/toggle refers to. Accepts a task
  * UUID, the triggerId, or — the way a person actually refers to one — a name
  * fragment matched against displayName/instructions. Users never see task
  * UUIDs, so demanding one made every "delete the X reminder" turn fail.
@@ -904,11 +921,21 @@ async function opUpdate(
   // delete and a create that applied, and the turn was forced through a
   // "do not claim success" compose pass).
   const taskId = readUuid(params.taskId);
-  if (!taskId)
-    return failed("update", "taskId is required.", "MISSING_TASK_ID", {
-      readOnlyOperation: true,
-    });
-  const loaded = await loadTriggerTask(runtime, taskId);
+  if (!taskId) {
+    const rawId = readString(params.taskId);
+    return failed(
+      "update",
+      rawId
+        ? `update needs the trigger task UUID or triggerId in taskId; got "${rawId}".`
+        : "taskId is required.",
+      "MISSING_TASK_ID",
+      { readOnlyOperation: true },
+    );
+  }
+  // create returns both ids and the schema accepts either one here.
+  const loaded =
+    (await loadTriggerTask(runtime, taskId)) ??
+    (await loadTriggerByTriggerId(runtime, taskId));
   if (!loaded)
     return failed(
       "update",
@@ -923,6 +950,57 @@ async function opUpdate(
     });
   const messageTimeZone = resolveMessageTimeZone(runtime, message);
 
+  // update patches the stored schedule in place. A field it cannot apply used
+  // to be dropped, and the unchanged trigger came back with an applied receipt.
+  const unusable: string[] = [];
+  if (params.delaySeconds !== undefined || params.delayMinutes !== undefined) {
+    unusable.push(
+      "delaySeconds/delayMinutes are for create; pass scheduledAtIso to move a once trigger",
+    );
+  }
+  const requestedType = readString(params.triggerType)?.toLowerCase();
+  if (requestedType !== undefined && requestedType !== trigger.triggerType) {
+    unusable.push(
+      `triggerType cannot change (stored: ${trigger.triggerType}); delete the trigger and create a new one`,
+    );
+  }
+  if (
+    params.enabled !== undefined &&
+    readBool(params.enabled, trigger.enabled) !== trigger.enabled
+  ) {
+    unusable.push("enabled is changed with action=toggle");
+  }
+  const scheduleFields = [
+    ["intervalMs", "interval"],
+    ["scheduledAtIso", "once"],
+    ["cronExpression", "cron"],
+  ] as const;
+  for (const [field, type] of scheduleFields) {
+    const supplied =
+      field === "intervalMs"
+        ? params.intervalMs !== undefined
+        : readString(params[field]) !== undefined;
+    if (supplied && trigger.triggerType !== type) {
+      unusable.push(
+        `${field} applies to a ${type} trigger; this trigger is ${trigger.triggerType}`,
+      );
+    }
+  }
+  if (
+    params.intervalMs !== undefined &&
+    parsePositiveInt(params.intervalMs) === undefined
+  ) {
+    unusable.push("intervalMs must be a positive integer");
+  }
+  if (unusable.length > 0) {
+    return failed(
+      "update",
+      `Nothing was changed. ${unusable.join(". ")}.`,
+      "INVALID_UPDATE",
+      { readOnlyOperation: true, taskId: String(task.id) },
+    );
+  }
+
   const next: TriggerConfig = { ...trigger };
   const displayName = readString(params.displayName);
   const instructions = readString(params.instructions);
@@ -932,6 +1010,24 @@ async function opUpdate(
   const maxRuns = parsePositiveInt(params.maxRuns);
   const wakeModeRaw = params.wakeMode?.trim().toLowerCase();
   let dedupeIdentityChanged = false;
+
+  if (
+    displayName === undefined &&
+    instructions === undefined &&
+    intervalMs === undefined &&
+    scheduledAtIso === undefined &&
+    cronExpression === undefined &&
+    maxRuns === undefined &&
+    wakeModeRaw !== "inject_now" &&
+    wakeModeRaw !== "next_autonomy_cycle"
+  ) {
+    return failed(
+      "update",
+      "Nothing was changed. Pass displayName, instructions, wakeMode, maxRuns, or the schedule field for this trigger type.",
+      "NO_UPDATE_FIELDS",
+      { readOnlyOperation: true, taskId: String(task.id) },
+    );
+  }
 
   if (displayName) next.displayName = displayName;
   if (instructions) {

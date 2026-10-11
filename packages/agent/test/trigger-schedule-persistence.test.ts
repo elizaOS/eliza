@@ -311,6 +311,72 @@ it.each([
   },
 );
 
+it("updates a trigger by the triggerId create returned and refuses fields it cannot apply", async () => {
+  const message = {
+    entityId: fixture.runtime.agentId,
+    agentId: fixture.runtime.agentId,
+    roomId: randomUUID() as UUID,
+    content: { text: "Remind me every morning to water the orchid." },
+  } as Memory;
+  const created = await triggerAction.handler(
+    fixture.runtime,
+    message,
+    undefined,
+    {
+      parameters: {
+        action: "create",
+        displayName: "Water the orchid",
+        instructions: "Remind the user to water the orchid.",
+        cronExpression: "0 9 * * *",
+      },
+    },
+  );
+  if (!created?.success) throw new Error(created?.text ?? "create failed");
+  const { taskId, triggerId } = created.data as {
+    taskId: UUID;
+    triggerId: UUID;
+  };
+  try {
+    const update = (parameters: Record<string, unknown>) =>
+      triggerAction.handler(fixture.runtime, message, undefined, {
+        parameters: { action: "update", taskId: triggerId, ...parameters },
+      });
+    for (const [parameters, error] of [
+      [{ scheduledAtIso: "2099-01-01T17:00:00Z" }, "INVALID_UPDATE"],
+      [{ delayMinutes: 10 }, "INVALID_UPDATE"],
+      [{ triggerType: "once" }, "INVALID_UPDATE"],
+      [{ enabled: false }, "INVALID_UPDATE"],
+      [{}, "NO_UPDATE_FIELDS"],
+    ] as const) {
+      const refused = await update(parameters);
+      expect(refused, JSON.stringify(parameters)).toMatchObject({
+        success: false,
+        error,
+      });
+      expect(refused?.effectReceipts).toBeUndefined();
+    }
+    const unchanged = await fixture.runtime.getTask(taskId);
+    expect(unchanged && readTriggerConfig(unchanged)).toMatchObject({
+      triggerType: "cron",
+      cronExpression: "0 9 * * *",
+      displayName: "Water the orchid",
+      enabled: true,
+    });
+
+    const moved = await update({ cronExpression: "0 17 * * *" });
+    expect(moved, moved?.text).toMatchObject({
+      success: true,
+      data: { taskId, triggerId, cronExpression: "0 17 * * *" },
+    });
+    const saved = await fixture.runtime.getTask(taskId);
+    expect(saved && readTriggerConfig(saved)?.cronExpression).toBe(
+      "0 17 * * *",
+    );
+  } finally {
+    await fixture.runtime.deleteTask(taskId);
+  }
+});
+
 it("persists the timezone through pause and re-enable and schedules in that zone", async () => {
   const triggerId = randomUUID() as UUID;
   const normalized = normalizeTriggerDraft({
