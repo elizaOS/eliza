@@ -385,7 +385,7 @@ async function resolveEntityPlanWithLlm(args: {
     "When shouldAct=false, response must be a short clarifying question in the user's language.",
     "Extract only values stated or clearly implied by the request or recent conversation. Do not invent ids, handles, or notes.",
     "For create, extract name plus channel and handle when present.",
-    "For set_relationship, extract fromEntityId/toEntityId or names plus relationshipType.",
+    "For set_relationship, extract toEntityId, fromEntityId when stated, and relationshipType. toEntityId and fromEntityId are entity ids; a name is not resolved to an id, so leave toEntityId null when only a name is known.",
     "",
     `Current request:\n${currentMessage}`,
     `Resolved intent:\n${args.intent}`,
@@ -872,12 +872,14 @@ export const entityAction: Action & {
     },
     {
       name: "toEntityId",
-      description: "Target Entity id for set_relationship.",
+      description:
+        "Target Entity id for set_relationship, as returned by KNOWLEDGE_GRAPH. Stored as given; a display name is not resolved to an id.",
       schema: { type: "string" as const },
     },
     {
       name: "fromEntityId",
-      description: "Source Entity id for set_relationship; default 'self'.",
+      description:
+        "Source Entity id for set_relationship, stored as given; default 'self'.",
       schema: { type: "string" as const },
     },
     {
@@ -942,12 +944,12 @@ export const entityAction: Action & {
     [
       {
         name: "{{name1}}",
-        content: { text: "Pat is my manager." },
+        content: { text: "Record that I report to entity ent_pat." },
       },
       {
         name: "{{agentName}}",
         content: {
-          text: "Recorded self -[manages]-> Pat.",
+          text: "Recorded self -[managed_by]-> ent_pat.",
           action: "ENTITY",
         },
       },
