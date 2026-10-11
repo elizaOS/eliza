@@ -486,6 +486,27 @@ describe("LifeOps work threads", () => {
       }
     }
 
+    const rejectedTrigger = await runThreadAction(runtime, roomB, [
+      {
+        type: "steer",
+        workThreadId: threadId,
+        instruction: "Wait for the vendor reply.",
+      },
+      {
+        type: "schedule_followup",
+        workThreadId: threadId,
+        instruction: "Check for the reply.",
+        trigger: { kind: "cron", schedule: "0 9 * * *" },
+      },
+    ]);
+    expect(operationResults(rejectedTrigger)).toMatchObject([
+      { success: true, type: "steer" },
+      { success: false, type: "schedule_followup", error: "INVALID_TRIGGER" },
+    ]);
+    expect((await store.get(threadId))?.currentScheduledTaskId ?? null).toBe(
+      null,
+    );
+
     const scheduled = await runThreadAction(runtime, roomB, [
       {
         type: "schedule_followup",
