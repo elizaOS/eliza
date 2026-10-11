@@ -19,6 +19,8 @@ import {
   AgentEventService,
   getConnectorAccountManager,
   parseInteractionBlocks,
+  promoteSubactionsToActions,
+  validateToolArgs,
 } from "@elizaos/core";
 import { ApprovalDispatchControlStore } from "@elizaos/plugin-assistant";
 import {
@@ -32,6 +34,7 @@ import {
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createRealTestRuntime } from "../../../packages/app/test/helpers/real-runtime.ts";
 import { runSchedulingNegotiationHandler } from "../src/actions/lib/scheduling-handler.js";
+import { personalAssistantAction } from "../src/actions/owner-surfaces.js";
 import { executeApprovedRequest } from "../src/actions/resolve-request.js";
 import {
   createApprovalQueue,
@@ -934,21 +937,32 @@ describe("ApprovalQueue integration (real PGlite)", () => {
       idempotencyKey: approval.idempotencyKey,
     });
 
-    const proposed = await runSchedulingNegotiationHandler(
+    // Propose and respond go through the planner-facing promoted action: the
+    // arguments must pass the tool-argument validator and reach the handler.
+    const schedulingAction = promoteSubactionsToActions(
+      personalAssistantAction,
+    ).find((action) => action.name === "PERSONAL_ASSISTANT_SCHEDULING");
+    if (!schedulingAction) {
+      throw new Error("PERSONAL_ASSISTANT_SCHEDULING is not promoted");
+    }
+    const proposeArgs = validateToolArgs(schedulingAction, {
+      schedulingOp: "propose",
+      negotiationId: data.negotiation.id,
+      startAt: "2026-08-10T23:00:00.000Z",
+      endAt: "2026-08-10T23:30:00.000Z",
+      proposedBy: "owner",
+    });
+    expect(proposeArgs.errors).toEqual([]);
+    const proposed = await schedulingAction.handler(
       runtime,
       message,
       undefined,
-      {
-        parameters: {
-          subaction: "propose",
-          negotiationId: data.negotiation.id,
-          startAt: "2026-08-10T23:00:00.000Z",
-          endAt: "2026-08-10T23:30:00.000Z",
-          proposedBy: "owner",
-        },
-      } as never,
+      { parameters: proposeArgs.args } as never,
       async () => [],
     );
+    if (!proposed) {
+      throw new Error("propose returned no result");
+    }
     expect(proposed).toMatchObject({
       success: true,
       data: {
@@ -980,17 +994,17 @@ describe("ApprovalQueue integration (real PGlite)", () => {
       verifySchedulingApprovalContent(proposalApproval.payload)?.matches,
     ).toBe(true);
 
-    const responded = await runSchedulingNegotiationHandler(
+    const respondArgs = validateToolArgs(schedulingAction, {
+      schedulingOp: "respond",
+      proposalId: proposedData.proposal.id,
+      response: "accepted",
+    });
+    expect(respondArgs.errors).toEqual([]);
+    const responded = await schedulingAction.handler(
       runtime,
       message,
       undefined,
-      {
-        parameters: {
-          subaction: "respond",
-          proposalId: proposedData.proposal.id,
-          response: "accepted",
-        },
-      } as never,
+      { parameters: respondArgs.args } as never,
       async () => [],
     );
     expect(responded).toMatchObject({

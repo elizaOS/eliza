@@ -1200,16 +1200,21 @@ async function surfaceSchedulingApproval(
   }
 }
 
-type SchedulingSubaction =
-  | "start"
-  | "propose"
-  | "respond"
-  | "finalize"
-  | "cancel"
-  | "list_active"
-  | "list_proposals";
+export const SCHEDULING_SUBACTIONS = [
+  "start",
+  "propose",
+  "respond",
+  "finalize",
+  "cancel",
+  "list_active",
+  "list_proposals",
+] as const;
+
+type SchedulingSubaction = (typeof SCHEDULING_SUBACTIONS)[number];
 
 export type SchedulingActionParameters = {
+  /** Declared planner selector on PERSONAL_ASSISTANT (action=scheduling). */
+  schedulingOp?: SchedulingSubaction;
   subaction?: SchedulingSubaction;
   intent?: string;
   negotiationId?: string;
@@ -1405,7 +1410,11 @@ export async function runSchedulingNegotiationHandler(
   const messageBody =
     typeof message.content.text === "string" ? message.content.text : "";
   const planIntent = (params.intent ?? messageBody).trim();
-  const explicitSubaction = normalizeSchedulingSubaction(params.subaction);
+  // The promoted PERSONAL_ASSISTANT_SCHEDULING virtual pins `subaction` to
+  // "scheduling", so the planner's operation arrives as `schedulingOp`.
+  const explicitSubaction = normalizeSchedulingSubaction(
+    params.schedulingOp ?? params.subaction,
+  );
   const llmPlan = await resolveSchedulingPlanWithLlm({
     runtime,
     message,

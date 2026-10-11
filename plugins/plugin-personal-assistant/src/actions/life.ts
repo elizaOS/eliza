@@ -196,11 +196,8 @@ type LifeParams = {
   minutes?: number;
   preset?: string;
   /**
-   * Planner-signalled owner confirmation of a previously previewed save.
-   * The preview -> confirm handshake has no structured cross-turn draft
-   * transport on the planner path, so the confirm turn ("yes, save that")
-   * must re-call create with `confirmed: true`; the handler then saves the
-   * re-extracted plan instead of previewing again.
+   * Declared on the owner surfaces but not read: consent to save a previewed
+   * item comes only from the owner's current message text.
    */
   confirmed?: boolean;
   createPlan?: unknown;
