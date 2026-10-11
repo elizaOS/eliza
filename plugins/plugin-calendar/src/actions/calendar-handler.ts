@@ -1412,7 +1412,7 @@ function normalizeCalendarSearchQueryValue(
     .replace(/\bmatch against titles\b.*$/g, "")
     .replace(/\bstructured calendar arguments\b.*$/g, "")
     .replace(/[;:,]+/g, " ")
-    .replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, "")
+    .replace(/^[^\p{L}\p{M}\p{N}]+|[^\p{L}\p{M}\p{N}]+$/gu, "")
     .trim();
 
   if (
@@ -1426,7 +1426,9 @@ function normalizeCalendarSearchQueryValue(
   return cleaned;
 }
 
-function dedupeCalendarQueries(queries: Array<string | undefined>): string[] {
+export function dedupeCalendarQueries(
+  queries: Array<string | undefined>,
+): string[] {
   const normalized = queries
     .map((query) => normalizeCalendarSearchQueryValue(query))
     .filter((query): query is string => Boolean(query));

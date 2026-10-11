@@ -6,6 +6,7 @@
 import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import { describe, expect, it } from "vitest";
 import {
+  dedupeCalendarQueries,
   normalizeCalendarDetails,
   parseExplicitLocalDate,
   textFieldAddsDetail,
@@ -114,6 +115,31 @@ describe("normalizeCalendarDetails eventId screen", () => {
     expect(
       normalizeCalendarDetails({ title: "치과 예약", eventId: "abc123xyz" }),
     ).toEqual({ title: "치과 예약", eventId: "abc123xyz" });
+  });
+});
+
+describe("dedupeCalendarQueries", () => {
+  it("keeps non-Latin search queries instead of stripping them as edge noise", () => {
+    expect(dedupeCalendarQueries(["치과 예약"])).toEqual(["치과 예약"]);
+    expect(dedupeCalendarQueries(["강남역 회의"])).toEqual(["강남역 회의"]);
+    expect(dedupeCalendarQueries(["встреча с врачом"])).toEqual([
+      "встреча с врачом",
+    ]);
+    expect(dedupeCalendarQueries(["新宿で歯医者"])).toEqual(["新宿で歯医者"]);
+    expect(dedupeCalendarQueries(["회의실 meeting"])).toEqual([
+      "회의실 meeting",
+    ]);
+    expect(dedupeCalendarQueries(["4월 19일 회의"])).toEqual(["4월 19일 회의"]);
+  });
+
+  it("still drops planner noise, punctuation-only, and generic queries", () => {
+    expect(dedupeCalendarQueries(["!!!"])).toEqual([]);
+    expect(dedupeCalendarQueries(["query?:string"])).toEqual([]);
+    expect(dedupeCalendarQueries(["calendar"])).toEqual([]);
+    expect(dedupeCalendarQueries(["  dentist appointment!! "])).toEqual([
+      "dentist appointment",
+    ]);
+    expect(dedupeCalendarQueries(["2026-04-19"])).toEqual(["2026-04-19"]);
   });
 });
 
