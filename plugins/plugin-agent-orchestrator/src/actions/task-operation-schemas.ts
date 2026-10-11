@@ -39,6 +39,8 @@ const operationParameters = {
   cancel: ["sessionId", "threadId", "taskId", "all", "search"],
   history: [
     "sessionId",
+    "threadId",
+    "taskId",
     "metric",
     "window",
     "statuses",

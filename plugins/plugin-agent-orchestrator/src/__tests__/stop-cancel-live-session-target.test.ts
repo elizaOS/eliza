@@ -8,6 +8,7 @@ import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
+  hardenIncomingUserMessage,
   type IAgentRuntime,
   type Memory,
   promoteSubactionsToActions,
@@ -19,6 +20,7 @@ import { tasksAction } from "../actions/tasks.ts";
 import { AcpService } from "../services/acp-service.ts";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.ts";
 import { OrchestratorTaskStore } from "../services/orchestrator-task-store.ts";
+import { CodingWorkspaceService } from "../services/workspace-service.ts";
 
 const FAKE_ACPX = `#!/usr/bin/env node
 const args = process.argv.slice(2);
@@ -443,6 +445,125 @@ describe("TASKS control resume with an instruction and no running session", () =
       await service.stop();
     }
   }, 20_000);
+});
+
+describe("TASKS history with a task id", () => {
+  async function withTwoTasks(
+    body: (ctx: {
+      runtime: IAgentRuntime;
+      olderId: string;
+      newerId: string;
+    }) => Promise<void>,
+  ): Promise<void> {
+    let tasks: OrchestratorTaskService | undefined;
+    const runtime = runtimeWith(
+      () => undefined,
+      () => tasks,
+    );
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    tasks = new OrchestratorTaskService(runtime, { store });
+    const base = {
+      goal: "finish the build",
+      acceptanceCriteria: [],
+      roomId: "target-room",
+      worldId: "target-world",
+    };
+    const older = await store.createTask({ ...base, title: "Older task" });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const newer = await store.createTask({ ...base, title: "Newest task" });
+    await body({ runtime, olderId: older.task.id, newerId: newer.task.id });
+  }
+
+  for (const selector of ["taskId", "threadId"] as const) {
+    it(`detail with ${selector} describes that task, not the newest one`, async () => {
+      await withTwoTasks(async (ctx) => {
+        const args = {
+          action: "history",
+          metric: "detail",
+          [selector]: ctx.olderId,
+        };
+        expect(validateToolArgs(tasksAction, args).errors).toEqual([]);
+
+        const result = await runTasks(ctx.runtime, args);
+
+        expect(result?.success).toBe(true);
+        expect(result?.text).toContain('"Older task"');
+        expect(result?.text).not.toContain("Newest task");
+        expect(result?.data).toMatchObject({
+          count: 1,
+          taskIds: [ctx.olderId],
+          filters: { taskId: ctx.olderId },
+        });
+      });
+    });
+  }
+
+  it("an unknown taskId is an error, not the full list", async () => {
+    await withTwoTasks(async (ctx) => {
+      const result = await runTasks(ctx.runtime, {
+        action: "history",
+        taskId: "no-such-task",
+      });
+
+      expect(result).toMatchObject({ success: false, error: "TASK_NOT_FOUND" });
+      expect(result?.text).not.toContain("Newest task");
+    });
+  });
+});
+
+describe("TASKS manage_issues bulk create on an external message", () => {
+  it("creates one issue per user list item and none from the security envelope", async () => {
+    let workspace: CodingWorkspaceService | undefined;
+    const base = runtimeWith(() => undefined);
+    const runtime = {
+      ...base,
+      // Operator policy that lets a Discord sender use task agents.
+      getSetting: (key: string) =>
+        key === "TASK_AGENT_ROLE_POLICY"
+          ? JSON.stringify({ connectors: { discord: "GUEST" } })
+          : base.getSetting(key),
+      getService: (type: string) =>
+        type === "CODING_WORKSPACE_SERVICE" ? (workspace ?? null) : null,
+    } as unknown as IAgentRuntime;
+    workspace = new CodingWorkspaceService(runtime, { baseDir: workdir });
+    const titles: string[] = [];
+    workspace.createIssue = async (_repo, options) => {
+      titles.push(options.title);
+      return {
+        number: titles.length,
+        title: options.title,
+        body: options.body ?? "",
+        state: "open",
+        labels: [],
+        url: `https://github.com/acme/api/issues/${titles.length}`,
+      } as Awaited<ReturnType<CodingWorkspaceService["createIssue"]>>;
+    };
+    const message = {
+      content: {
+        text: "File these on acme/api:\n1. Login button is broken\n2. Add dark mode",
+        source: "discord",
+      },
+    } as unknown as Memory;
+    hardenIncomingUserMessage(message);
+    expect(message.content.text).toContain("EXTERNAL_UNTRUSTED_CONTENT");
+    const parameters = {
+      action: "manage_issues",
+      issueAction: "create",
+      repo: "acme/api",
+    };
+    expect(validateToolArgs(tasksAction, parameters).errors).toEqual([]);
+
+    const result = await tasksAction.handler(
+      runtime,
+      message,
+      undefined,
+      { parameters },
+      async () => [],
+    );
+
+    expect(result?.success).toBe(true);
+    expect(titles).toEqual(["Login button is broken", "Add dark mode"]);
+  });
 });
 
 describe("TASKS object parameters accept the shapes the handler reads", () => {

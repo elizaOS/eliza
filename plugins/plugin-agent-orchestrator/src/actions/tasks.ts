@@ -3316,6 +3316,11 @@ async function runHistory(
   // one project (the store filters on the indexed/structural `projectId`).
   const projectId =
     filterIdValue(params.projectId) ?? filterIdValue(content.projectId);
+  // The umbrella declares threadId/taskId for every operation. An explicit
+  // sessionId wins, as it does for the other task-scoped operations.
+  const taskId = sessionId
+    ? undefined
+    : (filterIdValue(params.threadId) ?? filterIdValue(params.taskId));
   const includeArchived =
     pickBoolean(params, content, "includeArchived") ?? false;
   const windowFilters = buildWindowFilters(window);
@@ -3327,7 +3332,7 @@ async function runHistory(
       const sessionTask = sessionId
         ? await taskService.getTaskForSession(sessionId)
         : undefined;
-      const taskCandidates =
+      const listedTasks =
         sessionId && !sessionTask
           ? []
           : await taskService.listTasks({
@@ -3335,6 +3340,19 @@ async function runHistory(
               ...(search ? { search } : {}),
               ...(projectId ? { projectId } : {}),
             });
+      const taskCandidates = taskId
+        ? listedTasks.filter((task) => task.id === taskId)
+        : listedTasks;
+      if (taskId && taskCandidates.length === 0) {
+        return failureResult(
+          "TASKS:history",
+          "TASK_NOT_FOUND",
+          includeArchived
+            ? `Task ${taskId} not found.`
+            : `Task ${taskId} not found among tasks that are not archived. Pass includeArchived=true to include archived tasks.`,
+          { reason: "task_not_found", taskId },
+        );
+      }
       const allTasks = taskCandidates.filter(
         (task) =>
           taskMatchesHistoryFilters(task, statuses, windowFilters, search) &&
@@ -3347,6 +3365,7 @@ async function runHistory(
         statuses.length > 0 ? `statuses ${statuses.join(", ")}` : undefined,
         search ? `search "${search}"` : undefined,
         projectId ? `project ${projectId}` : undefined,
+        taskId ? `task ${taskId}` : undefined,
         // The raw session uuid is planner/log detail (kept in data.filters);
         // user-bound text refers to it in plain words.
         sessionId ? "that session" : undefined,
@@ -3387,7 +3406,9 @@ async function runHistory(
         responseText = [
           sessionId
             ? `The orchestrator task for that session is "${task.title}" [${task.status}].`
-            : `The most recent orchestrator task is "${task.title}" [${task.status}].`,
+            : taskId
+              ? `Orchestrator task ${taskId} is "${task.title}" [${task.status}].`
+              : `The most recent orchestrator task is "${task.title}" [${task.status}].`,
           `Task id: ${task.id}`,
           `Latest session: ${task.latestSessionLabel ?? task.latestSessionId ?? "none"}`,
           `Workspace: ${task.latestWorkdir ?? "none"}`,
@@ -3430,6 +3451,7 @@ async function runHistory(
             ...(search ? { search } : {}),
             ...(projectId ? { projectId } : {}),
             ...(sessionId ? { sessionId } : {}),
+            ...(taskId ? { taskId } : {}),
             includeArchived,
             limit,
           },
@@ -3444,6 +3466,15 @@ async function runHistory(
     }
   }
 
+  if (taskId) {
+    // Durable tasks live in the task service; ACP sessions have no task id.
+    return failureResult(
+      "TASKS:history",
+      "SERVICE_UNAVAILABLE",
+      `The orchestrator task service is not available, so task ${taskId} cannot be read.`,
+      { reason: "task_service_unavailable", taskId },
+    );
+  }
   const service = getAcpService(runtime);
   if (!service) {
     const msg = "ACP service is not available.";
@@ -4297,9 +4328,10 @@ async function handleIssueAction(
         const body = params.body as string | undefined;
 
         if (!title) {
-          const items = extractBulkItems(
-            (params.text as string) ?? originalText,
-          );
+          // `params` carries the message content, whose `text` is still in
+          // the security envelope for external sources. `text` is not a
+          // declared parameter; the request text is `originalText`.
+          const items = extractBulkItems(originalText);
           if (items.length > 0) {
             if (items.length > MAX_BULK_ISSUE_CREATE) {
               return {
@@ -5624,7 +5656,7 @@ export const tasksAction: Action & {
     {
       name: "threadId",
       description:
-        "Durable task id for action=cancel / action=control / action=share / action=archive / action=reopen. Selects that task's sessions; an explicit sessionId wins.",
+        "Durable task id for action=cancel / action=control / action=share / action=archive / action=reopen / action=history. Selects that task's sessions; for history, restricts the answer to that task. An explicit sessionId wins.",
       required: false,
       schema: { type: "string" as const },
     },
