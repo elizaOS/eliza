@@ -121,6 +121,8 @@ describe("server-owned Shared Google read seam", () => {
     for (const request of [
       { kind: "other", timeMin: "2026-10-08", timeMax: "2026-10-09", timeZone: "UTC" },
       { kind: "calendar", timeMin: "2026-10-08", timeMax: "2026-10-09" },
+      { kind: "calendar", timeMin: "2026-10-08", timeMax: "2026-10-09", timeZone: " " },
+      { kind: "calendar", timeMin: "2026-10-08", timeMax: "2026-10-09", timeZone: "Not/AZone" },
       { kind: "gmail_search", query: 42 },
       null,
     ]) {

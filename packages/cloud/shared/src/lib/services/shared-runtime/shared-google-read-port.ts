@@ -55,11 +55,18 @@ function validateReadRequest(value: unknown): SharedGoogleReadRequest {
         code: "SHARED_GOOGLE_CALENDAR_WINDOW_REQUIRED",
       });
     }
+    const timeZone = bounded(request.timeZone, 100);
+    try {
+      // An unknown zone would otherwise surface later as a provider-side failure after consent.
+      new Intl.DateTimeFormat("en-US", { timeZone });
+    } catch {
+      throw new ElizaError("SHARED_GOOGLE_INVALID_INPUT", { code: "SHARED_GOOGLE_INVALID_INPUT" });
+    }
     return {
       kind: "calendar",
       timeMin: new Date(start).toISOString(),
       timeMax: new Date(end).toISOString(),
-      timeZone: bounded(request.timeZone, 100),
+      timeZone,
     };
   }
   throw new ElizaError("SHARED_GOOGLE_INVALID_INPUT", { code: "SHARED_GOOGLE_INVALID_INPUT" });
