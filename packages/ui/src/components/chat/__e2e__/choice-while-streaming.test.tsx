@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/** A CHOICE pick made while an assistant reply is still streaming reaches the agent. */
+/** Action messages sent while an assistant reply is still streaming: delivery, single-flight, Stop, and the handoff freeze. */
 import {
   act,
   cleanup,
@@ -11,6 +11,7 @@ import {
 import { useRef, useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { client } from "../../../api/client";
+import { CLOUD_HANDOFF_PHASE_EVENT } from "../../../events";
 import type {
   Conversation,
   ConversationMessage,
@@ -37,6 +38,8 @@ type StreamResult = Awaited<
 >;
 
 let sendChatText: (text: string) => Promise<void>;
+let sendActionMessage: (text: string) => Promise<void>;
+let stopChat: () => void;
 
 function Harness() {
   const [, setMessages] = useState<ConversationMessage[]>([]);
@@ -87,7 +90,10 @@ function Harness() {
     pollCloudCredits: async () => true,
   };
   const chat = useChatSend(deps);
-  sendChatText = (text) => chat.sendChatText(text, { conversationId: "conv-1" });
+  sendChatText = (text) =>
+    chat.sendChatText(text, { conversationId: "conv-1" });
+  sendActionMessage = chat.sendActionMessage;
+  stopChat = chat.handleChatStop;
   const ctx = useInlineWidgetContext(chat.sendActionMessage, () => {});
   return (
     <ChoiceWidget
@@ -102,7 +108,8 @@ function Harness() {
   );
 }
 
-it("delivers a choice picked while the previous reply is still streaming", async () => {
+/** Mounts the harness and starts a composer turn whose reply stays open. */
+async function startStreamingTurn() {
   vi.spyOn(client, "sendWsMessage").mockImplementation(() => {});
   vi.spyOn(client, "abortConversationTurn").mockResolvedValue({
     aborted: false,
@@ -134,16 +141,85 @@ it("delivers a choice picked while the previous reply is still streaming", async
     firstTurn = sendChatText("deploy my app");
   });
   await waitFor(() => expect(sentTexts).toEqual(["deploy my app"]));
+  const finishFirstTurn = () =>
+    act(async () => {
+      finishFirstReply();
+      await firstTurn;
+    });
+  return { sentTexts, finishFirstTurn };
+}
+
+it("delivers a choice picked while the previous reply is still streaming", async () => {
+  const { sentTexts, finishFirstTurn } = await startStreamingTurn();
 
   fireEvent.click(screen.getByRole("button", { name: "Production" }));
   expect(screen.getByRole("status").textContent).toBe("Selected: Production");
 
-  await act(async () => {
-    finishFirstReply();
-    await firstTurn;
-  });
+  await finishFirstTurn();
 
   await waitFor(() =>
     expect(sentTexts).toEqual(["deploy my app", "production"]),
   );
+});
+
+it("sends an action once when it is activated twice during a stream", async () => {
+  const { sentTexts, finishFirstTurn } = await startStreamingTurn();
+
+  let actions!: Promise<void[]>;
+  act(() => {
+    actions = Promise.all([
+      sendActionMessage("[action:refresh]"),
+      sendActionMessage("[action:refresh]"),
+    ]);
+  });
+
+  await finishFirstTurn();
+  await act(async () => {
+    await actions;
+  });
+
+  expect(sentTexts).toEqual(["deploy my app", "[action:refresh]"]);
+});
+
+it("does not send a waiting action after Stop", async () => {
+  const { sentTexts, finishFirstTurn } = await startStreamingTurn();
+
+  let action!: Promise<void>;
+  act(() => {
+    action = sendActionMessage("production");
+  });
+  act(() => stopChat());
+
+  await finishFirstTurn();
+  await act(async () => {
+    await action;
+  });
+
+  expect(sentTexts).toEqual(["deploy my app"]);
+});
+
+it("holds a waiting action until the cloud handoff ends", async () => {
+  const { sentTexts, finishFirstTurn } = await startStreamingTurn();
+  const dispatchPhase = (phase: string) =>
+    window.dispatchEvent(
+      new CustomEvent(CLOUD_HANDOFF_PHASE_EVENT, {
+        detail: { phase, agentId: "agent-1" },
+      }),
+    );
+
+  let action!: Promise<void>;
+  act(() => {
+    action = sendActionMessage("production");
+    dispatchPhase("migrating");
+  });
+
+  await finishFirstTurn();
+  expect(sentTexts).toEqual(["deploy my app"]);
+
+  await act(async () => {
+    dispatchPhase("failed");
+    await action;
+  });
+
+  expect(sentTexts).toEqual(["deploy my app", "production"]);
 });
