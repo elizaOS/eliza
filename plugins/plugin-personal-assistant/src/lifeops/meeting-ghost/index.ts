@@ -267,7 +267,7 @@ const WEEKDAYS = new Map([
 function normalize(value: string): string {
   return value
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
 }
 
@@ -291,9 +291,9 @@ function careAboutMatches(text: string, careAbout: string): boolean {
   const normalizedText = normalize(text);
   const normalizedCare = normalize(careAbout);
   if (!normalizedCare) return false;
+  if (normalizedText.includes(normalizedCare)) return true;
   const tokens = normalizedCare.split(" ").filter((token) => token.length > 2);
   if (tokens.length === 0) return false;
-  if (normalizedText.includes(normalizedCare)) return true;
   return tokens.every((token) => normalizedText.includes(token));
 }
 
@@ -302,8 +302,10 @@ function findAttendeeEmail(
   name: string,
 ): string | null {
   const normalizedName = normalize(name);
+  if (!normalizedName) return null;
   const attendee = attendees.find((entry) => {
     const attendeeName = normalize(entry.name);
+    if (!attendeeName) return false;
     return (
       attendeeName === normalizedName ||
       attendeeName.includes(normalizedName) ||
