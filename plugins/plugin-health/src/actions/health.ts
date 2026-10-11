@@ -625,7 +625,7 @@ export function createHealthActionRunner(
     }
 
     const dayBounds =
-      subaction === "by_metric" && params.date
+      params.date && (subaction === "today" || subaction === "by_metric")
         ? localDayBounds(params.date, timeZone)
         : undefined;
     if (dayBounds === null) {
