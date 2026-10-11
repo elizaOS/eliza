@@ -267,6 +267,11 @@ async function validateRoomOpAvailability(
   const platform = normalizePlatform(params.platform);
   const explicitRoomId = normalizeString(params.roomId);
   const chatName = normalizeString(params.chatName);
+  if (chatName && !platform) {
+    // The handler refuses this call with ROOM_PLATFORM_REQUIRED; do not judge
+    // it by the current room's state.
+    return true;
+  }
   let roomId = explicitRoomId as UUID | undefined;
   if (platform && (explicitRoomId || chatName)) {
     const targetRoom = await resolveTargetRoom({
@@ -660,7 +665,8 @@ export const roomOpAction: Action = {
     },
     {
       name: "chatName",
-      description: "Channel/group title for non-current room.",
+      description:
+        "Channel/group title for non-current room. Requires platform.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -787,6 +793,21 @@ export const roomOpAction: Action = {
         success: false,
       };
     }
+    if (chatName && !platform) {
+      // chatName is only resolved among one connector's rooms. Without a
+      // platform the call used to fall through to the current room.
+      return {
+        text: "chatName needs platform (telegram, discord, ...). Supply platform with chatName, or use roomId.",
+        values: { success: false, error: "ROOM_PLATFORM_REQUIRED" },
+        data: {
+          actionName: "ROOM",
+          op,
+          chatName,
+          error: "ROOM_PLATFORM_REQUIRED",
+        },
+        success: false,
+      };
+    }
     const scope = normalizeScope(params.scope);
     if (scope === "server") {
       if (op !== "mute" && op !== "unmute") {
@@ -907,12 +928,16 @@ export const roomOpAction: Action = {
       return roomPreconditionFailureResult({ op, current, roomId });
     }
     const proceed = await decide(runtime, message, state, cfg, op);
+    // state.data.room is the room the message arrived in; it only names the
+    // target when no other roomId was given.
     const room =
-      (state.data.room as
-        | {
-            name?: string;
-          }
-        | undefined) ?? (await runtime.getRoom(roomId));
+      (roomId === message.roomId
+        ? (state.data.room as
+            | {
+                name?: string;
+              }
+            | undefined)
+        : undefined) ?? (await runtime.getRoom(roomId));
     if (!room) {
       return {
         text: `Could not find room to ${op}`,
@@ -969,7 +994,7 @@ function makeRoomOpChildAction(args: {
     description: args.description,
     descriptionCompressed: args.descriptionCompressed,
     parameters: roomOpAction.parameters?.filter(
-      (parameter) => parameter.name !== "op",
+      (parameter) => parameter.name !== "action",
     ),
     validate: (runtime, message, state, options) =>
       validateRoomOpAvailability(
@@ -995,7 +1020,7 @@ function makeRoomOpChildAction(args: {
           ...(options ?? {}),
           parameters: {
             ...params,
-            op: args.op,
+            action: args.op,
           },
         },
         actionCallback,
