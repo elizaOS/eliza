@@ -229,6 +229,41 @@ it("does not label disabled trigger creation as a retryable schedule rejection",
   expect(result?.effectReceipts).toBeUndefined();
   expect(await fixture.runtime.getTasks({ tags: ["trigger"] })).toEqual(before);
 });
+it("refuses trigger creation when ELIZA_TRIGGERS_ENABLED is FALSE in any case, like the trigger routes", async () => {
+  const before = await fixture.runtime.getTasks({ tags: ["trigger"] });
+  const runtime = Object.create(fixture.runtime);
+  runtime.getSetting = (key: string) =>
+    key === "ELIZA_TRIGGERS_ENABLED" ? null : fixture.runtime.getSetting(key);
+  const previous = process.env.ELIZA_TRIGGERS_ENABLED;
+  process.env.ELIZA_TRIGGERS_ENABLED = " FALSE";
+  try {
+    expect(triggersFeatureEnabled(runtime)).toBe(false);
+    const result = await triggerAction.handler(
+      runtime,
+      {
+        entityId: fixture.runtime.agentId,
+        agentId: fixture.runtime.agentId,
+        roomId: randomUUID() as UUID,
+        content: { text: "Remind me in 2 minutes." },
+      } as Memory,
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          instructions: "Remind the user.",
+          delayMinutes: 2,
+        },
+      },
+    );
+    expect(result).toMatchObject({ success: false, error: "TRIGGERS_OFF" });
+    expect(await fixture.runtime.getTasks({ tags: ["trigger"] })).toEqual(
+      before,
+    );
+  } finally {
+    if (previous === undefined) delete process.env.ELIZA_TRIGGERS_ENABLED;
+    else process.env.ELIZA_TRIGGERS_ENABLED = previous;
+  }
+});
 it.each([
   {
     triggerType: "interval",

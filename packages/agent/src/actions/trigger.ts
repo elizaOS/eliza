@@ -54,6 +54,7 @@ import {
   readTriggerConfig,
   TRIGGER_TASK_NAME,
   TRIGGER_TASK_TAGS,
+  triggersFeatureEnabled,
 } from "../triggers/runtime.ts";
 import {
   buildTriggerMetadata,
@@ -360,13 +361,6 @@ function displayLabel(name: string): string {
   return stripped.length > 0 ? stripped : name;
 }
 
-function triggersDisabled(runtime: IAgentRuntime): boolean {
-  const setting = runtime.getSetting("ELIZA_TRIGGERS_ENABLED");
-  if (setting === false || setting === "false" || setting === "0") return true;
-  const env = process.env.ELIZA_TRIGGERS_ENABLED;
-  return env === "0" || env === "false";
-}
-
 async function loadTriggerTask(
   runtime: IAgentRuntime,
   taskId: UUID,
@@ -549,7 +543,7 @@ async function opCreate(
   message: Memory,
   params: TriggerParameters,
 ): Promise<ActionResult> {
-  if (triggersDisabled(runtime)) {
+  if (!triggersFeatureEnabled(runtime)) {
     return failed("create", "Triggers are disabled.", "TRIGGERS_OFF");
   }
   // A workflow trigger dispatches a workflow autonomously, so it needs the
