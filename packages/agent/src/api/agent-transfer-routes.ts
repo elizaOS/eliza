@@ -170,14 +170,6 @@ export async function handleAgentTransferRoutes(
     }
 
     const passwordLength = rawBody.readUInt32BE(0);
-    if (passwordLength < AGENT_TRANSFER_MIN_PASSWORD_LENGTH) {
-      error(
-        res,
-        `Password must be at least ${AGENT_TRANSFER_MIN_PASSWORD_LENGTH} characters.`,
-        400,
-      );
-      return true;
-    }
     if (passwordLength > AGENT_TRANSFER_MAX_PASSWORD_BYTES) {
       error(
         res,
@@ -196,6 +188,24 @@ export async function handleAgentTransferRoutes(
     }
 
     const password = rawBody.subarray(4, 4 + passwordLength).toString("utf-8");
+    if (password.length < AGENT_TRANSFER_MIN_PASSWORD_LENGTH) {
+      error(
+        res,
+        `Password must be at least ${AGENT_TRANSFER_MIN_PASSWORD_LENGTH} characters.`,
+        400,
+      );
+      return true;
+    }
+    if (
+      Buffer.byteLength(password, "utf8") > AGENT_TRANSFER_MAX_PASSWORD_BYTES
+    ) {
+      error(
+        res,
+        `Password is too long (max ${AGENT_TRANSFER_MAX_PASSWORD_BYTES} bytes).`,
+        400,
+      );
+      return true;
+    }
     const fileBuffer = rawBody.subarray(4 + passwordLength);
 
     try {
