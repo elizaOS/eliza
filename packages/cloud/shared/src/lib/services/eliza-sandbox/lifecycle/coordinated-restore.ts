@@ -39,10 +39,14 @@ export async function admitCoordinatedAgentBackupRestore(
     backup.lifecycle_revision === null ||
     !backup.manifest_digest
   ) {
-    return { success: false, error: "No backup found" };
+    return { success: false, error: "No backup found", refusal: "not-found" };
   }
   if (!hasAgentBackupRestoreAuthority(backup.catalog_state)) {
-    return { success: false, error: "Backup is not in a restorable catalogue state" };
+    return {
+      success: false,
+      error: "Backup is not in a restorable catalogue state",
+      refusal: "conflict",
+    };
   }
   let begun: Awaited<ReturnType<typeof beginAgentBackupRestore>>;
   try {
@@ -61,7 +65,7 @@ export async function admitCoordinatedAgentBackupRestore(
     // error-policy:J3 a restore owned by another coordinator is a conflict the
     // caller can act on, not a server fault; every other failure propagates.
     if (error instanceof ElizaError && error.code === "AGENT_BACKUP_RESTORE_ALREADY_IN_PROGRESS") {
-      return { success: false, error: COORDINATED_RESTORE_IN_PROGRESS };
+      return { success: false, error: COORDINATED_RESTORE_IN_PROGRESS, refusal: "conflict" };
     }
     throw error;
   }

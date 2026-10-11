@@ -174,10 +174,6 @@ async function readJson<T>(res: Response): Promise<T> {
 const TRAJECTORY_LIST_FETCH_TIMEOUT_MS = 15_000;
 /** Detail GET — independent hop, own 15s deadline. */
 const TRAJECTORY_DETAIL_FETCH_TIMEOUT_MS = 15_000;
-/** Purge DELETE — independent hop, own 15s deadline. */
-const TRAJECTORY_PURGE_FETCH_TIMEOUT_MS = 15_000;
-/** Export GET — independent hop, own 15s deadline. */
-const TRAJECTORY_EXPORT_FETCH_TIMEOUT_MS = 15_000;
 
 function composeTrajectoryFetchSignal(
   caller: AbortSignal | undefined,
@@ -236,54 +232,4 @@ export async function fetchTrajectoryTiming(
     turns,
     flows: payload.flows.filter((flow) => turnIds.has(flow.turnId)),
   };
-}
-
-/**
- * Soft-purge a single trajectory. The server route is wired by the training
- * plugin; if it returns 404 the caller surfaces "not available" rather than
- * silently failing.
- */
-export async function purgeTrajectory(
-  id: string,
-  options: { signal?: AbortSignal } = {},
-): Promise<void> {
-  const res = await fetch(`/api/trajectories/${encodeURIComponent(id)}`, {
-    method: "DELETE",
-    headers: { Accept: "application/json" },
-    signal: composeTrajectoryFetchSignal(
-      options.signal,
-      TRAJECTORY_PURGE_FETCH_TIMEOUT_MS,
-    ),
-  });
-  if (!res.ok) {
-    throw new Error(`purgeTrajectory failed: ${res.status} ${res.statusText}`);
-  }
-  await res.arrayBuffer();
-}
-
-/**
- * Export a trajectory as a signed zip bundle. The server route returns the
- * archive as `application/zip` (with a `X-Eliza-Signature` header carrying the
- * detached signature). Caller is responsible for streaming the blob.
- */
-export async function fetchTrajectoryExport(
-  id: string,
-  options: { signal?: AbortSignal } = {},
-): Promise<Blob> {
-  const res = await fetch(
-    `/api/trajectories/${encodeURIComponent(id)}/export`,
-    {
-      headers: { Accept: "application/zip" },
-      signal: composeTrajectoryFetchSignal(
-        options.signal,
-        TRAJECTORY_EXPORT_FETCH_TIMEOUT_MS,
-      ),
-    },
-  );
-  if (!res.ok) {
-    throw new Error(
-      `fetchTrajectoryExport failed: ${res.status} ${res.statusText}`,
-    );
-  }
-  return res.blob();
 }

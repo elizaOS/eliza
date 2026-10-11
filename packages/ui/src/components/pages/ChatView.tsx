@@ -827,14 +827,19 @@ export function ChatView({
     },
     [setChatReplyTarget, agentName],
   );
+  // Only the assistant message still arriving may end in a partial hidden tag.
+  const lastVisible = visibleMsgs[visibleMsgs.length - 1];
+  const streamingMessageId =
+    chatSending && lastVisible?.role === "assistant" ? lastVisible.id : null;
   const renderChatMessageContent = useCallback(
     (message: ChatMessageData) => (
       <MessageContent
         message={withoutTranscriptReasoning(message)}
         analysisMode={analysisMode}
+        streaming={message.id === streamingMessageId}
       />
     ),
-    [analysisMode],
+    [analysisMode, streamingMessageId],
   );
 
   const messagesContent =

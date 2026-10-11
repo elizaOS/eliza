@@ -720,30 +720,6 @@ function smokeWalletMarketOverview() {
     predictions: [],
   };
 }
-function emptyWalletTradingProfile(url: URL) {
-  return {
-    window: url.searchParams.get("window") ?? "30d",
-    source: url.searchParams.get("source") ?? "all",
-    generatedAt: SMOKE_GENERATED_AT,
-    summary: {
-      totalSwaps: 0,
-      buyCount: 0,
-      sellCount: 0,
-      settledCount: 0,
-      successCount: 0,
-      revertedCount: 0,
-      tradeWinRate: null,
-      txSuccessRate: null,
-      winningTrades: 0,
-      evaluatedTrades: 0,
-      realizedPnlBnb: "0",
-      volumeBnb: "0",
-    },
-    pnlSeries: [],
-    tokenBreakdown: [],
-    recentSwaps: [],
-  };
-}
 function smokeWalletBalances() {
   return {
     evm: {
@@ -3470,18 +3446,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(smokeWalletMarketOverview()),
-    });
-  });
-  await page.route("**/api/wallet/trading/profile**", async (route) => {
-    const request = route.request();
-    if (request.method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(emptyWalletTradingProfile(new URL(request.url()))),
     });
   });
   // The keyless fixture has no realtime voice provider. Keep availability

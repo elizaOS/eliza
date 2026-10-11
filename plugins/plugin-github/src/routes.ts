@@ -16,6 +16,7 @@ import {
   loadMetadata,
   saveCredentials,
 } from "./github-credentials.js";
+import { formatRateLimitMessage, inspectRateLimit } from "./rate-limit.js";
 
 const GITHUB_USER_URL = "https://api.github.com/user";
 const VALIDATION_TIMEOUT_MS = 10_000;
@@ -124,6 +125,22 @@ async function validateToken(
     );
   }
 
+  // An exhausted rate limit answers 403/429 for a valid token; report it as
+  // GitHub refusing the request, not as a rejected token.
+  const rateLimit = inspectRateLimit({
+    status: response.status,
+    response: {
+      headers: {
+        "x-ratelimit-remaining":
+          response.headers.get("x-ratelimit-remaining") ?? undefined,
+        "x-ratelimit-reset":
+          response.headers.get("x-ratelimit-reset") ?? undefined,
+      },
+    },
+  });
+  if (rateLimit.isRateLimited) {
+    throw new TokenValidationError(formatRateLimitMessage(rateLimit), 502);
+  }
   if (response.status === 401) {
     throw new TokenValidationError(
       "Token rejected by GitHub: bad credentials.",

@@ -17,9 +17,14 @@ import {
   type StreamingParseCache,
 } from "./message-parser-incremental";
 
+/**
+ * `streaming` is true while `text` may still grow (a live assistant turn). A
+ * finished message keeps a trailing `<…` that only looks like a partial tag.
+ */
 export function useParsedSegments(
   text: string,
   analysisMode = false,
+  streaming = true,
 ): Segment[] {
   const cacheRef = useRef<StreamingParseCache | null>(null);
   return useMemo(() => {
@@ -28,6 +33,7 @@ export function useParsedSegments(
         text,
         analysisMode,
         cacheRef.current,
+        streaming,
       );
       cacheRef.current = cache;
       return segments;
@@ -38,5 +44,5 @@ export function useParsedSegments(
       cacheRef.current = null;
       return [{ kind: "text", text }];
     }
-  }, [text, analysisMode]);
+  }, [text, analysisMode, streaming]);
 }

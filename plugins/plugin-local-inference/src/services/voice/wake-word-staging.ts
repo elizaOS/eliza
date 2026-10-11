@@ -17,9 +17,21 @@
 
 import { copyFile, mkdir } from "node:fs/promises";
 import path from "node:path";
-import type { VoiceModelVersion } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
+import type {
+	VoiceModelId,
+	VoiceModelVersion,
+} from "@elizaos/plugin-native-inference/model-catalog/voice-models";
 import { localInferenceRoot } from "../paths";
 import { OPENWAKEWORD_DIR_REL_PATH } from "./wake-word";
+/**
+ * True when a standalone download of this voice model is staged into a path a
+ * runtime loader reads. Only the wake-word head has one: every other sub-model
+ * is resolved from the installed Eliza-1 bundle, so a flat download into
+ * `<state-dir>/models/voice/` would never be loaded.
+ */
+export function hasStandaloneVoiceModelStaging(id: VoiceModelId): boolean {
+	return id === "wakeword";
+}
 /** The loader's wake directory: `<state-dir>/local-inference/wake`. */
 export function wakeStagingDir(): string {
 	return path.join(localInferenceRoot(), OPENWAKEWORD_DIR_REL_PATH);
@@ -48,7 +60,7 @@ export function planWakeWordStaging(
 	bundleVoiceDir: string,
 	wakeDir: string = wakeStagingDir(),
 ): WakeStageCopy[] {
-	if (version.id !== "wakeword") return [];
+	if (!hasStandaloneVoiceModelStaging(version.id)) return [];
 	return version.ggufAssets.map((asset) => {
 		const base = path.basename(asset.filename);
 		return {

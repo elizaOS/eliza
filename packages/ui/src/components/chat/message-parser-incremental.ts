@@ -46,6 +46,8 @@ export interface StreamingParseCache {
   /** Exact raw text this cache was built from. */
   readonly raw: string;
   readonly analysisMode: boolean;
+  /** Whether `raw` was parsed as a still-growing (streaming) message. */
+  readonly streaming: boolean;
   /** Normalized (or raw, analysis mode) parse target for `raw`. */
   readonly target: string;
   /** Full `Segment[]` for `target` (returned verbatim on an identity hit). */
@@ -302,12 +304,17 @@ function shiftSegmentOffsets(segment: Segment, by: number): Segment {
   };
 }
 /** Rebuild the cache from scratch with a full parse. */
-function fullRebuild(raw: string, analysisMode: boolean): StreamingParseResult {
-  const target = analysisMode ? raw : normalizeDisplayText(raw);
-  const segments = parseSegments(raw, analysisMode);
+function fullRebuild(
+  raw: string,
+  analysisMode: boolean,
+  streaming: boolean,
+): StreamingParseResult {
+  const target = analysisMode ? raw : normalizeDisplayText(raw, streaming);
+  const segments = parseSegments(raw, analysisMode, streaming);
   const cache: StreamingParseCache = {
     raw,
     analysisMode,
+    streaming,
     target,
     segments,
     hasTrigger: SEGMENT_TRIGGER_RE.test(target),
@@ -327,34 +334,37 @@ export function parseSegmentsStreaming(
   text: string,
   analysisMode: boolean,
   cache: StreamingParseCache | null,
+  streaming = true,
 ): StreamingParseResult {
   if (
     !cache ||
     cache.analysisMode !== analysisMode ||
+    cache.streaming !== streaming ||
     !text.startsWith(cache.raw)
   ) {
-    return fullRebuild(text, analysisMode);
+    return fullRebuild(text, analysisMode, streaming);
   }
   if (text === cache.raw) return { segments: cache.segments, cache };
-  if (analysisMode) return fullRebuild(text, analysisMode);
+  if (analysisMode) return fullRebuild(text, analysisMode, streaming);
   // Removing a stage direction enables whitespace cleanup across the whole
   // reply, including already cached prose. That normalization is not local.
   const normalizationTail = text.slice(cache.normRawCut);
   if (/[*_]/.test(normalizationTail)) {
     parserWork.normalizedChars += normalizationTail.length;
-    const visibleTail = stripHiddenDisplayContent(normalizationTail);
+    const visibleTail = stripHiddenDisplayContent(normalizationTail, streaming);
     if (stripAssistantStageDirections(visibleTail) !== visibleTail) {
-      return fullRebuild(text, analysisMode);
+      return fullRebuild(text, analysisMode, streaming);
     }
   }
   // ── Incremental normalize (clean-seam splice) ─────────────────────
   const normRawCut = computeSafeNormCut(text, cache.normRawCut);
   const windowCore =
     normRawCut > cache.normRawCut
-      ? normalizeDisplayCore(text.slice(cache.normRawCut, normRawCut))
+      ? // Not the end of the text: no trailing partial tag to cut.
+        normalizeDisplayCore(text.slice(cache.normRawCut, normRawCut), false)
       : "";
   const normStableCore = cache.normStableCore + windowCore;
-  const tailCore = normalizeDisplayCore(text.slice(normRawCut));
+  const tailCore = normalizeDisplayCore(text.slice(normRawCut), streaming);
   const target = (normStableCore + tailCore).trim();
   // Seam guard: the new target must extend the previously-stable target prefix.
   // A back-reaching rewrite that crossed the cut breaks this → full parse.
@@ -362,7 +372,7 @@ export function parseSegmentsStreaming(
     cache.targetStableCut > 0 &&
     !target.startsWith(cache.target.slice(0, cache.targetStableCut))
   ) {
-    return fullRebuild(text, analysisMode);
+    return fullRebuild(text, analysisMode, streaming);
   }
   if (!target) {
     const segments: Segment[] = [{ kind: "text", text: "" }];
@@ -407,7 +417,7 @@ export function parseSegmentsStreaming(
   const permissionMode =
     cache.permissionMode || target.includes(PERMISSION_MARKER);
   if (permissionMode) {
-    const rebuilt = fullRebuild(text, analysisMode);
+    const rebuilt = fullRebuild(text, analysisMode, streaming);
     return {
       segments: rebuilt.segments,
       cache: {
@@ -445,7 +455,7 @@ export function parseSegmentsStreaming(
   // global full parse than under this sliced tail scan; the sliced view would
   // render a widget where the full parse renders raw code. Full-parse instead.
   if (hasCoupledFencedUiSpecRisk(tailRegions, target)) {
-    return fullRebuild(text, analysisMode);
+    return fullRebuild(text, analysisMode, streaming);
   }
   const sortedTail = [...tailRegions].sort((a, b) => a.start - b.start);
   const tail = interleaveSegments(target, sortedTail, prevCut);
@@ -494,6 +504,7 @@ export function parseSegmentsStreaming(
     cache: {
       raw: text,
       analysisMode,
+      streaming,
       target,
       segments,
       hasTrigger: true,

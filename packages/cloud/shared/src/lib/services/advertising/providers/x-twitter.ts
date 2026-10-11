@@ -260,7 +260,7 @@ function sumMetrics(metrics?: Record<string, Array<number | null> | null>): Camp
     impressions,
     clicks,
     conversions,
-    ctr: impressions > 0 ? clicks / impressions : 0,
+    ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
     cpc: clicks > 0 ? spend / clicks : 0,
     cpm: impressions > 0 ? (spend / impressions) * 1000 : 0,
   };

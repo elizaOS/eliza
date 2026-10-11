@@ -43,7 +43,9 @@ The code coordinator never fills a code field
 the person has typed in and reports fixed Google reasons (`codeReason`). Bill
 search fails with `account_mismatch` when the connected Google address cannot
 receive the configured recipient's mail (masked addresses are matched by their
-visible parts).
+visible parts). `googleSource.windowDays` searches that number of days up to the
+present time, with `after` as an optional earliest time; without it the fixed
+`after`/`before` range applies.
 
 Hosts must supply reviewed `deriveBillDecision` and exact `controls` policy.
 Neither may come from renderer input, page instructions or a model response.

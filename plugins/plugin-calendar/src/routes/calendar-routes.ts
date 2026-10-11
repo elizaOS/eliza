@@ -22,7 +22,6 @@ import type {
   LifeOpsConnectorSide,
   ListLifeOpsCalendarsRequest,
   PurgeLifeOpsCalendarImportedDataRequest,
-  RebindLifeOpsLinkedCalendarRequest,
   ResolveLifeOpsLinkedCalendarConflictRequest,
   RunLifeOpsLinkedCalendarReconciliationRequest,
   SeedLifeOpsCalendarRequest,
@@ -194,7 +193,7 @@ export async function handleCalendarRoutes(
   }
 
   const linkedActionMatch = pathname.match(
-    /^\/api\/lifeops\/calendar\/links\/([^/]+)(?:\/(reconcile|resolve|disconnect|rebind))?$/,
+    /^\/api\/lifeops\/calendar\/links\/([^/]+)(?:\/(reconcile|resolve|disconnect))?$/,
   );
   if (linkedActionMatch) {
     const linkId = deps.decodePathComponent(linkedActionMatch[1], "link id");
@@ -233,16 +232,6 @@ export async function handleCalendarRoutes(
               linkId,
               body,
             ),
-          );
-        });
-      }
-      if (action === "rebind") {
-        const body =
-          await deps.readJsonBody<RebindLifeOpsLinkedCalendarRequest>();
-        if (!body) return true;
-        return deps.runRoute(async () => {
-          deps.json(
-            await deps.mutationGateway.rebindLinkedCalendar(url, linkId, body),
           );
         });
       }

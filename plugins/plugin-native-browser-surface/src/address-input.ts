@@ -28,7 +28,12 @@ export function parseBrowserAddressInput(
   // single-label hosts (localhost:3000, nas:8080). Requiring a dot in
   // the host let those fall into the scheme test below, where the host
   // name was misread as a protocol and the input was rejected.
-  const hostPort = /^[^\s/:]+:\d+(?:[/?#]|$)/.test(value);
+  // Bracketed IPv6 literals with a port ([::1]:8080) are the same shape:
+  // without the bracket form they fall through to the search fallback even
+  // though the user typed a complete address.
+  const hostPort =
+    /^[^\s/:]+:\d+(?:[/?#]|$)/.test(value) ||
+    /^\[[0-9a-fA-F:.%]+\]:\d+(?:[/?#]|$)/.test(value);
   const explicit = !hostPort && /^[a-z][a-z\d+.-]*:/i.test(value);
   const domain = /^[^\s/?#]+\.[^\s/?#]+(?:[/?#].*)?$/.test(value);
   if (!explicit && !domain && !hostPort && !value.startsWith("//")) {
