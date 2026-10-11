@@ -12,17 +12,43 @@ import {
   ModelType,
   type Provider,
   type ProviderResult,
+  parseToonKeyValue,
 } from "@elizaos/core";
 import { parseJSONObjectFromText } from "@elizaos/core/protocol";
 import { getToken } from "@lifi/sdk";
-import { type Address, formatUnits, parseAbi } from "viem";
+import {
+  type Account,
+  type Address,
+  type Chain,
+  formatUnits,
+  type HttpTransport,
+  type PublicClient,
+  parseAbi,
+} from "viem";
 import { runIntentModel } from "../../../utils/intent-trajectory";
+import { NATIVE_TOKEN_ADDRESS } from "../constants";
 import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import { tokenBalanceTemplate } from "../prompts";
 import { EVMError, EVMErrorCode, type SupportedChain } from "../types";
 import { initWalletProvider } from "./wallet";
 
 const spec = requireProviderSpec("get-balance");
+
+async function readErc20Balance(
+  publicClient: PublicClient<HttpTransport, Chain, Account | undefined>,
+  tokenAddress: Address,
+  owner: Address,
+  decimals: number
+): Promise<string> {
+  const balance = await publicClient.readContract({
+    address: tokenAddress,
+    abi: parseAbi(["function balanceOf(address) view returns (uint256)"]),
+    functionName: "balanceOf",
+    args: [owner],
+    authorizationList: undefined,
+  });
+  return formatUnits(BigInt(balance), decimals);
+}
 
 export const tokenBalanceProvider: Provider = {
   name: spec.name,
@@ -63,7 +89,9 @@ export const tokenBalanceProvider: Provider = {
         modelType: ModelType.TEXT_SMALL,
       });
 
-      const parsed = parseJSONObjectFromText(response) as Record<string, unknown> | null;
+      const parsed =
+        parseToonKeyValue<Record<string, unknown>>(response) ??
+        (parseJSONObjectFromText(response) as Record<string, unknown> | null);
 
       if (!parsed || parsed.error || !parsed.token || !parsed.chain) {
         return { text: "", data: {}, values: {} };
@@ -81,20 +109,15 @@ export const tokenBalanceProvider: Provider = {
       const chainConfig = walletProvider.getChainConfigs(chain as SupportedChain);
       const address = walletProvider.getAddress();
       const tokenData = await getToken(chainConfig.id, token);
-      const publicClient = walletProvider.getPublicClient(chain as SupportedChain);
-      const balanceAbi = parseAbi(["function balanceOf(address) view returns (uint256)"]);
-
-      const balance = BigInt(
-        await publicClient.readContract({
-          address: tokenData.address as Address,
-          abi: balanceAbi,
-          functionName: "balanceOf",
-          args: [address],
-          authorizationList: undefined,
-        })
-      );
-
-      const formattedBalance = formatUnits(balance, tokenData.decimals);
+      const formattedBalance =
+        tokenData.address === NATIVE_TOKEN_ADDRESS
+          ? await walletProvider.getWalletBalanceForChain(chain as SupportedChain)
+          : await readErc20Balance(
+              walletProvider.getPublicClient(chain as SupportedChain),
+              tokenData.address as Address,
+              address,
+              tokenData.decimals
+            );
       const hasBalance = parseFloat(formattedBalance) > 0;
 
       return {
