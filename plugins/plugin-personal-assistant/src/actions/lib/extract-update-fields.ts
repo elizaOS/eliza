@@ -7,6 +7,14 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { parseJsonModelRecord, runExtractorPipeline } from "@elizaos/core";
 import { describeNowForPrompt } from "../../lifeops/time.js";
+import {
+  validateCadenceKind,
+  validatePositiveNumber,
+  validatePriority,
+  validateTitle,
+  validateWeekdays,
+  validateWindows,
+} from "./extracted-field-validators.js";
 
 const VALID_CADENCE_KINDS = new Set([
   "once",
@@ -140,67 +148,12 @@ function parseTimeOfDay(value: string): string | null {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
-function validateTitle(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function validateCadenceKind(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const normalized = value.trim().toLowerCase();
-  return VALID_CADENCE_KINDS.has(normalized) ? normalized : null;
-}
-
-function validateWindows(value: unknown): string[] | null {
-  if (!Array.isArray(value)) {
-    return null;
-  }
-  const normalized = value
-    .filter((item: unknown) => typeof item === "string")
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
-  return normalized.length > 0 ? normalized : null;
-}
-
-function validateWeekdays(value: unknown): number[] | null {
-  if (!Array.isArray(value)) {
-    return null;
-  }
-  const normalized = value.filter(
-    (item: unknown) =>
-      typeof item === "number" &&
-      Number.isInteger(item) &&
-      item >= 0 &&
-      item <= 6,
-  );
-  return normalized.length > 0 ? normalized : null;
-}
-
-function validatePositiveNumber(value: unknown): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    return null;
-  }
-  return value;
-}
-
-function validatePriority(value: unknown): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return null;
-  }
-  return Math.max(1, Math.min(5, Math.round(value)));
-}
-
 function buildUpdateFields(
   parsed: Record<string, unknown>,
 ): ExtractedUpdateFields {
   return {
     title: validateTitle(parsed.title),
-    cadenceKind: validateCadenceKind(parsed.cadenceKind),
+    cadenceKind: validateCadenceKind(parsed.cadenceKind, VALID_CADENCE_KINDS),
     windows: validateWindows(parsed.windows),
     weekdays: validateWeekdays(parsed.weekdays),
     timeOfDay:
