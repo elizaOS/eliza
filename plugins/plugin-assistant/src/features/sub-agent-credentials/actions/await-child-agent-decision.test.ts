@@ -112,4 +112,5 @@ describe("AWAIT_CHILD_AGENT_DECISION", () => {
     expect(result.success).toBe(false)
     expect(result.text).toBe("Missing required parameter: childSessionId")
     expect(bus.awaitDecision).not.toHaveBeenCalled()
-  })});
+  })
+})
