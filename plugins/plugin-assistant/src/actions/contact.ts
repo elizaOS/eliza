@@ -20,7 +20,10 @@
  *              FollowUp service (was SCHEDULE_FOLLOW_UP).
  */
 
-import { resolveCalendarTimeZone } from "@elizaos/contracts";
+import {
+  parseUnambiguousZonedDateTime,
+  resolveCalendarTimeZone,
+} from "@elizaos/contracts";
 import type {
   Action,
   ActionExample,
@@ -1586,7 +1589,18 @@ export function createContactActions(dependencies: ContactActionDependencies): {
         "followup",
       );
     }
-    const scheduledAt = new Date(scheduledAtRaw);
+    const { timeZone } = await resolveCalendarTimeZone(runtime, new Date());
+    // A date-time without an offset is the owner's wall-clock time, not the
+    // host's: `new Date()` would read it in the server's zone.
+    const localWallTime =
+      /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(?::00(?:\.0+)?)?$/.exec(
+        scheduledAtRaw,
+      )?.[1];
+    const scheduledAt = localWallTime
+      ? new Date(
+          parseUnambiguousZonedDateTime(localWallTime, timeZone) ?? Number.NaN,
+        )
+      : new Date(scheduledAtRaw);
     if (Number.isNaN(scheduledAt.getTime())) {
       return fail("Invalid scheduledAt.", "INVALID_SCHEDULED_AT", "followup");
     }
@@ -1633,7 +1647,6 @@ export function createContactActions(dependencies: ContactActionDependencies): {
     const priority: "high" | "medium" | "low" =
       priorityRaw === "high" || priorityRaw === "low" ? priorityRaw : "medium";
     const messageText = readString(params.message);
-    const { timeZone } = await resolveCalendarTimeZone(runtime, new Date());
 
     const task = await followUpService.scheduleFollowUp(
       entityId,
@@ -1895,7 +1908,8 @@ export function createContactActions(dependencies: ContactActionDependencies): {
       },
       {
         name: "scheduledAt",
-        description: "followup: ISO date/time for the follow-up.",
+        description:
+          "followup: ISO date/time for the follow-up. Without an offset it is the owner's local time.",
         required: false,
         schema: { type: "string" as const },
       },
