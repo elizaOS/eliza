@@ -1399,6 +1399,13 @@ export const readAttachmentAction: Action = {
       schema: { type: "string" as const },
     },
     {
+      name: "title",
+      description:
+        "save_as_document only: title for the saved document. Omit to title it from the attachment.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
       name: "offset",
       description: "Zero-based UTF-8 byte offset for an attachment read page.",
       required: false,
