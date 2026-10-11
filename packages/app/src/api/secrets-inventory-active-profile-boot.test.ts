@@ -49,7 +49,7 @@ beforeEach(async () => {
       res,
       url.pathname,
       req.method ?? "GET",
-      { current: null, pendingRestartReasons: [] },
+      { current: null, pendingAgentName: null, pendingRestartReasons: [] },
     );
   });
   server.listen(0, "127.0.0.1");
