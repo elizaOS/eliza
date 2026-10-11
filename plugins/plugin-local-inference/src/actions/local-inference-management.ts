@@ -246,10 +246,11 @@ export const localInferenceManagementAction: Action = {
 		}
 		// The route layer names this argument `id`; the planner only knows it as
 		// `voiceModelId`, so report the missing argument under the declared name.
+		// The route layer also reads `modelId` as the id, so that call still passes.
 		if (
 			(input.op === "trigger_voice_model_update" ||
 				input.op === "pin_voice_model") &&
-			!input.voiceModelId?.trim()
+			!(input.voiceModelId ?? input.modelId)?.trim()
 		) {
 			const result = fail(
 				"LOCAL_INFERENCE_INVALID",
