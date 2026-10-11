@@ -254,10 +254,14 @@ function normalizeStoredText(runtime: IAgentRuntime, text: string): string {
 }
 
 function normalizeLearningKey(text: string): string {
+  // Keep the same token characters as the documents BM25 tokenizer
+  // ([\p{L}\p{M}\p{N}]+): an ASCII-only class erased every non-Latin
+  // learning to an empty key, so the record processor skipped it as a
+  // duplicate and never recorded it.
   return text
     .normalize("NFKC")
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
