@@ -167,3 +167,20 @@ test("0057: search attachment hint from metadata and full payloads; explicit in:
   expect(gmailSearchIncludesTrash("subject:in:trashcan")).toBe(false);
   expect(gmailSearchIncludesTrash(undefined)).toBe(false);
 });
+
+test("text/plain in a later sibling wins over text/html nested in an earlier container", () => {
+  const nest = (levels: number): { mimeType: string; parts: object[] } =>
+    levels === 0
+      ? {
+          mimeType: "multipart/mixed",
+          parts: [
+            { mimeType: "multipart/related", parts: [part("text/html", "<p>HTML version</p>")] },
+            part("text/plain", "PLAIN version"),
+          ],
+        }
+      : { mimeType: "multipart/mixed", parts: [nest(levels - 1)] };
+  expect(extractGmailBodyText(nest(0))).toBe("PLAIN version");
+  // The nesting limit is unchanged: 19 wrapping containers are read, 20 are refused.
+  expect(extractGmailBodyText(nest(19))).toBe("PLAIN version");
+  expect(() => extractGmailBodyText(nest(20))).toThrow("nesting exceeds");
+});

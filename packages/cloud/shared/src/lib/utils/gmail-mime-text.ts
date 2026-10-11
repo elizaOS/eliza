@@ -94,21 +94,13 @@ export function decodeGmailPart(part: GmailPayloadPart, strict = false): string 
 }
 
 /**
- * The first displayable body: the payload's own data, else text/plain then text/html among the
- * parts (recursing into multipart containers), each decoded with its declared charset.
- */
-/**
  * The decoded body of the first part with exactly `mimeType` in the subtree,
  * searching every multipart container before the caller moves on to the next
  * mime type. A container's own nested result must not preempt the caller's
  * preference order: a text/html part inside an early container is not the
  * text/plain body a later sibling part carries.
  */
-function findGmailBodyByMime(
-  payload: GmailPayloadPart,
-  mimeType: string,
-  depth: number,
-): string {
+function findGmailBodyByMime(payload: GmailPayloadPart, mimeType: string, depth: number): string {
   if (depth > 20) throw new Error("Gmail MIME nesting exceeds the supported depth");
   if (!Array.isArray(payload.parts)) return "";
   for (const part of payload.parts) {
@@ -122,6 +114,10 @@ function findGmailBodyByMime(
   return "";
 }
 
+/**
+ * The first displayable body: the payload's own data, else text/plain then text/html among the
+ * parts (recursing into multipart containers), each decoded with its declared charset.
+ */
 export function extractGmailBodyText(
   payload: GmailPayloadPart | null | undefined,
   depth = 0,
@@ -131,7 +127,7 @@ export function extractGmailBodyText(
   if (typeof payload.body?.data === "string") return decodeGmailPart(payload);
   if (!Array.isArray(payload.parts)) return "";
   for (const mimeType of ["text/plain", "text/html"]) {
-    const found = findGmailBodyByMime(payload, mimeType, depth + 1);
+    const found = findGmailBodyByMime(payload, mimeType, depth);
     if (found) return found;
   }
   for (const part of payload.parts) {
