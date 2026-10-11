@@ -401,6 +401,39 @@ function chunkLimitTooSmall(
   );
 }
 
+// The pinned runtimes provide Intl.Segmenter, while the declaration library
+// does not expose its type.
+const GraphemeSegmenter = (
+  Intl as unknown as {
+    Segmenter: new (
+      locale: string,
+      options: { granularity: "grapheme" },
+    ) => { segment(text: string): Iterable<{ segment: string }> };
+  }
+).Segmenter;
+
+const graphemeSegmenter = new GraphemeSegmenter("en", {
+  granularity: "grapheme",
+});
+
+/**
+ * `truncateWellFormed` that also never ends inside a grapheme cluster (a ZWJ
+ * emoji sequence, a regional-indicator flag, a combining mark, or a skin-tone
+ * modifier), so a cluster is never split across two Slack messages. When a
+ * single cluster alone exceeds `maxLength`, fall back to the surrogate-safe
+ * cut; it is the only case with no clean boundary.
+ */
+function truncateGraphemeSafe(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  let end = 0;
+  for (const { segment } of graphemeSegmenter.segment(text)) {
+    if (end + segment.length > maxLength) break;
+    end += segment.length;
+  }
+  if (end > 0) return text.slice(0, end);
+  return truncateWellFormed(text, maxLength);
+}
+
 /**
  * Splits plain Slack message text at newline/space boundaries without ever
  * emitting more than `maxChars`. Unlike `chunkSlackText`, this does not add
@@ -439,10 +472,11 @@ export function splitSlackText(
     }
 
     splitIndex = Math.min(splitIndex, maxChars);
-    // truncateWellFormed backs the cut off by one unit instead of splitting a
-    // surrogate pair; remaining must resume from the actual chunk length, not
-    // the requested splitIndex, or one unit of text would be dropped.
-    const chunk = truncateWellFormed(remaining, splitIndex);
+    // truncateGraphemeSafe backs the cut off to a grapheme boundary instead
+    // of splitting a surrogate pair or a grapheme cluster; remaining must
+    // resume from the actual chunk length, not the requested splitIndex, or
+    // one unit of text would be dropped.
+    const chunk = truncateGraphemeSafe(remaining, splitIndex);
     if (chunk.length === 0) {
       chunkLimitTooSmall("splitSlackText", splitIndex, maxChars);
     }
