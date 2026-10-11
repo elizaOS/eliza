@@ -56,44 +56,33 @@ export async function fetchWithTimeoutGuard(
   init: RequestInit,
   timeoutMs: number,
 ): Promise<Response> {
-  const controller = new AbortController();
   const upstreamSignal = init.signal;
-  let timedOut = false;
-
-  const onAbort = () => {
-    controller.abort();
-  };
-
-  if (upstreamSignal) {
-    if (upstreamSignal.aborted) {
-      controller.abort();
-    } else {
-      upstreamSignal.addEventListener("abort", onAbort, { once: true });
-    }
-  }
-
-  const timeoutHandle = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, timeoutMs);
+  // Use the platform timeout signal so the deadline stays active while the
+  // caller consumes the response body. A manual timer cleared when fetch
+  // resolves would end the deadline at the response headers, and a stalled
+  // body could then keep the caller waiting without bound — the same defect
+  // fixed for the Google MCP fetch in #35403.
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal = upstreamSignal
+    ? AbortSignal.any([upstreamSignal, timeoutSignal])
+    : timeoutSignal;
 
   try {
     return await fetch(input, {
       ...init,
-      signal: controller.signal,
+      signal,
     });
   } catch (err) {
-    if (timedOut && isAbortError(err)) {
+    if (
+      timeoutSignal.aborted &&
+      !upstreamSignal?.aborted &&
+      isAbortError(err)
+    ) {
       throw createTimeoutError(
         `Upstream request timed out after ${timeoutMs}ms`,
       );
     }
     throw err;
-  } finally {
-    clearTimeout(timeoutHandle);
-    if (upstreamSignal) {
-      upstreamSignal.removeEventListener("abort", onAbort);
-    }
   }
 }
 
