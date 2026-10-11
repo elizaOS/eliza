@@ -585,6 +585,42 @@ function lpWriteRejection(
   return undefined;
 }
 
+function lpAmountRejection(params: LpActionParams): string | undefined {
+  if (
+    params.subaction !== "open" &&
+    params.subaction !== "close" &&
+    params.subaction !== "reposition"
+  )
+    return undefined;
+
+  const amount = getAmountParam(params);
+  const values: unknown[] = [];
+
+  if (amount !== undefined && amount !== null) {
+    if (typeof amount === "object") {
+      values.push(amount.value, amount.tokenA, amount.tokenB, amount.lpToken);
+    }
+  }
+
+  values.push(
+    params.amounts?.tokenA,
+    params.amounts?.tokenB,
+    params.amounts?.lpToken,
+    params.tokenAAmount,
+    params.tokenBAmount,
+    params.lpTokenAmount,
+  );
+
+  const invalid = values.find(
+    (value) =>
+      value !== undefined &&
+      value !== null &&
+      !BASE_UNIT_AMOUNT.test(String(value).trim()),
+  );
+  if (invalid === undefined) return undefined;
+  return `LP amount must be a whole number of token base units. Got ${invalid}.`;
+}
+
 async function handleLpOperation(
   runtime: IAgentRuntime,
   lp: LpManagementService,
@@ -1026,6 +1062,11 @@ export const liquidityAction: Action = {
       const rejection = lpWriteRejection(lp, params);
       if (rejection) {
         return { success: false, text: rejection };
+      }
+
+      const amountRejection = lpAmountRejection(params);
+      if (amountRejection) {
+        return { success: false, text: amountRejection };
       }
 
       // GHSA-rqm7-f4jc-84x3: open/close/reposition pend for user confirmation

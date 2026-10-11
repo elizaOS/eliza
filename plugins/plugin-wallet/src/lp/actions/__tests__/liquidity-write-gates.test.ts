@@ -553,6 +553,41 @@ describe("LIQUIDITY planner arguments", () => {
     },
   );
 
+  it("rejects decimal legacy amount forms before confirmation", async () => {
+    const cases = [
+      {
+        action: "open",
+        dex: "raydium",
+        pool: "pool-1",
+        amount: { tokenA: "1.5" },
+      },
+      { action: "open", dex: "raydium", pool: "pool-1", tokenAAmount: "1.5" },
+      {
+        action: "open",
+        dex: "raydium",
+        pool: "pool-1",
+        amounts: { tokenA: "1.5" },
+      },
+    ];
+
+    for (const args of cases) {
+      const setup = registryRuntime();
+      const { prompts, callback } = recordingCallback();
+      const result = await liquidityAction.handler(
+        setup.runtime,
+        message("manage my LP"),
+        undefined,
+        args,
+        callback,
+      );
+
+      expect(result?.success).toBe(false);
+      expect(String(result?.text)).toContain("whole number");
+      expect(prompts).toEqual([]);
+      expect(confirmationKeys(setup.cache)).toHaveLength(0);
+    }
+  });
+
   it("reports a set_preferences call with no preference as a failure and writes nothing", async () => {
     const setup = registryRuntime();
     const updateProfile = vi.fn();
