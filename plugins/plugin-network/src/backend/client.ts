@@ -1,5 +1,6 @@
 /** Signed HTTP client for the Network service's /internal/* endpoints (the Eliza side's NetworkBackend). */
 import { boundedFetch } from "@elizaos/cloud-services-common/transport";
+import { NETWORK_MEMBER_STATES } from "../types.js";
 import {
   RELAY_PATH,
   type RelaySendRequest,
@@ -113,12 +114,30 @@ export class NetworkServiceClient {
     );
   }
 
-  setState(req: SetStateRequest): Promise<SetStateResponse> {
-    return this.#post<SetStateResponse>(
+  async setState(req: SetStateRequest): Promise<SetStateResponse> {
+    const result = await this.#post<SetStateResponse>(
       SET_STATE_PATH,
       req.idempotencyKey,
       req,
     );
+    if (
+      !result ||
+      typeof result !== "object" ||
+      !(result.eventId === null || typeof result.eventId === "string") ||
+      !NETWORK_MEMBER_STATES.includes(result.previous) ||
+      !NETWORK_MEMBER_STATES.includes(result.current) ||
+      !(result.from === null || typeof result.from === "string") ||
+      !(result.until === null || typeof result.until === "string") ||
+      typeof result.committedAt !== "string" ||
+      !Number.isFinite(Date.parse(result.committedAt)) ||
+      typeof result.replayed !== "boolean" ||
+      typeof result.unchanged !== "boolean"
+    )
+      throw new NetworkServiceError(
+        200,
+        "Network service returned an invalid state receipt",
+      );
+    return result;
   }
 
   recordSignals(req: SignalsRequest): Promise<SignalsResponse> {
