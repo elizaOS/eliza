@@ -596,10 +596,11 @@ export const walletRouterAction: Action = {
     },
     {
       name: "toChain",
-      description: "Destination chain for bridge.",
+      description:
+        "Destination chain for bridge. Must be one of the wallet's configured EVM chains, named like target.",
       required: false,
       schema: { type: "string" },
-      examples: ["arbitrum", "optimism", "base"],
+      examples: ["ethereum", "base", "bsc"],
     },
     {
       name: "fromToken",

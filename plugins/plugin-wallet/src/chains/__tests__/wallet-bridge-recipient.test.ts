@@ -129,6 +129,8 @@ function walletRuntime(): {
   vi.mocked(runtime.getService).mockImplementation((name: string) =>
     name === WalletBackendService.serviceType ? service : null,
   );
+  // Every case bridges to arbitrum, and the destination must be a registered chain.
+  service.registerChainHandler(evmHandler("arbitrum", "Arbitrum One", "42161"));
   return { runtime, service };
 }
 

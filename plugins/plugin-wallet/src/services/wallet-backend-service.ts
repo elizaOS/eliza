@@ -187,18 +187,25 @@ export class WalletBackendService extends Service {
   }
 
   async routeWalletAction(
-    params: WalletRouterParams,
+    requested: WalletRouterParams,
   ): Promise<WalletRouterResult> {
-    const handlerResult = this.resolveHandler(params);
+    const handlerResult = this.resolveHandler(requested);
     if (!handlerResult.ok) {
       return handlerResult;
     }
 
     const { handler } = handlerResult;
-    const required = this.validateRequiredParams(params, handler);
+    const required = this.validateRequiredParams(requested, handler);
     if (required) {
       return required;
     }
+    // The executor takes the destination as a handler chain key, so an alias
+    // the preflight accepted ("ethereum", "8453") is passed on resolved.
+    const destination = this.resolveBridgeDestination(requested.toChain);
+    const params: WalletRouterParams =
+      requested.subaction === "bridge" && destination
+        ? { ...requested, toChain: destination.chain }
+        : requested;
 
     if (params.mode === "simulate") {
       const supported =
@@ -367,13 +374,46 @@ export class WalletBackendService extends Service {
     return { ok: true, handler };
   }
 
+  /**
+   * The bridge destination resolves through the same alias map as the source
+   * chain. It must be a registered handler that supports bridge, because the
+   * bridge executor quotes against the wallet's configured chains only.
+   */
+  private resolveBridgeDestination(
+    toChain: string | undefined,
+  ): WalletChainHandler | null {
+    if (!toChain) return null;
+    const key = this.aliases.get(normalizeWalletChainKey(toChain));
+    const handler = key ? this.handlers.get(key) : undefined;
+    return handler?.supportedActions.includes("bridge") ? handler : null;
+  }
+
   private validateRequiredParams(
     params: WalletRouterParams,
     handler: WalletChainHandler,
   ): WalletRouterFailure | null {
     if (params.subaction === "bridge") {
       const detail = validateWalletBridgeParams(params);
-      return detail ? { ok: false, error: "INVALID_PARAMS", detail } : null;
+      if (detail) {
+        return { ok: false, error: "INVALID_PARAMS", detail };
+      }
+      const destination = this.resolveBridgeDestination(params.toChain);
+      if (!destination) {
+        return {
+          ok: false,
+          error: "UNSUPPORTED_CHAIN",
+          detail: `Unsupported destination chain "${params.toChain}" for bridge.`,
+          candidates: this.listChainHandlersForSubaction("bridge"),
+        };
+      }
+      if (destination.chain === handler.chain) {
+        return {
+          ok: false,
+          error: "INVALID_PARAMS",
+          detail: "Source and destination chains must be different for bridge.",
+        };
+      }
+      return null;
     }
     if (params.subaction === "gov") {
       const detail = validateWalletGovParams(params);

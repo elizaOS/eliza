@@ -666,6 +666,73 @@ describe("wallet router action", () => {
     }
   });
 
+  it("resolves the bridge destination before the spend confirmation", async () => {
+    const { runtime, service } = createService();
+    registerDefaultWalletChainHandlers(service, runtime);
+    const bridge = {
+      action: "bridge",
+      fromToken: "ETH",
+      amount: "0.1",
+      mode: "execute",
+    };
+
+    const unconfigured = await run(runtime, {
+      ...bridge,
+      target: "base",
+      toChain: "arbitrum",
+    });
+    expect(unconfigured?.data?.error).toBe("UNSUPPORTED_CHAIN");
+    expect(unconfigured?.data?.requiresConfirmation).toBeUndefined();
+    expect(unconfigured?.text).toBe(
+      'Unsupported destination chain "arbitrum" for bridge. Supported chains: mainnet, base, bsc.',
+    );
+
+    const sameChain = await run(runtime, {
+      ...bridge,
+      target: "8453",
+      toChain: "base",
+    });
+    expect(sameChain?.data?.error).toBe("INVALID_PARAMS");
+    expect(sameChain?.data?.requiresConfirmation).toBeUndefined();
+    expect(sameChain?.text).toBe(
+      "Source and destination chains must be different for bridge.",
+    );
+
+    const aliased = await run(runtime, {
+      ...bridge,
+      target: "base",
+      toChain: "ethereum",
+    });
+    expect(aliased?.data?.error).toBeUndefined();
+    expect(aliased?.data?.requiresConfirmation).toBe(true);
+  });
+
+  it("passes the resolved bridge destination chain key to the handler", async () => {
+    const { runtime, service } = createService();
+    const actions: WalletChainHandler["supportedActions"] = ["bridge"];
+    const base = handler("base", "Base", "8453", "evm", actions);
+    service.registerChainHandler(base);
+    service.registerChainHandler({
+      ...handler("mainnet", "Ethereum", "1", "evm", actions),
+      aliases: ["mainnet", "ethereum"],
+    });
+
+    const result = await runConfirmed(runtime, {
+      action: "bridge",
+      target: "base",
+      toChain: "Ethereum",
+      fromToken: "ETH",
+      amount: "0.1",
+      mode: "execute",
+    });
+
+    expect(result?.success).toBe(true);
+    expect(base.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ subaction: "bridge", toChain: "mainnet" }),
+      expect.any(Object),
+    );
+  });
+
   it("clarifies ambiguous omitted chains", async () => {
     const { runtime, service } = createService();
     const base = handler("base", "Base", "8453", "evm");

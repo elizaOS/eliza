@@ -551,9 +551,11 @@ function viemChainByName(name: string): Chain | null {
 }
 
 /**
- * Bridge is EVM-only: the destination resolves through `viemChainByName` and
- * the recipient becomes the Li.Fi `toAddress`. The preflight and the executor
- * share this rule so a recipient the user confirms is one the bridge accepts.
+ * Bridge is EVM-only: the recipient becomes the Li.Fi `toAddress`. The
+ * preflight and the executor share this rule so a recipient the user confirms
+ * is one the bridge accepts. `WalletBackendService` resolves the destination
+ * to a registered handler chain key, and refuses a destination equal to the
+ * source, before these params reach `routeEvmBridge`.
  */
 function isEvmAddress(value: string): value is Address {
   return /^0x[a-fA-F0-9]{40}$/.test(value);
@@ -573,9 +575,6 @@ export function validateWalletBridgeParams(
   }
   if (!params.toChain) {
     return "toChain (destination) is required for bridge.";
-  }
-  if (params.chain === params.toChain) {
-    return "Source and destination chains must be different for bridge.";
   }
   if (params.recipient && !isEvmAddress(params.recipient)) {
     return "recipient must be a valid EVM address.";
