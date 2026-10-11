@@ -2700,7 +2700,7 @@ async function ensureOutboundRoom(
   target: TargetInfo,
   label: string,
   kind: MessageTargetKind | undefined,
-): Promise<{ roomId: UUID; worldId: UUID }> {
+): Promise<{ roomId: UUID; worldId: UUID | undefined }> {
   const serverPart = target.serverId ?? "default";
   const targetPart =
     target.roomId ??
@@ -2716,6 +2716,11 @@ async function ensureOutboundRoom(
     : (stringToUuid(
         `${runtime.agentId}:${source}:message-room:${serverPart}:${targetPart}`,
       ) as UUID);
+  const existingRoom = await runtime.getRoom(roomId);
+  if (existingRoom) {
+    await runtime.ensureParticipantInRoom(runtime.agentId, roomId);
+    return { roomId, worldId: existingRoom.worldId };
+  }
   await runtime.ensureWorldExists({
     id: worldId,
     name: `${source}${target.serverId ? ` ${target.serverId}` : ""}`,

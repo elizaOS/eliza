@@ -360,9 +360,15 @@ export class EntityStore {
       clauses.push(`e.tags_json LIKE ${sqlQuote(`%"${filter.tag}"%`)}`);
     }
     if (filter?.nameContains) {
-      const needle = sqlQuote(`%${filter.nameContains.toLowerCase()}%`);
+      // The contract is a literal substring match, and the durable-record
+      // backend uses `includes`. Escape the LIKE wildcards in the needle
+      // and set the escape character so `%`, `_`, and `\` stay plain text.
+      const escaped = filter.nameContains
+        .toLowerCase()
+        .replace(/[\\%_]/g, (ch) => `\\${ch}`);
+      const needle = sqlQuote(`%${escaped}%`);
       clauses.push(
-        `(LOWER(e.preferred_name) LIKE ${needle} OR LOWER(COALESCE(e.full_name, '')) LIKE ${needle})`,
+        `(LOWER(e.preferred_name) LIKE ${needle} ESCAPE '\\' OR LOWER(COALESCE(e.full_name, '')) LIKE ${needle} ESCAPE '\\')`,
       );
     }
     if (filter?.hasPlatform || filter?.hasConnectorAccountId) {

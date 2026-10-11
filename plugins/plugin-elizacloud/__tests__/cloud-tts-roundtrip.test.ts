@@ -33,6 +33,8 @@ interface RuntimeOptions {
   enabled?: string | null;
   /** Explicit ELIZAOS_CLOUD_USE_TTS value; null leaves it unset. */
   useTts?: string | null;
+  /** Extra runtime settings (for example ELIZAOS_CLOUD_TTS_VOICE). */
+  settings?: Record<string, string>;
 }
 
 function makeRuntime(opts: RuntimeOptions = {}): IAgentRuntime {
@@ -46,6 +48,7 @@ function makeRuntime(opts: RuntimeOptions = {}): IAgentRuntime {
     ELIZAOS_CLOUD_ENABLED: enabled,
     ELIZAOS_CLOUD_USE_TTS: opts.useTts ?? null,
     ELIZAOS_CLOUD_BASE_URL: baseUrl,
+    ...opts.settings,
   };
   return {
     getSetting: (key: string) => settings[key] ?? undefined,
@@ -329,5 +332,32 @@ describe("plugin-elizacloud TEXT_TO_SPEECH roundtrip", () => {
     // Each request carries its own voice — no stale-state lock-in.
     expect(calls[0].text).toBe("first");
     expect(calls[1].text).toBe("second");
+  });
+
+  it("uses the ELIZAOS_CLOUD_TTS_VOICE and _MODEL settings when the call names none", async () => {
+    const { client, calls } = makeFakeClient(new Uint8Array([1]));
+    setCloudTtsClientFactoryForTesting(() => client);
+    const runtime = makeRuntime({
+      settings: {
+        ELIZAOS_CLOUD_TTS_VOICE: "21m00Tcm4TlvDq8ikWAM",
+        ELIZAOS_CLOUD_TTS_MODEL: "eleven_multilingual_v2",
+      },
+    });
+
+    await handleTextToSpeech(runtime, { text: "configured" });
+    await handleTextToSpeech(runtime, {
+      text: "per call",
+      voiceId: "voice-A",
+      modelId: "eleven_flash_v2_5",
+    });
+
+    expect(calls[0]).toMatchObject({
+      voiceId: "21m00Tcm4TlvDq8ikWAM",
+      modelId: "eleven_multilingual_v2",
+    });
+    expect(calls[1]).toMatchObject({
+      voiceId: "voice-A",
+      modelId: "eleven_flash_v2_5",
+    });
   });
 });

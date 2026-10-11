@@ -9,7 +9,7 @@
  * the exact response shapes the UI consumes.
  */
 
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -20,6 +20,7 @@ import {
 } from "@elizaos/core";
 import type { TranscriptSegment } from "@elizaos/core/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { MobileFsGlobals } from "../shared/fs-sandbox.ts";
 import {
   handleDirectCoreRoute,
   type IosBridgeBackend,
@@ -777,6 +778,64 @@ describe("iOS bridge — conversation message failure surfacing", () => {
       "[ios-bridge] createMemory(messages) failed:",
       expect.anything(),
     );
+  });
+});
+describe("iOS bridge — local-inference verify route", () => {
+  // The bridge reads through the sandboxed fs proxy, which needs the resolver
+  // the native host installs at boot. Pass paths through unchanged so the
+  // route runs against real files in a temp state dir.
+  const fsGlobals = globalThis as MobileFsGlobals;
+  let prevResolver: MobileFsGlobals["__ELIZA_MOBILE_FS_RESOLVE__"];
+  let prevStateDir: string | undefined;
+  let modelsDir: string;
+  beforeEach(() => {
+    prevResolver = fsGlobals.__ELIZA_MOBILE_FS_RESOLVE__;
+    fsGlobals.__ELIZA_MOBILE_FS_RESOLVE__ = (inputPath) => inputPath;
+    prevStateDir = process.env.ELIZA_STATE_DIR;
+    process.env.ELIZA_STATE_DIR = mkdtempSync(
+      path.join(tmpdir(), "ios-bridge-verify-"),
+    );
+    modelsDir = path.join(
+      process.env.ELIZA_STATE_DIR,
+      "local-inference",
+      "models",
+    );
+    mkdirSync(modelsDir, { recursive: true });
+  });
+  afterEach(() => {
+    fsGlobals.__ELIZA_MOBILE_FS_RESOLVE__ = prevResolver;
+    if (prevStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+    else process.env.ELIZA_STATE_DIR = prevStateDir;
+  });
+  it("reports a GGUF file as unknown: no install-time hash exists to compare", async () => {
+    writeFileSync(path.join(modelsDir, "scanned.gguf"), "GGUF-rest-of-file");
+    const res = await call(
+      makeBackend(createFakeRuntime()),
+      "POST",
+      "/api/local-inference/installed/scanned/verify",
+    );
+    expect(res.status).toBe(200);
+    expect(res.json).toEqual({
+      state: "unknown",
+      currentSha256: null,
+      expectedSha256: null,
+      currentBytes: 17,
+    });
+  });
+  it("reports a file without the GGUF magic as truncated", async () => {
+    writeFileSync(path.join(modelsDir, "broken.gguf"), "GG");
+    const res = await call(
+      makeBackend(createFakeRuntime()),
+      "POST",
+      "/api/local-inference/installed/broken/verify",
+    );
+    expect(res.status).toBe(200);
+    expect(res.json).toEqual({
+      state: "truncated",
+      currentSha256: null,
+      expectedSha256: null,
+      currentBytes: 2,
+    });
   });
 });
 describe("iOS bridge — unmatched routes still fall through", () => {

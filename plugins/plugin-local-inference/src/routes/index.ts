@@ -29,6 +29,7 @@ export {
 	setVoiceModelsBundleVersionForTest,
 	setVoiceModelsUpdater,
 	type VoiceModelInstallationView,
+	type VoiceModelsRouteHost,
 } from "./voice-models-routes.js";
 export { voiceProfilePluginRoutes } from "./voice-profile-plugin-routes.js";
 export {

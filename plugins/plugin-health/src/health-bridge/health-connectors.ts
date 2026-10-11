@@ -23,6 +23,9 @@ import {
 
 const HEALTH_CONNECTOR_TIMEOUT_MS = 15_000;
 const HEALTH_CONNECTOR_SYNC_TIMEOUT_MS = 60_000;
+// Strava filters activities by UTC timestamps, but callers select owner-local
+// calendar days. Cover every UTC offset and the API's exclusive time bounds.
+const STRAVA_LOCAL_DATE_QUERY_PADDING_SECONDS = 14 * 60 * 60 + 1;
 
 export class HealthConnectorApiError extends Error {
   constructor(
@@ -303,12 +306,12 @@ function compactSamples(
 }
 
 async function syncStrava(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
-  const after = Math.floor(
-    Date.parse(`${args.startDate}T00:00:00.000Z`) / 1_000,
-  );
-  const before = Math.floor(
-    Date.parse(`${args.endDate}T23:59:59.999Z`) / 1_000,
-  );
+  const after =
+    Math.floor(Date.parse(`${args.startDate}T00:00:00.000Z`) / 1_000) -
+    STRAVA_LOCAL_DATE_QUERY_PADDING_SECONDS;
+  const before =
+    Math.floor(Date.parse(`${args.endDate}T23:59:59.999Z`) / 1_000) +
+    STRAVA_LOCAL_DATE_QUERY_PADDING_SECONDS;
   const [athlete, activitiesJson] = await Promise.all([
     fetchHealthJson({ token: args.token, path: "/athlete" }),
     fetchHealthValue({
@@ -324,6 +327,15 @@ async function syncStrava(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
     const id = getText(activity, "id");
     const startAt = normalizeIso(getText(activity, "start_date"));
     if (!id || !startAt) {
+      continue;
+    }
+    // start_date is UTC; start_date_local is the athlete's wall clock (Strava
+    // writes it with a literal "Z"), so its date is the owner's day.
+    const localDate =
+      /^\d{4}-\d{2}-\d{2}/.exec(
+        getText(activity, "start_date_local") ?? "",
+      )?.[0] ?? localDateFromIso(startAt);
+    if (localDate < args.startDate || localDate > args.endDate) {
       continue;
     }
     const elapsedSeconds = getNumber(activity, "elapsed_time");
@@ -375,6 +387,7 @@ async function syncStrava(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           startAt,
           endAt,
           sourceExternalId: `${id}:distance_meters`,
+          localDate,
         }),
         sample({
           token: args.token,
@@ -385,6 +398,7 @@ async function syncStrava(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           startAt,
           endAt,
           sourceExternalId: `${id}:active_minutes`,
+          localDate,
         }),
         sample({
           token: args.token,
@@ -395,6 +409,7 @@ async function syncStrava(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           startAt,
           endAt,
           sourceExternalId: `${id}:calories`,
+          localDate,
         }),
         sample({
           token: args.token,
@@ -405,6 +420,7 @@ async function syncStrava(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           startAt,
           endAt,
           sourceExternalId: `${id}:heart_rate`,
+          localDate,
         }),
       ]),
     );
@@ -721,6 +737,8 @@ async function syncFitbit(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
               rawWeight !== null ? fitbitWeightKg(rawWeight, weightUnit) : null,
             unit: "kg",
             startAt: loggedAt,
+            // The log's own date is the profile-zone day; loggedAt is UTC.
+            localDate: getText(log, "date") ?? date,
             sourceExternalId:
               getText(log, "logId") ?? `${date}:fitbit:weight_kg`,
             // providerUnit is the unit label Fitbit attached to THIS weight log;
@@ -1107,6 +1125,9 @@ async function syncWithings(
   const activityBody = getRecord(activityJson, "body") ?? {};
   for (const entry of getArray(activityBody, "activities")) {
     const date = getText(entry, "date");
+    // getactivity `active` is a duration in seconds (Withings OpenAPI:
+    // "Sum of intense and moderate activity durations (in seconds)").
+    const activeSeconds = getNumber(entry, "active");
     const startAt = date ? `${date}T12:00:00.000Z` : null;
     const id = date ?? "activity";
     samples.push(
@@ -1124,7 +1145,7 @@ async function syncWithings(
           token: args.token,
           grantId: args.grantId,
           metric: "active_minutes",
-          value: getNumber(entry, "active"),
+          value: activeSeconds === null ? null : activeSeconds / 60,
           unit: "min",
           startAt,
           sourceExternalId: `${id}:withings:active_minutes`,

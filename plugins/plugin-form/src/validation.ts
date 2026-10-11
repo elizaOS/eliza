@@ -667,14 +667,17 @@ export function parseValue(
   control: FormControl,
   controlType?: ControlType,
 ): JsonValue {
-  // Check for custom type handler
+  // Check for custom type handler. The builtin number and boolean parses are
+  // bypassed: both coerce input the shared contract rejects (a partial
+  // number, an unknown or space-wrapped boolean literal) into a fake-valid
+  // value, so the switch below must parse those two types itself.
   const handler = getTypeHandler(control.type, controlType);
   if (
     handler?.parse &&
     !(
       handler === controlType &&
       controlType.builtin &&
-      control.type === "number"
+      (control.type === "number" || control.type === "boolean")
     )
   ) {
     return handler.parse(value);

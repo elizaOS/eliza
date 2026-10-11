@@ -12,6 +12,7 @@ import path from "node:path";
 import process from "node:process";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
+import type { VerifyResult } from "@elizaos/contracts";
 import {
   ChannelType,
   compareMemoryIds,
@@ -51,11 +52,14 @@ import {
   writeDownloadChunk,
 } from "../shared/download-writer.ts";
 import {
+  closeSync,
   createWriteStream,
   existsSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
+  readSync,
   renameSync,
   rmSync,
   statSync,
@@ -2418,6 +2422,39 @@ function normalizeInstalledModelPath(rawPath: string): string | null {
     existsSync(p),
   );
 }
+/**
+ * Structural check behind the Verify button. The iOS registry stores no
+ * install-time sha256, so a present file with a GGUF header is `unknown`,
+ * never `ok`: there is no baseline to compare a hash against.
+ */
+function verifyInstalledModelFile(modelPath: string): VerifyResult {
+  if (!existsSync(modelPath)) {
+    return {
+      state: "missing",
+      currentSha256: null,
+      expectedSha256: null,
+      currentBytes: null,
+    };
+  }
+  const currentBytes = statSync(modelPath).size;
+  const header = Buffer.alloc(4);
+  const fd = openSync(modelPath, "r");
+  let headerBytes: number;
+  try {
+    headerBytes = readSync(fd, header, 0, 4, 0);
+  } finally {
+    closeSync(fd);
+  }
+  return {
+    state:
+      headerBytes === 4 && header.toString("ascii") === "GGUF"
+        ? "unknown"
+        : "truncated",
+    currentSha256: null,
+    expectedSha256: null,
+    currentBytes,
+  };
+}
 function readInstalledModels(): InstalledModelEntry[] {
   const parsed = readJsonObjectFile(localInferenceRegistryPath());
   const rawModels = Array.isArray(parsed.models) ? parsed.models : [];
@@ -3842,13 +3879,7 @@ async function handleNativeIosLocalInferenceRoute(
     const model = readInstalledModels().find((entry) => entry.id === id);
     if (!model)
       return jsonResponse(404, { error: `Model not installed: ${id}` });
-    return jsonResponse(200, {
-      ok: true,
-      modelId: model.id,
-      path: model.path,
-      sizeBytes: model.sizeBytes ?? 0,
-      verifiedAt: new Date().toISOString(),
-    });
+    return jsonResponse(200, verifyInstalledModelFile(model.path));
   }
   return null;
 }

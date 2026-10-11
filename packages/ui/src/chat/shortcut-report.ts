@@ -1,5 +1,6 @@
 /** Reports keyboard and palette interactions and defines settings navigation events. */
 import { getElizaApiBase, getElizaApiToken } from "@elizaos/host/protocol";
+import { fetchWithCsrf } from "../api/csrf-client";
 import { logger } from "../logger.ts";
 export const NAVIGATE_SETTINGS_EVENT = "eliza:navigate:settings";
 /** Shortcut report POST — independent hop, own 15s deadline. */
@@ -10,7 +11,7 @@ async function postShortcutReport(args: {
   shortcutId: string;
   context?: string;
 }): Promise<void> {
-  const res = await fetch(`${args.base}/api/interactions/shortcut`, {
+  const res = await fetchWithCsrf(`${args.base}/api/interactions/shortcut`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
