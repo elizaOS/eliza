@@ -48,6 +48,7 @@ import type {
   TaskGateContribution,
 } from "@elizaos/plugin-scheduling";
 import {
+  configuredDefaultTimeZone,
   createAnchorRegistry,
   createCompletionCheckRegistry,
   createConsolidationRegistry,
@@ -360,6 +361,9 @@ function defaultOwnerFactsProvider(
     // whether the owner is inside a booked/declared travel window at this
     // instant, which is exactly what the `during_travel` gate needs each tick.
     const view = ownerFactsToView(await store.read(), new Date());
+    // With no owner timezone on file, owner_local triggers use the zone saved
+    // in the scheduling plugin settings instead of UTC.
+    view.timezone ??= configuredDefaultTimeZone(runtime);
     const timezone = view.timezone ?? resolveDefaultTimeZone();
     try {
       const repo = new LifeOpsRepository(runtime);

@@ -2,6 +2,7 @@
  * Trigger timezone helpers resolve owner-local cron triggers before they reach
  * the core scheduler.
  */
+import { isValidTimeZone } from "@elizaos/contracts";
 import type { OwnerFactsView } from "./types.js";
 
 /** Sentinel cron timezone that resolves to the owner's current timezone. */
@@ -20,4 +21,16 @@ export function resolveTriggerTz(
 ): string {
   if (tz === OWNER_LOCAL_TZ) return ownerFacts?.timezone ?? "UTC";
   return tz;
+}
+
+/**
+ * The time zone saved in the scheduling plugin settings ("Timezone",
+ * DEFAULT_TIMEZONE), used for the owner when no owner timezone is on file.
+ */
+export function configuredDefaultTimeZone(runtime: {
+  getSetting?: (key: string) => unknown;
+}): string | undefined {
+  const value = runtime.getSetting?.("DEFAULT_TIMEZONE");
+  const zone = typeof value === "string" ? value.trim() : "";
+  return zone && isValidTimeZone(zone) ? zone : undefined;
 }

@@ -96,6 +96,7 @@ import {
   createSchedulingSqlScheduledTaskLogStore,
   createSchedulingSqlScheduledTaskStore,
 } from "./store.js";
+import { configuredDefaultTimeZone } from "./trigger-tz.js";
 import {
   type ActivitySignalBusView,
   type GlobalPauseView,
@@ -501,7 +502,12 @@ function defaultRunnerDeps(
         ? createSchedulingSqlScheduledTaskLogStore({ runtime, agentId })
         : createInMemoryScheduledTaskLogStore()),
     dispatcher: createDefaultScheduledTaskDispatcher(runtime, store),
-    ownerFacts: () => ({}) as OwnerFactsView,
+    // Without an owner fact store, the owner zone is the one saved in the
+    // plugin settings (owner_local triggers otherwise run in UTC).
+    ownerFacts: () => {
+      const timezone = configuredDefaultTimeZone(runtime);
+      return (timezone ? { timezone } : {}) as OwnerFactsView;
+    },
     globalPause: ALWAYS_ALLOW_GLOBAL_PAUSE,
     activity: makeMissingActivityBusView(runtime),
     subjectStore: makeMissingSubjectStoreView(runtime),

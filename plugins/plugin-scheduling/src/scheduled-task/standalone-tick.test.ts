@@ -120,6 +120,46 @@ describe("standalone scheduling tick", () => {
     expect(again.fires.filter((f) => f.outcome === "fired")).toEqual([]);
   });
 
+  it("fires an owner-local cron task in the zone saved in the plugin settings", async () => {
+    const runtime = makeFakeRuntime();
+    // The scheduling plugin settings field "Timezone" saves DEFAULT_TIMEZONE.
+    (runtime as { getSetting: unknown }).getSetting = (key: string) =>
+      key === "DEFAULT_TIMEZONE" ? "America/New_York" : undefined;
+    const service = await startServiceOn(runtime);
+    const runner = service.getRunner({
+      agentId: runtime.agentId,
+      now: () => new Date("2026-10-12T03:00:00.000Z"),
+    });
+    const task = await runner.schedule({
+      kind: "reminder",
+      promptInstructions: "8am owner-local reminder",
+      trigger: { kind: "cron", expression: "0 8 * * *", tz: "owner_local" },
+      priority: "low",
+      respectsGlobalPause: false,
+      source: "user_chat",
+      createdBy: runtime.agentId,
+      ownerVisible: true,
+      // The SQL and record stores project the row's creation time here; the
+      // in-memory store does not, so set it as production rows carry it.
+      metadata: { createdAtIso: "2026-10-12T03:00:00.000Z" },
+    });
+
+    // 08:00 UTC is 04:00 in New York: not the owner's 8am.
+    const utcEight = await runStandaloneSchedulingTick(runtime, {
+      now: new Date("2026-10-12T08:00:30.000Z"),
+    });
+    expect(utcEight.fires).toEqual([]);
+
+    // 12:00 UTC is 08:00 EDT.
+    const ownerEight = await runStandaloneSchedulingTick(runtime, {
+      now: new Date("2026-10-12T12:00:30.000Z"),
+    });
+    expect(ownerEight.errors).toEqual([]);
+    expect(ownerEight.fires).toEqual([
+      { taskId: task.taskId, outcome: "fired" },
+    ]);
+  });
+
   it("uses one durable core TaskService worker row and removes it on unload", async () => {
     const workerByName = new Map<string, TaskWorker>();
     const taskById = new Map<UUID, Task>();

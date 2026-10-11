@@ -20,8 +20,9 @@
  *   that provider's owner (PA) runs the production tick with owner facts,
  *   quiet-hours gates, escalation ladders, and completion timeouts. The check
  *   runs EVERY tick, so a host that registers after boot takes over cleanly.
- * - **Reuses the runner's own safety.** Dueness comes from the shared
- *   {@link isScheduledTaskDue}; firing goes through `fireWithResult` whose
+ * - **Reuses the runner's own safety.** Dueness comes from the runner's
+ *   `resolveDueDecision` (owner facts and anchors, so `owner_local` cron
+ *   triggers fire in the owner's zone); firing goes through `fireWithResult` whose
  *   CAS claim makes a race with any other driver observable (`raced`) instead
  *   of a double-fire.
  * - **Stays small on purpose.** No completion-timeout follow-ups, no
@@ -37,7 +38,6 @@ import {
   type TaskMetadata,
   type UUID,
 } from "@elizaos/core";
-import { isScheduledTaskDue } from "./due.js";
 import type { ScheduledTaskFireResult } from "./runner.js";
 import {
   getScheduledTaskRunner,
@@ -104,7 +104,9 @@ export async function runStandaloneSchedulingTick(
   for (const task of tasks) {
     if (task.state.status === "dismissed") continue;
     try {
-      const decision = await isScheduledTaskDue(task, { now });
+      // The runner's due check passes owner facts (owner_local zone) and
+      // anchors; a bare isScheduledTaskDue would read owner_local as UTC.
+      const decision = await runner.resolveDueDecision(task);
       if (!decision.due) continue;
       // `allowTerminalRefire` lets a due next occurrence of a RECURRING task
       // reopen from a parked status; `fireWithResult`'s own refire guard
