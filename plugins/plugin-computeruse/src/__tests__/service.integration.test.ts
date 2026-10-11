@@ -389,6 +389,19 @@ describe("ComputerUseService validates input before the approval gate", () => {
     expect(result.error).not.toContain("paused");
   }, 10_000);
 
+  it("rejects a non-left click_with_modifiers button at validation, not the gate", async () => {
+    const result = await service.executeDesktopAction({
+      action: "click_with_modifiers",
+      coordinate: [400, 300],
+      modifiers: ["cmd"],
+      button: "right",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("only clicks the left button");
+    expect(result.error).not.toContain("paused");
+  }, 10_000);
+
   it("rejects a targetless window focus at validation, not the gate", async () => {
     const result = await service.executeWindowAction({ action: "focus" });
 

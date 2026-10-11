@@ -74,4 +74,32 @@ describe("COMPUTER_USE surfaces real platform failures as success:false + error"
       computerUseAction: "launch",
     });
   });
+
+  it("names the missing field when resolve_approval has no decision", async () => {
+    const { runtime, attach } = makeRuntime();
+    const service = (await ComputerUseService.start(
+      runtime,
+    )) as ComputerUseService;
+    attach(service);
+    const handler = useComputerAction.handler;
+    if (!handler) throw new Error("COMPUTER_USE handler missing");
+
+    try {
+      const result = await handler(
+        runtime,
+        {
+          ...message,
+          content: { action: "resolve_approval", approvalId: "abc123" },
+        } as unknown as Memory,
+        undefined,
+        undefined,
+      );
+
+      expect(result?.success).toBe(false);
+      expect(result?.error).toContain("approved");
+      expect(result?.error).not.toContain("Unknown COMPUTER_USE action");
+    } finally {
+      await service.stop();
+    }
+  });
 });

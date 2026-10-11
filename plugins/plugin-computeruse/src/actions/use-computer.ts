@@ -316,15 +316,9 @@ export const useComputerAction: Action = {
     {
       name: "button",
       description:
-        "Mouse button for click_with_modifiers and mouse_down/mouse_up (default left).",
+        "Mouse button for mouse_down/mouse_up (default left). click_with_modifiers always clicks the left button once.",
       required: false,
       schema: { type: "string", enum: ["left", "middle", "right"] },
-    },
-    {
-      name: "clicks",
-      description: "Number of clicks for click_with_modifiers.",
-      required: false,
-      schema: { type: "number", minimum: 1, maximum: 5 },
     },
     {
       name: "scrollDirection",
@@ -464,6 +458,22 @@ export const useComputerAction: Action = {
           source: "computeruse",
           computerUseAction: "COMPUTER_USE",
           approval: resolution,
+        },
+      };
+    }
+
+    if (params.action === "resolve_approval") {
+      // parseApprovalDecision returned null: the decision is incomplete.
+      const text =
+        "resolve_approval requires approvalId (string) and approved (boolean).";
+      return {
+        success: false,
+        error: text,
+        text,
+        data: {
+          source: "computeruse",
+          computerUseAction: "COMPUTER_USE",
+          errorCode: "COMPUTER_USE_APPROVAL_ARGS_MISSING",
         },
       };
     }

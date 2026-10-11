@@ -2212,6 +2212,15 @@ export class ComputerUseService extends Service {
       this.requireCoordinate(params.coordinate, action);
     }
     switch (action) {
+      case "click_with_modifiers":
+        // The drivers click the left button only; a declared non-left button
+        // would otherwise be dropped and reported as a successful click.
+        if (params.button && params.button !== "left") {
+          throw new Error(
+            `click_with_modifiers only clicks the left button (got ${params.button})`,
+          );
+        }
+        break;
       case "type":
         if (!params.text) throw new Error("text is required for type action");
         break;
