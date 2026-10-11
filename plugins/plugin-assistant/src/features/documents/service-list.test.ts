@@ -225,6 +225,99 @@ describe("DocumentService complete source reads", () => {
   }, 120_000);
 });
 
+describe("DOCUMENT action schema-valid planner arguments", () => {
+  async function makeActionHarness() {
+    const harness = await makeHarness();
+    await harness.adapter.createWorlds([
+      {
+        id: WORLD_ID,
+        agentId: AGENT_ID,
+        metadata: { roles: { [USER_ID]: "USER" } },
+      },
+    ]);
+    harness.runtime.services.set(DocumentService.serviceType, [
+      harness.service,
+    ]);
+    const added = await harness.service.addDocument({
+      agentId: AGENT_ID,
+      worldId: WORLD_ID,
+      roomId: ROOM_A,
+      entityId: AGENT_ID,
+      contentType: "text/plain",
+      originalFilename: "launch-notes.txt",
+      content: "Launch notes line one\nLaunch notes line two\n",
+      scope: "global",
+    });
+    const run = async (parameters: Record<string, unknown>) => {
+      const actionResult = await documentAction.handler(
+        harness.runtime,
+        userMessage(),
+        undefined,
+        { parameters },
+      );
+      if (!actionResult) throw new Error("Document action returned no result");
+      return actionResult;
+    };
+    return { ...harness, documentId: added.storedDocumentMemoryId, run };
+  }
+
+  it("treats the advertised limit 0 placeholder as no limit for read and search", async () => {
+    const { documentId, run } = await makeActionHarness();
+
+    const read = await run({ action: "read", documentId, limit: 0 });
+    expect(read.success, read.text).toBe(true);
+    expect(read.text).toBe("Launch notes line one\nLaunch notes line two\n");
+
+    const search = await run({
+      action: "search",
+      query: "launch notes",
+      searchMode: "keyword",
+      limit: 0,
+    });
+    expect(search.success, search.text).toBe(true);
+  });
+
+  it("rejects a list or search filter value it cannot read", async () => {
+    const { run } = await makeActionHarness();
+
+    for (const action of ["list", "search"]) {
+      const byName = await run({ action, query: "launch", addedBy: "Alice" });
+      expect(byName.success).toBe(false);
+      expect(byName.values).toMatchObject({ error: "DOCUMENT_INVALID_FILTER" });
+
+      const byPhrase = await run({
+        action,
+        query: "launch",
+        timeRangeStart: "last week",
+      });
+      expect(byPhrase.success).toBe(false);
+      expect(byPhrase.values).toMatchObject({
+        error: "DOCUMENT_INVALID_FILTER",
+      });
+    }
+
+    const filtered = await run({
+      action: "list",
+      addedBy: OTHER_USER_ID,
+      timeRangeStart: "2020-01-01",
+    });
+    expect(filtered.success, filtered.text).toBe(true);
+    expect(filtered.values).toMatchObject({ status: "filter_miss" });
+  });
+
+  it("refuses a forbidden URL import before it fetches the URL", async () => {
+    const { run } = await makeActionHarness();
+
+    const refused = await run({
+      action: "import_url",
+      url: "http://127.0.0.1:1/big.pdf",
+      scope: "global",
+    });
+    expect(refused.success).toBe(false);
+    expect(refused.values).toMatchObject({ error: "forbidden" });
+  });
+});
+
 describe("DocumentService list semantics", () => {
   it("excludes room documents immediately after membership revocation", async () => {
     const { adapter, runtime, service } = await makeHarness();
