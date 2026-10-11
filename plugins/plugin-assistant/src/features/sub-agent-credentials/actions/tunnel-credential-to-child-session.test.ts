@@ -76,6 +76,20 @@ describe("TUNNEL_CREDENTIAL_TO_CHILD_SESSION", () => {
     expect(result.success).toBe(false);
   });
 
+  test("validate passes without arguments when the bridge is registered", async () => {
+    const bridge: SubAgentCredentialBridge = {
+      declareScope: vi.fn(),
+      tunnelCredential: vi.fn(),
+    }
+    const ok = await tunnelCredentialToChildSessionAction.validate(
+      createRuntime({
+        [SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE]: bridge,
+      }) as never,
+      message() as never,
+      undefined,
+    )
+    expect(ok).toBe(true)
+  })
   test("validate fails when bridge service is missing", async () => {
     const ok = await tunnelCredentialToChildSessionAction.validate(
       createRuntime({}) as never,
