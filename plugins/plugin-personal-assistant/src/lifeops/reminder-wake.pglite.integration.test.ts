@@ -1,5 +1,8 @@
 /** Same durable scheduler row and real reminder processing, driven by a virtual
  * core clock. Notification sink records deliveries; no network/model inference. */
+
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import {
   AgentEventService,
   attestDeliveryAudienceFromCanonicalRoom,
@@ -545,6 +548,91 @@ it("quiet-blocked due work consumes its wake without a one-second retry loop", a
     expect(model).not.toHaveBeenCalled();
   } finally {
     model.mockRestore();
+    await f.cleanup();
+  }
+}, 120000);
+
+it("a long SMS reminder whose second part Twilio rejects is not sent again", async () => {
+  const f = await createLifeOpsTestRuntime();
+  const bodies: string[] = [];
+  const twilio = createServer((request, response) => {
+    let form = "";
+    request.on("data", (chunk) => {
+      form += chunk;
+    });
+    request.on("end", () => {
+      bodies.push(new URLSearchParams(form).get("Body") ?? "");
+      const accepted = bodies.length === 1;
+      response.writeHead(accepted ? 201 : 400, {
+        "Content-Type": "application/json",
+      });
+      response.end(
+        JSON.stringify(accepted ? { sid: "SM1" } : { message: "rejected" }),
+      );
+    });
+  });
+  await new Promise<void>((resolve) => twilio.listen(0, "127.0.0.1", resolve));
+  vi.stubEnv(
+    "ELIZA_MOCK_TWILIO_BASE",
+    `http://127.0.0.1:${(twilio.address() as AddressInfo).port}`,
+  );
+  vi.stubEnv("TWILIO_ACCOUNT_SID", "ACtest");
+  vi.stubEnv("TWILIO_AUTH_TOKEN", "token");
+  vi.stubEnv("TWILIO_PHONE_NUMBER", "+15550000000");
+  // The model writes the SMS body; this one is over the 1600-character limit.
+  const model = vi
+    .spyOn(f.runtime, "useModel")
+    .mockResolvedValue("word ".repeat(400).trim());
+  try {
+    const service = new LifeOpsService(f.runtime);
+    await service.upsertChannelPolicy({
+      channelType: "sms",
+      channelRef: "+15551234567",
+      allowReminders: true,
+    });
+    const due = Date.now() + 90000;
+    await service.createDefinition({
+      title: "Long SMS proof",
+      kind: "habit",
+      cadence: {
+        kind: "once",
+        dueAt: new Date(due).toISOString(),
+        visibilityLeadMinutes: 0,
+      },
+      timezone: "UTC",
+      metadata: { ownerSurface: "OWNER_REMINDERS" },
+      reminderPlan: {
+        steps: [{ channel: "sms", offsetMinutes: 0, label: "Text" }],
+      },
+    });
+    vi.setSystemTime(new Date(due));
+    await service.processReminders({
+      now: new Date(due).toISOString(),
+      scope: "definitions",
+    });
+    expect(bodies).toHaveLength(2);
+    const attempts = await service.repository.listReminderAttempts(
+      f.runtime.agentId,
+    );
+    expect(attempts.filter((a) => a.channel === "sms")).toEqual([
+      expect.objectContaining({
+        outcome: "blocked_connector",
+        deliveryMetadata: expect.objectContaining({
+          reason: "runtime_send_acceptance_unknown",
+          providerMessageIds: ["SM1"],
+        }),
+      }),
+    ]);
+    vi.setSystemTime(new Date(due + 1000));
+    await service.processReminders({
+      now: new Date(due + 1000).toISOString(),
+      scope: "definitions",
+    });
+    expect(bodies).toHaveLength(2);
+  } finally {
+    model.mockRestore();
+    vi.unstubAllEnvs();
+    await new Promise((resolve) => twilio.close(resolve));
     await f.cleanup();
   }
 }, 120000);

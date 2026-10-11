@@ -40,6 +40,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.build.json",
+    "test": "bun test --conditions=eliza-source test",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-phone -- bun run build:unlocked",
     "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",

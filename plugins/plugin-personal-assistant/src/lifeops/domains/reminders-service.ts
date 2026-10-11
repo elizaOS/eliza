@@ -5094,6 +5094,12 @@ export class RemindersDomain {
                 outcome = "blocked_connector";
                 deliveryMetadata.error = result.error ?? "sms delivery failed";
                 deliveryMetadata.status = result.status;
+                if (result.sids?.length) {
+                  // Twilio accepted the earlier parts of a long body. A second
+                  // dispatch would send those parts to the recipient again.
+                  deliveryMetadata.reason = "runtime_send_acceptance_unknown";
+                  deliveryMetadata.providerMessageIds = result.sids;
+                }
               } else {
                 deliveryMetadata.sid = result.sid ?? null;
                 deliveryMetadata.status = result.status;
@@ -5963,7 +5969,7 @@ export class RemindersDomain {
         .filter(
           (attempt) =>
             isDeliveredReminderOutcome(attempt.outcome) ||
-            (attempt.channel === "in_app" &&
+            ((attempt.channel === "in_app" || attempt.channel === "sms") &&
               attempt.outcome === "blocked_connector" &&
               attempt.deliveryMetadata.reason ===
                 "runtime_send_acceptance_unknown"),

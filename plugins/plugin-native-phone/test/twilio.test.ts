@@ -81,6 +81,15 @@ describe("sendTwilioSms", () => {
     expect(bodies.join("")).toBe(body);
   });
 
+  test("a space at the start of a part is not sent as its own message", async () => {
+    const body = `${"a".repeat(1600)} ${"b".repeat(1600)}`;
+
+    await sendTwilioSms({ credentials, to: "+15551234567", body });
+
+    expect(bodies.map((part) => part.length)).toEqual([1600, 1600, 1]);
+    expect(bodies.join("")).toBe(body);
+  });
+
   test("a short body is sent as one message", async () => {
     const result = await sendTwilioSms({
       credentials,

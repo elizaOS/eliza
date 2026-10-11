@@ -64,7 +64,8 @@ function splitSmsBody(body: string): string[] {
   while (rest.length > TWILIO_BODY_MAX_LENGTH) {
     const window = rest.slice(0, TWILIO_BODY_MAX_LENGTH);
     let end = Math.max(window.lastIndexOf(" "), window.lastIndexOf("\n")) + 1;
-    if (end === 0) {
+    // A break at index 0 would send a part that is only whitespace.
+    if (end <= 1) {
       end = TWILIO_BODY_MAX_LENGTH;
       const last = rest.charCodeAt(end - 1);
       if (last >= 0xd800 && last <= 0xdbff) end -= 1;
