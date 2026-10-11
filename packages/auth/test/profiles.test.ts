@@ -294,6 +294,16 @@ describe("profiles — routing config persistence", () => {
         },
       ],
     },
+    {
+      // Only a trailing `*` is a wildcard.
+      rules: [
+        {
+          keyPattern: "OPEN*KEY",
+          profileId: "work",
+          scope: { kind: "agent", agentId: "agent-A" },
+        },
+      ],
+    },
   ])(
     "rejects a malformed write without replacing stored rules",
     async (invalid) => {

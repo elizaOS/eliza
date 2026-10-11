@@ -23,7 +23,10 @@ export interface RoutingScope {
 }
 
 export interface RoutingRule {
-  /** Exact-match against the vault key (e.g. "OPENROUTER_API_KEY"). */
+  /**
+   * The vault key ("OPENROUTER_API_KEY"), or a prefix ending in `*` that
+   * matches every key starting with it ("OPENROUTER_*").
+   */
   readonly keyPattern: string;
   readonly scope: RoutingScope;
   readonly profileId: string;
@@ -103,6 +106,14 @@ export async function writeRoutingConfig(
   config: unknown,
 ): Promise<void> {
   const normalized = validateRoutingConfig(config);
+  // Only a trailing `*` is a wildcard; any other `*` would never match, so
+  // reject it when the rule is saved. (Reads stay lenient so a config saved
+  // before this check still loads.)
+  normalized.rules.forEach((rule, index) => {
+    if (rule.keyPattern.slice(0, -1).includes("*")) {
+      throw new RoutingConfigError(`rules[${index}].keyPattern`);
+    }
+  });
   await vault.set(ROUTING_KEY, JSON.stringify(normalized));
 }
 
