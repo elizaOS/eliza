@@ -120,38 +120,13 @@ export function validateWalletGovParams(
     if (!params.op) {
       return "op is required for governance actions.";
     }
-    requireGovernor(params);
-    switch (params.op) {
-      case "propose":
-        requireArray(params, "targets");
-        requireArray(params, "values");
-        requireArray(params, "calldatas");
-        requireDescription(params);
-        break;
-      case "vote":
-        requireProposalId(params);
-        if (params.support === undefined) {
-          return "support is required for governance vote.";
-        }
-        break;
-      case "queue":
-        requireArray(params, "targets");
-        requireArray(params, "values");
-        requireArray(params, "calldatas");
-        requireDescription(params);
-        break;
-      case "execute":
-        requireProposalId(params);
-        requireArray(params, "targets");
-        requireArray(params, "values");
-        requireArray(params, "calldatas");
-        requireDescription(params);
-        break;
-    }
-    // Run the signer path's parsing and ABI encoding now, so a malformed
-    // proposalId, target, value or calldata is refused before the user is
-    // asked to confirm instead of after.
+    // Run the signer path's presence checks, parsing and ABI encoding now, so
+    // a missing or malformed governor, proposalId, target, value or calldata
+    // is refused before the user is asked to confirm instead of after.
     encodeWalletGovData(params);
+    if (params.op === "vote" && params.support === undefined) {
+      return "support is required for governance vote.";
+    }
     return null;
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
