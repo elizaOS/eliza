@@ -966,9 +966,9 @@ const rawPersonalAssistantPlugin: Plugin = {
     startup.runAfterInit(
       () => registerLifeOpsCalendarGate(runtime),
       (error) => {
-        logger.error(
-          `[lifeops] failed to register calendar host gate: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        runtime.reportError("LifeOps.calendarGate", error, {
+          recovery: "restart",
+        });
       },
     );
     // Expired, revoked, and already-consumed private card files are a separate

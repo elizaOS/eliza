@@ -46,7 +46,7 @@ function validateReadRequest(value: unknown): SharedGoogleReadRequest {
     request.kind === "calendar" &&
     typeof request.timeMin === "string" &&
     typeof request.timeMax === "string" &&
-    (request.timeZone === undefined || typeof request.timeZone === "string")
+    typeof request.timeZone === "string"
   ) {
     const start = Date.parse(request.timeMin),
       end = Date.parse(request.timeMax);
@@ -55,11 +55,18 @@ function validateReadRequest(value: unknown): SharedGoogleReadRequest {
         code: "SHARED_GOOGLE_CALENDAR_WINDOW_REQUIRED",
       });
     }
+    const timeZone = bounded(request.timeZone, 100);
+    try {
+      // An unknown zone would otherwise surface later as a provider-side failure after consent.
+      new Intl.DateTimeFormat("en-US", { timeZone });
+    } catch {
+      throw new ElizaError("SHARED_GOOGLE_INVALID_INPUT", { code: "SHARED_GOOGLE_INVALID_INPUT" });
+    }
     return {
       kind: "calendar",
       timeMin: new Date(start).toISOString(),
       timeMax: new Date(end).toISOString(),
-      timeZone: request.timeZone === undefined ? "UTC" : bounded(request.timeZone, 100),
+      timeZone,
     };
   }
   throw new ElizaError("SHARED_GOOGLE_INVALID_INPUT", { code: "SHARED_GOOGLE_INVALID_INPUT" });

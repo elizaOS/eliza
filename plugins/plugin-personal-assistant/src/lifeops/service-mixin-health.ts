@@ -12,8 +12,6 @@ import type {
   LifeOpsHealthConnectorProvider,
   LifeOpsHealthConnectorStatus,
   LifeOpsHealthSummaryResponse,
-  StartLifeOpsHealthConnectorRequest,
-  StartLifeOpsHealthConnectorResponse,
   SyncLifeOpsHealthConnectorRequest,
 } from "@elizaos/contracts";
 import type {
@@ -38,13 +36,6 @@ export type LifeOpsHealthServicePublic = {
     requestUrl: URL,
     requestedMode?: LifeOpsConnectorMode,
     requestedSide?: LifeOpsConnectorSide,
-  ): Promise<LifeOpsHealthConnectorStatus>;
-  startHealthConnector(
-    request: StartLifeOpsHealthConnectorRequest,
-    requestUrl: URL,
-  ): Promise<StartLifeOpsHealthConnectorResponse>;
-  completeHealthConnectorCallback(
-    callbackUrl: URL,
   ): Promise<LifeOpsHealthConnectorStatus>;
   disconnectHealthConnector(
     request: DisconnectLifeOpsHealthConnectorRequest,

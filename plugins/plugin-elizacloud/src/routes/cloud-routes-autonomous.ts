@@ -4,7 +4,6 @@ import type http from "node:http";
 import path from "node:path";
 import { ELIZA_CLOUD_CLIENT_ADDRESS_KEY_ENV } from "../cloud/cloud-wallet.js";
 import { applyCanonicalSetupConfig } from "../lib/config-like";
-import { invalidateCloudAccountCache } from "../cloud-providers/cloud-account";
 import { getOrCreateClientAddressKey } from "../cloud/cloud-wallet.js";
 import { isCliLoginSessionId } from "@elizaos/cloud-sdk";
 import { isCloudInferenceSelectedInConfig } from "@elizaos/host/protocol";
@@ -16,7 +15,6 @@ import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
 import { persistCloudWalletCache } from "../cloud/cloud-wallet.js";
 import { persistConfigEnv } from "../lib/config-env";
 import { provisionCloudWallets } from "../cloud/cloud-wallet.js";
-import { readJsonBody as parseJsonBody } from "../lib/http";
 import { resolveStateDir } from "../lib/state-paths";
 import { sendJson } from "../lib/http";
 import { sendJsonError } from "../lib/http";
@@ -32,13 +30,6 @@ export interface CloudConfigLike {
     };
 }
 interface CloudClientLike {
-    listAgents: () => Promise<unknown>;
-    createAgent: (args: {
-        agentName: string;
-        agentConfig?: Record<string, unknown>;
-        environmentVars?: Record<string, string>;
-    }) => Promise<unknown>;
-    deleteAgent: (agentId: string) => Promise<unknown>;
     getAgentWallet: (agentId: string, chain: CloudChainType) => Promise<CloudWalletDescriptor>;
     provisionWallet: (input: {
         chainType: CloudChainType;
@@ -55,17 +46,11 @@ interface CloudClientLike {
         provider: CloudWalletProvider;
     }>;
 }
-interface ConnectedCloudAgentLike {
-    agentName: string;
-}
 interface CloudManagerLike {
     init?: () => Promise<void>;
     replaceApiKey?: (apiKey: string) => Promise<void>;
     getClient: () => CloudClientLike | null;
-    connect: (agentId: string) => Promise<ConnectedCloudAgentLike>;
     disconnect: () => Promise<void>;
-    getStatus: () => unknown;
-    getActiveAgentId: () => string | null;
 }
 interface RuntimeLike {
     agentId: string;
@@ -114,7 +99,6 @@ export interface CloudRouteState {
      */
     restartRuntime?: (reason: string) => Promise<boolean> | boolean;
 }
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CLOUD_LOGIN_CREATE_TIMEOUT_MS = 10000;
 const CLOUD_LOGIN_POLL_TIMEOUT_MS = 10000;
 const CONFIG_ENV_FILENAME = "config.env";
@@ -132,10 +116,6 @@ interface ConfigEnvRollbackSnapshot {
     filePath: string;
     originalRaw: string | null;
     previousEnv: Partial<Record<CloudWalletRollbackEnvKey, string>>;
-}
-function extractAgentId(pathname: string): string | null {
-    const id = pathname.split("/")[4];
-    return id && UUID_RE.test(id) ? id : null;
 }
 function replaceMutableRoot<T extends object>(target: T, snapshot: T): void {
     const targetRecord = target as Record<string, unknown>;
@@ -216,13 +196,6 @@ function saveConfigOrThrow(state: CloudRouteState): void {
         throw new Error("saveConfig not available");
     }
     state.saveConfig(state.config);
-}
-async function readJsonBody<T = Record<string, unknown>>(req: http.IncomingMessage, res: http.ServerResponse): Promise<T | null> {
-    return (await parseJsonBody(req, res, {
-        maxBytes: 1048576,
-        tooLargeMessage: "Request body too large",
-        destroyOnTooLarge: true,
-    })) as T | null;
 }
 function isRedirectResponse(response: Response): boolean {
     return response.status >= 300 && response.status < 400;
@@ -649,142 +622,6 @@ export async function handleCloudRoute(req: http.IncomingMessage, res: http.Serv
         else {
             sendJson(res, { status: data.status });
         }
-        return true;
-    }
-    if (method === "GET" && pathname === "/api/cloud/agents") {
-        const client = state.cloudManager?.getClient();
-        if (!client) {
-            sendJsonError(res, "Not connected to Eliza Cloud", 401);
-            return true;
-        }
-        sendJson(res, { ok: true, agents: await client.listAgents() });
-        return true;
-    }
-    if (method === "POST" && pathname === "/api/cloud/agents") {
-        const client = state.cloudManager?.getClient();
-        if (!client) {
-            sendJsonError(res, "Not connected to Eliza Cloud", 401);
-            return true;
-        }
-        const body = await readJsonBody<{
-            agentName?: string;
-            agentConfig?: Record<string, unknown>;
-            environmentVars?: Record<string, string>;
-        }>(req, res);
-        if (!body)
-            return true;
-        if (!body.agentName?.trim()) {
-            sendJsonError(res, "agentName is required");
-            return true;
-        }
-        let agent: unknown;
-        try {
-            agent = await client.createAgent({
-                agentName: body.agentName,
-                agentConfig: body.agentConfig,
-                environmentVars: body.environmentVars,
-            });
-        }
-        catch (err) {
-            // error-policy:J1 boundary translation — an upstream createAgent failure
-            // surfaces as a 502 with the message, never a fabricated agent.
-            logger.error(`[cloud] createAgent failed: ${String(err)}`);
-            sendJson(res, { ok: false, error: `Cloud createAgent failed: ${String(err)}` }, 502);
-            return true;
-        }
-        if (state.runtime) invalidateCloudAccountCache(state.runtime);
-        sendJson(res, { ok: true, agent }, 201);
-        return true;
-    }
-    if (method === "POST" &&
-        pathname.startsWith("/api/cloud/agents/") &&
-        pathname.endsWith("/provision")) {
-        const agentId = extractAgentId(pathname);
-        if (!agentId || !state.cloudManager) {
-            sendJsonError(res, "Invalid agent ID or cloud not connected", 400);
-            return true;
-        }
-        let proxy: {
-            agentName?: string;
-        };
-        try {
-            proxy = await state.cloudManager.connect(agentId);
-        }
-        catch (err) {
-            // error-policy:J1 boundary translation — an upstream provision/connect
-            // failure surfaces as a 502 with the message.
-            logger.error(`[cloud] provision/connect failed: ${String(err)}`);
-            sendJson(res, { ok: false, error: `Cloud provision failed: ${String(err)}` }, 502);
-            return true;
-        }
-        sendJson(res, {
-            ok: true,
-            agentId,
-            agentName: proxy.agentName,
-            status: state.cloudManager.getStatus(),
-        });
-        return true;
-    }
-    if (method === "POST" &&
-        pathname.startsWith("/api/cloud/agents/") &&
-        pathname.endsWith("/shutdown")) {
-        const agentId = extractAgentId(pathname);
-        if (!agentId || !state.cloudManager) {
-            sendJsonError(res, "Invalid agent ID or cloud not connected", 400);
-            return true;
-        }
-        const client = state.cloudManager.getClient();
-        if (!client) {
-            sendJsonError(res, "Not connected to Eliza Cloud", 401);
-            return true;
-        }
-        try {
-            if (state.cloudManager.getActiveAgentId() === agentId) {
-                await state.cloudManager.disconnect();
-            }
-            await client.deleteAgent(agentId);
-        }
-        catch (err) {
-            // error-policy:J1 boundary translation — an upstream shutdown/delete
-            // failure surfaces as a 502 with the message.
-            logger.error(`[cloud] shutdown/deleteAgent failed: ${String(err)}`);
-            sendJson(res, { ok: false, error: `Cloud shutdown failed: ${String(err)}` }, 502);
-            return true;
-        }
-        if (state.runtime) invalidateCloudAccountCache(state.runtime);
-        sendJson(res, { ok: true, agentId, status: "stopped" });
-        return true;
-    }
-    if (method === "POST" &&
-        pathname.startsWith("/api/cloud/agents/") &&
-        pathname.endsWith("/connect")) {
-        const agentId = extractAgentId(pathname);
-        if (!agentId || !state.cloudManager) {
-            sendJsonError(res, "Invalid agent ID or cloud not connected", 400);
-            return true;
-        }
-        let proxy: {
-            agentName?: string;
-        };
-        try {
-            if (state.cloudManager.getActiveAgentId()) {
-                await state.cloudManager.disconnect();
-            }
-            proxy = await state.cloudManager.connect(agentId);
-        }
-        catch (err) {
-            // error-policy:J1 boundary translation — an upstream connect failure
-            // surfaces as a 502 with the message.
-            logger.error(`[cloud] connect failed: ${String(err)}`);
-            sendJson(res, { ok: false, error: `Cloud connect failed: ${String(err)}` }, 502);
-            return true;
-        }
-        sendJson(res, {
-            ok: true,
-            agentId,
-            agentName: proxy.agentName,
-            status: state.cloudManager.getStatus(),
-        });
         return true;
     }
     if (method === "POST" && pathname === "/api/cloud/disconnect") {

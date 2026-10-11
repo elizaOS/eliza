@@ -433,7 +433,7 @@ export class HouseholdCoordinationRepository {
 
   private async ensureGrantExpiryWarningSchema(): Promise<void> {
     if (!this.grantExpiryWarningSchemaReady) {
-      this.grantExpiryWarningSchemaReady = (async () => {
+      const attempt = (async () => {
         // The plugin migration system owns table creation. These additive
         // statements only converge installations created before cancellation
         // completion became a durable outbox state.
@@ -441,6 +441,14 @@ export class HouseholdCoordinationRepository {
           await executeRawSql(this.runtime, statement);
         }
       })();
+      this.grantExpiryWarningSchemaReady = attempt;
+      // A failed attempt (e.g. the DB adapter is not attached yet) must not
+      // stay memoized for the repository lifetime; the next call retries.
+      attempt.catch(() => {
+        if (this.grantExpiryWarningSchemaReady === attempt) {
+          this.grantExpiryWarningSchemaReady = null;
+        }
+      });
     }
     await this.grantExpiryWarningSchemaReady;
   }

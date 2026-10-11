@@ -634,9 +634,6 @@ async function warmApiRoute(port, pathname, { timeout = 30_000 } = {}) {
 
 async function warmApiRoutes(port) {
   const routes = [
-    { pathname: "/api/apps", timeout: 90_000 },
-    { pathname: "/api/apps/installed", timeout: 90_000 },
-    { pathname: "/api/apps/runs", timeout: 30_000 },
     { pathname: "/api/computer-use/approvals", timeout: 30_000 },
     { pathname: "/api/drop/status", timeout: 30_000 },
   ];

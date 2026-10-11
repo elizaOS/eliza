@@ -189,7 +189,7 @@ function sumReportRows(rows: RedditReportRow[] = []): CampaignMetrics {
   );
   return {
     ...metrics,
-    ctr: metrics.impressions > 0 ? metrics.clicks / metrics.impressions : 0,
+    ctr: metrics.impressions > 0 ? (metrics.clicks / metrics.impressions) * 100 : 0,
     cpc: metrics.clicks > 0 ? metrics.spend / metrics.clicks : 0,
     cpm: metrics.impressions > 0 ? (metrics.spend / metrics.impressions) * 1000 : 0,
   };

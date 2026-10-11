@@ -23,7 +23,7 @@ import {
   type ModelTypeName,
   type Plugin,
 } from "@elizaos/core";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
@@ -33,12 +33,16 @@ import {
 // migration runner materializes them — the exact tables the inbox plugin reads
 // in production. No PA import is needed.
 import {
+  lifeEmailUnsubscribes,
   lifeInboxTriageEntries,
   lifeInboxTriageExamples,
 } from "../src/db/schema.ts";
 import { curateEmailCandidates } from "../src/inbox/email-curation.ts";
+import type { InboxGmailGateway } from "../src/inbox/google-gmail-seam.ts";
 import { InboxService } from "../src/inbox/service.ts";
 import type { InboundMessage } from "../src/inbox/types.ts";
+import { InboxUnsubscribeRepository } from "../src/inbox/unsubscribe-repository.ts";
+import { InboxUnsubscribeService } from "../src/inbox/unsubscribe-service.ts";
 
 /**
  * Schema-only test plugin so `runtime.initialize()` runs the SQL plugin's
@@ -48,7 +52,11 @@ import type { InboundMessage } from "../src/inbox/types.ts";
 const inboxSchemaPlugin: Plugin = {
   name: "inbox-real-db-schema",
   description: "Test-only inbox triage table bootstrap.",
-  schema: { lifeInboxTriageEntries, lifeInboxTriageExamples },
+  schema: {
+    lifeEmailUnsubscribes,
+    lifeInboxTriageEntries,
+    lifeInboxTriageExamples,
+  },
 };
 
 /**
@@ -178,6 +186,72 @@ describe("InboxService + InboxRepository — real PGLite", () => {
     );
     // High-urgency item sorts ahead of medium/low in the unresolved queue.
     expect(queue[0]?.urgency).toBe("high");
+  });
+
+  it("refuses a combined unsubscribe before any effect when Gmail manage access is absent", async () => {
+    const httpEffect = vi.fn(async () => new Response(null, { status: 204 }));
+    const createFilter = vi.fn(async () => ({ filterId: "filter-1" }));
+    const gmail = {
+      requireGmailGrant: async () =>
+        ({
+          id: "grant-1",
+          connectorAccountId: "account-1",
+          capabilities: ["google.gmail.triage"],
+        }) as Awaited<ReturnType<InboxGmailGateway["requireGmailGrant"]>>,
+      searchGmail: async () =>
+        ({
+          syncedAt: "2026-10-11T00:00:00.000Z",
+          messages: [
+            {
+              id: "unsubscribe-message-1",
+              threadId: "unsubscribe-thread-1",
+              from: "News <news@example.com>",
+              fromEmail: "news@example.com",
+              subject: "Weekly news",
+              receivedAt: "2026-10-10T00:00:00.000Z",
+              metadata: {
+                headers: {
+                  "List-Unsubscribe":
+                    "<https://unsubscribe.example.com/owner-token>",
+                },
+              },
+            },
+          ],
+        }) as Awaited<ReturnType<InboxGmailGateway["searchGmail"]>>,
+      sendMailtoUnsubscribeEmail: vi.fn(),
+      createGmailFilterForSender: createFilter,
+      trashGmailThread: vi.fn(),
+    } satisfies InboxGmailGateway;
+    const unsubscribe = new InboxUnsubscribeService(runtime, {
+      gmail,
+      httpTransport: {
+        lookupFn: async () => [{ address: "93.184.216.34", family: 4 }],
+        pinnedFetchImpl: async () => httpEffect(),
+      },
+    });
+
+    const result = await unsubscribe.unsubscribeEmailSender({
+      senderEmail: "news@example.com",
+      userAuthorization: true,
+      blockAfter: true,
+    });
+
+    expect(httpEffect).not.toHaveBeenCalled();
+    expect(createFilter).not.toHaveBeenCalled();
+    expect(result.record).toMatchObject({
+      status: "failed",
+      filterCreated: false,
+      errorMessage:
+        "Blocking or trashing subscription email requires Gmail manage access.",
+    });
+    const persisted = await new InboxUnsubscribeRepository(
+      runtime,
+    ).getEmailUnsubscribe(result.record.id);
+    expect(persisted).toMatchObject({
+      id: result.record.id,
+      status: "failed",
+      filterCreated: false,
+    });
   });
 
   it("dedups by source_message_id against the real DB on re-triage", async () => {

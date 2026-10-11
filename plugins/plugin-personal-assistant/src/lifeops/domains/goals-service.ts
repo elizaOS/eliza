@@ -36,7 +36,6 @@ import {
   scoreGoalSimilarity,
 } from "@elizaos/plugin-goals/goals-service";
 import { getGoalsCheckinService } from "@elizaos/plugin-goals/services/checkin";
-import { resolveDefaultTimeZone } from "../defaults.js";
 import {
   type buildGoalSemanticReviewMetadata,
   mergeGoalSemanticReviewMetadata,
@@ -45,7 +44,10 @@ import {
 } from "../goal-grounding.js";
 import { evaluateGoalProgressWithLlm } from "../goal-semantic-evaluator.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
-import { readOwnerTimeZoneResolver } from "../owner/fact-store.js";
+import {
+  readOwnerTimeZoneResolver,
+  resolveOwnerTimeZone,
+} from "../owner/fact-store.js";
 import {
   createLifeOpsAuditEvent,
   type LifeOpsScheduleMergedStateRecord,
@@ -1077,7 +1079,7 @@ export class GoalsDomain {
 
   async getOverview(now = new Date()): Promise<LifeOpsOverview> {
     const schedule = await this.deps.refreshEffectiveScheduleState({
-      timezone: resolveDefaultTimeZone(),
+      timezone: await resolveOwnerTimeZone(this.ctx.runtime, now),
       now,
     });
     const definitions = await listCallerDefinitions(
