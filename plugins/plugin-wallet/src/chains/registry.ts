@@ -130,12 +130,10 @@ function configuredEvmChains(runtime: IAgentRuntime): Array<{
 }
 
 function evmAliases(key: string, chain: Chain): string[] {
-  const aliases = new Set<string>([
-    key,
-    chain.name,
-    String(chain.id),
-    chain.nativeCurrency.symbol,
-  ]);
+  const aliases = new Set<string>([key, chain.name, String(chain.id)]);
+  if (chain.nativeCurrency.symbol !== "ETH") {
+    aliases.add(chain.nativeCurrency.symbol);
+  }
   if (key === "mainnet") {
     aliases.add("ethereum");
     aliases.add("eth");

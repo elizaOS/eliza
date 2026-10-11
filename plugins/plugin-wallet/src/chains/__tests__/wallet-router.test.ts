@@ -607,6 +607,31 @@ describe("wallet router action", () => {
     expect(base.execute).not.toHaveBeenCalled();
   });
 
+  it("routes chain eth to Ethereum mainnet with the default EVM chains", async () => {
+    const { runtime, service } = createService();
+    registerDefaultWalletChainHandlers(service, runtime);
+
+    for (const [chain, routedChain, routedChainId] of [
+      ["eth", "mainnet", "1"],
+      ["ETH", "mainnet", "1"],
+      ["base", "base", "8453"],
+    ] as const) {
+      const prepared = await run(runtime, {
+        subaction: "transfer",
+        chain,
+        fromToken: "ETH",
+        amount: "0.5",
+        recipient: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+        dryRun: true,
+        mode: "execute",
+      });
+      expect(prepared?.success).toBe(true);
+      expect(prepared?.data?.status).toBe("prepared");
+      expect(prepared?.data?.chain).toBe(routedChain);
+      expect(prepared?.data?.chainId).toBe(routedChainId);
+    }
+  });
+
   it("clarifies ambiguous omitted chains", async () => {
     const { runtime, service } = createService();
     const base = handler("base", "Base", "8453", "evm");
