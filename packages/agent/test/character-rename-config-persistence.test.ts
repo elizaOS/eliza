@@ -98,6 +98,38 @@ it("keeps a character-editor rename and username after the config is rebuilt on 
       validateCharacter: (body) => CharacterSchema.safeParse(body),
     });
     expect(loadElizaConfig().agents?.list?.[0]?.identityName).toBe("Eliza");
+
+    // A restored agent runs on the validated character, and its config can
+    // have no identityName yet. A rename must still save the identity name.
+    runtime.character.settings = restored.data?.settings;
+    saveElizaConfig({
+      agents: { list: [{ id: "main", default: true, name: "Orion" }] },
+    });
+    await handleCharacterRoutes({
+      req: {} as http.IncomingMessage,
+      res: {} as http.ServerResponse,
+      method: "PUT",
+      pathname: "/api/character",
+      state: { ...state, config: loadElizaConfig() },
+      readJsonBody: async <T extends object>() =>
+        ({ name: "Vega" }) as unknown as T,
+      json: () => {},
+      error: (_res, message) => {
+        throw new Error(message);
+      },
+      pickRandomNames: () => [],
+      saveConfig: saveElizaConfig,
+      validateCharacter: (body) => CharacterSchema.safeParse(body),
+    });
+    expect(loadElizaConfig().agents?.list?.[0]).toMatchObject({
+      name: "Vega",
+      identityName: "Eliza",
+    });
+    expect(
+      new AgentRuntime({
+        character: buildCharacterFromConfig(loadElizaConfig()),
+      }).agentId,
+    ).toBe(runtime.agentId);
   } finally {
     await runtime.close();
     vi.unstubAllEnvs();
