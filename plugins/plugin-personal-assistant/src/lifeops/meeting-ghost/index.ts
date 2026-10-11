@@ -267,7 +267,7 @@ const WEEKDAYS = new Map([
 function normalize(value: string): string {
   return value
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, " ")
     .trim();
 }
 
@@ -291,9 +291,17 @@ function careAboutMatches(text: string, careAbout: string): boolean {
   const normalizedText = normalize(text);
   const normalizedCare = normalize(careAbout);
   if (!normalizedCare) return false;
-  const tokens = normalizedCare.split(" ").filter((token) => token.length > 2);
-  if (tokens.length === 0) return false;
   if (normalizedText.includes(normalizedCare)) return true;
+  // Keep two-character non-Latin tokens: CJK nouns such as 예약 or 승인 are
+  // complete words, and dropping them would discard the whole care-about.
+  const tokens = normalizedCare
+    .split(" ")
+    .filter(
+      (token) =>
+        token.length > 2 ||
+        [...token].some((char) => (char.codePointAt(0) ?? 0) > 0x7f),
+    );
+  if (tokens.length === 0) return false;
   return tokens.every((token) => normalizedText.includes(token));
 }
 
@@ -302,8 +310,10 @@ function findAttendeeEmail(
   name: string,
 ): string | null {
   const normalizedName = normalize(name);
+  if (!normalizedName) return null;
   const attendee = attendees.find((entry) => {
     const attendeeName = normalize(entry.name);
+    if (!attendeeName) return false;
     return (
       attendeeName === normalizedName ||
       attendeeName.includes(normalizedName) ||
