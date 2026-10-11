@@ -2279,6 +2279,21 @@ async function runSpawnAgent(
 
 // ── action: send (SEND_TO_AGENT) ────────────────────────────────────────────
 
+/**
+ * The task selector a planner passed to a session-only operation without a
+ * session id. The umbrella declares taskId/threadId for every operation, so
+ * send and stop_agent must refuse it instead of acting on an unrelated session.
+ */
+function taskSelectorWithoutSession(
+  params: Record<string, unknown>,
+  sessionId: string | undefined,
+): "threadId" | "taskId" | undefined {
+  if (sessionId) return undefined;
+  if (textValue(params.threadId)) return "threadId";
+  if (textValue(params.taskId)) return "taskId";
+  return undefined;
+}
+
 async function runSend(
   runtime: IAgentRuntime,
   _message: Memory,
@@ -2302,6 +2317,15 @@ async function runSend(
     const input = pickString(params, content, "input");
     const task = pickString(params, content, "task");
     const keys = pickString(params, content, "keys");
+    // send addresses one session. A task id is not a session selector here,
+    // so it must not fall through to the newest session of another task.
+    const taskSelector = taskSelectorWithoutSession(params, sessionId);
+    if (taskSelector) {
+      return errorResult(
+        "SESSION_ID_REQUIRED",
+        `action=send takes sessionId, not ${taskSelector}. Nothing was sent. To send a follow-up to a task use action=control with controlAction=continue, ${taskSelector} and instruction.`,
+      );
+    }
     const target = await resolveSession(service, sessionId, state);
 
     if (!target.session) {
@@ -2415,6 +2439,21 @@ async function runStopAgent(
 
   try {
     const all = pickBoolean(params, content, "all") ?? false;
+    // stop_agent addresses one session (or all). A task id is not a session
+    // selector here, so it must not fall through to the newest session of
+    // another task.
+    const taskSelector = all
+      ? undefined
+      : taskSelectorWithoutSession(
+          params,
+          pickString(params, content, "sessionId"),
+        );
+    if (taskSelector) {
+      return errorResult(
+        "SESSION_ID_REQUIRED",
+        `action=stop_agent takes sessionId, not ${taskSelector}. Nothing was stopped. To stop a task by id use action=cancel with ${taskSelector}.`,
+      );
+    }
     const sessions = (await Promise.resolve(service.listSessions())).filter(
       (session) => !TERMINAL_SESSION_STATUSES.has(session.status.toLowerCase()),
     );
@@ -3542,9 +3581,10 @@ async function runControl(
     return runTaskLifecycleControl(runtime, params, content, callback, action);
   }
 
+  const explicitInstruction =
+    textValue(params.instruction) ?? textValue(content.instruction);
   const instruction =
-    textValue(params.instruction) ??
-    textValue(content.instruction) ??
+    explicitInstruction ??
     (action === "continue" || action === "resume" ? text : undefined);
 
   // Resume/continue must clear the durable paused flag before any ACP send:
@@ -3605,6 +3645,27 @@ async function runControl(
   const target = { session: targets[0], missingId };
   if (!target.session) {
     if (resumedTask && controlTaskId) {
+      // No live session means nothing received the instruction. Say so: the
+      // task is resumed, the follow-up is still pending.
+      if (explicitInstruction) {
+        const out =
+          "Resumed the coding task. Your follow-up instruction was not delivered because the task has no running coding agent yet.";
+        if (callback) await callback({ text: out });
+        return {
+          success: true,
+          text: `Resumed coding task ${controlTaskId}. The instruction was NOT delivered: the task has no running coding session. Send it again with action=control, controlAction=continue, taskId and instruction once a session is running.`,
+          userFacingText: out,
+          verifiedUserFacing: true,
+          data: {
+            actionName: "TASKS:control",
+            action,
+            taskId: controlTaskId,
+            task: resumedTask,
+            instruction: explicitInstruction,
+            instructionDelivered: false,
+          },
+        };
+      }
       const out = "Resumed the coding task.";
       if (callback) await callback({ text: out });
       return {
@@ -4533,20 +4594,24 @@ async function runManageIssues(
   const repo = (params.repo as string) ?? (content.repo as string);
 
   if (!repo) {
-    const urlMatch = text.match(
-      /(?:https?:\/\/github\.com\/)?([a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+)/,
-    );
-    if (!urlMatch) {
+    // Only a repository URL in the request names a repository. Any other
+    // "x/y" token ("open/closed", "src/index.ts") is not one.
+    const urlInText = extractRepositoryUrlFromText(text);
+    if (!urlInText) {
       if (callback)
         await callback({
           text: "Please specify a repository (e.g., owner/repo or a GitHub URL).",
         });
-      return { success: false, error: "MISSING_REPO" };
+      return {
+        success: false,
+        error: "MISSING_REPO",
+        text: "No repository was given; ask the user which repository (owner/repo or a GitHub URL) and pass it as repo.",
+      };
     }
     return (
       (await handleIssueAction(
         workspaceService,
-        urlMatch[1],
+        normalizeRepositoryInput(urlInText),
         action,
         { ...content, ...params },
         text,
@@ -5478,7 +5543,13 @@ export const tasksAction: Action & {
       description:
         'Lane dependency graph for gated action=create, shaped as {"lane-2":["lane-1"]}. References must use generated lane ids.',
       required: false,
-      schema: { type: "object" as const },
+      schema: {
+        type: "object" as const,
+        additionalProperties: {
+          type: "array" as const,
+          items: { type: "string" as const },
+        },
+      },
     },
     {
       name: "maxParallel",
@@ -5743,9 +5814,17 @@ export const tasksAction: Action & {
     // misc
     {
       name: "validator",
-      description: "Optional verifier for action=create.",
+      description:
+        'Optional verifier for action=create, shaped as {"service":"app-verification","method":"verifyApp","params":{"workdir":"/path"}}.',
       required: false,
-      schema: { type: "object" as const },
+      schema: {
+        type: "object" as const,
+        properties: {
+          service: { type: "string" as const },
+          method: { type: "string" as const },
+          params: { type: "object" as const, additionalProperties: true },
+        },
+      },
     },
     {
       name: "maxRetries",
@@ -5767,7 +5846,7 @@ export const tasksAction: Action & {
       description:
         "Additional metadata for action=create / action=spawn_agent.",
       required: false,
-      schema: { type: "object" as const },
+      schema: { type: "object" as const, additionalProperties: true },
     },
     {
       name: "taskRoomId",

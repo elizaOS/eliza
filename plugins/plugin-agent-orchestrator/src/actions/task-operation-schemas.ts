@@ -33,7 +33,7 @@ const operationParameters = {
     "threadId",
   ],
   spawn_agent: [...sessionCreation, "deferUserReply", "taskId", "threadId"],
-  send: ["sessionId", "input", "keys", "task", "metadata"],
+  send: ["sessionId", "input", "keys", "task"],
   stop_agent: ["sessionId", "all"],
   list_agents: [],
   cancel: ["sessionId", "threadId", "taskId", "all", "search"],

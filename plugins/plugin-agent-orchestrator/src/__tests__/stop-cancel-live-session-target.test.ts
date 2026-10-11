@@ -7,8 +7,14 @@
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  type Memory,
+  promoteSubactionsToActions,
+  validateToolArgs,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { taskOperationSchemaOverrides } from "../actions/task-operation-schemas.ts";
 import { tasksAction } from "../actions/tasks.ts";
 import { AcpService } from "../services/acp-service.ts";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.ts";
@@ -321,4 +327,177 @@ describe("TASKS task id selects that task's session", () => {
       expect(result?.data).toMatchObject({ sessionId: ctx.taskSessionId });
     });
   }, 20_000);
+});
+
+describe("TASKS session-only operations refuse a task id", () => {
+  for (const selector of ["taskId", "threadId"] as const) {
+    it(`stop_agent with ${selector} stops nothing`, async () => {
+      await withTaskAndNewerSession(async (ctx) => {
+        const result = await runTasks(ctx.runtime, {
+          action: "stop_agent",
+          [selector]: ctx.taskId,
+        });
+
+        expect(result).toMatchObject({
+          success: false,
+          error: "SESSION_ID_REQUIRED",
+        });
+        expect((await ctx.service.getSession(ctx.taskSessionId))?.status).toBe(
+          "busy",
+        );
+        expect((await ctx.service.getSession(ctx.newerSessionId))?.status).toBe(
+          "busy",
+        );
+      });
+    }, 20_000);
+  }
+
+  it("send with taskId sends nothing to the newest session", async () => {
+    await withTaskAndNewerSession(async (ctx) => {
+      const sent: string[] = [];
+      const sendToSession = ctx.service.sendToSession.bind(ctx.service);
+      ctx.service.sendToSession = async (sessionId, input) => {
+        sent.push(sessionId);
+        return sendToSession(sessionId, input);
+      };
+      const result = await runTasks(ctx.runtime, {
+        action: "send",
+        taskId: ctx.taskId,
+        input: "also add tests",
+      });
+
+      expect(result).toMatchObject({
+        success: false,
+        error: "SESSION_ID_REQUIRED",
+      });
+      expect(sent).toEqual([]);
+    });
+  }, 20_000);
+
+  it("stop_agent with sessionId and taskId still stops that session", async () => {
+    await withTaskAndNewerSession(async (ctx) => {
+      const result = await runTasks(ctx.runtime, {
+        action: "stop_agent",
+        sessionId: ctx.taskSessionId,
+        taskId: ctx.taskId,
+      });
+
+      expect(result?.success).toBe(true);
+      expect((await ctx.service.getSession(ctx.taskSessionId))?.status).toBe(
+        "stopped",
+      );
+      expect((await ctx.service.getSession(ctx.newerSessionId))?.status).toBe(
+        "busy",
+      );
+    });
+  }, 20_000);
+});
+
+describe("TASKS control resume with an instruction and no running session", () => {
+  it("reports that the instruction was not delivered", async () => {
+    let service: AcpService | undefined;
+    let tasks: OrchestratorTaskService | undefined;
+    const runtime = runtimeWith(
+      () => service,
+      () => tasks,
+    );
+    service = new AcpService(runtime);
+    await service.start();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    tasks = new OrchestratorTaskService(runtime, { store });
+    try {
+      const task = await store.createTask({
+        title: "Paused task",
+        goal: "finish the long build",
+        acceptanceCriteria: [],
+        roomId: "target-room",
+        worldId: "target-world",
+      });
+      await tasks.pauseTask(task.task.id);
+
+      const result = await runTasks(runtime, {
+        action: "control",
+        controlAction: "resume",
+        taskId: task.task.id,
+        instruction: "also add tests",
+      });
+
+      expect(result?.success).toBe(true);
+      expect(result?.text).toContain("NOT delivered");
+      expect(result?.userFacingText).toContain("was not delivered");
+      expect(result?.data).toMatchObject({
+        taskId: task.task.id,
+        instruction: "also add tests",
+        instructionDelivered: false,
+      });
+
+      // Without an explicit instruction the plain resume reply is unchanged.
+      await tasks.pauseTask(task.task.id);
+      const plain = await runTasks(runtime, {
+        action: "control",
+        controlAction: "resume",
+        taskId: task.task.id,
+      });
+      expect(plain?.text).toBe(`Resumed coding task ${task.task.id}`);
+    } finally {
+      await service.stop();
+    }
+  }, 20_000);
+});
+
+describe("TASKS object parameters accept the shapes the handler reads", () => {
+  const children = promoteSubactionsToActions(tasksAction, {
+    overrides: taskOperationSchemaOverrides(tasksAction),
+  });
+  const child = (name: string) => {
+    const action = children.find((candidate) => candidate.name === name);
+    if (!action) throw new Error(`missing promoted action ${name}`);
+    return action;
+  };
+
+  it("TASKS accepts a lane dependency graph", () => {
+    expect(
+      validateToolArgs(tasksAction, {
+        action: "create",
+        task: "x",
+        agents: "a | b",
+        dependencies: { "lane-2": ["lane-1"] },
+      }).errors,
+    ).toEqual([]);
+    expect(
+      validateToolArgs(tasksAction, {
+        action: "create",
+        task: "x",
+        dependencies: { "lane-2": "lane-1" },
+      }).valid,
+    ).toBe(false);
+  });
+
+  it("TASKS_CREATE accepts a verifier and metadata", () => {
+    expect(
+      validateToolArgs(child("TASKS_CREATE"), {
+        task: "x",
+        validator: {
+          service: "app-verification",
+          method: "verifyApp",
+          params: { workdir: "/w" },
+        },
+        maxRetries: 2,
+        onVerificationFail: "retry",
+        metadata: { source: "y" },
+      }).errors,
+    ).toEqual([]);
+  });
+
+  it("TASKS_SPAWN_AGENT accepts metadata and TASKS_SEND does not declare it", () => {
+    expect(
+      validateToolArgs(child("TASKS_SPAWN_AGENT"), {
+        task: "x",
+        metadata: { source: "y" },
+      }).errors,
+    ).toEqual([]);
+    expect(
+      child("TASKS_SEND").parameters?.map((parameter) => parameter.name),
+    ).not.toContain("metadata");
+  });
 });
