@@ -18,7 +18,10 @@ import {
   it,
   vi,
 } from "vitest";
-import { createCalendarFeedConflictLoader } from "../src/actions/conflict-detect.js";
+import {
+  createCalendarFeedConflictLoader,
+  evaluateCalendarWriteAvailability,
+} from "../src/actions/conflict-detect.js";
 import {
   type CalendarHostGate,
   CalendarRepository,
@@ -676,6 +679,52 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
         }),
       ],
     });
+  });
+
+  it("does not report a free subscribed event as a conflict", async () => {
+    const source = await createSource();
+    const event = (
+      title: string,
+      start: string,
+      end: string,
+      extra: string[],
+    ) =>
+      [
+        "BEGIN:VEVENT",
+        `UID:${title}`,
+        "DTSTAMP:20260701T080000Z",
+        `DTSTART:${start}`,
+        `DTEND:${end}`,
+        ...extra,
+        `SUMMARY:${title}`,
+        "END:VEVENT",
+      ].join("\r\n");
+    await syncBody(
+      source.id,
+      calendar(
+        event("Lunch reminder", "20260701T100000Z", "20260701T110000Z", [
+          "TRANSP:TRANSPARENT",
+        ]),
+        event("School pickup", "20260701T140000Z", "20260701T150000Z", []),
+      ),
+    );
+    const conflictsAt = async (startAt: string, endAt: string) =>
+      (
+        await evaluateCalendarWriteAvailability({
+          runtime,
+          startAt,
+          endAt,
+          timeZone: "UTC",
+        })
+      ).conflicts.map((conflict) => conflict.eventB.title);
+
+    // TRANSP:TRANSPARENT marks time that stays free (RFC 5545 3.8.2.7).
+    expect(
+      await conflictsAt("2026-07-01T10:15:00.000Z", "2026-07-01T10:45:00.000Z"),
+    ).toEqual([]);
+    expect(
+      await conflictsAt("2026-07-01T14:15:00.000Z", "2026-07-01T14:45:00.000Z"),
+    ).toEqual(["School pickup"]);
   });
 
   it("keeps decoded parameter names through subscription sync and feed reads", async () => {

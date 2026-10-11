@@ -255,7 +255,10 @@ function calendarEventForAvailability(
     timeZone: event.timezone,
     isAllDay: event.isAllDay,
     status: event.status,
-    transparency: metadataString(event.metadata, "transparency"),
+    // A subscribed calendar (ICS) event keeps TRANSP under its own key.
+    transparency:
+      metadataString(event.metadata, "transparency") ??
+      metadataString(event.metadata, "icsTransparency"),
     kind: calendarAvailabilityKindFromMetadata(event.metadata) ?? "event",
     attendees: event.attendees.map(attendeeFromCalendarEvent),
   };
