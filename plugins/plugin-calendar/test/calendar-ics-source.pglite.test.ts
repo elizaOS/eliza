@@ -719,6 +719,50 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     }
   });
 
+  it("reads the Windows zone names that the 2026 Canada changes added", async () => {
+    const source = await createSource();
+    const event = (uid: string, tzid: string) =>
+      [
+        "BEGIN:VEVENT",
+        `UID:${uid}`,
+        "DTSTAMP:20261001T000000Z",
+        `DTSTART;TZID=${tzid}:20261020T180000`,
+        `DTEND;TZID=${tzid}:20261020T190000`,
+        `SUMMARY:${uid}`,
+        "END:VEVENT",
+      ].join("\r\n");
+    await syncBody(
+      source.id,
+      calendar(
+        event("british-columbia", "British Columbia Standard Time"),
+        event("alberta", "Alberta Standard Time"),
+        event("manitoba", "Manitoba Standard Time"),
+      ),
+    );
+    const feed = await service.getCalendarFeed(
+      new URL("http://internal.test/api/calendar"),
+      {
+        grantId: source.id,
+        timeMin: "2026-10-20T00:00:00.000Z",
+        timeMax: "2026-10-22T00:00:00.000Z",
+      },
+      new Date(),
+    );
+
+    expect(feed.state).toBe("complete");
+    // On 2026-10-20, 18:00 is UTC-7 in Vancouver, UTC-6 in Edmonton, and
+    // UTC-5 in Winnipeg.
+    expect(
+      feed.events
+        .map((item) => [item.title, item.startAt, item.timezone])
+        .sort(),
+    ).toEqual([
+      ["alberta", "2026-10-21T00:00:00.000Z", "America/Edmonton"],
+      ["british-columbia", "2026-10-21T01:00:00.000Z", "America/Vancouver"],
+      ["manitoba", "2026-10-20T23:00:00.000Z", "America/Winnipeg"],
+    ]);
+  });
+
   it("reads a libical TZID as the IANA zone after its prefix", async () => {
     const source = await createSource();
     const event = (uid: string, tzid: string) =>
