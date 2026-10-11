@@ -80,11 +80,13 @@ function isVoiceProfilesExport(value: unknown): value is VoiceProfilesExport {
   const doc = value as {
     schema?: unknown;
     exportedAt?: unknown;
+    ownerEntityId?: unknown;
     profiles?: unknown;
   };
   return (
     doc.schema === VOICE_PROFILES_EXPORT_SCHEMA &&
     typeof doc.exportedAt === "string" &&
+    (doc.ownerEntityId === null || typeof doc.ownerEntityId === "string") &&
     Array.isArray(doc.profiles)
   );
 }
