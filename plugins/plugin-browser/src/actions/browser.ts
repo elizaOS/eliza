@@ -1310,7 +1310,7 @@ export const browserAction: Action = {
     {
       name: "watchMode",
       description:
-        "User watching hint; prefer realistic-* click/fill, visible cursor, pointer events.",
+        "Only when action is omitted: a selector infers realistic_click (realistic_fill with text) instead of click/type. Ignored with an explicit action; for a watched session pass action=realistic_click, realistic_fill, realistic_type or realistic_press.",
       required: false,
       schema: { type: "boolean" as const },
     },
