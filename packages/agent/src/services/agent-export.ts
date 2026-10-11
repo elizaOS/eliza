@@ -1033,7 +1033,9 @@ function createIdRemapper(
 // ---------------------------------------------------------------------------
 
 /** Rehydrates database timestamps only after the JSON manifest has been verified. */
-function restoreGraphCreatedAt<T extends Entity | Room | World>(row: T): T {
+function restoreGraphCreatedAt<T extends Entity | Room | World | Log>(
+  row: T,
+): T {
   if (!("createdAt" in row) || row.createdAt === undefined) return row;
   const value = row.createdAt;
   if (typeof value !== "string" && typeof value !== "number") {
@@ -1358,7 +1360,8 @@ async function restoreAgentDataInScope(
 
   // 10. Create logs
   let logsImported = 0;
-  for (const logEntry of payload.logs) {
+  for (const exportedLog of payload.logs) {
+    const logEntry = restoreGraphCreatedAt(exportedLog);
     await db.createLogs([
       {
         body: logEntry.body,
@@ -1369,6 +1372,7 @@ async function restoreAgentDataInScope(
           ? (remap(logEntry.roomId) as UUID)
           : (newAgentId as UUID),
         type: logEntry.type,
+        createdAt: logEntry.createdAt,
       },
     ]);
     logsImported++;

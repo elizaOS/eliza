@@ -1434,6 +1434,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 			entityId: UUID;
 			roomId: UUID;
 			type: string;
+			createdAt?: Date;
 		}>,
 	): Promise<void>;
 

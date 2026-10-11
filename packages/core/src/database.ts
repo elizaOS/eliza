@@ -492,6 +492,7 @@ export abstract class DatabaseAdapter<DB extends object = object>
 			entityId: UUID;
 			roomId: UUID;
 			type: string;
+			createdAt?: Date;
 		}>,
 	): Promise<void>;
 	abstract getLogsByIds(logIds: UUID[]): Promise<Log[]>;

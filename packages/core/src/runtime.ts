@@ -4699,6 +4699,7 @@ export class AgentRuntime implements IAgentRuntime {
 			entityId: UUID;
 			roomId: UUID;
 			type: string;
+			createdAt?: Date;
 		}>,
 	): Promise<void> {
 		return this.adapter.createLogs(params);

@@ -2612,6 +2612,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       entityId: UUID;
       roomId: UUID;
       type: string;
+      createdAt?: Date;
     }>,
   ): Promise<void> {
     for (const entry of params) {
@@ -2622,7 +2623,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         roomId: entry.roomId,
         body: entry.body,
         type: entry.type,
-        createdAt: new Date(),
+        createdAt: entry.createdAt ?? new Date(),
       };
       await this.storage.set(COLLECTIONS.LOGS, id, log);
     }
