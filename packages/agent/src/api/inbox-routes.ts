@@ -501,19 +501,36 @@ function readRoomConnectorAccountId(
   const metadata =
     room.metadata && typeof room.metadata === "object"
       ? (room.metadata as Record<string, unknown>)
-      : undefined;
-  const scoped = metadata?.[source];
-  const candidate =
-    metadata?.accountId ??
-    (scoped && typeof scoped === "object"
+      : undefined
+  const sourceKey = normalizeConnectorSource(source)
+  const scoped = Object.entries(metadata ?? {}).find(
+    ([key, value]) =>
+      normalizeConnectorSource(key) === sourceKey &&
+      value !== null &&
+      typeof value === "object",
+  )?.[1]
+  const scopedAccountId =
+    scoped && typeof scoped === "object"
       ? (scoped as Record<string, unknown>).accountId
-      : undefined);
+      : undefined
+  const candidate = scopedAccountId ?? metadata?.accountId
   return typeof candidate === "string" && candidate.trim()
     ? candidate.trim()
-    : undefined;
+    : undefined
 }
 /** The room's stored account when it is a registered account of the provider. */
 async function resolveRegisteredRoomAccountId(
+  runtime: AgentRuntime,
+  source: string,
+  storedAccountId: string | undefined,
+): Promise<string | undefined> {
+  if (!storedAccountId) return undefined
+  const account = await getConnectorAccountManager(runtime).getAccount(
+    normalizeAccountProvider(source),
+    storedAccountId,
+  )
+  return account?.id === storedAccountId ? storedAccountId : undefined
+}async function resolveRegisteredRoomAccountId(
   runtime: AgentRuntime,
   source: string,
   storedAccountId: string | undefined,
@@ -2724,25 +2741,48 @@ export async function handleInboxRoute(
         runtime,
         source,
         readRoomConnectorAccountId(room, trustedRoomSource),
-      );
-      if (accountId && roomAccountId && accountId !== roomAccountId) {
-        helpers.json(
-          res,
-          {
-            error: `This conversation belongs to connector account ${roomAccountId}. Select that account to reply.`,
-            code: "INBOX_CONNECTOR_ACCOUNT_ROOM_MISMATCH",
-            context: { accountId, roomAccountId, roomId, source },
-          },
-          409,
-        );
-        return true;
+      )
+      const explicitRouting = accountId
+        ? await resolveInboxAccountRouting(
+            runtime,
+            source,
+            callerAuthorization,
+            accountId,
+          )
+        : undefined
+      if (explicitRouting && !explicitRouting.ok) {
+        accountRouting = explicitRouting
+      } else if (roomAccountId) {
+        const roomRouting = await resolveInboxAccountRouting(
+          runtime,
+          source,
+          callerAuthorization,
+          roomAccountId,
+        )
+        if (!roomRouting.ok) {
+          accountRouting = roomRouting
+        } else if (accountId && accountId !== roomAccountId) {
+          helpers.json(
+            res,
+            {
+              error: `This conversation belongs to connector account ${roomAccountId}. Select that account to reply.`,
+              code: "INBOX_CONNECTOR_ACCOUNT_ROOM_MISMATCH",
+              context: { accountId, roomAccountId, roomId, source },
+            },
+            409,
+          )
+          return true
+        } else {
+          accountRouting = roomRouting
+        }
+      } else {
+        accountRouting = await resolveInboxAccountRouting(
+          runtime,
+          source,
+          callerAuthorization,
+          accountId,
+        )
       }
-      accountRouting = await resolveInboxAccountRouting(
-        runtime,
-        source,
-        callerAuthorization,
-        accountId ?? roomAccountId,
-      );
     } catch (error) {
       // error-policy:J1 HTTP route boundary translates account-registry failures
       // into an observable failure instead of dispatching with an unverified id.
