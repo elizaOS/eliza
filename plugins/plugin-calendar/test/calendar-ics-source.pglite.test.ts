@@ -1591,6 +1591,47 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     ]);
   });
 
+  it("expands a daily series that lists weekdays", async () => {
+    const source = await createSource();
+    await syncBody(
+      source.id,
+      calendar(
+        [
+          "BEGIN:VEVENT",
+          "UID:every-weekday",
+          "DTSTAMP:19970801T000000Z",
+          "DTSTART;TZID=America/New_York:19970902T090000",
+          "DURATION:PT1H",
+          "RRULE:FREQ=DAILY;INTERVAL=1;BYDAY=MO,TU,WE,TH,FR;COUNT=8",
+          "SUMMARY:Every weekday",
+          "END:VEVENT",
+        ].join("\r\n"),
+      ),
+    );
+    const feed = await service.getCalendarFeed(
+      new URL("http://internal.test/api/calendar"),
+      {
+        grantId: source.id,
+        timeMin: "1997-09-01T00:00:00.000Z",
+        timeMax: "1997-10-01T00:00:00.000Z",
+      },
+      new Date(),
+    );
+
+    expect(feed.state).toBe("complete");
+    // 1997-09-02 is a Tuesday. September 6 and 7 are a weekend.
+    expect(feed.events.map((event) => event.startAt.slice(0, 10))).toEqual([
+      "1997-09-02",
+      "1997-09-03",
+      "1997-09-04",
+      "1997-09-05",
+      "1997-09-08",
+      "1997-09-09",
+      "1997-09-10",
+      "1997-09-11",
+    ]);
+  });
+
   it("expands the rules that select dates with BYSETPOS", async () => {
     const source = await createSource();
     const example = (uid: string, start: string, rrule: string) =>

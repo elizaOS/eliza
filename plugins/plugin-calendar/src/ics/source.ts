@@ -204,6 +204,7 @@ export function expandIcsCalendarEvents(args: {
             monthlyByDay: true,
             yearlyByMonth: true,
             bySetPos: true,
+            dailyByDay: true,
           })
         : null;
     if (!rule || rule.beyondExpansionSubset || hasRdate) {

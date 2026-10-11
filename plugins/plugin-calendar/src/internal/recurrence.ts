@@ -223,6 +223,7 @@ export function parseRecurrenceRule(
     monthlyByDay?: boolean;
     yearlyByMonth?: boolean;
     bySetPos?: boolean;
+    dailyByDay?: boolean;
   } = {},
 ): ParsedCalendarRecurrenceRule {
   const body = value.trim().replace(/^RRULE:/i, "");
@@ -369,7 +370,12 @@ export function parseRecurrenceRule(
     if (byDayTokens?.some(({ ordinal }) => ordinal !== null)) {
       beyondExpansionSubset = true;
     }
-    if (byDay && freq !== "WEEKLY") beyondExpansionSubset = true;
+    // BYDAY of a DAILY rule keeps the days that are on the listed weekdays
+    // ("every weekday"), when the caller asks for it.
+    const dailyByDay = options.dailyByDay === true && freq === "DAILY";
+    if (byDay && freq !== "WEEKLY" && !dailyByDay) {
+      beyondExpansionSubset = true;
+    }
   }
   if (byMonthRaw !== undefined && !byMonthOfYear) beyondExpansionSubset = true;
   // BYSETPOS selects dates from the dates of one month or one year. The
@@ -456,6 +462,7 @@ export function firstRecurrenceRule(
     monthlyByDay?: boolean;
     yearlyByMonth?: boolean;
     bySetPos?: boolean;
+    dailyByDay?: boolean;
   } = {},
 ): ParsedCalendarRecurrenceRule | null {
   if (!recurrence) return null;
@@ -705,6 +712,12 @@ function* generateOccurrences(args: {
           }
           const date = addDaysToLocalDate(anchorDate, dayDelta);
           if (beyondRangeEnd(date)) return;
+          if (
+            rule.byDay &&
+            !rule.byDay.includes(getWeekdayForLocalDate(date))
+          ) {
+            continue;
+          }
           yield date;
         }
       }
