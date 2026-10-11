@@ -589,7 +589,17 @@ class LazyTeeWalletProvider extends WalletProvider {
     if (this.teeWallet) return;
 
     if (!this.initPromise) {
-      this.initPromise = this.initializeTeeWallet();
+      const attempt = this.initializeTeeWallet().catch((error: unknown) => {
+        // A failed attempt (e.g. the TEE service is not registered yet) must
+        // not stay memoized for the provider lifetime; the next call retries.
+        // Same contract as the schema-init fixes (#35287/#35288) and the core
+        // embedding queue initialization.
+        if (this.initPromise === attempt) {
+          this.initPromise = null;
+        }
+        throw error;
+      });
+      this.initPromise = attempt;
     }
 
     await this.initPromise;
