@@ -16,6 +16,7 @@ import {
   compareMemoryIds,
   type IAgentRuntime,
   type Memory,
+  type Room,
   type UUID,
 } from "@elizaos/core";
 import type { TranscriptSegment } from "@elizaos/core/protocol";
@@ -25,6 +26,7 @@ import {
   handleDirectCoreRoute,
   type IosBridgeBackend,
   resetIosBrowserWorkspace,
+  restoreIosConversations,
 } from "./bridge.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000aa" as UUID;
@@ -919,6 +921,79 @@ describe("iOS bridge — conversation transcript route", () => {
       `/api/conversations/${id}/messages?before=${messages[0].timestamp}&beforeId=${messages[0].id}`,
     );
     expect(older.json).toEqual({ messages: [], hasMore: false });
+  });
+  it("rebuilds the conversation list from the stored rooms after a restart", async () => {
+    // The room store keeps what core's ensureConnection writes for a room.
+    const rooms = new Map<UUID, Room>();
+    const runtime = Object.assign(createFakeRuntime(), {
+      async ensureConnection(params: {
+        roomId: UUID;
+        roomName?: string;
+        worldId: UUID;
+        source: string;
+        channelId?: string;
+      }): Promise<void> {
+        rooms.set(params.roomId, {
+          id: params.roomId,
+          name: params.roomName || "default",
+          source: params.source,
+          type: "DM" as Room["type"],
+          channelId: params.channelId ?? params.roomId,
+          worldId: params.worldId,
+        });
+      },
+      async getRoomsByWorlds(worldIds: UUID[]): Promise<Room[]> {
+        return [...rooms.values()].filter(
+          (room) => room.worldId && worldIds.includes(room.worldId),
+        );
+      },
+      // A real duration keeps the two rows out of one millisecond.
+      useModel: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return "Hello from Eliza-1.";
+      },
+    });
+    const first = makeBackend(runtime);
+    const created = await call(first, "POST", "/api/conversations", {
+      title: "Trip plan",
+    });
+    const id = (created.json.conversation as { id: string }).id;
+    // A conversation with no message has no room, so it is not stored.
+    await call(first, "POST", "/api/conversations", { title: "Unused" });
+    await call(first, "POST", `/api/conversations/${id}/messages`, {
+      text: "hi there",
+    });
+
+    const restarted: IosBridgeBackend = {
+      ...makeBackend(runtime),
+      conversations: await restoreIosConversations(runtime),
+    };
+    const list = await call(restarted, "GET", "/api/conversations");
+    const conversations = list.json.conversations as Array<{
+      id: string;
+      title: string;
+      createdAt: string;
+      updatedAt: string;
+    }>;
+    expect(conversations.map(({ id, title }) => ({ id, title }))).toEqual([
+      { id, title: "Trip plan" },
+    ]);
+    expect(Date.parse(conversations[0].createdAt)).toBeLessThanOrEqual(
+      Date.parse(conversations[0].updatedAt),
+    );
+    const transcript = await call(
+      restarted,
+      "GET",
+      `/api/conversations/${id}/messages`,
+    );
+    expect(
+      (transcript.json.messages as Array<{ role: string; text: string }>).map(
+        ({ role, text }) => ({ role, text }),
+      ),
+    ).toEqual([
+      { role: "user", text: "hi there" },
+      { role: "assistant", text: "Hello from Eliza-1." },
+    ]);
   });
   it("does not store a generation-failure notice as a reply", async () => {
     const backend = createNativeReplyBackend(async () => {
