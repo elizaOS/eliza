@@ -524,11 +524,15 @@ export const updateSettingsAction: Action = {
       };
     }
 
-    // No settings extracted
+    // An update was found but rejected (dependency or validation): report the
+    // reason. Otherwise no setting was extracted from the message.
+    const rejection = results.messages.join("\n");
     const next = getNextRequiredSetting(settings);
-    const prompt = next
-      ? `I couldn't understand that. I need your ${next[1].name}. ${next[1].usageDescription || next[1].description}`
-      : "I couldn't extract any settings from your message. Could you try again?";
+    const prompt = rejection
+      ? rejection
+      : next
+        ? `I couldn't understand that. I need your ${next[1].name}. ${next[1].usageDescription || next[1].description}`
+        : "I couldn't extract any settings from your message. Could you try again?";
 
     await callback({
       text: prompt,
@@ -536,7 +540,9 @@ export const updateSettingsAction: Action = {
     });
 
     return {
-      text: "No settings updated",
+      text: rejection
+        ? `No settings updated: ${rejection}`
+        : "No settings updated",
       values: { success: false },
       data: {
         actionName: "SECRETS_UPDATE_SETTINGS",
