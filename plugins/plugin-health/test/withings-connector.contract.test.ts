@@ -98,7 +98,7 @@ describe("Withings connector — recorded real API contract", () => {
     expect(steps?.startAt).toBe(dayAt);
     expect(steps?.sourceExternalId).toBe("2026-05-01:withings:steps");
 
-    // .active minutes -> active_minutes verbatim.
+    // .active seconds -> active_minutes (4140 s = 69 min).
     const activeMinutes = payload.samples.find(
       (s) => s.metric === "active_minutes",
     );
