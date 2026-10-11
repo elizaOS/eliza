@@ -167,7 +167,7 @@ export const choiceAction: Action = {
         // No visible callback: the model-emitted taskId is planner detail
         // the user never typed; the evaluator delivers the miss in voice.
         return {
-          text: `Could not find task with ID: ${taskId}`,
+          text: `Could not find task with ID: ${taskId}. Pending tasks: ${formattedTasks.map((task) => `${task.name} (taskId: ${task.taskId})`).join(", ")}`,
           values: {
             success: false,
             error: "TASK_NOT_FOUND",

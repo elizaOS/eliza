@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { expect, it } from "vitest";
 import { createIsolatedTestDatabase } from "../../../plugin-sql/src/__tests__/test-helpers";
 import { choiceAction } from "../features/basic-capabilities/actions/choice";
+import { choiceProvider } from "../features/basic-capabilities/providers/choice";
 
 it("rejects a damaged choice before worker effects while healthy and repaired choices execute", async () => {
   const f = await createIsolatedTestDatabase("choice-schedule-admission");
@@ -56,6 +57,22 @@ it("rejects a damaged choice before worker effects while healthy and repaired ch
       choiceAction.handler(f.runtime, message, undefined, {
         parameters: { taskId, option },
       });
+    // The provider is the planner's only listing of pending choices, so it
+    // must print the taskId that CHOOSE_OPTION requires.
+    const listing = await choiceProvider.get(f.runtime, message, {
+      values: {},
+      data: {},
+      text: "",
+    });
+    expect(listing.text).toContain(`(taskId: ${healthy})`);
+    expect(listing.text).toContain(`(taskId: ${damaged})`);
+    const missed = await choose("choice-schedule" as UUID);
+    expect(missed).toMatchObject({
+      success: false,
+      values: { error: "TASK_NOT_FOUND" },
+    });
+    expect(missed?.text).toContain(`(taskId: ${healthy})`);
+    expect(effects).toEqual([]);
     expect(await choose(healthy, "the first one")).toMatchObject({
       success: false,
       values: { error: "INVALID_OPTION" },
