@@ -6,7 +6,7 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { parseJsonModelRecord, runExtractorPipeline } from "@elizaos/core";
-import { describeNowForPrompt } from "./extract-task-plan.js";
+import { describeNowForPrompt } from "../../lifeops/time.js";
 
 const VALID_CADENCE_KINDS = new Set([
   "once",

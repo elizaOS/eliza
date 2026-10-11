@@ -979,6 +979,69 @@ for (const claims of [
   });
 }
 
+const AUTH_USER = "22222222-2222-4222-8222-222222222222";
+const authUserToken = (userId = AUTH_USER) =>
+  [
+    "header",
+    Buffer.from(
+      JSON.stringify({
+        exp: Math.floor(Date.now() / 1000) + 900,
+        userId,
+        tenantId: `personal-${userId}`,
+      }),
+    ).toString("base64url"),
+    "signature",
+  ].join(".");
+/** A Cloud whose own user id differs from the Auth user it names in `steward_user_id`. */
+const separateIdFixture = (steward_user_id, token) =>
+  billingFixture({
+    token,
+    fetch: (path) =>
+      path === "/api/v1/user"
+        ? Response.json({ success: true, ...ACCOUNT, steward_user_id })
+        : undefined,
+  });
+
+test("account verification matches the personal session to the Auth user Cloud names", async () => {
+  const f = separateIdFixture(AUTH_USER, authUserToken());
+  assert.equal(
+    (await billingVerify(f, await billingStart(f, { purpose: "account" })))
+      .status,
+    "authorized",
+  );
+  assert.ok(await f.auth.billingAuthority());
+});
+
+test("account verification rejects a session for another Auth user even when it carries the Cloud user id", async () => {
+  const f = separateIdFixture(AUTH_USER, sessionToken());
+  await assert.rejects(
+    billingVerify(f, await billingStart(f, { purpose: "account" })),
+    { code: "billing_account_mismatch" },
+  );
+  assert.equal(await f.auth.billingAuthority(), null);
+});
+
+for (const steward_user_id of ["", null, 7]) {
+  test(`account verification never matches an unusable Auth user id ${JSON.stringify(steward_user_id)}`, async () => {
+    const other = separateIdFixture(steward_user_id, authUserToken());
+    await assert.rejects(
+      billingVerify(other, await billingStart(other, { purpose: "account" })),
+      { code: "billing_account_mismatch" },
+    );
+    // Without a usable Auth user id the Cloud user id is the only comparison left.
+    const same = separateIdFixture(steward_user_id, sessionToken());
+    assert.equal(
+      (
+        await billingVerify(
+          same,
+          await billingStart(same, { purpose: "account" }),
+        )
+      ).status,
+      "authorized",
+    );
+  });
+}
+
 test("Cloud billing authority cannot be reused for personal account routes", async () => {
   const token = [
     "header",

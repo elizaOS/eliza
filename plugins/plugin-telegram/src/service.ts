@@ -895,6 +895,17 @@ export class TelegramService extends Service {
         if (token) releaseTelegramPollerToken(token, bot);
       }),
     );
+    // Polling has stopped, so a turn that waits for a later update (an
+    // Approve/Deny tap) can never receive it. Abort the turns this service
+    // started before draining them, as runtime shutdown does for all turns.
+    const messageManagers = states.length
+      ? states.map((state) => state.messageManager)
+      : this.messageManager
+        ? [this.messageManager]
+        : [];
+    for (const messageManager of messageManagers) {
+      messageManager.abortActiveTurns("telegram-service-stop");
+    }
     await Promise.all(this.inboundTurnCompletions);
     await Promise.all(this.outboundCompletions);
     const failures = results

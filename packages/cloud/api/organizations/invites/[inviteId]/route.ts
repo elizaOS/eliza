@@ -5,6 +5,10 @@
 
 import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import {
+  ApiError,
+  failureResponse,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
   RateLimitPresets,
   rateLimit,
 } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
@@ -41,6 +45,11 @@ app.delete("/", async (c) => {
       message: "Invitation revoked successfully",
     });
   } catch (error) {
+    // A rejected credential or inactive account is a typed 401/403, not a
+    // server fault; the message mapping below is only for revokeInvite errors.
+    if (error instanceof ApiError) {
+      return failureResponse(c, error);
+    }
     logger.error("Error revoking invite:", error);
     const message =
       error instanceof Error ? error.message : "Failed to revoke invitation";

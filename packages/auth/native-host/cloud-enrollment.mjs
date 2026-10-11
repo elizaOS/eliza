@@ -257,6 +257,12 @@ export function createNativeCloudAuth({
       );
     return {
       id: value.id,
+      // Cloud keeps its own user id and names the Auth user separately. A personal
+      // session's subject is the Auth user, so that is the id it must be compared with.
+      authUserId:
+        typeof value.steward_user_id === "string" && value.steward_user_id
+          ? value.steward_user_id
+          : value.id,
       organizationId: value.organization_id,
       email: typeof value.email === "string" ? value.email : null,
       phone: typeof value.phone_number === "string" ? value.phone_number : null,
@@ -315,7 +321,7 @@ export function createNativeCloudAuth({
       verified.id !== expected.account.id ||
       verified.organizationId !== expected.account.organizationId ||
       (expected.purpose === "account" &&
-        personalSessionUser(value.token) !== verified.id)
+        personalSessionUser(value.token) !== verified.authUserId)
     ) {
       clearBilling();
       throw fail(
@@ -540,7 +546,7 @@ export function createNativeCloudAuth({
       latest.token !== expectedToken ||
       original.id !== replacement.id ||
       original.organizationId !== replacement.organizationId ||
-      personalSessionUser(token) !== replacement.id
+      personalSessionUser(token) !== replacement.authUserId
     ) {
       clearBilling();
       throw fail(
