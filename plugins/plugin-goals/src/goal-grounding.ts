@@ -93,18 +93,18 @@ export function buildGoalGroundingMetadata(args: {
   return {
     version: 1,
     groundingState: args.groundingState,
-    summary: args.summary ?? null,
-    targetDomain: args.targetDomain ?? null,
-    groundedAt: args.groundedAt ?? null,
+    summary: asText(args.summary),
+    targetDomain: asText(args.targetDomain),
+    groundedAt: asText(args.groundedAt),
     confidence:
       typeof args.confidence === "number" && Number.isFinite(args.confidence)
         ? Math.max(0, Math.min(1, args.confidence))
         : null,
     missingCriticalFields: Array.from(
-      new Set((args.missingCriticalFields ?? []).filter(Boolean)),
+      new Set(asStringArray(args.missingCriticalFields ?? [])),
     ),
     evidenceSignals: Array.from(
-      new Set((args.evidenceSignals ?? []).filter(Boolean)),
+      new Set(asStringArray(args.evidenceSignals ?? [])),
     ),
     reviewCadenceKind:
       typeof args.reviewCadenceKind === "string" &&
