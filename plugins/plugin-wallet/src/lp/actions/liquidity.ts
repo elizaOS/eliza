@@ -490,15 +490,20 @@ async function handlePreferences(
     updates.push(`preferredDexes=${params.preferredDexes.join(",")}`);
   }
 
+  if (updates.length === 0) {
+    return {
+      success: false,
+      text: "No LP preference changes were provided. Set autoRebalanceEnabled, minGainThresholdPercent, slippageBps, or preferredDexes.",
+    };
+  }
+
   await profileService.updateProfile(userId, {
     autoRebalanceConfig: newConfig,
   });
 
   return {
     success: true,
-    text: updates.length
-      ? `LP preferences updated: ${updates.join(", ")}`
-      : "No LP preference changes were provided.",
+    text: `LP preferences updated: ${updates.join(", ")}`,
   };
 }
 
@@ -509,6 +514,60 @@ function baseRoute(params: LpActionParams) {
     chainId,
     dex: params.dex || params.dexName,
   };
+}
+
+const BASE_UNIT_AMOUNT = /^\d+$/;
+
+/**
+ * Request-shape rejections for open/close/reposition, run before the
+ * confirmation gate so the user is never asked to confirm a write the
+ * provider would refuse. Mirrors the provider checks in
+ * `LpManagementService`; protocol resolution throws the same errors the
+ * write itself would.
+ */
+function lpWriteRejection(
+  lp: LpManagementService,
+  params: LpActionParams,
+): string | undefined {
+  const subaction = params.subaction;
+  if (
+    subaction !== "open" &&
+    subaction !== "close" &&
+    subaction !== "reposition"
+  ) {
+    return undefined;
+  }
+  const route = baseRoute(params);
+  // operationAuth routes every non-EVM write through the Solana vault.
+  const chain = route.chain ?? "solana";
+  const protocol = lp.resolveProtocol({ ...route, chain });
+
+  if (subaction === "reposition" && !protocol.repositionPosition) {
+    return `LP reposition is unavailable for ${protocol.dex} on ${protocol.chain}.`;
+  }
+  if (chain === "evm" && !route.chainId) {
+    return `LP ${subaction} on an EVM chain needs chainId.`;
+  }
+  const pool = getPoolParam(params);
+  if (subaction === "open" && !pool) {
+    return "LP open needs pool. Use action=list_pools to find the pool id/address.";
+  }
+  if (subaction === "close" && !pool) {
+    if (chain === "evm") {
+      return "LP close on an EVM chain needs pool.";
+    }
+    if (!getPositionParam(params)) {
+      return "LP close needs pool or position. Use action=list_positions to find it.";
+    }
+  }
+  const amount = getAmountParam(params);
+  if (
+    (typeof amount === "string" || typeof amount === "number") &&
+    !BASE_UNIT_AMOUNT.test(String(amount).trim())
+  ) {
+    return `LP amount must be a whole number of token base units; got ${amount}.`;
+  }
+  return undefined;
 }
 
 async function handleLpOperation(
@@ -708,7 +767,8 @@ export const liquidityAction: Action = {
     },
     {
       name: "chain",
-      description: "Chain for the LP operation.",
+      description:
+        "Chain for the LP operation. evm writes (open, close, reposition) also need chainId.",
       required: false,
       schema: { type: "string", enum: ["solana", "evm"] },
     },
@@ -721,7 +781,7 @@ export const liquidityAction: Action = {
     {
       name: "pool",
       description:
-        "Pool id/address for open, close, reposition, or position lookup.",
+        "Pool id/address. Required for open, and for close on EVM; Solana close accepts pool or position.",
       required: false,
       schema: { type: "string" },
     },
@@ -734,7 +794,7 @@ export const liquidityAction: Action = {
     {
       name: "amount",
       description:
-        "Liquidity amount for open, close, or reposition operations.",
+        "Liquidity amount as a whole number of token base units (lamports / wei-style), not a decimal token amount. tokenA amount for open; LP token amount for close.",
       required: false,
       schema: {
         anyOf: [{ type: "string" }, { type: "number" }],
@@ -742,33 +802,68 @@ export const liquidityAction: Action = {
     },
     {
       name: "range",
-      description: "Desired concentrated liquidity price range.",
+      description:
+        "Concentrated liquidity tick range for open or reposition. Price bounds are not supported.",
       required: false,
-      schema: { type: "object" },
+      schema: {
+        type: "object",
+        properties: {
+          tickLowerIndex: {
+            type: "number",
+            description: "Lower tick index of the range.",
+          },
+          tickUpperIndex: {
+            type: "number",
+            description: "Upper tick index of the range.",
+          },
+        },
+      },
     },
     {
       name: "tokenA",
-      description: "First token filter or deposit token.",
+      description:
+        "First token filter for list_pools. open does not pick a pool from tokens; pass pool.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "tokenB",
-      description: "Second token filter or deposit token.",
+      description: "Second token filter for list_pools.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "chainId",
-      description: "Optional numeric EVM chain id.",
+      description:
+        "Numeric EVM chain id. Required for open, close, and reposition when chain is evm.",
       required: false,
       schema: { type: "number" },
     },
     {
       name: "slippageBps",
-      description: "Maximum allowed slippage in basis points.",
+      description:
+        "Maximum allowed slippage in basis points. With set_preferences, the saved auto-rebalance slippage limit.",
       required: false,
       schema: { type: "number" },
+    },
+    {
+      name: "autoRebalanceEnabled",
+      description: "set_preferences only: turn LP auto-rebalancing on or off.",
+      required: false,
+      schema: { type: "boolean" },
+    },
+    {
+      name: "minGainThresholdPercent",
+      description:
+        "set_preferences only: minimum estimated gain, in percent, before auto-rebalancing moves a position.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "preferredDexes",
+      description: "set_preferences only: DEX names auto-rebalancing may use.",
+      required: false,
+      schema: { type: "array", items: { type: "string" } },
     },
   ],
 
@@ -795,7 +890,7 @@ export const liquidityAction: Action = {
       {
         name: "{{name1}}",
         content: {
-          text: "Open a Raydium LP position with 100 USDC paired against SOL.",
+          text: "Add 100 USDC to Raydium pool 58oQChx4yWmvKdwLLZzBi4ChoCc2fqCUWBkwMihLYQo2.",
           source: "chat",
         },
       },
@@ -805,7 +900,7 @@ export const liquidityAction: Action = {
           text: "Opening the LP position.",
           actions: ["LIQUIDITY"],
           thought:
-            "User wants to provide liquidity on a DEX; LIQUIDITY action=open with the token pair and amount routes to the LP manager.",
+            "User wants to provide liquidity on a DEX; LIQUIDITY action=open with dex, the pool id, and the amount in base units (100 USDC = 100000000) routes to the LP manager.",
         },
       },
     ],
@@ -831,7 +926,7 @@ export const liquidityAction: Action = {
       {
         name: "{{name1}}",
         content: {
-          text: "Close my SOL/USDC liquidity position.",
+          text: "Close my liquidity position in Raydium pool 58oQChx4yWmvKdwLLZzBi4ChoCc2fqCUWBkwMihLYQo2.",
           source: "chat",
         },
       },
@@ -841,7 +936,7 @@ export const liquidityAction: Action = {
           text: "Closing the LP position.",
           actions: ["LIQUIDITY"],
           thought:
-            "Withdraw / unwind intent maps to LIQUIDITY action=close on the named pair.",
+            "Withdraw / unwind intent maps to LIQUIDITY action=close with dex and the pool or position id.",
         },
       },
     ],
@@ -911,6 +1006,11 @@ export const liquidityAction: Action = {
           success: false,
           text: "LP management service is currently unavailable.",
         };
+      }
+
+      const rejection = lpWriteRejection(lp, params);
+      if (rejection) {
+        return { success: false, text: rejection };
       }
 
       // GHSA-rqm7-f4jc-84x3: open/close/reposition pend for user confirmation

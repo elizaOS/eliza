@@ -6,10 +6,19 @@
  * as WALLET. Runs the real `liquidityAction` handler and gate code against an
  * in-memory runtime (no live chain, model, or network).
  */
-import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
+import {
+  type HandlerCallback,
+  type IAgentRuntime,
+  type Memory,
+  validateToolArgs,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { assertWalletFinancialActionAllowed } from "../../../security/wallet-context-safety";
-import { LP_MANAGEMENT_SERVICE_TYPE } from "../../services/LpManagementService";
+import {
+  LP_MANAGEMENT_SERVICE_TYPE,
+  LpManagementService,
+  type LpProtocolProvider,
+} from "../../services/LpManagementService";
 import { liquidityAction } from "../liquidity";
 
 const HARDHAT_KEY =
@@ -76,6 +85,7 @@ function lpRuntime() {
       transactionId: "0xreposition",
     })),
     listPools: vi.fn(async () => []),
+    resolveProtocol: vi.fn(() => ({ chain: "evm", dex: "uniswap" })),
   };
   vi.mocked(runtime.getService).mockImplementation((name: string) =>
     name === LP_MANAGEMENT_SERVICE_TYPE ? lp : null,
@@ -119,6 +129,7 @@ describe("LIQUIDITY write gates", () => {
     const result = await liquidityAction.handler(runtime, flagged, undefined, {
       action: "close",
       chain: "evm",
+      chainId: 8453,
       position: "pos-1",
     });
 
@@ -135,7 +146,13 @@ describe("LIQUIDITY write gates", () => {
       runtime,
       message("open an LP position"),
       undefined,
-      { action: "open", chain: "evm", pool: "0xpool", amount: "100" },
+      {
+        action: "open",
+        chain: "evm",
+        chainId: 8453,
+        pool: "0xpool",
+        amount: "100",
+      },
       callback,
     );
 
@@ -153,6 +170,7 @@ describe("LIQUIDITY write gates", () => {
     const params = {
       action: "open",
       chain: "evm",
+      chainId: 8453,
       pool: "0xpool",
       amount: "100",
     };
@@ -186,7 +204,13 @@ describe("LIQUIDITY write gates", () => {
       runtime,
       message("open an LP position"),
       undefined,
-      { action: "open", chain: "evm", pool: "0xpoolA", amount: "100" },
+      {
+        action: "open",
+        chain: "evm",
+        chainId: 8453,
+        pool: "0xpoolA",
+        amount: "100",
+      },
       callback,
     );
     expect(first?.data?.requiresConfirmation).toBe(true);
@@ -195,7 +219,13 @@ describe("LIQUIDITY write gates", () => {
       runtime,
       message("yes"),
       undefined,
-      { action: "open", chain: "evm", pool: "0xpoolB", amount: "100" },
+      {
+        action: "open",
+        chain: "evm",
+        chainId: 8453,
+        pool: "0xpoolB",
+        amount: "100",
+      },
       callback,
     );
     expect(second?.data?.requiresConfirmation).toBe(true);
@@ -208,6 +238,7 @@ describe("LIQUIDITY write gates", () => {
     const confirmed = {
       action: "open",
       chain: "evm",
+      chainId: 8453,
       pool: "0xpool",
       amount: "100",
       dex: "uniswap",
@@ -255,6 +286,7 @@ describe("LIQUIDITY write gates", () => {
     const result = await liquidityAction.handler(runtime, flagged, undefined, {
       action: "open",
       chain: "evm",
+      chainId: 8453,
       pool: "0xpool",
       amount: "100",
       dex: "uniswap",
@@ -273,7 +305,13 @@ describe("LIQUIDITY write gates", () => {
       runtime,
       message("close my LP"),
       undefined,
-      { action: "close", chain: "evm", position: "pos-1", pool: "0xpool" },
+      {
+        action: "close",
+        chain: "evm",
+        chainId: 8453,
+        position: "pos-1",
+        pool: "0xpool",
+      },
       callback,
     );
     expect(first?.data?.requiresConfirmation).toBe(true);
@@ -284,7 +322,13 @@ describe("LIQUIDITY write gates", () => {
       runtime,
       message("yes"),
       undefined,
-      { action: "close", chain: "evm", position: "pos-2", pool: "0xpool" },
+      {
+        action: "close",
+        chain: "evm",
+        chainId: 8453,
+        position: "pos-2",
+        pool: "0xpool",
+      },
       callback,
     );
     expect(second?.data?.requiresConfirmation).toBe(true);
@@ -313,6 +357,7 @@ describe("LIQUIDITY write gates", () => {
       displayName: `Pool ${index}`,
       dex: "test-dex",
       chain: "evm",
+      chainId: 8453,
       tokenA: { symbol: "AAA", address: `0xa${index}` },
       tokenB: { symbol: "BBB", address: `0xb${index}` },
     }));
@@ -332,5 +377,173 @@ describe("LIQUIDITY write gates", () => {
 
   it("gates the umbrella at ADMIN like the WALLET action", () => {
     expect(liquidityAction.roleGate?.minRole).toBe("ADMIN");
+  });
+});
+
+/**
+ * Real `LpManagementService` registry with one provider per chain. The
+ * provider write methods are spies: the assertions below are that a request
+ * the provider would refuse never reaches them or the confirmation prompt.
+ */
+function registryRuntime() {
+  const { runtime, cache } = createRuntime({ EVM_PRIVATE_KEY: HARDHAT_KEY });
+  const lp = new LpManagementService(runtime);
+  const provider = (chain: "solana" | "evm", dex: string) => {
+    const entry: LpProtocolProvider = {
+      id: `${chain}:${dex}`,
+      chain,
+      dex,
+      listPools: vi.fn(async () => []),
+      openPosition: vi.fn(async () => ({ success: true })),
+      closePosition: vi.fn(async () => ({ success: true })),
+    };
+    lp.registerProtocol(entry);
+    return entry;
+  };
+  const raydium = provider("solana", "raydium");
+  const uniswap = provider("evm", "uniswap");
+  vi.mocked(runtime.getService).mockImplementation((name: string) =>
+    name === LP_MANAGEMENT_SERVICE_TYPE ? lp : null,
+  );
+  return { runtime, cache, raydium, uniswap };
+}
+
+async function runPlannerCall(
+  args: Record<string, unknown>,
+  setup = registryRuntime(),
+) {
+  const validation = validateToolArgs(liquidityAction, args);
+  expect(validation.errors).toEqual([]);
+  const { prompts, callback } = recordingCallback();
+  const result = await liquidityAction.handler(
+    setup.runtime,
+    message("manage my LP"),
+    undefined,
+    validation.args,
+    callback,
+  );
+  return { result, prompts, ...setup };
+}
+
+describe("LIQUIDITY planner arguments", () => {
+  it("accepts a tick range and the set_preferences fields the handler reads", () => {
+    expect(
+      validateToolArgs(liquidityAction, {
+        action: "open",
+        dex: "raydium",
+        pool: "pool-1",
+        amount: "100000000",
+        range: { tickLowerIndex: -100, tickUpperIndex: 100 },
+      }).errors,
+    ).toEqual([]);
+    expect(
+      validateToolArgs(liquidityAction, {
+        action: "set_preferences",
+        autoRebalanceEnabled: true,
+        minGainThresholdPercent: 2,
+        preferredDexes: ["raydium", "orca"],
+      }).errors,
+    ).toEqual([]);
+  });
+
+  it("does not accept price bounds no provider reads", () => {
+    expect(
+      validateToolArgs(liquidityAction, {
+        action: "open",
+        range: { priceLower: 1, priceUpper: 2 },
+      }).errors,
+    ).not.toEqual([]);
+  });
+
+  it("shows the tick range in the confirmation prompt", async () => {
+    const { result, prompts } = await runPlannerCall({
+      action: "open",
+      dex: "raydium",
+      pool: "pool-1",
+      amount: "100000000",
+      range: { tickLowerIndex: -100, tickUpperIndex: 100 },
+    });
+
+    expect(result?.data?.requiresConfirmation).toBe(true);
+    expect(prompts.join("\n")).toContain("tl=-100");
+  });
+
+  it.each([
+    [
+      "an open with no pool",
+      { action: "open", dex: "raydium", tokenA: "USDC", amount: 100 },
+      /needs pool/,
+    ],
+    [
+      "a close with neither pool nor position",
+      { action: "close", dex: "raydium" },
+      /needs pool or position/,
+    ],
+    [
+      "an EVM open with no chainId",
+      { action: "open", chain: "evm", dex: "uniswap", pool: "0xpool" },
+      /needs chainId/,
+    ],
+    [
+      "a decimal amount",
+      { action: "open", dex: "raydium", pool: "pool-1", amount: "1.5" },
+      /base units/,
+    ],
+    [
+      "a dex with no registered provider",
+      { action: "open", dex: "orca", pool: "pool-1", amount: "1" },
+      /No registered LP protocol matches/,
+    ],
+    [
+      "a reposition the provider does not implement",
+      { action: "reposition", dex: "raydium", position: "pos-1" },
+      /reposition is unavailable for raydium on solana/,
+    ],
+  ])(
+    "rejects %s before the confirmation prompt",
+    async (_label, args, text) => {
+      const { result, prompts, cache, raydium, uniswap } =
+        await runPlannerCall(args);
+
+      expect(result?.success).toBe(false);
+      expect(String(result?.text)).toMatch(text);
+      expect(prompts).toEqual([]);
+      expect(confirmationKeys(cache)).toHaveLength(0);
+      for (const entry of [raydium, uniswap]) {
+        expect(entry.openPosition).not.toHaveBeenCalled();
+        expect(entry.closePosition).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it("reports a set_preferences call with no preference as a failure and writes nothing", async () => {
+    const setup = registryRuntime();
+    const updateProfile = vi.fn();
+    vi.mocked(setup.runtime.getService).mockImplementation((name: string) =>
+      name === "VaultService"
+        ? {}
+        : name === "UserLpProfileService"
+          ? {
+              getProfile: async () => ({
+                vaultPublicKey: "vault",
+                autoRebalanceConfig: { enabled: false },
+              }),
+              updateProfile,
+            }
+          : null,
+    );
+
+    const empty = await runPlannerCall({ action: "set_preferences" }, setup);
+    expect(empty.result?.success).toBe(false);
+    expect(updateProfile).not.toHaveBeenCalled();
+
+    const enabled = await runPlannerCall(
+      { action: "set_preferences", autoRebalanceEnabled: true },
+      setup,
+    );
+    expect(enabled.result?.success).toBe(true);
+    expect(updateProfile).toHaveBeenCalledWith(expect.any(String), {
+      autoRebalanceConfig: { enabled: true },
+    });
   });
 });
