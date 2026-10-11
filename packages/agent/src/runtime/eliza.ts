@@ -5775,15 +5775,15 @@ export async function startEliza(
   }
   bootContext.enterPhase("attach-host");
   let lifecycleRuntime: AgentRuntime | null = runtime;
-  // An API stop in flight owns its runtime's teardown; a signal shutdown waits
-  // for it (within the signal budget) before the process exits.
-  let pendingApiStop: Promise<void> | null = null;
+  // A teardown started by an API stop or restart owns its runtime; a signal
+  // shutdown waits for it (within the signal budget) before the process exits.
+  let pendingRuntimeTeardown: Promise<void> | null = null;
   const processLifecycle = createAgentProcessLifecycle({
     disposeRuntime: async (reason) => {
-      if (pendingApiStop) {
+      if (pendingRuntimeTeardown) {
         let timer: ReturnType<typeof setTimeout> | undefined;
         await Promise.race([
-          pendingApiStop.catch(() => undefined),
+          pendingRuntimeTeardown.catch(() => undefined),
           new Promise<void>((resolve) => {
             timer = setTimeout(resolve, SIGNAL_SERVICE_STOP_TIMEOUT_MS);
           }),
@@ -5954,11 +5954,13 @@ export async function startEliza(
         const stop = shutdownRuntime(runtimeToStop, "API stop", {
           requireQuiescence: true,
         });
-        pendingApiStop = stop;
+        pendingRuntimeTeardown = stop;
         try {
           await stop;
         } finally {
-          if (pendingApiStop === stop) pendingApiStop = null;
+          if (pendingRuntimeTeardown === stop) {
+            pendingRuntimeTeardown = null;
+          }
           if (lifecycleRuntime === runtimeToStop) {
             lifecycleRuntime = null;
           }
@@ -5975,9 +5977,19 @@ export async function startEliza(
             // lifecycle reference before teardown so an API stop followed by
             // start, or a failed teardown, cannot close the adapter again.
             lifecycleRuntime = null;
-            await shutdownRuntime(runtime, "pre-restore runtime disposal", {
-              fast: true,
-            });
+            const teardown = shutdownRuntime(
+              runtime,
+              "pre-restore runtime disposal",
+              { fast: true },
+            );
+            pendingRuntimeTeardown = teardown;
+            try {
+              await teardown;
+            } finally {
+              if (pendingRuntimeTeardown === teardown) {
+                pendingRuntimeTeardown = null;
+              }
+            }
             disposedRuntimeBeforeReplacement = true;
           }
           const replacement = await buildInitializedRuntime({

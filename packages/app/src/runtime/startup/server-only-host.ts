@@ -56,8 +56,8 @@ export async function startServerOnlyHost({
 }: StartServerOnlyHostOptions): Promise<AgentRuntime | undefined> {
   bootLap("startEliza:serverOnly entry");
   let currentRuntime: AgentRuntime | undefined;
-  /** Teardown started by POST /api/agent/stop; close() waits for it. */
-  let pendingApiStop: Promise<unknown> | undefined;
+  /** Teardown started by an API stop or restart; close() waits for it. */
+  let pendingRuntimeTeardown: Promise<unknown> | undefined;
   let runtimePublished = false;
   let postReadyPhase: "pending" | "complete" | "failed" = "pending";
   const startup = new AppStartupStateMachine();
@@ -187,11 +187,12 @@ export async function startServerOnlyHost({
         const stop = stopRuntime(runtimeToStop, "server-only API stop", {
           requireQuiescence: true,
         });
-        pendingApiStop = stop;
+        pendingRuntimeTeardown = stop;
         try {
           await stop;
         } finally {
-          if (pendingApiStop === stop) pendingApiStop = undefined;
+          if (pendingRuntimeTeardown === stop)
+            pendingRuntimeTeardown = undefined;
           if (currentRuntime === runtimeToStop) {
             currentRuntime = undefined;
             runtimePublished = false;
@@ -209,7 +210,21 @@ export async function startServerOnlyHost({
           return currentRuntime ?? null;
         }
         if (currentRuntime) {
-          await stopRuntime(currentRuntime, "server-only restart");
+          // Relinquish ownership before teardown, as the API stop does, so a
+          // signal during the restart waits for it instead of closing the
+          // same adapter again.
+          const runtimeToStop = currentRuntime;
+          currentRuntime = undefined;
+          runtimePublished = false;
+          const teardown = stopRuntime(runtimeToStop, "server-only restart");
+          pendingRuntimeTeardown = teardown;
+          try {
+            await teardown;
+          } finally {
+            if (pendingRuntimeTeardown === teardown) {
+              pendingRuntimeTeardown = undefined;
+            }
+          }
         }
         runtimePublished = false;
         postReadyPhase = "pending";
@@ -348,10 +363,11 @@ export async function startServerOnlyHost({
         );
       }
     }
-    // An API stop in flight owns its runtime's teardown; wait for it so the
+    // A teardown started by an API stop or restart owns its runtime; wait for it so the
     // process does not exit before the adapter closes (the process boundary
     // keeps its own forced-exit timer).
-    if (pendingApiStop) await pendingApiStop.catch(() => undefined);
+    if (pendingRuntimeTeardown)
+      await pendingRuntimeTeardown.catch(() => undefined);
     if (currentRuntime) {
       await stopRuntime(currentRuntime, "server-only shutdown");
     } else {

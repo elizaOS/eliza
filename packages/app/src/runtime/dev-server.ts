@@ -123,8 +123,8 @@ const port = resolveDesktopApiPort(process.env);
 const hadUserApiTokenInEnv = !!resolveApiToken(process.env);
 /** The currently active runtime — swapped on restart. */
 let currentRuntime: AgentRuntime | null = null;
-/** Teardown started by POST /api/agent/stop; signal shutdown waits for it. */
-let pendingApiStop: Promise<unknown> | null = null;
+/** Teardown started by an API stop or restart; signal shutdown waits for it. */
+let pendingRuntimeTeardown: Promise<unknown> | null = null;
 /** The API server's `updateRuntime` handle (set after startup). */
 let apiUpdateRuntime: ((rt: AgentRuntime) => void) | null = null;
 /** API server startup diagnostics updater (set after startup). */
@@ -352,8 +352,17 @@ async function createRuntime(): Promise<AgentRuntime> {
   const runtimeModule = await loadElizaRuntimeModule();
   const { shutdownRuntime, startEliza } = runtimeModule;
   if (currentRuntime) {
-    await shutdownRuntime(currentRuntime, "dev-server createRuntime");
+    // Relinquish ownership before teardown so a signal during a restart waits
+    // for this teardown instead of closing the same adapter again.
+    const runtimeToStop = currentRuntime;
     currentRuntime = null;
+    const teardown = shutdownRuntime(runtimeToStop, "dev-server createRuntime");
+    pendingRuntimeTeardown = teardown;
+    try {
+      await teardown;
+    } finally {
+      if (pendingRuntimeTeardown === teardown) pendingRuntimeTeardown = null;
+    }
   }
   const result = await startEliza({ headless: true });
   if (!result) {
@@ -466,9 +475,10 @@ async function shutdown(): Promise<void> {
   }, 10000);
   forceExitTimer.unref();
   logger.info(`${getLogPrefix()} Dev server shutting down…`);
-  // An API stop in flight owns its runtime's teardown; wait for it (bounded
+  // A teardown started by an API stop or restart owns its runtime; wait for it (bounded
   // by the forced-exit timer above) so the adapter closes before exit.
-  if (pendingApiStop) await pendingApiStop.catch(() => undefined);
+  if (pendingRuntimeTeardown)
+    await pendingRuntimeTeardown.catch(() => undefined);
   if (currentRuntime) {
     try {
       // currentRuntime is only ever set inside createRuntime(), which has
@@ -515,11 +525,11 @@ async function main() {
       const stop = shutdownRuntime(runtimeToStop, "dev-server API stop", {
         requireQuiescence: true,
       });
-      pendingApiStop = stop;
+      pendingRuntimeTeardown = stop;
       try {
         await stop;
       } finally {
-        if (pendingApiStop === stop) pendingApiStop = null;
+        if (pendingRuntimeTeardown === stop) pendingRuntimeTeardown = null;
         if (currentRuntime === runtimeToStop) {
           currentRuntime = null;
         }
