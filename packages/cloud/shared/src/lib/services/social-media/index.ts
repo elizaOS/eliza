@@ -150,17 +150,18 @@ class SocialMediaService {
       });
 
       if (refreshed) {
+        await this.updateStoredToken(
+          organizationId,
+          credential.id,
+          credential.access_token_secret_id,
+          credential.refresh_token_secret_id,
+          refreshed,
+        );
         credentials = {
           ...credentials,
           accessToken: refreshed.accessToken,
           refreshToken: refreshed.refreshToken,
         };
-        this.updateStoredToken(organizationId, credential.id, refreshed).catch((err) => {
-          // error-policy:J6 best-effort cache of the refreshed access token; a persist failure
-          // only forces a re-refresh next call (the DB refresh token is untouched) and must not
-          // block returning the valid in-hand credentials for this request.
-          logger.error(`[SocialMedia] Failed to persist refreshed token: ${err.message}`);
-        });
         logger.info(`[SocialMedia] Token refreshed for ${platform}`);
       } else {
         throw new Error(`Token expired. ${getRefreshGuidance(platform)}`);
@@ -173,6 +174,8 @@ class SocialMediaService {
   private async updateStoredToken(
     organizationId: string,
     credentialId: string,
+    accessSecretId: string | null,
+    refreshSecretId: string | null,
     refreshed: { accessToken: string; refreshToken?: string; expiresAt?: Date },
   ): Promise<void> {
     const audit = {
@@ -181,41 +184,23 @@ class SocialMediaService {
       source: "social-media-service",
     };
 
-    // Store new access token
-    const accessSecretId = await secretsService.create(
-      {
-        organizationId,
-        name: `REFRESHED_ACCESS_TOKEN_${credentialId}`,
-        value: refreshed.accessToken,
-        scope: "organization",
-        createdBy: "system",
-      },
-      audit,
-    );
-
-    const updates: Record<string, unknown> = {
-      access_token_secret_id: accessSecretId,
-      token_expires_at: refreshed.expiresAt,
-      updated_at: new Date(),
-    };
-
     if (refreshed.refreshToken) {
-      const refreshSecretId = await secretsService.create(
-        {
-          organizationId,
-          name: `REFRESHED_REFRESH_TOKEN_${credentialId}`,
-          value: refreshed.refreshToken,
-          scope: "organization",
-          createdBy: "system",
-        },
-        audit,
-      );
-      updates.refresh_token_secret_id = refreshSecretId;
+      if (!refreshSecretId) throw new Error("Stored refresh token secret is missing");
+      // A provider can invalidate the old refresh token as soon as it returns a new one.
+      // Persist that replacement first so an access-token write failure remains recoverable.
+      await secretsService.rotate(refreshSecretId, organizationId, refreshed.refreshToken, audit);
     }
+
+    if (!accessSecretId) throw new Error("Stored access token secret is missing");
+    await secretsService.rotate(accessSecretId, organizationId, refreshed.accessToken, audit);
 
     await dbWrite
       .update(platformCredentials)
-      .set(updates)
+      .set({
+        token_expires_at: refreshed.expiresAt,
+        last_refreshed_at: new Date(),
+        updated_at: new Date(),
+      })
       .where(eq(platformCredentials.id, credentialId));
   }
 
