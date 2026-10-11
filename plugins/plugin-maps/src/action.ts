@@ -237,7 +237,7 @@ function directPlace(params: Params, prefix = ""): PlaceRef | null {
   if (!hasDirectInput) return null;
   if (latitude === undefined || longitude === undefined || !name) {
     throw new MapsError(
-      "Coordinate-defined places require latitude, longitude, and name together.",
+      `Coordinate-defined places require ${field("latitude")}, ${field("longitude")}, and ${field("name")} together.`,
       { code: "MAPS_INVALID_INPUT" },
     );
   }
@@ -764,7 +764,7 @@ export const mapsAction: Action = {
     "NAVIGATION",
   ],
   description:
-    "Look up places, plan routes, save places, create shareable geo links, or hand a destination to navigation. Use the specific promoted MAPS_* action when the requested operation is known.",
+    "Look up places, plan routes, save places, create shareable geo links, or hand a destination to navigation. Use the specific promoted MAPS_* action when the requested operation is known. Saving a place runs only through MAPS_SAVE.",
   descriptionCompressed:
     "Place search, routes, saved places, sharing, and navigation.",
   contexts: ["location", "travel", "productivity"],
@@ -776,7 +776,8 @@ export const mapsAction: Action = {
   parameters: [
     {
       name: "action",
-      description: "Maps operation.",
+      description:
+        "Maps operation: place | route | share | navigate. MAPS rejects save; call MAPS_SAVE to save a place.",
       required: false,
       schema: { type: "string", enum: [...MAPS_SUBACTIONS] },
     },
@@ -865,42 +866,48 @@ export const mapsAction: Action = {
     },
     {
       name: "originLatitude",
-      description: "Route origin latitude.",
+      description:
+        "Route origin latitude. Requires originLongitude and originName.",
       required: false,
       schema: { type: "number" },
       subactions: ["route"],
     },
     {
       name: "originLongitude",
-      description: "Route origin longitude.",
+      description:
+        "Route origin longitude. Requires originLatitude and originName.",
       required: false,
       schema: { type: "number" },
       subactions: ["route"],
     },
     {
       name: "originName",
-      description: "Route origin coordinate label.",
+      description:
+        "Route origin coordinate label. Required with originLatitude and originLongitude.",
       required: false,
       schema: { type: "string" },
       subactions: ["route"],
     },
     {
       name: "destinationLatitude",
-      description: "Route destination latitude.",
+      description:
+        "Route destination latitude. Requires destinationLongitude and destinationName.",
       required: false,
       schema: { type: "number" },
       subactions: ["route"],
     },
     {
       name: "destinationLongitude",
-      description: "Route destination longitude.",
+      description:
+        "Route destination longitude. Requires destinationLatitude and destinationName.",
       required: false,
       schema: { type: "number" },
       subactions: ["route"],
     },
     {
       name: "destinationName",
-      description: "Route destination coordinate label.",
+      description:
+        "Route destination coordinate label. Required with destinationLatitude and destinationLongitude.",
       required: false,
       schema: { type: "string" },
       subactions: ["route"],
