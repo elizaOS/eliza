@@ -49,10 +49,8 @@ type WebsiteBlockSubaction =
   | "list_active";
 
 interface WebsiteBlockParams {
-  intent?: string;
   hostnames?: string[] | string;
   durationMinutes?: number | string | null;
-  confirmed?: boolean | string | null;
   ruleId?: string | null;
   reason?: string | null;
   includeLiveStatus?: boolean | string | null;
@@ -62,11 +60,11 @@ interface WebsiteBlockParams {
 const SUBACTIONS: SubactionsMap<WebsiteBlockSubaction> = {
   block: {
     description:
-      "Start a hosts-file block on a set of public hostnames for a fixed duration or indefinitely. Always drafts first; requires confirmed:true to actually edit the hosts file. Heuristic and LLM extract hosts from intent.",
+      "Start a hosts-file block on a set of public hostnames for a fixed duration or indefinitely. Always drafts first; the hosts file is edited only after the owner replies yes on a follow-up turn and the same call is repeated. Hosts and duration come from hostnames/durationMinutes or the owner message.",
     descriptionCompressed:
       "hosts-file block hostnames duration draft-confirm heuristic+LLM extract-hosts",
-    required: ["intent"],
-    optional: ["hostnames", "durationMinutes", "confirmed"],
+    required: [],
+    optional: ["hostnames", "durationMinutes"],
   },
   unblock: {
     description:
@@ -94,7 +92,7 @@ const SUBACTIONS: SubactionsMap<WebsiteBlockSubaction> = {
     descriptionCompressed:
       "release managed-block-rule(id) two-turn-confirm; harsh_no_bypass not releasable",
     required: ["ruleId"],
-    optional: ["reason", "confirmed"],
+    optional: ["reason"],
   },
   list_active: {
     description:

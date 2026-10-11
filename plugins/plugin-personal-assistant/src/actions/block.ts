@@ -224,7 +224,7 @@ const examples: ActionExample[][] = [
     {
       name: "{{agentName}}",
       content: {
-        text: 'Ready to block x.com, twitter.com for 120 minutes. Reply "confirm" or re-issue with confirmed: true to start the block.',
+        text: "Ready to block x.com, twitter.com for 120 minutes. Reply yes to confirm or no to cancel.",
         action: ACTION_NAME,
       },
     },
@@ -304,7 +304,7 @@ export const blockAction: Action & {
     "Scope phone apps, websites only; NOT calendar/focus/deep-work blocks -> CALENDAR subaction=create_event. " +
     "target=app phone apps; target=website desktop websites. " +
     "Actions block|unblock|status all targets; request_permission|release|list_active website-only. " +
-    "Website block drafts first; confirmed:true for website block + release.",
+    "Website block + release ask the owner first; after the owner replies yes, repeat the same call (same hostnames, durationMinutes, ruleId).",
   descriptionCompressed:
     "BLOCK apps+websites only; NOT calendar/focus; block|unblock|status|permission|release",
   contexts: ["screen_time", "browser", "automation", "tasks", "settings"],
@@ -341,7 +341,8 @@ export const blockAction: Action & {
     // permissive: each backend reads only the keys it understands.
     {
       name: "intent",
-      description: "Owner intent text; extract apps/hostnames + duration.",
+      description:
+        "(target=app) Owner intent text; Android apps are inferred from it when packageNames is omitted.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -351,13 +352,6 @@ export const blockAction: Action & {
       description: "(target=website) Public hostnames/URLs.",
       required: false,
       schema: { type: "array" as const, items: { type: "string" as const } },
-    },
-    {
-      name: "confirmed",
-      description:
-        "(target=website) true after owner confirmed. Without: block drafts. Required by release.",
-      required: false,
-      schema: { type: "boolean" as const },
     },
     {
       name: "ruleId",

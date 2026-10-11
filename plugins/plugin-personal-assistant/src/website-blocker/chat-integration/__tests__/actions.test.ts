@@ -82,7 +82,7 @@ function actionData(result: unknown): Record<string, unknown> {
  */
 async function invokeSubaction(
   harness: BlockRuleTestHarness,
-  subaction: "list_active" | "release",
+  subaction: "block" | "list_active" | "release",
   parameters: Record<string, unknown>,
   message: Memory = EMPTY_MESSAGE,
 ): Promise<ActionResult> {
@@ -165,6 +165,18 @@ describe("WEBSITE_BLOCK list_active / release subactions", () => {
       "No managed website block rules are active.",
     );
     expect(actionData(result).rules).toEqual([]);
+  });
+
+  it("block with explicit hostnames and no intent drafts the confirmation prompt", async () => {
+    const draft = await invokeSubaction(harness, "block", {
+      hostnames: ["x.com"],
+      durationMinutes: 120,
+    });
+    expect(draft.success).toBe(true);
+    expect(draft.text).toBe(
+      "Ready to block x.com for 120 minutes. Reply yes to confirm or no to cancel.",
+    );
+    expect(actionData(draft).requiresConfirmation).toBe(true);
   });
 
   it("release without confirmed fails; harsh_no_bypass cannot be released", async () => {

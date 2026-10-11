@@ -47,8 +47,8 @@ const SUBACTIONS: SubactionsMap<AppBlockSubaction> = {
       "iOS: requires appTokens from a previous Family Controls picker selection.",
     descriptionCompressed:
       "block phone apps(packages|tokens duration?) iOS-Family-Controls Android-Usage-Access",
-    required: ["intent"],
-    optional: ["packageNames", "appTokens", "durationMinutes"],
+    required: [],
+    optional: ["intent", "packageNames", "appTokens", "durationMinutes"],
   },
   unblock: {
     description: "Remove the active phone-app block, unshielding all apps.",
