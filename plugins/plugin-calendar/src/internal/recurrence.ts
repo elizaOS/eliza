@@ -77,6 +77,12 @@ export interface ParsedCalendarRecurrenceRule {
   /** Inclusive UTC cutoff for occurrences. */
   untilMs?: number;
   /**
+   * Set when UNTIL is a DATE (`UNTIL=20261215`). A DATE names a calendar day,
+   * so the series ends with that day in the series time zone. `untilMs` is
+   * then the end of that day in UTC, for a caller that needs an instant.
+   */
+  untilDate?: { year: number; month: number; day: number };
+  /**
    * True when the rule uses RFC 5545 parts that are valid for the provider but
    * outside this module's local expansion subset (ordinal BYDAY like `2MO`,
    * BYSETPOS, BYMONTH, …). Such rules pass validation and flow to the provider
@@ -93,7 +99,10 @@ function invalidRecurrence(detail: string): never {
   );
 }
 
-function parseUntilValue(value: string): number {
+function parseUntilValue(value: string): {
+  ms: number;
+  date?: { year: number; month: number; day: number };
+} {
   const dateOnly = value.match(/^(\d{4})(\d{2})(\d{2})$/);
   if (dateOnly) {
     const y = Number(dateOnly[1]);
@@ -112,7 +121,7 @@ function parseUntilValue(value: string): number {
     ) {
       invalidRecurrence(`UNTIL=${value}`);
     }
-    return ms;
+    return { ms, date: { year: y, month: mo, day: d0 } };
   }
   const dateTime = value.match(
     /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/,
@@ -143,7 +152,7 @@ function parseUntilValue(value: string): number {
     ) {
       invalidRecurrence(`UNTIL=${value}`);
     }
-    return ms;
+    return { ms };
   }
   invalidRecurrence(
     `UNTIL must be YYYYMMDD or YYYYMMDDTHHMMSSZ, got "${value}"`,
@@ -178,6 +187,7 @@ export function parseRecurrenceRule(
   let byMonthDay: number[] | undefined;
   let count: number | undefined;
   let untilMs: number | undefined;
+  let untilDate: ParsedCalendarRecurrenceRule["untilDate"];
   let beyondExpansionSubset = false;
 
   for (const segment of body.split(";")) {
@@ -207,9 +217,12 @@ export function parseRecurrenceRule(
       case "COUNT":
         count = parsePositiveInt(raw, "COUNT");
         break;
-      case "UNTIL":
-        untilMs = parseUntilValue(raw);
+      case "UNTIL": {
+        const until = parseUntilValue(raw);
+        untilMs = until.ms;
+        untilDate = until.date;
         break;
+      }
       case "BYDAY": {
         const days: number[] = [];
         for (const token of raw.split(",")) {
@@ -277,6 +290,7 @@ export function parseRecurrenceRule(
     byMonthDay,
     count,
     untilMs,
+    untilDate,
     beyondExpansionSubset,
   };
 }
@@ -569,8 +583,17 @@ function* generateOccurrences(args: {
     }
   }
 
+  // A DATE UNTIL ends with its calendar day in the series time zone. A
+  // comparison of instants ends it with that day in UTC, which drops the last
+  // evening occurrence west of UTC and adds a morning one east of UTC.
+  const untilDate = rule.untilDate;
+  const pastUntil = (instantMs: number, date: LocalDateOnly): boolean =>
+    untilDate
+      ? compareLocalDates(date, untilDate) > 0
+      : rule.untilMs !== undefined && instantMs > rule.untilMs;
+
   // DTSTART is always the first occurrence.
-  if (rule.untilMs !== undefined && startMs > rule.untilMs) return;
+  if (pastUntil(startMs, anchorDate)) return;
   if (startMs >= rangeEndMs) return;
   yield new Date(startMs);
   emitted += 1;
@@ -591,7 +614,7 @@ function* generateOccurrences(args: {
     const instant = toInstant(date);
     if (instant.getTime() >= rangeEndMs) return;
     if (instant.getTime() <= startMs) continue;
-    if (rule.untilMs !== undefined && instant.getTime() > rule.untilMs) return;
+    if (pastUntil(instant.getTime(), date)) return;
     yield instant;
     emitted += 1;
     if (emitted >= emitBudget) return;
@@ -740,7 +763,9 @@ export function assertRecurrenceStartMatchesRule(args: {
       day < 0 ? monthLength + day + 1 === local.day : day === local.day,
     );
   const byDayMatches = rule.byDay === undefined || rule.byDay.includes(weekday);
-  const untilMatches = rule.untilMs === undefined || startMs <= rule.untilMs;
+  const untilMatches = rule.untilDate
+    ? compareLocalDates(localDate, rule.untilDate) <= 0
+    : rule.untilMs === undefined || startMs <= rule.untilMs;
   if (!byMonthDayMatches || !byDayMatches || !untilMatches) {
     invalidRecurrenceSplit(
       "The following series start does not satisfy its recurrence rule. Supply a replacement RRULE aligned with the new start.",

@@ -768,6 +768,58 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     ]);
   });
 
+  it("ends a timed series with a DATE UNTIL on that day in the event time zone", async () => {
+    const source = await createSource();
+    await syncBody(
+      source.id,
+      calendar(
+        [
+          "BEGIN:VEVENT",
+          "UID:evening-west",
+          "DTSTAMP:20261101T000000Z",
+          "DTSTART;TZID=America/Los_Angeles:20261201T180000",
+          "DTEND;TZID=America/Los_Angeles:20261201T190000",
+          "RRULE:FREQ=WEEKLY;BYDAY=TU;UNTIL=20261215",
+          "SUMMARY:Evening practice",
+          "END:VEVENT",
+          "BEGIN:VEVENT",
+          "UID:morning-east",
+          "DTSTAMP:20261101T000000Z",
+          "DTSTART;TZID=Asia/Seoul:20261214T083000",
+          "DTEND;TZID=Asia/Seoul:20261214T093000",
+          "RRULE:FREQ=DAILY;UNTIL=20261215",
+          "SUMMARY:Morning class",
+          "END:VEVENT",
+        ].join("\r\n"),
+      ),
+    );
+    const feed = await service.getCalendarFeed(
+      new URL("http://internal.test/api/calendar"),
+      {
+        grantId: source.id,
+        timeMin: "2026-12-01T00:00:00.000Z",
+        timeMax: "2026-12-31T00:00:00.000Z",
+      },
+      new Date(),
+    );
+
+    const startsOf = (title: string) =>
+      feed.events
+        .filter((event) => event.title === title)
+        .map((event) => event.startAt);
+    // 18:00 Los Angeles on Dec 15 is Dec 16 in UTC; it is the last practice.
+    expect(startsOf("Evening practice")).toEqual([
+      "2026-12-02T02:00:00.000Z",
+      "2026-12-09T02:00:00.000Z",
+      "2026-12-16T02:00:00.000Z",
+    ]);
+    // 08:30 Seoul on Dec 16 is Dec 15 in UTC; it is after the last class.
+    expect(startsOf("Morning class")).toEqual([
+      "2026-12-13T23:30:00.000Z",
+      "2026-12-14T23:30:00.000Z",
+    ]);
+  });
+
   it("places each occurrence of a recurring all-day series on the owner's local day", async () => {
     const source = await createSource();
     await syncBody(
