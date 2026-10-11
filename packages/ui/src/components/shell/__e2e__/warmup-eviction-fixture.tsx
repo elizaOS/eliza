@@ -13,6 +13,8 @@ import { createRoot } from "react-dom/client";
 import type { Conversation, ConversationMessage } from "../../../api/client-types-chat";
 import { client } from "../../../api/client";
 import { MockAppProvider } from "../../../storybook/mock-providers";
+import { seedAppValue } from "../../../state/app-store";
+import { useApp } from "../../../state/useApp";
 import { type UseChatSendDeps, useChatSend } from "../../../state/useChatSend";
 
 import { ChatOverlay } from "../ChatOverlay";
@@ -171,7 +173,16 @@ function Harness(): React.JSX.Element {
     pollCloudCredits: async () => true,
   };
 
-  const { sendChatText } = useChatSend(deps);
+  const chat = useChatSend(deps);
+  const { sendChatText } = chat;
+  // ChatOverlay reads `handleChatRetry` through the external selector store,
+  // which only the real AppProvider seeds. Mirror the real handler during this
+  // render (the same render-safe seedAppValue pass AppProvider performs): a
+  // mounted ChatMessage row never refreshes its callbacks — the memo
+  // comparator short-circuits on message identity — so the real handler must
+  // be in the store BEFORE the failed turn's Retry chip mounts, or the chip
+  // keeps the MockAppProvider no-op and retry silently does nothing.
+  seedAppValue({ ...useApp(), handleChatRetry: chat.handleChatRetry });
 
   const messages = React.useMemo<ShellMessage[]>(
     () =>
