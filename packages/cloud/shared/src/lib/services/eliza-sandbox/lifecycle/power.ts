@@ -1498,10 +1498,8 @@ export class SandboxPower {
       : await provider.checkHealth(handle, { kind: "canonical" });
     if (!ready)
       return {
-        success: false,
+        ...(await release("Retained runtime started but is not ready; resume can be retried")),
         containerStarted: true,
-        reprovisioned: false,
-        error: "Retained runtime started but is not ready; resume can be retried",
       };
     await dbWrite.transaction(async (tx) => {
       await this.host.lockLifecycle(tx, agentId, orgId);

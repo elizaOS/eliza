@@ -474,3 +474,50 @@ test(
   },
   TEST_TIMEOUT,
 );
+
+test(
+  "a retained runtime that starts but is not ready returns to a retryable stop",
+  async () => {
+    const scenario = await seedRunningUnpaidAgent();
+    const log: RuntimeLog = {
+      present: true,
+      running: true,
+      retainedStops: [],
+      retainedStarts: [],
+      removals: [],
+      creates: 0,
+    };
+    const { result } = await retainUnpaidAgent(scenario, log);
+    expect(result).toMatchObject({ success: true, retained: true });
+    const provider = retainingProvider(scenario, log);
+    let healthReady = false;
+    provider.checkHealth = async () => healthReady && log.running;
+    const service = new ElizaSandboxService(provider);
+    const funded = spyOn(
+      agentBillingRepository,
+      "settleAccruedBillingBeforeLifecycle",
+    ).mockResolvedValue({ status: "already_billed_recently" });
+    try {
+      const notReady = await service.executeResume(scenario.agentId, scenario.orgId);
+      expect(notReady).toEqual({
+        success: false,
+        containerStarted: true,
+        reprovisioned: false,
+        error: "Retained runtime started but is not ready; resume can be retried",
+      });
+      const released = await readAgent(scenario.agentId);
+      expect(released.status).toBe("stopped");
+      expect(released.retained_runtime).not.toBeNull();
+
+      healthReady = true;
+      const resumed = await service.executeResume(scenario.agentId, scenario.orgId);
+      expect(resumed).toEqual({ success: true, containerStarted: true, reprovisioned: false });
+    } finally {
+      funded.mockRestore();
+    }
+    expect(log.retainedStarts).toEqual([scenario.identity, scenario.identity]);
+    expect(log.creates).toBe(0);
+    expect((await readAgent(scenario.agentId)).status).toBe("running");
+  },
+  TEST_TIMEOUT,
+);
