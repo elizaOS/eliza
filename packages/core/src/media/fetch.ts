@@ -253,8 +253,13 @@ function enforceContentLengthLimit(
 function fileNameFromUrl(url: string): string | undefined {
 	try {
 		const parsed = new URL(url);
-		const base = getBasename(parsed.pathname);
-		return base || undefined;
+		let base = getBasename(parsed.pathname);
+		try {
+			base = decodeURIComponent(base);
+		} catch {
+			// error-policy:J3 Retain an unsupported encoded basename as before.
+		}
+		return getBasename(base) || undefined;
 	} catch {
 		// error-policy:J3 Redirect-derived URL text is untrusted; absence of a
 		// filename is an explicit invalid result.
