@@ -230,11 +230,18 @@ function hasCurrentMutableRef(
   );
 }
 
-function isCurrentChannelMutableSourceRef(
+// A source ref is accepted only for the current channel, and only as a
+// mutable ref. Each refusal names the field the planner must change.
+function sourceRefRefusal(
   ref: ThreadSourceRef,
   roomId: string | null,
-): boolean {
-  return !!roomId && ref.roomId === roomId && ref.canMutate !== false;
+):
+  | "SOURCE_REF_NOT_CURRENT_CHANNEL"
+  | "SOURCE_REF_READ_ONLY_NOT_SUPPORTED"
+  | null {
+  if (!roomId || ref.roomId !== roomId) return "SOURCE_REF_NOT_CURRENT_CHANNEL";
+  if (ref.canMutate === false) return "SOURCE_REF_READ_ONLY_NOT_SUPPORTED";
+  return null;
 }
 
 function operationType(value: unknown): ThreadOperationType | null {
@@ -380,7 +387,7 @@ export const workThreadAction: Action & {
               type: "object" as const,
               additionalProperties: true,
               description:
-                "create or attach_source: omit to use the current channel. Only the current channel is accepted: roomId must equal the room of this message. A reference to another channel fails with SOURCE_REF_NOT_CURRENT_CHANNEL.",
+                "create or attach_source: omit to use the current channel. Only the current channel is accepted: roomId must equal the room of this message. A reference to another channel fails with SOURCE_REF_NOT_CURRENT_CHANNEL. canMutate false fails with SOURCE_REF_READ_ONLY_NOT_SUPPORTED.",
               properties: {
                 connector: { type: "string" as const },
                 channelName: { type: "string" as const },
@@ -448,15 +455,11 @@ export const workThreadAction: Action & {
             }
             if (type === "create") {
               const initialSourceRef = operation.sourceRef ?? sourceRef;
-              if (
-                operation.sourceRef &&
-                !isCurrentChannelMutableSourceRef(operation.sourceRef, roomId)
-              ) {
-                results.push({
-                  success: false,
-                  type,
-                  error: "SOURCE_REF_NOT_CURRENT_CHANNEL",
-                });
+              const sourceRefError = operation.sourceRef
+                ? sourceRefRefusal(operation.sourceRef, roomId)
+                : null;
+              if (sourceRefError) {
+                results.push({ success: false, type, error: sourceRefError });
                 continue;
               }
               const activeThreads = await store.list({
@@ -693,12 +696,13 @@ export const workThreadAction: Action & {
 
             if (type === "attach_source") {
               const ref = operation.sourceRef ?? sourceRef;
-              if (!isCurrentChannelMutableSourceRef(ref, roomId)) {
+              const sourceRefError = sourceRefRefusal(ref, roomId);
+              if (sourceRefError) {
                 results.push({
                   success: false,
                   type,
                   workThreadId,
-                  error: "SOURCE_REF_NOT_CURRENT_CHANNEL",
+                  error: sourceRefError,
                 });
                 continue;
               }

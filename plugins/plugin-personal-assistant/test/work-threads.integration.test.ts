@@ -361,6 +361,24 @@ describe("LifeOps work threads", () => {
       "SOURCE_REF_NOT_CURRENT_CHANNEL",
     );
 
+    // The current room as a read-only source is refused by its own code, so
+    // the planner is not told that the room is wrong.
+    const readOnlyAttach = await runThreadAction(runtime, roomB, [
+      {
+        type: "attach_source",
+        workThreadId: threadId,
+        sourceRef: {
+          connector: "test",
+          roomId: roomB.roomId,
+          canMutate: false,
+        },
+      },
+    ]);
+    expect(readOnlyAttach.success).toBe(false);
+    expect(operationResults(readOnlyAttach)[0].error).toBe(
+      "SOURCE_REF_READ_ONLY_NOT_SUPPORTED",
+    );
+
     const attached = await runThreadAction(runtime, roomB, [
       { type: "attach_source", workThreadId: threadId },
     ]);
