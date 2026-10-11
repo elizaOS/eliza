@@ -36,7 +36,9 @@
  */
 
 import type http from "node:http";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
+import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
+import { CONNECTOR_ENV_MAP } from "@elizaos/agent/config/env-vars";
+import { formatVaultRef } from "@elizaos/agent/runtime/operations/vault-bridge";
 import {
   listVaultInventory,
   profileStorageKey,
@@ -52,15 +54,17 @@ import {
   type VaultEntryProfile,
   writeRoutingConfig,
 } from "@elizaos/auth/vault";
-import { logger, resolveStateDir } from "@elizaos/core";
+import { ElizaError, logger, resolveStateDir } from "@elizaos/core";
 import { listConnectorSecretFindings } from "../services/connector-secret-inventory";
 import { sharedVault } from "../services/vault-mirror";
 import {
-  type CompatStateLike,
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteMinRole,
 } from "./auth.ts";
-import { readCompatJsonBody } from "./compat-route-shared";
+import {
+  type CompatRuntimeState,
+  readCompatJsonBody,
+} from "./compat-route-shared";
 import { sendJson, sendJsonError } from "./response";
 
 // ── Public dispatcher ──────────────────────────────────────────────
@@ -107,7 +111,7 @@ export async function handleSecretsInventoryRoute(
   res: http.ServerResponse,
   pathname: string,
   method: string,
-  state: CompatStateLike,
+  state: CompatRuntimeState,
 ): Promise<boolean> {
   if (
     !pathname.startsWith("/api/secrets/inventory") &&
@@ -288,7 +292,7 @@ export async function handleSecretsInventoryRoute(
   }
 
   if (segment === "key") {
-    return handleKeyRoute(req, res, method, key);
+    return handleKeyRoute(req, res, method, key, state);
   }
   if (segment === "profiles") {
     return handleProfilesRoute(req, res, method, key);
@@ -310,6 +314,7 @@ async function handleKeyRoute(
   res: http.ServerResponse,
   method: string,
   key: string,
+  state: CompatRuntimeState,
 ): Promise<boolean> {
   const vault = sharedVault();
 
@@ -396,6 +401,7 @@ async function handleKeyRoute(
 
   if (method === "DELETE") {
     if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
+    removeVaultReferences(key, state);
     if (await vault.has(key)) await vault.remove(key);
     // Drop every profile child too. `vault.list` matches segment-prefixed
     // keys, so this catches `<KEY>.profile.default`, `<KEY>.profile.work`,
@@ -414,6 +420,47 @@ async function handleKeyRoute(
 
   sendJsonError(res, 405, "method not allowed");
   return true;
+}
+
+function dropVaultRef(container: unknown, ref: string): string[] {
+  if (!container || typeof container !== "object" || Array.isArray(container))
+    return [];
+  const record = container as Record<string, unknown>;
+  const removed = Object.keys(record).filter((field) => record[field] === ref);
+  for (const field of removed) delete record[field];
+  return removed;
+}
+
+function removeVaultReferences(key: string, state: CompatRuntimeState): void {
+  const ref = formatVaultRef(key);
+  const config = loadElizaConfig();
+  const env = config.env as Record<string, unknown> | undefined;
+  const envKeys = [...dropVaultRef(env, ref), ...dropVaultRef(env?.vars, ref)];
+  for (const entry of Object.values(config.plugins?.entries ?? {}))
+    envKeys.push(...dropVaultRef(entry?.config, ref));
+  const connectors = (config.connectors ??
+    (config as Record<string, unknown>).channels) as
+    | Record<string, unknown>
+    | undefined;
+  let connectorRefsRemoved = false;
+  for (const [connector, settings] of Object.entries(connectors ?? {}))
+    for (const field of dropVaultRef(settings, ref)) {
+      connectorRefsRemoved = true;
+      const envKey = CONNECTOR_ENV_MAP[connector]?.[field];
+      if (envKey) envKeys.push(envKey);
+    }
+  if (envKeys.length === 0 && !connectorRefsRemoved) return;
+  if (!state.reloadConfigFromDisk) {
+    throw new ElizaError("Secret deletion cannot refresh host configuration", {
+      code: "SECRET_DELETE_CONFIG_RELOAD_UNAVAILABLE",
+    });
+  }
+  saveElizaConfig(config);
+  state.reloadConfigFromDisk();
+  for (const envKey of new Set(envKeys)) {
+    delete process.env[envKey];
+    state.current?.setSetting(envKey, null, true);
+  }
 }
 
 // ── Profiles handlers ─────────────────────────────────────────────
