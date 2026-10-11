@@ -1452,6 +1452,13 @@ export function createScheduledTaskRunner(
   async function scheduleWithResult(
     input: Omit<ScheduledTask, "taskId" | "state">,
   ): Promise<ScheduledTaskScheduleResult> {
+    return scheduleTask(input, true);
+  }
+
+  async function scheduleTask(
+    input: Omit<ScheduledTask, "taskId" | "state">,
+    strictTrigger: boolean,
+  ): Promise<ScheduledTaskScheduleResult> {
     if (input.idempotencyKey) {
       const existing = await deps.store.findByIdempotencyKey(
         input.idempotencyKey,
@@ -1459,7 +1466,9 @@ export function createScheduledTaskRunner(
       if (existing) return replaySchedule(existing);
     }
 
-    const validationIssues = validateScheduledTaskInput(input, deps);
+    const validationIssues = validateScheduledTaskInput(input, deps, {
+      strictTrigger,
+    });
     if (validationIssues.length > 0) {
       throw new ScheduledTaskValidationError(validationIssues);
     }
@@ -1831,7 +1840,11 @@ export function createScheduledTaskRunner(
     const edited = structuredClone(task);
     Object.assign(edited, payload);
     const { taskId: _taskId, state: _state, ...input } = edited;
-    const validationIssues = validateScheduledTaskInput(input, deps);
+    // A stored task can predate the strict trigger checks, so only an edit
+    // that sets the trigger is held to them.
+    const validationIssues = validateScheduledTaskInput(input, deps, {
+      strictTrigger: Object.hasOwn(payload, "trigger"),
+    });
     if (validationIssues.length > 0) {
       throw new ScheduledTaskValidationError(validationIssues);
     }
@@ -2274,7 +2287,9 @@ export function createScheduledTaskRunner(
           index,
         ].join(":");
       }
-      const fresh = await schedule(childInput);
+      // The parent's create already checked this child's trigger; a parent
+      // stored before the strict trigger checks must still run its pipeline.
+      const { task: fresh } = await scheduleTask(childInput, false);
       fresh.state.pipelineParentId = parent.taskId;
       await persist(fresh);
       created.push(fresh);

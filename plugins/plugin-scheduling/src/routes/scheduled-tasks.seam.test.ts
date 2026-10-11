@@ -14,7 +14,14 @@ import { Socket } from "node:net";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  buildPrShepherdScheduleInput,
+  CODING_AGENT_SCHEDULE_METADATA_KEY,
+  pauseCodingAgentSchedule,
+} from "../coding-agent-schedules.js";
+import {
   createInMemoryScheduledTaskStore,
+  type ScheduledTaskRunnerHandle,
+  type ScheduledTaskStore,
   TestNoopScheduledTaskDispatcher,
 } from "../scheduled-task/runner.js";
 import {
@@ -22,7 +29,10 @@ import {
   ScheduledTaskRunnerService,
 } from "../scheduled-task/runner-service.js";
 import { createInMemoryScheduledTaskLogStore } from "../scheduled-task/state-log.js";
-import type { ScheduledTaskLogEntry } from "../scheduled-task/types.js";
+import type {
+  ScheduledTask,
+  ScheduledTaskLogEntry,
+} from "../scheduled-task/types.js";
 import { buildSchedulingRoutes } from "./plugin-routes.js";
 
 const AGENT_ID = "seam-test-agent";
@@ -83,6 +93,8 @@ interface SeamHarness {
   ) => Promise<void>;
   runtime: IAgentRuntime;
   logRows: (taskId: string) => Promise<ScheduledTaskLogEntry[]>;
+  store: ScheduledTaskStore;
+  runner: () => ScheduledTaskRunnerHandle;
   stop: () => Promise<void>;
 }
 
@@ -125,6 +137,8 @@ async function makeSeam(): Promise<SeamHarness> {
     runtime: runtimeWithService,
     logRows: (taskId) =>
       logStore.list({ agentId: AGENT_ID, taskId, excludeRollups: true }),
+    store,
+    runner: () => service.getRunner({ agentId: AGENT_ID }),
     stop: async () => {
       await service.stop();
       const idx = startedServices.indexOf(service);
@@ -445,5 +459,101 @@ describe("scheduled-tasks REST seam (real reader, real service, real routes)", (
       const res = await scheduleCron(seam, "0 9 * * *", tz);
       expect(res.statusCode).toBe(201);
     }
+  });
+
+  // Rows written before the strict trigger checks existed. Each one is stored
+  // as a pr-shepherd coding-agent schedule so pause can run on it too.
+  const STORED_CRON_TRIGGERS = [
+    { kind: "cron", expression: "0 9 * * *", tz: "Pacific Time" },
+    { kind: "cron", expression: "every day", tz: "UTC" },
+  ] as const;
+
+  async function storeLegacyTask(
+    seam: SeamHarness,
+    trigger: (typeof STORED_CRON_TRIGGERS)[number],
+  ): Promise<ScheduledTask> {
+    const { taskId } = await seam.runner().schedule(
+      buildPrShepherdScheduleInput({
+        agentId: AGENT_ID,
+        trigger: { kind: "manual" },
+        idempotencyKey: `stored-${trigger.expression}-${trigger.tz}`,
+      }),
+    );
+    const stored = await seam.store.get(taskId);
+    if (!stored) throw new Error(`stored task ${taskId} missing`);
+    stored.trigger = { ...trigger };
+    await seam.store.upsert(stored);
+    return stored;
+  }
+
+  it("accepts a non-trigger edit of a stored task with an unresolvable zone", async () => {
+    const seam = await makeSeam();
+    const stored = await storeLegacyTask(seam, STORED_CRON_TRIGGERS[0]);
+    const body = JSON.stringify({ priority: "high" });
+    const res = responseRecorder();
+    await seam.handler(
+      jsonRequest(
+        "POST",
+        `/api/lifeops/scheduled-tasks/${stored.taskId}/edit`,
+        body,
+        { "content-length": String(Buffer.byteLength(body)) },
+      ),
+      res,
+      seam.runtime,
+    );
+    expect(res.statusCode).toBe(200);
+    const edited = await seam.store.get(stored.taskId);
+    expect(edited?.priority).toBe("high");
+    expect(edited?.trigger).toEqual(STORED_CRON_TRIGGERS[0]);
+  });
+
+  it("pauses, edits metadata on, and imports stored tasks with a cron trigger core cannot run", async () => {
+    const seam = await makeSeam();
+    for (const trigger of STORED_CRON_TRIGGERS) {
+      const stored = await storeLegacyTask(seam, trigger);
+
+      const paused = await pauseCodingAgentSchedule(
+        seam.runner(),
+        stored.taskId,
+      );
+      expect(paused.metadata).toMatchObject({
+        [CODING_AGENT_SCHEDULE_METADATA_KEY]: { paused: true },
+      });
+
+      const edited = await seam.runner().apply(stored.taskId, "edit", {
+        metadata: { ...(paused.metadata ?? {}), note: "kept" },
+      });
+      expect(edited.metadata?.note).toBe("kept");
+      expect(edited.trigger).toEqual(trigger);
+
+      const { imported } = await seam
+        .runner()
+        .importTask(
+          { ...structuredClone(stored), taskId: `${stored.taskId}-imported` },
+          { sourceAgentId: "source-agent", cutoverToken: "cutover-1" },
+        );
+      expect(imported).toBe(true);
+    }
+  });
+
+  it("runs the pipeline of a stored parent whose child has a cron trigger core cannot run", async () => {
+    const seam = await makeSeam();
+    const parent = await storeLegacyTask(seam, STORED_CRON_TRIGGERS[0]);
+    const child = buildPrShepherdScheduleInput({
+      agentId: AGENT_ID,
+      trigger: { kind: "manual" },
+      idempotencyKey: "stored-pipeline-child",
+    });
+    child.trigger = { ...STORED_CRON_TRIGGERS[0] };
+    parent.pipeline = { onComplete: [child as never] };
+    await seam.store.upsert(parent);
+
+    await seam.runner().apply(parent.taskId, "complete");
+
+    const spawned = (await seam.runner().list()).filter(
+      (task) => task.state.pipelineParentId === parent.taskId,
+    );
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0]?.trigger).toEqual(STORED_CRON_TRIGGERS[0]);
   });
 });
