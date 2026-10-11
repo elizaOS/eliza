@@ -240,7 +240,8 @@ export function formFromTrigger(trigger: TriggerSummary): TriggerFormState {
   return {
     displayName: trigger.displayName,
     instructions: trigger.instructions,
-    kind: "workflow",
+    // A stored prompt trigger is the form's text kind.
+    kind: trigger.kind === "prompt" ? "text" : "workflow",
     workflowId: trigger.workflowId ?? "",
     workflowName: trigger.workflowName ?? "",
     triggerType: trigger.triggerType,
