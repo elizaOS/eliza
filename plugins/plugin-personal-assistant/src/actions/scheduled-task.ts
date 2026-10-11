@@ -98,6 +98,7 @@ type ScheduledTaskKindParam = ScheduledTaskKind;
 type ScheduledTaskStatusParam = ScheduledTaskStatus;
 type ScheduledTaskSubjectKindParam = ScheduledTaskSubjectKind;
 type ScheduledTaskPriorityParam = ScheduledTaskPriority;
+type ScheduledTaskSourceParam = ScheduledTask["source"];
 
 const MUTATING_SUBACTIONS: ReadonlySet<Subaction> = new Set([
   "create",
@@ -147,7 +148,7 @@ interface ScheduledTaskParams {
   priority?: ScheduledTaskPriorityParam;
   respectsGlobalPause?: boolean;
   ownerVisible?: boolean;
-  source?: ScheduledTask["source"];
+  source?: ScheduledTaskSourceParam;
   /** snooze-only: minutes to defer next fire. */
   minutes?: number;
   /** snooze-only: ISO timestamp to defer next fire to. */
@@ -195,6 +196,13 @@ const SCHEDULED_TASK_SUBJECT_KINDS: readonly ScheduledTaskSubjectKindParam[] = [
   "document",
   "calendar_event",
   "self",
+];
+
+const SCHEDULED_TASK_SOURCES: readonly ScheduledTaskSourceParam[] = [
+  "default_pack",
+  "user_chat",
+  "first_run",
+  "plugin",
 ];
 
 function normalizeSubaction(value: unknown): Subaction | null {
@@ -273,6 +281,29 @@ function buildSubject(
     return undefined;
   }
   return { kind, id: id.trim() };
+}
+
+// A subject is a kind and an id together. The runner matches on both, so one
+// half alone cannot filter a list or bind a new task.
+function hasHalfSuppliedSubject(params: ScheduledTaskParams): boolean {
+  const hasKind =
+    typeof params.subjectKind === "string" &&
+    params.subjectKind.trim().length > 0;
+  const hasId =
+    typeof params.subjectId === "string" && params.subjectId.trim().length > 0;
+  return hasKind !== hasId;
+}
+
+function subjectIncompleteResult(subaction: Subaction): ActionResult {
+  return {
+    success: false,
+    text: "I need both the subject kind and the subject id.",
+    data: {
+      subaction,
+      error: "SUBJECT_INCOMPLETE",
+      message: "subjectKind and subjectId must be supplied together.",
+    },
+  };
 }
 
 function buildFilter(params: ScheduledTaskParams): ScheduledTaskFilter {
@@ -1064,6 +1095,7 @@ async function handleList(
   scope: RunnerScope,
   params: ScheduledTaskParams,
 ): Promise<ActionResult> {
+  if (hasHalfSuppliedSubject(params)) return subjectIncompleteResult("list");
   const tasks = await scope.runner.list(buildFilter(params));
   const dueWindow = normalizeDueWindow(params.dueWindow);
   const filtered = dueWindow
@@ -1154,6 +1186,7 @@ async function handleCreate(
   const kind = normalizeKind(params.kind) ?? "custom";
   const noun = scheduledItemNoun(kind);
   const priority: ScheduledTaskPriorityParam = params.priority ?? "medium";
+  if (hasHalfSuppliedSubject(params)) return subjectIncompleteResult("create");
   const subject = buildSubject(
     normalizeSubjectKind(params.subjectKind),
     params.subjectId,
@@ -1298,9 +1331,15 @@ async function handleCreate(
     });
   } catch (error) {
     if (error instanceof ScheduledTaskValidationError) {
+      // The timing text is true only when every issue is about the trigger.
+      const triggerOnly = error.issues.every((issue) =>
+        issue.startsWith("task.trigger"),
+      );
       return {
         success: false,
-        text: PLAIN_TIMING_MISSING_TEXT,
+        text: triggerOnly
+          ? PLAIN_TIMING_MISSING_TEXT
+          : "I could not save that scheduled item because it is not valid.",
         data: {
           subaction: "create",
           error: "INVALID_SCHEDULED_TASK",
@@ -1690,11 +1729,33 @@ async function handleHistory(
     params.limit > 0
       ? Math.floor(params.limit)
       : 100;
+  // The log stores UTC ISO text and the repository compares bounds as text,
+  // so a bound must be a real timestamp in that same form.
+  const bounds: { sinceIso?: string; untilIso?: string } = {};
+  for (const [name, target] of [
+    ["sinceIso", "sinceIso"],
+    ["untilHistoryIso", "untilIso"],
+  ] as const) {
+    const raw = params[name];
+    if (raw === undefined || raw === null || raw === "") continue;
+    const ms = typeof raw === "string" ? Date.parse(raw) : Number.NaN;
+    if (!Number.isFinite(ms)) {
+      return {
+        success: false,
+        text: "I need a valid date range for that history.",
+        data: {
+          subaction: "history",
+          error: "INVALID_HISTORY_RANGE",
+          message: `${name} must be an ISO-8601 timestamp.`,
+        },
+      };
+    }
+    bounds[target] = new Date(ms).toISOString();
+  }
   const entries: ScheduledTaskLogEntry[] = await repo.listScheduledTaskLog({
     agentId: scope.agentId,
     ...(taskId ? { taskId } : {}),
-    ...(params.sinceIso ? { sinceIso: params.sinceIso } : {}),
-    ...(params.untilHistoryIso ? { untilIso: params.untilHistoryIso } : {}),
+    ...bounds,
     excludeRollups: params.includeRollups !== true,
     limit,
   });
@@ -1861,7 +1922,7 @@ export const scheduledTaskAction: Action & {
     {
       name: "subjectKind",
       description:
-        "ScheduledTaskSubject.kind: entity|relationship|thread|document|calendar_event|self.",
+        "ScheduledTaskSubject.kind: entity|relationship|thread|document|calendar_event|self. Supply together with subjectId; one without the other fails with SUBJECT_INCOMPLETE.",
       schema: {
         type: "string" as const,
         enum: [...SCHEDULED_TASK_SUBJECT_KINDS],
@@ -1869,7 +1930,8 @@ export const scheduledTaskAction: Action & {
     },
     {
       name: "subjectId",
-      description: "ScheduledTaskSubject.id paired with subjectKind.",
+      description:
+        "ScheduledTaskSubject.id. Supply together with subjectKind; one without the other fails with SUBJECT_INCOMPLETE.",
       schema: { type: "string" as const },
     },
     {
@@ -1957,8 +2019,8 @@ export const scheduledTaskAction: Action & {
     {
       name: "source",
       description:
-        "create-only: source default_pack|user_chat|first_run|plugin.",
-      schema: { type: "string" as const },
+        "create-only: source default_pack|user_chat|first_run|plugin; default user_chat.",
+      schema: { type: "string" as const, enum: [...SCHEDULED_TASK_SOURCES] },
     },
     {
       name: "minutes",
@@ -1982,12 +2044,14 @@ export const scheduledTaskAction: Action & {
     },
     {
       name: "sinceIso",
-      description: "history-only: occurredAtIso >= ISO-8601.",
+      description:
+        "history-only: occurredAtIso >= this ISO-8601 timestamp. Other text fails with INVALID_HISTORY_RANGE.",
       schema: { type: "string" as const },
     },
     {
       name: "untilHistoryIso",
-      description: "history-only: occurredAtIso <= ISO-8601.",
+      description:
+        "history-only: occurredAtIso < this ISO-8601 timestamp. Other text fails with INVALID_HISTORY_RANGE.",
       schema: { type: "string" as const },
     },
     {

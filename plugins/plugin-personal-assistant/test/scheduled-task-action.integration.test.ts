@@ -689,6 +689,7 @@ describe("SCHEDULED_TASK action", () => {
       { action: "list", kind: "reminders" },
       { action: "create", kind: "habit" },
       { action: "list", subjectKind: "person", subjectId: "p1" },
+      { action: "create", source: "chat" },
     ]) {
       expect(validateToolArgs(scheduledTaskAction, args).valid).toBe(false);
     }
@@ -772,6 +773,58 @@ describe("SCHEDULED_TASK action", () => {
     });
     expect(readOnly?.success).toBe(false);
     expect(errorOf(readOnly)).toBe("READ_ONLY_FIELD");
+
+    // A subject is a kind and an id together; one half alone is refused
+    // instead of being dropped from the filter or the new task.
+    for (const half of [{ subjectKind: "thread" }, { subjectId: "wt-1" }]) {
+      const listed = await call({ action: "list", ...half });
+      expect(listed?.success).toBe(false);
+      expect(errorOf(listed)).toBe("SUBJECT_INCOMPLETE");
+    }
+    const halfSubjectCreate = await scheduledTaskAction.handler?.(
+      runtime,
+      autonomyMessage(runtime.agentId, "schedule a follow-up"),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          kind: "followup",
+          promptInstructions: "Check on the vendor reply",
+          trigger: { kind: "manual" },
+          subjectKind: "self",
+        },
+      },
+      undefined,
+      [],
+    );
+    expect(halfSubjectCreate?.success).toBe(false);
+    expect(errorOf(halfSubjectCreate)).toBe("SUBJECT_INCOMPLETE");
+
+    // A history bound that is not a timestamp is refused, not read as an
+    // empty log.
+    const badRange = await call({ action: "history", sinceIso: "yesterday" });
+    expect(badRange?.success).toBe(false);
+    expect(errorOf(badRange)).toBe("INVALID_HISTORY_RANGE");
+    // A bound with an offset is compared as an instant. One hour from now,
+    // written at -12:00, has wall-clock text 11 hours before now: as raw text
+    // it would sort before every stored UTC row and return nothing.
+    const allEntries = (
+      (await call({ action: "history", taskId }))?.data as
+        | { entries?: unknown[] }
+        | undefined
+    )?.entries;
+    if (!allEntries?.length) throw new Error("history returned no entries");
+    const inOneHourAtMinus12 = new Date(Date.now() - 11 * 60 * 60 * 1000)
+      .toISOString()
+      .replace("Z", "-12:00");
+    const bounded = await call({
+      action: "history",
+      taskId,
+      untilHistoryIso: inOneHourAtMinus12,
+    });
+    expect(
+      (bounded?.data as { entries?: unknown[] } | undefined)?.entries,
+    ).toHaveLength(allEntries.length);
 
     for (const target of [{ untilIso: "tomorrow 9am" }, { minutes: 0 }]) {
       const snoozed = await call({ action: "snooze", taskId, ...target });
