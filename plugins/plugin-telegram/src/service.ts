@@ -397,6 +397,8 @@ export class TelegramService extends Service {
   private accountStates: Map<string, TelegramAccountRuntime> = new Map();
   private stopping = false;
   private outboundCompletions = new Set<Promise<void>>();
+  /** Agent turns started by inbound updates that have not settled yet. */
+  private inboundTurnCompletions = new Set<Promise<void>>();
   private pollerRetryTimers = new Set<ReturnType<typeof setTimeout>>();
   private pollerCompletions = new Map<Telegraf<Context>, Promise<void>>();
 
@@ -893,6 +895,7 @@ export class TelegramService extends Service {
         if (token) releaseTelegramPollerToken(token, bot);
       }),
     );
+    await Promise.all(this.inboundTurnCompletions);
     await Promise.all(this.outboundCompletions);
     const failures = results
       .filter((result) => result.status === "rejected")
@@ -1511,25 +1514,18 @@ export class TelegramService extends Service {
     const messageManager = state?.messageManager ?? this.messageManager;
     const accountId = state?.accountId ?? this.defaultAccountId;
     // Regular message handler
-    bot?.on("message", async (ctx) => {
-      try {
-        const token = state?.account.botToken ?? this.botToken;
-        if (token) {
-          markTelegramPollerUpdate(token, bot);
-        }
-        // Preprocessing runs in the middleware chain; this only dispatches.
-        await messageManager?.handleMessage(ctx);
-      } catch (error) {
-        logger.error(
-          {
-            src: "plugin:telegram",
-            agentId: this.runtime.agentId,
-            accountId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Error handling message",
-        );
+    bot?.on("message", (ctx) => {
+      const token = state?.account.botToken ?? this.botToken;
+      if (token) {
+        markTelegramPollerUpdate(token, bot);
       }
+      if (!messageManager) return;
+      // Preprocessing runs in the middleware chain; this only dispatches.
+      this.runInboundTurn(
+        () => messageManager.handleMessage(ctx),
+        accountId,
+        "Error handling message",
+      );
     });
 
     // Reaction handler
@@ -1555,14 +1551,38 @@ export class TelegramService extends Service {
 
     // Inline-keyboard button taps (choice / followup answers from the shared
     // interaction protocol). Foreign callbacks are acknowledged and ignored.
-    bot?.on("callback_query", async (ctx) => {
-      try {
-        const token = state?.account.botToken ?? this.botToken;
-        if (token) {
-          markTelegramPollerUpdate(token, bot);
-        }
-        await messageManager?.handleCallbackQuery(ctx);
-      } catch (error) {
+    bot?.on("callback_query", (ctx) => {
+      const token = state?.account.botToken ?? this.botToken;
+      if (token) {
+        markTelegramPollerUpdate(token, bot);
+      }
+      if (!messageManager) return;
+      this.runInboundTurn(
+        () => messageManager.handleCallbackQuery(ctx),
+        accountId,
+        "Error handling callback query",
+      );
+    });
+  }
+
+  /**
+   * Starts an agent turn for one update and returns before the turn settles.
+   *
+   * Telegraf fetches the next `getUpdates` batch only after every handler of
+   * the current batch settles. A turn that waits for a later update (an
+   * Approve/Deny tap for an approval it requested) would never receive it, so
+   * the turn must not hold the handler open. `stop()` drains the tracked turns.
+   */
+  private runInboundTurn(
+    turn: () => Promise<void>,
+    accountId: string,
+    failureMessage: string,
+  ): void {
+    const settled = Promise.resolve()
+      .then(turn)
+      .catch((error: unknown) => {
+        // error-policy:J1 The update boundary owns a failed turn; nothing
+        // awaits it after the handler has returned.
         logger.error(
           {
             src: "plugin:telegram",
@@ -1570,10 +1590,11 @@ export class TelegramService extends Service {
             accountId,
             error: error instanceof Error ? error.message : String(error),
           },
-          "Error handling callback query",
+          failureMessage,
         );
-      }
-    });
+      });
+    this.inboundTurnCompletions.add(settled);
+    void settled.then(() => this.inboundTurnCompletions.delete(settled));
   }
 
   /**
