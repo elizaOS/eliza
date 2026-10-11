@@ -244,3 +244,101 @@ it("matches provenance digests over code-unit key order on every host locale", a
     );
   }
 }, 120_000);
+
+it("keeps the provenance walk bounds at 4096 slots and 32 nested containers", async () => {
+  type Body = Omit<RemotePluginModuleManifest, "id" | "name" | "provenance">;
+  type Metadata = NonNullable<RemotePluginModuleManifest["metadata"]>;
+  // Four root keys plus a 4092-slot container fill the 4096-slot budget, and
+  // a leaf under 32 nested objects is the deepest data the walk accepts.
+  const slots = (count: number) =>
+    Array.from({ length: count }, (_, index) => `c${index}`);
+  const keyed = (count: number): Metadata =>
+    Object.fromEntries(
+      Array.from({ length: count }, (_, index) => [
+        `k${String(index).padStart(4, "0")}`,
+        index,
+      ]),
+    );
+  const nested = (count: number): Metadata => {
+    let value: Metadata = { n: "leaf" };
+    for (let level = 1; level < count; level += 1) value = { n: value };
+    return value;
+  };
+  const cases: Array<[string, Body]> = [
+    ["array-4092", { contexts: slots(4092), version: "1" }],
+    ["array-4093", { contexts: slots(4093), version: "1" }],
+    ["object-4092", { metadata: keyed(4092), version: "1" }],
+    ["object-4093", { metadata: keyed(4093), version: "1" }],
+    ["leaf-under-32", { metadata: nested(32) }],
+    ["leaf-under-33", { metadata: nested(33) }],
+  ];
+  let supplied: RemotePluginModuleManifest[] = [];
+  const server = createServer(async (request, response) => {
+    for await (const _chunk of request);
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ modules: supplied }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const fixture = await createTestRuntime({
+    characterName: "RemoteProvenanceBounds",
+    settings: {
+      ELIZA_CAPABILITY_ROUTER_ENABLED: "true",
+      ELIZA_CAPABILITY_ROUTER_URLS: JSON.stringify([
+        {
+          id: "a",
+          baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+          token: "fixture-a",
+        },
+      ]),
+      ELIZA_CAPABILITY_ROUTER_TRUST_POLICY: JSON.stringify({
+        requireProvenanceDigestMatch: true,
+      }),
+    },
+  });
+  try {
+    const reasons: Record<string, string | undefined> = {};
+    for (const [label, body] of cases) {
+      const id = `bound-${label}`;
+      // Root keys are inserted in code-unit order, so JSON.stringify is the
+      // canonical text a signer would hash.
+      const { contexts, metadata, version } = body;
+      const unsigned = { contexts, id, metadata, name: id, version };
+      supplied = [
+        {
+          ...unsigned,
+          provenance: {
+            issuer: "issuer-a",
+            subject: id,
+            digestSha256: createHash("sha256")
+              .update(JSON.stringify(unsigned))
+              .digest("hex"),
+            signatureAlgorithm: "ed25519",
+            signature: "digest-only",
+          },
+        },
+      ];
+      reasons[label] = await bootstrapRemoteCapabilityPlugins(
+        fixture.runtime,
+      ).then(
+        (result) =>
+          result.trustDecisions.find((decision) => decision.moduleId === id)
+            ?.reason,
+        (error: { details?: { trustDecision?: { reason?: string } } }) =>
+          error.details?.trustDecision?.reason,
+      );
+    }
+    expect(reasons).toEqual({
+      "array-4092": "allowed",
+      "array-4093": "provenance-walk-bound",
+      "object-4092": "allowed",
+      "object-4093": "provenance-walk-bound",
+      "leaf-under-32": "allowed",
+      "leaf-under-33": "provenance-walk-bound",
+    });
+  } finally {
+    await fixture.cleanup();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
+}, 120_000);

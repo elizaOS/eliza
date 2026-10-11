@@ -1276,10 +1276,16 @@ function reflectForRemotePluginProvenance<T>(read: () => T): T {
  * width charged before reflection). Keys sort in UTF-16 code-unit order, so an
  * external signer and every agent host agree on the digest whatever the ICU
  * locale; `localeCompare` collation changes with `LC_ALL`.
+ *
+ * Core charges one visit for the root and checks depth on primitive leaves as
+ * well as containers, so both caps get +1 to keep the effective limits: 4096
+ * slots, and containers at most 32 levels below the module root. The one shape
+ * this admits that the bound previously rejected is an empty container 33
+ * levels down.
  */
 const REMOTE_PLUGIN_PROVENANCE_CANONICAL_JSON: CanonicalJsonOptions = {
-  maxDepth: MAX_REMOTE_PLUGIN_PROVENANCE_DEPTH,
-  maxNodes: MAX_REMOTE_PLUGIN_PROVENANCE_NODES,
+  maxDepth: MAX_REMOTE_PLUGIN_PROVENANCE_DEPTH + 1,
+  maxNodes: MAX_REMOTE_PLUGIN_PROVENANCE_NODES + 1,
   sparseArrayHoles: "null",
   onUnbounded: (context, cause) => {
     throw new RemotePluginProvenanceWalkBoundError(
