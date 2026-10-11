@@ -37,7 +37,6 @@ import {
   ServiceType,
   summarizeOutboundAttachmentUrl,
   toWellFormedUnicode,
-  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import { lifeOpsPassiveConnectorsEnabled } from "@elizaos/host/protocol";
@@ -67,6 +66,7 @@ import {
   cleanText,
   convertMarkdownToTelegram,
   convertToTelegramButtons,
+  truncateTelegramGraphemes,
 } from "./utils";
 
 /**
@@ -1545,7 +1545,7 @@ export class MessageManager {
         chunk =
           newlineIndex > 0
             ? remaining.slice(0, newlineIndex)
-            : truncateWellFormed(remaining, MAX_MESSAGE_LENGTH);
+            : truncateTelegramGraphemes(remaining, MAX_MESSAGE_LENGTH);
       }
       if (chunk.length === 0) {
         throw new Error("Unable to split Telegram message without data loss");

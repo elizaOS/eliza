@@ -12,11 +12,11 @@ import {
   logger,
   type Memory,
   toWellFormedUnicode,
-  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import { checkTelegramDmAccess, resolveTelegramDmPolicy } from "../dm-policy";
 import { resolveTelegramRuntimeEntityId } from "../identity";
+import { truncateTelegramGraphemes } from "../utils";
 
 function formatError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -108,7 +108,10 @@ export function splitTelegramText(text: string): string[] {
       chunks.push(remaining);
       break;
     }
-    const head = truncateWellFormed(remaining, TELEGRAM_MESSAGE_MAX_LENGTH);
+    const head = truncateTelegramGraphemes(
+      remaining,
+      TELEGRAM_MESSAGE_MAX_LENGTH,
+    );
     const cut = head.length > 0 ? head.length : 1;
     chunks.push(remaining.slice(0, cut));
     remaining = remaining.slice(cut);

@@ -3,7 +3,7 @@
  * agent Markdown to Telegram MarkdownV2 (`convertMarkdownToTelegram`) and maps a
  * `Button[]` to Telegraf inline-keyboard markup (`convertToTelegramButtons`).
  */
-import { logger } from "@elizaos/core";
+import { logger, truncateWellFormed } from "@elizaos/core";
 import type { InlineKeyboardButton } from "@telegraf/types";
 import { Markup } from "telegraf";
 import type { Button } from "./types";
@@ -331,4 +331,32 @@ export function cleanText(text: string | undefined | null): string {
   }
   // Avoid control char in regex literal; lint-friendly
   return text.split("\u0000").join("");
+}
+
+const telegramGraphemeSegmenter = new Intl.Segmenter("en", {
+  granularity: "grapheme",
+});
+
+/**
+ * `text.slice(0, maxLength)` that never ends inside a grapheme cluster (a ZWJ
+ * emoji sequence, a regional-indicator flag, a combining mark, or a skin-tone
+ * modifier), so a cluster is never split across two Telegram message parts.
+ * Only when a single cluster alone is longer than `maxLength` does it fall
+ * back to the surrogate-safe cut, the one case with no clean boundary.
+ */
+export function truncateTelegramGraphemes(
+  text: string,
+  maxLength: number,
+): string {
+  if (text.length <= maxLength) {
+    return text;
+  }
+  let end = 0;
+  for (const { segment } of telegramGraphemeSegmenter.segment(text)) {
+    if (end + segment.length > maxLength) {
+      break;
+    }
+    end += segment.length;
+  }
+  return end > 0 ? text.slice(0, end) : truncateWellFormed(text, maxLength);
 }
