@@ -2406,7 +2406,9 @@ async function runStopAgent(
 
   try {
     const all = pickBoolean(params, content, "all") ?? false;
-    const sessions = await Promise.resolve(service.listSessions());
+    const sessions = (await Promise.resolve(service.listSessions())).filter(
+      (session) => !TERMINAL_SESSION_STATUSES.has(session.status.toLowerCase()),
+    );
 
     if (all) {
       await Promise.all(
@@ -2577,7 +2579,9 @@ async function runCancel(
       (state as { codingSession?: { id?: string } } | undefined)?.codingSession
         ?.id;
     const search = pickString(params, content, "search")?.toLowerCase();
-    const sessions = await Promise.resolve(service.listSessions());
+    const sessions = (await Promise.resolve(service.listSessions())).filter(
+      (session) => !TERMINAL_SESSION_STATUSES.has(session.status.toLowerCase()),
+    );
 
     if (all) {
       const stoppedSessions: string[] = [];
