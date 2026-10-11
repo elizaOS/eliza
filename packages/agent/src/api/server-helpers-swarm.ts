@@ -655,8 +655,9 @@ function removeLocalPathReferences(
     titles.push(title);
     const escapedPath = escapeRegExp(attachment.url);
     cleaned = cleaned
-      .replace(new RegExp(`\`${escapedPath}\``, "gu"), title)
-      .replace(new RegExp(escapedPath, "gu"), title);
+      // Function replacers insert the title literally; a string would expand "$&".
+      .replace(new RegExp(`\`${escapedPath}\``, "gu"), () => title)
+      .replace(new RegExp(escapedPath, "gu"), () => title);
   }
 
   const workdirs = payload.tasks
@@ -675,8 +676,8 @@ function removeLocalPathReferences(
     const title = path.basename(resolved);
     const escapedPath = escapeRegExp(localPath);
     cleaned = cleaned
-      .replace(new RegExp(`\`${escapedPath}\``, "gu"), title)
-      .replace(new RegExp(escapedPath, "gu"), title);
+      .replace(new RegExp(`\`${escapedPath}\``, "gu"), () => title)
+      .replace(new RegExp(escapedPath, "gu"), () => title);
   }
 
   const trimmed = cleaned.trim();
