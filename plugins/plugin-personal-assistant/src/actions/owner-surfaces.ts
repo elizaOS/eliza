@@ -823,14 +823,16 @@ export const personalAssistantAction: Action = {
     {
       name: "startAt",
       subactions: ["scheduling"],
-      description: "Proposed start time (ISO-8601), for propose.",
+      description:
+        "Proposed start time (ISO-8601), for propose. Without a UTC offset it is a local time in the negotiation's timezone.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "endAt",
       subactions: ["scheduling"],
-      description: "Proposed end time (ISO-8601), for propose.",
+      description:
+        "Proposed end time (ISO-8601), for propose. Without a UTC offset it is a local time in the negotiation's timezone.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -861,7 +863,8 @@ export const personalAssistantAction: Action = {
     {
       name: "timezone",
       subactions: ["scheduling"],
-      description: "IANA time zone of the negotiation, for start.",
+      description:
+        "IANA time zone of the negotiation, for start. An unknown zone name is refused.",
       required: false,
       schema: { type: "string" as const },
     },

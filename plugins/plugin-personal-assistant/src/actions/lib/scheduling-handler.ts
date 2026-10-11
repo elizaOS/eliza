@@ -52,6 +52,7 @@ import type {
   ApprovalRequest,
 } from "../../lifeops/approval-queue.types.js";
 import { getChannelRegistry } from "../../lifeops/channels/index.js";
+import { resolveKnownTimeZone } from "../../lifeops/defaults.js";
 import type { SchedulingMessageDraft } from "../../lifeops/domains/scheduling-service.js";
 import { SCHEDULE_PLAN_INSTRUCTIONS } from "../../lifeops/optimized-prompt-instructions.js";
 import {
@@ -1527,6 +1528,20 @@ export async function runSchedulingNegotiationHandler(
           },
         });
       }
+      // The negotiation zone is the zone offset-less proposal clocks are read
+      // in, so a name that identifies no zone is refused instead of stored.
+      const timezone =
+        params.timezone === undefined
+          ? undefined
+          : resolveKnownTimeZone(params.timezone);
+      if (timezone === null) {
+        return respond({
+          success: false,
+          scenario: "scheduling_negotiation_start_unknown_timezone",
+          fallback: `I don't recognize the time zone "${params.timezone}". Give an IANA time zone such as America/New_York.`,
+          data: { error: "UNKNOWN_TIMEZONE", timezone: params.timezone },
+        });
+      }
       // Contact graph stores do not accept the PA transaction handle. Resolve
       // the delivery target before opening the transaction so PGlite does not
       // deadlock on a second connection while the negotiation write is open.
@@ -1546,7 +1561,7 @@ export async function runSchedulingNegotiationHandler(
             subject,
             relationshipId: params.relationshipId ?? null,
             durationMinutes: params.durationMinutes,
-            timezone: params.timezone,
+            timezone,
             tx,
           });
           const draft = await service.draftOpeningMessage(neg, counterparty);
@@ -1611,10 +1626,30 @@ export async function runSchedulingNegotiationHandler(
       }
       const proposedBy = params.proposedBy ?? "agent";
       const negotiationId = params.negotiationId;
-      const startAt = params.startAt;
-      const endAt = params.endAt;
       const negotiationBeforeMutation =
         await service.getNegotiation(negotiationId);
+      // An offset-less clock is a local time in the negotiation's zone, never
+      // the server's. A missing negotiation is reported by proposeTime.
+      const proposedStart = negotiationBeforeMutation
+        ? parseProposalBound(params.startAt, negotiationBeforeMutation.timezone)
+        : undefined;
+      const proposedEnd = negotiationBeforeMutation
+        ? parseProposalBound(params.endAt, negotiationBeforeMutation.timezone)
+        : undefined;
+      if (proposedStart === null || proposedEnd === null) {
+        return respond({
+          success: false,
+          scenario: "scheduling_negotiation_propose_invalid_time",
+          fallback: `I could not read the proposed ${proposedStart === null ? "start" : "end"} time. Give it as ISO-8601, either with a UTC offset or as a local time in ${negotiationBeforeMutation?.timezone}.`,
+          data: {
+            error: "INVALID_PROPOSAL_TIME",
+            field: proposedStart === null ? "startAt" : "endAt",
+            timezone: negotiationBeforeMutation?.timezone,
+          },
+        });
+      }
+      const startAt = proposedStart?.toISOString() ?? params.startAt;
+      const endAt = proposedEnd?.toISOString() ?? params.endAt;
       const counterparty = negotiationBeforeMutation
         ? await service.resolveCounterpartyTarget(negotiationBeforeMutation)
         : null;

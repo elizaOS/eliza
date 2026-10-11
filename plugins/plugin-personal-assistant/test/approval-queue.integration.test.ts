@@ -945,11 +945,51 @@ describe("ApprovalQueue integration (real PGlite)", () => {
     if (!schedulingAction) {
       throw new Error("PERSONAL_ASSISTANT_SCHEDULING is not promoted");
     }
+    // A zone name that identifies no zone is refused before anything is stored.
+    const unknownZone = await runSchedulingNegotiationHandler(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          subaction: "start",
+          subject: "School conference",
+          timezone: "Not/AZone",
+        },
+      } as never,
+      async () => [],
+    );
+    expect(unknownZone).toMatchObject({
+      success: false,
+      data: { error: "UNKNOWN_TIMEZONE" },
+    });
+    // A proposal time that names no instant is refused before the transaction.
+    const unreadable = await runSchedulingNegotiationHandler(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          subaction: "propose",
+          negotiationId: data.negotiation.id,
+          startAt: "next Monday at 4",
+          endAt: "2026-08-10T16:30:00",
+        },
+      } as never,
+      async () => [],
+    );
+    expect(unreadable).toMatchObject({
+      success: false,
+      data: { error: "INVALID_PROPOSAL_TIME", field: "startAt" },
+    });
+    expect(await service.listProposals(data.negotiation.id)).toEqual([]);
+    // Offset-less clocks are local times in the negotiation's zone
+    // (America/Los_Angeles, UTC-7 on this date), not in the server's.
     const proposeArgs = validateToolArgs(schedulingAction, {
       schedulingOp: "propose",
       negotiationId: data.negotiation.id,
-      startAt: "2026-08-10T23:00:00.000Z",
-      endAt: "2026-08-10T23:30:00.000Z",
+      startAt: "2026-08-10T16:00:00",
+      endAt: "2026-08-10T16:30:00",
       proposedBy: "owner",
     });
     expect(proposeArgs.errors).toEqual([]);
@@ -973,9 +1013,11 @@ describe("ApprovalQueue integration (real PGlite)", () => {
       },
     });
     const proposedData = proposed.data as {
-      proposal: { id: string };
+      proposal: { id: string; startAt: string; endAt: string };
       approvalRequestId: string;
     };
+    expect(proposedData.proposal.startAt).toBe("2026-08-10T23:00:00.000Z");
+    expect(proposedData.proposal.endAt).toBe("2026-08-10T23:30:00.000Z");
     const proposalApproval = await queue.byId(
       proposedData.approvalRequestId,
       subjectUserId,
