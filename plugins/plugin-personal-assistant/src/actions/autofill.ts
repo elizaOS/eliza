@@ -46,23 +46,22 @@ interface AutofillParams {
   field?: string;
   domain?: string;
   url?: string;
-  confirmed?: boolean;
 }
 
 const SUBACTIONS: SubactionsMap<AutofillSubaction> = {
   fill: {
     description:
-      "Request a one-field autofill via the browser extension password manager. Refused on non-whitelisted domains.",
+      "Request a one-field autofill via the browser extension password manager. Needs the tab url, or domain when url is omitted. Refused on non-whitelisted domains.",
     descriptionCompressed:
-      "autofill one field(field,domain) extension+password-manager allowlist-gated",
-    required: ["field", "domain"],
-    optional: ["url"],
+      "autofill one field(field,url|domain) extension+password-manager allowlist-gated",
+    required: ["field"],
+    optional: ["url", "domain"],
   },
   whitelist_add: {
     description:
-      "Add a domain to the autofill allowlist. Requires confirmed:true.",
-    descriptionCompressed: "add domain autofill allowlist confirmed-true",
-    required: ["domain", "confirmed"],
+      "Add a domain to the autofill allowlist. Asks the owner first; the domain is added only after the owner replies yes on a follow-up turn and the same call is repeated.",
+    descriptionCompressed: "add domain autofill allowlist two-turn-confirm",
+    required: ["domain"],
   },
   whitelist_list: {
     description:

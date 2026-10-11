@@ -136,7 +136,8 @@ export const credentialsAction: Action & {
   ],
   description:
     "Owner-only credentials. Browser autofill + OS password manager (1Password/ProtonPass). " +
-    "Actions fill whitelisted one-field; whitelist_add domain confirmed:true; whitelist_list; search query; list bounded; inject_username|inject_password OS clipboard confirmed:true. " +
+    "Actions fill whitelisted one-field (url or domain); whitelist_add domain; whitelist_list; search query; list bounded; inject_username|inject_password OS clipboard. " +
+    "whitelist_add and inject_* ask the owner first; after the owner replies yes, repeat the same call (same domain or itemId). " +
     "No plaintext credentials in chat; clipboard only.",
   descriptionCompressed:
     "CREDENTIALS fill|whitelist_add|list|search|inject_username|inject_password; clipboard-only",
@@ -201,12 +202,6 @@ export const credentialsAction: Action & {
       description: "(action=list) Item limit. Default 20.",
       required: false,
       schema: { type: "number" as const },
-    },
-    {
-      name: "confirmed",
-      description: "true required for whitelist_add and inject_*; owner gate.",
-      required: false,
-      schema: { type: "boolean" as const },
     },
   ],
 

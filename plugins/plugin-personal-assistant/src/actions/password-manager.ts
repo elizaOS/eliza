@@ -46,7 +46,6 @@ type PasswordManagerParameters = {
   query?: string;
   itemId?: string;
   field?: "username" | "password";
-  confirmed?: boolean;
   limit?: number;
 };
 
@@ -79,12 +78,6 @@ const PARAM_SCHEMA = [
     description:
       "Which field to inject when using a generic inject subaction. Ignored when subaction explicitly names the field.",
     schema: { type: "string" as const },
-  },
-  {
-    name: "confirmed",
-    description:
-      "Must be explicitly true to copy a credential to the clipboard.",
-    schema: { type: "boolean" as const },
   },
   {
     name: "limit",
@@ -131,7 +124,7 @@ function failure(error: string, extra?: Record<string, unknown>): ActionResult {
       "Which login should I look up? Tell me the service (e.g. GitHub, AWS).",
     MISSING_ITEM_ID: "I need the password manager item id to copy a field.",
     CONFIRMATION_REQUIRED:
-      "Copying a credential needs explicit confirmation. Re-issue with confirmed: true.",
+      "Copying a credential needs your confirmation. Reply yes to confirm or no to cancel.",
     UNKNOWN_SUBACTION:
       "Say 'list my saved logins', 'find my <service> login', or 'copy <service> password to clipboard'.",
   };
