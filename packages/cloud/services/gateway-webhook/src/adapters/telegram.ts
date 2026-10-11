@@ -170,9 +170,7 @@ export const telegramAdapter: PlatformAdapter = {
     return sendTelegramReply(
       config,
       asTelegramEvent(event),
-      event.chatType === "private" && !event.membershipChange
-        ? telegramReplyWithMedia(text, mediaUrls)
-        : text,
+      event.membershipChange ? text : telegramReplyWithMedia(text, mediaUrls),
       logger,
       deliveryHooks,
     );

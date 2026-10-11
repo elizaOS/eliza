@@ -610,7 +610,7 @@ function sumAnalytics(elements: LinkedInAnalyticsElement[]): CampaignMetrics {
       parseAnalyticsMetric("oneClickLeads", element.oneClickLeads),
     );
   }
-  const ctr = impressions > 0 ? clicks / impressions : 0;
+  const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
   const cpc = clicks > 0 ? spend / clicks : 0;
   const cpm = impressions > 0 ? (spend / impressions) * 1000 : 0;
   for (const [field, value] of Object.entries({ ctr, cpc, cpm })) {

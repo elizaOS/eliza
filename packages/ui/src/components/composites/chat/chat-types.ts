@@ -150,6 +150,8 @@ export interface ChatMessageRenderContext {
   turnStatus?: ChatTurnStatus | null;
   /** Hide reasoning while this turn is still streaming. */
   suppressReasoning?: boolean;
+  /** True while this turn's text is still arriving and may end mid-tag. */
+  streaming?: boolean;
 }
 export interface ChatMessageLabels extends ChatLabelSet {}
 export interface ChatConversationSummary {

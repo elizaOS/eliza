@@ -2,24 +2,10 @@
  * Data-loading callbacks, one of the domain hooks AppContext composes.
  *
  * Covers: autonomy event merge / replay / append, conversation loaders,
- * BSC trade + steward wrappers, loadInventory, ownerName hydration,
+ * steward wrappers, loadInventory, ownerName hydration,
  * character language sync, loadWorkbench, loadUpdateStatus,
  */
 
-import type {
-  BscTradeExecuteRequest,
-  BscTradeExecuteResponse,
-  BscTradePreflightResponse,
-  BscTradeQuoteRequest,
-  BscTradeQuoteResponse,
-  BscTradeTxStatusResponse,
-  BscTransferExecuteRequest,
-  BscTransferExecuteResponse,
-  StewardWebhookEventType,
-  WalletTradingProfileResponse,
-  WalletTradingProfileSourceFilter,
-  WalletTradingProfileWindow,
-} from "@elizaos/contracts";
 import type { UiLanguage } from "@elizaos/core/protocol";
 import type { StylePreset } from "@elizaos/host/protocol";
 
@@ -1936,41 +1922,9 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       finishConversationMessageCacheRequest,
     ],
   );
-  // ── BSC trade / steward wrappers ────────────────────────────────────
-  const getBscTradePreflight = useCallback(
-    async (tokenAddress?: string): Promise<BscTradePreflightResponse> =>
-      client.getBscTradePreflight(tokenAddress),
-    [],
-  );
-  const getBscTradeQuote = useCallback(
-    async (request: BscTradeQuoteRequest): Promise<BscTradeQuoteResponse> =>
-      client.getBscTradeQuote(request),
-    [],
-  );
-  const getBscTradeTxStatus = useCallback(
-    async (hash: string): Promise<BscTradeTxStatusResponse> =>
-      client.getBscTradeTxStatus(hash),
-    [],
-  );
+  // ── Steward wrappers ────────────────────────────────────────────────
   const getStewardStatus = useCallback(
     async () => client.getStewardStatus(),
-    [],
-  );
-  const getStewardAddresses = useCallback(
-    async () => client.getStewardAddresses(),
-    [],
-  );
-  const getStewardBalance = useCallback(
-    async (chainId?: number) => client.getStewardBalance(chainId),
-    [],
-  );
-  const getStewardTokens = useCallback(
-    async (chainId?: number) => client.getStewardTokens(chainId),
-    [],
-  );
-  const getStewardWebhookEvents = useCallback(
-    async (opts?: { event?: StewardWebhookEventType; since?: number }) =>
-      client.getStewardWebhookEvents(opts),
     [],
   );
   const getStewardHistory = useCallback(
@@ -1989,26 +1943,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
   const rejectStewardTx = useCallback(
     async (txId: string, reason?: string) =>
       client.rejectStewardTx(txId, reason),
-    [],
-  );
-  const loadWalletTradingProfile = useCallback(
-    async (
-      window: WalletTradingProfileWindow = "30d",
-      source: WalletTradingProfileSourceFilter = "all",
-    ): Promise<WalletTradingProfileResponse> =>
-      client.getWalletTradingProfile(window, source),
-    [],
-  );
-  const executeBscTrade = useCallback(
-    async (request: BscTradeExecuteRequest): Promise<BscTradeExecuteResponse> =>
-      client.executeBscTrade(request),
-    [],
-  );
-  const executeBscTransfer = useCallback(
-    async (
-      request: BscTransferExecuteRequest,
-    ): Promise<BscTransferExecuteResponse> =>
-      client.executeBscTransfer(request),
     [],
   );
   const loadInventory = useCallback(async () => {
@@ -2186,22 +2120,12 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     removeConversationMessageStateMessages,
     discardConversationMessageState,
     loadedConversationIdRef,
-    // BSC / Steward / Trading
-    getBscTradePreflight,
-    getBscTradeQuote,
-    getBscTradeTxStatus,
+    // Steward
     getStewardStatus,
-    getStewardAddresses,
-    getStewardBalance,
-    getStewardTokens,
-    getStewardWebhookEvents,
     getStewardHistory,
     getStewardPending,
     approveStewardTx,
     rejectStewardTx,
-    loadWalletTradingProfile,
-    executeBscTrade,
-    executeBscTransfer,
     loadInventory,
     // Workbench
     workbenchLoading,

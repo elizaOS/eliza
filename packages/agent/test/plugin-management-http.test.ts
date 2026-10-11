@@ -456,6 +456,24 @@ it("executes narrow promoted plugin schemas through authenticated HTTP without c
       JSON.parse(await readFile(path.join(directory, "eliza.json"), "utf8"))
         .plugins.entries.openai.config.OPENAI_API_KEY,
     ).toBe(secret);
+
+    // The bot connector is stopped by disabling it, not by the
+    // personal-account cancel route.
+    expect(
+      await operation("PLUGIN_DISCONNECT").handler(
+        fixture.runtime,
+        message,
+        undefined,
+        { parameters: { connectorId: "telegram" } },
+      ),
+    ).toMatchObject({
+      success: true,
+      data: { connectorId: "telegram", fallback: "plugin-disable" },
+    });
+    expect(
+      JSON.parse(await readFile(path.join(directory, "eliza.json"), "utf8"))
+        .plugins.entries.telegram.enabled,
+    ).toBe(false);
   } finally {
     await fixture.cleanup();
   }

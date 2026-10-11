@@ -165,18 +165,9 @@
       "sensitive": false,
       "default": "False",
       "label": "Cloud Enabled",
-      "help": "Enable ElizaCloud container provisioning, device auth, bridge, and backup services. When false, only inference model handlers are active.",
+      "help": "Enable ElizaCloud container provisioning and bridge services. When false, only inference model handlers are active.",
       "advanced": false,
       "autoEnableProvider": true
-    },
-    "ELIZAOS_CLOUD_APP_VERSION": {
-      "type": "string",
-      "required": false,
-      "sensitive": false,
-      "default": "2.0.0-beta.0",
-      "label": "Cloud App Version",
-      "help": "Application version sent during device authentication.",
-      "advanced": false
     }
   },
   "render": {

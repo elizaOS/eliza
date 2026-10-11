@@ -1649,10 +1649,21 @@ export function createScheduledTaskRunner(
     detail?: Record<string, unknown>;
   }
 
-  function mutateSnooze(
+  async function snoozeBaseMs(task: ScheduledTask): Promise<number> {
+    const nowMs = now().getTime();
+    if (task.state.status !== "scheduled") return nowMs;
+    const pendingFireAtIso = await resolveNextFireAt(task);
+    const pendingFireMs =
+      pendingFireAtIso === null ? Number.NaN : Date.parse(pendingFireAtIso);
+    return Number.isFinite(pendingFireMs) && pendingFireMs > nowMs
+      ? pendingFireMs
+      : nowMs;
+  }
+
+  async function mutateSnooze(
     task: ScheduledTask,
     payload: { minutes?: number; untilIso?: string } | undefined,
-  ): LifecycleMutation {
+  ): Promise<LifecycleMutation> {
     const minutes = payload?.minutes;
     const untilIso = payload?.untilIso;
     let newFireAtIso: string;
@@ -1662,7 +1673,10 @@ export function createScheduledTaskRunner(
       if (minutes <= 0) {
         throw new Error("snooze: provide minutes or untilIso");
       }
-      const newFireMs = projectMinuteOffsetMs(now().getTime(), minutes);
+      const newFireMs = projectMinuteOffsetMs(
+        await snoozeBaseMs(task),
+        minutes,
+      );
       if (newFireMs === null) {
         throw new ElizaError(
           "snooze: minutes must be finite and project to a representable Date",
@@ -1722,7 +1736,7 @@ export function createScheduledTaskRunner(
     task: ScheduledTask,
     payload: { minutes?: number; untilIso?: string } | undefined,
   ): Promise<ScheduledTask> {
-    const mutation = mutateSnooze(task, payload);
+    const mutation = await mutateSnooze(task, payload);
     await persist(mutation.task);
     await logger.log(mutation.task.taskId, mutation.transition, {
       reason: mutation.reason,
@@ -1832,6 +1846,16 @@ export function createScheduledTaskRunner(
         }
       }
     }
+    if (
+      stableStringify(edited.trigger) !== stableStringify(task.trigger) &&
+      edited.state.status === "scheduled" &&
+      edited.state.firedAt !== undefined
+    ) {
+      const { firedAt: _staleOverride, ...state } = edited.state;
+      edited.state = state;
+      const nextFireAtIso = await resolveNextFireAt(edited);
+      if (nextFireAtIso !== null) edited.state.firedAt = nextFireAtIso;
+    }
     const mutation = mutationSnapshots.get(task);
     if (mutation) mutationSnapshots.set(edited, mutation);
     await persist(edited);
@@ -1876,11 +1900,11 @@ export function createScheduledTaskRunner(
     return task;
   }
 
-  function lifecycleMutation(
+  async function lifecycleMutation(
     task: ScheduledTask,
     verb: ScheduledTaskReceiptVerb,
     payload: unknown,
-  ): LifecycleMutation {
+  ): Promise<LifecycleMutation> {
     switch (verb) {
       case "snooze":
         return mutateSnooze(
@@ -1996,7 +2020,7 @@ export function createScheduledTaskRunner(
           task: structuredClone(existingTask),
           transition: transitionForReceiptVerb(verb),
         }
-      : lifecycleMutation(structuredClone(existingTask), verb, payload);
+      : await lifecycleMutation(structuredClone(existingTask), verb, payload);
     if (!replayCandidate) {
       writeApplyReceiptMarker(
         mutation.task,

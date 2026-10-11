@@ -1,5 +1,6 @@
 // Handles webhook gateway whatsapp behavior for authenticated connector fan-in.
 import crypto from "node:crypto";
+import { splitTelegramMessage } from "@elizaos/cloud-services-common/telegram";
 import { z } from "zod";
 import { logger } from "../logger";
 import { boundedGatewayFetch } from "./bounded-fetch";
@@ -12,6 +13,8 @@ import {
 
 const WHATSAPP_REQUEST_TIMEOUT_MS = 30_000;
 const WHATSAPP_RESPONSE_MAX_BYTES = 64 * 1024;
+/** The WhatsApp Cloud API rejects a longer text.body. */
+const WHATSAPP_BODY_MAX_LENGTH = 4096;
 
 /**
  * Bound every WhatsApp Cloud API hop so a hung gateway cannot pin the
@@ -82,30 +85,23 @@ const WhatsAppWebhookPayloadSchema = z.object({
   ),
 });
 
-async function sendWhatsAppReply(
-  config: WebhookConfig,
-  event: ChatEvent,
+/** Post one text message and return the message ids from its receipt. */
+async function postWhatsAppMessage(
+  url: string,
+  accessToken: string,
+  to: string,
   text: string,
 ): Promise<string[]> {
-  if (!config.accessToken || !config.phoneNumberId) {
-    throw new PlatformDeliveryError(
-      "Missing WhatsApp credentials for reply",
-      "failed",
-      "DELIVERY_CREDENTIALS_MISSING",
-      false,
-    );
-  }
-  const url = `${WHATSAPP_API_BASE}/${config.phoneNumberId}/messages`;
   const response = await whatsappFetch(url, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${config.accessToken}`,
+      Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
       messaging_product: "whatsapp",
       recipient_type: "individual",
-      to: event.senderId,
+      to,
       type: "text",
       text: { body: text },
     }),
@@ -156,6 +152,63 @@ async function sendWhatsAppReply(
       "DELIVERY_RECEIPT_INVALID",
       false,
     );
+  }
+  return providerMessageIds;
+}
+
+async function sendWhatsAppReply(
+  config: WebhookConfig,
+  event: ChatEvent,
+  text: string,
+): Promise<string[]> {
+  if (!config.accessToken || !config.phoneNumberId) {
+    throw new PlatformDeliveryError(
+      "Missing WhatsApp credentials for reply",
+      "failed",
+      "DELIVERY_CREDENTIALS_MISSING",
+      false,
+    );
+  }
+  const url = `${WHATSAPP_API_BASE}/${config.phoneNumberId}/messages`;
+  // One text.body holds at most 4096 characters, so a longer reply goes out
+  // as several messages in order. Nothing is dropped.
+  const chunks =
+    text.length > WHATSAPP_BODY_MAX_LENGTH
+      ? splitTelegramMessage(text, WHATSAPP_BODY_MAX_LENGTH)
+      : [text];
+  const providerMessageIds: string[] = [];
+  for (const chunk of chunks) {
+    try {
+      providerMessageIds.push(
+        ...(await postWhatsAppMessage(
+          url,
+          config.accessToken,
+          event.senderId,
+          chunk,
+        )),
+      );
+    } catch (error) {
+      if (
+        providerMessageIds.length > 0 &&
+        error instanceof PlatformDeliveryError &&
+        error.deliveryStatus === "failed"
+      ) {
+        // An earlier part already reached the recipient. Reporting "failed"
+        // would let the caller reopen the turn and send those parts again.
+        throw new PlatformDeliveryError(
+          `WhatsApp rejected part ${providerMessageIds.length + 1} of ${chunks.length} after earlier parts were accepted`,
+          "uncertain",
+          error.code,
+          false,
+          error.providerStatus,
+          {
+            cause: error,
+            context: { acceptedProviderMessageIds: providerMessageIds },
+          },
+        );
+      }
+      throw error;
+    }
   }
   return providerMessageIds;
 }

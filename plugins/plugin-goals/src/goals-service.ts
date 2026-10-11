@@ -394,10 +394,14 @@ export class GoalsService {
         request.description !== undefined
           ? (normalizeOptionalString(request.description) ?? "")
           : current.goal.description,
-      cadence:
-        request.cadence !== undefined
-          ? (normalizeNullableRecord(request.cadence, "cadence") ?? null)
-          : current.goal.cadence,
+      cadence: (() => {
+        if (request.cadence === undefined) return current.goal.cadence;
+        const cadence = normalizeNullableRecord(request.cadence, "cadence");
+        if (cadence && typeof cadence.kind !== "string") {
+          fail(400, "goal cadence must include a 'kind' field when provided");
+        }
+        return cadence ?? null;
+      })(),
       supportStrategy:
         request.supportStrategy !== undefined
           ? requireRecord(request.supportStrategy, "supportStrategy")

@@ -203,9 +203,7 @@ export {
 	resolveDiscordGuildEntry,
 	resolveDiscordShouldRequireMention,
 	resolveDiscordUserAllowed,
-	resolveGroupDmAllow,
 	shouldEmitDiscordReactionNotification,
-	validateMessageAllowed,
 } from "./allowlist";
 export {
 	DEFAULT_DISCORD_AUDIO_LANES,

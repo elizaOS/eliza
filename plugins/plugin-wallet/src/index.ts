@@ -5,11 +5,9 @@
  * from here rather than reaching into subpaths.
  */
 import "./core-augmentation.js";
-import { registerWalletAutomationNodeContributor } from "./automation-node-contributor.js";
 import { walletRouteRegistration } from "./register-routes.js";
 
 void walletRouteRegistration;
-registerWalletAutomationNodeContributor();
 
 export * from "./actions/index.js";
 export { tradeRouterAction } from "./actions/trade-action.js";

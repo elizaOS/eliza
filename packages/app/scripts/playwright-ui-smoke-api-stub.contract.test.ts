@@ -137,7 +137,6 @@ it("serves truthful designed-empty local inference and owner surfaces", async ()
         autoUpdateOnMetered: false,
         quietHours: [{ start: "22:00", end: "08:00" }],
       },
-      isOwner: true,
     },
   );
   assert.deepEqual(await jsonGet("/api/accounts/consumer-keys"), {

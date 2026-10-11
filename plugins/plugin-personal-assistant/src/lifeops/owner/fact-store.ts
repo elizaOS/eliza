@@ -1053,19 +1053,33 @@ export async function resolveOwnerTimeZone(
   runtime: IAgentRuntime,
   now: Date,
 ): Promise<string> {
+  return (await readOwnerTimeZoneResolver(runtime))(now);
+}
+
+/**
+ * Reads the owner facts once and returns the {@link resolveOwnerTimeZone}
+ * projection for any instant. Use it when one call needs the owner's zone at
+ * several instants (historical events on either side of a travel window), so
+ * the fact store is read once instead of once per instant.
+ */
+export async function readOwnerTimeZoneResolver(
+  runtime: IAgentRuntime,
+): Promise<(instant: Date) => string> {
   try {
     const facts = await resolveOwnerFactStore(runtime).read();
-    const view = ownerFactsToView(facts, now);
-    if (view.timezone && isValidTimeZone(view.timezone)) {
-      return view.timezone;
-    }
-    if (view.timezone) {
-      logger.warn(
-        { src: "lifeops:owner:resolve-timezone", storedZone: view.timezone },
-        "Owner timezone fact is not a valid IANA zone; falling back to the configured zone for time resolution.",
-      );
-    }
-    return resolveConfiguredTimeZone(runtime);
+    return (instant) => {
+      const view = ownerFactsToView(facts, instant);
+      if (view.timezone && isValidTimeZone(view.timezone)) {
+        return view.timezone;
+      }
+      if (view.timezone) {
+        logger.warn(
+          { src: "lifeops:owner:resolve-timezone", storedZone: view.timezone },
+          "Owner timezone fact is not a valid IANA zone; falling back to the configured zone for time resolution.",
+        );
+      }
+      return resolveConfiguredTimeZone(runtime);
+    };
   } catch (error) {
     // error-policy:J4 — a fact-store read failure (missing/unavailable cache
     // backend) must not break time resolution. Degrade to the configured zone, the
@@ -1076,7 +1090,7 @@ export async function resolveOwnerTimeZone(
       { src: "lifeops:owner:resolve-timezone", error },
       "Failed to read owner timezone fact; falling back to the configured zone for time resolution.",
     );
-    return resolveConfiguredTimeZone(runtime);
+    return () => resolveConfiguredTimeZone(runtime);
   }
 }
 

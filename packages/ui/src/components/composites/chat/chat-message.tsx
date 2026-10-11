@@ -416,6 +416,7 @@ function arePropsEqual(
     prev.renderContext?.turnStatus === next.renderContext?.turnStatus &&
     prev.renderContext?.suppressReasoning ===
       next.renderContext?.suppressReasoning &&
+    prev.renderContext?.streaming === next.renderContext?.streaming &&
     prev.userMessagesOnRight === next.userMessagesOnRight &&
     prev.children === next.children;
   if (!sharedEqual) return false;

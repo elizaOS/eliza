@@ -29,6 +29,7 @@ import {
 } from "@elizaos/testing/runtime";
 import { afterEach, describe, expect, it } from "vitest";
 import { executeRawSql } from "../db/sql.ts";
+import { createOwnerGoalsService } from "../goals-runtime.ts";
 import { goalsPlugin } from "../plugin.ts";
 import { GOAL_CHECKIN_PROGRESS_STATES } from "../services/checkin.ts";
 import { ownerGoalsAction } from "./goals.ts";
@@ -81,6 +82,7 @@ function track(harness: ModelProviderTestRuntime): ModelProviderTestRuntime {
 async function runOwnerGoals(
   harness: ModelProviderTestRuntime,
   text: string,
+  parameters?: Record<string, unknown>,
 ): Promise<{
   result: { success: boolean; data?: { action?: string; missing?: string[] } };
   reply: string;
@@ -95,7 +97,7 @@ async function runOwnerGoals(
     harness.runtime,
     message,
     undefined,
-    undefined,
+    parameters ? { parameters } : undefined,
     callback,
   )) as { success: boolean; data?: { action?: string; missing?: string[] } };
   return { result, reply };
@@ -165,6 +167,130 @@ describe("OWNER_GOALS action (deterministic model-provider runtime)", () => {
     expect(result.data?.missing).toContain("id");
     // The action's clarification names the field, delivered via the callback.
     expect(reply.toLowerCase()).toContain("id");
+    expect(() => harness.assertFixturesConsumed()).not.toThrow();
+  });
+
+  it("keeps the planner's update when the extractor proposes create, asking for the id instead of duplicating the goal", async () => {
+    const harness = track(
+      await createTestRuntimeWithModelProvider({
+        plugins: [goalsPlugin],
+        fixtures: [
+          {
+            name: "goal-extraction-create-original",
+            match: { modelType: ModelType.TEXT_LARGE },
+            response: JSON.stringify({
+              action: "create",
+              params: { title: "Run a marathon" },
+              missing: [],
+              confidence: 0.95,
+            }),
+            times: 1,
+          },
+        ],
+      }),
+    );
+    await provisionAuditTable(harness);
+
+    const created = await runOwnerGoals(
+      harness,
+      "Add a goal to run a marathon.",
+    );
+    expect(created.result.success, created.reply).toBe(true);
+
+    harness.fixtures.register({
+      name: "goal-extraction-override-to-create",
+      match: { modelType: ModelType.TEXT_LARGE },
+      response: JSON.stringify({
+        action: "create",
+        params: { title: "Run a marathon in 2027" },
+        missing: [],
+        confidence: 0.9,
+      }),
+      times: 1,
+    });
+    const { result, reply } = await runOwnerGoals(
+      harness,
+      "Change my marathon goal to 2027.",
+      { action: "update", title: "Run a marathon in 2027" },
+    );
+
+    expect(result.success, reply).toBe(false);
+    expect(result.data?.action).toBe("clarify");
+    expect(result.data?.missing).toEqual(["id"]);
+    expect(reply).toBe("To OWNER_GOALS (update) I still need: id.");
+    const goals = await createOwnerGoalsService(harness.runtime).listGoals();
+    expect(goals.map((record) => record.goal.title)).toEqual([
+      "Run a marathon",
+    ]);
+    expect(() => harness.assertFixturesConsumed()).not.toThrow();
+  });
+
+  it("asks for the planner's delete id instead of borrowing the id the extractor pulled for review", async () => {
+    const harness = track(
+      await createTestRuntimeWithModelProvider({
+        plugins: [goalsPlugin],
+        fixtures: [
+          {
+            name: "goal-extraction-review-for-planner-delete",
+            match: { modelType: ModelType.TEXT_LARGE },
+            response: JSON.stringify({
+              action: "review",
+              params: { id: "goal-1" },
+              missing: [],
+              confidence: 0.9,
+            }),
+            times: 1,
+          },
+        ],
+      }),
+    );
+
+    const { result, reply } = await runOwnerGoals(
+      harness,
+      "How is goal-1 going? Also drop that old goal.",
+      { action: "delete" },
+    );
+
+    expect(result.success, reply).toBe(false);
+    expect(result.data?.action).toBe("clarify");
+    expect(result.data?.missing).toEqual(["id"]);
+    expect(reply).toBe("To OWNER_GOALS (delete) I still need: id.");
+    expect(() => harness.assertFixturesConsumed()).not.toThrow();
+  });
+
+  it("asks for the planner's create title instead of borrowing the title the extractor pulled for update", async () => {
+    const harness = track(
+      await createTestRuntimeWithModelProvider({
+        plugins: [goalsPlugin],
+        fixtures: [
+          {
+            name: "goal-extraction-update-for-planner-create",
+            match: { modelType: ModelType.TEXT_LARGE },
+            response: JSON.stringify({
+              action: "update",
+              params: { id: "goal-1", title: "Later" },
+              missing: [],
+              confidence: 0.9,
+            }),
+            times: 1,
+          },
+        ],
+      }),
+    );
+    await provisionAuditTable(harness);
+
+    const { result, reply } = await runOwnerGoals(
+      harness,
+      "Rename goal-1 to Later and add a new goal.",
+      { action: "create" },
+    );
+
+    expect(result.success, reply).toBe(false);
+    expect(result.data?.action).toBe("clarify");
+    expect(result.data?.missing).toEqual(["title"]);
+    expect(reply).toBe("To OWNER_GOALS (create) I still need: title.");
+    const goals = await createOwnerGoalsService(harness.runtime).listGoals();
+    expect(goals).toEqual([]);
     expect(() => harness.assertFixturesConsumed()).not.toThrow();
   });
 
