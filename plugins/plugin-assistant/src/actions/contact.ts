@@ -1357,7 +1357,7 @@ export function createContactActions(dependencies: ContactActionDependencies): {
           .join(", ");
         return {
           success: false,
-          text: `"${contactName}" matched ${contacts.length} contacts: ${choices}. Ask which contact they mean, then retry with a name that matches one contact. Nothing was removed.`,
+          text: `"${contactName}" matched ${contacts.length} contacts: ${choices}. Ask which contact they mean, then retry with a name that matches only that contact, or with its entityId. Nothing was removed.`,
           values: {
             success: false,
             error: "AMBIGUOUS_CONTACT",
