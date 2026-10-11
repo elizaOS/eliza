@@ -100,7 +100,7 @@ export const githubAction: Action = {
     "GITHUB_NOTIFICATIONS",
   ],
   description:
-    "GitHub umbrella for pull requests, issues, and notification triage. Use action=pr_list/pr_review/issue_create/issue_assign/issue_close/issue_reopen/issue_comment/issue_label/notification_triage.",
+    "GitHub umbrella for pull requests, issues, and notification triage. Use action=pr_list/pr_review/issue_create/issue_assign/issue_close/issue_reopen/issue_comment/issue_label/notification_triage. Issue operations and pr_review ask the user to reply yes before they run.",
   descriptionCompressed:
     "GitHub pr_list|pr_review|issue_create|assign|close|reopen|comment|label|triage",
   parameters: [
@@ -174,9 +174,12 @@ export const githubAction: Action = {
     },
     {
       name: "as",
-      description: "Identity to use: agent or user.",
+      description:
+        "Identity to use: agent or user. When omitted, issue operations and pr_list run as agent; pr_review and notification_triage run as user.",
       required: false,
-      schema: { type: "string", enum: ["agent", "user"], default: "agent" },
+      // No schema default: the validator would fill it for every operation and
+      // override the per-operation default each handler resolves.
+      schema: { type: "string", enum: ["agent", "user"] },
     },
     {
       name: "accountId",
@@ -184,12 +187,6 @@ export const githubAction: Action = {
         "Optional GitHub account id from GITHUB_ACCOUNTS. Defaults by role.",
       required: false,
       schema: { type: "string" },
-    },
-    {
-      name: "confirmed",
-      description: "Must be true for GitHub write operations.",
-      required: false,
-      schema: { type: "boolean", default: false },
     },
   ],
   validate: async (runtime, message, state) =>
@@ -217,19 +214,12 @@ export const githubAction: Action = {
       );
     }
     if (action === "pr_list" || action === "pr_review") {
-      const childParams = {
-        ...params,
-        op: action === "pr_list" ? "list" : "review",
-        ...(action === "pr_review" && params.review_action
-          ? { action: params.review_action }
-          : {}),
-      };
       return delegate(
         prOpAction,
         runtime,
         message,
         state,
-        childParams,
+        { ...params, op: action === "pr_list" ? "list" : "review" },
         callback,
       );
     }

@@ -206,5 +206,4 @@ export interface RateLimitError {
 export interface BaseActionOptions {
   as?: GitHubIdentity;
   accountId?: string;
-  confirmed?: boolean;
 }

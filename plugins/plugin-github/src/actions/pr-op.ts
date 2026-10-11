@@ -221,12 +221,12 @@ async function runReview(
   const selection = resolveAccountSelection(options, "user");
   const repo = requireString(options, "repo");
   const number = requireNumber(options, "number");
-  const action = parseReviewAction(options?.action);
+  const action = parseReviewAction(options?.review_action);
   const body = requireString(options, "body");
 
   if (!repo || !number || !action) {
     const err =
-      "GITHUB_PR_OP review requires repo (owner/name), number (integer), and action (approve|request-changes|comment)";
+      "GITHUB_PR_OP review requires repo (owner/name), number (integer), and review_action (approve|request-changes|comment)";
     await callback?.({ text: err });
     return { success: false, error: err };
   }
@@ -235,6 +235,19 @@ async function runReview(
     const err = `Invalid repo "${repo}" — expected "owner/name"`;
     await callback?.({ text: err });
     return { success: false, error: err };
+  }
+
+  // Reject what the review cannot run with before asking: a confirmation the
+  // user answers must not be followed by an argument or account error.
+  if (action === "request-changes" && !body) {
+    const err = "request-changes review requires a body explaining the changes";
+    await callback?.({ text: err });
+    return { success: false, error: err };
+  }
+  const resolved = buildResolvedClient(runtime, selection);
+  if ("error" in resolved) {
+    await callback?.({ text: resolved.error });
+    return { success: false, error: resolved.error };
   }
 
   const preview = buildReviewPreview(
@@ -267,18 +280,6 @@ async function runReview(
     return { success: true, text, data: { cancelled: true } };
   }
 
-  if (action === "request-changes" && !body) {
-    const err = "request-changes review requires a body explaining the changes";
-    await callback?.({ text: err });
-    return { success: false, error: err };
-  }
-
-  const resolved = buildResolvedClient(runtime, selection);
-  if ("error" in resolved) {
-    await callback?.({ text: resolved.error });
-    return { success: false, error: resolved.error };
-  }
-
   const resp = await resolved.client.pulls.createReview({
     owner: parts.owner,
     repo: parts.name,
@@ -306,7 +307,7 @@ export const prOpAction: Action = {
     "COMMENT_ON_PR",
   ],
   description:
-    "Single router for GitHub PR ops: list and review. Review requires confirmed:true.",
+    "Single router for GitHub PR ops: list and review. Review asks the user to reply yes before it is submitted.",
   descriptionCompressed:
     "GitHub PR ops: list pull requests, submit review with confirmation.",
   parameters: [
@@ -345,7 +346,7 @@ export const prOpAction: Action = {
       schema: { type: "string" },
     },
     {
-      name: "action",
+      name: "review_action",
       description: "Review action: approve, request-changes, or comment.",
       required: false,
       schema: {
@@ -361,9 +362,10 @@ export const prOpAction: Action = {
     },
     {
       name: "as",
-      description: "Identity to use: agent or user.",
+      description:
+        "Identity to use: agent or user. When omitted, list runs as agent and review runs as user.",
       required: false,
-      schema: { type: "string", enum: ["agent", "user"], default: "agent" },
+      schema: { type: "string", enum: ["agent", "user"] },
     },
     {
       name: "accountId",
@@ -371,12 +373,6 @@ export const prOpAction: Action = {
         "Optional GitHub account id from GITHUB_ACCOUNTS. Defaults by role.",
       required: false,
       schema: { type: "string" },
-    },
-    {
-      name: "confirmed",
-      description: "Must be true to submit a review.",
-      required: false,
-      schema: { type: "boolean", default: false },
     },
   ],
 

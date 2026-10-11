@@ -38,7 +38,7 @@ const COMMENT_URL = "https://github.test/octo/repo/issues/17#issuecomment-99";
 const PR_URL = "https://github.test/octo/repo/pull/17";
 const REVIEW_BODY = "Looks good";
 const ISSUE_CREATE_PREVIEW =
-  'About to create octo/repo issue: "Deterministic issue" [labels: scenario] [assignees: hubot] as agent. Re-invoke with confirmed: true to proceed.';
+  'About to create octo/repo issue: "Deterministic issue" [labels: scenario] [assignees: hubot] as agent.';
 type JsonRecord = Record<string, unknown>;
 type RuntimeWithGithubScenario = IAgentRuntime &
   RuntimeWithScenarioModelFixtures & {
@@ -267,7 +267,7 @@ async function seedGithub(ctx: ScenarioContext): Promise<string | undefined> {
     return err instanceof Error ? err.message : String(err);
   }
 }
-function githubIssueParameters(confirmed: boolean): Record<string, unknown> {
+function githubIssueParameters(): Record<string, unknown> {
   return {
     action: "issue_create",
     repo: REPO,
@@ -276,7 +276,6 @@ function githubIssueParameters(confirmed: boolean): Record<string, unknown> {
     labels: ["scenario"],
     assignees: ["hubot"],
     as: "agent",
-    confirmed,
   };
 }
 function githubActionParameters(
@@ -287,21 +286,20 @@ function githubActionParameters(
     action,
     repo: REPO,
     as: "agent",
-    confirmed: true,
     ...parameters,
   };
 }
 const strictGithubRoutes = [
   {
     actionName: "GITHUB_ISSUE_CREATE",
-    args: githubIssueParameters(false),
+    args: githubIssueParameters(),
     contextIds: ["code"],
     input: "create deterministic GitHub issue preview",
     messageToUser: "",
   },
   {
     actionName: "GITHUB_ISSUE_CREATE",
-    args: githubIssueParameters(true),
+    args: githubIssueParameters(),
     contextIds: ["code"],
     input: "yes, create deterministic GitHub issue after confirmation",
     messageToUser: `Created issue ${REPO}#17: ${ISSUE_URL}`,
@@ -445,7 +443,7 @@ const githubPreviewEvaluator: DeterministicModelFixture = {
       result.type !== "tool-result" ||
       toolCall.toolName !== "GITHUB_ISSUE_CREATE" ||
       stableStringify(toolCall.input) !==
-        stableStringify(githubIssueParameters(false)) ||
+        stableStringify(githubIssueParameters()) ||
       result.toolCallId !== toolCall.toolCallId ||
       result.toolName !== toolCall.toolName ||
       result.output.type !== "text"

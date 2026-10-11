@@ -217,13 +217,6 @@ export function splitRepo(
   return { owner, name };
 }
 
-/** @deprecated LLM `confirmed` is never authoritative — use {@link requireConfirmation}. */
-export function isConfirmed(
-  _options: Record<string, unknown> | undefined,
-): boolean {
-  return false;
-}
-
 export function needsClientError(selection: GitHubAccountSelection): string {
   const accountSuffix = selection.accountId
     ? ` accountId "${selection.accountId}"`

@@ -92,173 +92,189 @@ export type GitHubIssueOpResult =
   | { requiresConfirmation: true; preview: string; awaitingUserInput: true }
   | { cancelled: true };
 
-async function runCreate(
-  resolved: ResolvedClient,
-  parts: RepoParts,
-  repo: string,
+/** One issue op with the fields that op cannot run without. */
+type IssueRequest =
+  | {
+      op: "create";
+      title: string;
+      body: string | null;
+      labels: string[] | undefined;
+      assignees: string[] | undefined;
+    }
+  | { op: "assign"; number: number; assignees: string[] }
+  | { op: "close" | "reopen"; number: number }
+  | { op: "comment"; number: number; body: string }
+  | { op: "label"; number: number; labels: string[] };
+
+/**
+ * Read the fields the op requires. The handler runs this before the
+ * confirmation prompt, so a call that cannot run never asks the user to
+ * confirm it.
+ */
+function parseRequest(
+  op: GitHubIssueOp,
   options: Record<string, unknown> | undefined,
-  callback: HandlerCallback | undefined,
-): Promise<GitHubActionResult<GitHubIssueOpResult>> {
-  const title = requireString(options, "title");
-  const body = requireString(options, "body");
-  const labels = optionalStringArray(options, "labels");
-  const assignees = optionalStringArray(options, "assignees");
-  if (!title) {
-    const err = "GITHUB_ISSUE_OP create requires title";
-    await callback?.({ text: err });
-    return { success: false, error: err };
+): IssueRequest | { error: string } {
+  const number = requireNumber(options, "number");
+  switch (op) {
+    case "create": {
+      const title = requireString(options, "title");
+      if (!title) return { error: "GITHUB_ISSUE_OP create requires title" };
+      return {
+        op,
+        title,
+        body: requireString(options, "body"),
+        labels: optionalStringArray(options, "labels"),
+        assignees: optionalStringArray(options, "assignees"),
+      };
+    }
+    case "assign": {
+      const assignees = requireStringArray(options, "assignees");
+      if (!number || !assignees || assignees.length === 0) {
+        return {
+          error:
+            "GITHUB_ISSUE_OP assign requires number (integer) and assignees (non-empty string[])",
+        };
+      }
+      return { op, number, assignees };
+    }
+    case "close":
+    case "reopen":
+      if (!number) {
+        return { error: `GITHUB_ISSUE_OP ${op} requires number (integer)` };
+      }
+      return { op, number };
+    case "comment": {
+      const body = requireString(options, "body");
+      if (!number || !body) {
+        return {
+          error: "GITHUB_ISSUE_OP comment requires number (integer) and body",
+        };
+      }
+      return { op, number, body };
+    }
+    case "label": {
+      const labels = requireStringArray(options, "labels");
+      if (!number || !labels || labels.length === 0) {
+        return {
+          error:
+            "GITHUB_ISSUE_OP label requires number (integer) and labels (non-empty string[])",
+        };
+      }
+      return { op, number, labels };
+    }
   }
-  const resp = await resolved.client.issues.create({
-    owner: parts.owner,
-    repo: parts.name,
-    title,
-    body: body ?? undefined,
-    labels,
-    assignees,
-  });
-  await callback?.({
-    text: `Created issue ${repo}#${resp.data.number}: ${resp.data.html_url}`,
-  });
-  return {
-    success: true,
-    data: {
-      op: "create",
-      number: resp.data.number,
-      url: resp.data.html_url,
-    },
-  };
 }
 
-async function runAssign(
+async function runRequest(
   resolved: ResolvedClient,
   parts: RepoParts,
   repo: string,
-  options: Record<string, unknown> | undefined,
+  request: IssueRequest,
   callback: HandlerCallback | undefined,
 ): Promise<GitHubActionResult<GitHubIssueOpResult>> {
-  const number = requireNumber(options, "number");
-  const assignees = requireStringArray(options, "assignees");
-  if (!number || !assignees || assignees.length === 0) {
-    const err =
-      "GITHUB_ISSUE_OP assign requires number (integer) and assignees (non-empty string[])";
-    await callback?.({ text: err });
-    return { success: false, error: err };
+  switch (request.op) {
+    case "create": {
+      const resp = await resolved.client.issues.create({
+        owner: parts.owner,
+        repo: parts.name,
+        title: request.title,
+        body: request.body ?? undefined,
+        labels: request.labels,
+        assignees: request.assignees,
+      });
+      await callback?.({
+        text: `Created issue ${repo}#${resp.data.number}: ${resp.data.html_url}`,
+      });
+      return {
+        success: true,
+        data: {
+          op: "create",
+          number: resp.data.number,
+          url: resp.data.html_url,
+        },
+      };
+    }
+    case "assign": {
+      const { number } = request;
+      const resp = await resolved.client.issues.addAssignees({
+        owner: parts.owner,
+        repo: parts.name,
+        issue_number: number,
+        assignees: request.assignees,
+      });
+      const actual = (resp.data.assignees ?? [])
+        .map((a) => a?.login)
+        .filter((x): x is string => typeof x === "string");
+      await callback?.({
+        text: `Assigned [${actual.join(", ")}] to ${repo}#${number}`,
+      });
+      return {
+        success: true,
+        data: { op: "assign", number, assignees: actual },
+      };
+    }
+    case "close":
+    case "reopen": {
+      const { op, number } = request;
+      const resp = await resolved.client.issues.update({
+        owner: parts.owner,
+        repo: parts.name,
+        issue_number: number,
+        state: op === "close" ? "closed" : "open",
+      });
+      const verb = op === "close" ? "Closed" : "Reopened";
+      await callback?.({
+        text: `${verb} ${repo}#${number}: ${resp.data.title}`,
+      });
+      return {
+        success: true,
+        data: { op, number, title: resp.data.title },
+      };
+    }
+    case "comment": {
+      const { number } = request;
+      const resp = await resolved.client.issues.createComment({
+        owner: parts.owner,
+        repo: parts.name,
+        issue_number: number,
+        body: request.body,
+      });
+      await callback?.({
+        text: `Commented on ${repo}#${number}: ${resp.data.html_url}`,
+      });
+      return {
+        success: true,
+        data: {
+          op: "comment",
+          number,
+          commentId: resp.data.id,
+          url: resp.data.html_url,
+        },
+      };
+    }
+    case "label": {
+      const { number } = request;
+      const resp = await resolved.client.issues.addLabels({
+        owner: parts.owner,
+        repo: parts.name,
+        issue_number: number,
+        labels: request.labels,
+      });
+      const applied = (resp.data ?? [])
+        .map((label) =>
+          typeof label === "string" ? label : (label?.name ?? null),
+        )
+        .filter((x): x is string => typeof x === "string");
+      await callback?.({
+        text: `Applied labels [${applied.join(", ")}] to ${repo}#${number}`,
+      });
+      return {
+        success: true,
+        data: { op: "label", number, labels: applied },
+      };
+    }
   }
-  const resp = await resolved.client.issues.addAssignees({
-    owner: parts.owner,
-    repo: parts.name,
-    issue_number: number,
-    assignees,
-  });
-  const actual = (resp.data.assignees ?? [])
-    .map((a) => a?.login)
-    .filter((x): x is string => typeof x === "string");
-  await callback?.({
-    text: `Assigned [${actual.join(", ")}] to ${repo}#${number}`,
-  });
-  return {
-    success: true,
-    data: { op: "assign", number, assignees: actual },
-  };
-}
-
-async function runStateChange(
-  resolved: ResolvedClient,
-  parts: RepoParts,
-  repo: string,
-  options: Record<string, unknown> | undefined,
-  callback: HandlerCallback | undefined,
-  target: "closed" | "open",
-): Promise<GitHubActionResult<GitHubIssueOpResult>> {
-  const number = requireNumber(options, "number");
-  if (!number) {
-    const err = `GITHUB_ISSUE_OP ${target === "closed" ? "close" : "reopen"} requires number (integer)`;
-    await callback?.({ text: err });
-    return { success: false, error: err };
-  }
-  const resp = await resolved.client.issues.update({
-    owner: parts.owner,
-    repo: parts.name,
-    issue_number: number,
-    state: target,
-  });
-  const verb = target === "closed" ? "Closed" : "Reopened";
-  await callback?.({ text: `${verb} ${repo}#${number}: ${resp.data.title}` });
-  return {
-    success: true,
-    data: {
-      op: target === "closed" ? "close" : "reopen",
-      number,
-      title: resp.data.title,
-    },
-  };
-}
-
-async function runComment(
-  resolved: ResolvedClient,
-  parts: RepoParts,
-  repo: string,
-  options: Record<string, unknown> | undefined,
-  callback: HandlerCallback | undefined,
-): Promise<GitHubActionResult<GitHubIssueOpResult>> {
-  const number = requireNumber(options, "number");
-  const body = requireString(options, "body");
-  if (!number || !body) {
-    const err = "GITHUB_ISSUE_OP comment requires number (integer) and body";
-    await callback?.({ text: err });
-    return { success: false, error: err };
-  }
-  const resp = await resolved.client.issues.createComment({
-    owner: parts.owner,
-    repo: parts.name,
-    issue_number: number,
-    body,
-  });
-  await callback?.({
-    text: `Commented on ${repo}#${number}: ${resp.data.html_url}`,
-  });
-  return {
-    success: true,
-    data: {
-      op: "comment",
-      number,
-      commentId: resp.data.id,
-      url: resp.data.html_url,
-    },
-  };
-}
-
-async function runLabel(
-  resolved: ResolvedClient,
-  parts: RepoParts,
-  repo: string,
-  options: Record<string, unknown> | undefined,
-  callback: HandlerCallback | undefined,
-): Promise<GitHubActionResult<GitHubIssueOpResult>> {
-  const number = requireNumber(options, "number");
-  const labels = requireStringArray(options, "labels");
-  if (!number || !labels || labels.length === 0) {
-    const err =
-      "GITHUB_ISSUE_OP label requires number (integer) and labels (non-empty string[])";
-    await callback?.({ text: err });
-    return { success: false, error: err };
-  }
-  const resp = await resolved.client.issues.addLabels({
-    owner: parts.owner,
-    repo: parts.name,
-    issue_number: number,
-    labels,
-  });
-  const applied = (resp.data ?? [])
-    .map((label) => (typeof label === "string" ? label : (label?.name ?? null)))
-    .filter((x): x is string => typeof x === "string");
-  await callback?.({
-    text: `Applied labels [${applied.join(", ")}] to ${repo}#${number}`,
-  });
-  return {
-    success: true,
-    data: { op: "label", number, labels: applied },
-  };
 }
 
 export function buildPreview(
@@ -288,7 +304,7 @@ export function buildPreview(
         return "";
     }
   })();
-  return `${head}${target}${detail} as ${identity}. Re-invoke with confirmed: true to proceed.`;
+  return `${head}${target}${detail} as ${identity}.`;
 }
 
 export const issueOpAction: Action = {
@@ -313,7 +329,7 @@ export const issueOpAction: Action = {
     "MANAGE_ISSUES",
   ],
   description:
-    "Single router for GitHub issue ops: create, assign, close, reopen, comment, label. Requires confirmed:true.",
+    "Single router for GitHub issue ops: create, assign, close, reopen, comment, label. Each op asks the user to reply yes before it runs.",
   descriptionCompressed:
     "GitHub issue ops: create, assign, close, reopen, comment, label.",
   parameters: [
@@ -373,12 +389,6 @@ export const issueOpAction: Action = {
       required: false,
       schema: { type: "string" },
     },
-    {
-      name: "confirmed",
-      description: "Must be true to perform the write operation.",
-      required: false,
-      schema: { type: "boolean", default: false },
-    },
   ],
 
   validate: async (
@@ -418,6 +428,17 @@ export const issueOpAction: Action = {
       return { success: false, error: err };
     }
 
+    const request = parseRequest(op, options);
+    if ("error" in request) {
+      await callback?.({ text: request.error });
+      return { success: false, error: request.error };
+    }
+    const resolved = buildResolvedClient(runtime, selection);
+    if ("error" in resolved) {
+      await callback?.({ text: resolved.error });
+      return { success: false, error: resolved.error };
+    }
+
     const preview = buildPreview(
       op,
       repo,
@@ -451,41 +472,8 @@ export const issueOpAction: Action = {
       return { success: false, error: cancelMessage };
     }
 
-    const resolved = buildResolvedClient(runtime, selection);
-    if ("error" in resolved) {
-      await callback?.({ text: resolved.error });
-      return { success: false, error: resolved.error };
-    }
-
     try {
-      switch (op) {
-        case "create":
-          return await runCreate(resolved, parts, repo, options, callback);
-        case "assign":
-          return await runAssign(resolved, parts, repo, options, callback);
-        case "close":
-          return await runStateChange(
-            resolved,
-            parts,
-            repo,
-            options,
-            callback,
-            "closed",
-          );
-        case "reopen":
-          return await runStateChange(
-            resolved,
-            parts,
-            repo,
-            options,
-            callback,
-            "open",
-          );
-        case "comment":
-          return await runComment(resolved, parts, repo, options, callback);
-        case "label":
-          return await runLabel(resolved, parts, repo, options, callback);
-      }
+      return await runRequest(resolved, parts, repo, request, callback);
     } catch (err) {
       const rl = inspectRateLimit(err);
       const message = rl.isRateLimited
