@@ -84,6 +84,8 @@ export interface TriggerFormState {
   enabled: boolean;
   durationValue: string;
   durationUnit: DurationUnit;
+  /** IANA zone stored on the trigger; absent for a new or zone-less trigger. */
+  timezone?: string;
 }
 export const emptyForm: TriggerFormState = {
   displayName: "",
@@ -253,6 +255,7 @@ export function formFromTrigger(trigger: TriggerSummary): TriggerFormState {
     enabled: trigger.enabled,
     durationValue: String(value),
     durationUnit: unit,
+    timezone: trigger.timezone ?? undefined,
   };
 }
 export function buildCreateRequest(
@@ -280,17 +283,22 @@ export function buildCreateRequest(
       form.triggerType === "cron" ? form.cronExpression.trim() : undefined,
     eventKind: form.triggerType === "event" ? form.eventKind.trim() : undefined,
     // The server reads a cron expression in UTC when no zone is given; the
-    // form previews it in the browser's zone, so send that zone.
+    // form previews it in the stored zone or else the browser's, so send it.
     timezone:
-      form.triggerType === "cron" ? resolveDefaultTimeZone() : undefined,
+      form.triggerType === "cron"
+        ? form.timezone || resolveDefaultTimeZone()
+        : undefined,
     maxRuns,
   };
 }
 export function buildUpdateRequest(
   form: TriggerFormState,
 ): UpdateTriggerRequest {
-  // An edit keeps the stored zone (the server keeps it when none is sent).
-  const { timezone: _timezone, ...request } = buildCreateRequest(form);
+  const request = buildCreateRequest(form);
+  // A stored zone stays (the server keeps it when none is sent); a cron
+  // trigger without one (older, or switched from another type) gets the
+  // browser's zone that the form previewed.
+  if (form.timezone) delete request.timezone;
   return request;
 }
 // ── Cron validation ────────────────────────────────────────────────
@@ -347,12 +355,14 @@ export function nextRunsForCron(
   expr: string,
   count: number,
   from = new Date(),
+  timezone?: string,
 ): Date[] {
   const trimmed = expr.trim();
   if (!trimmed) return [];
   try {
     const schedule = CronExpressionParser.parse(trimmed, {
       currentDate: from,
+      ...(timezone ? { tz: timezone } : {}),
     });
     const results: Date[] = [];
     for (let i = 0; i < count; i++) {

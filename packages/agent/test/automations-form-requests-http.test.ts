@@ -2,6 +2,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { resolveDefaultTimeZone } from "@elizaos/contracts";
 import { resolveOwnerEntityIdOrDefault } from "@elizaos/core";
 import { registerHttpPluginRoutes } from "@elizaos/host/protocol";
 import { createTestRuntime } from "@elizaos/testing/runtime";
@@ -100,5 +101,37 @@ it("creates and edits a text automation from the form's requests", async () => {
     displayName: "Standup summary",
     kind: "prompt",
     timezone: "America/Los_Angeles",
+  });
+}, 120_000);
+
+it("gives an edited cron trigger without a stored zone the zone the form previews", async () => {
+  // An interval trigger (no zone) switched to cron in the form.
+  const created = await request("/api/triggers", "POST", {
+    ...buildCreateRequest({
+      ...emptyForm,
+      displayName: "Hourly check",
+      instructions: "Check the inbox",
+      kind: "text" as const,
+      triggerType: "interval" as const,
+    }),
+  });
+  expect(created.status, await created.clone().text()).toBe(201);
+  const { trigger } = await created.json();
+  expect(trigger.timezone).toBeUndefined();
+
+  const edited = {
+    ...formFromTrigger(trigger),
+    triggerType: "cron" as const,
+    cronExpression: "0 9 * * 1-5",
+  };
+  const updated = await request(
+    `/api/triggers/${trigger.id}`,
+    "PUT",
+    buildUpdateRequest(edited),
+  );
+  expect(updated.status, await updated.clone().text()).toBe(200);
+  expect((await updated.json()).trigger).toMatchObject({
+    triggerType: "cron",
+    timezone: resolveDefaultTimeZone(),
   });
 }, 120_000);

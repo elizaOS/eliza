@@ -1237,7 +1237,7 @@ function SchedulePreview({
     if (form.triggerType === "cron") {
       const result = validateCronExpression(form.cronExpression);
       if (!result.ok) return null;
-      const dates = nextRunsForCron(form.cronExpression, 3, now);
+      const dates = nextRunsForCron(form.cronExpression, 3, now, form.timezone);
       if (dates.length === 0) return null;
       return { kind: "dates" as const, dates };
     }
@@ -1256,6 +1256,7 @@ function SchedulePreview({
     form.durationUnit,
     form.scheduledAtIso,
     form.cronExpression,
+    form.timezone,
     form.eventKind,
     previewNow,
     t,
