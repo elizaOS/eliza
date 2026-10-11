@@ -874,7 +874,7 @@ export function VoiceProfileSection({
       }
       setNotice(
         t("voiceprofile.notice.exported", {
-          defaultValue: "Voice profile export saved.",
+          defaultValue: "Voice profile export ready.",
         }),
       );
     } catch (err) {

@@ -6076,7 +6076,7 @@
   "voiceprofile.notice.split": "Voice profile split.",
   "voiceprofile.notice.bound": "Voice profile bound to the entity.",
   "voiceprofile.notice.unbound": "Voice profile unbound.",
-  "voiceprofile.notice.exported": "Voice profile export saved.",
+  "voiceprofile.notice.exported": "Voice profile export ready.",
   "voiceprofile.notice.reset": "Non-owner voice profiles deleted.",
   "desktopworkspacesection.devStack.title": "Desktop Dev Stack",
   "desktopworkspacesection.devStack.description": "Live `/api/dev/stack` snapshot for the current desktop session.",
