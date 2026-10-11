@@ -892,6 +892,26 @@ describe("ComputerUseService file and terminal execution (real host I/O)", () =>
     }
   }, 20_000);
 
+  // The WINDOW action declares only windowId / windowTitle, so these verbs must
+  // read windowTitle: an app query lists that app's windows, and a named window
+  // that does not exist is an error, not the focused window's bounds.
+  it("resolves windowTitle for application-window and bounds getters", async () => {
+    const windowTitle = "computeruse-nonexistent-window-title";
+
+    const appWindows = await service.executeWindowAction({
+      action: "get_application_windows",
+      windowTitle,
+    });
+    expect(appWindows.success).toBe(true);
+    expect(appWindows.windows).toEqual([]);
+
+    for (const action of ["get_window_size", "get_window_position"] as const) {
+      const result = await service.executeWindowAction({ action, windowTitle });
+      expect(result.success).toBe(false);
+      expect(result.bounds).toBeUndefined();
+    }
+  }, 20_000);
+
   // Window management verbs against a window id that matches nothing: the verb
   // dispatch, its approval-command lookup, and the platform call all run and
   // fail fast (no window to act on) — no real window is moved or closed on the

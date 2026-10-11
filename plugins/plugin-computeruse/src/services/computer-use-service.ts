@@ -1763,11 +1763,9 @@ export class ComputerUseService extends Service {
           });
         }
         case "get_application_windows": {
-          const appName = params.appName ?? params.title ?? params.window;
-          if (!appName) {
-            throw new Error("appName is required for get_application_windows");
-          }
-          const windows = getApplicationWindows(appName);
+          const windows = getApplicationWindows(
+            this.requireApplicationQuery(params),
+          );
           return this.succeedEntry(entry, {
             success: true,
             windows,
@@ -1786,8 +1784,10 @@ export class ComputerUseService extends Service {
         }
         case "get_window_size":
         case "get_window_position": {
-          // windowId is optional — defaults to the focused/foreground window.
-          const bounds = await getWindowBounds(params.windowId);
+          // The target is optional — defaults to the focused/foreground window.
+          const bounds = await getWindowBounds(
+            params.windowId ?? params.windowTitle,
+          );
           return this.succeedEntry(entry, {
             success: true,
             bounds,
@@ -2278,9 +2278,7 @@ export class ComputerUseService extends Service {
         this.requireNumber(params.y, "y is required for set_bounds");
         return;
       case "get_application_windows":
-        if (!(params.appName ?? params.title ?? params.window)) {
-          throw new Error("appName is required for get_application_windows");
-        }
+        this.requireApplicationQuery(params);
         return;
       default:
         throw new Error(
@@ -2827,6 +2825,18 @@ export class ComputerUseService extends Service {
       throw new Error(message);
     }
     return value;
+  }
+
+  /**
+   * App-name query for get_application_windows. `windowTitle` is the parameter
+   * the WINDOW action declares; normalizeWindowActionParams folds the `title`
+   * and `window` aliases into it.
+   */
+  private requireApplicationQuery(params: WindowActionParams): string {
+    return this.requireIdentifier(
+      params.appName ?? params.windowTitle,
+      "windowTitle is required for get_application_windows",
+    );
   }
 
   private requireWindowTarget(params: WindowActionParams): string {
