@@ -2087,7 +2087,7 @@ describeIfPosix("shellAction", () => {
     }
   });
 
-  it("falls back to the session cwd when an explicit cwd is missing", async () => {
+  it("rejects a missing explicit cwd and does not run in the session cwd", async () => {
     const tmpRoot = path.resolve(process.cwd(), `.tmp-shell-cwd-${Date.now()}`);
     await fs.mkdir(tmpRoot, { recursive: true });
     try {
@@ -2098,12 +2098,14 @@ describeIfPosix("shellAction", () => {
         runtime,
         makeMessage(roomId),
         undefined,
-        { command: "pwd", cwd: path.join(tmpRoot, "does-not-exist") },
+        {
+          command: "touch ran-here",
+          cwd: path.join(tmpRoot, "does-not-exist"),
+        },
       );
-      expect(result.success).toBe(true);
-      expect(result.text).toContain(tmpRoot);
-      const data = result.data as Record<string, unknown> | undefined;
-      expect(data?.cwd).toBe(tmpRoot);
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("cwd does not exist");
+      expect(await fs.readdir(tmpRoot)).toEqual([]);
     } finally {
       await fs.rm(tmpRoot, { recursive: true, force: true });
     }
@@ -3085,7 +3087,8 @@ describeIfPosix("shellAction", () => {
 
   it("redacts cwd values in structured shell logs", async () => {
     const secret = "log-secret";
-    const missingCwd = path.join(process.cwd(), `${secret}-missing`);
+    const secretCwd = path.join(process.cwd(), `.tmp-${secret}-${Date.now()}`);
+    await fs.mkdir(secretCwd, { recursive: true });
     const router = makeShellRouter(async () => ({
       output: "ok\n",
       exitCode: 0,
@@ -3113,11 +3116,12 @@ describeIfPosix("shellAction", () => {
       const result = requireActionResult(
         await shellAction.handler?.(runtime, makeMessage(), undefined, {
           command: "true",
-          cwd: missingCwd,
+          cwd: secretCwd,
         }),
       );
       expect(result.success).toBe(true);
     } finally {
+      await fs.rm(secretCwd, { recursive: true, force: true });
       logger.debug = original.debug;
       logger.info = original.info;
       logger.warn = original.warn;

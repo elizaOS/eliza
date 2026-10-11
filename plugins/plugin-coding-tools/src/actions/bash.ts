@@ -1246,14 +1246,14 @@ export const shellAction: Action = {
     {
       name: "timeout",
       description:
-        "Hard timeout in ms; clamped to [100, 600000]. Default 120000.",
+        "For action=run: hard timeout in ms; clamped to [100, 600000]. Default 120000. Not applied to start_background, which runs until kill_background.",
       required: false,
       schema: { type: "number" },
     },
     {
       name: "cwd",
       description:
-        "Absolute cwd within allowed roots. Omit to use the session cwd.",
+        "Absolute cwd within allowed roots; must be an existing directory. Omit to use the session cwd.",
       required: false,
       schema: { type: "string" },
     },
@@ -1792,34 +1792,19 @@ export const shellAction: Action = {
           });
         }
       } catch (err) {
-        // error-policy:J3 cwd existence probe distinguished from breakage; a
-        // genuine stat failure (EACCES, etc.) becomes a success:false
-        // ActionResult, while the expected-miss (ENOENT) degrades to the
-        // session cwd with a warning rather than masking a real error.
+        // error-policy:J1 SHELL action boundary; a cwd that cannot be used
+        // becomes a success:false ActionResult. A missing directory is the
+        // caller's argument error, so the command does not run somewhere else.
         if (!isMissingPathError(err)) {
           return failureToActionResult({
             reason: "io_error",
             message: `cwd stat failed: ${redactShellText(runtime, (err as Error).message)}`,
           });
         }
-        const fallback = await session.getExistingCwd(conversationId);
-        cwd = fallback.cwd;
-        coreLogger.warn(
-          {
-            requestedCwd: redactShellText(runtime, cwdParam),
-            fallbackCwd: redactShellText(runtime, cwd),
-          },
-          `${CODING_TOOLS_LOG_PREFIX} SHELL cwd not found; using session cwd`,
-        );
-        if (fallback.reset && fallback.previousCwd) {
-          coreLogger.warn(
-            {
-              previousCwd: redactShellText(runtime, fallback.previousCwd),
-              fallbackCwd: redactShellText(runtime, cwd),
-            },
-            `${CODING_TOOLS_LOG_PREFIX} SHELL reset missing session cwd`,
-          );
-        }
+        return failureToActionResult({
+          reason: "invalid_param",
+          message: `cwd does not exist: ${redactShellText(runtime, cwdParam)}`,
+        });
       }
       const sessionCwd = await session.getExistingCwd(conversationId);
       if (
