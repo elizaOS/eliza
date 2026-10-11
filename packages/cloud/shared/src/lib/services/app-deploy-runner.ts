@@ -215,93 +215,103 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
       return;
     }
 
-    const appMetadata = (app.metadata as Record<string, unknown>) ?? {};
-    const deployMetadata = {
-      ...appMetadata,
-      ...(options.repoUrl ? { repoUrl: options.repoUrl } : {}),
-      ...(options.ref ? { ref: options.ref } : {}),
-      ...(options.dockerfile ? { dockerfile: options.dockerfile } : {}),
-    };
-    const image = await resolveImageRef(this.deps, {
-      id: app.id,
-      name: app.name,
-      metadata: deployMetadata,
-      repoUrl: app.github_repo ?? undefined,
-      organizationId: app.organization_id,
-    });
-    const containerName = containerNameForApp(appId, deploymentGeneration);
-
-    const enqueuer = new ContainerJobEnqueuer(this.deps.jobsWriter);
-
-    // Retire the app's pre-existing container row(s) BEFORE creating the new one.
-    // Every deploy creates a fresh `containers` row under the same project key
-    // (project_name = appId); without retiring the old ones, their stale
-    // `stopped`/`failed` rows keep counting against the per-org container quota
-    // forever (the quota readers exclude only `deleting`/`deleted`). The atomic
-    // retirement transaction pairs each non-counting transition with the
-    // CONTAINER_DELETE job that owns teardown. Net effect: at most one active
-    // row per app without an unowned intermediate state.
-    await this.retirePriorContainers(app.organization_id, appId);
-
-    const createContainerRow =
-      this.deps.createContainerRow ??
-      (async (row: NewAppContainerRow) => {
-        // Enforce the per-org container quota atomically — the same cap
-        // (credit-balance-derived) the normal /v1/containers API uses. Without
-        // this, the apps deploy path bypassed quota entirely and one org could
-        // spin up unbounded 24/7 containers (DoS / unbounded cost). Throws
-        // QuotaExceededError when over cap; the deploy route surfaces it.
-        const created = await containersRepository.createWithQuotaCheck(toNewContainer(row));
-        return { containerId: created.id };
+    try {
+      const appMetadata = (app.metadata as Record<string, unknown>) ?? {};
+      const deployMetadata = {
+        ...appMetadata,
+        ...(options.repoUrl ? { repoUrl: options.repoUrl } : {}),
+        ...(options.ref ? { ref: options.ref } : {}),
+        ...(options.dockerfile ? { dockerfile: options.dockerfile } : {}),
+      };
+      const image = await resolveImageRef(this.deps, {
+        id: app.id,
+        name: app.name,
+        metadata: deployMetadata,
+        repoUrl: app.github_repo ?? undefined,
+        organizationId: app.organization_id,
       });
+      const containerName = containerNameForApp(appId, deploymentGeneration);
 
-    const orchestratorDeps: AppDeployDeps = {
-      ensureTenantDb: (id) => this.deps.ensureTenantDb(id, app.name),
-      createContainerRow,
-      enqueueProvision: (p) => enqueuer.enqueueProvision(p),
-      linkContainerToApp: async (id, containerId) => {
-        // Re-read for the freshest metadata before merging containerId in.
-        const current = await appsService.getById(id);
-        const existingMeta = (current?.metadata as Record<string, unknown>) ?? {};
-        // The public URL is deterministic from the container id (same ingress
-        // derivation as the agent path), so the deploy-status poll can surface
-        // it immediately. Skipped when no public base domain is configured.
-        const endpoint = deriveAppPublicUrl(containerId);
-        await appsService.updateDeploymentGeneration(
-          id,
+      const enqueuer = new ContainerJobEnqueuer(this.deps.jobsWriter);
+
+      // Retire the app's pre-existing container row(s) BEFORE creating the new one.
+      // Every deploy creates a fresh `containers` row under the same project key
+      // (project_name = appId); without retiring the old ones, their stale
+      // `stopped`/`failed` rows keep counting against the per-org container quota
+      // forever (the quota readers exclude only `deleting`/`deleted`). The atomic
+      // retirement transaction pairs each non-counting transition with the
+      // CONTAINER_DELETE job that owns teardown. Net effect: at most one active
+      // row per app without an unowned intermediate state.
+      await this.retirePriorContainers(app.organization_id, appId);
+
+      const createContainerRow =
+        this.deps.createContainerRow ??
+        (async (row: NewAppContainerRow) => {
+          // Enforce the per-org container quota atomically — the same cap
+          // (credit-balance-derived) the normal /v1/containers API uses. Without
+          // this, the apps deploy path bypassed quota entirely and one org could
+          // spin up unbounded 24/7 containers (DoS / unbounded cost). Throws
+          // QuotaExceededError when over cap; the deploy route surfaces it.
+          const created = await containersRepository.createWithQuotaCheck(toNewContainer(row));
+          return { containerId: created.id };
+        });
+
+      const orchestratorDeps: AppDeployDeps = {
+        ensureTenantDb: (id) => this.deps.ensureTenantDb(id, app.name),
+        createContainerRow,
+        enqueueProvision: (p) => enqueuer.enqueueProvision(p),
+        linkContainerToApp: async (id, containerId) => {
+          // Re-read for the freshest metadata before merging containerId in.
+          const current = await appsService.getById(id);
+          const existingMeta = (current?.metadata as Record<string, unknown>) ?? {};
+          // The public URL is deterministic from the container id (same ingress
+          // derivation as the agent path), so the deploy-status poll can surface
+          // it immediately. Skipped when no public base domain is configured.
+          const endpoint = deriveAppPublicUrl(containerId);
+          await appsService.updateDeploymentGeneration(
+            id,
+            deploymentGeneration,
+            {
+              metadata: { ...existingMeta, containerId },
+              ...(endpoint ? { production_url: endpoint.url } : {}),
+            },
+            ["deploying"],
+          );
+        },
+      };
+
+      const result = await deployApp(
+        {
+          appId,
           deploymentGeneration,
-          {
-            metadata: { ...existingMeta, containerId },
-            ...(endpoint ? { production_url: endpoint.url } : {}),
-          },
-          ["deploying"],
-        );
-      },
-    };
+          organizationId: app.organization_id,
+          userId: app.created_by_user_id,
+          containerName,
+          image,
+          port: this.deps.port ?? 3000,
+          ...(options.env ? { env: options.env } : {}),
+          // Per-app choice (apps.metadata.databaseMode, default "none"): a stateless
+          // app provisions no DB; an "isolated" app gets its own per-tenant Postgres.
+          databaseMode: resolveAppDatabaseMode(appMetadata),
+        },
+        orchestratorDeps,
+      );
 
-    const result = await deployApp(
-      {
+      logger.info("[AppDeployRunner] deploy provisioned", {
+        appId,
+        containerId: result.containerId,
+        jobId: result.jobId,
+        image,
+      });
+    } catch (error) {
+      await appsService.updateDeploymentGeneration(
         appId,
         deploymentGeneration,
-        organizationId: app.organization_id,
-        userId: app.created_by_user_id,
-        containerName,
-        image,
-        port: this.deps.port ?? 3000,
-        ...(options.env ? { env: options.env } : {}),
-        // Per-app choice (apps.metadata.databaseMode, default "none"): a stateless
-        // app provisions no DB; an "isolated" app gets its own per-tenant Postgres.
-        databaseMode: resolveAppDatabaseMode(appMetadata),
-      },
-      orchestratorDeps,
-    );
-
-    logger.info("[AppDeployRunner] deploy provisioned", {
-      appId,
-      containerId: result.containerId,
-      jobId: result.jobId,
-      image,
-    });
+        { deployment_status: "failed" },
+        ["deploying"],
+      );
+      throw error;
+    }
   }
 
   /**
