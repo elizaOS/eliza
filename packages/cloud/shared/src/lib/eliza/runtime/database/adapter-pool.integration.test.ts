@@ -4,7 +4,17 @@
  */
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { AgentRuntime, type IAgentRuntime, type IDatabaseAdapter, Service } from "@elizaos/core";
+import {
+  AgentRuntime,
+  ChannelType,
+  type IAgentRuntime,
+  type IDatabaseAdapter,
+  type Memory,
+  MemoryType,
+  Service,
+  type UUID,
+} from "@elizaos/core";
+import { DocumentService } from "@elizaos/plugin-assistant";
 import { createDatabaseAdapter, plugin } from "@elizaos/plugin-sql";
 import { RuntimeCache } from "../cache";
 import { DbAdapterPool } from "./adapter-pool";
@@ -386,3 +396,106 @@ test.each(["cached", "invalidated", "failed-initialization"] as const)(
   },
   30_000,
 );
+
+async function startPooledRuntime(pool: DbAdapterPool) {
+  const agentId = randomUUID() as UUID;
+  const adapter = await pool.getOrCreate(agentId);
+  const runtime = new AgentRuntime({ agentId, adapter, logLevel: "fatal" });
+  await runtime.initialize({ skipMigrations: true });
+  const otherRoomId = randomUUID() as UUID;
+  const worldId = randomUUID() as UUID;
+  await runtime.createWorld({ id: worldId, name: "Test world", agentId });
+  await runtime.createRoom({
+    id: otherRoomId,
+    name: "Second room",
+    source: "test",
+    type: ChannelType.GROUP,
+    worldId,
+  });
+  return { adapter, agentId, otherRoomId, runtime };
+}
+
+function roomMemory(agentId: UUID, roomId: UUID, text: string, metadata?: Memory["metadata"]) {
+  return {
+    id: randomUUID() as UUID,
+    agentId,
+    roomId,
+    entityId: agentId,
+    content: { text },
+    ...(metadata ? { metadata } : {}),
+  } satisfies Memory;
+}
+
+test("pooled adapters count document fragments across rooms by metadata", async () => {
+  const pool = new DbAdapterPool(realFactory);
+  const { adapter, agentId, otherRoomId, runtime } = await startPooledRuntime(pool);
+  try {
+    const documentId = randomUUID() as UUID;
+    await runtime.createMemory(
+      {
+        ...roomMemory(agentId, agentId, "stored document"),
+        id: documentId,
+        metadata: {
+          type: MemoryType.DOCUMENT,
+          documentId,
+          source: "test",
+          timestamp: Date.now(),
+          scope: "agent-private",
+          documentRevision: 0,
+          ingestionAttemptId: randomUUID(),
+          ingestionState: "ready",
+        } as unknown as Memory["metadata"],
+      },
+      "documents",
+    );
+    for (const [position, roomId] of [agentId, otherRoomId].entries()) {
+      await runtime.createMemory(
+        roomMemory(agentId, roomId, `fragment ${position}`, {
+          type: MemoryType.FRAGMENT,
+          documentId,
+          position,
+        } as Memory["metadata"]),
+        "document_fragments",
+      );
+    }
+    const params = {
+      tableName: "document_fragments",
+      agentId,
+      metadata: { type: MemoryType.FRAGMENT, documentId },
+    };
+    expect(await adapter.countMemories(params)).toBe(2);
+    expect(await runtime.countMemories(params)).toBe(2);
+    expect(
+      await runtime.countMemories({
+        ...params,
+        metadata: { type: MemoryType.FRAGMENT, documentId: randomUUID() },
+      }),
+    ).toBe(0);
+
+    const documents = new DocumentService(runtime);
+    expect(await documents.checkExistingDocument(documentId)).toBe(true);
+    expect(await runtime.getMemoryById(documentId)).not.toBeNull();
+    expect(await runtime.countMemories(params)).toBe(2);
+  } finally {
+    await runtime.stop({ requireQuiescence: true });
+  }
+}, 30_000);
+
+test("pooled adapters delete all memories for the requested rooms only", async () => {
+  const pool = new DbAdapterPool(realFactory);
+  const { adapter, agentId, otherRoomId, runtime } = await startPooledRuntime(pool);
+  try {
+    await runtime.createMemory(roomMemory(agentId, otherRoomId, "first"), "messages");
+    await runtime.createMemory(roomMemory(agentId, otherRoomId, "second"), "messages");
+    await runtime.createMemory(roomMemory(agentId, agentId, "kept"), "messages");
+    const count = (roomId: UUID) =>
+      adapter.countMemories({ roomIds: [roomId], tableName: "messages" });
+    expect(await count(otherRoomId)).toBe(2);
+
+    await adapter.deleteAllMemories([otherRoomId], "messages");
+    expect(await count(otherRoomId)).toBe(0);
+    expect(await count(agentId)).toBe(1);
+  } finally {
+    await runtime.stop({ requireQuiescence: true });
+  }
+}, 30_000);

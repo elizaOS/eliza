@@ -22,8 +22,6 @@ import { stableSerialize } from "../stable-serialize";
 // both directions for this heterogeneous compat-method registry.
 type CompatDatabaseMethod = (...args: any[]) => Promise<unknown> | unknown;
 type CompatDatabaseAdapter = IDatabaseAdapter & Record<string, unknown>;
-type LegacyDeleteAllMemories = (roomId: UUID, tableName: string) => Promise<void>;
-type LegacyCountMemories = (roomId: UUID, unique?: boolean, tableName?: string) => Promise<number>;
 type LegacyRelationshipQueryParams = {
   entityId: UUID;
   entityIds: UUID[];
@@ -657,68 +655,6 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
     },
     addedMethods,
   );
-
-  if (hasAdapterMethod(compat, "deleteAllMemories")) {
-    const deleteAllMemoriesByRoom: LegacyDeleteAllMemories = async (roomId, tableName) => {
-      await compat.deleteAllMemories([roomId], tableName);
-    };
-    Object.defineProperty(compat, "deleteAllMemories", {
-      configurable: true,
-      enumerable: false,
-      writable: true,
-      value: async (roomIdsOrRoomId: UUID[] | UUID, tableName: string) => {
-        if (Array.isArray(roomIdsOrRoomId)) {
-          await Promise.all(
-            roomIdsOrRoomId.map((roomId: UUID) => deleteAllMemoriesByRoom(roomId, tableName)),
-          );
-          return;
-        }
-
-        return deleteAllMemoriesByRoom(roomIdsOrRoomId, tableName);
-      },
-    });
-  }
-
-  if (hasAdapterMethod(compat, "countMemories")) {
-    const countMemoriesByRoom = compat.countMemories.bind(compat) as LegacyCountMemories;
-    Object.defineProperty(compat, "countMemories", {
-      configurable: true,
-      enumerable: false,
-      writable: true,
-      value: async (
-        roomIdOrParams:
-          | UUID
-          | {
-              roomIds?: UUID[];
-              unique?: boolean;
-              tableName?: string;
-            },
-        unique?: boolean,
-        tableName?: string,
-      ) => {
-        if (
-          roomIdOrParams &&
-          typeof roomIdOrParams === "object" &&
-          !Array.isArray(roomIdOrParams)
-        ) {
-          const params = roomIdOrParams;
-          const roomIds = params.roomIds ?? [];
-          if (roomIds.length === 0) {
-            return 0;
-          }
-
-          const counts = await Promise.all(
-            roomIds.map((roomId: UUID) =>
-              countMemoriesByRoom(roomId, params.unique ?? false, params.tableName ?? "messages"),
-            ),
-          );
-          return counts.reduce((sum, value) => sum + Number(value ?? 0), 0);
-        }
-
-        return countMemoriesByRoom(roomIdOrParams as UUID, unique, tableName);
-      },
-    });
-  }
 
   defineCompatMethod(
     compat,
