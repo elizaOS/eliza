@@ -883,6 +883,9 @@ export class CharactersService {
     if (!updated) {
       return { success: false, message: "Failed to update character" };
     }
+    // The owner columns are read through getById's cache by the publish and
+    // monetization routes and the hosted runtime; drop the anonymous owner.
+    await this.invalidateCache(characterId);
 
     // Transfer room associations from the previous owner to the new owner
     if (previousOwnerId) {

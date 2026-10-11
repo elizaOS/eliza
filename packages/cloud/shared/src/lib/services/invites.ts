@@ -18,6 +18,7 @@ import { isUntouchedSignupOpeningBalance } from "../signup-credits";
 import { generateInviteToken, hashInviteToken } from "../utils/invite-tokens";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
+import { charactersService } from "./characters";
 import { emailService } from "./email";
 import { managedDomainsService } from "./managed-domains";
 import { organizationsService } from "./organizations";
@@ -354,11 +355,12 @@ export class InvitesService {
         );
         return;
       }
-      await userCharactersRepository.reassignUserOrganization(
+      const movedCharacterIds = await userCharactersRepository.reassignUserOrganization(
         userId,
         previousOrganizationId,
         newOrganizationId,
       );
+      await Promise.all(movedCharacterIds.map((id) => charactersService.invalidateCache(id)));
       await conversationsRepository.reassignUserOrganization(
         userId,
         previousOrganizationId,

@@ -528,7 +528,7 @@ export class UserCharactersRepository {
     userId: string,
     fromOrganizationId: string,
     toOrganizationId: string,
-  ): Promise<number> {
+  ): Promise<string[]> {
     const moved = await dbWrite
       .update(userCharacters)
       .set({ organization_id: toOrganizationId, updated_at: new Date() })
@@ -539,7 +539,7 @@ export class UserCharactersRepository {
         ),
       )
       .returning({ id: userCharacters.id });
-    return moved.length;
+    return moved.map((row) => row.id);
   }
 
   /**

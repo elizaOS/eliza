@@ -21,6 +21,7 @@ import {
 import { organizationConfig } from "../db/schemas/organization-config";
 import { userIdentities } from "../db/schemas/user-identities";
 import { anonymousSessionsService } from "./services/anonymous-sessions";
+import { charactersService } from "./services/characters";
 import { SIGNUP_CREDIT_POLICY } from "./signup-credits";
 import type { UserWithOrganization } from "./types";
 import { logger } from "./utils/logger";
@@ -131,6 +132,7 @@ export async function migrateAnonymousSession(
     charactersTransferred: 0,
     roomMappingsTransferred: 0,
   };
+  const transferredCharacterIds: string[] = [];
 
   await db.transaction(async (tx) => {
     let [anonUser] = await tx
@@ -253,6 +255,7 @@ export async function migrateAnonymousSession(
         .returning({ id: userCharacters.id });
 
       mergedData.charactersTransferred = charResult.length;
+      transferredCharacterIds.push(...charResult.map((row) => row.id));
     } else {
       if (!realUser.organization_id) {
         throw new Error(`Cannot migrate to user ${realUser.id} without organization`);
@@ -281,9 +284,10 @@ export async function migrateAnonymousSession(
           updated_at: new Date(),
         })
         .where(eq(userCharacters.user_id, anonymousUserId))
-        .returning();
+        .returning({ id: userCharacters.id });
 
       mergedData.charactersTransferred = charResult.length;
+      transferredCharacterIds.push(...charResult.map((row) => row.id));
 
       const roomCharResult = await tx
         .update(elizaRoomCharactersTable)
@@ -354,6 +358,10 @@ export async function migrateAnonymousSession(
         .where(eq(anonymousSessions.id, anonSession.id));
     }
   });
+
+  // After commit: the moved characters' cached rows still carry the anonymous
+  // owner/org, which getById callers (publish, monetization, runtime) trust.
+  await Promise.all(transferredCharacterIds.map((id) => charactersService.invalidateCache(id)));
 
   logger.info(`${logPrefix} Migration complete`, mergedData);
 
