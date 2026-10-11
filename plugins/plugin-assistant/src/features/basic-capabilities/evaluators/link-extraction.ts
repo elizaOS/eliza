@@ -29,6 +29,7 @@ import {
 import { v4 } from "uuid";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 import { extractUrls } from "../../../utils/extract-urls.ts";
+import { decodeBasicHtmlEntities } from "../../../utils/html-entities.ts";
 import { decodeHttpText } from "../../../utils/http-text.ts";
 
 const EVALUATOR_NAME = "linkExtraction";
@@ -80,13 +81,13 @@ function hasUrl(message: Memory): boolean {
 function extractTitle(html: string): string {
   const title = extractTitleElement(html);
   if (title) {
-    return decodeHtmlEntities(title).replace(/\s+/g, " ").trim();
+    return decodeBasicHtmlEntities(title).replace(/\s+/g, " ").trim();
   }
   // HTML attributes are unordered. Requiring property before content drops
   // <meta content="Hello World" property="og:title"> and stores an empty title.
   const ogTitle = extractOpenGraphTitle(html);
   if (ogTitle) {
-    return decodeHtmlEntities(ogTitle).trim();
+    return decodeBasicHtmlEntities(ogTitle).trim();
   }
   return "";
 }
@@ -150,37 +151,6 @@ function extractOpenGraphTitle(html: string): string {
     if (property?.toLowerCase() === "og:title" && content) return content;
   }
   return "";
-}
-
-function decodeHtmlEntities(value: string): string {
-  const namedEntities: Record<string, string> = {
-    amp: "&",
-    apos: "'",
-    gt: ">",
-    lt: "<",
-    nbsp: " ",
-    quot: '"',
-    "#39": "'",
-  };
-  return value.replace(
-    /&(amp|apos|lt|gt|quot|nbsp|#x[0-9a-f]+|#\d+);/gi,
-    (entity, name: string) => {
-      const key = name.toLowerCase();
-      const named = namedEntities[key];
-      if (named !== undefined) return named;
-      // Page titles often write characters as numeric references, such as
-      // &#x27; for an apostrophe or &#8217; for a curly one.
-      const hex = /^#x([0-9a-f]+)$/.exec(key);
-      const digits = hex?.[1] ?? /^#(\d+)$/.exec(key)?.[1];
-      if (!digits) return entity;
-      const code = Number.parseInt(digits, hex ? 16 : 10);
-      if (!Number.isInteger(code) || code <= 0 || code > 0x10ffff)
-        return entity;
-      if (code >= 0xd800 && code <= 0xdfff) return entity;
-      if (code === 0xa0) return " ";
-      return String.fromCodePoint(code);
-    },
-  );
 }
 
 function stripTags(html: string): string {
