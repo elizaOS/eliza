@@ -113,6 +113,30 @@ function isValidIso(value: unknown): boolean {
   return isNonEmptyString(value) && !Number.isNaN(new Date(value).getTime());
 }
 
+/** Longest length of each month, January first; February counts a leap day. */
+const MONTH_MAX_DAYS = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+/**
+ * False for a parseable cron expression with no possible date, such as
+ * `0 0 30 2 *`. Core finds no next run for it and repeats a full-year scan on
+ * every tick. When both day fields are restricted core fires on either one, so
+ * the day-of-week field alone makes the schedule reachable.
+ */
+function cronHasCalendarDate(
+  schedule: NonNullable<ReturnType<typeof parseCronExpression>>,
+): boolean {
+  if (schedule.dayOfMonthRestricted && schedule.dayOfWeekRestricted) {
+    return true;
+  }
+  for (const month of schedule.month) {
+    const maxDay = MONTH_MAX_DAYS[month - 1] ?? 0;
+    for (const day of schedule.dayOfMonth) {
+      if (day <= maxDay) return true;
+    }
+  }
+  return false;
+}
+
 function validateTrigger(
   trigger: Record<string, unknown>,
   path: string,
@@ -128,12 +152,19 @@ function validateTrigger(
     case "cron":
       if (!isNonEmptyString(trigger.expression)) {
         issues.push(`${path}.trigger.expression must be a non-empty string`);
-      } else if (newTrigger && !parseCronExpression(trigger.expression)) {
-        // Core's cron scheduler returns no next run for an expression it
-        // cannot parse, so the task would never fire.
-        issues.push(
-          `${path}.trigger.expression must be a valid 5-field cron expression`,
-        );
+      } else if (newTrigger) {
+        const schedule = parseCronExpression(trigger.expression);
+        if (!schedule) {
+          // Core's cron scheduler returns no next run for an expression it
+          // cannot parse, so the task would never fire.
+          issues.push(
+            `${path}.trigger.expression must be a valid 5-field cron expression`,
+          );
+        } else if (!cronHasCalendarDate(schedule)) {
+          issues.push(
+            `${path}.trigger.expression names a date that never occurs`,
+          );
+        }
       }
       if (trigger.tz !== undefined && !isNonEmptyString(trigger.tz)) {
         issues.push(`${path}.trigger.tz must be a non-empty string`);

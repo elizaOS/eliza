@@ -428,6 +428,29 @@ describe("scheduled-tasks REST seam (real reader, real service, real routes)", (
     );
   });
 
+  it("rejects a cron expression whose date never occurs with 400", async () => {
+    // Parseable, but February has no day 30 and April no day 31: core finds
+    // no next run, so the task would never fire.
+    const seam = await makeSeam();
+    for (const expression of ["0 0 30 2 *", "0 0 31 4,6 *", "0 0 31 2 */2"]) {
+      const res = await scheduleCron(seam, expression, "UTC");
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toContain(
+        "task.trigger.expression names a date that never occurs",
+      );
+    }
+  });
+
+  it("accepts a cron expression for a leap day or an either-day schedule", async () => {
+    // Feb 29 exists in a leap year. With both day fields restricted core fires
+    // on either one, so `30 2 1` still runs on February Mondays.
+    const seam = await makeSeam();
+    for (const expression of ["0 0 29 2 *", "0 0 30 2 1", "0 0 31 * *"]) {
+      const res = await scheduleCron(seam, expression, "UTC");
+      expect(res.statusCode).toBe(201);
+    }
+  });
+
   it("rejects an edit to an unresolvable cron trigger zone with 400", async () => {
     const { seam, taskId } = await seedTask();
     const body = JSON.stringify({
