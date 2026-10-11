@@ -64,7 +64,7 @@ export function chunkText(text: string, limit: number): string[] {
 			breakIdx = limit;
 		}
 
-		breakIdx = avoidSurrogateSplit(remaining, breakIdx);
+		breakIdx = avoidGraphemeSplit(remaining, breakIdx);
 
 		const rawChunk = remaining.slice(0, breakIdx);
 		const chunk = rawChunk.trimEnd();
@@ -260,14 +260,14 @@ export function chunkMarkdownText(text: string, limit: number): string[] {
 					: undefined;
 		}
 
-		breakIdx = avoidSurrogateSplit(remaining, breakIdx);
+		breakIdx = avoidGraphemeSplit(remaining, breakIdx);
 		if (fenceToSplit && breakIdx < minimumFenceProgress) {
-			// A surrogate-safe backoff can move the cut before the first byte of
+			// A grapheme-safe backoff can move the cut before the first byte of
 			// fence content. Closing and reopening there would consume only the
 			// opening line and prepend that same line forever. Preserve progress by
 			// taking the existing hard-cap fallback without synthetic fence lines.
 			fenceToSplit = undefined;
-			breakIdx = avoidSurrogateSplit(remaining, limit);
+			breakIdx = avoidGraphemeSplit(remaining, limit);
 		}
 
 		const closer = fenceToSplit
@@ -325,6 +325,52 @@ export function chunkMarkdownText(text: string, limit: number): string[] {
 		chunks.push(remaining);
 	}
 	return chunks;
+}
+
+// The pinned runtimes provide Intl.Segmenter, while the declaration library
+// does not expose its type.
+const GraphemeSegmenter = (
+	Intl as unknown as {
+		Segmenter: new (
+			locale: string,
+			options: { granularity: "grapheme" },
+		) => { segment(text: string): Iterable<{ segment: string }> };
+	}
+).Segmenter;
+
+const graphemeSegmenter = new GraphemeSegmenter("en", {
+	granularity: "grapheme",
+});
+
+/**
+ * A hard break at an arbitrary UTF-16 index can land inside a grapheme
+ * cluster (a ZWJ emoji sequence, a regional-indicator flag, a combining mark,
+ * or a skin-tone modifier), so the two halves render as different characters
+ * in the two emitted chunks even though neither half is a lone surrogate.
+ * Back the break off to the previous grapheme boundary so the cluster stays
+ * whole in one chunk. When a single cluster alone is longer than the index
+ * (an oversized cluster at the very start of the remaining text), no earlier
+ * boundary exists, so the surrogate-safe boundary below is the fallback: it
+ * is the only case with no clean boundary.
+ */
+function avoidGraphemeSplit(text: string, index: number): number {
+	if (index <= 0 || index >= text.length) {
+		return index;
+	}
+	let boundary = 0;
+	for (const { segment } of graphemeSegmenter.segment(text)) {
+		if (boundary + segment.length > index) {
+			break;
+		}
+		boundary += segment.length;
+	}
+	if (boundary === index) {
+		return index;
+	}
+	if (boundary > 0) {
+		return boundary;
+	}
+	return avoidSurrogateSplit(text, index);
 }
 
 /**

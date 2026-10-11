@@ -433,10 +433,7 @@ export class BridgeAction {
       );
     }
 
-    if (
-      params.toAddress &&
-      (!params.toAddress.startsWith("0x") || params.toAddress.length !== 42)
-    ) {
+    if (params.toAddress && !isEvmAddress(params.toAddress)) {
       throw new EVMError(
         EVMErrorCode.INVALID_PARAMS,
         `Invalid recipient address: ${params.toAddress}`,
@@ -553,6 +550,15 @@ function viemChainByName(name: string): Chain | null {
   return chain?.id ? chain : null;
 }
 
+/**
+ * Bridge is EVM-only: the destination resolves through `viemChainByName` and
+ * the recipient becomes the Li.Fi `toAddress`. The preflight and the executor
+ * share this rule so a recipient the user confirms is one the bridge accepts.
+ */
+function isEvmAddress(value: string): value is Address {
+  return /^0x[a-fA-F0-9]{40}$/.test(value);
+}
+
 export function validateWalletBridgeParams(
   params: WalletRouterParams,
 ): string | null {
@@ -570,6 +576,9 @@ export function validateWalletBridgeParams(
   }
   if (params.chain === params.toChain) {
     return "Source and destination chains must be different for bridge.";
+  }
+  if (params.recipient && !isEvmAddress(params.recipient)) {
+    return "recipient must be a valid EVM address.";
   }
   return null;
 }

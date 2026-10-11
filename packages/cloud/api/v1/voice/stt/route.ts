@@ -88,6 +88,9 @@ const SUPPORTED_MIME_TYPES = [
   "audio/mpeg",
   "audio/mp4",
   "audio/m4a",
+  // Chromium and Safari report .m4a files (voice memos) as audio/x-m4a;
+  // the signature allowlist below already accepts that detected type.
+  "audio/x-m4a",
   "audio/wav",
   // Windows clients (and Bun's multipart layer) commonly declare WAV as the
   // legacy x- form; the magic-number allowlist below already accepts it.

@@ -693,7 +693,8 @@ export class CalendarRepository {
           AND side = 'owner'
           AND grant_id = ${sqlQuote(args.sourceId)}
           AND (
-            (end_at > ${windowMin}
+            ((end_at > ${windowMin}
+              OR (end_at = start_at AND start_at >= ${windowMin}))
               AND start_at < ${windowMax})
             OR (
               start_at < ${windowMax}

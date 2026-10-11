@@ -30,7 +30,10 @@ import {
 } from "@elizaos/core";
 import { validateWalletBridgeParams } from "../chains/evm/bridge-router.js";
 import { validateWalletGovParams } from "../chains/evm/gov-router.js";
-import { registerDefaultWalletChainHandlers } from "../chains/registry.js";
+import {
+  registerDefaultWalletChainHandlers,
+  validateWalletTransferParams,
+} from "../chains/registry.js";
 import type {
   WalletChainHandler,
   WalletChainHandlerMetadata,
@@ -152,7 +155,7 @@ export class WalletBackendService extends Service {
     if (!handlerResult.ok) {
       return handlerResult;
     }
-    const required = this.validateRequiredParams(params);
+    const required = this.validateRequiredParams(params, handlerResult.handler);
     if (required) {
       return required;
     }
@@ -191,7 +194,7 @@ export class WalletBackendService extends Service {
     }
 
     const { handler } = handlerResult;
-    const required = this.validateRequiredParams(params);
+    const required = this.validateRequiredParams(params, handler);
     if (required) {
       return required;
     }
@@ -365,6 +368,7 @@ export class WalletBackendService extends Service {
 
   private validateRequiredParams(
     params: WalletRouterParams,
+    handler: WalletChainHandler,
   ): WalletRouterFailure | null {
     if (params.subaction === "bridge") {
       const detail = validateWalletBridgeParams(params);
@@ -381,12 +385,9 @@ export class WalletBackendService extends Service {
         detail: "amount is required.",
       };
     }
-    if (params.subaction === "transfer" && !params.recipient) {
-      return {
-        ok: false,
-        error: "INVALID_PARAMS",
-        detail: "recipient is required for transfer.",
-      };
+    if (params.subaction === "transfer") {
+      const detail = validateWalletTransferParams(params, handler.signer.kind);
+      return detail ? { ok: false, error: "INVALID_PARAMS", detail } : null;
     }
     if (params.subaction === "swap") {
       if (!params.fromToken) {

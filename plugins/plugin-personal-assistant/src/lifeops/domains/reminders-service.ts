@@ -251,6 +251,7 @@ import {
   lifeOpsErrorMessage,
   normalizeEnumValue,
   normalizeOptionalString,
+  normalizePhoneNumber,
   requireNonEmptyString,
 } from "../service-normalize.js";
 import {
@@ -701,17 +702,6 @@ function normalizeOptionalRecord(
 }
 
 const LIFEOPS_PRIVACY_CLASSES = ["public", "private", "shared"] as const;
-
-function normalizePhoneNumber(value: unknown, field: string): string {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    fail(400, `${field} must be a non-empty phone number string`);
-  }
-  const cleaned = value.replace(/[\s\-().]/g, "");
-  if (!/^\+?\d{7,15}$/.test(cleaned)) {
-    fail(400, `${field} is not a valid phone number`);
-  }
-  return cleaned.startsWith("+") ? cleaned : `+${cleaned}`;
-}
 
 function normalizePrivacyClass(
   value: unknown,
@@ -5760,6 +5750,35 @@ export class RemindersDomain {
       "phoneNumber",
     );
     const privacyClass = normalizePrivacyClass(request.privacyClass);
+    // Delivery selects the oldest primary policy, so a number captured earlier
+    // (another number, or the same one under a previous key) must stop being
+    // primary or it keeps receiving reminders under its old permissions.
+    for (const policy of await this.ctx.repository.listChannelPolicies(
+      this.ctx.agentId(),
+    )) {
+      if (
+        (policy.channelType !== "sms" && policy.channelType !== "voice") ||
+        policy.channelRef === phoneNumber ||
+        policy.metadata.isPrimary !== true
+      ) {
+        continue;
+      }
+      await this.ctx.repository.upsertChannelPolicy({
+        ...policy,
+        metadata: { ...policy.metadata, isPrimary: false },
+        updatedAt: new Date().toISOString(),
+      });
+      await this.ctx.recordChannelPolicyAudit(
+        policy.id,
+        "channel policy replaced as primary",
+        { request },
+        {
+          channelType: policy.channelType,
+          channelRef: policy.channelRef,
+          replacedBy: phoneNumber,
+        },
+      );
+    }
     const baseMetadata = {
       ...normalizeOptionalRecord(request.metadata, "metadata"),
       phoneNumber,

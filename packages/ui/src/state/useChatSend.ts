@@ -596,6 +596,11 @@ export function useChatSend(deps: UseChatSendDeps) {
     pollCloudCredits,
   } = deps;
   const chatSendQueueRef = useRef<QueuedChatSend[]>([]);
+  const chatSendIdleWaitersRef = useRef<Array<() => void>>([]);
+  const notifyChatSendIdle = useCallback(() => {
+    for (const wake of chatSendIdleWaitersRef.current.splice(0)) wake();
+  }, []);
+  const pendingActionKeysRef = useRef(new Set<string>());
   const admittedSendKeysRef = useRef(new Map<string, number>());
   const sendCancellationGenerationRef = useRef(0);
   const activeChatTurnRef = useRef<ActiveChatTurn | null>(null);
@@ -916,8 +921,9 @@ export function useChatSend(deps: UseChatSendDeps) {
       chatAbortRef.current = null;
       chatSendBusyRef.current = false;
       chatSendQueueRef.current.splice(0);
+      notifyChatSendIdle();
     };
-  }, [chatAbortRef, chatSendBusyRef]);
+  }, [chatAbortRef, chatSendBusyRef, notifyChatSendIdle]);
   const resolveQueuedChatSends = useCallback(
     (conversationId: string | null): RestoredQueuedDraft => {
       const queued: QueuedChatSend[] = [];
@@ -2435,9 +2441,11 @@ export function useChatSend(deps: UseChatSendDeps) {
       chatSendBusyRef.current = false;
       setChatSending(false);
       setChatFirstTokenReceived(false);
+      notifyChatSendIdle();
     }
   }, [
     chatSendBusyRef,
+    notifyChatSendIdle,
     runQueuedChatSend,
     setChatFirstTokenReceived,
     setChatSending,
@@ -2693,7 +2701,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     ],
   );
   // biome-ignore lint/correctness/useExhaustiveDependencies: conversations omitted to limit rerenders
-  const sendActionMessage = useCallback(
+  const deliverActionMessage = useCallback(
     async (text: string, options?: Pick<ChatSendTextOptions, "metadata">) => {
       const trimmed = text.trim();
       if (!trimmed) return;
@@ -2710,7 +2718,16 @@ export function useChatSend(deps: UseChatSendDeps) {
       const admissionGeneration = sendCancellationGenerationRef.current;
       if ((await settleConversationHydrationForSend?.()) === false) return;
       if (admissionGeneration !== sendCancellationGenerationRef.current) return;
-      if (chatSendBusyRef.current) return;
+      // Wait for the current turn instead of discarding the action. The
+      // handoff freeze holds it too: a send to the shared agent after its
+      // snapshot is lost to the skip-all import (see flushQueuedChatSends).
+      while (chatSendBusyRef.current || handoffFrozenRef.current) {
+        await new Promise<void>((resolve) => {
+          chatSendIdleWaitersRef.current.push(resolve);
+        });
+        if (admissionGeneration !== sendCancellationGenerationRef.current)
+          return;
+      }
       chatSendBusyRef.current = true;
       const sendNonce = ++chatSendNonceRef.current;
       let controller: AbortController | null = null;
@@ -2988,6 +3005,7 @@ export function useChatSend(deps: UseChatSendDeps) {
               setChatSending(false);
               setChatFirstTokenReceived(false);
             }
+            notifyChatSendIdle();
             if (chatSendQueueRef.current.length > 0) {
               void flushQueuedChatSends();
             }
@@ -2999,6 +3017,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         }
         if (controller == null && chatSendNonceRef.current === sendNonce) {
           chatSendBusyRef.current = false;
+          notifyChatSendIdle();
           if (chatSendQueueRef.current.length > 0) {
             void flushQueuedChatSends();
           }
@@ -3014,6 +3033,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       elizaCloudEnabled,
       elizaCloudConnected,
       flushQueuedChatSends,
+      notifyChatSendIdle,
       loadConversationMessages,
       loadConversations,
       pollCloudCredits,
@@ -3034,6 +3054,21 @@ export function useChatSend(deps: UseChatSendDeps) {
       settleConversationHydrationForSend,
       flushStreamingText,
     ],
+  );
+  const sendActionMessage = useCallback(
+    async (text: string, options?: Pick<ChatSendTextOptions, "metadata">) => {
+      // A waiting action no longer fails the busy check, so a repeated
+      // activation of the same control would start one agent turn each.
+      const actionKey = JSON.stringify([text.trim(), options?.metadata]);
+      if (pendingActionKeysRef.current.has(actionKey)) return;
+      pendingActionKeysRef.current.add(actionKey);
+      try {
+        await deliverActionMessage(text, options);
+      } finally {
+        pendingActionKeysRef.current.delete(actionKey);
+      }
+    },
+    [deliverActionMessage],
   );
   const handleChatStop = useCallback(() => {
     interruptActiveChatPipeline();

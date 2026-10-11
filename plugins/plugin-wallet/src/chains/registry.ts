@@ -50,6 +50,7 @@ import type {
   WalletRouterExecution,
   WalletRouterParams,
   WalletRouterSimulation,
+  WalletSignerMetadata,
 } from "../types/wallet-router.js";
 import type { SolanaSigner } from "../wallet/backend.js";
 import { buildSendTxParams } from "./evm/actions/helpers";
@@ -144,6 +145,35 @@ function evmAliases(key: string, chain: Chain): string[] {
 
 function isEvmAddress(value: string): value is Address {
   return /^0x[a-fA-F0-9]{40}$/.test(value);
+}
+
+/**
+ * Preflight counterpart to the recipient format checks the transfer
+ * executors run (`executeEvmTransfer` rejects a non-EVM recipient,
+ * `executeSolanaTransfer` constructs a `PublicKey` from it). Those checks
+ * run after the financial confirmation gate, so a malformed recipient the
+ * planner produced was confirmed by the user before it failed. Validate
+ * the format here so the refusal lands before the confirmation prompt,
+ * mirroring the governance preflight in `validateWalletGovParams`.
+ */
+export function validateWalletTransferParams(
+  params: WalletRouterParams,
+  signerKind: WalletSignerMetadata["kind"],
+): string | null {
+  if (!params.recipient) {
+    return "recipient is required for transfer.";
+  }
+  if (signerKind === "evm" && !isEvmAddress(params.recipient)) {
+    return "recipient must be a valid EVM address.";
+  }
+  if (signerKind === "solana") {
+    try {
+      new PublicKey(params.recipient);
+    } catch {
+      return "recipient must be a valid Solana base58 address.";
+    }
+  }
+  return null;
 }
 
 function isNativeEvmToken(value: string | undefined, chain: Chain): boolean {

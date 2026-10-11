@@ -5,6 +5,7 @@ export {
   applyMarkupCents,
   calculateTwilioSmsBilling,
   checkoutAmountUsdToCents,
+  classifyTwilioSmsCostConfig,
   DEFAULT_MARKUP_RATE,
   DEFAULT_TWILIO_SMS_COST_PER_SEGMENT_USD,
   DEFAULT_USD_ROUNDING_PRECISION,

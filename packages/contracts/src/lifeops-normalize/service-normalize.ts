@@ -253,23 +253,22 @@ export function normalizePrivacyClass(
   return normalizeEnumValue(value, field, LIFEOPS_PRIVACY_CLASSES);
 }
 export function normalizePhoneNumber(value: unknown, field: string): string {
-  const raw = requireNonEmptyString(value, field);
-  const digits = raw.replace(/[^\d+]/g, "");
-  if (digits.startsWith("+")) {
-    const normalized = `+${digits.slice(1).replace(/\D/g, "")}`;
-    if (!/^\+\d{10,15}$/.test(normalized)) {
-      fail(400, `${field} must be a valid E.164 phone number`);
-    }
-    return normalized;
+  const cleaned = requireNonEmptyString(value, field).replace(/[\s\-().]/g, "");
+  if (/^\+[1-9]\d{6,14}$/.test(cleaned)) {
+    return cleaned;
   }
-  const plainDigits = digits.replace(/\D/g, "");
-  if (/^\d{10}$/.test(plainDigits)) {
-    return `+1${plainDigits}`;
+  // A bare 10-digit number in North American shape is a national number.
+  if (/^[2-9]\d{9}$/.test(cleaned)) {
+    return `+1${cleaned}`;
   }
-  if (/^1\d{10}$/.test(plainDigits)) {
-    return `+${plainDigits}`;
+  // Eleven or more bare digits already carry the country code.
+  if (/^[1-9]\d{10,14}$/.test(cleaned)) {
+    return `+${cleaned}`;
   }
-  fail(400, `${field} must be a valid phone number`);
+  fail(
+    400,
+    `${field} must be a phone number with its country code, for example +15551234567`,
+  );
 }
 export function normalizeReminderUrgency(
   value: unknown,
