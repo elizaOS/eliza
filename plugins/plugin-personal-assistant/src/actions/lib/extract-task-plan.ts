@@ -31,7 +31,7 @@ import {
 import { textStatesExplicitRecurrence } from "@elizaos/core/protocol";
 import { resolveDefaultTimeZone } from "../../lifeops/defaults.js";
 import { normalizeExplicitTimeZoneToken } from "../../lifeops/time/timezone.js";
-import { getZonedDateParts } from "../../lifeops/time.js";
+import { describeNowForPrompt } from "../../lifeops/time.js";
 import { UNDATED_TODO_EXTRACTION_GUIDANCE } from "./undated-todo-intent.js";
 
 // ── Types ─────────────────────────────────────────────
@@ -177,29 +177,6 @@ const EMPTY_TASK_CREATE_PLAN: ExtractedTaskCreatePlan = {
   dueInMinutes: null,
   multiStep: false,
 };
-
-const WEEKDAY_NAMES = [
-  "Sunday",
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-] as const;
-
-/**
- * Human-readable current date/time in the owner's timezone, used to ground
- * absolute-date extraction ("april 17", "next friday") in the prompt.
- */
-export function describeNowForPrompt(now: Date, timeZone: string): string {
-  const parts = getZonedDateParts(now, timeZone);
-  const weekday = new Date(
-    Date.UTC(parts.year, parts.month - 1, parts.day, 12),
-  ).getUTCDay();
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${WEEKDAY_NAMES[weekday]} ${parts.year}-${pad(parts.month)}-${pad(parts.day)} ${pad(parts.hour)}:${pad(parts.minute)} (${timeZone})`;
-}
 
 function promptText(value: string): string {
   const trimmed = value.trim();
