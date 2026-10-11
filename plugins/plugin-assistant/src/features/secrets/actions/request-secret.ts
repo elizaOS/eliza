@@ -73,7 +73,8 @@ export async function requestSecretHandler(
       },
     });
 
-    const rawKey = params.key ?? result?.key;
+    // `key` may be an array for action=check only; request names one secret.
+    const rawKey = typeof params.key === "string" ? params.key : result?.key;
     if (!rawKey) {
       logger.warn(
         "[SECRETS:request] Failed to extract secret key from context",
