@@ -29,13 +29,6 @@ const LOG_LEVELS = ["trace", "debug", "info", "warn", "error"] as const;
 type LogLevel = (typeof LOG_LEVELS)[number];
 type RuntimeLoggerWithLevel = typeof logger & { level: string };
 
-const SEARCH_LEVELS: readonly LogLevel[] = [
-  "debug",
-  "info",
-  "warn",
-  "error",
-] as const;
-
 interface LogsParams {
   action?: LogsOp;
   subaction?: LogsOp;
@@ -85,21 +78,26 @@ function getApiBase(): string {
 function parseSince(since: string | undefined): number | undefined {
   if (!since) return undefined;
   const numeric = Number(since);
-  if (Number.isFinite(numeric) && numeric > 0) {
+  // 8.64e15 ms is the largest instant a Date holds.
+  if (Number.isSafeInteger(numeric) && numeric > 0 && numeric <= 8.64e15) {
     return numeric;
   }
   const parsed = Date.parse(since);
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 
-function describeLogFilters(params: LogsParams, tagFilter: string[]): string {
+function describeLogFilters(
+  params: LogsParams,
+  tagFilter: string[],
+  sinceMs: number | undefined,
+): string {
   const parts: string[] = [];
   if (params.source) parts.push(`source=${params.source}`);
-  if (params.level && SEARCH_LEVELS.includes(params.level)) {
-    parts.push(`level=${params.level}`);
-  }
+  if (params.level) parts.push(`level=${params.level}`);
   if (tagFilter.length > 0) parts.push(`tags=${tagFilter.join("+")}`);
-  if (params.since) parts.push(`since=${params.since}`);
+  if (sinceMs !== undefined) {
+    parts.push(`since=${new Date(sinceMs).toISOString()}`);
+  }
   return parts.length > 0 ? parts.join(", ") : "none";
 }
 
@@ -136,12 +134,18 @@ async function searchLogs(params: LogsParams): Promise<ActionResult> {
   }
   const tagFilter = (params.tags ?? []).map((t) => t.trim()).filter(Boolean);
   const sinceMs = parseSince(params.since);
+  // An unreadable cutoff used to be dropped, and the reply still named it as
+  // an applied filter over the whole buffer.
+  if (params.since && sinceMs === undefined) {
+    return failure(
+      `since must be an ISO timestamp or epoch milliseconds; got "${params.since}".`,
+      "LOGS_INVALID_SINCE",
+    );
+  }
 
   const search = new URLSearchParams();
   if (params.source) search.set("source", params.source);
-  if (params.level && SEARCH_LEVELS.includes(params.level)) {
-    search.set("level", params.level);
-  }
+  if (params.level) search.set("level", params.level);
   // Server only filters on a single tag — additional tags are intersected client-side.
   if (tagFilter.length > 0) search.set("tag", tagFilter[0]);
   if (sinceMs !== undefined) search.set("since", String(sinceMs));
@@ -170,7 +174,7 @@ async function searchLogs(params: LogsParams): Promise<ActionResult> {
   // Pagination is opt-in. With no caller-requested limit, preserve the complete
   // filtered buffer in both the preview and structured payload.
   const shown = limit === undefined ? entries : entries.slice(-limit);
-  const filterNote = describeLogFilters(params, tagFilter);
+  const filterNote = describeLogFilters(params, tagFilter, sinceMs);
   const windowNote = `Searched the complete current in-memory log buffer. Filters applied: ${filterNote}.`;
   const header =
     shown.length === 0
@@ -368,7 +372,7 @@ export const logsAction: Action = {
     {
       name: "level",
       description:
-        "[search] Filter by log level (debug/info/warn/error). [set_level] New level to set (trace/debug/info/warn/error).",
+        "[search] Filter by exact log level. [set_level] New level to set. One of trace/debug/info/warn/error.",
       required: false,
       schema: { type: "string" as const, enum: [...LOG_LEVELS] },
     },
