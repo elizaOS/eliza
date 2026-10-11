@@ -279,8 +279,15 @@ export function filterInMemory(
     if (untilMs !== undefined && m.receivedAtMs > untilMs) continue;
     if (senderId && m.from.identifier.toLowerCase() !== senderId) continue;
     if (senderName) {
+      // A plain-string sender arrives here as a name. It may also be the
+      // `from` identifier the inbox ops return (a Discord or X user id).
       const name = m.from.displayName?.toLowerCase();
-      if (!name?.includes(senderName)) continue;
+      if (
+        !name?.includes(senderName) &&
+        m.from.identifier.toLowerCase() !== senderName
+      ) {
+        continue;
+      }
     }
     if (wantedTags.length > 0) {
       const tags = m.tags ?? [];

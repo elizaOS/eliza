@@ -15,6 +15,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { hasActionContext } from "@elizaos/core";
+import type { TriageService } from "../triage-service.ts";
 import {
   ALL_MESSAGE_SOURCES,
   MANAGE_OPERATION_KINDS,
@@ -42,7 +43,7 @@ export const SUPPORTED_MESSAGE_SOURCES_TEXT = ALL_MESSAGE_SOURCES.join(", ");
 
 export const messageSourceParameter: ActionParameter = {
   name: "sources",
-  description: `Optional message sources to include. One or more of: ${SUPPORTED_MESSAGE_SOURCES_TEXT}.`,
+  description: `Optional message sources to include. One or more of: ${SUPPORTED_MESSAGE_SOURCES_TEXT}. A source with no connected inbox adapter is rejected.`,
   required: false,
   schema: {
     type: "array" as const,
@@ -155,6 +156,33 @@ function parseSourceList(
     out.push(lower as MessageSource);
   }
   return { sources: out };
+}
+
+/**
+ * An explicitly requested inbox source that cannot be listed is an error.
+ * The sweep skips it, so the caller would report an inbox it never read as
+ * empty.
+ */
+export function unlistableSourcesError(
+  service: TriageService,
+  sources: readonly MessageSource[] | undefined,
+): string | undefined {
+  if (!sources) return undefined;
+  const problems: string[] = [];
+  for (const source of sources) {
+    const adapter = service.getAdapter(source);
+    if (!adapter) {
+      problems.push(`${source} (no inbox adapter is connected)`);
+    } else if (!adapter.capabilities().list) {
+      problems.push(`${source} (its adapter cannot list messages)`);
+    }
+  }
+  if (problems.length === 0) return undefined;
+  const listable = service
+    .listAdapters()
+    .filter((adapter) => adapter.capabilities().list)
+    .map((adapter) => adapter.source);
+  return `Cannot read the inbox for: ${problems.join(", ")}. Sources that can be read: ${listable.length > 0 ? listable.join(", ") : "none"}.`;
 }
 
 function parseSenderParam(
@@ -367,7 +395,30 @@ function stripPlaceholderSignature(body: string): string {
   return text.trim();
 }
 
-function asReplyBody(params: Record<string, unknown>): string | undefined {
+const PLACEHOLDER_REPLY_BODY =
+  "body is a placeholder, not reply text; pass the exact reply text in body";
+
+/**
+ * A model sometimes fills `body` with a template slot such as
+ * "[insert reply here]". Only a body that is one bracketed span is treated as
+ * that slot; ordinary text that starts with "Please provide the message..." is
+ * a real reply.
+ */
+function isPlaceholderReplyBody(body: string): boolean {
+  if (!/^\[[^[\]]*\]$/.test(body)) return false;
+  return (
+    /^\[\s*(?:please\s+provide|provide|insert|add)\s+(?:the\s+)?(?:reply|message|body|content)\b/i.test(
+      body,
+    ) ||
+    /\b(?:reply|message|body)\s+content\s+(?:here|required|needed)\b/i.test(
+      body,
+    )
+  );
+}
+
+function asReplyBody(
+  params: Record<string, unknown>,
+): { body: string | undefined } | { error: string } {
   const body = asString(
     params.body ??
       params.reply ??
@@ -376,18 +427,11 @@ function asReplyBody(params: Record<string, unknown>): string | undefined {
       params.message ??
       params.messageBody,
   );
-  if (!body) return undefined;
-  if (
-    /^\[?\s*(?:please\s+provide|provide|insert|add)\s+(?:the\s+)?(?:reply|message|body|content)/i.test(
-      body,
-    ) ||
-    /\b(?:reply|message|body)\s+content\s+(?:here|required|needed)\b/i.test(
-      body,
-    )
-  ) {
-    return undefined;
-  }
-  return stripPlaceholderSignature(body);
+  if (!body) return { body: undefined };
+  if (isPlaceholderReplyBody(body)) return { error: PLACEHOLDER_REPLY_BODY };
+  const stripped = stripPlaceholderSignature(body);
+  if (!stripped) return { error: PLACEHOLDER_REPLY_BODY };
+  return { body: stripped };
 }
 
 export function parseDraftReplyParams(
@@ -397,7 +441,9 @@ export function parseDraftReplyParams(
   const messageId = asString(
     params.messageId ?? params.inReplyToId ?? params.id,
   );
-  const body = asReplyBody(params);
+  const reply = asReplyBody(params);
+  if ("error" in reply) return reply;
+  const body = reply.body;
   if (!body) return { error: "body is required" };
   const lookup = parseMessageLookupHints(params);
   if ("error" in lookup) return lookup;
@@ -639,11 +685,14 @@ export function parseRespondToMessageParams(
   const messageId = asString(
     params.messageId ?? params.inReplyToId ?? params.id,
   );
-  const body = asReplyBody(params);
+  // A supplied body that is refused is an error: dropping it would let the
+  // handler queue a generated acknowledgment in place of the dictated reply.
+  const reply = asReplyBody(params);
+  if ("error" in reply) return reply;
   const lookup = parseMessageLookupHints(params);
   if ("error" in lookup) return lookup;
   if (!messageId && !hasLookupTarget(lookup)) {
     return { error: MESSAGE_TARGET_REQUIRED };
   }
-  return { messageId, body, lookup };
+  return { messageId, body: reply.body, lookup };
 }

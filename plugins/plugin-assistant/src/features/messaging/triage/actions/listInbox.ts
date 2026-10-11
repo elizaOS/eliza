@@ -28,6 +28,7 @@ import { ALL_MESSAGE_SOURCES } from "../types.ts";
 import {
   parseListInboxParams,
   SUPPORTED_MESSAGE_SOURCES_TEXT,
+  unlistableSourcesError,
   validateMessageAction,
 } from "./_shared.ts";
 
@@ -41,7 +42,7 @@ export const listInboxAction: Action = {
   parameters: [
     {
       name: "sources",
-      description: `Optional message sources to include. One or more of: ${SUPPORTED_MESSAGE_SOURCES_TEXT}.`,
+      description: `Optional message sources to include. One or more of: ${SUPPORTED_MESSAGE_SOURCES_TEXT}. A source with no connected inbox adapter is rejected.`,
       required: false,
       schema: {
         type: "array" as const,
@@ -103,6 +104,16 @@ export const listInboxAction: Action = {
         };
       }
       const service = getDefaultTriageService();
+      const unlistable = unlistableSourcesError(service, params.sources);
+      if (unlistable) {
+        logger.warn(`[ListInbox] ${unlistable}`);
+        return {
+          success: false,
+          text: unlistable,
+          error: unlistable,
+          data: { actionName: "MESSAGE" },
+        };
+      }
       const store = service.getStore();
 
       // The adapters own account and channel scope (a Gmail message is in

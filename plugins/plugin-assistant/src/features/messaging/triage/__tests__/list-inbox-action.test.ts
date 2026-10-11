@@ -50,6 +50,10 @@ class FixedListAdapter extends BaseMessageAdapter {
     return true;
   }
 
+  override capabilities() {
+    return { ...super.capabilities(), list: true };
+  }
+
   protected override async listMessagesImpl(
     _runtime: IAgentRuntime,
     opts: Parameters<BaseMessageAdapter["listMessages"]>[1],
@@ -89,23 +93,18 @@ describe("listInboxAction", () => {
         snippet: "discord miss",
         receivedAtMs: 2_000,
       }),
-      messageRef({
-        id: "whatsapp-1",
-        source: "whatsapp",
-        externalId: "whatsapp-external-1",
-        snippet: "WhatsApp hit",
-      }),
     ]);
+    await registerAdapter(new FixedListAdapter([]));
 
     const result = await listInboxAction.handler(
       createFakeRuntime(),
       messageRef({ id: "turn", source: "gmail" }) as never,
       undefined,
-      { parameters: { sources: ["gmail", "whatsapp"] } } as never,
+      { parameters: { sources: ["gmail"] } } as never,
     );
 
     expect(result.success).toBe(true);
-    expect(result.data).toMatchObject({ total: 2, returned: 2 });
+    expect(result.data).toMatchObject({ total: 1, returned: 1 });
     const messages = result.data?.messages;
     expect(messages).toBeDefined();
     if (!messages) {
@@ -113,7 +112,30 @@ describe("listInboxAction", () => {
     }
     expect(
       (messages as Array<{ id: string }>).map((message) => message.id),
-    ).toEqual(["gmail-1", "whatsapp-1"]);
+    ).toEqual(["gmail-1"]);
+  });
+
+  it("rejects a requested source that has no adapter able to list", async () => {
+    // A cached ref must not stand in for a source that was never read.
+    getDefaultMessageRefStore().saveMessages([
+      messageRef({ id: "gmail-1", externalId: "gmail-external-1" }),
+    ]);
+    const adapter = new FixedListAdapter([]);
+    await registerAdapter(adapter);
+
+    const result = await listInboxAction.handler(
+      createFakeRuntime(),
+      messageRef({ id: "turn" }) as never,
+      undefined,
+      { parameters: { sources: ["gmail", "whatsapp"] } } as never,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.text).toBe(
+      "Cannot read the inbox for: whatsapp (no inbox adapter is connected). Sources that can be read: gmail.",
+    );
+    expect(result.data?.messages).toBeUndefined();
+    expect(adapter.seenOptions).toEqual([]);
   });
 
   it("asks the adapter for a channel scope instead of filtering cached refs", async () => {

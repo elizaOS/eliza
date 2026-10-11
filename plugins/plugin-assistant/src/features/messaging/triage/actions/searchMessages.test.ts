@@ -250,6 +250,28 @@ describe("searchMessagesAction", () => {
     });
   });
 
+  it("matches a sender given as the from identifier an inbox op returned", async () => {
+    getDefaultTriageService().register(
+      new SearchAdapter("discord", [
+        messageRef("discord", "from-alice", {
+          from: { identifier: "111222333444555666", displayName: "Alice" },
+        }),
+        messageRef("discord", "from-bob", {
+          from: { identifier: "999888777666555444", displayName: "Bob" },
+        }),
+      ]),
+    );
+    const ids = async (sender: string) => {
+      const messages = (await runSearch({ sender })).data?.messages;
+      if (!messages) throw new Error("Expected search messages");
+      return (messages as Array<{ id: string }>).map(({ id }) => id);
+    };
+
+    expect(await ids("111222333444555666")).toEqual(["from-alice"]);
+    expect(await ids("alice")).toEqual(["from-alice"]);
+    expect(await ids("111222")).toEqual([]);
+  });
+
   it("rejects an unsupported source instead of searching every source", async () => {
     const gmail = new SearchAdapter("gmail", []);
     getDefaultTriageService().register(gmail);

@@ -343,6 +343,46 @@ describe("respondToMessageAction", () => {
     expect(adapter.sent).toEqual([]);
   });
 
+  it("holds a dictated body verbatim and never swaps a refused body for an acknowledgment", async () => {
+    const adapter = new RecordingAdapter();
+    register(adapter);
+    getDefaultMessageRefStore().saveMessage(messageRef());
+    const { runtime: currentRuntime, held } = holdingRuntime();
+
+    const dictated = await respondToMessageAction.handler(
+      currentRuntime,
+      turn,
+      undefined,
+      {
+        parameters: {
+          messageId: "message-1",
+          body: "Insert the reply-to header and resend, thanks.",
+        },
+      } as never,
+    );
+    expect(dictated.success).toBe(true);
+    expect(held.map((draft) => draft.body)).toEqual([
+      "Insert the reply-to header and resend, thanks.",
+    ]);
+
+    const placeholder = await respondToMessageAction.handler(
+      currentRuntime,
+      turn,
+      undefined,
+      {
+        parameters: { messageId: "message-1", body: "[Insert reply here]" },
+      } as never,
+    );
+    expect(placeholder).toEqual({
+      success: false,
+      text: "body is a placeholder, not reply text; pass the exact reply text in body",
+      error:
+        "body is a placeholder, not reply text; pass the exact reply text in body",
+    });
+    expect(held).toHaveLength(1);
+    expect(adapter.created).toHaveLength(1);
+  });
+
   it("queues an approval-gated reply and sends only when its executor runs", async () => {
     const adapter = new RecordingAdapter();
     register(adapter);

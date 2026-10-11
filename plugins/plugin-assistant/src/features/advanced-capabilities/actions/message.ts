@@ -5787,7 +5787,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   },
   {
     name: "sources",
-    description: `Inbox sources for triage, list_inbox, search_inbox. One or more of: ${ALL_MESSAGE_SOURCES.join(", ")}.`,
+    description: `Inbox sources for triage, list_inbox, search_inbox. One or more of: ${ALL_MESSAGE_SOURCES.join(", ")}. triage and list_inbox reject a source that has no connected adapter able to list messages.`,
     required: false,
     subactions: [
       "triage",
@@ -6127,7 +6127,8 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   },
   {
     name: "sender",
-    description: "Sender identifier for inbox search or reply lookup.",
+    description:
+      "Sender for inbox search or reply lookup: a name, an email address, or the `from` value an inbox op returned.",
     required: false,
     subactions: ["search_inbox", "draft_reply", "respond", "manage"],
     schema: { type: "string" },
@@ -6300,6 +6301,14 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
     required: false,
     subactions: ["manage"],
     schema: { type: "string" },
+  },
+  {
+    name: "tags",
+    description:
+      "For op=search_inbox: every hit must carry all of these tags, as the connector reports them in data.messages[].tags (Gmail label names).",
+    required: false,
+    subactions: ["search_inbox"],
+    schema: { type: "array", items: { type: "string" } },
   },
   {
     name: "read",

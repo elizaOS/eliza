@@ -24,6 +24,7 @@ import {
   messageSourceParameter,
   parseTriageParams,
   sinceMsParameter,
+  unlistableSourcesError,
   validateMessageAction,
 } from "./_shared.ts";
 
@@ -32,7 +33,7 @@ export const triageMessagesAction: Action = {
   contexts: ["messaging", "email", "documents"],
   roleGate: { minRole: "ADMIN" },
   description:
-    "Fetch unread/recent messages across connected platforms (gmail, discord, telegram, twitter, imessage, whatsapp) and return them newest-first with structural signals per message (sender relationship weight, unread state, whether the user previously replied in the thread). Judge urgency and the right next action from each message's content and signals.",
+    "Fetch unread/recent messages across the connected platforms whose adapter can list an inbox and return them newest-first with structural signals per message (sender relationship weight, unread state, whether the user previously replied in the thread). Judge urgency and the right next action from each message's content and signals.",
   similes: ["PRIORITIZE_MESSAGES", "RANK_INBOX", "SCAN_MESSAGES"],
   parameters: [messageSourceParameter, limitParameter, sinceMsParameter],
   examples: [
@@ -71,6 +72,11 @@ export const triageMessagesAction: Action = {
       return { success: false, text: params.error, error: params.error };
     }
     const service = getDefaultTriageService();
+    const unlistable = unlistableSourcesError(service, params.sources);
+    if (unlistable) {
+      logger.warn(`[TriageMessages] ${unlistable}`);
+      return { success: false, text: unlistable, error: unlistable };
+    }
     const ranked = await service.triage(runtime, {
       sources: params.sources,
       worldIds: params.worldIds,
