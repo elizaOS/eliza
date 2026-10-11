@@ -270,11 +270,13 @@ export function getTriggerLimit(runtime?: IAgentRuntime): number {
     return Math.max(1, Math.floor(runtimeSetting));
   }
   if (typeof runtimeSetting === "string" && /^\d+$/.test(runtimeSetting)) {
-    return Math.max(1, Number(runtimeSetting));
+    const parsed = Number(runtimeSetting);
+    if (Number.isFinite(parsed)) return Math.max(1, parsed);
   }
   const env = process.env.ELIZA_TRIGGERS_MAX_ACTIVE;
   if (env && /^\d+$/.test(env)) {
-    return Math.max(1, Number(env));
+    const parsed = Number(env);
+    if (Number.isFinite(parsed)) return Math.max(1, parsed);
   }
   return DEFAULT_MAX_ACTIVE_TRIGGERS;
 }
