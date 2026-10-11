@@ -866,34 +866,36 @@ export function createContactActions(dependencies: ContactActionDependencies): {
             ReturnType<NonNullable<RelationshipsServiceLike["createContact"]>>
           >["contact"]
         | undefined;
-      if (promoted) {
-        const relationships = getRelationshipsService(runtime);
-        if (!relationships?.createContact) {
-          return fail(
-            "The relationships service is unavailable; no contact was created.",
-            "RELATIONSHIPS_UNAVAILABLE",
-            "create",
-          );
-        }
+      const relationships = getRelationshipsService(runtime);
+      if (promoted && !relationships?.createContact) {
+        return fail(
+          "The relationships service is unavailable; no contact was created.",
+          "RELATIONSHIPS_UNAVAILABLE",
+          "create",
+        );
+      }
+      // A create without contact_info fields writes only a new entity's
+      // fields. For an entity that exists it would store none of them.
+      if (!promoted && (await runtime.getEntityById(entityId))) {
+        return fail(
+          `Entity ${entityId} already exists; nothing was saved. Use CONTACT update with this entityId to change its name, email, phone, notes or attributes.`,
+          "CONTACT_ALREADY_EXISTS",
+          "create",
+        );
+      }
+      if (relationships?.createContact) {
+        // update, delete by name and followup find a contact through its
+        // contact_info record, so every create writes one.
         const receipt = await relationships.createContact(entity, {
           categories: categories ?? ["acquaintance"],
           tags: tags ?? [],
           preferences: { ...preferences, ...(notes ? { notes } : {}) },
           customFields: { ...customFields, displayName: name },
         });
-        outcome = "saved";
+        outcome = promoted ? "saved" : "created";
         persistedEntity = receipt.entity;
         contact = receipt.contact;
       } else {
-        // This path writes only a new entity. For an entity that exists it
-        // would store none of the supplied fields.
-        if (await runtime.getEntityById(entityId)) {
-          return fail(
-            `Entity ${entityId} already exists; nothing was saved. Use CONTACT update with this entityId to change its name, email, phone, notes or attributes.`,
-            "CONTACT_ALREADY_EXISTS",
-            "create",
-          );
-        }
         if (!(await runtime.createEntity(entity))) {
           return fail(
             `Failed to create contact "${name}".`,
@@ -959,6 +961,7 @@ export function createContactActions(dependencies: ContactActionDependencies): {
         state,
         source,
         data,
+        readString(params.entityId),
         callback,
       );
     }
@@ -1264,6 +1267,7 @@ export function createContactActions(dependencies: ContactActionDependencies): {
     state: State,
     source: string,
     data: Record<string, unknown>,
+    targetEntityId: string | undefined,
     _callback: HandlerCallback | undefined,
   ): Promise<ActionResult> {
     const sourceEntityId = message.entityId;
@@ -1274,7 +1278,28 @@ export function createContactActions(dependencies: ContactActionDependencies): {
     }
     const worldId = room.worldId;
 
-    const entity = await findEntityByName(runtime, message, state);
+    // A supplied entityId names the target. Without one the target is read
+    // from the conversation.
+    let entity: Entity | null;
+    if (targetEntityId) {
+      if (!isLikelyUuid(targetEntityId)) {
+        return fail(
+          `CONTACT update requires entityId to be a UUID; "${targetEntityId}" is not one. Nothing was changed.`,
+          "INVALID_PARAMETERS",
+          "update",
+        );
+      }
+      entity = await runtime.getEntityById(targetEntityId as UUID);
+      if (!entity) {
+        return fail(
+          `Contact ${targetEntityId} was not found.`,
+          "NOT_FOUND",
+          "update",
+        );
+      }
+    } else {
+      entity = await findEntityByName(runtime, message, state);
+    }
     if (!entity?.id) {
       return fail(
         "Could not find which entity you're trying to update.",
@@ -2031,7 +2056,7 @@ export function createContactActions(dependencies: ContactActionDependencies): {
       {
         name: "source",
         description:
-          "update (UPDATE_ENTITY semantics): component source/platform such as telegram, x, discord, email.",
+          "update (UPDATE_ENTITY semantics): component source/platform such as telegram, x, discord, email. Send with data and the contact's entityId; without entityId the target is the person named in the conversation, and name is not used.",
         required: false,
         schema: { type: "string" as const },
       },
