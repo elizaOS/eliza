@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { HandlerOptions, IAgentRuntime, Memory } from "@elizaos/core";
 import { NetworkServiceClient } from "./backend/client.js";
-import { RELAY_PATH, type RelaySendRequest } from "./backend/contract.js";
+import {
+  RELAY_PATH,
+  type RelaySendRequest,
+  SIGNALS_PATH,
+  type SignalsRequest,
+} from "./backend/contract.js";
 import { createServiceNetworkStore } from "./backend/service-store.js";
 import { svcVerify } from "./backend/svc-auth.js";
 import { createNetworkEdgePlugin } from "./edge.js";
@@ -13,8 +18,11 @@ const SECRET = "s".repeat(40);
 const runtime = {} as IAgentRuntime;
 
 function serviceSetup(response: unknown, relayEnabled = true) {
-  const calls: Array<{ path: string; body: RelaySendRequest; ok: boolean }> =
-    [];
+  const calls: Array<{
+    path: string;
+    body: RelaySendRequest | SignalsRequest;
+    ok: boolean;
+  }> = [];
   const fetchImpl = (async (url: string | URL, init?: RequestInit) => {
     const path = new URL(String(url)).pathname;
     const body = String(init?.body ?? "");
@@ -215,6 +223,35 @@ describe("Network service response boundary", () => {
       }),
       /invalid turn receipt/,
     );
+  });
+});
+
+describe("NETWORK_SIGNALS service receipt", () => {
+  it("rejects malformed counts instead of reporting signals as recorded", async () => {
+    const input = {
+      memberId: "cloud-user-1",
+      messageId: "msg_1",
+      signals: [{ kind: "opt_out" as const, evidence: "stop texting" }],
+    };
+    for (const response of [
+      null,
+      {},
+      { recorded: "1" },
+      { recorded: -1 },
+      { recorded: 2 },
+    ]) {
+      const { calls, store } = serviceSetup(response);
+      await assert.rejects(
+        store.recordSignals(input),
+        /invalid signals receipt/,
+      );
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0].path, SIGNALS_PATH);
+      assert.equal(calls[0].ok, true);
+    }
+
+    const { store } = serviceSetup({ recorded: 1 });
+    assert.deepEqual(await store.recordSignals(input), { recorded: 1 });
   });
 });
 

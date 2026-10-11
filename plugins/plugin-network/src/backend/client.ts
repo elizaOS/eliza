@@ -220,12 +220,27 @@ export class NetworkServiceClient {
     );
   }
 
-  recordSignals(req: SignalsRequest): Promise<SignalsResponse> {
-    return this.#post<SignalsResponse>(
+  async recordSignals(req: SignalsRequest): Promise<SignalsResponse> {
+    const result = await this.#post<unknown>(
       SIGNALS_PATH,
       `${req.messageId}:signals`,
       req,
     );
+    const recorded =
+      result && typeof result === "object"
+        ? (result as { recorded?: unknown }).recorded
+        : undefined;
+    if (
+      typeof recorded !== "number" ||
+      !Number.isSafeInteger(recorded) ||
+      recorded < 0 ||
+      recorded > req.signals.length
+    )
+      throw new NetworkServiceError(
+        200,
+        "Network service returned an invalid signals receipt",
+      );
+    return { recorded };
   }
 
   readUpdates(req: UpdatesRequest): Promise<UpdatesResponse> {
