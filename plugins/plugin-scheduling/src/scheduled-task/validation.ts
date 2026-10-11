@@ -8,9 +8,11 @@
  * on violation.
  */
 
+import { parseCronExpression } from "@elizaos/core";
 import type { CompletionCheckRegistry } from "./completion-check-registry.js";
 import type { EscalationLadderRegistry } from "./escalation.js";
 import type { TaskGateRegistry } from "./gate-registry.js";
+import { OWNER_LOCAL_TZ } from "./trigger-tz.js";
 import {
   type ScheduledTask,
   type ScheduledTaskInput,
@@ -110,6 +112,18 @@ function isValidIso(value: unknown): boolean {
   return isNonEmptyString(value) && !Number.isNaN(new Date(value).getTime());
 }
 
+/** The same Intl constructor core's cron scheduler uses to resolve a zone. */
+function isResolvableTimeZone(timeZone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone }).format(0);
+    return true;
+  } catch {
+    // error-policy:J3 trigger zones are untrusted task input; a zone Intl
+    // rejects is reported as a validation issue.
+    return false;
+  }
+}
+
 function validateTrigger(
   trigger: Record<string, unknown>,
   path: string,
@@ -124,9 +138,24 @@ function validateTrigger(
     case "cron":
       if (!isNonEmptyString(trigger.expression)) {
         issues.push(`${path}.trigger.expression must be a non-empty string`);
+      } else if (!parseCronExpression(trigger.expression)) {
+        // Core's cron scheduler returns no next run for an expression it
+        // cannot parse, so the task would never fire.
+        issues.push(
+          `${path}.trigger.expression must be a valid 5-field cron expression`,
+        );
       }
       if (trigger.tz !== undefined && !isNonEmptyString(trigger.tz)) {
         issues.push(`${path}.trigger.tz must be a non-empty string`);
+      } else if (
+        trigger.tz !== undefined &&
+        trigger.tz !== OWNER_LOCAL_TZ &&
+        !isResolvableTimeZone(trigger.tz)
+      ) {
+        // Core's cron scheduler evaluates a zone it cannot resolve on UTC.
+        issues.push(
+          `${path}.trigger.tz must be a valid IANA time zone or "${OWNER_LOCAL_TZ}"`,
+        );
       }
       break;
     case "interval":
