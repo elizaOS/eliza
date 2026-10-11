@@ -7289,11 +7289,12 @@ const calendarAction: CalendarHandlerAction = {
       // validateToolArgs rejected and the whole read failed). Declare the
       // field so natural variants normalize here instead of erroring; reads
       // span the account's calendars and creation targets the built-in
-      // calendar, so the value is advisory and the handler ignores it.
+      // calendar, so the handler ignores this top-level value. An exact
+      // calendar selection is read from details.calendarId only.
       name: "calendarId",
       aliases: ["calendar_id", "calendarid"],
       description:
-        "Optional; leave unset. Agenda reads use the selected Calendar feed; searches cover connected calendars. Use details.includeHiddenCalendars to explicitly change that scope. Event creation targets the built-in calendar.",
+        "Ignored; leave unset. To select an exact calendar from a Calendar result, use details.calendarId. Agenda reads use the selected Calendar feed; searches cover connected calendars. Use details.includeHiddenCalendars to explicitly change that scope. Event creation targets the built-in calendar.",
       required: false,
       schema: { type: "string" as const },
     },
