@@ -355,10 +355,8 @@ export class EntityStore {
       clauses.push(`e.type = ${sqlQuote(filter.type)}`);
     }
     if (filter?.tag) {
-      // tags_json is a JSON array — use LIKE on the serialized form for
-      // portability across PG / PGLite. The string form `"<tag>"` is
-      // safe because tags are validated as plain strings on write.
-      clauses.push(`e.tags_json LIKE ${sqlQuote(`%"${filter.tag}"%`)}`);
+      // Exact array element, as the durable-record backend's `tags.includes`.
+      clauses.push(`e.tags_json::jsonb @> ${sqlJson([filter.tag])}::jsonb`);
     }
     if (filter?.nameContains) {
       // The contract is a literal substring match, and the durable-record

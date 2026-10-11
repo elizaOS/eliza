@@ -175,3 +175,38 @@ it("keeps the latest contact time and platform when an older interaction arrives
     lastInteractionPlatform: "signal",
   });
 });
+
+it("filters entities by an exact tag, not a LIKE pattern", async () => {
+  const entities = graph.getEntityStore();
+  const input = {
+    type: "person",
+    identities: [],
+    visibility: "owner_only" as const,
+    state: {},
+  };
+  await entities.upsert({
+    ...input,
+    entityId: "tag-space",
+    preferredName: "Space Tag",
+    tags: ["close friend"],
+  });
+  await entities.upsert({
+    ...input,
+    entityId: "tag-underscore",
+    preferredName: "Underscore Tag",
+    tags: ["close_friend"],
+  });
+  await entities.upsert({
+    ...input,
+    entityId: "tag-percent",
+    preferredName: "Percent Tag",
+    tags: ["100%"],
+  });
+
+  const ids = async (tag: string) =>
+    (await entities.list({ tag })).map((entity) => entity.entityId).sort();
+  expect(await ids("close_friend")).toEqual(["tag-underscore"]);
+  expect(await ids("close friend")).toEqual(["tag-space"]);
+  expect(await ids("%")).toEqual([]);
+  expect(await ids("100%")).toEqual(["tag-percent"]);
+});

@@ -359,7 +359,9 @@ class MemoryKnowledgeGraph {
     const agentId =
       quotedEquals(sql, "e.agent_id") ?? quotedEquals(sql, "agent_id");
     const type = quotedEquals(sql, "e.type");
-    const tagLike = likePattern(sql, "e.tags_json");
+    const tagContains = sql.match(
+      /e\.tags_json::jsonb\s+@>\s+'((?:[^']|'')*)'::jsonb/i,
+    )?.[1];
     const nameLike = likePattern(sql, "LOWER(e.preferred_name)");
     const platform = quotedEquals(sql, "LOWER(i.platform)");
     const account = quotedEquals(sql, "i.connector_account_id");
@@ -370,10 +372,12 @@ class MemoryKnowledgeGraph {
     if (type !== undefined) {
       rows = rows.filter((row) => row.type === type);
     }
-    if (tagLike !== undefined) {
-      rows = rows.filter((row) =>
-        sqlLike(String(row.tags_json ?? ""), tagLike),
-      );
+    if (tagContains !== undefined) {
+      const wanted = JSON.parse(tagContains.replace(/''/g, "'")) as string[];
+      rows = rows.filter((row) => {
+        const tags = JSON.parse(String(row.tags_json ?? "[]")) as string[];
+        return wanted.every((tag) => tags.includes(tag));
+      });
     }
     if (nameLike !== undefined) {
       rows = rows.filter((row) => {
