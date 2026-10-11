@@ -3886,7 +3886,11 @@ export async function startApiServer(opts?: {
           if (!active) return;
           const setup = service as ConnectorSetupServiceInstance;
           setup.setBroadcastWs(broadcastWs);
-          unsubscribe.push(() => setup.setBroadcastWs(null));
+          setup.setLiveConfig(() => state.config);
+          unsubscribe.push(() => {
+            setup.setBroadcastWs(null);
+            setup.setLiveConfig(null);
+          });
         })
         .catch((error) => runtime.reportError("api.connectorBroadcast", error));
     }
