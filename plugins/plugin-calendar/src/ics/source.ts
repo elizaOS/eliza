@@ -166,19 +166,22 @@ export function expandIcsCalendarEvents(args: {
     const startMs = Date.parse(event.startAt);
     const endMs = Date.parse(event.endAt);
     const recurrence = event.recurrence ?? [];
-    const rule = firstRecurrenceRule(recurrence);
+    const ruleLineCount = recurrence.filter((line) =>
+      /^RRULE[:;]/i.test(line),
+    ).length;
+    const hasRdate = recurrence.some((line) => /^RDATE[:;]/i.test(line));
     if (
-      !rule ||
       typeof event.metadata.icsRecurrenceId === "string" ||
-      !recurrence.some((line) => /^RRULE[:;]/i.test(line))
+      (ruleLineCount === 0 && !hasRdate)
     ) {
       if (overlaps(startMs, endMs)) expanded.push(event);
       continue;
     }
-    if (
-      rule.beyondExpansionSubset ||
-      recurrence.some((line) => /^RDATE[:;]/i.test(line))
-    ) {
+    // The event repeats. A rule that does not parse (FREQ=HOURLY, COUNT with
+    // UNTIL), a second RRULE line, an RDATE, or a rule outside the local
+    // subset all leave occurrences this module cannot produce.
+    const rule = ruleLineCount === 1 ? firstRecurrenceRule(recurrence) : null;
+    if (!rule || rule.beyondExpansionSubset || hasRdate) {
       complete = false;
       if (overlaps(startMs, endMs)) expanded.push(event);
       continue;

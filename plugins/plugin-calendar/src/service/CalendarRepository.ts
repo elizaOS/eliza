@@ -654,8 +654,9 @@ export class CalendarRepository {
 
   /**
    * Reads one bounded ICS expansion input: rows already in the window,
-   * recurrence masters that can generate into it, and overrides whose original
-   * recurrence instant is in the window even when the override moved out.
+   * repeating masters (RRULE or RDATE) that start before the window ends, and
+   * overrides whose original recurrence instant is in the window even when the
+   * override moved out.
    */
   async listIcsCalendarEventsForExpansion(args: {
     agentId: string;
@@ -686,7 +687,7 @@ export class CalendarRepository {
               AND EXISTS (
                 SELECT 1
                   FROM jsonb_array_elements_text(${recurrenceArray}) AS recurrence_line(value)
-                 WHERE recurrence_line.value ~* '^RRULE[:;]'
+                 WHERE recurrence_line.value ~* '^(RRULE|RDATE)[:;]'
               )
             )
             OR (

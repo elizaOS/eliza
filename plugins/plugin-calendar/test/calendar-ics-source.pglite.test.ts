@@ -849,6 +849,58 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     );
   });
 
+  it("reports a partial feed for a series it cannot expand", async () => {
+    const source = await createSource();
+    await syncBody(
+      source.id,
+      calendar(
+        [
+          "BEGIN:VEVENT",
+          "UID:hourly-check",
+          "DTSTAMP:20260901T000000Z",
+          "DTSTART:20260901T100000Z",
+          "DTEND:20260901T101500Z",
+          "RRULE:FREQ=HOURLY",
+          "SUMMARY:Hourly check",
+          "END:VEVENT",
+          "BEGIN:VEVENT",
+          "UID:extra-dates",
+          "DTSTAMP:20260901T000000Z",
+          "DTSTART:20260902T100000Z",
+          "DTEND:20260902T110000Z",
+          "RDATE:20261014T100000Z",
+          "SUMMARY:Extra dates",
+          "END:VEVENT",
+        ].join("\r\n"),
+      ),
+    );
+    const read = (timeMin: string, timeMax: string) =>
+      service.getCalendarFeed(
+        new URL("http://internal.test/api/calendar"),
+        { grantId: source.id, timeMin, timeMax },
+        new Date(),
+      );
+
+    // Both series start before this window. Their later occurrences are
+    // missing, so the feed must not report a complete read.
+    const later = await read(
+      "2026-10-12T00:00:00.000Z",
+      "2026-10-19T00:00:00.000Z",
+    );
+    expect(later.events).toEqual([]);
+    expect(later.state).toBe("partial");
+
+    const first = await read(
+      "2026-09-01T00:00:00.000Z",
+      "2026-09-03T00:00:00.000Z",
+    );
+    expect(first.events.map((event) => event.title)).toEqual([
+      "Hourly check",
+      "Extra dates",
+    ]);
+    expect(first.state).toBe("partial");
+  });
+
   it("stops a monthly rule whose candidate months never contain its day", async () => {
     const source = await createSource();
     await syncBody(

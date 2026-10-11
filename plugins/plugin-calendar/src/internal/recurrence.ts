@@ -419,9 +419,10 @@ function* generateOccurrences(args: {
   rule: ParsedCalendarRecurrenceRule;
   startAt: Date;
   timeZone: string;
+  rangeStart?: Date;
   rangeEnd: Date;
 }): Generator<Date> {
-  const { rule, startAt, timeZone, rangeEnd } = args;
+  const { rule, startAt, timeZone, rangeStart, rangeEnd } = args;
   if (rule.beyondExpansionSubset) {
     throw new CalendarServiceError(
       400,
@@ -436,9 +437,11 @@ function* generateOccurrences(args: {
   }
   let anchor: ZonedDateParts;
   let rangeEndParts: ZonedDateParts;
+  let rangeStartParts: ZonedDateParts | undefined;
   try {
     anchor = getZonedDateParts(startAt, timeZone);
     rangeEndParts = getZonedDateParts(rangeEnd, timeZone);
+    if (rangeStart) rangeStartParts = getZonedDateParts(rangeStart, timeZone);
   } catch (error) {
     invalidExpansionDate("the timezone boundary cannot be resolved", error);
   }
@@ -457,6 +460,20 @@ function* generateOccurrences(args: {
     month: rangeEndParts.month,
     day: rangeEndParts.day,
   };
+  // An occurrence on a local date before this one ends more than a day before
+  // `rangeStart`, so the caller discards it. Such dates still count toward
+  // COUNT, but their instant is never resolved: an old daily series costs
+  // date arithmetic only, not one time zone lookup per past day.
+  const skipBeforeDate = rangeStartParts
+    ? addDaysToLocalDate(
+        {
+          year: rangeStartParts.year,
+          month: rangeStartParts.month,
+          day: rangeStartParts.day,
+        },
+        -1,
+      )
+    : undefined;
 
   let emitted = 0;
   const emitBudget = rule.count ?? Number.POSITIVE_INFINITY;
@@ -560,7 +577,17 @@ function* generateOccurrences(args: {
   if (emitted >= emitBudget) return;
 
   for (const date of localDates()) {
-    if (daysBetweenLocalDates(anchorDate, date) < 0) continue;
+    const daysAfterAnchor = daysBetweenLocalDates(anchorDate, date);
+    if (daysAfterAnchor < 0) continue;
+    if (
+      skipBeforeDate &&
+      daysAfterAnchor > 0 &&
+      compareLocalDates(date, skipBeforeDate) < 0
+    ) {
+      emitted += 1;
+      if (emitted >= emitBudget) return;
+      continue;
+    }
     const instant = toInstant(date);
     if (instant.getTime() >= rangeEndMs) return;
     if (instant.getTime() <= startMs) continue;
@@ -573,8 +600,10 @@ function* generateOccurrences(args: {
 
 /**
  * Expand a rule's occurrences from DTSTART up to `rangeEnd` (exclusive),
- * honoring COUNT/UNTIL termination. DST-correct: occurrences keep the DTSTART
- * wall-clock time in `timeZone` across transitions.
+ * honoring COUNT/UNTIL termination. With `rangeStart`, earlier occurrences
+ * count toward COUNT but are not returned and do not use the output cap.
+ * DST-correct: occurrences keep the DTSTART wall-clock time in `timeZone`
+ * across transitions.
  */
 export function expandRecurrenceOccurrences(args: {
   rule: ParsedCalendarRecurrenceRule;
@@ -615,7 +644,11 @@ export function nextRecurrenceOccurrence(args: {
       : new Date(
           Math.min(args.rule.untilMs + 1, MAX_ICS_RECURRENCE_INSTANT.getTime()),
         );
-  for (const instant of generateOccurrences({ ...args, rangeEnd: ruleEnd })) {
+  for (const instant of generateOccurrences({
+    ...args,
+    rangeStart: args.after,
+    rangeEnd: ruleEnd,
+  })) {
     if (instant.getTime() > args.after.getTime()) return instant;
   }
   return null;
