@@ -98,18 +98,20 @@ function flattenValue(value: unknown, depth = 0): string[] {
 }
 
 export function tokenizeFactText(text: string): string[] {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, " ")
-    .split(/\s+/)
-    .flatMap((token) => token.split("-"))
-    .map((token) => token.trim())
-    .filter((token) => {
-      if (!token) return false;
+  // Same token rule as the documents BM25 tokenizer in this plugin
+  // (`../documents/bm25.ts`, merged #35488): Unicode letters, combining
+  // marks, and numbers. An ASCII-only rule produced no tokens at all for
+  // Cyrillic, Hangul, Greek, or other non-Latin fact text, so those facts
+  // stored no keywords and a query in the same language built an empty
+  // query text that scored every fact 0. Punctuation (including hyphens)
+  // still separates tokens because it is outside the matched classes.
+  return (text.toLowerCase().match(/[\p{L}\p{M}\p{N}]+/gu) ?? []).filter(
+    (token) => {
       if (STOPWORDS.has(token)) return false;
-      if (/^\d+$/.test(token)) return token.length >= 2;
+      if (/^\p{N}+$/u.test(token)) return token.length >= 2;
       return token.length >= 3;
-    });
+    },
+  );
 }
 
 export function extractFactKeywords(...values: unknown[]): string[] {
