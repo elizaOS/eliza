@@ -16,7 +16,6 @@ import { handleCloudGoogleDelegationRoute } from "./cloud-google-delegation-rout
 import fs from "node:fs";
 import type http from "node:http";
 import { createRequire } from "node:module";
-import path from "node:path";
 import {
   AGENT_EVENT_ALLOWED_STREAMS,
   CONFIG_WRITE_ALLOWED_TOP_KEYS,
@@ -43,6 +42,7 @@ import {
   resolveDefaultAgentWorkspaceDir,
   resolveMcpServersRejection,
   resolvePluginConfigMutationRejections,
+  resolveResetPgliteDataDir,
   routeAutonomyTextToUser,
   saveElizaConfig,
   streamResponseBodyWithByteLimit,
@@ -57,9 +57,9 @@ import {
 } from "@elizaos/auth/auth";
 import {
   type AgentRuntime,
+  ElizaError,
   logger,
   resolveStateDir,
-  resolveUserPath,
 } from "@elizaos/core";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
@@ -276,22 +276,6 @@ function hydrateWalletOsStoreFlagFromConfig(): void {
 
 const RUNTIME_STOP_RESET_TIMEOUT_MS = 20_000;
 
-function resolveCompatPgliteDataDir(config: ElizaConfig): string {
-  const explicitDataDir = process.env.PGLITE_DATA_DIR?.trim();
-  if (explicitDataDir) {
-    return resolveUserPath(explicitDataDir);
-  }
-
-  const configuredDataDir = config.database?.pglite?.dataDir?.trim();
-  if (configuredDataDir) {
-    return resolveUserPath(configuredDataDir);
-  }
-
-  const workspaceDir =
-    config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
-  return path.join(resolveUserPath(workspaceDir), ".elizadb");
-}
-
 /**
  * Reset hop for `POST /api/agent/reset`. Deliberately operates entirely
  * in-process: stops the runtime then removes the PGlite data dir.
@@ -307,6 +291,11 @@ async function clearCompatPgliteDataDir(
   runtime: AgentRuntime | null,
   config: ElizaConfig,
 ): Promise<void> {
+  // Throws before the runtime stops when Reset cannot erase the active store.
+  const dataDir = resolveResetPgliteDataDir(
+    config,
+    resolveDefaultAgentWorkspaceDir(),
+  );
   if (typeof runtime?.stop === "function") {
     // `runtime.stop()` releases plugins/services to drop the PGlite write lock
     // before we delete the data dir. On mobile CPU with many plugins loaded it
@@ -332,11 +321,6 @@ async function clearCompatPgliteDataDir(
         clearTimeout(timeoutHandle);
       }
     }
-  }
-
-  const dataDir = resolveCompatPgliteDataDir(config);
-  if (path.basename(dataDir) !== ".elizadb") {
-    throw new Error(`Refusing to delete unexpected PGlite dir: ${dataDir}`);
   }
 
   if (fs.existsSync(dataDir)) {
@@ -832,9 +816,14 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
         logger.warn(
           `[eliza][reset] POST /api/agent/reset failed: ${err instanceof Error ? err.message : String(err)}`,
         );
-        sendJsonResponse(res, 500, {
-          error: err instanceof Error ? err.message : "Reset failed",
-        });
+        sendJsonResponse(
+          res,
+          err instanceof ElizaError &&
+            err.code === "AGENT_RESET_DATABASE_UNSUPPORTED"
+            ? 409
+            : 500,
+          { error: err instanceof Error ? err.message : "Reset failed" },
+        );
       }
       return true;
     },

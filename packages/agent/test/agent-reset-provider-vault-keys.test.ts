@@ -39,7 +39,10 @@ afterEach(async () => {
   fs.rmSync(stateDir, { recursive: true, force: true });
 });
 
-async function resetAgent(): Promise<number> {
+async function resetAgent(
+  runtime: unknown = null,
+  removed: string[] = [],
+): Promise<number> {
   let status = 0;
   await handleAgentAdminRoutes({
     req: {},
@@ -47,7 +50,7 @@ async function resetAgent(): Promise<number> {
     method: "POST",
     pathname: "/api/agent/reset",
     state: {
-      runtime: null,
+      runtime,
       config: {},
       agentState: "running",
       agentName: "Old",
@@ -64,9 +67,8 @@ async function resetAgent(): Promise<number> {
       status = code;
     },
     resolveStateDir: () => stateDir,
-    stateDirExists: () => false,
-    removeStateDir: () => {},
-    logWarn: () => {},
+    stateDirExists: () => true,
+    removeStateDir: (dir: string) => removed.push(dir),
   } as never);
   return status;
 }
@@ -162,4 +164,65 @@ it("reports a failed reset when a stored credential cannot be removed", async ()
 
   expect(await resetAgent()).toBe(500);
   expect(await vault.has("OPENAI_API_KEY")).toBe(true);
+});
+
+it("fails before stopping the agent when reset cannot erase the database", async () => {
+  const cases: Array<[string, object, Record<string, string>]> = [
+    [
+      "postgres",
+      {
+        database: {
+          provider: "postgres",
+          postgres: { connectionString: "postgres://127.0.0.1:5999/agent" },
+        },
+      },
+      {},
+    ],
+    ["sqlite", {}, { ELIZA_DATABASE_PROVIDER: "sqlite" }],
+    [
+      "custom PGlite directory",
+      {
+        database: {
+          provider: "pglite",
+          pglite: { dataDir: path.join(stateDir, "agent-data") },
+        },
+      },
+      {},
+    ],
+  ];
+  for (const [name, database, env] of cases) {
+    Object.assign(process.env, env);
+    fs.writeFileSync(
+      process.env.ELIZA_CONFIG_PATH as string,
+      JSON.stringify({ meta: { firstRunComplete: true }, ...database }),
+    );
+    let stopped = false;
+    const removed: string[] = [];
+    const status = await resetAgent(
+      {
+        stop: async () => {
+          stopped = true;
+        },
+      },
+      removed,
+    );
+    expect(status, name).toBe(409);
+    expect(stopped, name).toBe(false);
+    expect(removed, name).toEqual([]);
+    const config = JSON.parse(
+      fs.readFileSync(process.env.ELIZA_CONFIG_PATH as string, "utf8"),
+    );
+    expect(config.meta.firstRunComplete, name).toBe(true);
+    for (const key of Object.keys(env)) delete process.env[key];
+  }
+});
+
+it("erases the default PGlite directory", async () => {
+  fs.writeFileSync(
+    process.env.ELIZA_CONFIG_PATH as string,
+    JSON.stringify({ meta: { firstRunComplete: true } }),
+  );
+  const removed: string[] = [];
+  expect(await resetAgent(null, removed)).toBe(200);
+  expect(removed).toEqual([path.join(stateDir, "workspace", ".elizadb")]);
 });

@@ -2090,7 +2090,6 @@ async function handleRequestForViewClient(
       removeStateDir: (resolvedState) => {
         fs.rmSync(resolvedState, { recursive: true, force: true });
       },
-      logWarn: (message) => logger.warn(message),
     })
   ) {
     return;

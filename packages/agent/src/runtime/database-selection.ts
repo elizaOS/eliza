@@ -1,5 +1,6 @@
 /** Selects an explicit SQLite bootstrap without retaining a PostgreSQL fallback. */
 import { ElizaError, type Plugin } from "@elizaos/core";
+import type { ElizaConfig } from "@elizaos/host/protocol";
 
 export const SQLITE_PLUGIN = "@elizaos/plugin-sqlite";
 export const SQL_PLUGIN = "@elizaos/plugin-sql";
@@ -15,6 +16,27 @@ export function isSQLiteSelected(
     );
   }
   return provider === "sqlite";
+}
+
+/** The database backend this config boots with. */
+export function resolveEffectiveDbProvider(
+  config: ElizaConfig,
+): "postgres" | "pglite" | "sqlite" {
+  if (isSQLiteSelected()) {
+    if (config.database?.provider)
+      throw new ElizaError(
+        "Remove the PostgreSQL/PGlite database provider when selecting SQLite",
+        { code: "DATABASE_PROVIDER_CONFLICT" },
+      );
+    return "sqlite";
+  }
+  if (config.database?.provider) {
+    return config.database.provider === "postgres" ? "postgres" : "pglite";
+  }
+  if (process.env.POSTGRES_URL?.trim() || process.env.DATABASE_URL?.trim()) {
+    return "postgres";
+  }
+  return "pglite";
 }
 
 export function selectedDatabasePlugin(

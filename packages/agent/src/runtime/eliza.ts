@@ -171,6 +171,7 @@ import { BLOCKING_CORE_PLUGINS, CORE_PLUGINS } from "./core-plugins.ts";
 import { maybeInjectFault } from "./crash-injection.ts";
 import {
   isSQLiteSelected,
+  resolveEffectiveDbProvider,
   SQLITE_PLUGIN,
   selectDatabasePluginNames,
   selectedDatabasePlugin,
@@ -2516,25 +2517,6 @@ function resolveDefaultPgliteDataDir(config: ElizaConfig): string {
  * Keeping env authoritative makes the env-only Postgres path consistent across
  * applyDatabaseConfigToEnv, resolveActivePgliteDataDir, and the provider log.
  */
-function resolveEffectiveDbProvider(
-  config: ElizaConfig,
-): "postgres" | "pglite" | "sqlite" {
-  if (isSQLiteSelected()) {
-    if (config.database?.provider)
-      throw new ElizaError(
-        "Remove the PostgreSQL/PGlite database provider when selecting SQLite",
-        { code: "DATABASE_PROVIDER_CONFLICT" },
-      );
-    return "sqlite";
-  }
-  if (config.database?.provider) {
-    return config.database.provider === "postgres" ? "postgres" : "pglite";
-  }
-  if (process.env.POSTGRES_URL?.trim() || process.env.DATABASE_URL?.trim()) {
-    return "postgres";
-  }
-  return "pglite";
-}
 /** @internal Exported for testing. */
 export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
   const db = config.database;
