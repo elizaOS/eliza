@@ -79,6 +79,7 @@ export function isNotesOperation(value: unknown): value is NotesOperation {
   return (
     !!value &&
     typeof value === "object" &&
+    typeof (value as { type?: unknown }).type === "string" &&
     ["notes_read_selected", "notes_update", "notes_delete"].includes(
       String((value as { type?: unknown }).type),
     )
