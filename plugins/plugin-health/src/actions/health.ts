@@ -452,7 +452,7 @@ export const HEALTH_PARAMETERS: readonly ActionParameter[] = [
   {
     name: "days",
     description:
-      "Window size in days for trend and by_metric queries. by_metric does not read it when date is set.",
+      "Window size in days for trend and by_metric queries. Default: 7 for trend, 1 for by_metric. by_metric does not read it when date is set.",
     descriptionCompressed: "window days trend|by_metric",
     schema: { type: "number" as const, minimum: 1, maximum: 365 },
     examples: [1, 7, 30],
@@ -637,6 +637,20 @@ export function createHealthActionRunner(
       });
     }
 
+    // by_metric reads one window on both the bridge and the connector path,
+    // and names it in the reply.
+    const byMetricDays =
+      params.days && params.days > 0
+        ? Math.floor(params.days)
+        : (plannedDays ?? 1);
+    const byMetricWindowLabel =
+      params.date ?? `last ${byMetricDays} day${byMetricDays === 1 ? "" : "s"}`;
+    // The reply model reads this context; a dated read must not also claim a
+    // trailing `days` window.
+    const byMetricWindowContext = params.date
+      ? { date: params.date }
+      : { days: byMetricDays };
+
     const connectorStatus = await service.getHealthConnectorStatus();
     let healthSummary: LifeOpsHealthSummaryResponse | null = null;
     // A single-day read for a named date must fetch that day; the default
@@ -644,7 +658,9 @@ export function createHealthActionRunner(
     const summaryRequest =
       (subaction === "today" || subaction === "by_metric") && params.date
         ? { startDate: params.date, endDate: params.date }
-        : { days: plannedDays ?? params.days ?? 7 };
+        : subaction === "by_metric"
+          ? { days: byMetricDays }
+          : { days: plannedDays ?? params.days ?? 7 };
     try {
       healthSummary = await service.getHealthSummary(summaryRequest);
     } catch (error) {
@@ -746,8 +762,8 @@ export function createHealthActionRunner(
               scenario: "health_connector_by_metric",
               fallback: params.date
                 ? `No ${metric} data recorded by connected health providers on ${params.date}.`
-                : `No ${metric} data recorded by connected health providers.`,
-              context: { metric, sampleCount: 0 },
+                : `No ${metric} data recorded by connected health providers in the ${byMetricWindowLabel}.`,
+              context: { metric, ...byMetricWindowContext, sampleCount: 0 },
               values: {
                 success: true,
                 healthConnectedProviders: connectedProviders,
@@ -756,13 +772,14 @@ export function createHealthActionRunner(
             });
           }
           const aggregate = aggregateMetricPoints(metric, points);
-          const fallback = `${metric}${params.date ? ` on ${params.date}` : ""}: ${aggregate.label} ${aggregate.value.toFixed(2)} ${firstPoint.unit} across ${points.length} sample${points.length === 1 ? "" : "s"}.`;
+          const fallback = `${metric} — ${byMetricWindowLabel}: ${aggregate.label} ${aggregate.value.toFixed(2)} ${firstPoint.unit} across ${points.length} sample${points.length === 1 ? "" : "s"}.`;
           return respond({
             success: true,
             scenario: "health_connector_by_metric",
             fallback,
             context: {
               metric,
+              ...byMetricWindowContext,
               [aggregate.label]: aggregate.value,
               unit: firstPoint.unit,
               sampleCount: points.length,
@@ -844,23 +861,16 @@ export function createHealthActionRunner(
           data: { error: "MISSING_METRIC" },
         });
       }
-      const days =
-        params.days && params.days > 0
-          ? Math.floor(params.days)
-          : (plannedDays ?? 1);
       // A named date reads that local calendar day; otherwise the trailing
       // `days` window ending now.
       const { startAt, endAt } = dayBounds ?? {
         startAt: new Date(
-          Date.now() - days * 24 * 60 * 60 * 1000,
+          Date.now() - byMetricDays * 24 * 60 * 60 * 1000,
         ).toISOString(),
         endAt: new Date().toISOString(),
       };
-      const windowLabel =
-        params.date ?? `last ${days} day${days === 1 ? "" : "s"}`;
-      // The reply model reads this context; a dated read must not also claim a
-      // trailing `days` window.
-      const windowContext = params.date ? { date: params.date } : { days };
+      const windowLabel = byMetricWindowLabel;
+      const windowContext = byMetricWindowContext;
       const points = await service.getHealthDataPoints(
         { metric, startAt, endAt },
         { timeZone },
