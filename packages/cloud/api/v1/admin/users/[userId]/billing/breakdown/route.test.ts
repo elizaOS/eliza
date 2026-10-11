@@ -1,3 +1,9 @@
+/**
+ * The admin billing breakdown reads `usage_records` rows shaped like the ones
+ * the chat and voice writers store (marked-up charge in input/output cost,
+ * platform share in `markup`) through the real route against PGlite. Only the
+ * database handle and admin auth are replaced.
+ */
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { PGlite } from "@electric-sql/pglite";
 import { usageRecords } from "@elizaos/cloud-shared/db/schemas/usage-records";

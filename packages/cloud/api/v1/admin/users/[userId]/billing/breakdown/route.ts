@@ -13,9 +13,9 @@ import { Hono } from "hono";
 import { z } from "zod";
 
 /**
- * Month-to-date cost breakdown for a single user: rawCost (input+output
- * provider cost), markup (platform markup already captured in
- * `usage_records.markup`), and billedCost (rawCost + markup), grouped by
+ * Month-to-date cost breakdown for a single user: billedCost (the recorded
+ * input+output charge, which already includes the platform markup), markup
+ * (`usage_records.markup`), and rawCost (billedCost - markup), grouped by
  * type/provider. Read-only endpoint for admin support / billing audits.
  */
 

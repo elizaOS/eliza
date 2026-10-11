@@ -1,3 +1,10 @@
+/**
+ * A delivered Twilio SMS reply is recorded by the real webhook usage writer
+ * (PGlite) at its marked-up charge, the convention every `usage_records`
+ * reader sums, and the admin billing breakdown reports it once. The agent
+ * gateway, outbound send, Twilio auth-token lookup, rate limit and admin auth
+ * are replaced; no provider is contacted.
+ */
 import { afterAll, beforeAll, expect, mock, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
@@ -118,6 +125,17 @@ test("a delivered Twilio SMS reply is reported at its marked-up charge in the ad
     executionCtx as never,
   );
   expect(webhook.status).toBe(200);
+
+  const stored = await getPgliteClientForTests().query<{
+    input_cost: string;
+    output_cost: string;
+    markup: string;
+  }>(
+    "SELECT input_cost, output_cost, markup FROM usage_records WHERE type = 'twilio_sms'",
+  );
+  expect(stored.rows).toEqual([
+    { input_cost: "0.900000", output_cost: "0.000000", markup: "0.150000" },
+  ]);
 
   const response = await app.request(
     `/admin/users/${userId}/billing/breakdown`,
