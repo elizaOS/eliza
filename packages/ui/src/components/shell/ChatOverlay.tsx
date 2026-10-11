@@ -1801,6 +1801,7 @@ export function ChatOverlay({
         isLastAssistant
           ? {
               turnStatus: isInFlight ? turnStatus : null,
+              streaming: responding,
             }
           : undefined;
       return (

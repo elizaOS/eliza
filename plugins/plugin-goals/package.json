@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-goals",
   "version": "2.0.3-beta.7",
   "type": "module",
-  "description": "Life direction plugin: owner-set long-horizon goals, recurring routines, reminders, alarms, daily check-ins, plus a self-care/mood/journal panel.",
+  "description": "Life direction plugin: owner-set long-horizon goals with per-goal check-ins, and the goals list view.",
   "main": "./dist/index.js",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",

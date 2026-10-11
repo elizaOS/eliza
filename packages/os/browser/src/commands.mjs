@@ -249,6 +249,25 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
               : {}),
       };
     };
+    // A page can copy what was typed in a secret field into its own text, its
+    // title or a control's name. The values are compared here, in the page, and
+    // every copy is replaced before anything is returned. Very short values are
+    // not compared: they would match ordinary words.
+    const secrets = [
+      ...new Set(
+        [...document.querySelectorAll("input,textarea")]
+          .filter((node) => sensitivity(node) !== null)
+          .map((node) => node.value)
+          .filter((value) => typeof value === "string" && value.length >= 4),
+      ),
+    ].sort((left, right) => right.length - left.length);
+    const withoutSecrets = (value) =>
+      typeof value === "string"
+        ? secrets.reduce(
+            (text, secret) => text.split(secret).join("[hidden]"),
+            value,
+          )
+        : value;
     const nodes = new Map();
     const elements = [];
     const candidates = document.querySelectorAll(
@@ -264,16 +283,20 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         bounds: geometry,
         value: typeof node.value === "string" ? node.value : null,
       });
+      const state = controlState(node);
       elements.push({
         bounds: geometry,
         id,
         tag: node.tagName.toLowerCase(),
         role: node.getAttribute("role"),
-        label: accessibleName(node),
+        label: withoutSecrets(accessibleName(node)),
         type: node.getAttribute("type"),
-        ...controlState(node),
+        ...state,
+        description: withoutSecrets(state.description),
         heading: node.querySelector("h1,h2,h3,h4,h5,h6")
-          ? readVisibleText(node.querySelector("h1,h2,h3,h4,h5,h6"))
+          ? withoutSecrets(
+              readVisibleText(node.querySelector("h1,h2,h3,h4,h5,h6")),
+            )
           : null,
         href:
           node instanceof HTMLAnchorElement && /^https?:/.test(node.href)
@@ -298,15 +321,18 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         ? { effectViolation: violation.kind }
         : {}),
       url: location.href,
-      title: document.title,
+      title: withoutSecrets(document.title),
       readyState: document.readyState,
       domRevision: monitor.domRevision,
       inputRevision: monitor.inputRevision,
       viewport: viewport(),
-      text: readVisibleText(document.body ?? document.documentElement),
+      text: withoutSecrets(
+        readVisibleText(document.body ?? document.documentElement),
+      ),
       complete: true,
       omitted: [
         "form control values and editable region contents (credential boundary)",
+        "page text, title and control names equal to the value of a password, code or card field",
       ],
       elements,
     };
@@ -416,6 +442,14 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
   }
   if (command.subaction === "fill" && (node.disabled || node.readOnly))
     return denied();
+  // A control the provider disabled stays as the provider left it. A script
+  // click on an aria-disabled control would still run the page's handlers.
+  if (
+    policy &&
+    command.subaction === "click" &&
+    node.matches(':disabled,[aria-disabled="true"]')
+  )
+    return denied();
   if (validateOnly) return { validated: true };
   if (policy?.actionId) {
     const feedback = globalThis.__elizaPageGuidanceV1;
@@ -478,6 +512,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     const person = (event) => {
       if (event.isTrusted) personAt = performance.now();
     };
+    const personForms = new WeakSet();
     window.addEventListener("pointerdown", person, options);
     window.addEventListener("keydown", person, options);
     const activate = (event) => {
@@ -488,16 +523,49 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       );
       if (control?.matches(':disabled,[aria-disabled="true"]')) return;
       const keyboard = event.type === "keydown";
+      const fields =
+        "textarea,select,input:not([type=submit]):not([type=button]):not([type=reset])";
+      const field = target.isContentEditable || target.matches(fields);
+      // A custom control (no button element or button role) can send its form
+      // from script seconds later. Her press on such a control makes that form
+      // hers for the rest of this watch. Only an element that presents itself
+      // as a control counts: a widget role, a tabindex, an inline click
+      // handler, or a pointer cursor on the pressed element. A press on the
+      // form's own padding, on plain text, on a field, on a label, or on an
+      // element that wraps a field is a stray tap and releases nothing.
+      const form = target.closest("form");
+      if (
+        !keyboard &&
+        form &&
+        target !== form &&
+        !field &&
+        !target.closest("label")
+      ) {
+        for (
+          let item = target;
+          item && item !== form;
+          item = item.parentElement
+        ) {
+          if (item.querySelector(fields) || item.querySelector("label")) break;
+          if (
+            item === control ||
+            item.matches(
+              '[tabindex],[onclick],[role="menuitem"],[role="option"],[role="switch"],[role="checkbox"],[role="radio"],[role="tab"]',
+            ) ||
+            (item === target && getComputedStyle(item).cursor === "pointer")
+          ) {
+            if (!item.matches('[aria-disabled="true"]')) personForms.add(form);
+            break;
+          }
+        }
+      }
       const enterForm =
         event.key === "Enter" &&
         target instanceof HTMLInputElement &&
         target.form;
       const controlKey =
         control &&
-        !target.isContentEditable &&
-        !target.matches(
-          "textarea,select,input:not([type=submit]):not([type=button]):not([type=reset])",
-        ) &&
+        !field &&
         (event.key === "Enter" ||
           (event.key === " " && !control.matches('a[href],[role="link"]')));
       if (keyboard ? !controlKey && !enterForm : !control) return;
@@ -507,7 +575,9 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     window.addEventListener("keydown", activate, options);
     window.addEventListener(
       "submit",
-      (event) => report("submit", event),
+      (event) => {
+        if (!personForms.has(event.target)) report("submit", event);
+      },
       options,
     );
     globalThis.navigation?.addEventListener(
@@ -515,7 +585,10 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       (event) => {
         if (
           event.userInitiated ||
-          (anchor && !event.formData && event.destination.url === anchor.href)
+          (anchor &&
+            !event.formData &&
+            event.destination.url === anchor.href) ||
+          personForms.has(event.sourceElement?.form ?? event.sourceElement)
         )
           return;
         if (event.destination.sameDocument) {

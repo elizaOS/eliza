@@ -91,6 +91,8 @@ interface ServiceTrajectoryStep {
 interface ServiceTrajectory {
   trajectoryId: string;
   agentId: string;
+  scenarioId?: string;
+  batchId?: string;
   startTime: number;
   endTime?: number;
   steps: ServiceTrajectoryStep[];
@@ -335,6 +337,8 @@ function detailToUi(
       ...(typeof metadata.source === "string"
         ? { source: metadata.source }
         : {}),
+      scenarioId: traj.scenarioId ?? null,
+      batchId: traj.batchId ?? null,
       roomId: metadataRoomId(metadata),
       entityId: metadataEntityId(metadata),
       metadata,
@@ -394,8 +398,8 @@ export async function tryHandleTrajectoryReadRoutes(options: {
   if (method !== "GET" || !pathname.startsWith("/api/trajectories")) {
     return false;
   }
-  // Only the read routes the viewer needs belong to this boundary. Unsupported
-  // mutation and export paths fall through for the API host to reject.
+  // Only the read routes the viewer needs belong to this boundary. Config,
+  // export and delete paths fall through to the API host's management routes.
   const isList = pathname === "/api/trajectories";
   let isStats = pathname === "/api/trajectories/stats";
   const idMatch = pathname.match(/^\/api\/trajectories\/([^/]+)$/);

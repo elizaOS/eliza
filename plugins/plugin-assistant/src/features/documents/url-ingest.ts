@@ -25,6 +25,7 @@ import {
   normalizeHostLike,
   stripHtmlRawTextElements,
 } from "@elizaos/core";
+import { decodeHttpText } from "../../utils/http-text.ts";
 
 const MAX_URL_IMPORT_BYTES = 10 * 1024 * 1024; // 10 MB
 const MAX_YOUTUBE_WATCH_PAGE_BYTES = 2 * 1024 * 1024; // 2 MB
@@ -643,7 +644,7 @@ export async function fetchDocumentFromUrl(
     };
   }
 
-  const text = new TextDecoder().decode(buffer);
+  const text = decodeHttpText(buffer, mimeType);
   return {
     filename,
     content: kind === "html" ? htmlToPlainText(text) : text,

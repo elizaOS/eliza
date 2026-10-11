@@ -457,6 +457,62 @@ describe("browser workspace web-mode real-code command flow", () => {
     expect(title.value).toBe("");
   });
 
+  it("closes a method=dialog form without a request and sends an invalid method as GET", async () => {
+    const tab = await openBrowserWorkspaceTab({ url: "about:blank" }, webEnv);
+    const page = "https://example.test/confirm";
+    const html = `<dialog open><form method="dialog"><button id="ok" value="yes">OK</button></form></dialog>
+      <form action="/item" method="put"><input name="q" value="1"><button id="put">Go</button></form>`;
+    for (const [url, responseBody] of [
+      [page, html],
+      ["https://example.test/item?q=1", "<h1>Item</h1>"],
+    ]) {
+      await executeBrowserWorkspaceCommand(
+        {
+          id: tab.id,
+          subaction: "network",
+          networkAction: "route",
+          url,
+          responseBody,
+        },
+        webEnv,
+      );
+    }
+    await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "navigate", url: page },
+      webEnv,
+    );
+    const clicked = await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "click", selector: "#ok" },
+      webEnv,
+    );
+    expect(clicked.tab?.url).toBe(page);
+    const openDialogs = await executeBrowserWorkspaceCommand(
+      {
+        id: tab.id,
+        subaction: "get",
+        selector: "dialog[open]",
+        getMode: "count",
+      },
+      webEnv,
+    );
+    expect(openDialogs.value).toBe(0);
+    const requests = await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "network", networkAction: "requests" },
+      webEnv,
+    );
+    expect(
+      (requests.value as Array<{ method: string; url: string }>).map(
+        (request) => `${request.method} ${request.url}`,
+      ),
+    ).toEqual([`GET ${page}`]);
+
+    const put = await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "click", selector: "#put" },
+      webEnv,
+    );
+    expect(put.tab?.url).toBe("https://example.test/item?q=1");
+  });
+
   it("preserves semantic page content beyond the former fixed snapshot ceiling", async () => {
     const tab = await openBrowserWorkspaceTab(
       { show: true, url: "about:blank" },

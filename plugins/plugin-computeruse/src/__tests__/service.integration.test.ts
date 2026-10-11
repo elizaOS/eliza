@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { AgentRuntime } from "@elizaos/core";
+import type { AgentRuntime, Content, Memory } from "@elizaos/core";
 import {
   afterAll,
   afterEach,
@@ -22,6 +22,15 @@ import {
   startComputerUseRuntime,
   stopComputerUseRuntime,
 } from "../../test/helpers/service-runtime.ts";
+import { clipboardAction } from "../actions/clipboard.js";
+import {
+  type ComputerUseAgentReport,
+  computerUseAgentAction,
+  runComputerUseAgentLoop,
+} from "../actions/use-computer-agent.js";
+import type { AgentLoop } from "../actor/agent-loop.js";
+import type { ComputerInterface } from "../actor/computer-interface.js";
+import type { Scene } from "../scene/scene-types.js";
 import {
   ComputerUseService,
   parseComputerUseActionTimeoutMs,
@@ -386,6 +395,91 @@ describe("ComputerUseService validates input before the approval gate", () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain("windowId");
     expect(result.error).not.toContain("paused");
+  }, 10_000);
+
+  it("blocks a COMPUTER_USE_AGENT step while computer use is paused", async () => {
+    const display = {
+      id: 1,
+      bounds: [0, 0, 800, 600] as [number, number, number, number],
+      scaleFactor: 1,
+      primary: true,
+      name: "test-display",
+    };
+    const scene: Scene = {
+      timestamp: Date.now(),
+      displays: [display],
+      focused_window: null,
+      apps: [],
+      ocr: [],
+      ax: [],
+      vlm_scene: null,
+      vlm_elements: null,
+    };
+    // Scene and display reads are fixed so no host capture runs; the approval
+    // gate is the real service's.
+    const gatedService = {
+      refreshScene: async () => scene,
+      getCurrentScene: () => scene,
+      getDisplays: () => [display],
+      setSceneVlmAnnotations: () => {},
+      awaitApproval: service.awaitApproval.bind(service),
+    } as unknown as ComputerUseService;
+    const driverCalls: string[] = [];
+    const computerInterface = new Proxy(
+      {},
+      {
+        get: (_target, name) => async () => {
+          driverCalls.push(String(name));
+        },
+      },
+    ) as ComputerInterface;
+    const loop: AgentLoop = {
+      name: "fixed-click",
+      predictStep: async () => ({
+        scene_summary: "a dialog with a save button",
+        proposed: {
+          kind: "click",
+          displayId: display.id,
+          x: 10,
+          y: 10,
+          rationale: "click save",
+        },
+        rois: [],
+      }),
+      predictClick: async () => null,
+    };
+
+    const report = await runComputerUseAgentLoop(
+      runtime,
+      { goal: "click the save button" },
+      gatedService,
+      {
+        loop,
+        computerInterface,
+        captureAll: async () => [{ display, frame: Buffer.from("frame") }],
+      },
+    );
+
+    expect(report.reason).toBe("error");
+    expect(report.error).toContain("paused");
+    expect(driverCalls).toEqual([]);
+  }, 10_000);
+
+  it("blocks CLIPBOARD read and write while computer use is paused", async () => {
+    for (const parameters of [
+      { action: "read" },
+      { action: "write", text: "must not reach the clipboard" },
+    ]) {
+      const result = await clipboardAction.handler(
+        runtime,
+        { content: {} } as Memory,
+        undefined,
+        { parameters },
+      );
+
+      expect(result?.success).toBe(false);
+      expect(result?.text).toContain("paused");
+    }
   }, 10_000);
 });
 
@@ -833,6 +927,100 @@ describe("ComputerUseService file and terminal execution (real host I/O)", () =>
       height: 100,
     });
     expect(typeof bounded.success).toBe("boolean");
+  }, 20_000);
+
+  it("drops a pending approval when the caller's signal aborts", async () => {
+    const target = path.join(workdir, "cancelled.txt");
+    expect(service.setApprovalMode("smart_approve")).toBe("smart_approve");
+    try {
+      const controller = new AbortController();
+      const pending = service.executeCommand(
+        "file_write",
+        { path: target, content: "must not be written" },
+        controller.signal,
+      );
+      await expect
+        .poll(() => service.getApprovalSnapshot().pendingCount)
+        .toBe(1);
+      const [approval] = service.getApprovalSnapshot().pendingApprovals;
+
+      controller.abort();
+      const result = await pending;
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("approval cancelled");
+      expect(service.getApprovalSnapshot().pendingCount).toBe(0);
+      // A late Approve click must not run the cancelled action.
+      expect(service.resolveApproval(approval.id, true)).toBeNull();
+      expect(fs.existsSync(target)).toBe(false);
+    } finally {
+      service.setApprovalMode("full_control");
+    }
+  }, 20_000);
+
+  it("relays a pending CLIPBOARD approval to the chat callback", async () => {
+    expect(service.setApprovalMode("smart_approve")).toBe("smart_approve");
+    try {
+      const relayed: Array<{ content: Content; actionName?: string }> = [];
+      const pending = clipboardAction.handler(
+        runtime,
+        {
+          content: {},
+          metadata: { telegramUserId: "4242" },
+        } as unknown as Memory,
+        undefined,
+        { parameters: { action: "write", text: "must not be written" } },
+        async (content, actionName) => {
+          relayed.push({ content, actionName });
+          return [];
+        },
+      );
+      await expect
+        .poll(() => service.getApprovalSnapshot().pendingCount)
+        .toBe(1);
+      const [approval] = service.getApprovalSnapshot().pendingApprovals;
+      await expect.poll(() => relayed.length).toBe(1);
+
+      expect(approval.command).toBe("clipboard_write");
+      expect(relayed[0].actionName).toBe("COMPUTER_USE_APPROVAL");
+      // The connector parses these callback values to resolve the approval.
+      expect(relayed[0].content.text).toContain(
+        `cua:${approval.id}:approve:u4242=Approve`,
+      );
+      expect(relayed[0].content.text).toContain(
+        `cua:${approval.id}:deny:u4242=Deny`,
+      );
+
+      // Deny, so the host clipboard is not written.
+      service.resolveApproval(approval.id, false);
+      const result = await pending;
+
+      expect(result?.success).toBe(false);
+      expect(result?.text).toContain("approval rejected");
+    } finally {
+      service.setApprovalMode("full_control");
+    }
+  }, 20_000);
+
+  it("ends COMPUTER_USE_AGENT when the turn's signal is aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    const result = await computerUseAgentAction.handler(
+      runtime,
+      { content: {} } as Memory,
+      undefined,
+      {
+        parameters: { goal: "click the save button" },
+        abortSignal: controller.signal,
+      },
+    );
+
+    expect(result?.success).toBe(false);
+    expect(result?.error).toContain("cancelled by its owner");
+    const report = result?.data?.report as ComputerUseAgentReport;
+    expect(report.reason).toBe("cancelled");
+    expect(report.steps).toEqual([]);
   }, 20_000);
 
   it("exposes approval and display introspection", () => {

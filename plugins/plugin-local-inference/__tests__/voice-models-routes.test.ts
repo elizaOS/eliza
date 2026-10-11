@@ -544,7 +544,7 @@ describe("POST /api/local-inference/voice-models/:id/update", () => {
 });
 
 describe("preferences route + OWNER gate", () => {
-	it("GET returns defaults when no prefs file exists and isOwner=false without admin id", async () => {
+	it("GET returns defaults when no prefs file exists and reports no owner flag", async () => {
 		const { res, captured } = makeRes();
 		await handleVoiceModelsRoutes(
 			makeReq({
@@ -555,10 +555,9 @@ describe("preferences route + OWNER gate", () => {
 		);
 		const body = (await readJson(captured)) as {
 			preferences: { autoUpdateOnWifi: boolean };
-			isOwner: boolean;
 		};
 		expect(body.preferences.autoUpdateOnWifi).toBe(true);
-		expect(body.isOwner).toBe(false);
+		expect(body).not.toHaveProperty("isOwner");
 	});
 
 	it("non-owner POST cannot flip autoUpdateOnCellular to true", async () => {
@@ -594,7 +593,59 @@ describe("preferences route + OWNER gate", () => {
 		expect(body.preferences.autoUpdateOnWifi).toBe(false);
 	});
 
-	it("OWNER POST can flip cellular when admin id matches the header", async () => {
+	it("OWNER POST can flip cellular when the host resolver authorizes the caller", async () => {
+		const { res, captured } = makeRes();
+		let resolverCalls = 0;
+		await handleVoiceModelsRoutes(
+			makeReq({
+				method: "POST",
+				url: "/api/local-inference/voice-models/preferences",
+				body: JSON.stringify({ autoUpdateOnCellular: true }),
+				headers: { "content-type": "application/json" },
+			}),
+			res,
+			{
+				authorizeOwnerRequest: async () => {
+					resolverCalls += 1;
+					return true;
+				},
+			},
+		);
+		expect(resolverCalls).toBe(1);
+		expect(captured.statusCode).toBe(200);
+		const body = (await readJson(captured)) as {
+			preferences: { autoUpdateOnCellular: boolean };
+		};
+		expect(body.preferences.autoUpdateOnCellular).toBe(true);
+	});
+
+	it("POST is rejected and nothing is written when the host resolver denies the caller", async () => {
+		const { res, captured } = makeRes();
+		await handleVoiceModelsRoutes(
+			makeReq({
+				method: "POST",
+				url: "/api/local-inference/voice-models/preferences",
+				body: JSON.stringify({ autoUpdateOnMetered: true }),
+				headers: { "content-type": "application/json" },
+			}),
+			res,
+			{
+				authorizeOwnerRequest: async (_req, response) => {
+					response.statusCode = 403;
+					response.end(JSON.stringify({ error: "Insufficient role" }));
+					return false;
+				},
+			},
+		);
+		expect(captured.statusCode).toBe(403);
+		expect(
+			fs.existsSync(
+				path.join(tmpRoot, "local-inference", "voice-update-prefs.json"),
+			),
+		).toBe(false);
+	});
+
+	it("a client-supplied entity id header does not grant the owner toggles", async () => {
 		process.env.ELIZA_ADMIN_ENTITY_ID = "ent_owner_uuid";
 		const { res, captured } = makeRes();
 		await handleVoiceModelsRoutes(
@@ -609,28 +660,28 @@ describe("preferences route + OWNER gate", () => {
 			}),
 			res,
 		);
-		expect(captured.statusCode).toBe(200);
-		const body = (await readJson(captured)) as {
-			preferences: { autoUpdateOnCellular: boolean };
-		};
-		expect(body.preferences.autoUpdateOnCellular).toBe(true);
+		expect(captured.statusCode).toBe(403);
 	});
 
-	it("OWNER POST is rejected when the header entity id mismatches", async () => {
-		process.env.ELIZA_ADMIN_ENTITY_ID = "ent_owner_uuid";
+	it("Wi-Fi-only changes do not consult the owner resolver", async () => {
 		const { res, captured } = makeRes();
+		let resolverCalls = 0;
 		await handleVoiceModelsRoutes(
 			makeReq({
 				method: "POST",
 				url: "/api/local-inference/voice-models/preferences",
-				body: JSON.stringify({ autoUpdateOnMetered: true }),
-				headers: {
-					"content-type": "application/json",
-					"x-eliza-entity-id": "ent_NOT_owner",
-				},
+				body: JSON.stringify({ autoUpdateOnWifi: false }),
+				headers: { "content-type": "application/json" },
 			}),
 			res,
+			{
+				authorizeOwnerRequest: async () => {
+					resolverCalls += 1;
+					return false;
+				},
+			},
 		);
-		expect(captured.statusCode).toBe(403);
+		expect(captured.statusCode).toBe(200);
+		expect(resolverCalls).toBe(0);
 	});
 });

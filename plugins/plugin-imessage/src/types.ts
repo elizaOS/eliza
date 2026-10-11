@@ -129,6 +129,12 @@ export interface IMessageSendOptions {
   mediaUrls?: string[];
   /** Max bytes for media */
   maxBytes?: number;
+  /**
+   * Stable Blooio idempotency key prefix for a send that can be repeated, such
+   * as a reply to a redelivered webhook. Each text chunk appends its index.
+   * Omit for a one-off send; a random key is used.
+   */
+  idempotencyKey?: string;
 }
 
 /**

@@ -2,8 +2,11 @@
  * Wire types and fetch wrappers for trajectory logger routes.
  * The core trajectory API may return larger payloads, but this client types only
  * the fields the widget reads and tolerates extra route fields.
+ * Requests go through the shared app client so they use the selected agent's
+ * API base, credentials and transport, like the main Trajectories view.
  */
 import type { InferenceTimingDevPayload } from "@elizaos/core";
+import { client, isApiError } from "@elizaos/ui";
 
 export interface TrajectoryListItem {
   id: string;
@@ -82,133 +85,47 @@ export interface TrajectoryDetail {
   }[];
 }
 
-function toWellFormedUnicodeLocal(text: string): string {
-  const maybe = text as unknown as {
-    toWellFormed?: () => string;
-    isWellFormed?: () => boolean;
-  };
-  if (typeof maybe.toWellFormed === "function") return maybe.toWellFormed();
-  if (typeof maybe.isWellFormed === "function" && maybe.isWellFormed())
-    return text;
-  let out = "";
-  for (let i = 0; i < text.length; i++) {
-    const code = text.charCodeAt(i);
-    const isHigh = code >= 0xd800 && code <= 0xdbff;
-    const isLow = code >= 0xdc00 && code <= 0xdfff;
-    if (isHigh) {
-      if (i + 1 < text.length) {
-        const next = text.charCodeAt(i + 1);
-        if (next >= 0xdc00 && next <= 0xdfff) {
-          out += text[i] + text[i + 1];
-          i++;
-          continue;
-        }
-      }
-      out += "�";
-    } else if (isLow) {
-      out += "�";
-    } else {
-      out += text[i];
-    }
-  }
-  return out;
-}
-
-function truncateWellFormedLocal(text: string, maxLength: number): string {
-  if (!Number.isFinite(maxLength) || maxLength <= 0) return "";
-  if (text.length <= maxLength) return text;
-  const end =
-    text.charCodeAt(maxLength - 1) >= 0xd800 &&
-    text.charCodeAt(maxLength - 1) <= 0xdbff &&
-    text.charCodeAt(maxLength) >= 0xdc00 &&
-    text.charCodeAt(maxLength) <= 0xdfff
-      ? maxLength - 1
-      : maxLength;
-  return text.slice(0, end);
-}
-
 /**
- * HTTP error from a trajectory route, carrying the response status so callers
- * can distinguish a "service not mounted" surface (404/503 — the training
- * plugin that serves `/api/trajectories*` is absent) from a genuine failure.
+ * True when a trajectory request failed because the routes are not mounted on
+ * this agent (404/503 - the provider plugin is absent) rather than a genuine
+ * request failure.
  */
-export class TrajectoryHttpError extends Error {
-  readonly status: number;
-
-  constructor(status: number, statusText: string, body: string) {
-    const errorBodyPreview = body
-      ? truncateWellFormedLocal(toWellFormedUnicodeLocal(body), 200)
-      : "";
-    super(
-      `[trajectory-logger] ${status} ${statusText}${errorBodyPreview ? `: ${errorBodyPreview}` : ""}`,
-    );
-    this.name = "TrajectoryHttpError";
-    this.status = status;
-  }
-
-  /**
-   * True when the status means the trajectory routes are not available on this
-   * surface (the provider plugin is not loaded) rather than a request failure.
-   */
-  get isUnavailable(): boolean {
-    return this.status === 404 || this.status === 503;
-  }
+export function isTrajectoryRouteUnavailable(err: unknown): boolean {
+  return isApiError(err) && (err.status === 404 || err.status === 503);
 }
 
-async function readJson<T>(res: Response): Promise<T> {
-  if (!res.ok) {
-    let errorBodyPreview: string;
-    try {
-      const body = await res.text();
-      errorBodyPreview = body;
-    } catch {
-      // error-policy:J1 translate body-read failure explicitly without fabricating an empty body.
-      errorBodyPreview = "[unreadable]";
-    }
-    throw new TrajectoryHttpError(res.status, res.statusText, errorBodyPreview);
-  }
-  return (await res.json()) as T;
-}
+/** Each GET is an independent hop with its own 15s deadline. */
+const TRAJECTORY_FETCH_TIMEOUT_MS = 15_000;
 
-/** List GET — same 15s Fal #21205 family. Independent hop. */
-const TRAJECTORY_LIST_FETCH_TIMEOUT_MS = 15_000;
-/** Detail GET — independent hop, own 15s deadline. */
-const TRAJECTORY_DETAIL_FETCH_TIMEOUT_MS = 15_000;
-
-function composeTrajectoryFetchSignal(
-  caller: AbortSignal | undefined,
-  timeoutMs: number,
-): AbortSignal {
-  const deadline = AbortSignal.timeout(timeoutMs);
-  return caller ? AbortSignal.any([caller, deadline]) : deadline;
+function getTrajectoryJson<T>(
+  path: string,
+  signal: AbortSignal | undefined,
+): Promise<T> {
+  return client.fetch<T>(
+    path,
+    { method: "GET", signal },
+    { timeoutMs: TRAJECTORY_FETCH_TIMEOUT_MS },
+  );
 }
 
 export async function fetchTrajectoryList(
   options: { limit?: number; signal?: AbortSignal } = {},
 ): Promise<TrajectoryListResult> {
   const limit = options.limit ?? 10;
-  const res = await fetch(`/api/trajectories?limit=${limit}`, {
-    headers: { Accept: "application/json" },
-    signal: composeTrajectoryFetchSignal(
-      options.signal,
-      TRAJECTORY_LIST_FETCH_TIMEOUT_MS,
-    ),
-  });
-  return readJson<TrajectoryListResult>(res);
+  return getTrajectoryJson<TrajectoryListResult>(
+    `/api/trajectories?limit=${limit}`,
+    options.signal,
+  );
 }
 
 export async function fetchTrajectoryDetail(
   id: string,
   options: { signal?: AbortSignal } = {},
 ): Promise<TrajectoryDetail> {
-  const res = await fetch(`/api/trajectories/${encodeURIComponent(id)}`, {
-    headers: { Accept: "application/json" },
-    signal: composeTrajectoryFetchSignal(
-      options.signal,
-      TRAJECTORY_DETAIL_FETCH_TIMEOUT_MS,
-    ),
-  });
-  return readJson<TrajectoryDetail>(res);
+  return getTrajectoryJson<TrajectoryDetail>(
+    `/api/trajectories/${encodeURIComponent(id)}`,
+    options.signal,
+  );
 }
 
 /** Optional local diagnostics. Join by recorded identity, never timestamp proximity. */
@@ -216,14 +133,10 @@ export async function fetchTrajectoryTiming(
   id: string,
   options: { signal?: AbortSignal } = {},
 ): Promise<Pick<InferenceTimingDevPayload, "turns" | "flows">> {
-  const res = await fetch("/api/dev/inference-timing?limit=200", {
-    headers: { Accept: "application/json" },
-    signal: composeTrajectoryFetchSignal(
-      options.signal,
-      TRAJECTORY_DETAIL_FETCH_TIMEOUT_MS,
-    ),
-  });
-  const payload = await readJson<InferenceTimingDevPayload>(res);
+  const payload = await getTrajectoryJson<InferenceTimingDevPayload>(
+    "/api/dev/inference-timing?limit=200",
+    options.signal,
+  );
   const turns = payload.turns.filter((turn) =>
     turn.spans.some((span) => span.meta?.trajectoryId === id),
   );

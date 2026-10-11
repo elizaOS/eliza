@@ -29,6 +29,7 @@ import {
 import { v4 } from "uuid";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 import { extractUrls } from "../../../utils/extract-urls.ts";
+import { decodeHttpText } from "../../../utils/http-text.ts";
 
 const EVALUATOR_NAME = "linkExtraction";
 const EVALUATOR_SOURCE = "link_extraction_evaluator";
@@ -236,7 +237,10 @@ async function fetchLinkPreview(
     if (!/text\/html|application\/xhtml/i.test(contentType)) {
       return null;
     }
-    const html = await response.text();
+    const html = decodeHttpText(
+      new Uint8Array(await response.arrayBuffer()),
+      contentType,
+    );
     const title = extractTitle(html);
     const bodyChunk = stripTags(html);
     return { title, bodyChunk };

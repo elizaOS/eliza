@@ -1063,6 +1063,22 @@ export async function handleLocalInferenceChatCommand(
 		return getLocalInferenceChatStatus(intent);
 	}
 	if (intent === "redownload") {
+		// Redownload uninstalls first, so a tier the downloader would refuse
+		// (unpublished, or its published manifest fails the activation gate)
+		// must keep its installed copy — the same rule merged #35203 applied
+		// to the Settings Redownload button via canRedownloadInstalledModel.
+		if (!isCatalogModelOfferable(model)) {
+			return buildLocalInferenceChatResult(
+				{
+					intent,
+					status: "failed",
+					modelId: model.id,
+					activeModelId: activeModelState.modelId,
+					error: `Eliza-1 tier ${model.id} is no longer downloadable, so the installed copy was kept.`,
+				},
+				"Redownload uninstalls the model before downloading it again, and this tier can no longer be downloaded, so I kept the installed copy.",
+			);
+		}
 		await removeInstalledModel(model.id).catch(() => false);
 	}
 	const job = await startDownload(model.id);
@@ -1259,27 +1275,11 @@ export async function handleLocalInferenceRoutes(
 	const method = (req.method ?? "GET").toUpperCase();
 	const url = new URL(req.url ?? "/", "http://localhost");
 	const pathname = url.pathname;
-	// Co-located voice-first-run namespace — runs alongside local-inference
-	// so the existing /api/local-inference/* mount point in server.ts also
-	// catches /api/voice/first-run/* without a second wire-up.
-	if (pathname.startsWith("/api/voice/first-run/")) {
-		const { handleVoiceFirstRunRoutes } = await import(
-			"./routes/voice-first-run-routes.js"
-		);
-		if (await handleVoiceFirstRunRoutes(req, res)) return true;
-	}
 	if (pathname === "/api/voice/native-pcm-turn") {
 		const { handleNativePcmTurnRoute } = await import(
 			"./routes/native-pcm-turn-route.js"
 		);
 		if (await handleNativePcmTurnRoute(req, res)) return true;
-	}
-	// Family-member capture route lives under /v1/voice/first-run/family-member.
-	if (pathname === "/v1/voice/first-run/family-member") {
-		const { handleFamilyMemberRoute } = await import(
-			"./routes/family-member-route.js"
-		);
-		if (await handleFamilyMemberRoute(req, res)) return true;
 	}
 	// Speaker voice-profile binding routes (bind/unbind a recognized voice to
 	// an elizaOS entity) live under /v1/voice/speaker-profiles.

@@ -112,7 +112,7 @@ Return one JSON object with exactly these top-level fields:
 - inputSchema: JSON Schema object
 - steps: ordered array of {id,label,kind,dependsOn?,description?,agent?}
 - widgets: array of {id,title,description?,surface,component,dataPath?,actions?}
-- schedule: optional {cron,timezone,enabled}
+- schedule: optional {cron,timezone,enabled}; cron is a 5-field expression and timezone is a required IANA zone name such as "America/Los_Angeles", never an abbreviation such as "PST"
 
 Source contract:
 - Import createSmithers from "smthrs/create", other public APIs from supported smthrs subpaths, and schemas from "zod".

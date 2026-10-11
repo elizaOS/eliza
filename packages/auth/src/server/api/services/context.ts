@@ -8,6 +8,7 @@ import { parseBasicAuth } from "./route-inputs";
  */
 
 import { logger } from "@elizaos/core";
+import bs58 from "bs58";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import type { Context, Next } from "hono";
 import {
@@ -287,9 +288,22 @@ export function isValidAddress(value: unknown): boolean {
 }
 
 export function isValidSolanaAddress(value: unknown): boolean {
-  return (
-    typeof value === "string" && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value)
-  );
+  if (
+    typeof value !== "string" ||
+    !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value)
+  ) {
+    return false;
+  }
+  // A Solana address is a 32-byte public key. The base58 shape alone also
+  // accepts strings that decode to other lengths (for example 44 "1"s decode
+  // to 44 bytes), so confirm the decoded length like the cloud proxy
+  // validator in address-validation.ts and normalizeSolanaAddress in
+  // routes/user.ts already do.
+  try {
+    return bs58.decode(value).length === 32;
+  } catch {
+    return false;
+  }
 }
 
 export function isValidAnyAddress(value: unknown): boolean {

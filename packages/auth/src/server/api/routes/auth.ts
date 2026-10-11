@@ -134,6 +134,7 @@ import {
   isAllowedOidcClientSecretEnvForTenant,
   normalizeOidcProviders,
 } from "../services/oidc-provider-config";
+import { revokeUserRefreshSessions } from "../services/refresh-session-revocation";
 import { buildSamlServiceProviderUrls } from "../services/saml-sso-config";
 import { lockUserSession } from "../services/session-lock";
 import { testAccountOtpMatches } from "../services/test-account-credentials";
@@ -623,18 +624,6 @@ function refreshTokenIssuedAtSeconds(
   record: typeof refreshTokens.$inferSelect,
 ): number {
   return Math.floor(new Date(record.createdAt).getTime() / 1000);
-}
-
-async function revokeUserRefreshSessions(userId: string) {
-  return getDb().transaction(async (tx) => {
-    await lockUserSession(tx, userId);
-    const revoked = await tx
-      .delete(refreshTokens)
-      .where(eq(refreshTokens.userId, userId))
-      .returning();
-    const issuedBefore = await revocationStore.revokeUserTokens(userId);
-    return { revoked, issuedBefore };
-  });
 }
 
 async function rotateRefreshTokenForUserSession(

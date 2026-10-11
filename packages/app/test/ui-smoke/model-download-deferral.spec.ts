@@ -2,6 +2,7 @@
  * Playwright UI-smoke spec for the Model Download Deferral app flow using the
  * real renderer fixture.
  */
+import { recommendForFirstRun } from "@elizaos/plugin-native-inference/model-catalog/recommendation";
 import { expect, type Page, type Route, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
@@ -172,6 +173,17 @@ test("selecting on-device inference drops the user into chat while the model dow
   await runtimeChoice.click();
   const onDevice = page.getByTestId("choice-__first_run__:provider:on-device");
   await expect(onDevice).toBeVisible({ timeout: 10_000 });
+  // On-device is the recommendation only when the model catalog has a tier
+  // that can be downloaded; otherwise Eliza Cloud inference is. The pick is
+  // accepted either way (a model already on the device needs no download).
+  const cloud = page.getByTestId("choice-__first_run__:provider:elizacloud");
+  if (recommendForFirstRun() === null) {
+    await expect(cloud).toContainText("recommended");
+    await expect(onDevice).toContainText("no model download available yet");
+  } else {
+    await expect(onDevice).toContainText("recommended");
+    await expect(cloud).not.toContainText("recommended");
+  }
   await onDevice.click();
 
   // THE requirement: picking on-device does NOT park the user on a blocking
