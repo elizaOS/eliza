@@ -43,14 +43,14 @@ export function normalizeCharacterLanguage(input: unknown): CharacterLanguage {
 		return trimmed as CharacterLanguage;
 	}
 	const lower = trimmed.toLowerCase();
-	// zh-TW, zh-HK, and zh-Hant are Traditional Chinese. The only Chinese
-	// reply language is zh-CN.
-	if (lower === "zh" || lower.startsWith("zh-")) {
-		return "zh-CN";
-	}
 	// Whole primary subtag only: "kok" (Konkani), "tlh" and "est" are not
 	// Korean, Tagalog or Spanish. "_" is accepted as in "es_ES".
 	const primary = lower.split(/[-_]/u)[0];
+	// zh-TW, zh-HK, and zh-Hant are Traditional Chinese. The only Chinese
+	// reply language is zh-CN.
+	if (primary === "zh") {
+		return "zh-CN";
+	}
 	if (primary === "ko") {
 		return "ko";
 	}
@@ -66,7 +66,7 @@ export function normalizeCharacterLanguage(input: unknown): CharacterLanguage {
 	if (primary === "tl" || primary === "fil") {
 		return "tl";
 	}
-	if (lower === "ja" || lower.startsWith("ja-")) {
+	if (primary === "ja") {
 		return "ja";
 	}
 	return DEFAULT_CHARACTER_LANGUAGE;
