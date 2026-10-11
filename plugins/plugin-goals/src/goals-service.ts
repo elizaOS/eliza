@@ -90,13 +90,20 @@ const GOAL_SIMILARITY_STOP_WORDS = new Set([
   "goals",
 ]);
 
+// One Han, kana or Hangul character carries a syllable or word, so it counts
+// twice toward the length floor: 매일 and 毎朝 pass, a lone 犬 does not.
+const CJK_SCRIPT_CHAR =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu;
+
 function tokenizeGoalText(text: string | null | undefined): string[] {
   const raw = typeof text === "string" ? text : "";
   return raw
     .toLowerCase()
-    .split(/[^a-z0-9]+/u)
+    .split(/[^\p{L}\p{N}]+/u)
     .filter(
-      (token) => token.length >= 3 && !GOAL_SIMILARITY_STOP_WORDS.has(token),
+      (token) =>
+        token.length + (token.match(CJK_SCRIPT_CHAR)?.length ?? 0) >= 3 &&
+        !GOAL_SIMILARITY_STOP_WORDS.has(token),
     );
 }
 

@@ -135,6 +135,18 @@ describe("GoalsService + GoalsRepository — real PGLite", () => {
     expect(after).toBe(before);
   });
 
+  it("short-circuits a repeated Korean goal via dedup (real DB read)", async () => {
+    const first = await service.createGoal({
+      title: "매일 아침 30분 달리기하기",
+    });
+    const before = (await service.listGoals()).length;
+    const dup = await service.createGoal({
+      title: "매일 아침 30분 달리기하기",
+    });
+    expect(dup.goal.id).toBe(first.goal.id);
+    expect((await service.listGoals()).length).toBe(before);
+  });
+
   it("rejects a times_per_day cadence that repeats a slot key on create and update", async () => {
     const duplicateSlots = {
       kind: "times_per_day",
