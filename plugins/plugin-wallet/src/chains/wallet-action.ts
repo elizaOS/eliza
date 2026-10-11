@@ -545,7 +545,7 @@ async function runWalletRouter(
 export const walletRouterAction: Action = {
   name: "WALLET",
   description:
-    "Route wallet operations through registered chain handlers and analytics providers. Use action=transfer|swap|bridge|gov|pump_fun_buy for on-chain ops (params: target, toChain, fromToken, toToken, amount, recipient, slippageBps, mode, dryRun); action=token_info for token/market data (params: target, query, address); action=search_address for Birdeye wallet/portfolio lookup (param: address).",
+    "Route wallet operations through registered chain handlers and analytics providers. Use action=transfer|swap|bridge|gov|pump_fun_buy for on-chain ops (params: target, toChain, fromToken, toToken, amount, recipient, slippageBps, mode, dryRun); action=token_info for token/market data (params: target, query, address, chain); action=search_address for Birdeye wallet/portfolio lookup (param: address).",
   descriptionCompressed:
     "WALLET transfer|swap|bridge|gov|pump_fun_buy|token_info|search_address; chain ops + market/portfolio",
   contexts: ["finance", "crypto", "wallet"],
@@ -727,6 +727,14 @@ export const walletRouterAction: Action = {
         "Wallet address for search_address; token contract address for token_info token lookups.",
       required: false,
       schema: { type: "string" },
+    },
+    {
+      name: "chain",
+      description:
+        "token_info only: chain of the token or pair list. Required for a per-chain pair list and for a CoinGecko lookup by contract address; filters new pairs. Write ops name their chain in target.",
+      required: false,
+      schema: { type: "string" },
+      examples: ["base", "solana", "ethereum"],
     },
   ],
   validate: async (_runtime, message, state, options) => {

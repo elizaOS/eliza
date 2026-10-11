@@ -129,6 +129,18 @@ it("classifies a request with no token from the message text", async () => {
   expect(result?.text).toContain("Trending tokens (24h)");
 });
 
+it("lists the pairs of the chain the planner names", async () => {
+  const result = await run("show me the top pairs on base", {
+    action: "token_info",
+    chain: "base",
+  });
+
+  expect(result?.success).toBe(true);
+  expect(result?.text).toContain("Top base pairs by volume");
+  expect(calls).toHaveLength(1);
+  expect(calls[0]).toContain("q=base");
+});
+
 it("still reports a missing token when nothing names one", async () => {
   const result = await run("token info please", { action: "token_info" });
 
