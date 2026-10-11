@@ -7,6 +7,7 @@ import type { TweetV2, Tweetv2SearchParams, UserV2 } from "twitter-api-v2";
 import type { QueryTweetsResponse } from "./api-types";
 import type { TwitterAuth } from "./auth";
 import type { Profile } from "./profile";
+import { maxResultsFor, X_RECENT_SEARCH_MIN_RESULTS } from "./request-limits";
 import type { Tweet } from "./tweets";
 
 /**
@@ -158,7 +159,7 @@ export async function searchTweetsPage(
 
   try {
     const paginator = (await client.v2.search(finalQuery, {
-      max_results: Math.min(maxTweets, 100),
+      max_results: maxResultsFor(maxTweets, X_RECENT_SEARCH_MIN_RESULTS),
       ...SEARCH_TWEET_QUERY,
       ...(paginationToken ? { next_token: paginationToken } : {}),
     })) as SearchPaginator;
@@ -201,7 +202,7 @@ export async function* searchTweets(
 
   try {
     const searchIterator = (await client.v2.search(finalQuery, {
-      max_results: maxTweets === undefined ? 100 : Math.min(maxTweets, 100),
+      max_results: maxResultsFor(maxTweets, X_RECENT_SEARCH_MIN_RESULTS),
       ...SEARCH_TWEET_QUERY,
     })) as SearchPaginator & AsyncIterable<TweetV2>;
 
@@ -244,7 +245,8 @@ export async function* searchProfiles(
   try {
     // Search for tweets and extract unique user IDs
     const searchIterator = await client.v2.search(query, {
-      max_results: Math.min(maxProfiles * 2, 100), // Get more tweets to find more users
+      // Get more tweets to find more users.
+      max_results: maxResultsFor(maxProfiles * 2, X_RECENT_SEARCH_MIN_RESULTS),
       "tweet.fields": ["author_id"],
       "user.fields": [
         "id",

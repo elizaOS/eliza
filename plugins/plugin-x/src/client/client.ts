@@ -44,6 +44,7 @@ import {
   getFollowers,
   getFollowing,
 } from "./relationships";
+import { maxResultsFor, X_USER_TWEETS_MIN_RESULTS } from "./request-limits";
 import {
   SearchMode,
   searchProfiles,
@@ -524,7 +525,7 @@ export class Client {
       const client = await this.requireAuth().getV2Client();
 
       const response = await client.v2.userTimeline(userId, {
-        max_results: maxTweets === undefined ? 100 : Math.min(maxTweets, 100),
+        max_results: maxResultsFor(maxTweets, X_USER_TWEETS_MIN_RESULTS),
         "tweet.fields": [
           "id",
           "text",
