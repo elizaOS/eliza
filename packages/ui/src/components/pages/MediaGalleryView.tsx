@@ -132,7 +132,7 @@ function isMediaType(value: string): value is MediaType {
 }
 
 /** Extract media URLs from arbitrary row data by scanning all string values. */
-function extractMediaFromRows(
+export function extractMediaFromRows(
   rows: Record<string, unknown>[],
   tableName: string,
   seen = new Set<string>(),
@@ -144,10 +144,17 @@ function extractMediaFromRows(
       row.createdAt ?? row.created_at ?? row.timestamp ?? "",
     );
     for (const val of Object.values(row)) {
-      if (typeof val !== "string") continue;
-
-      // Try parsing as JSON content field (elizaOS memories store JSON in content)
-      const urls = extractUrlsFromValue(val);
+      // jsonb columns (memories.content) arrive as objects, not strings.
+      let urls: string[];
+      if (typeof val === "string") {
+        urls = extractUrlsFromValue(val);
+      } else if (val && typeof val === "object") {
+        const found = new Set<string>();
+        collectStrings(val, found);
+        urls = Array.from(found);
+      } else {
+        continue;
+      }
       for (const url of urls) {
         const mediaType = classifyUrl(url);
         if (mediaType && !seen.has(url)) {
@@ -205,8 +212,18 @@ function extractUrlsFromValue(val: string): string[] {
 
 function collectStrings(obj: unknown, out: Set<string>) {
   if (typeof obj === "string") {
-    if (looksLikePotentialMediaUrl(obj)) out.add(obj.trim());
-    return;
+    const value = obj.trim()
+    if (looksLikePotentialMediaUrl(value)) {
+      out.add(value)
+      return
+    }
+    const absoluteUrls = value.match(
+      /(?:https?:\/\/|file:\/\/|blob:|capacitor:\/\/|electrobun:\/\/|app:\/\/)[^\s"'<>]+/gi,
+    )
+    for (const url of absoluteUrls ?? []) {
+      out.add(url)
+    }
+    return
   }
   if (Array.isArray(obj)) {
     for (const item of obj) collectStrings(item, out);
