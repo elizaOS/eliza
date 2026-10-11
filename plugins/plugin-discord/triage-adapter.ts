@@ -36,6 +36,7 @@ import {
 	type MessageRef,
 	type MessageSource,
 } from "@elizaos/plugin-assistant";
+import { DiscordSnowflake } from "@sapphire/snowflake";
 import { DISCORD_SERVICE_NAME } from "./constants";
 
 /** Bounded MessageRef cache so long-running agents don't grow unbounded. */
@@ -45,6 +46,26 @@ interface DiscordConnectorFetchParams {
 	target?: TargetInfo;
 	channelId?: string;
 	limit?: number;
+	before?: string;
+	after?: string;
+}
+
+/**
+ * The largest snowflake id strictly older than `sinceMs`: every message
+ * created at or after `sinceMs` has a greater id. Undefined when `sinceMs`
+ * predates Discord, where no boundary can exclude anything.
+ */
+function snowflakeBefore(sinceMs: number): string | undefined {
+	const timestamp = Math.floor(sinceMs);
+	if (timestamp <= DiscordSnowflake.epochNumber) return undefined;
+	return (
+		DiscordSnowflake.generate({
+			timestamp,
+			increment: 0n,
+			workerId: 0n,
+			processId: 0n,
+		}) - 1n
+	).toString();
 }
 
 /**
@@ -194,6 +215,14 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 		const channelIds = await this.resolveChannelIds(runtime, service, opts);
 		if (channelIds.length === 0) return [];
 
+		// Without a limit the service reads a channel's history until it runs
+		// out, so a sweep bounded only by `sinceMs` would walk every channel
+		// back to its first message and discard almost all of it. The boundary
+		// stops each walk at the first page that reaches the period start.
+		const after =
+			limit === undefined && opts.sinceMs !== undefined
+				? snowflakeBefore(opts.sinceMs)
+				: undefined;
 		const merged: MessageRef[] = [];
 		for (const channelId of channelIds) {
 			// The limit counts triage candidates, not raw messages: the agent's
@@ -216,6 +245,7 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 							channelId,
 							...(pageSize === undefined ? {} : { limit: pageSize }),
 							...(before ? { before } : {}),
+							...(after ? { after } : {}),
 						},
 					);
 				} catch (error) {
