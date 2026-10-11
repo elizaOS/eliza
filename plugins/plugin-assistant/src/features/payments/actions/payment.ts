@@ -768,7 +768,9 @@ export const paymentAction: Action = {
       name: "proof",
       description: "For verify_payload/settle: provider proof payload.",
       required: false,
-      schema: { type: "object" as const },
+      // The proof shape is owned by the payment provider, so its fields stay
+      // open; a bare object schema is closed by the tool-argument validator.
+      schema: { type: "object" as const, additionalProperties: true },
     },
     {
       name: "strategy",

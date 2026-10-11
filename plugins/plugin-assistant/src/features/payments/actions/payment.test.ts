@@ -8,7 +8,10 @@
  * runtime — no live model, DB, or real payment provider.
  */
 
-import type { SensitiveRequestDispatchRegistry } from "@elizaos/core";
+import {
+  type SensitiveRequestDispatchRegistry,
+  validateToolArgs,
+} from "@elizaos/core";
 import { describe, expect, test, vi } from "vitest";
 import {
   PAYMENT_BUS_CLIENT_SERVICE,
@@ -390,6 +393,19 @@ describe("PAYMENT", () => {
     expect(verifyProof).toHaveBeenCalledWith("pay_1", { sig: "0xabc" });
     expect(result.data?.valid).toBe(true);
     expect(result.data?.payerIdentity).toBe("user-9");
+  });
+
+  test("the declared schema accepts a provider proof payload with fields", () => {
+    const parameters = {
+      action: "verify_payload",
+      paymentRequestId: "pay_1",
+      proof: { txHash: "0xabc", network: "base" },
+    };
+
+    const validation = validateToolArgs(paymentAction, parameters);
+
+    expect(validation.errors).toEqual([]);
+    expect(validation.args).toEqual(parameters);
   });
 
   test("verify_payload returns invalid when bus rejects proof", async () => {
