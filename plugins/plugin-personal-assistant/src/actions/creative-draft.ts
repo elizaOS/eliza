@@ -550,13 +550,19 @@ export const creativeDraftAction: Action & {
       name: "memos",
       description:
         "Transcribed voice memos: [{ id, transcript, affect?, toneDirective?, capturedAt? }]. Required for compose.",
-      schema: { type: "array" as const, items: { type: "object" as const } },
+      schema: {
+        type: "array" as const,
+        items: { type: "object" as const, additionalProperties: true },
+      },
     },
     {
       name: "ownerSources",
       description:
         "Owner-authored exemplars used to build the voice style card: [{ id, text, source: sent_mail|essay|thread|note }].",
-      schema: { type: "array" as const, items: { type: "object" as const } },
+      schema: {
+        type: "array" as const,
+        items: { type: "object" as const, additionalProperties: true },
+      },
     },
     {
       name: "draftDocumentId",
