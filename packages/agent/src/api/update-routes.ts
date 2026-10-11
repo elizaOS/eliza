@@ -60,6 +60,16 @@ export async function handleUpdateRoutes(
       checkForUpdate({ force: req.url?.includes("force=true") }),
       fetchAllChannelVersions(),
     ]);
+    if (!check.cached && check.error === null && check.checkedAt) {
+      // The checker persisted these to disk. Mirror them into the in-memory
+      // config so later saveElizaConfig(state.config) calls keep them.
+      state.config.update = {
+        ...state.config.update,
+        lastCheckAt: check.checkedAt,
+        lastCheckVersion: check.latestVersion ?? undefined,
+        lastCheckChannel: check.channel,
+      };
+    }
     json(res, {
       currentVersion: VERSION,
       channel,
@@ -79,7 +89,7 @@ export async function handleUpdateRoutes(
         nightly: versions.nightly,
       },
       distTags: CHANNEL_DIST_TAGS,
-      lastCheckAt: state.config.update?.lastCheckAt ?? null,
+      lastCheckAt: check.checkedAt ?? state.config.update?.lastCheckAt ?? null,
       error: check.error,
     });
     return true;
