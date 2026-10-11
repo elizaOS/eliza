@@ -423,6 +423,61 @@ it("updates a trigger by the triggerId create returned and refuses fields it can
   }
 });
 
+it("reads a once time with no offset in the user's zone on create and update", async () => {
+  // Asia/Kolkata is UTC+05:30 all year, so the expected instant does not
+  // depend on the zone of the host that runs this test.
+  const message = {
+    entityId: fixture.runtime.agentId,
+    agentId: fixture.runtime.agentId,
+    roomId: randomUUID() as UUID,
+    content: {
+      text: "Remind me to call mom.",
+      metadata: { uiTimeZone: "Asia/Kolkata" },
+    },
+  } as Memory;
+  const created = await triggerAction.handler(
+    fixture.runtime,
+    message,
+    undefined,
+    {
+      parameters: {
+        action: "create",
+        instructions: "Remind the user to call mom.",
+        scheduledAtIso: "2099-01-15T09:00:00",
+      },
+    },
+  );
+  if (!created?.success) throw new Error(created?.text ?? "create failed");
+  const { taskId } = created.data as { taskId: UUID };
+  try {
+    const stored = await fixture.runtime.getTask(taskId);
+    expect(stored && readTriggerConfig(stored)).toMatchObject({
+      triggerType: "once",
+      scheduledAtIso: "2099-01-15T03:30:00.000Z",
+      nextRunAtMs: Date.parse("2099-01-15T03:30:00.000Z"),
+    });
+    const update = (scheduledAtIso: string) =>
+      triggerAction.handler(fixture.runtime, message, undefined, {
+        parameters: { action: "update", taskId, scheduledAtIso },
+      });
+    const moved = await update("2099-01-16T18:15");
+    expect(moved, moved?.text).toMatchObject({ success: true });
+    const afterLocal = await fixture.runtime.getTask(taskId);
+    expect(afterLocal && readTriggerConfig(afterLocal)?.scheduledAtIso).toBe(
+      "2099-01-16T12:45:00.000Z",
+    );
+    // An explicit offset is an instant already and is stored as given.
+    const pinned = await update("2099-01-17T09:00:00-08:00");
+    expect(pinned, pinned?.text).toMatchObject({ success: true });
+    const afterPinned = await fixture.runtime.getTask(taskId);
+    expect(afterPinned && readTriggerConfig(afterPinned)).toMatchObject({
+      scheduledAtIso: "2099-01-17T09:00:00-08:00",
+      nextRunAtMs: Date.parse("2099-01-17T17:00:00.000Z"),
+    });
+  } finally {
+    await fixture.runtime.deleteTask(taskId);
+  }
+});
 it("persists the timezone through pause and re-enable and schedules in that zone", async () => {
   const triggerId = randomUUID() as UUID;
   const normalized = normalizeTriggerDraft({

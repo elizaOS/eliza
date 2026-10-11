@@ -314,6 +314,37 @@ export function computeNextCronRunAtMs(
 	return null;
 }
 
+const OFFSETLESS_ISO_DATE_TIME =
+	/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/;
+
+/**
+ * Pin an ISO date-time that carries no `Z` or UTC offset to an absolute
+ * instant by reading its wall-clock time in `timezone`. `Date.parse` reads
+ * such a value in the host process zone, which is not the user's zone on a
+ * cloud or container host. Values that already carry an offset, date-only
+ * values and anything else are returned unchanged for `parseScheduledAtIso`.
+ */
+export function resolveScheduledAtIsoInTimeZone(
+	scheduledAtIso: string,
+	timezone: string,
+): string {
+	const trimmed = scheduledAtIso.trim();
+	if (!OFFSETLESS_ISO_DATE_TIME.test(trimmed)) return scheduledAtIso;
+	const wallMs = Date.parse(`${trimmed}Z`);
+	if (!Number.isFinite(wallMs)) return scheduledAtIso;
+	const formatter = buildTzFormatter(timezone);
+	if (!formatter) {
+		throw new RangeError(`Invalid time zone: ${timezone}`);
+	}
+	// Two passes: the offset at the wall-clock digits read as UTC is only a
+	// first guess; the offset at the resulting instant is the one that applies
+	// (they differ within a day of a DST transition).
+	const guessMs = wallMs - offsetMsFromFormatter(formatter, wallMs);
+	return new Date(
+		wallMs - offsetMsFromFormatter(formatter, guessMs),
+	).toISOString();
+}
+
 export function parseScheduledAtIso(scheduledAtIso: string): number | null {
 	const timestamp = Date.parse(scheduledAtIso);
 	if (!Number.isFinite(timestamp)) return null;

@@ -14,6 +14,7 @@ import {
   normalizeTriggerIntervalMs,
   parseCronExpression,
   parseScheduledAtIso,
+  resolveScheduledAtIsoInTimeZone,
   resolveTriggerTiming,
   type TriggerTiming,
 } from "@elizaos/core";
@@ -35,6 +36,7 @@ export {
   normalizeTriggerIntervalMs,
   parseCronExpression,
   parseScheduledAtIso,
+  resolveScheduledAtIsoInTimeZone,
   resolveTriggerTiming,
   type TriggerTiming,
 };

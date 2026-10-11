@@ -63,6 +63,7 @@ import {
   normalizeTriggerIntervalMs,
   parseCronExpression,
   parseScheduledAtIso,
+  resolveScheduledAtIsoInTimeZone,
 } from "../triggers/scheduling.ts";
 import type { TriggerTaskMetadata } from "../triggers/types.ts";
 
@@ -621,7 +622,15 @@ async function opCreate(
   }
 
   const cronExpression = readString(params.cronExpression);
-  const explicitScheduledAtIso = readString(params.scheduledAtIso);
+  // The planner works from CURRENT_TIME in the user's zone, so a timestamp it
+  // sends without an offset is that zone's wall clock — the same zone the cron
+  // path stores — not the host process zone `Date.parse` would assume.
+  const messageTimeZone = resolveMessageTimeZone(runtime, message);
+  const rawScheduledAtIso = readString(params.scheduledAtIso);
+  const explicitScheduledAtIso =
+    rawScheduledAtIso === undefined
+      ? undefined
+      : resolveScheduledAtIsoInTimeZone(rawScheduledAtIso, messageTimeZone);
   const wantsCron =
     explicitType === "cron" ||
     (cronExpression !== undefined &&
@@ -683,7 +692,6 @@ async function opCreate(
       ? "next_autonomy_cycle"
       : "inject_now";
   const creatorId = String(message.entityId);
-  const messageTimeZone = resolveMessageTimeZone(runtime, message);
   const parsedIntervalMs = parsePositiveInt(params.intervalMs);
   // triggerType=interval names the schedule kind, not the cadence. Writing the
   // 12-hour default here turned "every 2 hours" with the number omitted into a
@@ -1017,7 +1025,12 @@ async function opUpdate(
   const displayName = readString(params.displayName);
   const instructions = readString(params.instructions);
   const intervalMs = parsePositiveInt(params.intervalMs);
-  const scheduledAtIso = readString(params.scheduledAtIso);
+  const rawScheduledAtIso = readString(params.scheduledAtIso);
+  // Same rule as create: no offset means the user's wall clock.
+  const scheduledAtIso =
+    rawScheduledAtIso === undefined
+      ? undefined
+      : resolveScheduledAtIsoInTimeZone(rawScheduledAtIso, messageTimeZone);
   const cronExpression = readString(params.cronExpression);
   const maxRuns = parsePositiveInt(params.maxRuns);
   const wakeModeRaw = params.wakeMode?.trim().toLowerCase();
@@ -1470,7 +1483,8 @@ export const triggerAction: Action = {
     },
     {
       name: "scheduledAtIso",
-      description: "ISO timestamp for once-triggers.",
+      description:
+        "ISO timestamp for once-triggers. A value with no Z or UTC offset (2026-10-13T09:00:00) is read as the user's local time; a value with one is used as given.",
       required: false,
       aliases: ["scheduledFor", "when", "at", "datetime"],
       schema: { type: "string" as const },
