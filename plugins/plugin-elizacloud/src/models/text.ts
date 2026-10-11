@@ -2220,13 +2220,13 @@ export async function streamNativeChatCompletion(
     try {
       for await (const frame of parseOpenAiSseStream(body)) {
         if (frame.error) {
-          const message = asRecord(frame.error).message;
-          const providerError = new Error(
-            typeof message === "string" && message.trim()
-              ? message.trim()
-              : "elizaOS Cloud stream error"
-          );
-          throw invalidNativeStream("provider returned an error frame", providerError);
+          const errorBody = asRecord(frame.error);
+          const requestError = new Error(
+            firstString(errorBody.message) ?? "elizaOS Cloud stream error"
+          ) as Error & { status?: number; error?: unknown };
+          if (typeof errorBody.code === "number") requestError.status = errorBody.code;
+          if (Object.keys(errorBody).length > 0) requestError.error = errorBody;
+          throw requestError;
         }
         if (!Array.isArray(frame.choices)) {
           throw invalidNativeStream("each stream frame requires a choices array");
