@@ -1447,6 +1447,36 @@ function resolveTextParams(
   };
 }
 
+const ANTHROPIC_ERROR_TYPE_STATUS: Readonly<Record<string, number>> = {
+  invalid_request_error: 400,
+  authentication_error: 401,
+  billing_error: 402,
+  permission_error: 403,
+  not_found_error: 404,
+  request_too_large: 413,
+  rate_limit_error: 429,
+  api_error: 500,
+  timeout_error: 504,
+  overloaded_error: 529,
+};
+
+function toAnthropicStreamError(error: unknown): unknown {
+  if (error instanceof Error || typeof error !== "object" || error === null) {
+    return error;
+  }
+  const body = error as { type?: unknown; message?: unknown };
+  const message =
+    typeof body.message === "string" && body.message.trim()
+      ? body.message.trim()
+      : "Anthropic stream error";
+  const streamError = new Error(message) as Error & { statusCode?: number; data?: unknown };
+  const statusCode =
+    typeof body.type === "string" ? ANTHROPIC_ERROR_TYPE_STATUS[body.type] : undefined;
+  if (statusCode !== undefined) streamError.statusCode = statusCode;
+  streamError.data = { type: "error", error: body };
+  return streamError;
+}
+
 async function generateTextWithModel(
   runtime: IAgentRuntime,
   params: GenerateTextParams,
@@ -1684,7 +1714,13 @@ async function generateTextWithModel(
   // text chunks and discard the parsed object, so fall through to generateText.
   if (params.stream && !streamDisabled && !paramsWithAttachments.responseSchema) {
     try {
-      const streamResult = streamText(generateParams);
+      let streamError: unknown;
+      const streamResult = streamText({
+        ...generateParams,
+        onError: ({ error }) => {
+          streamError = toAnthropicStreamError(error);
+        },
+      });
       // error-policy:J5 unhandled-rejection suppression — provider metadata is
       // usage-normalization enrichment only; the underlying stream failure is
       // observed in `textStreamWithUsage` (finishReason await rethrows).
@@ -1755,7 +1791,7 @@ async function generateTextWithModel(
           // error-policy:J2 context-adding rethrow — formatModelError wraps the
           // provider error with `cause`; an errored/empty stream surfaces to
           // the consumer instead of silently yielding "".
-          throw formatModelError(operationName, error);
+          throw formatModelError(operationName, streamError ?? error);
         } finally {
           if (completed) {
             await usagePromise.catch(ignoreUsageError);
