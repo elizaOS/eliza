@@ -360,7 +360,6 @@ export class InvitesService {
         previousOrganizationId,
         newOrganizationId,
       );
-      await Promise.all(movedCharacterIds.map((id) => charactersService.invalidateCache(id)));
       await conversationsRepository.reassignUserOrganization(
         userId,
         previousOrganizationId,
@@ -368,6 +367,8 @@ export class InvitesService {
       );
       await this.assertOwnerCanVacateSoloOrganization(userId, previousOrganizationId);
       await organizationsService.delete(previousOrganizationId);
+      // After the durable re-home, so a cache failure cannot stop it.
+      await Promise.all(movedCharacterIds.map((id) => charactersService.invalidateCache(id)));
     } catch (error) {
       // error-policy:J6 the invite accept already moved the user; cleanup is
       // best-effort and must leave a warn breadcrumb for manual recovery.

@@ -10,7 +10,16 @@
  * Real services and schema on PGlite with the in-memory Redis adapter; only
  * the runtime-factory eviction hook is replaced by a recorder.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  spyOn,
+  test,
+} from "bun:test";
 import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
 
@@ -248,28 +257,92 @@ describe("character ownership transfers evict the cached owner", () => {
     expect(evictedRuntimes).toEqual([characterId]);
   });
 
-  test("moving a solo owner's characters after an invite accept: getById returns the new organization", async () => {
-    const soloOrg = await insertOrganization("solo");
-    const owner = await insertUser({ organizationId: soloOrg, stewardUserId: `solo-${seq}` });
-    const invitingOrg = await insertOrganization("inviting");
-    const characterId = await insertCharacter(owner, soloOrg);
+  describe("solo-organization re-home after an invite accept", () => {
+    // The org-vacate check and the org delete read tables outside this schema;
+    // they are recorded here so the re-home order can be checked.
+    const steps: string[] = [];
+    let restore: Array<() => void> = [];
 
-    expect((await charactersService.getById(characterId))?.organization_id).toBe(soloOrg);
+    beforeEach(async () => {
+      steps.length = 0;
+      const { organizationsService } = await import("../organizations");
+      const vacate = spyOn(
+        invitesService as unknown as {
+          assertOwnerCanVacateSoloOrganization(a: string, b: string): Promise<void>;
+        },
+        "assertOwnerCanVacateSoloOrganization",
+      ).mockImplementation(async () => {
+        steps.push("vacate-check");
+      });
+      const remove = spyOn(organizationsService, "delete").mockImplementation(async () => {
+        steps.push("org-delete");
+      });
+      restore = [() => vacate.mockRestore(), () => remove.mockRestore()];
+    });
 
-    // The accept has already moved the user; this is its post-commit re-home step.
-    await dbWrite.update(users).set({ organization_id: invitingOrg }).where(eq(users.id, owner));
-    await (
-      invitesService as unknown as {
-        cleanUpVacatedSoloOrganization(
-          userId: string,
-          previousOrganizationId: string,
-          newOrganizationId: string,
-        ): Promise<void>;
+    afterEach(() => {
+      for (const undo of restore) undo();
+    });
+
+    async function cleanUp(owner: string, from: string, to: string): Promise<void> {
+      await (
+        invitesService as unknown as {
+          cleanUpVacatedSoloOrganization(a: string, b: string, c: string): Promise<void>;
+        }
+      ).cleanUpVacatedSoloOrganization(owner, from, to);
+    }
+
+    test("getById returns the new organization after the re-home", async () => {
+      const soloOrg = await insertOrganization("solo");
+      const owner = await insertUser({ organizationId: soloOrg, stewardUserId: `solo-${seq}` });
+      const invitingOrg = await insertOrganization("inviting");
+      const characterId = await insertCharacter(owner, soloOrg);
+      expect((await charactersService.getById(characterId))?.organization_id).toBe(soloOrg);
+
+      await dbWrite.update(users).set({ organization_id: invitingOrg }).where(eq(users.id, owner));
+      await cleanUp(owner, soloOrg, invitingOrg);
+
+      expect(steps).toEqual(["vacate-check", "org-delete"]);
+      expect((await charactersService.getById(characterId))?.organization_id).toBe(invitingOrg);
+      expect(evictedRuntimes).toEqual([characterId]);
+    });
+
+    test("a cache failure does not stop the conversation re-home or the org delete", async () => {
+      const soloOrg = await insertOrganization("solo-cache");
+      const owner = await insertUser({
+        organizationId: soloOrg,
+        stewardUserId: `solo-cache-${seq}`,
+      });
+      const invitingOrg = await insertOrganization("inviting-cache");
+      await insertCharacter(owner, soloOrg);
+      const [conversation] = await dbWrite
+        .insert(conversations)
+        .values({
+          user_id: owner,
+          organization_id: soloOrg,
+          title: "kept",
+          model: "gpt-4o-mini",
+        } as never)
+        .returning({ id: conversations.id });
+      const cacheDown = spyOn(charactersService, "invalidateCache").mockImplementation(async () => {
+        throw new Error("cache unavailable");
+      });
+      try {
+        await dbWrite
+          .update(users)
+          .set({ organization_id: invitingOrg })
+          .where(eq(users.id, owner));
+        await cleanUp(owner, soloOrg, invitingOrg);
+      } finally {
+        cacheDown.mockRestore();
       }
-    ).cleanUpVacatedSoloOrganization(owner, soloOrg, invitingOrg);
 
-    const after = await charactersService.getById(characterId);
-    expect(after?.organization_id).toBe(invitingOrg);
-    expect(evictedRuntimes).toEqual([characterId]);
+      expect(steps).toEqual(["vacate-check", "org-delete"]);
+      const [moved] = await dbWrite
+        .select({ organization_id: conversations.organization_id })
+        .from(conversations)
+        .where(eq(conversations.id, conversation.id));
+      expect(moved.organization_id).toBe(invitingOrg);
+    });
   });
 });
