@@ -68,7 +68,7 @@ inbox classification API; its result alone is not payment authorization.
 The test-biller text contract and control labels exist only in test fixtures.
 Application packaging, private startup configuration, and UI remain with hosts.
 
-Run `bun run test:bill-host` for discovery, revocation, exact-money parsing,
+Run `bun run --cwd plugins/plugin-personal-assistant test:bill-host` for discovery, revocation, exact-money parsing,
 selection, SQLite durability and submission-uncertainty checks. These tests use
 synthetic connectors and real task/SQLite persistence where applicable; they do
 not prove live account or biller acceptance.
@@ -106,7 +106,7 @@ account and bill and supplies authorization, provider matching, UI stages and co
 `LatestOutcomeController` admits task identifiers and fences stale read-only results.
 Current lookup failures reject for host error reporting without clearing the last result.
 These clients do not grant payment authority or start work without an explicit call.
-Run `npm run test:bill-host` for their sequencing and uncertainty regressions.
+Run `bun run --cwd plugins/plugin-personal-assistant test:bill-host` for their sequencing and uncertainty regressions.
 
 `native-host/configured-bill-helper.mjs` composes a reviewed helper configuration
 with the native browser target, managed bill/PDF discovery and private evidence
