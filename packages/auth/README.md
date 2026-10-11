@@ -81,6 +81,8 @@ the same Cloud user and organization before it is retained. All operations share
 enrollment serialization and cancellation. For first SMS MFA setup, use `account-security-enroll-start` (`{phone}`) and
 `account-security-enroll-verify` (`{sessionId, code}`). Auth enforces recent
 factor-enrollment authority; enabled TOTP/SMS methods must use step-up instead.
+When that authority is too old, enroll start fails with 428
+`account_verification_required` and starts no resend cooldown.
 Confirmed enrollment clears revoked authority and requires reauthentication.
 Ambiguous enrollment verification also clears authority and must not replay.
 This does not enroll TOTP or link another email; hosts must not advertise those

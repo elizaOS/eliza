@@ -936,6 +936,66 @@ test("cancellation during security token account verification cannot restore aut
   assert.equal(f.writes.length, 0);
 });
 
+const phoneNumber = "+15551234567";
+function smsEnrollmentFixture(firstEnroll) {
+  let enrolls = 0;
+  const f = billingFixture({
+    fetch: (path) => {
+      if (path === "/auth/mfa/totp/status" || path === "/auth/mfa/sms/status")
+        return Response.json({ ok: true, enabled: false });
+      if (path === "/auth/mfa/sms/enroll") {
+        enrolls++;
+        return enrolls === 1
+          ? firstEnroll()
+          : Response.json({
+              ok: true,
+              phone: `***${phoneNumber.slice(-4)}`,
+              expiresAt: future(),
+            });
+      }
+    },
+  });
+  return Object.assign(f, { enrolls: () => enrolls });
+}
+
+test("SMS enrollment refused for a stale sign-in asks for identity and starts no cooldown", async () => {
+  const f = smsEnrollmentFixture(() =>
+    Response.json(
+      {
+        ok: false,
+        error: "Recent sign-in, MFA, or passkey re-authentication is required",
+      },
+      { status: 403 },
+    ),
+  );
+  await billingVerify(f, await billingStart(f));
+  await assert.rejects(
+    f.auth.handle("account-security-enroll-start", { phone: phoneNumber }),
+    { status: 428, code: "account_verification_required" },
+  );
+  const step = await f.auth.handle("account-security-enroll-start", {
+    phone: phoneNumber,
+  });
+  assert.equal(step.status, "code");
+  assert.equal(f.enrolls(), 2);
+});
+
+test("SMS enrollment keeps the resend cooldown after an ambiguous failure", async () => {
+  const f = smsEnrollmentFixture(() =>
+    Response.json({ ok: false }, { status: 500 }),
+  );
+  await billingVerify(f, await billingStart(f));
+  await assert.rejects(
+    f.auth.handle("account-security-enroll-start", { phone: phoneNumber }),
+    { status: 502 },
+  );
+  await assert.rejects(
+    f.auth.handle("account-security-enroll-start", { phone: phoneNumber }),
+    { status: 429, code: "account_code_cooldown" },
+  );
+  assert.equal(f.enrolls(), 1);
+});
+
 for (const method of ["email", "phone"]) {
   test(`account reauthentication requests personal authority for ${method}`, async () => {
     const f = billingFixture();

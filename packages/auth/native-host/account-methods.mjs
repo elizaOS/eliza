@@ -418,9 +418,25 @@ export function createNativeAccountMethods({
             );
         }
         resendAt = now() + 60000;
-        const value = await send("/auth/mfa/sms/enroll", {
-          phone: input.phone,
-        });
+        let value;
+        try {
+          value = await send("/auth/mfa/sms/enroll", {
+            phone: input.phone,
+          });
+        } catch (error) {
+          // Auth answers 400/401/403/409 before sending any code, so these
+          // must not hold the resend cooldown. Ambiguous failures keep it.
+          if ([400, 401, 403, 409].includes(error?.status)) resendAt = 0;
+          // Auth's only enroll 403 is a sign-in older than its factor-enrollment
+          // window; a fresh identity check fixes it, account recovery does not.
+          if (error?.status === 403)
+            throw fail(
+              "Confirm your identity before managing sign-in methods",
+              428,
+              "account_verification_required",
+            );
+          throw error;
+        }
         const expiry = Date.parse(value?.expiresAt);
         if (
           value?.ok !== true ||
