@@ -1026,6 +1026,10 @@ describe("persisted Slack policy through Bolt handlers", () => {
         text: "",
         attachments: [{ id: "gone", url: "https://example.test/gone.png" }],
       },
+      {
+        text: "here it is",
+        attachments: [{ id: "gone", url: "https://example.test/gone.png" }],
+      },
     ];
     Object.assign(runtime, {
       messageService: {
@@ -1045,6 +1049,7 @@ describe("persisted Slack policy through Bolt handlers", () => {
       fetchAttachmentBytes: vi
         .fn()
         .mockResolvedValueOnce({ buffer: Buffer.from("png") })
+        .mockRejectedValueOnce(new Error("attachment fetch failed"))
         .mockRejectedValueOnce(new Error("attachment fetch failed")),
       uploadFile,
     });
@@ -1106,6 +1111,32 @@ describe("persisted Slack policy through Bolt handlers", () => {
         code: "SLACK_REPLY_ATTACHMENT_DELIVERY_FAILED",
       }),
       expect.anything(),
+    );
+
+    // Text plus a failed upload: the text is posted once and recorded, and the
+    // reply still fails. A Slack redelivery is stopped by the inbound claim
+    // before this callback, so the accepted text is not posted again.
+    vi.mocked(runtime.createMemory).mockClear();
+    await expect(processAgentMessage()).rejects.toMatchObject({
+      code: "SLACK_REPLY_ATTACHMENT_DELIVERY_FAILED",
+    });
+    expect(app?.client.chat.postMessage).toHaveBeenCalledTimes(1);
+    expect(app?.client.chat.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: OPS,
+        text: "here it is",
+        thread_ts: "1700000000.000100",
+      }),
+    );
+    expect(uploadFile).toHaveBeenCalledTimes(1);
+    expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+    expect(runtime.createMemory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        roomId: "thread-room",
+        content: expect.objectContaining({ text: "here it is" }),
+        metadata: expect.objectContaining({ slackMessageTs: "1.000001" }),
+      }),
+      "messages",
     );
   });
 
