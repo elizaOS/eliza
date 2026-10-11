@@ -27,7 +27,6 @@ import type {
   MessageAttachmentContentType,
 } from "../api/client-types-chat";
 import type { CodingAgentSession } from "../api/client-types-cloud";
-import { isApiError } from "../api/client-types-core";
 import { describeCreditGateError } from "../api/credit-gate-error";
 import {
   describePersonalRouteRefusal,
@@ -73,6 +72,7 @@ import {
   UNDELIVERED_TURN_NOTICE,
 } from "./chat-send-failures";
 import { buildChatViewMetadata } from "./chat-view-routing";
+import { searchKnowledgeForCombinedSearch } from "./hash-search";
 import {
   formatSearchBullet,
   mergeStreamingText,
@@ -1129,29 +1129,26 @@ export function useChatSend(deps: UseChatSendDeps) {
           commitLocalCommandTurn(rawText, "Search query cannot be empty.");
           return { handled: true };
         }
-        // The native mobile agent does not serve the documents route. For the
-        // combined search that 404 must not discard the memory results; the
-        // Knowledge line reports it instead. Every other failure still throws,
-        // and `#documents` keeps failing because it has no other result.
-        let knowledgeUnavailable = false;
-        const documentSearch =
-          scope === "memory"
-            ? Promise.resolve(null)
-            : client.searchDocuments(query, { threshold: 0.2, limit: 6 });
-        const [memoryResult, documentResult] = await Promise.all([
+        // On a native device without the documents route the combined search
+        // keeps its memory results and reports Knowledge as unavailable (see
+        // hash-search.ts). `#documents` keeps failing: it has no other result.
+        const searchDocuments = () =>
+          client.searchDocuments(query, { threshold: 0.2, limit: 6 });
+        const [memoryResult, knowledge] = await Promise.all([
           scope === "documents"
             ? Promise.resolve(null)
             : client.searchMemory(query, { limit: 6 }),
-          scope === "all"
-            ? documentSearch.catch((err: unknown) => {
-                if (isApiError(err) && err.status === 404 && isNative) {
-                  knowledgeUnavailable = true;
-                  return null;
-                }
-                throw err;
-              })
-            : documentSearch,
+          scope === "memory"
+            ? Promise.resolve({ unavailable: false as const, result: null })
+            : scope === "all"
+              ? searchKnowledgeForCombinedSearch(searchDocuments, { isNative })
+              : searchDocuments().then((result) => ({
+                  unavailable: false as const,
+                  result,
+                })),
         ]);
+        const documentResult = knowledge.result;
+        const knowledgeUnavailable = knowledge.unavailable;
         const memoryLines =
           memoryResult?.results.map(
             (item, index) =>
