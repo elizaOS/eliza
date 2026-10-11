@@ -813,9 +813,19 @@ export async function executeInboxQueueOperation(args: {
       //    `classification` narrows the queue returned below; it must not skip
       //    the LLM classifier for a fresh triage request.
       const since = canonicalSince(args.params.since);
+      // An empty resolved list means every named platform was unknown. Fetching
+      // nothing would report the old queue as a completed triage.
+      const platforms = resolvePlatforms(args.params.platforms);
+      if (platforms.length === 0) {
+        return {
+          success: false,
+          text: "No supported platforms were specified.",
+          data: { subaction: "triage", error: "NO_PLATFORMS" },
+        };
+      }
       const { merged, degraded, capped } = await fetchInboxItems({
         runtime: args.runtime,
-        platforms: resolvePlatforms(args.params.platforms),
+        platforms,
         ...(since ? { since } : {}),
         ...(limit === undefined ? {} : { limit }),
       });
@@ -1039,8 +1049,11 @@ export const inboxAction: Action & {
     {
       name: "platforms",
       description:
-        "Optional platform filter: gmail | discord | telegram | imessage | whatsapp. Default all.",
-      schema: { type: "array" as const, items: { type: "string" as const } },
+        "Optional platform filter: gmail | slack | discord | telegram | imessage | whatsapp. Default all.",
+      schema: {
+        type: "array" as const,
+        items: { type: "string" as const, enum: [...PLATFORMS] },
+      },
     },
     {
       name: "since",
