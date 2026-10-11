@@ -693,12 +693,14 @@ export const roleAction: Action = {
   parameters: [
     {
       name: "action",
-      description: "Operation: assign, revoke, list.",
+      // No schema default: the validator would fill it for every call and
+      // readParams reads action first, so it would override the subaction alias.
+      description:
+        "Operation: assign, revoke, list. assign when neither action nor subaction is given.",
       required: false,
       schema: {
         type: "string" as const,
         enum: [...ROLE_OPS],
-        default: "assign",
       },
     },
     {
