@@ -858,6 +858,9 @@ export function createHealthActionRunner(
       };
       const windowLabel =
         params.date ?? `last ${days} day${days === 1 ? "" : "s"}`;
+      // The reply model reads this context; a dated read must not also claim a
+      // trailing `days` window.
+      const windowContext = params.date ? { date: params.date } : { days };
       const points = await service.getHealthDataPoints(
         { metric, startAt, endAt },
         { timeZone },
@@ -871,7 +874,7 @@ export function createHealthActionRunner(
           success: true,
           scenario: "health_by_metric_empty",
           fallback,
-          context: { metric, days },
+          context: { metric, ...windowContext },
           values: { success: true, metric, pointCount: points.length },
           data: { subaction, metric, startAt, endAt, points },
         });
@@ -886,7 +889,7 @@ export function createHealthActionRunner(
         fallback,
         context: {
           metric,
-          days,
+          ...windowContext,
           [aggregate.label]: aggregate.value,
           unit: firstPoint.unit,
           sampleCount: points.length,
