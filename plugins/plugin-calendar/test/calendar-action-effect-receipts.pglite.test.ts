@@ -927,5 +927,37 @@ describe("CALENDAR receipt grounding over real PGlite", () => {
     expect(result).not.toHaveProperty("userFacingText");
     expect(result).not.toHaveProperty("verifiedUserFacing");
     expect(delivered).toEqual([]);
+
+    const tripWindow = (params: Record<string, unknown>) =>
+      executePlannedToolCall(
+        runtime,
+        {
+          message: actor,
+          userRoles: ["OWNER"],
+          activeContexts: ["calendar"],
+          callback: async () => [],
+        },
+        { name: action.name, params: { subaction: "trip_window", ...params } },
+        { actions: [action] },
+      );
+    // A typed trip window with no place must not answer with the day agenda.
+    const missingPlace = await tripWindow({ details: WINDOW });
+    expect(missingPlace, JSON.stringify(missingPlace)).toMatchObject({
+      success: false,
+      data: {
+        subaction: "trip_window",
+        error: "CALENDAR_TRIP_LOCATION_REQUIRED",
+        coachingFailure: true,
+      },
+    });
+    expect(missingPlace.data).not.toHaveProperty("events");
+    for (const params of [{ query: "Denver" }, { queries: ["Denver"] }]) {
+      const placed = await tripWindow({ ...params, details: WINDOW });
+      expect(placed, JSON.stringify(placed)).toMatchObject({
+        success: true,
+        effectReceipts: [{ operation: "calendar.trip_window.read" }],
+        data: { location: "Denver", events: [] },
+      });
+    }
   }, 30_000);
 });

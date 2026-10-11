@@ -5274,7 +5274,15 @@ const calendarAction: CalendarHandlerAction = {
               : undefined) ?? detailString(details, "title"),
           tripLocation:
             explicitSubaction === "trip_window"
-              ? (params.query ?? detailString(details, "query"))
+              ? [
+                  params.query,
+                  detailString(details, "query"),
+                  ...(params.queries ?? []),
+                  ...(detailArray(details, "queries") ?? []),
+                ].find(
+                  (value): value is string =>
+                    typeof value === "string" && value.trim().length > 0,
+                )
               : undefined,
           timeMin: detailString(details, "timeMin"),
           timeMax: detailString(details, "timeMax"),
@@ -5554,8 +5562,17 @@ const calendarAction: CalendarHandlerAction = {
       if (explicitSubaction === "search_events" && searchQueries.length === 0) {
         throw new CalendarServiceError(
           400,
-          'CALENDAR_SEARCH_EVENTS requires a user-supplied event-content filter in query/queries or details.query/details.queries. For an unfiltered agenda, use CALENDAR_FEED (umbrella action=feed), preserving the requested date/range and timezone: details.date with optional endDate for whole days, or timeMin/timeMax for partial days. If CALENDAR_FEED is not loaded, DISCOVER_ACTIONS mode=load names=["CALENDAR_FEED"] loads its schema directly. No calendar read or change occurred.',
+          'CALENDAR_SEARCH_EVENTS requires a user-supplied event-content filter in query/queries or details.query/details.queries. For an unfiltered agenda, use CALENDAR_FEED (the feed operation of the umbrella CALENDAR action), preserving the requested date/range and timezone: details.date with optional endDate for whole days, or timeMin/timeMax for partial days. If CALENDAR_FEED is not loaded, DISCOVER_ACTIONS mode=load names=["CALENDAR_FEED"] loads its schema directly. No calendar read or change occurred.',
           "CALENDAR_SEARCH_QUERY_REQUIRED",
+        );
+      }
+      // A typed trip window without a place would otherwise fall through to
+      // the default feed read and answer with today's agenda.
+      if (explicitSubaction === "trip_window" && !tripWindowIntent) {
+        throw new CalendarServiceError(
+          400,
+          "trip_window requires the trip or stay location in query (for example query=Denver). No calendar read or change occurred.",
+          "CALENDAR_TRIP_LOCATION_REQUIRED",
         );
       }
       if (subaction === "next_event") {
@@ -7175,6 +7192,7 @@ const calendarAction: CalendarHandlerAction = {
             // its receipt and evaluation while allowing a corrected plan to finish.
             ...(error.code === "CALENDAR_TARGET_SELECTOR_INVALID" ||
             error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
+            error.code === "CALENDAR_TRIP_LOCATION_REQUIRED" ||
             (error.code === "CALENDAR_SEARCH_QUERY_REQUIRED" &&
               explicitSubaction === "search_events" &&
               searchQueries.length === 0) ||
@@ -7252,14 +7270,14 @@ const calendarAction: CalendarHandlerAction = {
     {
       name: "title",
       description:
-        "Title for create_event, replacement title for update_event, or existing title for delete_event. For an update target use query, details.oldTitle, or details.eventId; do not put the existing target here.",
+        "Title for create_event, or existing title for delete_event. For update_event it is not applied: a rename is extracted from the user's request, so state it in intent, and identify the target with query, details.oldTitle, or details.eventId; do not put the existing target here.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "query",
       description:
-        "Event-content filter explicitly requested by the user, such as flight, dentist, Denver, or return flight. Never put dates, agenda, events, or schedule here just to express a time range. For an unfiltered day agenda use feed with details.timeMin/timeMax and omit query/queries.",
+        "Event-content filter explicitly requested by the user, such as flight, dentist, Denver, or return flight. For trip_window, the trip or stay location (required). Never put dates, agenda, events, or schedule here just to express a time range. For an unfiltered day agenda use feed with details.timeMin/timeMax and omit query/queries.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -7278,7 +7296,7 @@ const calendarAction: CalendarHandlerAction = {
       description:
         "Structured calendar fields; only the declared keys are accepted, so omit anything the user did not state. " +
         "feed/search_events: timeMin/timeMax with timeZone. create_event: start (plus end or durationMinutes) and timeZone; location, description, recurrence and attendees only when the user gives them. " +
-        "update_event/delete_event: locate the target with eventId, oldTitle or query (plus date); the new time goes in start/end and a rename in newTitle. " +
+        "update_event/delete_event: locate the target with eventId, oldTitle or query (plus date). The update itself (new time, rename, description, location, cleared fields) is extracted from the user's request and conversation, not copied from start/end, newTitle, description, location or clearFields, so state the requested change in intent. " +
         "Every wall-clock value is local (no Z, no offset) in timeZone; recurrenceScope is instance, this_and_following or series.",
       required: false,
       schema: CALENDAR_DETAILS_PARAMETER_SCHEMA,
@@ -7287,12 +7305,12 @@ const calendarAction: CalendarHandlerAction = {
       // Planners habitually add a calendar-id field on feed/read calls (live:
       // top-level calendar_id AND calendarId on one CALENDAR_FEED call, which
       // validateToolArgs rejected and the whole read failed). Declare the
-      // field so natural variants normalize here instead of erroring; reads
+      // field so the exact spelling calendarId validates; other spellings
+      // such as calendar_id are still rejected as unexpected arguments. Reads
       // span the account's calendars and creation targets the built-in
       // calendar, so the handler ignores this top-level value. An exact
       // calendar selection is read from details.calendarId only.
       name: "calendarId",
-      aliases: ["calendar_id", "calendarid"],
       description:
         "Ignored; leave unset. To select an exact calendar from a Calendar result, use details.calendarId. Agenda reads use the selected Calendar feed; searches cover connected calendars. Use details.includeHiddenCalendars to explicitly change that scope. Event creation targets the built-in calendar.",
       required: false,

@@ -168,7 +168,7 @@ const CALENDAR_DETAIL_STRING_DESCRIPTIONS: Partial<
   oldTitle:
     "Existing event title to locate for update_event; keep separate from the replacement title in newTitle.",
   newTitle:
-    "Replacement event title for update_event, never a lookup selector. Identify the existing event with query, oldTitle, or eventId.",
+    "Proposed replacement title for update_event, never a lookup selector; the applied rename is extracted from the user's request. Identify the existing event with query, oldTitle, or eventId.",
   eventId:
     "Existing provider event ID from the externalId field returned by the calendar feed or search, not the feed row's composite id; takes precedence over title or query lookup for update_event/delete_event.",
 };
@@ -197,7 +197,7 @@ export const CALENDAR_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
       type: "array",
       items: { type: "string", enum: ["description", "location"] },
       description:
-        "For update_event only: fields the user explicitly requests to remove. Omit for unchanged or unknown fields. Do not include a field that also has a replacement value. Title, timing and recurrence cannot be cleared this way.",
+        "For update_event only: fields the user explicitly requests to remove. The applied removal is extracted from the user's request, not from this list. Omit for unchanged or unknown fields. Do not include a field that also has a replacement value. Title, timing and recurrence cannot be cleared this way.",
     },
     ...Object.fromEntries(
       CALENDAR_DETAIL_STRING_KEYS.map((key) => {
