@@ -6,12 +6,14 @@
 
 import http from "node:http";
 import {
+  AgentRuntime,
   type ConnectorAccount,
   type ConnectorAccountPatch,
   getConnectorAccountManager,
   type IAgentRuntime,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { resolveSlackAccount } from "./accounts";
 import {
   createSlackConnectorAccountProvider,
   exchangeSlackOAuthTokenWithFetch,
@@ -486,3 +488,29 @@ function createOAuthCallbackManager(
     ),
   };
 }
+
+describe("Slack boolean settings saved from the Plugins form", () => {
+  // The real AgentRuntime returns a saved "true"/"false" string as a boolean.
+  for (const value of ["true", "false"]) {
+    it(`resolves the default account with both toggles set to ${value}`, () => {
+      const rt = new AgentRuntime({
+        character: {
+          name: "SlackSettings",
+          bio: [],
+          settings: {
+            SLACK_SHOULD_IGNORE_BOT_MESSAGES: value,
+            SLACK_SHOULD_RESPOND_ONLY_TO_MENTIONS: value,
+          },
+          secrets: { SLACK_BOT_TOKEN: "xoxb-test-token" },
+        },
+      });
+      expect(rt.getSetting("SLACK_SHOULD_IGNORE_BOT_MESSAGES")).toBe(
+        value === "true",
+      );
+      expect(resolveSlackAccount(rt).config).toMatchObject({
+        shouldIgnoreBotMessages: value === "true",
+        shouldRespondOnlyToMentions: value === "true",
+      });
+    });
+  }
+});

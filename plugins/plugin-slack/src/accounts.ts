@@ -16,6 +16,7 @@ import {
   ElizaError,
   type IAgentRuntime,
   normalizeConnectorAccountId,
+  parseBooleanFromText,
   selectDefaultConnectorAccountId,
 } from "@elizaos/core";
 import type {
@@ -338,14 +339,19 @@ function mergeSlackAccountConfig(
     | undefined;
 
   const envConfig: SlackAccountConfig = {
-    shouldIgnoreBotMessages:
-      (
-        runtime.getSetting("SLACK_SHOULD_IGNORE_BOT_MESSAGES") as string
-      )?.toLowerCase() === "true",
-    shouldRespondOnlyToMentions:
-      (
-        runtime.getSetting("SLACK_SHOULD_RESPOND_ONLY_TO_MENTIONS") as string
-      )?.toLowerCase() === "true",
+    // getSetting returns a boolean for a saved "true"/"false" string.
+    shouldIgnoreBotMessages: parseBooleanFromText(
+      runtime.getSetting("SLACK_SHOULD_IGNORE_BOT_MESSAGES") as
+        | string
+        | boolean
+        | undefined,
+    ),
+    shouldRespondOnlyToMentions: parseBooleanFromText(
+      runtime.getSetting("SLACK_SHOULD_RESPOND_ONLY_TO_MENTIONS") as
+        | string
+        | boolean
+        | undefined,
+    ),
     allowedChannelIds: envChannelIds
       ? envChannelIds
           .split(",")
