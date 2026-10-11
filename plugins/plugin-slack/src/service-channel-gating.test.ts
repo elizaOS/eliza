@@ -613,6 +613,27 @@ describe("persisted Slack policy through Bolt handlers", () => {
     expect(harness.processAgentMessage).toHaveBeenCalledTimes(1);
   });
 
+  it("resolves a channel name shaped like a lowercase Slack ID through the directory", async () => {
+    const developers = "C0DEVS123";
+    bolt.channels.push({
+      id: developers,
+      name: "developers",
+      is_channel: true,
+    });
+    const harness = await startHarness({
+      channels: {
+        developers: { users: ["alice"] },
+        "*": { enabled: false },
+      },
+    });
+    const appMention = harness.app.eventHandlers.get("app_mention");
+    await appMention?.({
+      event: mention({ channel: developers }),
+      client: harness.app.client,
+    });
+    expect(harness.processAgentMessage).toHaveBeenCalledTimes(1);
+  });
+
   it("denies a disabled name-keyed channel on the first event", async () => {
     const harness = await startHarness();
     const appMention = harness.app.eventHandlers.get("app_mention");
