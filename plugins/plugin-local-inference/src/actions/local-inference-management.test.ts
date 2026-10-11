@@ -48,6 +48,49 @@ describe("LOCAL_INFERENCE action twins", () => {
 			slot: "TEXT_LARGE",
 			provider: "eliza-local-inference",
 		});
+		expect(result?.text).toBe(
+			"Preferred provider for TEXT_LARGE is now eliza-local-inference.",
+		);
+	}, 15_000);
+
+	it("reports a cleared provider or assignment as cleared, not updated", async () => {
+		const call = (parameters: Record<string, unknown>) =>
+			localInferenceManagementAction.handler(
+				{} as IAgentRuntime,
+				{} as Memory,
+				undefined,
+				{ parameters },
+			);
+
+		const provider = await call({
+			action: "set_preferred_provider",
+			slot: "TEXT_LARGE",
+		});
+		expect(provider?.success).toBe(true);
+		expect(provider?.text).toBe(
+			"Preferred provider for TEXT_LARGE was cleared.",
+		);
+
+		const assignment = await call({
+			action: "set_assignment",
+			slot: "TEXT_SMALL",
+		});
+		expect(assignment?.success).toBe(true);
+		expect(assignment?.text).toBe(
+			"Local model assignment for TEXT_SMALL was cleared.",
+		);
+	}, 15_000);
+
+	it("names the declared voiceModelId argument when it is missing", async () => {
+		const result = await localInferenceManagementAction.handler(
+			{} as IAgentRuntime,
+			{} as Memory,
+			undefined,
+			{ parameters: { action: "pin_voice_model", pinned: true } },
+		);
+
+		expect(result?.success).toBe(false);
+		expect(result?.text).toBe("pin_voice_model requires voiceModelId.");
 	}, 15_000);
 
 	it("mutates curated model assignments from chat/voice action parameters", async () => {
@@ -71,6 +114,9 @@ describe("LOCAL_INFERENCE action twins", () => {
 			slot: "TEXT_SMALL",
 			modelId: "eliza-1-2b",
 		});
+		expect(result?.text).toBe(
+			"Local model assignment for TEXT_SMALL is now eliza-1-2b.",
+		);
 	}, 15_000);
 
 	it("pins voice sub-models from chat/voice action parameters", async () => {

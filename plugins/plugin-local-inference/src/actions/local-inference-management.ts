@@ -9,6 +9,7 @@ import type {
 import type {
 	LocalInferenceManagementInput,
 	LocalInferenceManagementOp,
+	LocalInferenceManagementResult,
 } from "../local-inference-routes.js";
 
 const OP_ALIASES: Record<string, LocalInferenceManagementOp> = {
@@ -107,6 +108,24 @@ export function parseLocalInferenceManagementInput(
 	};
 }
 
+/** Reply text that states the resulting value, so a clear is not reported as an update. */
+function describeMutation(mutation: LocalInferenceManagementResult): string {
+	switch (mutation.op) {
+		case "pin_voice_model":
+			return `Voice model ${mutation.id} is now ${mutation.pinned ? "pinned" : "unpinned"}.`;
+		case "set_preferred_provider":
+			return mutation.provider
+				? `Preferred provider for ${mutation.slot} is now ${mutation.provider}.`
+				: `Preferred provider for ${mutation.slot} was cleared.`;
+		case "set_assignment":
+			return mutation.modelId
+				? `Local model assignment for ${mutation.slot} is now ${mutation.modelId}.`
+				: `Local model assignment for ${mutation.slot} was cleared.`;
+		default:
+			return `Local inference ${mutation.op} updated.`;
+	}
+}
+
 export const localInferenceManagementAction: Action = {
 	name: "LOCAL_INFERENCE",
 	similes: [
@@ -148,14 +167,14 @@ export const localInferenceManagementAction: Action = {
 		{
 			name: "modelId",
 			description:
-				"Curated local model id for download, activation, uninstall, verify, or assignment.",
+				"Curated local model id for download, activation, uninstall, verify, or assignment. For set_assignment, omit or pass empty to clear the slot's assignment.",
 			required: false,
 			schema: { type: "string" as const },
 		},
 		{
 			name: "voiceModelId",
 			description:
-				"Voice model id for update or pin operations, such as wakeword, vad, asr, kokoro, or speaker-encoder.",
+				"Voice model id, required for trigger_voice_model_update and pin_voice_model. pin_voice_model accepts ids such as wakeword, vad, asr, kokoro, or speaker-encoder. trigger_voice_model_update accepts only wakeword; the other voice models ship inside the Eliza-1 bundle and cannot be updated on their own.",
 			required: false,
 			schema: { type: "string" as const },
 		},
@@ -169,7 +188,7 @@ export const localInferenceManagementAction: Action = {
 		{
 			name: "provider",
 			description:
-				"Preferred provider for a slot, for example eliza-local-inference, capacitor-llama, or elizacloud.",
+				"Preferred provider for a slot, for example eliza-local-inference, capacitor-llama, or elizacloud. For set_preferred_provider, omit or pass empty to clear the slot's preferred provider.",
 			required: false,
 			schema: { type: "string" as const },
 		},
@@ -225,15 +244,26 @@ export const localInferenceManagementAction: Action = {
 			await callback?.({ text: result.text, actions: ["LOCAL_INFERENCE"] });
 			return result;
 		}
+		// The route layer names this argument `id`; the planner only knows it as
+		// `voiceModelId`, so report the missing argument under the declared name.
+		if (
+			(input.op === "trigger_voice_model_update" ||
+				input.op === "pin_voice_model") &&
+			!input.voiceModelId?.trim()
+		) {
+			const result = fail(
+				"LOCAL_INFERENCE_INVALID",
+				`${input.op} requires voiceModelId.`,
+			);
+			await callback?.({ text: result.text, actions: ["LOCAL_INFERENCE"] });
+			return result;
+		}
 		try {
 			const { applyLocalInferenceManagementMutation } = await import(
 				"../local-inference-routes.js"
 			);
 			const mutation = await applyLocalInferenceManagementMutation(input);
-			const text =
-				mutation.op === "pin_voice_model"
-					? `Voice model ${mutation.id} is now ${mutation.pinned ? "pinned" : "unpinned"}.`
-					: `Local inference ${mutation.op} updated.`;
+			const text = describeMutation(mutation);
 			const result = ok(text, { ...mutation });
 			await callback?.({ text: result.text, actions: ["LOCAL_INFERENCE"] });
 			return result;
