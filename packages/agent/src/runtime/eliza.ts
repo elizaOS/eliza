@@ -4275,7 +4275,15 @@ export async function startEliza(
       const { applyVaultProfilesForAgent } = await import(
         "./vault-profile-resolver.ts"
       );
-      await applyVaultProfilesForAgent(sharedVault(), agentId);
+      const { overridden } = await applyVaultProfilesForAgent(
+        sharedVault(),
+        agentId,
+      );
+      const secrets = character.secrets;
+      for (const key of overridden) {
+        const value = process.env[key];
+        if (secrets && key in secrets && value) secrets[key] = value;
+      }
     } catch (err) {
       logger.warn(
         `[vault-profile-resolver] boot-time apply failed agent="${agentId}": ${err instanceof Error ? err.message : String(err)}`,
