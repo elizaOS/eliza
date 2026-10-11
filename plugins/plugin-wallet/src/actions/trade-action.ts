@@ -125,6 +125,16 @@ function requireString(raw: Record<string, unknown>, key: string): string {
   return value;
 }
 
+function requireSessionId(raw: Record<string, unknown>): string {
+  const value = stringValue(raw.sessionId);
+  if (!value) {
+    throw new Error(
+      "sessionId is required; read it from operation=inspect_account for the venue",
+    );
+  }
+  return value;
+}
+
 function requireNumber(raw: Record<string, unknown>, key: string): number {
   const value = numberValue(raw[key]);
   if (value === undefined) throw new Error(`${key} must be a number`);
@@ -133,7 +143,7 @@ function requireNumber(raw: Record<string, unknown>, key: string): number {
 
 function parseOrder(raw: Record<string, unknown>): SubmitOrderRequest {
   const venue = requireVenue(raw);
-  const sessionId = requireString(raw, "sessionId");
+  const sessionId = requireSessionId(raw);
   const side = requireSide(raw.side);
   if (venue === "hyperliquid") {
     const order: HyperliquidSubmitOrderRequest = {
@@ -180,7 +190,7 @@ function parseTradeParams(raw: Record<string, unknown>): ParsedTradeParams {
     return { operation, venue: requireVenue(raw) };
   }
   if (operation === "inspect_session") {
-    return { operation, sessionId: requireString(raw, "sessionId") };
+    return { operation, sessionId: requireSessionId(raw) };
   }
   return { operation, order: parseOrder(raw) };
 }
@@ -286,13 +296,21 @@ async function inspectAccount(
       values: { tradeOutcome: actionOutcome(result), tradeVenue: venue },
     };
   }
-  const text = `${venue} governed account is active.`;
+  // submit_order and inspect_session need this id, and it is agent
+  // configuration the planner cannot otherwise read.
+  const sessionId = result.audit.sessionId;
+  const text = `${venue} governed account is active under session ${sessionId}.`;
   return {
     success: true,
     text,
     userFacingText: text,
     verifiedUserFacing: true,
-    data: providerRecord({ success: true, venue, account: result.data }),
+    data: providerRecord({
+      success: true,
+      venue,
+      sessionId,
+      account: result.data,
+    }),
     values: { tradeOutcome: "not_attempted", tradeVenue: venue },
   };
 }
@@ -461,7 +479,8 @@ export const tradeRouterAction: Action = {
     },
     {
       name: "sessionId",
-      description: "Governed Steward trading session id.",
+      description:
+        "Governed Steward trading session id. Required for submit_order and inspect_session. It is agent configuration, not something the user knows: read it from operation=inspect_account for the venue.",
       required: false,
       schema: { type: "string" },
     },

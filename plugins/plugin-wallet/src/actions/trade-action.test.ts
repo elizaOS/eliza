@@ -154,6 +154,10 @@ describe("tradeRouterAction", () => {
       status: "active",
       accountId: "wallet_fixture",
     });
+    // The id submit_order and inspect_session require is agent configuration;
+    // this result is the only place the planner can read it.
+    expect(result?.data?.sessionId).toBe("sess_hl_fixture");
+    expect(result?.text).toContain("sess_hl_fixture");
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "https://steward.local/v1/trade/token-status?agentId=agent-fixture",
       "https://steward.local/v1/trade/sessions/sess_hl_fixture",
