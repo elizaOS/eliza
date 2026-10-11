@@ -18,7 +18,7 @@ import type {
 } from "@elizaos/core";
 import type { ComputerUseService } from "../services/computer-use-service.js";
 import type { WindowActionParams, WindowActionType } from "../types.js";
-import { resolveActionParams } from "./helpers.js";
+import { approvalOwnerIdFromMemory, resolveActionParams } from "./helpers.js";
 import { handleWindowOp } from "./window-handlers.js";
 
 const WINDOW_ACTIONS = [
@@ -68,15 +68,6 @@ function resolveWindowAction(
     normalizeWindowToken(params.subaction) ??
     normalizeWindowToken(params.op)
   );
-}
-
-function approvalOwnerIdFromMemory(message: Memory): string | undefined {
-  const metadata = message.metadata;
-  if (!metadata || typeof metadata !== "object") return undefined;
-  const telegramUserId = (metadata as Record<string, unknown>).telegramUserId;
-  return typeof telegramUserId === "string" && telegramUserId.length > 0
-    ? telegramUserId
-    : undefined;
 }
 
 export const windowAction: Action = {

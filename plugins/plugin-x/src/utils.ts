@@ -61,13 +61,35 @@ const xGraphemeSegmenter = new GraphemeSegmenter("en", {
   granularity: "grapheme",
 });
 
-/** Split direct-message text on Unicode scalar boundaries without dropping it. */
+/** Split direct-message text on grapheme boundaries without dropping it. */
 export function splitXDirectMessageContent(text: string): string[] {
-  const characters = Array.from(text);
   const chunks: string[] = [];
-  for (let index = 0; index < characters.length; index += X_MAX_DM_LENGTH) {
-    chunks.push(characters.slice(index, index + X_MAX_DM_LENGTH).join(""));
+  let chunk = "";
+  let chunkLength = 0;
+  const flush = () => {
+    if (chunk) {
+      chunks.push(chunk);
+      chunk = "";
+      chunkLength = 0;
+    }
+  };
+  for (const { segment } of xGraphemeSegmenter.segment(text)) {
+    const segmentLength = Array.from(segment).length;
+    if (segmentLength > X_MAX_DM_LENGTH) {
+      // One grapheme alone exceeds the limit, so split that grapheme on
+      // Unicode scalar boundaries; it is the only case with no clean cut.
+      flush();
+      const scalars = Array.from(segment);
+      for (let index = 0; index < scalars.length; index += X_MAX_DM_LENGTH) {
+        chunks.push(scalars.slice(index, index + X_MAX_DM_LENGTH).join(""));
+      }
+      continue;
+    }
+    if (chunkLength + segmentLength > X_MAX_DM_LENGTH) flush();
+    chunk += segment;
+    chunkLength += segmentLength;
   }
+  flush();
   return chunks;
 }
 

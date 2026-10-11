@@ -16,7 +16,7 @@
  * The browser is read-only here: the owner actions are `retry` (reload after an
  * error), `search:<q>` / `clear-search` (drive the document search), and
  * `open:<id>` (ask the assistant to open a document — no fabricated navigation).
- * The default fetchers build URLs from `client.getBaseUrl()`; tests inject the
+ * The default fetchers use the authenticated `client.fetch`; tests inject the
  * fetcher seam so they stay offline. The view renders the real `PresentedDocument`
  * fields the route emits — no fabricated rows.
  */
@@ -97,29 +97,11 @@ export interface DocumentsFetchers {
 /** Documents JSON GETs are short UI reads — same 15s family as TodosView / GoalsView. */
 export const DOCUMENTS_VIEW_JSON_TIMEOUT_MS = 15_000;
 
-export async function getDocumentsJsonWithFetch<T>(
-  url: string,
-  fetchImpl: typeof fetch,
-  timeoutMs: number = DOCUMENTS_VIEW_JSON_TIMEOUT_MS,
-  callerSignal?: AbortSignal,
-): Promise<T> {
-  const deadline = AbortSignal.timeout(timeoutMs);
-  const response = await fetchImpl(url, {
-    method: "GET",
-    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
-  });
-  if (!response.ok) {
-    throw new Error(`Documents request failed (${response.status}): ${url}`);
-  }
-  return (await response.json()) as T;
-}
-
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
-  return getDocumentsJsonWithFetch<T>(
-    `${client.getBaseUrl()}${path}`,
-    globalThis.fetch,
-    DOCUMENTS_VIEW_JSON_TIMEOUT_MS,
-    signal,
+  return client.fetch<T>(
+    path,
+    { method: "GET", signal },
+    { timeoutMs: DOCUMENTS_VIEW_JSON_TIMEOUT_MS },
   );
 }
 

@@ -21,7 +21,12 @@ A dispatch receipt requires fresh observation to establish the website result.
 Snapshots include document identity, target bounds, viewport, DOM revision and
 input revision. Effects reject changed URLs, page mutations, user input, field
 values or target geometry; read again after manual progress. Form/editable values
-are excluded from snapshot text and labels. Text fields and dropdowns report
+are excluded from snapshot text and labels. A page can copy what was typed in a
+password, one-time-code or card field into its own text, title or control
+names; every copy of such a value of four or more characters is replaced by
+`[hidden]` in the snapshot text, title, labels, descriptions and headings.
+Link addresses are not rewritten, and a field the page does not mark (by
+`type=password` or `autocomplete`) is not covered. Text fields and dropdowns report
 only whether they have input; fields also report whether an input/change event
 was observed in this document. These flags do not prove a value is correct or
 that a person caused the event. The value comparison stays inside
@@ -170,6 +175,10 @@ The cursor travels from where it was last seen and hides before the ring and
 label appear. A show-only guide never plays a tap, because the person presses
 that control. An action cursor stays on its target, and the 800 ms readiness
 starts after it arrives. Reduced motion shows everything in place.
+When no label position is clear of the control, a show-only guide keeps only
+its ring: there is no label, cursor or Dismiss, `visible` stays false, and the
+ring ends with the request's expiry or the host's `hide`. An action guide shows
+nothing in that case, so it never becomes ready.
 The binding's optional `assistantName` (default "Eliza") names the cursor tag and
 label mark. A bound task action may carry the host's own preview sentence
 (`actionText`, at most 200 characters); otherwise the preview uses a generic line.

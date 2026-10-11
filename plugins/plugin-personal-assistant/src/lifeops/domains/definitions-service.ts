@@ -1154,6 +1154,19 @@ export class DefinitionsDomain {
     if (snoozedUntil.getTime() < eligibleAt.getTime()) {
       fail(400, "snooze preset would deliver before the current eligible time");
     }
+    // A count-per-day occurrence is that local day's quota and the next day has
+    // its own occurrence, so its relevance never follows a snooze. A snooze
+    // past the day's end would expire before it could deliver.
+    if (
+      definition.cadence.kind === "count_per_day" &&
+      snoozedUntil.getTime() > Date.parse(occurrence.relevanceEndAt)
+    ) {
+      fail(
+        409,
+        `a daily-count occurrence cannot be snoozed past the end of its day (${occurrence.relevanceEndAt})`,
+        "LIFEOPS_SNOOZE_PAST_QUOTA_DAY",
+      );
+    }
     const updatedOccurrence: LifeOpsOccurrence = {
       ...occurrence,
       state: "snoozed",

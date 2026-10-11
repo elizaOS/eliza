@@ -6,6 +6,10 @@
 import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import { cryptoPaymentsRepository } from "@elizaos/cloud-shared/db/repositories/crypto-payments";
 import {
+  ApiError,
+  failureResponse,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
   RateLimitPresets,
   rateLimit,
 } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
@@ -38,6 +42,11 @@ app.get("/", async (c) => {
       await cryptoPaymentsService.checkAndConfirmPayment(id);
     return c.json({ ...status, confirmed });
   } catch (error) {
+    // A rejected credential or inactive account is a typed 401/403, not a
+    // server fault; the generic 500 below is only for payment-service errors.
+    if (error instanceof ApiError) {
+      return failureResponse(c, error);
+    }
     logger.error("[Crypto Payments API] Get payment error:", error);
     return c.json({ error: "Failed to get payment status" }, 500);
   }

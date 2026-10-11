@@ -19,6 +19,7 @@ import { agentPhoneNumbers, type PhoneMessageLog } from "../../db/schemas/agent-
 import { userCharacters } from "../../db/schemas/user-characters";
 import { boundedProviderFetch } from "../utils/bounded-provider-fetch";
 import { logger } from "../utils/logger";
+import { splitMessageLosslessly } from "../utils/message-chunking";
 
 import { normalizePhoneNumber } from "../utils/phone-normalization";
 import {
@@ -32,6 +33,10 @@ import {
 
 export const MESSAGE_ROUTER_TWILIO_TIMEOUT_MS = 30_000;
 const MESSAGE_ROUTER_TWILIO_RESPONSE_MAX_BYTES = 64 * 1024;
+/** Twilio rejects a longer Body with error 21617. */
+const TWILIO_BODY_MAX_LENGTH = 1600;
+/** The WhatsApp Cloud API rejects a longer text.body. */
+const WHATSAPP_BODY_MAX_LENGTH = 4096;
 
 /**
  * Bounds the router's Twilio REST hop through the shared provider transport so
@@ -648,23 +653,57 @@ class MessageRouterService {
       return deliveryFailed("twilio", "DELIVERY_CREDENTIALS_MISSING", false);
     }
 
+    const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
+    const authorization = `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`;
+    // One Body holds at most 1600 characters, so a longer reply goes out as
+    // several messages in order. Nothing is dropped.
+    const parts =
+      params.body.length > TWILIO_BODY_MAX_LENGTH
+        ? splitMessageLosslessly(params.body, TWILIO_BODY_MAX_LENGTH)
+        : [params.body];
+    const sids: string[] = [];
+    for (const part of parts) {
+      const outcome = await this.postTwilioMessage(url, authorization, params, part);
+      if (outcome.status === "delivered") {
+        sids.push(...outcome.providerMessageIds);
+        continue;
+      }
+      if (sids.length > 0 && outcome.status === "failed") {
+        // An earlier part already reached the recipient. Reporting "failed"
+        // would let a caller send those parts again.
+        logger.error("[MessageRouter] Twilio rejected a later part after earlier parts were sent", {
+          part: sids.length + 1,
+          parts: parts.length,
+          providerStatus: outcome.providerStatus,
+        });
+        return deliveryUncertain("twilio", outcome.code, outcome.providerStatus);
+      }
+      return outcome;
+    }
+
+    logger.info("[MessageRouter] Twilio message sent successfully");
+    return { status: "delivered", provider: "twilio", providerMessageIds: sids };
+  }
+
+  private async postTwilioMessage(
+    url: string,
+    authorization: string,
+    params: SendMessageParams,
+    body: string,
+  ): Promise<MessageDeliveryOutcome> {
     try {
-      // Twilio REST API
-      const response = await messageRouterTwilioFetch(
-        `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: new URLSearchParams({
-            To: params.to,
-            From: params.from,
-            Body: params.body,
-          }),
+      const response = await messageRouterTwilioFetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: authorization,
+          "Content-Type": "application/x-www-form-urlencoded",
         },
-      );
+        body: new URLSearchParams({
+          To: params.to,
+          From: params.from,
+          Body: body,
+        }),
+      });
 
       if (!response.ok) {
         logger.error("[MessageRouter] Twilio API error", { status: response.status });
@@ -697,7 +736,6 @@ class MessageRouterService {
           : "";
       if (!sid) return deliveryUncertain("twilio", "DELIVERY_RECEIPT_INVALID");
 
-      logger.info("[MessageRouter] Twilio message sent successfully");
       return { status: "delivered", provider: "twilio", providerMessageIds: [sid] };
     } catch (error) {
       // error-policy:J4 the caller receives a typed outcome that preserves ambiguity.
@@ -806,27 +844,55 @@ class MessageRouterService {
       return deliveryFailed("whatsapp", "DELIVERY_CREDENTIALS_MISSING", false);
     }
 
-    try {
-      const receipt = await sendWhatsAppMessage(accessToken, phoneNumberId, params.to, params.body);
-      const providerMessageIds = receipt.messages
-        .map((message) => message.id.trim())
-        .filter(Boolean);
-      if (providerMessageIds.length === 0) {
-        return deliveryUncertain("whatsapp", "DELIVERY_RECEIPT_INVALID");
+    // One text.body holds at most 4096 characters, so a longer reply goes out
+    // as several messages in order. Nothing is dropped.
+    const parts =
+      params.body.length > WHATSAPP_BODY_MAX_LENGTH
+        ? splitMessageLosslessly(params.body, WHATSAPP_BODY_MAX_LENGTH)
+        : [params.body];
+    const providerMessageIds: string[] = [];
+    for (const part of parts) {
+      let outcome: MessageDeliveryOutcome;
+      try {
+        const receipt = await sendWhatsAppMessage(accessToken, phoneNumberId, params.to, part);
+        const ids = receipt.messages.map((message) => message.id.trim()).filter(Boolean);
+        outcome =
+          ids.length === 0
+            ? deliveryUncertain("whatsapp", "DELIVERY_RECEIPT_INVALID")
+            : { status: "delivered", provider: "whatsapp", providerMessageIds: ids };
+      } catch (error) {
+        // error-policy:J4 provider errors become a typed delivery outcome at the caller.
+        logger.error("[MessageRouter] WhatsApp send error", {
+          organizationId: params.organizationId,
+          ...phoneErrorDiagnostic(error),
+        });
+        outcome = classifyProviderException("whatsapp", error);
       }
-
-      logger.info("[MessageRouter] WhatsApp message sent successfully", {
-        organizationId: params.organizationId,
-      });
-      return { status: "delivered", provider: "whatsapp", providerMessageIds };
-    } catch (error) {
-      // error-policy:J4 provider errors become a typed delivery outcome at the caller.
-      logger.error("[MessageRouter] WhatsApp send error", {
-        organizationId: params.organizationId,
-        ...phoneErrorDiagnostic(error),
-      });
-      return classifyProviderException("whatsapp", error);
+      if (outcome.status === "delivered") {
+        providerMessageIds.push(...outcome.providerMessageIds);
+        continue;
+      }
+      if (providerMessageIds.length > 0 && outcome.status === "failed") {
+        // An earlier part already reached the recipient. Reporting "failed"
+        // would let a caller send those parts again.
+        logger.error(
+          "[MessageRouter] WhatsApp rejected a later part after earlier parts were sent",
+          {
+            organizationId: params.organizationId,
+            part: providerMessageIds.length + 1,
+            parts: parts.length,
+            providerStatus: outcome.providerStatus,
+          },
+        );
+        return deliveryUncertain("whatsapp", outcome.code, outcome.providerStatus);
+      }
+      return outcome;
     }
+
+    logger.info("[MessageRouter] WhatsApp message sent successfully", {
+      organizationId: params.organizationId,
+    });
+    return { status: "delivered", provider: "whatsapp", providerMessageIds };
   }
 
   /**

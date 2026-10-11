@@ -130,6 +130,7 @@ async function waitForPublicationLock() {
     });
     const input = { ...f.input, expectedSubscriptionRevision: 2, idempotencyKey: randomUUID() };
     const renewalAt = f.source.current_period_end.toISOString();
+    const observedAt = Date.now();
     const review: import("../../lib/services/subscription-renewal-review-contract").SubscriptionRenewalReview =
       {
         kind: "renewal_estimate",
@@ -151,8 +152,8 @@ async function waitForPublicationLock() {
         totalCents: 3000,
         startingBalanceCents: 0,
         amountDueCents: 3000,
-        observedAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 60000).toISOString(),
+        observedAt: new Date(observedAt).toISOString(),
+        expiresAt: new Date(observedAt + 60000).toISOString(),
         termsDigest: "a".repeat(64),
       };
     const command = await repo.prepareCancellation({ ...input, renewalReview: review }, "resume");

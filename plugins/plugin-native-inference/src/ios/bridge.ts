@@ -43,6 +43,7 @@ import {
 import {
   buildBrandEnvAliases,
   getBootConfig,
+  isCloudInferenceSelectedInConfig,
   readAliasedEnv,
   setBootConfig,
 } from "@elizaos/host/protocol";
@@ -164,6 +165,12 @@ export interface IosBridgeBackend {
    */
   runtime: IAgentRuntime;
   dispatchRoute: DispatchRoute;
+  /**
+   * The agent's own Cloud key check and 409 text (from `@elizaos/agent`, shared
+   * with the agent `POST /api/first-run` route). Returns the rejection text when
+   * the agent holds no Eliza Cloud API key, else null.
+   */
+  cloudInferenceRejection: () => string | null;
   conversations: Map<string, IosConversation>;
   close: () => Promise<void>;
 }
@@ -188,6 +195,7 @@ type DispatchRoute = (args: {
 type AgentModule = {
   bootElizaRuntime: () => Promise<IAgentRuntime>;
   dispatchRoute: DispatchRoute;
+  cloudInferenceRejection: () => string | null;
 };
 const IOS_BRIDGE_DEFAULT_ENV_PREFIX = "MILADY";
 const IOS_BRIDGE_BRAND_ENV_SUFFIXES = [
@@ -197,8 +205,21 @@ const IOS_BRIDGE_BRAND_ENV_SUFFIXES = [
   "API_PORT",
 ] as const;
 async function loadAgentModule(): Promise<AgentModule> {
-  const { bootElizaRuntime, dispatchRoute } = await import("@elizaos/agent");
-  return { bootElizaRuntime, dispatchRoute };
+  const {
+    bootElizaRuntime,
+    dispatchRoute,
+    loadElizaConfig,
+    hasCloudApiKeyForInference,
+    CLOUD_INFERENCE_NO_API_KEY_ERROR,
+  } = await import("@elizaos/agent");
+  return {
+    bootElizaRuntime,
+    dispatchRoute,
+    cloudInferenceRejection: () =>
+      hasCloudApiKeyForInference(loadElizaConfig())
+        ? null
+        : CLOUD_INFERENCE_NO_API_KEY_ERROR,
+  };
 }
 interface IosBridgeHost {
   backendPromise: Promise<IosBridgeBackend> | null;
@@ -212,9 +233,6 @@ interface IosConversation {
   createdAt: string;
   updatedAt: string;
   metadata?: Record<string, unknown>;
-  lastUserText?: string;
-  lastAssistantText?: string;
-  lastAgentName?: string;
 }
 interface BufferedHttpResponse {
   status: number;
@@ -586,7 +604,8 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
   process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP =
     process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP || "1";
   process.env.LOG_LEVEL = process.env.LOG_LEVEL || "error";
-  const { bootElizaRuntime, dispatchRoute } = await loadAgentModule();
+  const { bootElizaRuntime, dispatchRoute, cloudInferenceRejection } =
+    await loadAgentModule();
   const runtime = await bootRuntimeWithRetry(bootElizaRuntime);
   installIosNativeLlamaHandlers(runtime);
   installKeepAwakeBridge();
@@ -595,6 +614,7 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
   return {
     runtime,
     dispatchRoute,
+    cloudInferenceRejection,
     conversations: new Map(),
     close: async () => {
       // error-policy:J6 best-effort teardown — the backend is shutting down; a
@@ -4022,11 +4042,41 @@ async function handleDirectConversationMessage(
   }));
   if (nativeReply) {
     const agentName = runtimeAgentName(backend.runtime);
-    conversation.updatedAt = new Date().toISOString();
-    conversation.lastUserText = prompt.trim();
-    conversation.lastAssistantText =
+    const nativeText =
       typeof nativeReply.text === "string" ? nativeReply.text : "";
-    conversation.lastAgentName = agentName;
+    // The native path does not run messageService, so nothing else stores the
+    // reply. A generation-failure notice is not a model reply and is not stored.
+    if (
+      nativeText &&
+      !(nativeReply.localInference as { error?: string } | undefined)?.error
+    ) {
+      try {
+        await runtime.createMemory?.(
+          createMessageMemory({
+            id: crypto.randomUUID() as UUID,
+            entityId: backend.runtime.agentId,
+            roomId: conversation.roomId,
+            content: {
+              text: nativeText,
+              source: "ios-local",
+              channelType,
+              inReplyTo: message.id,
+            },
+          }),
+          "messages",
+        );
+      } catch (error) {
+        // error-policy:J6 best-effort secondary persistence — the person has
+        // already watched this reply stream in; a failed transcript write must
+        // not turn the finished turn into a failed POST. The failure is
+        // surfaced to stderr and the reply is absent from the next GET.
+        console.error(
+          "[ios-bridge] createMemory(messages) failed for the native reply:",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
+    conversation.updatedAt = new Date().toISOString();
     return {
       ...nativeReply,
       agentName,
@@ -4059,9 +4109,6 @@ async function handleDirectConversationMessage(
   const text = stripReasoningBlocks(chunks.join("")).trim();
   const agentName = runtimeAgentName(backend.runtime);
   conversation.updatedAt = new Date().toISOString();
-  conversation.lastUserText = prompt.trim();
-  conversation.lastAssistantText = text;
-  conversation.lastAgentName = agentName;
   return {
     text,
     reply: text,
@@ -4069,32 +4116,59 @@ async function handleDirectConversationMessage(
     conversationId: conversation.id,
   };
 }
-function cachedConversationMessageResult(
+/**
+ * GET /api/conversations/:id/messages — the stored turns of the conversation
+ * room, oldest first. The newest-history read returns the whole room, so a
+ * `before` page holds only rows the store has below that cursor and the
+ * response never reports more.
+ */
+async function handleConversationMessagesRoute(
+  runtime: IAgentRuntime,
   conversation: IosConversation,
-  input: Record<string, unknown>,
-): Record<string, unknown> | null {
-  const prompt =
-    typeof input.text === "string"
-      ? input.text
-      : typeof input.message === "string"
-        ? input.message
-        : typeof input.prompt === "string"
-          ? input.prompt
-          : "";
-  if (
-    !conversation.lastAssistantText ||
-    !conversation.lastUserText ||
-    conversation.lastUserText !== prompt.trim()
-  ) {
-    return null;
+  query: Record<string, string | string[]>,
+): Promise<BufferedHttpResponse> {
+  const before = parseCanonicalInteger(queryParam(query, "before"));
+  if (before === "invalid") {
+    return jsonResponse(400, {
+      error: "before must be a Unix timestamp in milliseconds",
+    });
   }
-  return {
-    text: conversation.lastAssistantText,
-    reply: conversation.lastAssistantText,
-    agentName: conversation.lastAgentName ?? "Eliza",
-    conversationId: conversation.id,
-    cached: true,
-  };
+  const beforeIdParam = queryParam(query, "beforeId");
+  const beforeId =
+    beforeIdParam === null ? undefined : validateUuid(beforeIdParam);
+  if (beforeIdParam !== null && (before === undefined || beforeId === null)) {
+    return jsonResponse(400, {
+      error: "beforeId must be a UUID paired with before",
+    });
+  }
+  const memories = await runtime.getMemories({
+    roomId: conversation.roomId,
+    tableName: "messages",
+    ...(before === undefined
+      ? {}
+      : beforeId
+        ? { cursor: { createdAt: before, id: beforeId } }
+        : { end: before - 1 }),
+  });
+  memories.sort(
+    (a, b) =>
+      memoryCreatedAt(a) - memoryCreatedAt(b) ||
+      compareMemoryIds(a.id ?? "", b.id ?? ""),
+  );
+  return jsonResponse(200, {
+    messages: memories.map((memory) => {
+      const role = memory.entityId === runtime.agentId ? "assistant" : "user";
+      const text =
+        typeof memory.content.text === "string" ? memory.content.text : "";
+      return {
+        id: memory.id ?? "",
+        role,
+        text: role === "assistant" ? stripReasoningBlocks(text).trim() : text,
+        timestamp: memoryCreatedAt(memory),
+      };
+    }),
+    ...(before === undefined ? {} : { hasMore: false }),
+  });
 }
 function sseEvent(payload: Record<string, unknown>): string {
   return `data: ${JSON.stringify(payload)}\n\n`;
@@ -4154,8 +4228,8 @@ function sseChunkBase64(payload: Record<string, unknown>): string {
  *
  * The emitter is the seam that reaches the WebView (via a `stream_emit`
  * host-call → `notifyListeners`); a fake emitter unit-tests the whole flow with
- * no device. A cached turn or a conversation lookup miss still resolves through
- * this path — the client sees the same `token`/`done` frames as a live turn.
+ * no device. A conversation lookup miss still resolves through this path as a
+ * 404 stream.
  */
 export async function streamConversationMessageResponse(
   backend: IosBridgeBackend,
@@ -4211,25 +4285,15 @@ export async function streamConversationMessageResponse(
   let streamedAny = false;
   let result: Record<string, unknown>;
   try {
-    const cached = cachedConversationMessageResult(conversation, body);
-    if (cached) {
-      result = cached;
-      const cachedText = typeof cached.text === "string" ? cached.text : "";
-      if (cachedText) {
+    result = await handleDirectConversationMessage(
+      backend,
+      conversation,
+      body,
+      (token, accumulated) => {
         streamedAny = true;
-        enqueueChunk({ type: "token", text: cachedText, fullText: cachedText });
-      }
-    } else {
-      result = await handleDirectConversationMessage(
-        backend,
-        conversation,
-        body,
-        (token, accumulated) => {
-          streamedAny = true;
-          enqueueChunk({ type: "token", text: token, fullText: accumulated });
-        },
-      );
-    }
+        enqueueChunk({ type: "token", text: token, fullText: accumulated });
+      },
+    );
   } catch (error) {
     await emitTail;
     await emitSafely({
@@ -4371,6 +4435,19 @@ export async function handleDirectCoreRoute(
     // POST /api/first-run") and on-device onboarding can never finish, leaving
     // the user stuck on "Starting local agent". Companion to the GET
     // /api/first-run/status route above.
+    //
+    // The body is not applied here, so a Cloud inference selection only works
+    // when the agent already holds its own Cloud API key. The renderer's Cloud
+    // session never reaches this process; acknowledging that submit would
+    // report a finished setup whose first chat has no text provider.
+    if (
+      isCloudInferenceSelectedInConfig({
+        serviceRouting: parseRequestBody(payload).serviceRouting,
+      })
+    ) {
+      const rejection = backend.cloudInferenceRejection();
+      if (rejection) return jsonResponse(409, { error: rejection });
+    }
     return jsonResponse(200, {
       ok: true,
       complete: true,
@@ -4458,7 +4535,22 @@ export async function handleDirectCoreRoute(
     /^\/api\/conversations\/([^/]+)\/messages\/stream$/,
   );
   if (method === "GET" && messageMatch) {
-    return jsonResponse(200, { messages: [] });
+    const conversationId = decodePathComponent(messageMatch[1] ?? "");
+    if (conversationId === null) {
+      return jsonResponse(400, {
+        error: "invalid conversation id: malformed URL encoding",
+      });
+    }
+    const conversation = backend.conversations.get(conversationId);
+    if (!conversation) {
+      return jsonResponse(404, { error: "Conversation not found" });
+    }
+    const { query } = splitPathAndQuery(rawPath);
+    return handleConversationMessagesRoute(
+      backend.runtime,
+      conversation,
+      query,
+    );
   }
   if (method === "POST" && messageStreamMatch) {
     const conversationId = decodePathComponent(messageStreamMatch[1] ?? "");
@@ -4472,9 +4564,11 @@ export async function handleDirectCoreRoute(
       return jsonResponse(404, { error: "Conversation not found" });
     }
     const body = parseRequestBody(payload);
-    const result =
-      cachedConversationMessageResult(conversation, body) ??
-      (await handleDirectConversationMessage(backend, conversation, body));
+    const result = await handleDirectConversationMessage(
+      backend,
+      conversation,
+      body,
+    );
     return bufferedConversationStreamResponse(result);
   }
   if (method === "POST" && messageMatch) {

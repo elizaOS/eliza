@@ -138,6 +138,7 @@ function makeBackend(runtime: IAgentRuntime): IosBridgeBackend {
   return {
     runtime,
     dispatchRoute: async () => null,
+    cloudInferenceRejection: () => null,
     conversations: new Map(),
     close: async () => {},
   };
@@ -778,6 +779,249 @@ describe("iOS bridge — conversation message failure surfacing", () => {
       "[ios-bridge] createMemory(messages) failed:",
       expect.anything(),
     );
+  });
+});
+describe("iOS bridge — first-run submit", () => {
+  const cloudRoute = {
+    serviceRouting: {
+      llmText: { backend: "elizacloud", transport: "cloud-proxy" },
+    },
+  };
+  const noKey = "agent has no Eliza Cloud API key";
+  /** The agent's key check answers through this backend seam. */
+  function backendWithKeyCheck(rejection: string | null): IosBridgeBackend {
+    return {
+      ...makeBackend(createFakeRuntime()),
+      cloudInferenceRejection: () => rejection,
+    };
+  }
+
+  it("rejects a Cloud inference selection when the agent has no Cloud API key", async () => {
+    const { status, json } = await call(
+      backendWithKeyCheck(noKey),
+      "POST",
+      "/api/first-run",
+      cloudRoute,
+    );
+    expect(status).toBe(409);
+    expect(json).toEqual({ error: noKey });
+  });
+  it("rejects a Cloud inference selection whose key only travels in the request body", async () => {
+    // The bridge does not apply the first-run body, so a key submitted with it
+    // never reaches the agent. A 200 here would be the same false success.
+    const { status, json } = await call(
+      backendWithKeyCheck(noKey),
+      "POST",
+      "/api/first-run",
+      { ...cloudRoute, credentialInputs: { cloudApiKey: "body-only-key" } },
+    );
+    expect(status).toBe(409);
+    expect(json).toEqual({ error: noKey });
+  });
+  it("acknowledges a Cloud inference selection when the agent holds a Cloud API key", async () => {
+    const { status, json } = await call(
+      backendWithKeyCheck(null),
+      "POST",
+      "/api/first-run",
+      cloudRoute,
+    );
+    expect(status).toBe(200);
+    expect(json.complete).toBe(true);
+  });
+  it("acknowledges an on-device selection with no Cloud API key", async () => {
+    const { status, json } = await call(
+      backendWithKeyCheck(noKey),
+      "POST",
+      "/api/first-run",
+      {
+        serviceRouting: {
+          llmText: { backend: "local", transport: "direct" },
+        },
+      },
+    );
+    expect(status).toBe(200);
+    expect(json.complete).toBe(true);
+  });
+});
+describe("iOS bridge — conversation transcript route", () => {
+  // A scanned GGUF file makes the native reply path run, the path an ios-local
+  // build uses. The store is the in-memory runtime the other shims read.
+  const fsGlobals = globalThis as MobileFsGlobals;
+  let prevResolver: MobileFsGlobals["__ELIZA_MOBILE_FS_RESOLVE__"];
+  let prevStateDir: string | undefined;
+  beforeEach(() => {
+    prevResolver = fsGlobals.__ELIZA_MOBILE_FS_RESOLVE__;
+    fsGlobals.__ELIZA_MOBILE_FS_RESOLVE__ = (inputPath) => inputPath;
+    prevStateDir = process.env.ELIZA_STATE_DIR;
+    process.env.ELIZA_STATE_DIR = mkdtempSync(
+      path.join(tmpdir(), "ios-bridge-transcript-"),
+    );
+    const modelsDir = path.join(
+      process.env.ELIZA_STATE_DIR,
+      "local-inference",
+      "models",
+    );
+    mkdirSync(modelsDir, { recursive: true });
+    writeFileSync(path.join(modelsDir, "chat.gguf"), "GGUF-rest-of-file");
+  });
+  afterEach(() => {
+    fsGlobals.__ELIZA_MOBILE_FS_RESOLVE__ = prevResolver;
+    if (prevStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+    else process.env.ELIZA_STATE_DIR = prevStateDir;
+  });
+  function createNativeReplyBackend(
+    useModel: () => Promise<string>,
+  ): IosBridgeBackend {
+    const runtime = Object.assign(createFakeRuntime(), {
+      async ensureConnection(): Promise<void> {},
+      useModel,
+    });
+    return makeBackend(runtime);
+  }
+  it("returns the stored user turn and native reply, oldest first", async () => {
+    // Generation takes time on a device. Without it both rows share one
+    // millisecond and their order falls to the random-id tiebreak.
+    const backend = createNativeReplyBackend(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return "Hello from Eliza-1.";
+    });
+    const created = await call(backend, "POST", "/api/conversations", {});
+    const id = (created.json.conversation as { id: string }).id;
+    const sent = await call(
+      backend,
+      "POST",
+      `/api/conversations/${id}/messages`,
+      {
+        text: "hi there",
+      },
+    );
+    expect(sent.json.reply).toBe("Hello from Eliza-1.");
+    const { status, json } = await call(
+      backend,
+      "GET",
+      `/api/conversations/${id}/messages`,
+    );
+    expect(status).toBe(200);
+    const messages = json.messages as Array<{
+      id: string;
+      role: string;
+      text: string;
+      timestamp: number;
+    }>;
+    expect(messages.map(({ role, text }) => ({ role, text }))).toEqual([
+      { role: "user", text: "hi there" },
+      { role: "assistant", text: "Hello from Eliza-1." },
+    ]);
+    // The whole room was returned, so the page below the oldest row is empty.
+    const older = await call(
+      backend,
+      "GET",
+      `/api/conversations/${id}/messages?before=${messages[0].timestamp}&beforeId=${messages[0].id}`,
+    );
+    expect(older.json).toEqual({ messages: [], hasMore: false });
+  });
+  it("does not store a generation-failure notice as a reply", async () => {
+    const backend = createNativeReplyBackend(async () => {
+      throw new Error("context lost");
+    });
+    const created = await call(backend, "POST", "/api/conversations", {});
+    const id = (created.json.conversation as { id: string }).id;
+    await call(backend, "POST", `/api/conversations/${id}/messages`, {
+      text: "hi there",
+    });
+    const { json } = await call(
+      backend,
+      "GET",
+      `/api/conversations/${id}/messages`,
+    );
+    expect(
+      (json.messages as Array<{ role: string }>).map((m) => m.role),
+    ).toEqual(["user"]);
+  });
+  it("still returns the reply when storing it fails", async () => {
+    const runtime = Object.assign(createFakeRuntime(), {
+      async ensureConnection(): Promise<void> {},
+      useModel: async () => "Hello from Eliza-1.",
+    });
+    const storeMemory = runtime.createMemory.bind(runtime);
+    runtime.createMemory = async (memory: Memory, tableName: string) => {
+      if (memory.entityId === runtime.agentId) throw new Error("disk full");
+      return storeMemory(memory, tableName);
+    };
+    const backend = makeBackend(runtime);
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const created = await call(backend, "POST", "/api/conversations", {});
+      const id = (created.json.conversation as { id: string }).id;
+      const sent = await call(
+        backend,
+        "POST",
+        `/api/conversations/${id}/messages`,
+        { text: "hi there" },
+      );
+      expect(sent.status).toBe(200);
+      expect(sent.json.reply).toBe("Hello from Eliza-1.");
+      expect(errorLog).toHaveBeenCalledWith(
+        "[ios-bridge] createMemory(messages) failed for the native reply:",
+        "disk full",
+      );
+      const { json } = await call(
+        backend,
+        "GET",
+        `/api/conversations/${id}/messages`,
+      );
+      expect(
+        (json.messages as Array<{ role: string }>).map((m) => m.role),
+      ).toEqual(["user"]);
+    } finally {
+      errorLog.mockRestore();
+    }
+  });
+  it("pages strictly below a bare before timestamp and rejects a bad cursor", async () => {
+    const backend = createNativeReplyBackend(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return "Hello from Eliza-1.";
+    });
+    const created = await call(backend, "POST", "/api/conversations", {});
+    const id = (created.json.conversation as { id: string }).id;
+    await call(backend, "POST", `/api/conversations/${id}/messages`, {
+      text: "hi there",
+    });
+    const all = await call(backend, "GET", `/api/conversations/${id}/messages`);
+    const [userTurn, reply] = all.json.messages as Array<{
+      id: string;
+      timestamp: number;
+    }>;
+    const below = await call(
+      backend,
+      "GET",
+      `/api/conversations/${id}/messages?before=${reply.timestamp}`,
+    );
+    expect(below.json).toEqual({
+      messages: [expect.objectContaining({ id: userTurn.id, role: "user" })],
+      hasMore: false,
+    });
+    for (const query of [
+      "before=yesterday",
+      `beforeId=${userTurn.id}`,
+      `before=${reply.timestamp}&beforeId=not-a-uuid`,
+    ]) {
+      const rejected = await call(
+        backend,
+        "GET",
+        `/api/conversations/${id}/messages?${query}`,
+      );
+      expect(rejected.status).toBe(400);
+    }
+  });
+  it("answers 404 for a conversation the bridge does not hold", async () => {
+    const { status, json } = await call(
+      makeBackend(createFakeRuntime()),
+      "GET",
+      "/api/conversations/missing/messages",
+    );
+    expect(status).toBe(404);
+    expect(json.error).toBe("Conversation not found");
   });
 });
 describe("iOS bridge — local-inference verify route", () => {

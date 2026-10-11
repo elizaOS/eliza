@@ -1,5 +1,6 @@
 // Handles v1 cloud API v1 apps id regenerate api key route traffic with route-local auth expectations.
 
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
 import {
@@ -70,6 +71,9 @@ async function handlePOST(
         "API key regenerated successfully. Make sure to save it securely.",
     });
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
     logger.error("Failed to regenerate API key:", error);
     return Response.json(
       {

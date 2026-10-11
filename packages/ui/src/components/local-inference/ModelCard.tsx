@@ -17,6 +17,7 @@ import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { DownloadProgress } from "./DownloadProgress";
 import {
+  canRedownloadInstalledModel,
   computeFit,
   displayModelName,
   type FitLevel,
@@ -42,7 +43,11 @@ interface ModelCardProps {
   onUninstall: (modelId: string) => void;
   /** When present, a "Verify" button appears on installed models. */
   onVerify?: (modelId: string) => void;
-  /** When present, a "Redownload" button appears on installed models. */
+  /**
+   * When present, a "Redownload" button appears on installed models that are
+   * still offerable. Redownload uninstalls first, so it is hidden when the
+   * download would be refused.
+   */
   onRedownload?: (modelId: string) => void;
   downloadDisabledReason?: string;
   busy: boolean;
@@ -187,7 +192,7 @@ export function ModelCard({
             {t("modelcard.verify", { defaultValue: "Verify" })}
           </Button>
         )}
-        {installedEntry?.source === "eliza-download" && onRedownload && (
+        {onRedownload && canRedownloadInstalledModel(model, installedEntry) && (
           <Button
             size="sm"
             variant="ghost"

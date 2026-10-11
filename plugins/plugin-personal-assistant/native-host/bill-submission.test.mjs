@@ -885,6 +885,115 @@ test("a saved outcome says its receipt is in email only after one receipt was fo
   }
 });
 
+test("a payment the website shows without a confirmation number is saved as this task's outcome", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "bill-unnumbered-"));
+  const db = new DatabaseSync(join(directory, "outcomes.sqlite"));
+  const owner = {
+    actorId: "a",
+    agentId: "agent",
+    connector: { source: "test", accountId: "account" },
+  };
+  const task = {
+    id: "task",
+    revision: 1,
+    epoch: 1,
+    status: "active",
+    operations: [],
+    allowedOrigins: [bill.origin],
+    observation: { id: "observed" },
+  };
+  const tasks = {
+    get: () => task,
+    transition: () => {
+      task.status = "completed";
+      task.revision++;
+    },
+  };
+  const runtime = { owner, get: () => task, observe: async () => {} };
+  const outcomes = createBillOutcomeStore(db, tasks).forTask(runtime, task.id);
+  const page = { current: snapshot() };
+  let looks = 0;
+  // A host policy that takes no confirmation number from the page. The fixture
+  // policy requires one, so the page carries it and it is dropped here.
+  const unnumbered = (...args) => {
+    const { reference: _reference, ...decision } = deriveBillDecision(...args);
+    return decision;
+  };
+  const workflow = new BillWorkflow({
+    deriveBillDecision: unnumbered,
+    controls,
+    runtime,
+    bill,
+    taskId: task.id,
+    outcomes,
+    receipts: {
+      find: async () => {
+        looks++;
+        return true;
+      },
+    },
+    actuator: {
+      readObservation: () => ({
+        observation: task.observation,
+        snapshot: page.current,
+      }),
+      quiesce: async () => {},
+    },
+  });
+  try {
+    outcomes.recordSubmission(deriveBillDecision(bill, snapshot()), "observed");
+    page.current = snapshot({
+      "Payment status": "Scheduled",
+      Confirmation: "R-77",
+      Total: "USD 120.00",
+      "Payment date": "2026-10-20",
+    });
+    const saved = await workflow.refresh();
+    assert.equal(saved.kind, "outcome");
+    assert.equal(saved.status, "scheduled");
+    assert.equal(saved.saveStatus, "saved");
+    assert.equal(Object.hasOwn(saved, "reference"), false);
+    assert.equal(saved.totalMinor, 12000);
+    assert.equal(saved.paymentDate, "2026-10-20");
+    assert.equal(saved.company, "Power");
+    assert.equal(task.status, "completed");
+    // A receipt is matched by its reference, so none is looked for.
+    assert.equal(saved.receiptInEmail, undefined);
+    assert.equal(looks, 0);
+    assert.equal(outcomes.loadReceiptCheck(), null);
+    // The record survives a restart and is other tasks' payment history.
+    const stored = JSON.parse(
+      db.prepare("SELECT document FROM bill_outcomes_v1").get().document,
+    );
+    assert.equal(Object.hasOwn(stored.decision, "reference"), false);
+    const restarted = createBillOutcomeStore(db, tasks).forTask(
+      runtime,
+      task.id,
+    );
+    assert.deepEqual(restarted.loadEvidence().record, stored);
+    assert.equal(restarted.loadEvidence().persisted, true);
+    assert.equal(restarted.retry().saveStatus, "saved");
+    const next = { ...task, id: "next", status: "active", observation: null };
+    const later = createBillOutcomeStore(db, {
+      get: (id) => (id === "next" ? next : task),
+      transition: () => {},
+    }).forTask({ owner, get: () => next }, "next");
+    assert.equal(later.hasPriorOutcome(bill), true);
+    // A reference that is present must still be a usable one.
+    for (const reference of ["", "  ", "x".repeat(129), "R\n1", 7, null]) {
+      const document = structuredClone(stored);
+      document.decision.reference = reference;
+      db.prepare("UPDATE bill_outcomes_v1 SET document=?").run(
+        JSON.stringify(document),
+      );
+      assert.throws(() => restarted.load(), /Invalid outcome record/);
+    }
+  } finally {
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("delayed bill policy is cancelled without saving review or outcome", async () => {
   const controller = new AbortController();
   let started;

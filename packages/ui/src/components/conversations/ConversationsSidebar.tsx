@@ -382,29 +382,6 @@ export function ConversationsSidebar({
       setConfirmDeleteId((current) => (current === id ? null : current));
     }
   };
-  const spawnShellBusyRef = useRef(false);
-  const spawnShell = useCallback(async () => {
-    if (spawnShellBusyRef.current) return;
-    spawnShellBusyRef.current = true;
-    try {
-      const { sessionId } = await client.spawnShellSession();
-      setState("activeInboxChat", null);
-      setState("activeTerminalSessionId", sessionId);
-      setTab("chat");
-    } catch (err) {
-      // error-policy:J4 failure surfaces as an action notice
-      setActionNotice(
-        t("conversations.newTerminalFailed", {
-          defaultValue: "Failed to start terminal: {{message}}",
-          message: errorMessage(err),
-        }),
-        "error",
-        4800,
-      );
-    } finally {
-      spawnShellBusyRef.current = false;
-    }
-  }, [setActionNotice, setState, setTab, t]);
   const selectTerminalSession = useCallback(
     (sessionId: string) => {
       setState("activeInboxChat", null);
@@ -797,7 +774,6 @@ export function ConversationsSidebar({
     [messagesSection.rows, terminalSection.rows, connectorSections],
   );
   const showNewChatAction = tab === "chat";
-  const showNewTerminalAction = tab === "chat";
   return (
     <TooltipProvider delayDuration={280} skipDelayDuration={120}>
       <ConversationRenameDialog
@@ -889,8 +865,7 @@ export function ConversationsSidebar({
         expandButtonAriaLabel={t("aria.expandChatsPanel")}
         collapsedRailAction={
           // Chat-first: the single collapsed-rail "+" always starts a new
-          // CHAT. New terminal stays reachable from the expanded terminal
-          // section header — a shell session is never the primary affordance.
+          // CHAT.
           showNewChatAction ? (
             <SidebarCollapsedActionButton
               aria-label={t("conversations.newChat")}
@@ -1010,12 +985,6 @@ export function ConversationsSidebar({
                 rows={terminalSection.rows}
                 collapsed={collapsedSections.has(terminalSection.key)}
                 onToggleCollapsed={toggleSectionCollapsed}
-                onAdd={
-                  showNewTerminalAction ? () => void spawnShell() : undefined
-                }
-                addLabel={t("conversations.newTerminal", {
-                  defaultValue: "New terminal",
-                })}
                 activeListId={activeListId}
                 rowListId={rowListId}
                 isTerminalRow={isTerminalRow}

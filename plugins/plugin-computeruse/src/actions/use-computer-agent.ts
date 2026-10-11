@@ -74,10 +74,11 @@ import {
   assertComputerUseTrajectoryText,
   buildComputerUseAgentStepTrajectoryPayload,
 } from "../trajectory-text.js";
-import { resolveActionParams } from "./helpers.js";
+import { approvalOwnerIdFromMemory, resolveActionParams } from "./helpers.js";
 import {
   buildStepProgressContent,
   isStreamProgressEnabled,
+  withApprovalRelay,
 } from "./progress.js";
 
 const DEFAULT_MAX_STEPS = 5;
@@ -662,17 +663,25 @@ export const computerUseAgentAction: Action = {
     }
     // The host signal is spread last so a model-supplied `signal` key cannot
     // replace the turn's cancellation.
-    const report = await runComputerUseAgentLoop(
-      runtime,
-      { ...params, signal: options?.abortSignal },
+    // The relay stays subscribed for the whole loop, so each step's pending
+    // approval reaches the chat with Approve/Deny controls.
+    const report = await withApprovalRelay(
       service,
-      {
-        onCompactStepProgress: callback
-          ? async (content) => {
-              await callback(content, "COMPUTER_USE_AGENT");
-            }
-          : undefined,
-      },
+      callback,
+      () =>
+        runComputerUseAgentLoop(
+          runtime,
+          { ...params, signal: options?.abortSignal },
+          service,
+          {
+            onCompactStepProgress: callback
+              ? async (content) => {
+                  await callback(content, "COMPUTER_USE_AGENT");
+                }
+              : undefined,
+          },
+        ),
+      { ownerId: approvalOwnerIdFromMemory(message) },
     );
     const text =
       report.reason === "finish"

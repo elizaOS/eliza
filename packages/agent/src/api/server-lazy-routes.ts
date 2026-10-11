@@ -237,6 +237,16 @@ export const handleMiscRoutes = lazyRoute(
       ctx.pathname.startsWith("/api/custom-actions")),
   async () => (await import("./misc-routes.ts")).handleMiscRoutes,
 );
+export const handleTrajectoryManagementRoutes = lazyRoute(
+  (ctx) =>
+    ctx !== null &&
+    (ctx.pathname === "/api/trajectories/config" ||
+      ctx.pathname === "/api/trajectories/export" ||
+      (ctx.pathname === "/api/trajectories" && ctx.method === "DELETE")),
+  async () =>
+    (await import("./trajectory-management-routes.ts"))
+      .handleTrajectoryManagementRoutes,
+);
 type HostSettingsRoutesModule = typeof import("./host-settings-routes.ts");
 export async function handleHostSettingsRoutes(
   ...args: Parameters<HostSettingsRoutesModule["handleHostSettingsRoutes"]>

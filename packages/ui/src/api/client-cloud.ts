@@ -11,6 +11,7 @@ import { nativeJsonRequestData as directCloudBodyData } from "./native-http-code
  */
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
+import { DEDICATED_COMPUTE_PRICE_HEADER } from "@elizaos/cloud-sdk/browser-contracts";
 import { ElizaError } from "@elizaos/core/protocol";
 import {
   DEFAULT_DIRECT_CLOUD_APP_BASE_URL,
@@ -1776,6 +1777,13 @@ declare module "./client-base.js" {
       agentConfig?: Record<string, unknown>;
       environmentVars?: Record<string, string>;
       /**
+       * The Dedicated price the owner accepted for this paid start
+       * (`getDedicatedComputePriceAcceptance()`). Sent as the price header the
+       * Cloud API requires before it starts Dedicated compute. Pass it only
+       * after the owner confirmed the price.
+       */
+      dedicatedPriceAcceptance?: string;
+      /**
        * Phase-0 tier flip. When true, omit `alwaysOn` so the backend derives a
        * SHARED (container-free, instant) agent instead of a DEDICATED always-on
        * one. Default (undefined/false) keeps the dedicated request unchanged.
@@ -1943,7 +1951,11 @@ declare module "./client-base.js" {
       success: boolean;
       data: { jobId: string; status: string; message: string };
     }>;
-    resumeCloudCompatAgent(agentId: string): Promise<{
+    resumeCloudCompatAgent(
+      agentId: string,
+      /** See `createCloudCompatAgent` for `dedicatedPriceAcceptance`. */
+      options?: { dedicatedPriceAcceptance?: string },
+    ): Promise<{
       success: boolean;
       data: { jobId: string; status: string; message: string };
     }>;
@@ -2099,6 +2111,11 @@ declare module "./client-base.js" {
       preferAgentId?: string | null;
       /** Skip reuse and always create a new agent (explicit "Create new"). */
       forceCreate?: boolean;
+      /**
+       * The Dedicated price the owner accepted. Sent on the paid create and on
+       * the start of a stopped Dedicated agent. See `createCloudCompatAgent`.
+       */
+      dedicatedPriceAcceptance?: string;
       /**
        * Phase-0 tier flip. When true, a freshly created agent is requested as
        * SHARED (instant, container-free) instead of DEDICATED always-on. Only
@@ -2632,6 +2649,7 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
   // the demo flag drops `alwaysOn` to request shared. `tierFields` is spread
   // into both create bodies so the dedicated path stays byte-identical to before.
   const tierFields = opts.preferSharedTier ? {} : { alwaysOn: true };
+  const priceHeaders = dedicatedPriceHeaders(opts.dedicatedPriceAcceptance);
   const direct = await directCloudRequest<{
     success: boolean;
     // `created: false` means a non-forced request reused an existing
@@ -2643,6 +2661,7 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
     error?: string;
   }>(this, "/api/v1/eliza/agents", {
     method: "POST",
+    ...(priceHeaders ? { headers: priceHeaders } : {}),
     body: JSON.stringify({
       agentName: opts.agentName,
       // The Eliza app provisions a DEDICATED (own-container, always-on) agent —
@@ -2709,6 +2728,7 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
       error?: string;
     }>("/api/v1/eliza/agents", {
       method: "POST",
+      ...(priceHeaders ? { headers: priceHeaders } : {}),
       body: JSON.stringify({
         agentName: opts.agentName,
         // Dedicated (own-container, always-on) agent — see the direct-path note.
@@ -2751,9 +2771,10 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
     );
   }
 
+  const { dedicatedPriceAcceptance: _accepted, ...compatBody } = opts;
   return this.fetch("/api/cloud/compat/agents", {
     method: "POST",
-    body: JSON.stringify(opts),
+    body: JSON.stringify(compatBody),
   });
 };
 
@@ -3221,6 +3242,17 @@ ElizaClient.prototype.getCloudCompatAgentLogs = async function (
 };
 
 /**
+ * The price header the Cloud API requires before it starts Dedicated compute.
+ * Absent when the caller holds no owner acceptance, so the request stays
+ * unaccepted and the control plane answers 428 without starting compute.
+ */
+function dedicatedPriceHeaders(
+  acceptance: string | undefined,
+): Record<string, string> | null {
+  return acceptance ? { [DEDICATED_COMPUTE_PRICE_HEADER]: acceptance } : null;
+}
+
+/**
  * Normalize a cloud lifecycle (suspend/resume) response into the
  * `{ success, data: { jobId, status, message } }` shape the UI expects. The
  * direct cloud routes return a 202 `{ success, data: { jobId, status,
@@ -3269,15 +3301,21 @@ async function runCloudLifecycleAction(
   client: ElizaClient,
   agentId: string,
   action: "suspend" | "resume",
+  dedicatedPriceAcceptance?: string,
 ): Promise<{ success: boolean; error?: string; data: LifecycleResult }> {
   const encoded = encodeURIComponent(agentId);
   const directPath = `/api/v1/eliza/agents/${encoded}/${action}`;
+  const priceHeaders = dedicatedPriceHeaders(dedicatedPriceAcceptance);
+  const directInit: RequestInit = {
+    method: "POST",
+    ...(priceHeaders ? { headers: priceHeaders } : {}),
+  };
 
   const direct = await directCloudRequest<{
     success: boolean;
     data?: { jobId?: string; status?: string; message?: string };
     error?: string;
-  }>(client, directPath, { method: "POST" });
+  }>(client, directPath, directInit);
   if (direct) return normalizeCloudLifecycleResponse(direct, action);
 
   if (isDirectCloudAuthMissing(client)) {
@@ -3297,7 +3335,7 @@ async function runCloudLifecycleAction(
       success: boolean;
       data?: { jobId?: string; status?: string; message?: string };
       error?: string;
-    }>(directPath, { method: "POST" }, { allowNonOk: true });
+    }>(directPath, directInit, { allowNonOk: true });
     return normalizeCloudLifecycleResponse(response, action);
   }
 
@@ -3331,8 +3369,14 @@ ElizaClient.prototype.suspendCloudCompatAgent = async function (
 ElizaClient.prototype.resumeCloudCompatAgent = async function (
   this: ElizaClient,
   agentId,
+  options,
 ) {
-  return runCloudLifecycleAction(this, agentId, "resume");
+  return runCloudLifecycleAction(
+    this,
+    agentId,
+    "resume",
+    options?.dedicatedPriceAcceptance,
+  );
 };
 
 ElizaClient.prototype.launchCloudCompatAgent = async function (
@@ -4251,6 +4295,8 @@ export async function waitForCloudAgentRunning(
     timeoutMs?: number;
     onProgress?: (status: string, detail?: string) => void;
     signal?: AbortSignal;
+    /** The Dedicated price the owner accepted for this start. */
+    dedicatedPriceAcceptance?: string;
   },
 ): Promise<CloudCompatAgent> {
   const { agentId, onProgress } = options;
@@ -4270,7 +4316,12 @@ export async function waitForCloudAgentRunning(
     "Starting your agent — a cold boot can take a few minutes...",
   );
   const resume = await client
-    .resumeCloudCompatAgent(agentId)
+    .resumeCloudCompatAgent(
+      agentId,
+      options.dedicatedPriceAcceptance
+        ? { dedicatedPriceAcceptance: options.dedicatedPriceAcceptance }
+        : undefined,
+    )
     .catch((cause: unknown) => {
       const hard = nonTransientWakeFailure(cause);
       if (hard) {
@@ -5511,6 +5562,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     preferSharedTier,
     knownAgents,
     preferStewardAgentAdapter,
+    dedicatedPriceAcceptance,
   } = options;
   const onProgress = options.onProgress;
   const resolvedCloudApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
@@ -5599,6 +5651,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
             : {}),
           ...(onProgress ? { onProgress } : {}),
           ...(options.signal ? { signal: options.signal } : {}),
+          ...(dedicatedPriceAcceptance ? { dedicatedPriceAcceptance } : {}),
         });
       }
       const hasDedicatedBase = Boolean(
@@ -5650,6 +5703,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     ...(bio?.length ? { agentConfig: { bio } } : {}),
     ...(mustForceCreate ? { forceCreate: true } : {}),
     ...(preferSharedTier ? { preferSharedTier: true } : {}),
+    ...(dedicatedPriceAcceptance ? { dedicatedPriceAcceptance } : {}),
   });
   if (!created.success || !created.data.agentId) {
     throw new Error(created.data.message || "Failed to create cloud agent");
@@ -5748,6 +5802,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
         timeoutMs: remainingWakeMs(),
         ...(onProgress ? { onProgress } : {}),
         ...(options.signal ? { signal: options.signal } : {}),
+        ...(dedicatedPriceAcceptance ? { dedicatedPriceAcceptance } : {}),
       });
     } catch (error) {
       if (options.signal?.aborted && error === options.signal.reason) {

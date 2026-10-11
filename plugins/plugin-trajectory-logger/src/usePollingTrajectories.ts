@@ -10,8 +10,8 @@ import { useEffect, useState } from "react";
 import {
   fetchTrajectoryDetail,
   fetchTrajectoryList,
+  isTrajectoryRouteUnavailable,
   type TrajectoryDetail,
-  TrajectoryHttpError,
   type TrajectoryListItem,
 } from "./api-client";
 
@@ -93,8 +93,7 @@ export function usePollingTrajectories(
         });
       } catch (err) {
         if (cancelled) return;
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        if (err instanceof TrajectoryHttpError && err.isUnavailable) {
+        if (isTrajectoryRouteUnavailable(err)) {
           setState((prev) => ({
             ...prev,
             ready: true,

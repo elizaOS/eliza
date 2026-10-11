@@ -694,7 +694,7 @@ export const walletRouterAction: Action = {
     {
       name: "values",
       description:
-        "Native token values as strings for governance propose, queue, or execute.",
+        'Native token value sent with each target call, in wei, as base-10 integer strings (1 ETH is "1000000000000000000"). One per target, for governance propose, queue, or execute.',
       required: false,
       schema: { type: "array", items: { type: "string" } },
     },

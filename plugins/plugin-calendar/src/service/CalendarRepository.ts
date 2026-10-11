@@ -653,6 +653,104 @@ export class CalendarRepository {
   }
 
   /**
+   * Reads one bounded ICS expansion input: rows already in the window,
+   * repeating masters (RRULE or RDATE) that start before the window ends, and
+   * overrides whose original recurrence instant is in the window even when the
+   * override moved out. The window is [timeMin, timeMax) for a timed row and
+   * the wider [allDayTimeMin, allDayTimeMax) for an all-day row, which is a
+   * civil date that the caller places on local days. An override can be timed
+   * while the occurrence it replaces is all-day, so every original recurrence
+   * instant is matched in the wider window.
+   */
+  async listIcsCalendarEventsForExpansion(args: {
+    agentId: string;
+    sourceId: string;
+    timeMin: string;
+    timeMax: string;
+    allDayTimeMin: string;
+    allDayTimeMax: string;
+  }): Promise<LifeOpsCalendarEvent[]> {
+    const metadata = "metadata_json::jsonb";
+    const recurrenceArray = `CASE
+      WHEN jsonb_typeof(${metadata} -> 'recurrence') = 'array'
+      THEN ${metadata} -> 'recurrence'
+      ELSE '[]'::jsonb
+    END`;
+    const windowMin = `(CASE WHEN is_all_day
+      THEN ${sqlQuote(args.allDayTimeMin)}
+      ELSE ${sqlQuote(args.timeMin)}
+    END)`;
+    const windowMax = `(CASE WHEN is_all_day
+      THEN ${sqlQuote(args.allDayTimeMax)}
+      ELSE ${sqlQuote(args.timeMax)}
+    END)`;
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_calendar.life_calendar_events
+        WHERE agent_id = ${sqlQuote(args.agentId)}
+          AND provider = 'ics'
+          AND side = 'owner'
+          AND grant_id = ${sqlQuote(args.sourceId)}
+          AND (
+            (end_at > ${windowMin}
+              AND start_at < ${windowMax})
+            OR (
+              start_at < ${windowMax}
+              AND ${metadata} ->> 'icsRecurrenceId' IS NULL
+              AND EXISTS (
+                SELECT 1
+                  FROM jsonb_array_elements_text(${recurrenceArray}) AS recurrence_line(value)
+                 WHERE recurrence_line.value ~* '^(RRULE|RDATE)[:;]'
+              )
+            )
+            OR (
+              ${metadata} ->> 'icsRecurrenceId' >= ${sqlQuote(args.allDayTimeMin)}
+              AND ${metadata} ->> 'icsRecurrenceId' < ${sqlQuote(args.allDayTimeMax)}
+            )
+          )
+        ORDER BY start_at ASC`,
+    );
+    return rows.map(parseCalendarEvent);
+  }
+
+  /**
+   * Feed read: timed rows that overlap [timeMin, timeMax), and all-day rows
+   * that overlap the wider [allDayTimeMin, allDayTimeMax). An all-day row is a
+   * civil date, so the caller decides which local days it is on.
+   */
+  async listCalendarFeedWindowEvents(args: {
+    agentId: string;
+    provider: LifeOpsCalendarProvider | LifeOpsConnectorGrant["provider"];
+    timeMin: string;
+    timeMax: string;
+    allDayTimeMin: string;
+    allDayTimeMax: string;
+    side: LifeOpsConnectorSide;
+    grantId: string;
+  }): Promise<LifeOpsCalendarEvent[]> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_calendar.life_calendar_events
+        WHERE agent_id = ${sqlQuote(args.agentId)}
+          AND provider = ${sqlQuote(args.provider)}
+          AND side = ${sqlQuote(args.side)}
+          AND grant_id = ${sqlQuote(args.grantId)}
+          AND (
+            (is_all_day = FALSE
+              AND end_at > ${sqlQuote(args.timeMin)}
+              AND start_at < ${sqlQuote(args.timeMax)})
+            OR (is_all_day = TRUE
+              AND end_at > ${sqlQuote(args.allDayTimeMin)}
+              AND start_at < ${sqlQuote(args.allDayTimeMax)})
+          )
+        ORDER BY start_at ASC`,
+    );
+    return rows.map(parseCalendarEvent);
+  }
+
+  /**
    * Returns events whose `end_at` falls in (cursorEndAt, upToIso] OR
    * (end_at == cursorEndAt AND id > cursorId). Ordered by (end_at, id)
    * ascending so callers can advance a tuple cursor and never re-fire for the

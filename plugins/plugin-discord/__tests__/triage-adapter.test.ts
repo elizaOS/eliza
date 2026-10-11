@@ -7,6 +7,7 @@ import type {
 	TargetInfo,
 	UUID,
 } from "@elizaos/core";
+import { DiscordSnowflake } from "@sapphire/snowflake";
 import { describe, expect, it } from "vitest";
 import { DiscordTriageAdapter, mapDiscordMemoryToRef } from "../triage-adapter";
 
@@ -479,5 +480,104 @@ describe("DiscordTriageAdapter", () => {
 		expect(preview.isWellFormed()).toBe(true);
 		expect(preview).toBe(longBody);
 		expect(preview.endsWith("tail")).toBe(true);
+	});
+
+	it("passes the period start as the after boundary on an unlimited sweep", async () => {
+		const sinceMs = Date.UTC(2026, 0, 1);
+		// The first and the last id one millisecond can hold.
+		const firstIdAt = (timestamp: number) =>
+			DiscordSnowflake.generate({
+				timestamp,
+				increment: 0n,
+				workerId: 0n,
+				processId: 0n,
+			});
+		const lastIdAt = (timestamp: number) =>
+			DiscordSnowflake.generate({
+				timestamp,
+				increment: 0xfffn,
+				workerId: 0b11111n,
+				processId: 0b11111n,
+			});
+		const fetches: Array<{
+			channelId?: string;
+			limit?: number;
+			before?: string;
+			after?: string;
+		}> = [];
+		const service = {
+			...createFakeDiscordService({
+				channels: [{ channelId: "c1" }, { channelId: "c2" }],
+			}),
+			async fetchConnectorMessages(
+				_context: MessageConnectorQueryContext,
+				params: (typeof fetches)[number],
+			): Promise<Memory[]> {
+				fetches.push({ ...params });
+				return [];
+			},
+		};
+
+		await new DiscordTriageAdapter().listMessages(createRuntime(service), {
+			sinceMs,
+		});
+
+		expect(fetches.map((fetch) => fetch.channelId)).toEqual(["c1", "c2"]);
+		for (const fetch of fetches) {
+			expect(fetch.limit).toBeUndefined();
+			expect(fetch.before).toBeUndefined();
+			const boundary = BigInt(fetch.after as string);
+			// The first id of the period is kept; the last id before it is not.
+			expect(firstIdAt(sinceMs) > boundary).toBe(true);
+			expect(lastIdAt(sinceMs - 1) <= boundary).toBe(true);
+		}
+	});
+
+	// The service refuses `before` together with `after`, so a limited read
+	// must page by its own cursor alone.
+	it("pages a limited sinceMs read with its before cursor only", async () => {
+		const sinceMs = Date.UTC(2026, 0, 1);
+		// Newest first, one message a second: the period starts at the 50th,
+		// the user wrote up to the 60th and the agent everything newer.
+		const history = Array.from({ length: 200 }, (_, index) => {
+			const createdAt = sinceMs + (150 - index) * 1_000;
+			return discordMemory({
+				messageId: DiscordSnowflake.generate({
+					timestamp: createdAt,
+				}).toString(),
+				channelId: "555",
+				entityId: index < 140 ? AGENT_ID : USER_ID,
+				createdAt,
+			});
+		});
+		const idOf = (memory: Memory) =>
+			BigInt(String(memory.metadata?.discordMessageId));
+		const service = {
+			...createFakeDiscordService(),
+			async fetchConnectorMessages(
+				_context: MessageConnectorQueryContext,
+				params: { limit?: number; before?: string; after?: string },
+			): Promise<Memory[]> {
+				const { limit, before, after } = params;
+				if (before && after) {
+					throw new RangeError(
+						"Discord message reads cannot combine before/cursor with after",
+					);
+				}
+				return history
+					.filter((memory) => !before || idOf(memory) < BigInt(before))
+					.filter((memory) => !after || idOf(memory) > BigInt(after))
+					.slice(0, limit);
+			},
+		};
+
+		const refs = await new DiscordTriageAdapter().listMessages(
+			createRuntime(service),
+			{ channelIds: ["555"], limit: 5, sinceMs },
+		);
+
+		expect(refs.map((ref) => ref.externalId)).toEqual(
+			history.slice(140, 145).map((memory) => String(idOf(memory))),
+		);
 	});
 });

@@ -111,6 +111,13 @@ function clearCredentialSources(config: ElizaConfig, key: string) {
   }
 }
 
+// Boot copies saved config env into process.env, and providers fall back to
+// it, so a cleared key must leave the process too (as PUT /api/config does).
+function clearProcessEnv(values: Record<string, string>) {
+  for (const [key, value] of Object.entries(values))
+    if (!value.trim()) delete process.env[key];
+}
+
 function toggle(
   config: ElizaConfig,
   id: string,
@@ -223,6 +230,7 @@ async function persistMutation(
   // Persistence failure must leave the live configuration untouched and fail the request.
   saveElizaConfig(nextConfig);
   ctx.state.config = nextConfig;
+  clearProcessEnv(values);
   for (const param of plugin.parameters) {
     if (
       enabled === false ||
@@ -414,6 +422,7 @@ async function dispatchPluginManagementRoutes(
       }
       saveElizaConfig(next);
       ctx.state.config = next;
+      clearProcessEnv(values);
       for (const [key, value] of Object.entries(values))
         ctx.state.runtime?.setSetting(
           key,

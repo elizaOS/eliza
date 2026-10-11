@@ -248,6 +248,8 @@ it("normalizes npm-name configuration on enable and clears every persisted crede
     enabled: true,
     config: { OPENAI_API_KEY: secret },
   });
+  // Boot copies the saved key into process.env, where providers fall back.
+  process.env.OPENAI_API_KEY = secret;
   const cleared = await request("/api/secrets", "PUT", {
     secrets: { OPENAI_API_KEY: "" },
   });
@@ -262,6 +264,7 @@ it("normalizes npm-name configuration on enable and clears every persisted crede
   );
   expect(config.env.vars.OPENAI_API_KEY).toBeUndefined();
   expect(config.plugins.entries.openai.config.OPENAI_API_KEY).toBe("");
+  expect(process.env.OPENAI_API_KEY).toBeUndefined();
   const secrets = await (await request("/api/secrets")).json();
   expect(
     secrets.secrets.find(

@@ -6,6 +6,7 @@
  */
 import { createHash } from "node:crypto";
 import {
+  type Content,
   createUniqueUuid,
   type HandlerCallback,
   type IAgentRuntime,
@@ -1003,6 +1004,137 @@ describe("persisted Slack policy through Bolt handlers", () => {
           slackThreadTs: "1700000000.000100",
           fromBot: true,
         }),
+      }),
+      "messages",
+    );
+  });
+
+  it("uploads reply attachments into the thread and fails the reply when an upload fails", async () => {
+    const runtime = createRuntime({
+      enabled: true,
+      botToken: "xoxb-test-token",
+      appToken: "xapp-test-token",
+      groupPolicy: "open",
+      dm: { policy: "open", allowFrom: ["*"] },
+    });
+    const replies: Content[] = [
+      {
+        text: "",
+        attachments: [{ id: "chart", url: "https://example.test/chart.png" }],
+      },
+      {
+        text: "",
+        attachments: [{ id: "gone", url: "https://example.test/gone.png" }],
+      },
+      {
+        text: "here it is",
+        attachments: [{ id: "gone", url: "https://example.test/gone.png" }],
+      },
+    ];
+    Object.assign(runtime, {
+      messageService: {
+        handleMessage: async (
+          _runtime: IAgentRuntime,
+          _memory: Memory,
+          callback: HandlerCallback,
+        ) => callback(replies.shift() as Content),
+      },
+    });
+    const service = await SlackService.start(runtime);
+    const uploadFile = vi
+      .fn()
+      .mockResolvedValue({ fileId: "F123", permalink: "https://slack/F123" });
+    Object.assign(service, {
+      ensureRoomExists: vi.fn().mockResolvedValue({ id: "thread-room" }),
+      fetchAttachmentBytes: vi
+        .fn()
+        .mockResolvedValueOnce({ buffer: Buffer.from("png") })
+        .mockRejectedValueOnce(new Error("attachment fetch failed"))
+        .mockRejectedValueOnce(new Error("attachment fetch failed")),
+      uploadFile,
+    });
+    const app = bolt.apps.at(-1);
+    const inputMemory = {
+      id: "input-memory",
+      entityId: "input-entity",
+      agentId: runtime.agentId,
+      roomId: "channel-room",
+      content: { text: "send the chart" },
+    } as Memory;
+    const processAgentMessage = () =>
+      (
+        service as unknown as {
+          processAgentMessage(
+            memory: Memory,
+            room: Room,
+            channelId: string,
+            threadTs: string,
+            accountId: string,
+          ): Promise<void>;
+        }
+      ).processAgentMessage(
+        inputMemory,
+        { id: "channel-room" } as Room,
+        OPS,
+        "1700000000.000100",
+        "default",
+      );
+
+    await processAgentMessage();
+
+    expect(app?.client.chat.postMessage).not.toHaveBeenCalled();
+    expect(uploadFile).toHaveBeenCalledWith(
+      OPS,
+      Buffer.from("png"),
+      "attachment",
+      { title: undefined, threadTs: "1700000000.000100" },
+      "default",
+    );
+    expect(runtime.createMemory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        roomId: "thread-room",
+        content: expect.objectContaining({
+          attachments: [{ id: "chart", url: "https://example.test/chart.png" }],
+        }),
+        metadata: expect.objectContaining({ slackFileIds: ["F123"] }),
+      }),
+      "messages",
+    );
+
+    await expect(processAgentMessage()).rejects.toMatchObject({
+      code: "SLACK_REPLY_ATTACHMENT_DELIVERY_FAILED",
+    });
+    expect(uploadFile).toHaveBeenCalledTimes(1);
+    expect(runtime.reportError).toHaveBeenLastCalledWith(
+      "slack-reply-delivery",
+      expect.objectContaining({
+        code: "SLACK_REPLY_ATTACHMENT_DELIVERY_FAILED",
+      }),
+      expect.anything(),
+    );
+
+    // Text plus a failed upload: the text is posted once and recorded, and the
+    // reply still fails. A Slack redelivery is stopped by the inbound claim
+    // before this callback, so the accepted text is not posted again.
+    vi.mocked(runtime.createMemory).mockClear();
+    await expect(processAgentMessage()).rejects.toMatchObject({
+      code: "SLACK_REPLY_ATTACHMENT_DELIVERY_FAILED",
+    });
+    expect(app?.client.chat.postMessage).toHaveBeenCalledTimes(1);
+    expect(app?.client.chat.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: OPS,
+        text: "here it is",
+        thread_ts: "1700000000.000100",
+      }),
+    );
+    expect(uploadFile).toHaveBeenCalledTimes(1);
+    expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+    expect(runtime.createMemory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        roomId: "thread-room",
+        content: expect.objectContaining({ text: "here it is" }),
+        metadata: expect.objectContaining({ slackMessageTs: "1.000001" }),
       }),
       "messages",
     );

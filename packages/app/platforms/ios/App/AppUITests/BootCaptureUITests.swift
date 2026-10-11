@@ -350,7 +350,7 @@ final class BootCaptureUITests: XCTestCase {
 
     /// Drive the REAL first-run onboarding on the LOCAL path ("On this device"),
     /// then verify chat + voice against the on-device model: greeting → "On this
-    /// device" → provider "On this device (recommended)" → tutorial choice →
+    /// device" → provider "On this device (…)" → tutorial choice →
     /// model warm-up → send a prompt + await reply → exercise the mic.
     func testLocalOnboardingChatAndVoice() throws {
         try runFullOnboarding(.local)
@@ -398,8 +398,13 @@ final class BootCaptureUITests: XCTestCase {
         attachScreenshot(named: "\(tag)-010-after-placement")
 
         if path == .local {
-            // 3a. Local sub-step: model provider choice.
-            if tapWebChoice(app, label: "On this device (recommended)", timeout: 120) {
+            // 3a. Local sub-step: model provider choice. The on-device row's
+            //     suffix and position depend on the model catalog: "(recommended)"
+            //     in first position when an Eliza-1 tier can be downloaded,
+            //     "(no model download available yet)" below Eliza Cloud inference
+            //     otherwise. Match the shared prefix (the runtime row above has no
+            //     parenthesis) so the tap always lands on the on-device row.
+            if tapWebChoice(app, label: "On this device (", timeout: 120) {
                 attachScreenshot(named: "\(tag)-020-after-provider")
             } else {
                 attachScreenshot(named: "\(tag)-020-no-provider-choice")
@@ -741,9 +746,9 @@ final class BootCaptureUITests: XCTestCase {
             "eliza cloud (managed)": CGVector(dx: 0.41, dy: 0.236),
             "on this device": CGVector(dx: 0.41, dy: 0.291),
             "connect to a remote agent": CGVector(dx: 0.41, dy: 0.345),
-            // Model-provider sub-step (appears below the placement card).
-            "on this device (recommended)": CGVector(dx: 0.41, dy: 0.503),
-            "eliza cloud inference": CGVector(dx: 0.41, dy: 0.557),
+            // The model-provider sub-step has no coordinate fallback: its row
+            // order depends on the model catalog, so a blind tap could select
+            // Eliza Cloud inference instead of the on-device row.
         ]
         let coordFallbackAt = Date().addingTimeInterval(45)
         let deadline = Date().addingTimeInterval(timeout)
