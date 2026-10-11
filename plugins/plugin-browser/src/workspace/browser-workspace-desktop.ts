@@ -1433,7 +1433,7 @@ export function createDesktopBrowserWorkspaceUtilityScript(
       }
       const frame = command.selector ? document.querySelector(command.selector) : null;
       if (!frame || frame.tagName !== "IFRAME") throw new Error("Eliza browser workspace frame select requires an iframe selector.");
-      state.currentFrame = buildSelector(frame);
+      state.currentFrame = command.selector;
       return { frame: state.currentFrame };
     }
     default:
