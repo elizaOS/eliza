@@ -145,19 +145,52 @@ function closeFenceIfNeeded(text: string, openFence: OpenFence | null): string {
 	return `${text}${closeLine}`;
 }
 
-// truncateWellFormed(remaining, limit) returns "" only when `limit` can't
+// The pinned runtimes provide Intl.Segmenter, while the declaration library
+// does not expose its type.
+const GraphemeSegmenter = (
+	Intl as unknown as {
+		Segmenter: new (
+			locale: string,
+			options: { granularity: "grapheme" },
+		) => { segment(text: string): Iterable<{ segment: string }> };
+	}
+).Segmenter;
+
+const graphemeSegmenter = new GraphemeSegmenter("en", {
+	granularity: "grapheme",
+});
+
+/**
+ * `truncateWellFormed` that also never ends inside a grapheme cluster (a ZWJ
+ * emoji sequence, a regional-indicator flag, a combining mark, or a skin-tone
+ * modifier), so a cluster is never split across two Discord messages. When a
+ * single cluster alone exceeds `maxLength`, fall back to the surrogate-safe
+ * cut; it is the only case with no clean boundary.
+ */
+function truncateGraphemeSafe(text: string, maxLength: number): string {
+	if (text.length <= maxLength) return text;
+	let end = 0;
+	for (const { segment } of graphemeSegmenter.segment(text)) {
+		if (end + segment.length > maxLength) break;
+		end += segment.length;
+	}
+	if (end > 0) return text.slice(0, end);
+	return truncateWellFormed(text, maxLength);
+}
+
+// truncateGraphemeSafe(remaining, limit) returns "" only when `limit` can't
 // hold even one well-formed unit of `remaining` (e.g. limit === 1 and
 // `remaining` opens with a surrogate pair: the pair needs 2 code units and
-// truncateWellFormed refuses to split it). An empty chunk would make zero
-// progress, turning the caller's while-loop infinite -- and silently
-// widening past `limit` would violate the maxChars contract instead, so
-// this fails closed.
+// the surrogate-safe fallback refuses to split it). An empty chunk would
+// make zero progress, turning the caller's while-loop infinite -- and
+// silently widening past `limit` would violate the maxChars contract
+// instead, so this fails closed.
 function takeWellFormedChunkOrThrow(
 	text: string,
 	limit: number,
 	requestedMaxChars: number,
 ): string {
-	const chunk = truncateWellFormed(text, limit);
+	const chunk = truncateGraphemeSafe(text, limit);
 	if (chunk.length === 0) {
 		chunkLimitTooSmall(
 			"chunkDiscordText (splitLongLine)",
@@ -189,8 +222,8 @@ function splitLongLine(
 		if (opts.preserveWhitespace) {
 			// A plain `.slice(0, limit)` can land inside a surrogate pair (e.g. an
 			// emoji), splitting one character across two chunks as a lone high
-			// surrogate + lone low surrogate. truncateWellFormed backs the cut off
-			// by one unit instead.
+			// surrogate + lone low surrogate. takeWellFormedChunkOrThrow backs the
+			// cut off to a grapheme boundary instead.
 			const chunk = takeWellFormedChunkOrThrow(
 				remaining,
 				limit,
