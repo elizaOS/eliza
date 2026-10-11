@@ -52,18 +52,16 @@ interface VoiceCallParams {
   /** Contact name or E.164 used for `external` lookup. */
   recipient?: string;
   bodyText?: string;
-  confirmed?: boolean;
-  reason?: string;
 }
 
 const SUBACTIONS: SubactionsMap<VoiceCallSubaction> = {
   dial: {
     description:
-      "Outbound Twilio voice call. recipientKind: owner escalation env owner number + standing-policy ack; external third party RelationshipStore + allow-list; e164 raw phoneNumber. Draft first; confirmed:true dispatch.",
+      "Outbound Twilio voice call. recipientKind: owner escalation env owner number + standing-policy ack; external third party RelationshipStore + allow-list; e164 raw phoneNumber + bodyText. Draft first; the owner's next-turn yes dispatches.",
     descriptionCompressed:
-      "Twilio voice dial: recipientKind=owner|external|e164; draft-confirm; approval-queue",
+      "Twilio voice dial: recipientKind=owner|external|e164; draft, owner yes/no next turn",
     required: ["recipientKind"],
-    optional: ["phoneNumber", "recipient", "bodyText", "confirmed", "reason"],
+    optional: ["phoneNumber", "recipient", "bodyText"],
   },
 };
 
@@ -490,7 +488,7 @@ async function dialOwner(
     "CALL_USER",
   );
 
-  if (params.confirmed !== true && isStandingOwnerCallPolicy(message)) {
+  if (isStandingOwnerCallPolicy(message)) {
     return {
       text: "Recorded. If I get stuck in the browser or on your computer, I'll escalate by phone so you can jump in to unblock it.",
       success: true,
@@ -656,6 +654,49 @@ async function dialExternal(
     );
   }
 
+  // Refuse a call that cannot be placed before the owner is asked to confirm it.
+  const allowList = readExternalAllowList(runtime);
+  const normalizedTo = normalizePhoneAllowListKey(to);
+  const isAllowed = allowList.some(
+    (candidate) => normalizePhoneAllowListKey(candidate) === normalizedTo,
+  );
+  if (!isAllowed) {
+    logger.warn(
+      { action: ACTION_NAME, recipientKind: "external", to },
+      `[${ACTION_NAME}] recipient not in allow-list`,
+    );
+    return {
+      text: `I cannot call ${to}. It is not on the external call allow-list (${EXTERNAL_ALLOWLIST_ENV_KEY}).`,
+      success: false,
+      values: { success: false, reason: "disallowed-recipient", to },
+      data: {
+        actionName: ACTION_NAME,
+        action: "dial",
+        subaction: "dial",
+        recipientKind: "external",
+        reason: "disallowed-recipient",
+        to,
+        matchedRelationshipId: resolvedRecipient.matchedRelationshipId ?? null,
+      },
+    };
+  }
+
+  const credentials = readTwilioCredentialsFromEnv();
+  if (!credentials) {
+    return {
+      text: "Twilio is not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER.",
+      success: false,
+      values: { success: false, error: "TWILIO_NOT_CONFIGURED" },
+      data: {
+        actionName: ACTION_NAME,
+        action: "dial",
+        subaction: "dial",
+        recipientKind: "external",
+        error: "TWILIO_NOT_CONFIGURED",
+      },
+    };
+  }
+
   const spokenMessage =
     params.bodyText?.trim() ||
     pendingDraft?.message?.trim() ||
@@ -689,48 +730,6 @@ async function dialExternal(
         awaitingUserInput: externalDecision.status === "pending",
         to,
         matchedRelationshipId: resolvedRecipient.matchedRelationshipId ?? null,
-      },
-    };
-  }
-
-  const allowList = readExternalAllowList(runtime);
-  const normalizedTo = normalizePhoneAllowListKey(to);
-  const isAllowed = allowList.some(
-    (candidate) => normalizePhoneAllowListKey(candidate) === normalizedTo,
-  );
-  if (!isAllowed) {
-    logger.warn(
-      { action: ACTION_NAME, recipientKind: "external", to },
-      `[${ACTION_NAME}] recipient not in allow-list`,
-    );
-    return {
-      text: "",
-      success: false,
-      values: { success: false, reason: "disallowed-recipient", to },
-      data: {
-        actionName: ACTION_NAME,
-        action: "dial",
-        subaction: "dial",
-        recipientKind: "external",
-        reason: "disallowed-recipient",
-        to,
-        matchedRelationshipId: resolvedRecipient.matchedRelationshipId ?? null,
-      },
-    };
-  }
-
-  const credentials = readTwilioCredentialsFromEnv();
-  if (!credentials) {
-    return {
-      text: "",
-      success: false,
-      values: { success: false, error: "TWILIO_NOT_CONFIGURED" },
-      data: {
-        actionName: ACTION_NAME,
-        action: "dial",
-        subaction: "dial",
-        recipientKind: "external",
-        error: "TWILIO_NOT_CONFIGURED",
       },
     };
   }
@@ -786,9 +785,9 @@ export const voiceCallAction: Action & {
     "Owner-only outbound voice call via registered provider. Action dial; recipientKind=owner|external|e164. " +
     "Provider Twilio; Android/app-phone implementation-only until VOICE_CALL provider wired. " +
     "owner env owner number + standing escalation policy; external RelationshipStore contact + allow-list; e164 raw phoneNumber. " +
-    "All paths draft first; confirmed:true required; approval queue.",
+    "All paths draft first; the call is placed only after the owner replies yes on the next turn.",
   descriptionCompressed:
-    "Twilio voice dial: recipientKind=owner|external|e164; draft-confirm; approval-queue",
+    "Twilio voice dial: recipientKind=owner|external|e164; draft, owner yes/no next turn",
   contexts: ["contacts", "messaging", "phone", "tasks", "automation"],
   roleGate: { minRole: "OWNER" },
 
@@ -813,7 +812,8 @@ export const voiceCallAction: Action & {
     },
     {
       name: "phoneNumber",
-      description: "recipientKind=e164: destination E.164 phoneNumber.",
+      description:
+        "recipientKind=e164: destination E.164 phoneNumber. Also needs bodyText.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -826,20 +826,8 @@ export const voiceCallAction: Action & {
     },
     {
       name: "bodyText",
-      description: "Optional spoken message on connect.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "confirmed",
       description:
-        "true required to place call. Without: draft/approval-queue.",
-      required: false,
-      schema: { type: "boolean" as const },
-    },
-    {
-      name: "reason",
-      description: "Optional call reason; approval task audit.",
+        "Spoken message on connect. Required for recipientKind=e164; owner and external use a default message when omitted.",
       required: false,
       schema: { type: "string" as const },
     },
