@@ -179,6 +179,12 @@ describe("formatPhoneNumber", () => {
     expect(formatPhoneNumber("+15551234567")).toBe("+15551234567");
   });
 
+  it("does not add + to a national number with a leading 0", () => {
+    expect(formatPhoneNumber("010-1234-5678")).toBe("01012345678");
+    expect(formatPhoneNumber("07911 123456")).toBe("07911123456");
+    expect(formatPhoneNumber("0082 10 1234 5678")).toBe("00821012345678");
+  });
+
   it("does not add + for 10-digit numbers", () => {
     expect(formatPhoneNumber("5551234567")).toBe("5551234567");
   });
