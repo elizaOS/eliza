@@ -78,9 +78,13 @@ function getApiBase(): string {
 function parseSince(since: string | undefined): number | undefined {
   if (!since) return undefined;
   const numeric = Number(since);
-  // 8.64e15 ms is the largest instant a Date holds.
-  if (Number.isSafeInteger(numeric) && numeric > 0 && numeric <= 8.64e15) {
-    return numeric;
+  // A number is epoch milliseconds or nothing. Date.parse reads "1.5" and "0"
+  // as implementation-defined dates. 8.64e15 ms is the largest instant a Date
+  // holds.
+  if (!Number.isNaN(numeric)) {
+    return Number.isSafeInteger(numeric) && numeric > 0 && numeric <= 8.64e15
+      ? numeric
+      : undefined;
   }
   const parsed = Date.parse(since);
   return Number.isNaN(parsed) ? undefined : parsed;
