@@ -73,14 +73,16 @@ import type {
   VisionConfig,
 } from "@elizaos/contracts";
 import {
+  DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES,
   fetchRemoteMedia,
   logger,
   nodeLookupFn,
   nodePinnedFetch,
+  readResponseWithLimit,
   sleepWithAbort,
   VISION_IMAGE_MAX_BYTES,
 } from "@elizaos/core";
-import { persistMediaStream } from "../api/media-store.ts";
+import { persistMediaBytes } from "../api/media-store.ts";
 
 // ============================================================================
 // Fetch Utilities
@@ -92,6 +94,10 @@ const DEFAULT_AUDIO_TIMEOUT_MS = 120_000;
 
 const VEO_OPERATION_POLL_INTERVAL_MS = 10_000;
 const VEO_OPERATION_TIMEOUT_MS = 300_000;
+const VEO_VIDEO_DOWNLOAD_TIMEOUT_MS = 120_000;
+const VEO_VIDEO_DOWNLOAD_MAX_REDIRECTS = 5;
+const GOOGLE_GENERATIVE_LANGUAGE_ORIGIN =
+  "https://generativelanguage.googleapis.com";
 
 interface VeoOperation {
   name?: string;
@@ -494,22 +500,66 @@ export class GoogleVideoProvider implements VideoGenerationProvider {
             "Google Veo error: operation completed without a video URI in the response",
         };
       }
-      const download = await fetchWithTimeout(videoUri, {
-        signal: options.signal,
-
-        method: "GET",
-        headers: { "x-goog-api-key": this.apiKey },
-      });
+      const deadline = AbortSignal.timeout(VEO_VIDEO_DOWNLOAD_TIMEOUT_MS);
+      const download = await this.fetchVideo(
+        videoUri,
+        options.signal ? AbortSignal.any([options.signal, deadline]) : deadline,
+      );
       if (!download.ok || !download.body) {
         const text = await download.text();
         return { success: false, error: `Google Veo error: ${text}` };
       }
-      const stored = await persistMediaStream(
-        download.body,
+      const bytes = await readResponseWithLimit(
+        download,
+        DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES,
+      );
+      const stored = persistMediaBytes(
+        bytes,
         download.headers.get("content-type") ?? "video/mp4",
       );
       return { success: true, data: { videoUrl: stored.url } };
     });
+  }
+
+  private async fetchVideo(
+    videoUri: string,
+    signal: AbortSignal,
+  ): Promise<Response> {
+    let url = new URL(videoUri);
+    if (url.origin !== GOOGLE_GENERATIVE_LANGUAGE_ORIGIN) {
+      throw new Error(
+        `Google Veo error: video URI is not on ${GOOGLE_GENERATIVE_LANGUAGE_ORIGIN}`,
+      );
+    }
+    for (
+      let redirects = 0;
+      redirects <= VEO_VIDEO_DOWNLOAD_MAX_REDIRECTS;
+      redirects += 1
+    ) {
+      const response = await fetchWithTimeout(url.href, {
+        signal,
+        method: "GET",
+        redirect: "manual",
+        headers:
+          url.origin === GOOGLE_GENERATIVE_LANGUAGE_ORIGIN
+            ? { "x-goog-api-key": this.apiKey }
+            : {},
+      });
+      const location = response.headers.get("location");
+      if (response.status < 300 || response.status >= 400 || !location) {
+        return response;
+      }
+      await response.body?.cancel();
+      url = new URL(location, url);
+      if (url.protocol !== "https:") {
+        throw new Error(
+          "Google Veo error: video download redirected to a non-HTTPS URL",
+        );
+      }
+    }
+    throw new Error(
+      `Google Veo error: video download exceeded ${VEO_VIDEO_DOWNLOAD_MAX_REDIRECTS} redirects`,
+    );
   }
 
   private async pollOperation(
