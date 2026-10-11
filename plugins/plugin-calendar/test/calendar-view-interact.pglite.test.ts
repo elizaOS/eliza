@@ -148,6 +148,29 @@ describe("calendar view server capabilities (real PGlite)", {
     expect(readData.events.map((event) => event.id)).toEqual([data.event.id]);
   });
 
+  it("create-event treats a planner time zone of Z as UTC", async () => {
+    const result = await interact(
+      "create-event",
+      {
+        title: "Zulu sync",
+        startAt: "2026-08-27T15:00:00Z",
+        timeZone: "Z",
+      },
+      service,
+    );
+
+    expect(result.success).toBe(true);
+    const data = result.data as { event: Record<string, unknown> };
+    expect(data.event).toMatchObject({
+      title: "Zulu sync",
+      timezone: "UTC",
+    });
+    expect(Date.parse(String(data.event.startAt))).toBe(
+      Date.parse("2026-08-27T15:00:00Z"),
+    );
+    expect(await eventRowCount()).toBe(1);
+  });
+
   it("get-events reports an empty day honestly", async () => {
     const result = await interact(
       "get-events",

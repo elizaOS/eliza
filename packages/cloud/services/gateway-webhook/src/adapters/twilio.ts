@@ -5,7 +5,10 @@ import {
   classifyTwilioSmsCostConfig,
   resolveTwilioSmsCostPerSegment,
 } from "@elizaos/cloud-sdk/browser-contracts";
-import { telegramReplyWithMedia } from "@elizaos/cloud-services-common/telegram";
+import {
+  splitTelegramMessage,
+  telegramReplyWithMedia,
+} from "@elizaos/cloud-services-common/telegram";
 import { z } from "zod";
 import { logger } from "../logger";
 import { boundedGatewayFetch } from "./bounded-fetch";
@@ -20,6 +23,8 @@ const TWILIO_API_BASE = "https://api.twilio.com/2010-04-01";
 
 export const TWILIO_GATEWAY_REQUEST_TIMEOUT_MS = 30_000;
 const TWILIO_GATEWAY_RESPONSE_MAX_BYTES = 64 * 1024;
+/** Twilio rejects a longer Body with error 21617. */
+const TWILIO_BODY_MAX_LENGTH = 1600;
 
 export function twilioGatewayFetch(
   input: RequestInfo | URL,
@@ -108,28 +113,14 @@ function extractMediaUrls(event: TwilioEvent): string[] {
   return urls;
 }
 
-async function sendTwilioReply(
-  config: WebhookConfig,
-  event: ChatEvent,
+async function postTwilioMessage(
+  url: string,
+  auth: string,
+  to: string,
+  from: string,
   text: string,
-): Promise<string[]> {
-  if (!config.accountSid || !config.authToken || !config.phoneNumber) {
-    throw new PlatformDeliveryError(
-      "Missing Twilio credentials for reply",
-      "failed",
-      "DELIVERY_CREDENTIALS_MISSING",
-      false,
-    );
-  }
-  const url = `${TWILIO_API_BASE}/Accounts/${config.accountSid}/Messages.json`;
-  const auth = Buffer.from(`${config.accountSid}:${config.authToken}`).toString(
-    "base64",
-  );
-  const body = new URLSearchParams({
-    To: replyAddress(event.senderId, config.phoneNumber),
-    From: config.phoneNumber,
-    Body: text,
-  });
+): Promise<string> {
+  const body = new URLSearchParams({ To: to, From: from, Body: text });
   const response = await twilioGatewayFetch(url, {
     method: "POST",
     headers: {
@@ -176,19 +167,73 @@ async function sendTwilioReply(
       false,
     );
   }
+  return sid;
+}
 
-  const breakdown = calculateTwilioSmsBilling(text, resolveSmsCostPerSegment());
-  logger.info("[TwilioAdapter] Outbound SMS cost recorded", {
-    platform: "twilio",
-    messageId: event.messageId,
-    recipient: event.senderId,
-    segments: breakdown.segments,
-    rawCost: breakdown.rawCost,
-    markup: breakdown.markup,
-    billedCost: breakdown.billedCost,
-    markupRate: breakdown.markupRate,
-  });
-  return [sid];
+async function sendTwilioReply(
+  config: WebhookConfig,
+  event: ChatEvent,
+  text: string,
+): Promise<string[]> {
+  if (!config.accountSid || !config.authToken || !config.phoneNumber) {
+    throw new PlatformDeliveryError(
+      "Missing Twilio credentials for reply",
+      "failed",
+      "DELIVERY_CREDENTIALS_MISSING",
+      false,
+    );
+  }
+  const url = `${TWILIO_API_BASE}/Accounts/${config.accountSid}/Messages.json`;
+  const auth = Buffer.from(`${config.accountSid}:${config.authToken}`).toString(
+    "base64",
+  );
+  const to = replyAddress(event.senderId, config.phoneNumber);
+  // One Body holds at most 1600 characters, so a longer reply goes out as
+  // several messages in order. Nothing is dropped.
+  const chunks =
+    text.length > TWILIO_BODY_MAX_LENGTH
+      ? splitTelegramMessage(text, TWILIO_BODY_MAX_LENGTH)
+      : [text];
+  const costPerSegment = resolveSmsCostPerSegment();
+  const sids: string[] = [];
+  for (const chunk of chunks) {
+    let sid: string;
+    try {
+      sid = await postTwilioMessage(url, auth, to, config.phoneNumber, chunk);
+    } catch (error) {
+      if (
+        sids.length > 0 &&
+        error instanceof PlatformDeliveryError &&
+        error.deliveryStatus === "failed"
+      ) {
+        // An earlier part already reached the recipient. Reporting "failed"
+        // would let the caller reopen the turn and send those parts again.
+        throw new PlatformDeliveryError(
+          `Twilio rejected part ${sids.length + 1} of ${chunks.length} after earlier parts were accepted`,
+          "uncertain",
+          error.code,
+          false,
+          error.providerStatus,
+          { cause: error, context: { acceptedProviderMessageIds: sids } },
+        );
+      }
+      throw error;
+    }
+    sids.push(sid);
+    const breakdown = calculateTwilioSmsBilling(chunk, costPerSegment);
+    logger.info("[TwilioAdapter] Outbound SMS cost recorded", {
+      platform: "twilio",
+      messageId: event.messageId,
+      recipient: event.senderId,
+      providerMessageId: sid,
+      segments: breakdown.segments,
+      rawCost: breakdown.rawCost,
+      markup: breakdown.markup,
+      billedCost: breakdown.billedCost,
+      markupRate: breakdown.markupRate,
+    });
+  }
+  return sids;
 }
 
 async function verifySignature(

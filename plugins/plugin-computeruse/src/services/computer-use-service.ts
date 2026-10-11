@@ -2542,7 +2542,13 @@ export class ComputerUseService extends Service {
     }
   }
 
-  private async awaitApproval(
+  /**
+   * The approval gate every desktop effect goes through. Returns null when the
+   * command may run, or the reason it was blocked, rejected or cancelled.
+   * Public so the actions that drive the desktop without a service command
+   * (COMPUTER_USE_AGENT, CLIPBOARD) use the same gate.
+   */
+  async awaitApproval(
     command: string,
     parameters: Record<string, unknown>,
     signal?: AbortSignal,

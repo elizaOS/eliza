@@ -234,11 +234,14 @@ export function createBillOutcomeStore(db, tasks, { journalPath } = {}) {
       !Number.isSafeInteger(record.observedAt) ||
       record.decision?.kind !== "outcome" ||
       !["paid", "scheduled"].includes(record.decision.status) ||
-      typeof record.decision.reference !== "string" ||
-      !record.decision.reference.trim() ||
-      record.decision.reference.length > 128 ||
-      // biome-ignore lint/suspicious/noControlCharactersInRegex: Reject control characters in provider references.
-      /[\x00-\x1f\x7f]/.test(record.decision.reference) ||
+      // A website may show a payment as paid or scheduled without a confirmation
+      // number. The key is then absent; a reference that is present must be usable.
+      (record.decision.reference !== undefined &&
+        (typeof record.decision.reference !== "string" ||
+          !record.decision.reference.trim() ||
+          record.decision.reference.length > 128 ||
+          // biome-ignore lint/suspicious/noControlCharactersInRegex: Reject control characters in provider references.
+          /[\x00-\x1f\x7f]/.test(record.decision.reference))) ||
       typeof record.decision.billSource !== "string" ||
       record.decision.billSource.length > 512 ||
       (record.decision.company != null &&
@@ -836,7 +839,9 @@ export function createBillOutcomeStore(db, tasks, { journalPath } = {}) {
             decision: {
               kind: "outcome",
               status: decision.status,
-              reference: decision.reference,
+              ...(decision.reference == null
+                ? {}
+                : { reference: decision.reference }),
               source: decision.source,
               billSource: decision.billSource,
               totalMinor: decision.totalMinor ?? null,
