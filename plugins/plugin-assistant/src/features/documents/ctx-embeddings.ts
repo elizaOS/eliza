@@ -175,9 +175,10 @@ export function getContextualizationPrompt(
     return "Error: Document or chunk content missing.";
   }
 
+  // Function replacers insert content verbatim; a string would expand "$&", "$'" and "$$".
   return promptTemplate
-    .replace("{doc_content}", docContent)
-    .replace("{chunk_content}", chunkContent);
+    .replace("{doc_content}", () => docContent)
+    .replace("{chunk_content}", () => chunkContent);
 }
 
 export function getCachingContextualizationPrompt(
@@ -224,7 +225,7 @@ export function getCachingContextualizationPrompt(
 
   const formattedPrompt = promptTemplate.replace(
     "{chunk_content}",
-    chunkContent,
+    () => chunkContent,
   );
 
   return {

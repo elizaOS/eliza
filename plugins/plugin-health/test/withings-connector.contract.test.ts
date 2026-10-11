@@ -208,12 +208,11 @@ describe("Withings connector — recorded real API contract", () => {
     expect(temp?.value).toBeCloseTo(36.51, 5);
     expect(temp?.unit).toBe("C");
 
-    // type 73 heart_rate_variability: 680 * 10^-1 = 68 ms.
-    const hrv = payload.samples.find(
-      (s) => s.metric === "heart_rate_variability",
-    );
-    expect(hrv?.value).toBe(68);
-    expect(hrv?.unit).toBe("ms");
+    // type 73 is Skin Temperature (celsius) in the Withings API, not heart
+    // rate variability. No health metric holds it, so it adds no sample.
+    expect(
+      payload.samples.some((s) => s.metric === "heart_rate_variability"),
+    ).toBe(false);
 
     // type 10 systolic / type 9 diastolic (unit 0 -> verbatim).
     const systolic = payload.samples.find(

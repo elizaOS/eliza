@@ -46,8 +46,10 @@ application files by arbitrary request paths.
 pseudonymous structural events, excluding task text and connector content.
 `research-capture-host.mjs` composes the collector, encrypted queue, exclusive
 lease and caller-cancelled transport. Its explicit start/stop lifecycle preserves
-consent and current-owner fences; importing it starts no collection. Run `bun run test:native-host` for real SQLite/HTTP evidence, including stop during an
-unanswered request. These modules do not authorize enrolling real participants.
+consent and current-owner fences; importing it starts no collection. From the
+repository root, run `bun run --cwd packages/host test:native-host` for real
+SQLite/HTTP evidence, including stop during an unanswered request. These modules
+do not authorize enrolling real participants.
 
 `native-host/research-configuration.mjs` owns private research configuration
 initialization and offline key rotation. Hosts supply retention, capacity,

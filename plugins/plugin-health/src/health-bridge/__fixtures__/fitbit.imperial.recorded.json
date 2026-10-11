@@ -1,6 +1,6 @@
 {
-  "_source": "Fitbit Web API (api.fitbit.com) documented response shapes for a US-locale (en_US) account — same endpoints as fitbit.recorded.json. With profile.user.distanceUnit / weightUnit = `en_US` and no Accept-Language override, summary.distances[].distance is in MILES and body.log.weight[].weight is in POUNDS. See https://dev.fitbit.com/build/reference/web-api/developer-guide/application-design/#Localization (en_US => United States: distance miles, weight pounds).",
-  "_why": "Imperial-locale variant. Replayed through syncHealthConnectorData({token:{provider:'fitbit'}}) to assert distance_meters/weight_kg are CONVERTED to SI (5.0 mi => 8046.72 m, 150 lb => 68.0388... kg) instead of passed through as if metric.",
+  "_source": "Fitbit Web API (api.fitbit.com) documented response shapes for a US-locale (en_US) account — same endpoints as fitbit.recorded.json. Fitbit selects the unit system of a response from the Accept-Language request header: `en_US` => United States, `en_GB` => United Kingdom, none of these or not provided => Metric. The connector sends no Accept-Language header, so summary.distances[].distance is in KILOMETERS and body.log.weight[].weight is in KILOGRAMS, although profile.user.distanceUnit / weightUnit = `en_US`. See https://dev.fitbit.com/build/reference/web-api/developer-guide/application-design/#Localization and https://dev.fitbit.com/build/reference/web-api/body/get-weight-log/ (weight: 'in the unit system that corresponds to the Accept-Language header provided or if not provided in metric').",
+  "_why": "US-profile variant. Replayed through syncHealthConnectorData({token:{provider:'fitbit'}}) to assert the profile unit does NOT change the stored values: 8.05 km => 8050 m and 68.04 kg => 68.04 kg. A profile-unit conversion would store 12955.2 m and 30.86 kg.",
   "_captured": "2026-06-24",
   "profile": {
     "user": {
@@ -9,8 +9,8 @@
       "displayName": "Grace",
       "gender": "FEMALE",
       "age": 41,
-      "height": 65.7,
-      "weight": 150.0,
+      "height": 166.9,
+      "weight": 68.04,
       "timezone": "America/New_York",
       "distanceUnit": "en_US",
       "weightUnit": "en_US",
@@ -27,9 +27,9 @@
       "lightlyActiveMinutes": 210,
       "sedentaryMinutes": 640,
       "distances": [
-        { "activity": "total", "distance": 5.0 },
-        { "activity": "tracker", "distance": 5.0 },
-        { "activity": "veryActive", "distance": 2.4 }
+        { "activity": "total", "distance": 8.05 },
+        { "activity": "tracker", "distance": 8.05 },
+        { "activity": "veryActive", "distance": 3.86 }
       ]
     },
     "goals": { "steps": 10000, "caloriesOut": 2300 }
@@ -57,11 +57,11 @@
         "logId": 38291077001,
         "date": "2026-05-01",
         "time": "07:15:00",
-        "weight": 150.0,
+        "weight": 68.04,
         "bmi": 24.45,
         "fat": 23.1,
         "source": "API",
-        "weightUnit": "POUND"
+        "weightUnit": "kg"
       }
     ]
   }
