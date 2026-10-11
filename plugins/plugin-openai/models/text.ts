@@ -91,7 +91,6 @@ import {
   normalizeSchemaForCerebras,
   sanitizeFunctionNameForCerebras,
 } from "../utils/schema-compat";
-import { countTokensForModel } from "../utils/tokenization";
 import { StructuredOutputProgressGuard } from "./structured-output-progress";
 
 // ============================================================================
@@ -2305,7 +2304,6 @@ function createOpenAIPreparedRequestGuard(args: {
     projectRequest,
     ...runtimePreparedBudget(args.providerOptions),
     ...(typeof maxOutputTokens === "number" ? { outputReserveTokens: maxOutputTokens } : {}),
-    countInputTokens: (body) => countTokensForModel(args.modelName, body),
   });
 }
 

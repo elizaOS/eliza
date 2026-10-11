@@ -40,11 +40,6 @@ function resolveTokenizerEncoding(modelName: string): typeof cl100k {
   }
 }
 
-/** Count a provider-prepared request with the concrete selected model. */
-export function countTokensForModel(modelName: string, text: string): number {
-  return resolveTokenizerEncoding(modelName).encode(text).length;
-}
-
 function getModelName(runtime: IAgentRuntime, modelType: ModelTypeName): string {
   if (modelType === ModelType.TEXT_SMALL) {
     return getSmallModel(runtime);
