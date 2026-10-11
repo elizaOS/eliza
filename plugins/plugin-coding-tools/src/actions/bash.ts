@@ -578,11 +578,18 @@ function isReadOnlyProbeCommand(
   command: string,
   isProbeStage: (stage: string) => boolean,
 ): boolean {
-  const withoutStderrRedirect = command.replace(
+  if (/[`\n\r]|\$\(/u.test(command)) return false;
+  // A shell operator inside a quoted argument is data (an awk program, a
+  // `grep -E` pattern), not a stage separator or a redirect.
+  const withoutQuotedOperators = command.replace(
+    /'[^']*'|"(?:[^"\\]|\\.)*"/gu,
+    (quoted) => quoted.replace(/[;|&<>]/gu, "_"),
+  );
+  const withoutStderrRedirect = withoutQuotedOperators.replace(
     /\s*2>\s*(?:\/dev\/null|&1)/gu,
     " ",
   );
-  if (/[<>`\n\r]|\$\(/u.test(withoutStderrRedirect)) return false;
+  if (/[<>]/u.test(withoutStderrRedirect)) return false;
   let sawProbe = false;
   for (const rawStage of withoutStderrRedirect.split(/&&|\|\||[;|]/u)) {
     const stage = rawStage.trim();

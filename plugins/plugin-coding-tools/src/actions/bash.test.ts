@@ -2262,10 +2262,15 @@ describeIfPosix("shellAction", () => {
     expect(result.command).toContain("/api/health");
   });
 
-  it("canonicalizes RAM status probes", () => {
+  it.each([
+    "top -b -n 1 | head",
+    "free -m | awk '/Mem:/ {print $4; exit}'",
+    "grep -E 'MemTotal|MemAvailable' /proc/meminfo",
+    "free -m | awk '$3 > 100'",
+  ])("canonicalizes RAM status probes (%s)", (command) => {
     const result = resolveLocalStatusCommand({
       messageText: "how much RAM is free right now? concise",
-      command: "top -b -n 1 | head",
+      command,
       platform: "linux",
     });
 
@@ -2298,6 +2303,8 @@ describeIfPosix("shellAction", () => {
       "grep -n mem_limit docker-compose.yml",
     ],
     ["how much RAM is free right now?", "free -m > mem.txt"],
+    ["how much RAM is free right now?", "free -m | awk '{print}'; rm -rf x"],
+    ["how much RAM is free right now?", 'echo "$(rm -rf x)"; free -m'],
     ["Is the bot health endpoint up? then run git status", "git status"],
     [
       "check the local bot health endpoint",
