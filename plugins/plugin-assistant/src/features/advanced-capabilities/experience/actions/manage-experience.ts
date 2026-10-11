@@ -265,8 +265,8 @@ async function doDelete(
   if (!query) {
     return fail("experienceId or query is required.", "EXPERIENCE_MISSING_ID");
   }
-  if (params.confirm !== true) return confirmationRequired("delete");
-
+  // The lookup is read-only: report no match or an ambiguous match on the
+  // first call instead of after the caller has already confirmed.
   const candidates = await experienceService.queryExperiences({
     query,
   });
@@ -295,6 +295,12 @@ async function doDelete(
   }
 
   const target = matched[0];
+  if (params.confirm !== true) {
+    return fail(
+      `Refusing to delete experience ${target.id} (${toWellFormedUnicode(target.learning)}): pass confirm:true to acknowledge this destructive action.`,
+      "EXPERIENCE_CONFIRMATION_REQUIRED",
+    );
+  }
   const deleted = await experienceService.deleteExperience(target.id);
   if (!deleted) {
     return fail(
