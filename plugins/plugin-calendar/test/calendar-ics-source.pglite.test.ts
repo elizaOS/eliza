@@ -1547,6 +1547,63 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     ]);
   });
 
+  it("expands the rules that select dates with BYSETPOS", async () => {
+    const source = await createSource();
+    const example = (uid: string, start: string, rrule: string) =>
+      [
+        "BEGIN:VEVENT",
+        `UID:${uid}`,
+        "DTSTAMP:19970301T000000Z",
+        `DTSTART;TZID=America/New_York:${start}`,
+        "DURATION:PT1H",
+        `RRULE:${rrule}`,
+        `SUMMARY:${uid}`,
+        "END:VEVENT",
+      ].join("\r\n");
+    await syncBody(
+      source.id,
+      calendar(
+        // RFC 5545 3.8.5.3 gives the dates for this rule.
+        example(
+          "third-of-tuesday-wednesday-thursday",
+          "19970904T090000",
+          "FREQ=MONTHLY;COUNT=3;BYDAY=TU,WE,TH;BYSETPOS=3",
+        ),
+        // The form that Exchange writes for "the last weekday of April".
+        example(
+          "last-weekday-of-april",
+          "19970430T090000",
+          "FREQ=YEARLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1;BYMONTH=4;COUNT=3",
+        ),
+      ),
+    );
+    const feed = await service.getCalendarFeed(
+      new URL("http://internal.test/api/calendar"),
+      {
+        grantId: source.id,
+        timeMin: "1997-01-01T00:00:00.000Z",
+        timeMax: "2000-01-01T00:00:00.000Z",
+      },
+      new Date(),
+    );
+
+    expect(feed.state).toBe("complete");
+    const startsOf = (title: string) =>
+      feed.events
+        .filter((event) => event.title === title)
+        .map((event) => event.startAt.slice(0, 10));
+    expect(startsOf("third-of-tuesday-wednesday-thursday")).toEqual([
+      "1997-09-04",
+      "1997-10-07",
+      "1997-11-06",
+    ]);
+    expect(startsOf("last-weekday-of-april")).toEqual([
+      "1997-04-30",
+      "1998-04-30",
+      "1999-04-30",
+    ]);
+  });
+
   it("does not load unrelated historical rows for a short expansion window", async () => {
     const source = await createSource();
     await syncBody(

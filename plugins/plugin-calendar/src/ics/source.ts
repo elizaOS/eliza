@@ -203,6 +203,7 @@ export function expandIcsCalendarEvents(args: {
             localUntil: true,
             monthlyByDay: true,
             yearlyByMonth: true,
+            bySetPos: true,
           })
         : null;
     if (!rule || rule.beyondExpansionSubset || hasRdate) {

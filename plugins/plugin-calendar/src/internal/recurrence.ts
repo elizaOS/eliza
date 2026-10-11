@@ -90,6 +90,13 @@ export interface ParsedCalendarRecurrenceRule {
    * BYDAY weekdays, on the BYMONTHDAY days, or on the day of DTSTART.
    */
   byMonthOfYear?: number[];
+  /**
+   * BYSETPOS of a MONTHLY rule, or of a YEARLY rule that has BYMONTH, set
+   * only when the caller asks for it. Each value selects one date from the
+   * dates of one month (MONTHLY) or one year (YEARLY): `1` is the first
+   * date and `-1` the last.
+   */
+  bySetPos?: number[];
   /** Total occurrence count including the first occurrence (DTSTART). */
   count?: number;
   /** Inclusive UTC cutoff for occurrences. */
@@ -215,6 +222,7 @@ export function parseRecurrenceRule(
     localUntil?: boolean;
     monthlyByDay?: boolean;
     yearlyByMonth?: boolean;
+    bySetPos?: boolean;
   } = {},
 ): ParsedCalendarRecurrenceRule {
   const body = value.trim().replace(/^RRULE:/i, "");
@@ -226,6 +234,7 @@ export function parseRecurrenceRule(
   let byDayTokens: ParsedCalendarRecurrenceRule["byDayOfMonth"];
   let byMonthDay: number[] | undefined;
   let byMonthRaw: string | undefined;
+  let bySetPosRaw: string | undefined;
   let weekStart: number | undefined;
   let count: number | undefined;
   let untilMs: number | undefined;
@@ -314,6 +323,8 @@ export function parseRecurrenceRule(
         byMonthRaw = raw;
         break;
       case "BYSETPOS":
+        bySetPosRaw = raw;
+        break;
       case "BYHOUR":
       case "BYMINUTE":
       case "BYSECOND":
@@ -361,6 +372,23 @@ export function parseRecurrenceRule(
     if (byDay && freq !== "WEEKLY") beyondExpansionSubset = true;
   }
   if (byMonthRaw !== undefined && !byMonthOfYear) beyondExpansionSubset = true;
+  // BYSETPOS selects dates from the dates of one month or one year. The
+  // dates of other periods (a week, a day) stay outside the subset.
+  const setPositions = /^[+-]?\d{1,3}(?:,[+-]?\d{1,3})*$/.test(
+    bySetPosRaw ?? "",
+  )
+    ? [...new Set((bySetPosRaw ?? "").split(",").map(Number))]
+    : [];
+  const bySetPos =
+    options.bySetPos === true &&
+    (freq === "MONTHLY" || byMonthOfYear) &&
+    setPositions.length > 0 &&
+    setPositions.every(
+      (position) => position !== 0 && Math.abs(position) <= 366,
+    )
+      ? setPositions
+      : undefined;
+  if (bySetPosRaw !== undefined && !bySetPos) beyondExpansionSubset = true;
   if (byMonthDay && freq !== "MONTHLY" && !byMonthOfYear) {
     beyondExpansionSubset = true;
   }
@@ -372,6 +400,7 @@ export function parseRecurrenceRule(
     byMonthDay,
     byDayOfMonth,
     byMonthOfYear,
+    bySetPos,
     weekStart,
     count,
     untilMs,
@@ -426,6 +455,7 @@ export function firstRecurrenceRule(
     localUntil?: boolean;
     monthlyByDay?: boolean;
     yearlyByMonth?: boolean;
+    bySetPos?: boolean;
   } = {},
 ): ParsedCalendarRecurrenceRule | null {
   if (!recurrence) return null;
@@ -652,6 +682,19 @@ function* generateOccurrences(args: {
     ].sort((a, b) => a - b);
   }
 
+  // The dates of one month or one year that BYSETPOS selects, in ascending
+  // order. Without BYSETPOS, all the dates.
+  function selectSetPositions(dates: LocalDateOnly[]): LocalDateOnly[] {
+    const positions = rule.bySetPos;
+    if (!positions) return dates;
+    const selected = new Set(
+      positions.map((position) =>
+        position > 0 ? position - 1 : dates.length + position,
+      ),
+    );
+    return dates.filter((_, index) => selected.has(index));
+  }
+
   function* localDates(): Generator<LocalDateOnly> {
     switch (rule.freq) {
       case "DAILY": {
@@ -696,9 +739,13 @@ function* generateOccurrences(args: {
           const { year, month } = addMonthsToLocalMonth(anchorDate, step);
           const monthStart = { year, month, day: 1 };
           if (beyondRangeEnd(monthStart)) return;
-          for (const day of daysOfMonth(year, month, byMonthDay)) {
-            yield { year, month, day };
-          }
+          yield* selectSetPositions(
+            daysOfMonth(year, month, byMonthDay).map((day) => ({
+              year,
+              month,
+              day,
+            })),
+          );
         }
       }
       case "YEARLY": {
@@ -711,11 +758,15 @@ function* generateOccurrences(args: {
           const year = anchorDate.year + step;
           const yearStart = { year, month: 1, day: 1 };
           if (beyondRangeEnd(yearStart)) return;
-          for (const month of months) {
-            for (const day of daysOfMonth(year, month, byMonthDay)) {
-              yield { year, month, day };
-            }
-          }
+          yield* selectSetPositions(
+            months.flatMap((month) =>
+              daysOfMonth(year, month, byMonthDay).map((day) => ({
+                year,
+                month,
+                day,
+              })),
+            ),
+          );
         }
       }
     }
