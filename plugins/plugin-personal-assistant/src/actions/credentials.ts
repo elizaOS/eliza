@@ -17,7 +17,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
-import { runAutofillHandler } from "./autofill.js";
+import { FIELD_PURPOSES, runAutofillHandler } from "./autofill.js";
 import { runPasswordManagerHandler } from "./password-manager.js";
 
 const ACTION_NAME = "CREDENTIALS";
@@ -160,9 +160,9 @@ export const credentialsAction: Action & {
     // Autofill-side params.
     {
       name: "field",
-      description: "(action=fill) email | password | name | phone | custom.",
+      description: "(action=fill) email | password | name | phone.",
       required: false,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, enum: [...FIELD_PURPOSES] },
     },
     {
       name: "domain",
@@ -193,7 +193,7 @@ export const credentialsAction: Action & {
     {
       name: "itemId",
       description:
-        "(action=inject_username|inject_password) Password manager item id.",
+        "(action=inject_username|inject_password) Password manager item id as returned by search or list, not the title.",
       required: false,
       schema: { type: "string" as const },
     },

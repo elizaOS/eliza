@@ -27,13 +27,7 @@ import { FeatureNotEnabledError } from "../lifeops/feature-flags.types.js";
 
 const ACTION_NAME = "AUTOFILL";
 
-const FIELD_PURPOSES = [
-  "email",
-  "password",
-  "name",
-  "phone",
-  "custom",
-] as const;
+export const FIELD_PURPOSES = ["email", "password", "name", "phone"] as const;
 type FieldPurpose = (typeof FIELD_PURPOSES)[number];
 
 const WHITELIST_CACHE_KEY = "eliza:lifeops-autofill-whitelist";
