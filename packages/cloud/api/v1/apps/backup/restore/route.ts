@@ -35,8 +35,8 @@ const BackupSchema = z
     }),
     monetization: z.object({
       enabled: z.boolean(),
-      inference_markup_percentage: z.number(),
-      purchase_share_percentage: z.number(),
+      inference_markup_percentage: z.number().min(0).max(1000),
+      purchase_share_percentage: z.number().min(0).max(100),
     }),
   })
   .passthrough();
