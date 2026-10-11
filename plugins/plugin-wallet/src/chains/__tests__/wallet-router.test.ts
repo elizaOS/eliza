@@ -4,7 +4,12 @@
  * doubles — no live model, network, or chain, but the routing/gating code
  * under test is the real production path, not a stub.
  */
-import type { HandlerOptions, IAgentRuntime, Memory } from "@elizaos/core";
+import {
+  type HandlerOptions,
+  type IAgentRuntime,
+  type Memory,
+  validateToolArgs,
+} from "@elizaos/core";
 import { decodeFunctionData, parseAbi } from "viem";
 import { describe, expect, it, vi } from "vitest";
 import { WalletBackendService } from "../../services/wallet-backend-service";
@@ -414,6 +419,35 @@ describe("wallet router action", () => {
     );
     expect(result?.data?.chain).toBe("base");
     expect(result?.data?.transactionHash).toBe("0xtest");
+  });
+
+  it("routes a planner transfer to the chain named in the declared target parameter", async () => {
+    const { runtime, service } = createService();
+    registerDefaultWalletChainHandlers(service, runtime);
+    const recipient = "0x742d35Cc6634C0532925a3b844Bc454e4438f44e";
+
+    const validation = validateToolArgs(walletRouterAction, {
+      action: "transfer",
+      target: "base",
+      fromToken: "ETH",
+      amount: "0.2",
+      recipient,
+      mode: "execute",
+    });
+    expect(validation.errors).toEqual([]);
+
+    const result = await walletRouterAction.handler(
+      runtime,
+      message(`Send 0.2 ETH on Base to ${recipient}`),
+      undefined,
+      { parameters: validation.args } as HandlerOptions,
+    );
+
+    expect(result?.data?.error).toBeUndefined();
+    expect(result?.data?.requiresConfirmation).toBe(true);
+    expect(result?.text).toBe(
+      `Transfer 0.2 ETH to ${recipient} on base? Reply yes to submit or no to cancel.`,
+    );
   });
 
   it("refuses a malformed transfer recipient before the spend confirmation", async () => {

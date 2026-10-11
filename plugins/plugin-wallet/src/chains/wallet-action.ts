@@ -204,7 +204,7 @@ function normalizeRawParams(
   const op = normalizedGovOp(raw.op ?? raw.govOp);
   return {
     subaction,
-    chain: raw.chain ?? raw.fromChain ?? raw.network,
+    chain: raw.target ?? raw.chain ?? raw.fromChain ?? raw.network,
     toChain:
       raw.toChain ?? raw.toNetwork ?? raw.destinationChain ?? raw.targetChain,
     fromToken:
