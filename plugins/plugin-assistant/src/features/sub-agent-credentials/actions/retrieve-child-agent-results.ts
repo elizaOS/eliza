@@ -39,6 +39,7 @@ function getClient(runtime: IAgentRuntime): SubAgentChildResultsClient | null {
 
 export const retrieveChildAgentResultsAction: Action = {
   name: "RETRIEVE_CHILD_AGENT_RESULTS",
+  contexts: ["code", "agent_internal"],
   description:
     "Fetch the final result bundle (transcript, artifacts, structured result) for a child coding-agent session.",
   descriptionCompressed: "Fetch child sub-agent result bundle.",
@@ -57,19 +58,10 @@ export const retrieveChildAgentResultsAction: Action = {
     },
   ],
 
-  validate: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-    _state?: State,
-    options?: HandlerOptions,
-  ): Promise<boolean> => {
-    if (!getClient(runtime)) return false;
-    const params = readParams(options);
-    return (
-      typeof params.childSessionId === "string" &&
-      params.childSessionId.length > 0
-    );
-  },
+  // Availability only: the planner tool surface calls validate with no
+  // arguments. The schema and the handler check the arguments.
+  validate: async (runtime: IAgentRuntime): Promise<boolean> =>
+    getClient(runtime) !== null,
 
   handler: async (
     runtime: IAgentRuntime,
