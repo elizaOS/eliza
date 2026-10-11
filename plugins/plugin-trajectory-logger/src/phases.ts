@@ -47,7 +47,7 @@ const EVALUATE_TYPES = new Set([
   "turn_complete",
 ]);
 
-function phaseOf(call: UILlmCall): PhaseName | null {
+export function phaseOf(call: UILlmCall): PhaseName | null {
   const t = (call.stepType || call.purpose || "").toLowerCase();
   if (HANDLE_TYPES.has(t)) return "HANDLE";
   if (PLAN_TYPES.has(t)) return "PLAN";

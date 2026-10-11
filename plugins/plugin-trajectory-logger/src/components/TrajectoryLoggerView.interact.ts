@@ -5,6 +5,7 @@
  */
 
 import { fetchTrajectoryDetail, fetchTrajectoryList } from "../api-client";
+import { phaseOf } from "../phases";
 
 export async function interact(
   capability: string,
@@ -35,10 +36,8 @@ export async function interact(
       id: detail.trajectory.id,
       status: detail.trajectory.status,
       phase: requestedPhase,
-      llmCalls: detail.llmCalls.filter((call) =>
-        [call.purpose, call.stepType, call.actionType]
-          .filter(Boolean)
-          .some((value) => value.toUpperCase().includes(requestedPhase)),
+      llmCalls: detail.llmCalls.filter(
+        (call) => phaseOf(call) === requestedPhase,
       ).length,
       toolEvents: detail.toolEvents?.length ?? 0,
       evaluationEvents: detail.evaluationEvents?.length ?? 0,
