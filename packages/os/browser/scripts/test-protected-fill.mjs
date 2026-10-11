@@ -75,6 +75,76 @@ try {
     ),
     false,
   );
+  // A page that copies what was typed in its secret fields into its own text,
+  // title and control names. No copy leaves the page; other text is kept.
+  await page.locator("#password").fill("correct horse 42");
+  await page.locator("#name").fill("Visible Name");
+  await page.evaluate(() => {
+    const typed = ["#password", "#otp", "#name"].map(
+      (selector) => document.querySelector(selector).value,
+    );
+    const echo = document.createElement("p");
+    echo.id = "echo";
+    echo.textContent = `You typed ${typed.join(" / ")}. Reference 9123456.`;
+    const heading = document.createElement("h2");
+    heading.textContent = `Password ${typed[0]}`;
+    const use = document.createElement("a");
+    use.href = "https://otp.example/next";
+    use.append(heading, `Use ${typed[1]}`);
+    const help = document.createElement("button");
+    help.type = "button";
+    help.textContent = "Help";
+    help.setAttribute("aria-describedby", "echo");
+    const card = document.createElement("input");
+    card.setAttribute("autocomplete", "cc-number");
+    card.setAttribute("aria-label", "Card");
+    card.value = "4111 1111 1111 1111";
+    const short = document.createElement("input");
+    short.type = "password";
+    short.setAttribute("aria-label", "PIN");
+    short.value = "typ";
+    const cardEcho = document.createElement("p");
+    cardEcho.textContent = `Card ${card.value}`;
+    document.body.append(echo, use, help, card, short, cardEcho);
+    document.title = `Typed ${typed[0]}`;
+  });
+  const mirrored = await run({ subaction: "snapshot" }, "mirrored");
+  const mirroredJson = JSON.stringify(mirrored);
+  for (const secret of ["correct horse 42", "123456", "4111 1111 1111 1111"])
+    assert.equal(mirroredJson.includes(secret), false, secret);
+  // Text that only contains a typed value is replaced too ("Reference 9123456").
+  assert.ok(
+    mirrored.text
+      .split("\n")
+      .includes(
+        "You typed [hidden] / [hidden] / Visible Name. Reference 9[hidden].",
+      ),
+  );
+  assert.match(mirrored.text, /Card \[hidden\]/);
+  assert.equal(mirrored.title, "Typed [hidden]");
+  const named = (label) =>
+    mirrored.elements.find((element) => element.label === label);
+  assert.equal(
+    named("Password [hidden]\nUse [hidden]").heading,
+    "Password [hidden]",
+  );
+  assert.match(
+    named("Help").description,
+    /^You typed \[hidden\] \/ \[hidden\]/,
+  );
+  // A value too short to compare safely leaves ordinary words alone.
+  assert.match(mirrored.text, /You typed/);
+  assert.equal(named("Password").sensitive, "password");
+  assert.equal(named("Password").hasInput, true);
+  console.log(
+    "PASS: a password, code or card number the page copies into its text, title or control names is replaced in the snapshot.",
+  );
+  await page.evaluate(() => {
+    for (const node of [...document.body.children].slice(4)) node.remove();
+    document.querySelector("#password").value = "";
+    document.querySelector("#name").value = "";
+    document.title = "";
+  });
   assert.equal(
     (await attempt("#password", "fill-code", true)).error.kind,
     "POLICY_BLOCKED",

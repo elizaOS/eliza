@@ -249,6 +249,25 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
               : {}),
       };
     };
+    // A page can copy what was typed in a secret field into its own text, its
+    // title or a control's name. The values are compared here, in the page, and
+    // every copy is replaced before anything is returned. Very short values are
+    // not compared: they would match ordinary words.
+    const secrets = [
+      ...new Set(
+        [...document.querySelectorAll("input,textarea")]
+          .filter((node) => sensitivity(node) !== null)
+          .map((node) => node.value)
+          .filter((value) => typeof value === "string" && value.length >= 4),
+      ),
+    ].sort((left, right) => right.length - left.length);
+    const withoutSecrets = (value) =>
+      typeof value === "string"
+        ? secrets.reduce(
+            (text, secret) => text.split(secret).join("[hidden]"),
+            value,
+          )
+        : value;
     const nodes = new Map();
     const elements = [];
     const candidates = document.querySelectorAll(
@@ -264,16 +283,20 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         bounds: geometry,
         value: typeof node.value === "string" ? node.value : null,
       });
+      const state = controlState(node);
       elements.push({
         bounds: geometry,
         id,
         tag: node.tagName.toLowerCase(),
         role: node.getAttribute("role"),
-        label: accessibleName(node),
+        label: withoutSecrets(accessibleName(node)),
         type: node.getAttribute("type"),
-        ...controlState(node),
+        ...state,
+        description: withoutSecrets(state.description),
         heading: node.querySelector("h1,h2,h3,h4,h5,h6")
-          ? readVisibleText(node.querySelector("h1,h2,h3,h4,h5,h6"))
+          ? withoutSecrets(
+              readVisibleText(node.querySelector("h1,h2,h3,h4,h5,h6")),
+            )
           : null,
         href:
           node instanceof HTMLAnchorElement && /^https?:/.test(node.href)
@@ -298,15 +321,18 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         ? { effectViolation: violation.kind }
         : {}),
       url: location.href,
-      title: document.title,
+      title: withoutSecrets(document.title),
       readyState: document.readyState,
       domRevision: monitor.domRevision,
       inputRevision: monitor.inputRevision,
       viewport: viewport(),
-      text: readVisibleText(document.body ?? document.documentElement),
+      text: withoutSecrets(
+        readVisibleText(document.body ?? document.documentElement),
+      ),
       complete: true,
       omitted: [
         "form control values and editable region contents (credential boundary)",
+        "page text, title and control names equal to the value of a password, code or card field",
       ],
       elements,
     };

@@ -21,7 +21,12 @@ A dispatch receipt requires fresh observation to establish the website result.
 Snapshots include document identity, target bounds, viewport, DOM revision and
 input revision. Effects reject changed URLs, page mutations, user input, field
 values or target geometry; read again after manual progress. Form/editable values
-are excluded from snapshot text and labels. Text fields and dropdowns report
+are excluded from snapshot text and labels. A page can copy what was typed in a
+password, one-time-code or card field into its own text, title or control
+names; every copy of such a value of four or more characters is replaced by
+`[hidden]` in the snapshot text, title, labels, descriptions and headings.
+Link addresses are not rewritten, and a field the page does not mark (by
+`type=password` or `autocomplete`) is not covered. Text fields and dropdowns report
 only whether they have input; fields also report whether an input/change event
 was observed in this document. These flags do not prove a value is correct or
 that a person caused the event. The value comparison stays inside
