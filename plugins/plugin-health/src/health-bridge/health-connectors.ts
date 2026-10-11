@@ -434,40 +434,12 @@ async function syncStrava(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
   };
 }
 
-// Fitbit reports distance/weight in the unit system tied to the account's
-// locale, surfaced on the profile as `distanceUnit` / `weightUnit` with the
-// values `en_US` (US: miles, pounds), `en_GB` (UK: miles, stone), or `METRIC`
-// (km, kg). Because we send no `Accept-Language` override, the wire values are
-// exactly those profile-configured units, so the profile is the source of
-// truth for how to read them. See
+// Fitbit selects the response unit system from the `Accept-Language` request
+// header, not from the profile. We send no such header, so distance is in
+// kilometers and weight is in kilograms for every account. The profile's
+// `distanceUnit` / `weightUnit` only show what the owner sees in the Fitbit
+// app. See
 // https://dev.fitbit.com/build/reference/web-api/developer-guide/application-design/#Localization
-const METERS_PER_MILE = 1_609.344;
-const KG_PER_POUND = 0.45359237;
-const KG_PER_STONE = 6.35029318;
-
-function fitbitUsesImperialDistance(distanceUnit: string | null): boolean {
-  return distanceUnit === "en_US" || distanceUnit === "en_GB";
-}
-
-function fitbitDistanceMeters(
-  distance: number,
-  distanceUnit: string | null,
-): number {
-  return fitbitUsesImperialDistance(distanceUnit)
-    ? distance * METERS_PER_MILE
-    : distance * 1_000;
-}
-
-function fitbitWeightKg(weight: number, weightUnit: string | null): number {
-  if (weightUnit === "en_US") {
-    return weight * KG_PER_POUND;
-  }
-  if (weightUnit === "en_GB") {
-    return weight * KG_PER_STONE;
-  }
-  return weight;
-}
-
 const FITBIT_WALL_TIME =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/;
 
@@ -538,10 +510,6 @@ async function syncFitbit(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
     path: "/1/user/-/profile.json",
   });
   const profileUser = getRecord(identityJson, "user");
-  const distanceUnit = profileUser
-    ? getText(profileUser, "distanceUnit")
-    : null;
-  const weightUnit = profileUser ? getText(profileUser, "weightUnit") : null;
   const timeZone = resolveFitbitTimeZone(profileUser, args.token.agentId);
   const samples: LifeOpsHealthMetricSample[] = [];
   const sleepEpisodes: LifeOpsHealthSleepEpisode[] = [];
@@ -616,14 +584,10 @@ async function syncFitbit(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           token: args.token,
           grantId: args.grantId,
           metric: "distance_meters",
-          value:
-            totalDistance > 0
-              ? fitbitDistanceMeters(totalDistance, distanceUnit)
-              : null,
+          value: totalDistance > 0 ? totalDistance * 1_000 : null,
           unit: "m",
           startAt: dayAt,
           sourceExternalId: `${date}:fitbit:distance_meters`,
-          metadata: { providerUnit: distanceUnit },
         }),
       ]),
     );
@@ -726,27 +690,21 @@ async function syncFitbit(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
         `${getText(log, "date") ?? date}T${getText(log, "time") ?? "12:00:00"}`,
         timeZone,
       );
-      const rawWeight = getNumber(log, "weight");
       samples.push(
         ...compactSamples([
           sample({
             token: args.token,
             grantId: args.grantId,
             metric: "weight_kg",
-            value:
-              rawWeight !== null ? fitbitWeightKg(rawWeight, weightUnit) : null,
+            value: getNumber(log, "weight"),
             unit: "kg",
             startAt: loggedAt,
             // The log's own date is the profile-zone day; loggedAt is UTC.
             localDate: getText(log, "date") ?? date,
             sourceExternalId:
               getText(log, "logId") ?? `${date}:fitbit:weight_kg`,
-            // providerUnit is the unit label Fitbit attached to THIS weight log;
-            // the value is converted to kg using the account locale (weightUnit).
-            metadata: {
-              providerUnit: getText(log, "weightUnit"),
-              providerLocaleUnit: weightUnit,
-            },
+            // providerUnit is the unit label Fitbit attached to THIS weight log.
+            metadata: { providerUnit: getText(log, "weightUnit") },
           }),
         ]),
       );
