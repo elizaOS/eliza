@@ -20,7 +20,7 @@ update journaling, qualified-clock projection and cancellable job ownership.
 Hosts supply the inventory format, durability/clock adapters and release policy;
 these APIs neither authorize an installation nor expose renderer capabilities.
 File-based primitives require Android API 26 or newer. Run their portable JVM
-crash/recovery tests with JDK 21 and `bun run test:native-host`.
+crash/recovery tests with JDK 21 and `bun run --cwd plugins/plugin-native-agent test:native-host`.
 
 The Android updater `PackageInstallCoordinator` shares package/session validation,
 commit and installed-identity reconciliation on API 29+. Hosts supply target
