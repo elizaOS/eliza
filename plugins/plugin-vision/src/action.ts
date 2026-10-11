@@ -1417,13 +1417,13 @@ export const visionAction: Action = {
     [
       {
         name: "{{user}}",
-        content: { text: "the person wearing the blue shirt is named Alice" },
+        content: { text: "this is Alice" },
       },
       {
         name: "{{agent}}",
         content: {
           actions: ["VISION"],
-          text: "I've identified the person in the blue shirt as Alice. I'll remember them for future interactions.",
+          text: "I've identified the person as Alice. I'll remember them for future interactions.",
         },
       },
     ],
@@ -1443,13 +1443,13 @@ export const visionAction: Action = {
     [
       {
         name: "{{user}}",
-        content: { text: "track the person wearing the red shirt" },
+        content: { text: "start tracking what you see" },
       },
       {
         name: "{{agent}}",
         content: {
           actions: ["VISION"],
-          text: "I'm now tracking the person in the red shirt.",
+          text: "I'm now tracking 3 entities in the scene (1 people, 2 objects).",
         },
       },
     ],
