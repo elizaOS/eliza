@@ -16,6 +16,7 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { hasRoleAccess } from "@elizaos/core";
+import { resolveOwnerTimeZone } from "../owner/fact-store.js";
 import { LifeOpsRepository } from "../repository.js";
 import {
   classifyCommitmentKind,
@@ -164,9 +165,30 @@ function messageSourceKey(message: Memory): string {
   return `message:${String(message.id ?? message.createdAt ?? "unknown")}`;
 }
 
+function messageInstant(message: Memory): Date {
+  return new Date(message.createdAt ?? Date.now());
+}
+
+/** Weekday, local date and clock time of `instant` in the owner's zone. */
+function describeOwnerLocalTime(instant: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    weekday: "long",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(instant);
+  const part = (type: string) =>
+    parts.find((entry) => entry.type === type)?.value ?? "";
+  return `${part("weekday")} ${part("year")}-${part("month")}-${part("day")} ${part("hour")}:${part("minute")} (${timeZone})`;
+}
+
 export const commitmentExtractionEvaluator: Evaluator<
   CommitmentExtractionOutput,
-  Record<string, never>
+  { timeZone: string }
 > = {
   name: "commitment_extraction",
   inputScope: "current_message",
@@ -186,11 +208,15 @@ export const commitmentExtractionEvaluator: Evaluator<
     return hasRoleAccess(runtime, message, "OWNER");
   },
 
-  async prepare() {
-    return {};
+  async prepare({ runtime, message }) {
+    // Named days ("on Sunday") are the owner's civil days, as on the
+    // deterministic sent-mail and transcript paths.
+    return {
+      timeZone: await resolveOwnerTimeZone(runtime, messageInstant(message)),
+    };
   },
 
-  prompt({ message }) {
+  prompt({ message, prepared }) {
     return `Extract the concrete commitments (promises to do something) the owner makes in their message below.
 
 Rules:
@@ -198,11 +224,12 @@ Rules:
 - "evidence" must be the exact verbatim sentence copied from the message.
 - "summary" is a short restatement of the promised work.
 - "counterparty" is the person the promise is made to, when the message names one.
-- "dueAtIso" is an ISO-8601 timestamp only when the promise names an explicit date; otherwise omit it.
+- "dueAtIso" is an ISO-8601 timestamp with the owner's UTC offset only when the promise names an explicit date; otherwise omit it. Resolve named days against the owner's local date below.
 - "confidence" in [0,1]: how certain you are this is a firm commitment.
 - Return {"commitments": []} when the message contains no firm promise.
 
-Source message timestamp: ${new Date(message.createdAt ?? Date.now()).toISOString()}
+Source message timestamp: ${messageInstant(message).toISOString()}
+Owner local time: ${describeOwnerLocalTime(messageInstant(message), prepared.timeZone)}
 
 Owner message:
 ${message.content.text ?? ""}`;
