@@ -819,6 +819,15 @@ export async function sendTelegramReply(
             { chat_id: event.chatId, ...threadParams, text: chunk },
           );
         }
+        if (
+          message === null ||
+          typeof message !== "object" ||
+          !Number.isSafeInteger(message.message_id) ||
+          message.message_id < 0
+        ) {
+          // error-policy:J3 a malformed receipt leaves provider acceptance uncertain.
+          throw new TelegramApiTransportError("sendMessage");
+        }
         const providerMessageId = String(message.message_id);
         await deliveryHooks?.accepted(chunkIndex, chunk, providerMessageId);
         providerMessageIds.push(providerMessageId);
