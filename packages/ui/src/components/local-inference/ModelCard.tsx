@@ -11,13 +11,13 @@ import type {
   HardwareProbe,
   InstalledModel,
 } from "@elizaos/contracts";
-import { isSettingsDefaultLocalModel } from "@elizaos/plugin-native-inference/model-catalog/catalog";
 import { catalogDownloadSizeGb } from "@elizaos/plugin-native-inference/model-catalog/recommendation";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { DownloadProgress } from "./DownloadProgress";
 import {
+  canRedownloadInstalledModel,
   computeFit,
   displayModelName,
   type FitLevel,
@@ -192,18 +192,16 @@ export function ModelCard({
             {t("modelcard.verify", { defaultValue: "Verify" })}
           </Button>
         )}
-        {installedEntry?.source === "eliza-download" &&
-          onRedownload &&
-          isSettingsDefaultLocalModel(model) && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => onRedownload(model.id)}
-              disabled={busy}
-            >
-              {t("modelcard.redownload", { defaultValue: "Redownload" })}
-            </Button>
-          )}
+        {onRedownload && canRedownloadInstalledModel(model, installedEntry) && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onRedownload(model.id)}
+            disabled={busy}
+          >
+            {t("modelcard.redownload", { defaultValue: "Redownload" })}
+          </Button>
+        )}
         {installedEntry?.source === "eliza-download" && (
           <Button
             size="sm"

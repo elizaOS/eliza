@@ -13,7 +13,6 @@ import type {
   InstalledModel,
   ModelBucket,
 } from "@elizaos/contracts";
-import { isSettingsDefaultLocalModel } from "@elizaos/plugin-native-inference/model-catalog/catalog";
 import { catalogDownloadSizeGb } from "@elizaos/plugin-native-inference/model-catalog/recommendation";
 import { CheckCircle2 } from "lucide-react";
 import { useMemo } from "react";
@@ -23,6 +22,7 @@ import { Button } from "../ui/button";
 import { DownloadProgress } from "./DownloadProgress";
 import {
   bucketLabel,
+  canRedownloadInstalledModel,
   computeFit,
   displayModelName,
   type FitLevel,
@@ -287,9 +287,8 @@ function ModelListRow({
               {t("modelhub.verify", { defaultValue: "Verify" })}
             </Button>
           ) : null}
-          {installedEntry?.source === "eliza-download" &&
-          onRedownload &&
-          isSettingsDefaultLocalModel(model) ? (
+          {onRedownload &&
+          canRedownloadInstalledModel(model, installedEntry) ? (
             <Button
               size="tiny"
               variant="ghostMuted"
