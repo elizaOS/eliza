@@ -1,5 +1,7 @@
 /** Same durable scheduler row and real reminder processing, driven by a virtual
  * core clock. Notification sink records deliveries; no network/model inference. */
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import {
   AgentEventService,
   attestDeliveryAudienceFromCanonicalRoom,
@@ -15,6 +17,7 @@ import {
   createLifeOpsTestRuntime as createBaseLifeOpsTestRuntime,
   getRecordedTestNotifications,
 } from "../../test/helpers/runtime.js";
+import { createLifeOpsChannelPolicy } from "./repository.js";
 import {
   ensureLifeOpsSchedulerTask,
   LIFEOPS_TASK_NAME,
@@ -544,6 +547,108 @@ it("quiet-blocked due work consumes its wake without a one-second retry loop", a
     expect(passes).toBe(1);
     expect(model).not.toHaveBeenCalled();
   } finally {
+    model.mockRestore();
+    await f.cleanup();
+  }
+}, 120000);
+
+it("an SMS reminder whose later part fails after an accepted part is consumed, not sent again", async () => {
+  const f = await createLifeOpsTestRuntime();
+  const model = vi
+    .spyOn(f.runtime, "useModel")
+    .mockResolvedValue("word ".repeat(400));
+  const bodies: string[] = [];
+  const twilio = createServer((request, response) => {
+    let form = "";
+    request.on("data", (chunk) => {
+      form += chunk;
+    });
+    request.on("end", () => {
+      bodies.push(new URLSearchParams(form).get("Body") ?? "");
+      response.writeHead(bodies.length === 1 ? 201 : 400, {
+        "content-type": "application/json",
+      });
+      response.end(
+        JSON.stringify(
+          bodies.length === 1
+            ? { sid: "SM1" }
+            : { code: 21610, message: "rejected" },
+        ),
+      );
+    });
+  });
+  await new Promise<void>((resolve) => twilio.listen(0, "127.0.0.1", resolve));
+  const envKeys = [
+    "TWILIO_ACCOUNT_SID",
+    "TWILIO_AUTH_TOKEN",
+    "TWILIO_PHONE_NUMBER",
+    "ELIZA_MOCK_TWILIO_BASE",
+  ] as const;
+  const savedEnv = Object.fromEntries(
+    envKeys.map((key) => [key, process.env[key]]),
+  );
+  Object.assign(process.env, {
+    TWILIO_ACCOUNT_SID: "ACtest",
+    TWILIO_AUTH_TOKEN: "token",
+    TWILIO_PHONE_NUMBER: "+15550000000",
+    ELIZA_MOCK_TWILIO_BASE: `http://127.0.0.1:${(twilio.address() as AddressInfo).port}`,
+  });
+  try {
+    const service = new LifeOpsService(f.runtime);
+    await service.repository.upsertChannelPolicy(
+      createLifeOpsChannelPolicy({
+        agentId: f.runtime.agentId,
+        channelType: "sms",
+        channelRef: "+15551234567",
+        privacyClass: "private",
+        allowReminders: true,
+        allowEscalation: false,
+        allowPosts: false,
+        requireConfirmationForActions: false,
+        metadata: { isPrimary: true },
+      }),
+    );
+    const due = new Date(Date.now() + 60_000).toISOString();
+    await service.createDefinition({
+      title: "Long SMS",
+      kind: "habit",
+      cadence: { kind: "once", dueAt: due, visibilityLeadMinutes: 0 },
+      timezone: "UTC",
+      metadata: {
+        ownerSurface: "OWNER_REMINDERS",
+        nativeProjection: "in_app_only",
+      },
+      reminderPlan: {
+        steps: [{ channel: "sms", offsetMinutes: 0, label: "Text" }],
+      },
+    });
+    vi.setSystemTime(new Date(due));
+    await service.processReminders({ now: due, scope: "definitions" });
+    expect(bodies).toHaveLength(2);
+    const later = new Date(Date.parse(due) + 5 * 60_000).toISOString();
+    vi.setSystemTime(new Date(later));
+    await new LifeOpsService(f.runtime).processReminders({
+      now: later,
+      scope: "definitions",
+    });
+
+    expect(bodies).toHaveLength(2);
+    const attempts = await service.repository.listReminderAttempts(
+      f.runtime.agentId,
+    );
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0].outcome).toBe("blocked_connector");
+    expect(attempts[0].deliveryMetadata).toMatchObject({
+      reason: "runtime_send_acceptance_unknown",
+      sids: ["SM1"],
+      status: null,
+    });
+  } finally {
+    for (const key of envKeys) {
+      if (savedEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = savedEnv[key];
+    }
+    await new Promise((resolve) => twilio.close(resolve));
     model.mockRestore();
     await f.cleanup();
   }

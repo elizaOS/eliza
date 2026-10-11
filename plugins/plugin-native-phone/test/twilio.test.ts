@@ -81,6 +81,14 @@ describe("sendTwilioSms", () => {
     expect(bodies.join("")).toBe(body);
   });
 
+  test("whitespace only at the start of a window does not become its own part", async () => {
+    const body = ` ${"a".repeat(1999)}`;
+
+    await sendTwilioSms({ credentials, to: "+15551234567", body });
+
+    expect(bodies).toEqual([body.slice(0, 1600), body.slice(1600)]);
+  });
+
   test("a short body is sent as one message", async () => {
     const result = await sendTwilioSms({
       credentials,

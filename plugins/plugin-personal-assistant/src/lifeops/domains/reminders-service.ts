@@ -778,6 +778,18 @@ function isDeliveredReminderOutcome(
   );
 }
 
+/** An in-app handoff or a partly sent SMS may have reached the owner, so it is
+ *  neither sent again nor escalated. */
+function isAcceptanceUnknownReminderAttempt(
+  attempt: LifeOpsReminderAttempt,
+): boolean {
+  return (
+    (attempt.channel === "in_app" || attempt.channel === "sms") &&
+    attempt.outcome === "blocked_connector" &&
+    attempt.deliveryMetadata.reason === "runtime_send_acceptance_unknown"
+  );
+}
+
 function buildReminderSnoozeClarificationBody(title: string): string {
   return `I can snooze "${title}", but I need a clear time first. Reply with something like "30 minutes", "1 hour", "tonight", or "tomorrow morning".`;
 }
@@ -4432,13 +4444,7 @@ export class RemindersDomain {
     if (!previousAttempt) {
       return null;
     }
-    if (
-      previousAttempt.channel === "in_app" &&
-      previousAttempt.outcome === "blocked_connector" &&
-      previousAttempt.deliveryMetadata.reason ===
-        "runtime_send_acceptance_unknown"
-    )
-      return null;
+    if (isAcceptanceUnknownReminderAttempt(previousAttempt)) return null;
     const escalationProfile = readReminderEscalationProfile(args.definition);
     const enforcementState = buildReminderEnforcementState(
       args.now,
@@ -5094,6 +5100,12 @@ export class RemindersDomain {
                 outcome = "blocked_connector";
                 deliveryMetadata.error = result.error ?? "sms delivery failed";
                 deliveryMetadata.status = result.status;
+                // Earlier parts of a long body already reached the recipient;
+                // a resend would start again from the first part.
+                if (result.sids?.length) {
+                  deliveryMetadata.sids = result.sids;
+                  deliveryMetadata.reason = "runtime_send_acceptance_unknown";
+                }
               } else {
                 deliveryMetadata.sid = result.sid ?? null;
                 deliveryMetadata.status = result.status;
@@ -5963,10 +5975,7 @@ export class RemindersDomain {
         .filter(
           (attempt) =>
             isDeliveredReminderOutcome(attempt.outcome) ||
-            (attempt.channel === "in_app" &&
-              attempt.outcome === "blocked_connector" &&
-              attempt.deliveryMetadata.reason ===
-                "runtime_send_acceptance_unknown"),
+            isAcceptanceUnknownReminderAttempt(attempt),
         )
         .map((attempt) =>
           attemptKey(attempt.planId, attempt.stepIndex, attempt.scheduledFor),
