@@ -5775,12 +5775,26 @@ export async function startEliza(
   }
   bootContext.enterPhase("attach-host");
   let lifecycleRuntime: AgentRuntime | null = runtime;
+  // An API stop in flight owns its runtime's teardown; a signal shutdown waits
+  // for it (within the signal budget) before the process exits.
+  let pendingApiStop: Promise<void> | null = null;
   const processLifecycle = createAgentProcessLifecycle({
-    disposeRuntime: (reason) =>
-      shutdownRuntime(lifecycleRuntime, reason, {
+    disposeRuntime: async (reason) => {
+      if (pendingApiStop) {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        await Promise.race([
+          pendingApiStop.catch(() => undefined),
+          new Promise<void>((resolve) => {
+            timer = setTimeout(resolve, SIGNAL_SERVICE_STOP_TIMEOUT_MS);
+          }),
+        ]);
+        clearTimeout(timer);
+      }
+      await shutdownRuntime(lifecycleRuntime, reason, {
         fast: true,
         serviceStopTimeoutMs: SIGNAL_SERVICE_STOP_TIMEOUT_MS,
-      }),
+      });
+    },
     disposeSandbox: sandboxManager
       ? async () => {
           await sandboxManager?.stop();
@@ -5937,11 +5951,14 @@ export async function startEliza(
         if (lifecycleRuntime === runtimeToStop) {
           lifecycleRuntime = null;
         }
+        const stop = shutdownRuntime(runtimeToStop, "API stop", {
+          requireQuiescence: true,
+        });
+        pendingApiStop = stop;
         try {
-          await shutdownRuntime(runtimeToStop, "API stop", {
-            requireQuiescence: true,
-          });
+          await stop;
         } finally {
+          if (pendingApiStop === stop) pendingApiStop = null;
           if (lifecycleRuntime === runtimeToStop) {
             lifecycleRuntime = null;
           }

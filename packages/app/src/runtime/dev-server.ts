@@ -123,6 +123,8 @@ const port = resolveDesktopApiPort(process.env);
 const hadUserApiTokenInEnv = !!resolveApiToken(process.env);
 /** The currently active runtime — swapped on restart. */
 let currentRuntime: AgentRuntime | null = null;
+/** Teardown started by POST /api/agent/stop; signal shutdown waits for it. */
+let pendingApiStop: Promise<unknown> | null = null;
 /** The API server's `updateRuntime` handle (set after startup). */
 let apiUpdateRuntime: ((rt: AgentRuntime) => void) | null = null;
 /** API server startup diagnostics updater (set after startup). */
@@ -464,6 +466,9 @@ async function shutdown(): Promise<void> {
   }, 10000);
   forceExitTimer.unref();
   logger.info(`${getLogPrefix()} Dev server shutting down…`);
+  // An API stop in flight owns its runtime's teardown; wait for it (bounded
+  // by the forced-exit timer above) so the adapter closes before exit.
+  if (pendingApiStop) await pendingApiStop.catch(() => undefined);
   if (currentRuntime) {
     try {
       // currentRuntime is only ever set inside createRuntime(), which has
@@ -507,11 +512,14 @@ async function main() {
       if (currentRuntime === runtimeToStop) {
         currentRuntime = null;
       }
+      const stop = shutdownRuntime(runtimeToStop, "dev-server API stop", {
+        requireQuiescence: true,
+      });
+      pendingApiStop = stop;
       try {
-        await shutdownRuntime(runtimeToStop, "dev-server API stop", {
-          requireQuiescence: true,
-        });
+        await stop;
       } finally {
+        if (pendingApiStop === stop) pendingApiStop = null;
         if (currentRuntime === runtimeToStop) {
           currentRuntime = null;
         }

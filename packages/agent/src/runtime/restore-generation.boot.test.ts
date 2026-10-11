@@ -1,4 +1,4 @@
-/** Exercises committed-generation selection, real runtime boots, and authenticated HTTP restart failure without ordinary-boot fallback. */
+/** Exercises committed-generation selection, real runtime boots, authenticated HTTP restart failure without ordinary-boot fallback, and API stop/start of the restored runtime. */
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -270,7 +270,10 @@ it(
       if (!server) throw new Error("HTTP server did not start");
       if (!started) throw new Error("Restored runtime did not start");
       const serverPort = server.port;
-      const lifecycle = (action: "start" | "stop", authenticated = true) =>
+      const lifecycle = (
+        action: "restart" | "start" | "stop",
+        authenticated = true,
+      ) =>
         fetch(`http://127.0.0.1:${serverPort}/api/agent/${action}`, {
           method: "POST",
           headers: {
@@ -280,6 +283,7 @@ it(
           },
           body: "{}",
         });
+      expect((await lifecycle("restart", false)).status).toBe(401);
       expect((await lifecycle("stop", false)).status).toBe(401);
       const adapter = started.adapter;
       if (!adapter) throw new Error("Runtime adapter was not initialized");
@@ -298,9 +302,16 @@ it(
       expect(closeAdapter).toHaveBeenCalledOnce();
       expect(runtimeForCleanup).toBeDefined();
 
+      await authority.close();
+      const failedRestart = await lifecycle("restart");
+      expect(failedRestart.status).toBe(500);
+      expect(await failedRestart.json()).toMatchObject({
+        error: expect.stringContaining("runtime failed to re-initialize"),
+      });
+      expect(registry).not.toHaveBeenCalled();
+
       expect((await lifecycle("stop")).status).toBe(200);
       runtimeForCleanup = undefined;
-      await authority.close();
       const failed = await lifecycle("start");
       expect(failed.status).toBe(500);
       expect(await failed.json()).toMatchObject({

@@ -56,6 +56,8 @@ export async function startServerOnlyHost({
 }: StartServerOnlyHostOptions): Promise<AgentRuntime | undefined> {
   bootLap("startEliza:serverOnly entry");
   let currentRuntime: AgentRuntime | undefined;
+  /** Teardown started by POST /api/agent/stop; close() waits for it. */
+  let pendingApiStop: Promise<unknown> | undefined;
   let runtimePublished = false;
   let postReadyPhase: "pending" | "complete" | "failed" = "pending";
   const startup = new AppStartupStateMachine();
@@ -182,11 +184,14 @@ export async function startServerOnlyHost({
         currentRuntime = undefined;
         runtimePublished = false;
         postReadyPhase = "pending";
+        const stop = stopRuntime(runtimeToStop, "server-only API stop", {
+          requireQuiescence: true,
+        });
+        pendingApiStop = stop;
         try {
-          await stopRuntime(runtimeToStop, "server-only API stop", {
-            requireQuiescence: true,
-          });
+          await stop;
         } finally {
+          if (pendingApiStop === stop) pendingApiStop = undefined;
           if (currentRuntime === runtimeToStop) {
             currentRuntime = undefined;
             runtimePublished = false;
@@ -343,6 +348,10 @@ export async function startServerOnlyHost({
         );
       }
     }
+    // An API stop in flight owns its runtime's teardown; wait for it so the
+    // process does not exit before the adapter closes (the process boundary
+    // keeps its own forced-exit timer).
+    if (pendingApiStop) await pendingApiStop.catch(() => undefined);
     if (currentRuntime) {
       await stopRuntime(currentRuntime, "server-only shutdown");
     } else {
