@@ -38,6 +38,10 @@ import {
   toText,
 } from "./sql.ts";
 
+/** The later of two instants; an older backfilled observation must not rewind recency. */
+function laterIso(current: string | undefined, next: string): string {
+  return current && Date.parse(current) > Date.parse(next) ? current : next;
+}
 function isoNow(): string {
   return new Date().toISOString();
 }
@@ -462,8 +466,11 @@ export class RelationshipStore {
         confidence: Math.max(active.confidence, obs.confidence),
         state: {
           ...active.state,
-          lastObservedAt: occurredAt,
-          lastInteractionAt: occurredAt,
+          lastObservedAt: laterIso(active.state.lastObservedAt, occurredAt),
+          lastInteractionAt: laterIso(
+            active.state.lastInteractionAt,
+            occurredAt,
+          ),
           interactionCount: (active.state.interactionCount ?? 0) + 1,
         },
         source: obs.source ?? active.source,

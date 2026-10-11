@@ -687,18 +687,33 @@ export class EntityStore {
       interaction.direction === "inbound"
         ? "state_last_inbound_at"
         : "state_last_outbound_at";
+    const existing = await this.getOperation(entityId);
+    if (!existing) return;
+    // An older interaction recorded late must not rewind recency.
+    const later = (current: string | undefined) =>
+      current && Date.parse(current) > Date.parse(interaction.occurredAt)
+        ? current
+        : interaction.occurredAt;
+    const directionAt = later(
+      interaction.direction === "inbound"
+        ? existing.state.lastInboundAt
+        : existing.state.lastOutboundAt,
+    );
+    const lastObservedAt = later(existing.state.lastObservedAt);
+    const lastInteractionPlatform =
+      lastObservedAt === interaction.occurredAt
+        ? interaction.platform
+        : existing.state.lastInteractionPlatform;
     if (this.records) {
-      const existing = await this.getOperation(entityId);
-      if (!existing) return;
       await this.records.putEntity({
         ...existing,
         state: {
           ...existing.state,
           ...(interaction.direction === "inbound"
-            ? { lastInboundAt: interaction.occurredAt }
-            : { lastOutboundAt: interaction.occurredAt }),
-          lastObservedAt: interaction.occurredAt,
-          lastInteractionPlatform: interaction.platform,
+            ? { lastInboundAt: directionAt }
+            : { lastOutboundAt: directionAt }),
+          lastObservedAt,
+          lastInteractionPlatform,
         },
         updatedAt: isoNow(),
       });
@@ -707,9 +722,9 @@ export class EntityStore {
     await executeRawSql(
       this.runtime,
       `UPDATE app_lifeops.life_entities
-          SET ${directionColumn} = ${sqlQuote(interaction.occurredAt)},
-              state_last_observed_at = ${sqlQuote(interaction.occurredAt)},
-              state_last_interaction_platform = ${sqlQuote(interaction.platform)},
+          SET ${directionColumn} = ${sqlQuote(directionAt)},
+              state_last_observed_at = ${sqlQuote(lastObservedAt)},
+              state_last_interaction_platform = ${sqlText(lastInteractionPlatform ?? null)},
               updated_at = ${sqlQuote(isoNow())}
         WHERE agent_id = ${sqlQuote(this.agentId)}
           AND entity_id = ${sqlQuote(entityId)}`,
