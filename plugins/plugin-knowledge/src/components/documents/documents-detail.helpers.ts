@@ -13,6 +13,19 @@ export function getDocumentSourceLabel(
   source: string | undefined,
   t: (key: string, options?: Record<string, unknown>) => string,
 ): string {
+  if (source === "import") {
+    return t("documentsview.ConversationImport", {
+      defaultValue: "Conversation import",
+    });
+  }
+  if (source === "learned") {
+    return t("documentsview.LearnedDocument", {
+      defaultValue: "Learned document",
+    });
+  }
+  if (source === "unknown") {
+    return t("documentsview.GenericDocument", { defaultValue: "Document" });
+  }
   if (source === "bundled") {
     return t("documentsview.Bundled", { defaultValue: "Bundled" });
   }

@@ -35,7 +35,9 @@ or restarted, other than a sign-in or code form, is an uncertain submission even
 without a payment review. A page that the browser stopped from submitting after
 a task action pauses the task. A website that already shows the bill paid or
 scheduled ends the task with a kept `bill_prior_outcomes_v1` record; it is never
-this task's payment. After a saved outcome, a host with bill discovery looks up
+this task's payment. An outcome whose page showed no confirmation number is saved
+without a `reference`; a reference that is present must be a usable one. After a
+saved outcome that has a reference, a host with bill discovery looks up
 to three times for exactly one receipt email that names the provider reference
 and then reports `receiptInEmail`. Each lookup reserves a durable attempt before
 the provider read; failed reads share the same budget and one-minute cooldown.
@@ -43,7 +45,9 @@ The code coordinator never fills a code field
 the person has typed in and reports fixed Google reasons (`codeReason`). Bill
 search fails with `account_mismatch` when the connected Google address cannot
 receive the configured recipient's mail (masked addresses are matched by their
-visible parts).
+visible parts). `googleSource.windowDays` searches that number of days up to the
+present time, with `after` as an optional earliest time; without it the fixed
+`after`/`before` range applies.
 
 Hosts must supply reviewed `deriveBillDecision` and exact `controls` policy.
 Neither may come from renderer input, page instructions or a model response.

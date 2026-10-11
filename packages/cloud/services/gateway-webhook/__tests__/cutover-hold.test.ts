@@ -8,6 +8,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
+import { PERSONAL_SHARED_FAILURE_REPLY } from "@elizaos/cloud-services-common/transport";
 import { blooioAdapter } from "../src/adapters/blooio";
 import {
   CONNECTOR_HELD,
@@ -35,6 +36,8 @@ const savedEnv = new Map<string, string | undefined>();
 const originalFetch = globalThis.fetch;
 const servers: Array<ReturnType<typeof Bun.serve>> = [];
 let providerSends: Array<Record<string, unknown>>;
+/** When true the Blooio provider explicitly rejects every send with a 400. */
+let providerRejectsSends: boolean;
 
 beforeEach(() => {
   for (const key of envKeys) savedEnv.set(key, process.env[key]);
@@ -44,10 +47,14 @@ beforeEach(() => {
   process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+15559990000";
   process.env.MOCK_REDIS = "1";
   providerSends = [];
+  providerRejectsSends = false;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = input instanceof Request ? input.url : String(input);
     if (url.startsWith("https://api.blooio.com/")) {
       if (url === "https://api.blooio.com/v4/messages") {
+        if (providerRejectsSends) {
+          return Response.json({ error: "rejected" }, { status: 400 });
+        }
         providerSends.push(JSON.parse(String(init?.body ?? "{}")));
         return Response.json({ id: `msg_provider_${providerSends.length}` });
       }
@@ -183,7 +190,7 @@ function drainHandlers(cloudOrigin: string, redis: GatewayRedis) {
     redeliver: (held: Parameters<typeof redeliverHeldWebhook>[0]) =>
       redeliverHeldWebhook(held, blooioAdapter, deps(cloudOrigin, redis)),
     release: (held: Parameters<typeof releaseExpiredHeldWebhook>[0]) =>
-      releaseExpiredHeldWebhook(held, redis),
+      releaseExpiredHeldWebhook(held, blooioAdapter, deps(cloudOrigin, redis)),
   };
 }
 
@@ -330,7 +337,7 @@ describe("connector ingress during Shared→Dedicated cutover", () => {
     60_000,
   );
 
-  test("a hold that outlives the cutover budget is released visibly, not silently kept", async () => {
+  test("a hold that outlives the cutover budget is released with a failure notice to the sender", async () => {
     const cloud = startCloud();
     const redis = createRedis();
     const dedupKey = "webhook:blooio:msg_cutover_2";
@@ -349,9 +356,15 @@ describe("connector ingress during Shared→Dedicated cutover", () => {
       { now: Date.now() + CUTOVER_HOLD_MAX_MS + 60_000 },
     );
     expect(expired).toMatchObject({ expired: 1, delivered: 0 });
-    // Released to the ordinary pre-egress handling: the ledger reopens.
-    expect(await redis.get(dedupKey)).toBeNull();
-    expect(providerSends).toEqual([]);
+    // The provider does not retry an acknowledged event, so the sender is
+    // told the turn failed and the ledger records that single egress.
+    expect(providerSends).toHaveLength(1);
+    expect(providerSends[0]).toMatchObject({
+      text: PERSONAL_SHARED_FAILURE_REPLY,
+      to: "+15551234567",
+    });
+    expect(await redis.get(dedupKey)).toBe("delivered");
+    expect(await redis.get(`webhook:cutover-hold:${dedupKey}`)).toBeNull();
   }, 60_000);
 
   test("a redelivery that outlives one lease period is not run again by another replica", async () => {
@@ -546,7 +559,7 @@ describe("connector ingress during Shared→Dedicated cutover", () => {
     expect(await redis.get(dedupKey)).toBe("delivered");
   }, 60_000);
 
-  test("a held turn Cloud refuses as not retryable is released at once, not replayed for the hold budget", async () => {
+  test("a held turn Cloud refuses as not retryable is released at once with a failure notice, not replayed for the hold budget", async () => {
     const cloud = startCloud();
     const redis = createRedis();
     const dedupKey = "webhook:blooio:msg_cutover_7";
@@ -584,8 +597,9 @@ describe("connector ingress during Shared→Dedicated cutover", () => {
       expired: 0,
       stale: 0,
     });
-    // Settled like a first-delivery pre-egress failure: the ledger reopens.
-    expect(ledgerAfterRefusal).toBeNull();
+    // Settled like a first-delivery pre-egress failure: the sender gets the
+    // failure notice and the ledger records that single egress.
+    expect(ledgerAfterRefusal).toBe("delivered");
     expect(recordAfterRefusal).toBeNull();
     expect(afterBudget).toEqual({
       delivered: 0,
@@ -595,7 +609,11 @@ describe("connector ingress during Shared→Dedicated cutover", () => {
       stale: 0,
     });
     expect(cloud.turns.length - heldTurns).toBe(1);
-    expect(providerSends).toEqual([]);
+    expect(providerSends).toHaveLength(1);
+    expect(providerSends[0]).toMatchObject({
+      text: PERSONAL_SHARED_FAILURE_REPLY,
+      to: "+15551234567",
+    });
   }, 60_000);
 
   test("stale cleanup preserves a webhook re-held after the ledger read", async () => {
@@ -679,9 +697,13 @@ describe("connector ingress during Shared→Dedicated cutover", () => {
           { code: old.code, retryAfterSeconds: null },
         );
       cloud.state.refusedStatus = 400;
+      // The provider rejects the failure notice, so settlement clears the
+      // ledger claim and a later delivery of the same event can be held again.
+      providerRejectsSends = true;
       const base = drainHandlers(cloud.origin, redis);
       const rehold = async () => {
         cloud.state.refusedStatus = null;
+        providerRejectsSends = false;
         await handleWebhook(
           blooioWebhook(messageId),
           blooioAdapter,

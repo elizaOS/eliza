@@ -7,6 +7,7 @@ import {
   createSharedGoogleContextPlugin,
   isSharedGoogleContextRequest,
 } from "./shared-google-context-plugin";
+import { createSharedGoogleReadPort } from "./shared-google-read-port";
 import {
   isSharedPublicSearchSafe,
   resolveSharedPublicSearchIntent,
@@ -186,5 +187,25 @@ describe("Google Shared action/capability bridge", () => {
     expect(result).toMatchObject({ success: false, data: { code: "GOOGLE_CONTEXT_UNAVAILABLE" } });
     expect(reports).toHaveLength(2);
     expect(JSON.stringify([reports, result])).not.toContain(failure.message);
+    const rejected = await createSharedGoogleContextPlugin(async () =>
+      createSharedGoogleReadPort({
+        organizationId: "org",
+        userId: "owner",
+        grantId: "grant",
+        authorizePrivateRead: async () => {
+          throw new Error("authorization must not run for an invalid request");
+        },
+      }),
+    ).actions![0]!.handler(runtime, {} as Memory, undefined, {
+      parameters: {
+        operation: "calendar",
+        timeMin: "2026-10-08T00:00:00Z",
+        timeMax: "2026-10-09T00:00:00Z",
+      },
+    });
+    expect(rejected).toMatchObject({
+      success: false,
+      data: { code: "GOOGLE_CONTEXT_INVALID_REQUEST" },
+    });
   });
 });

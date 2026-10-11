@@ -404,21 +404,23 @@ export class KaminoLiquidityService extends Service {
 
       const stats = {
         timestamp: new Date().toISOString(),
+        // Kamino returns APY as a fraction; the strategy APYs in this file are
+        // percentages (see calculateLimoApy), so use the same unit here.
         stakingYields: {
           total: stakingYields.length,
           averageApy:
             stakingYields.reduce(
-              (sum, stakingYield) => sum + parseFloat(stakingYield.apy),
+              (sum, stakingYield) => sum + parseFloat(stakingYield.apy) * 100,
               0,
             ) / stakingYields.length,
           maxApy: Math.max(
-            ...stakingYields.map((stakingYield) =>
-              parseFloat(stakingYield.apy),
+            ...stakingYields.map(
+              (stakingYield) => parseFloat(stakingYield.apy) * 100,
             ),
           ),
           minApy: Math.min(
-            ...stakingYields.map((stakingYield) =>
-              parseFloat(stakingYield.apy),
+            ...stakingYields.map(
+              (stakingYield) => parseFloat(stakingYield.apy) * 100,
             ),
           ),
         },
@@ -426,7 +428,7 @@ export class KaminoLiquidityService extends Service {
           total: medianYields.length,
           averageApy:
             medianYields.reduce(
-              (sum, stakingYield) => sum + parseFloat(stakingYield.apy),
+              (sum, stakingYield) => sum + parseFloat(stakingYield.apy) * 100,
               0,
             ) / medianYields.length,
         },

@@ -321,6 +321,7 @@ export class ContextualPermissionSystem {
     }
 
     const elevationId = stringToUuid(JSON.stringify(request));
+    // `duration` is seconds. The action layer converts its hour parameter first.
     const durationMs = (request.duration ?? 5 * 60) * 1000;
     const expiresAt = Date.now() + durationMs;
     this.elevations.set(elevationId, { ...request, expiresAt });

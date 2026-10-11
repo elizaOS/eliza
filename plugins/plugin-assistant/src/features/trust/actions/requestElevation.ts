@@ -19,6 +19,19 @@ import type { ElevationRequest } from "../types/permissions.ts";
 
 type ActionOptions = Record<string, unknown>;
 
+/**
+ * The action parameter is hours (default 60). `requestElevation` stores
+ * seconds and multiplies by 1000, so hours * 60 * 1000 granted 1/60 of the
+ * requested window and then stretched it by another 1000.
+ */
+export function elevationDurationSeconds(duration: number | undefined): number {
+  const hours =
+    typeof duration === "number" && Number.isFinite(duration) && duration > 0
+      ? duration
+      : 60;
+  return hours * 60 * 60;
+}
+
 function readNestedParameters(
   options: ActionOptions | undefined,
 ): ActionOptions {
@@ -106,7 +119,7 @@ export async function requestElevationHandler(
       roomId: message.roomId,
       platform: "discord",
     },
-    duration: (requestData.duration || 60) * 60 * 1000,
+    duration: elevationDurationSeconds(requestData.duration),
   };
 
   try {

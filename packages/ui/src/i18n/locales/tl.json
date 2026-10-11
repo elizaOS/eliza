@@ -5420,7 +5420,7 @@
   "localinference.modelActivated": "Na-activate ang modelo",
   "localinference.modelUninstalled": "Na-uninstall ang modelo",
   "localinference.verifyOk": "Na-verify ang modelo",
-  "localinference.verifyUnknown": "Naitala ang baseline hash — ang mga susunod na pag-verify ay ikukumpara dito",
+  "localinference.verifyUnknown": "Naroon ang model file at valid itong GGUF. Walang naitalang hash noong pag-install na maikukumpara.",
   "localinference.verifyMissing": "Nawawala ang modelo sa disk",
   "localinference.verifyTruncated": "Sira ang modelo (hindi valid na GGUF)",
   "localinference.verifyMismatch": "Hindi tugma ang hash ng modelo sa naka-install na kopya — inirerekomendang i-download ulit",

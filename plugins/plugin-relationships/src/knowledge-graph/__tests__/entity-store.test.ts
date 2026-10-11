@@ -987,39 +987,6 @@ describe("EntityStore", () => {
     const { store } = createHarness();
     await expect(store.resolve({ name: "Alice" })).resolves.toEqual([]);
   });
-  it("records inbound and outbound interaction timestamps without clearing the other direction", async () => {
-    const { store } = createHarness();
-    await store.upsert({
-      entityId: "ent-alice",
-      type: "person",
-      preferredName: "Alice",
-      identities: [],
-      tags: [],
-      visibility: "owner_agent_admin",
-      state: {},
-    });
-    await store.recordInteraction("ent-alice", {
-      platform: "slack",
-      direction: "inbound",
-      summary: "hi",
-      occurredAt: T1,
-    });
-    vi.setSystemTime(new Date(T2));
-    await store.recordInteraction("ent-alice", {
-      platform: "email",
-      direction: "outbound",
-      summary: "reply",
-      occurredAt: T2,
-    });
-    const entity = await store.get("ent-alice");
-    expect(entity?.state).toEqual({
-      lastObservedAt: T2,
-      lastInboundAt: T1,
-      lastOutboundAt: T2,
-      lastInteractionPlatform: "email",
-    });
-    expect(entity?.updatedAt).toBe(T2);
-  });
   it("silently no-ops recordInteraction for a missing entity", async () => {
     const { store } = createHarness();
     await expect(

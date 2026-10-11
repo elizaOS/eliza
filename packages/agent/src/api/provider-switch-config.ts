@@ -57,6 +57,8 @@ type MutableElizaConfig = Partial<ElizaConfig> & {
 
 const trimToUndefined = asNonEmptyString;
 
+export const ELIZA_CLOUD_CLI_PROXY_BASE_URL = "https://cloud.eliza.app/api/v1";
+
 function ensureEnv(config: MutableElizaConfig): Record<string, unknown> {
   config.env ??= {};
   return config.env as Record<string, unknown>;
@@ -299,7 +301,7 @@ function clearElizaCloudCliProxyEnv(): void {
   ] as const;
   for (const [baseKey, apiKey] of pairs) {
     const v = process.env[baseKey];
-    if (v && /elizacloud/i.test(v)) {
+    if (v === ELIZA_CLOUD_CLI_PROXY_BASE_URL || (v && /elizacloud/i.test(v))) {
       delete process.env[baseKey];
       delete process.env[apiKey];
     }

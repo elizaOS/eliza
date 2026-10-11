@@ -262,50 +262,6 @@ export interface CloudCompatManagedDiscordStatus {
   connectedAt: string | null;
   restarted?: boolean;
 }
-/** Discord plugin config shape exposed to cloud dashboard. */
-export interface CloudCompatDiscordConfig {
-  dm?: {
-    enabled?: boolean;
-    policy?: "open" | "pairing" | "allowlist";
-    allowFrom?: Array<string | number>;
-    groupEnabled?: boolean;
-  };
-  requireMention?: boolean;
-  reactionNotifications?: "off" | "own" | "all" | "allowlist";
-  actions?: {
-    reactions?: boolean;
-    stickers?: boolean;
-    emojiUploads?: boolean;
-    stickerUploads?: boolean;
-    polls?: boolean;
-    permissions?: boolean;
-    messages?: boolean;
-    threads?: boolean;
-    pins?: boolean;
-    search?: boolean;
-    memberInfo?: boolean;
-    roleInfo?: boolean;
-    roles?: boolean;
-    channelInfo?: boolean;
-    voiceStatus?: boolean;
-    events?: boolean;
-    moderation?: boolean;
-    channels?: boolean;
-    presence?: boolean;
-  };
-  maxLinesPerMessage?: number;
-  textChunkLimit?: number;
-  intents?: {
-    presence?: boolean;
-    guildMembers?: boolean;
-  };
-  pluralkit?: {
-    enabled?: boolean;
-  };
-  execApprovals?: {
-    enabled?: boolean;
-  };
-}
 export interface CloudCompatManagedGithubStatus {
   configured: boolean;
   connected: boolean;
@@ -1264,15 +1220,19 @@ export function mapAcpSessionsToCodingAgentSessions(
     status:
       s.status === "ready" || s.status === "busy"
         ? ("active" as const)
-        : s.status === "error" || s.status === "errored"
-          ? ("error" as const)
-          : s.status === "stopped" ||
-              s.status === "cancelled" ||
-              s.status === "done" ||
-              s.status === "completed" ||
-              s.status === "exited"
-            ? ("stopped" as const)
-            : ("active" as const),
+        : // Kept as is so the 5 s poll does not overwrite the "blocked" the
+          // live event set (sidebar badge, terminal focus, "waiting" text).
+          s.status === "blocked" || s.status === "tool_running"
+          ? s.status
+          : s.status === "error" || s.status === "errored"
+            ? ("error" as const)
+            : s.status === "stopped" ||
+                s.status === "cancelled" ||
+                s.status === "done" ||
+                s.status === "completed" ||
+                s.status === "exited"
+              ? ("stopped" as const)
+              : ("active" as const),
     decisionCount: 0,
     autoResolvedCount: 0,
   }));

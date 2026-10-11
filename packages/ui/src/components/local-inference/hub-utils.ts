@@ -10,7 +10,10 @@ import type {
   InstalledModel,
   ModelBucket,
 } from "@elizaos/contracts";
-import { MODEL_CATALOG } from "@elizaos/plugin-native-inference/model-catalog/catalog";
+import {
+  isSettingsDefaultLocalModel,
+  MODEL_CATALOG,
+} from "@elizaos/plugin-native-inference/model-catalog/catalog";
 import { assessCatalogModelFit } from "@elizaos/plugin-native-inference/model-catalog/recommendation";
 import { formatByteSize } from "../../utils/format";
 export type FitLevel = "fits" | "tight" | "wontfit";
@@ -84,6 +87,21 @@ export function findInstalled(
     (m) =>
       m.path.toLowerCase().endsWith(`/${target}`) ||
       m.path.toLowerCase().endsWith(`\\${target}`),
+  );
+}
+/**
+ * Redownload uninstalls the model and then queues a fresh download, so it is
+ * offered only for an Eliza-managed install whose catalog entry the downloader
+ * would still accept. Otherwise the uninstall succeeds, the download is
+ * refused, and the install is lost.
+ */
+export function canRedownloadInstalledModel(
+  model: CatalogModel,
+  installedEntry: InstalledModel | undefined,
+): boolean {
+  return (
+    installedEntry?.source === "eliza-download" &&
+    isSettingsDefaultLocalModel(model)
   );
 }
 export function findDownload(

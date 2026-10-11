@@ -5,6 +5,7 @@
  * for Blooio iMessage/SMS integration. Follows the Telegram automation pattern.
  */
 
+import { ElizaError } from "@elizaos/core";
 import {
   type BlooioSendMessageRequest,
   type BlooioSendMessageResponse,
@@ -77,7 +78,8 @@ class BlooioAutomationService {
       });
 
       // If it's an auth error, the key is invalid
-      if (message.includes("401") || message.includes("403")) {
+      const status = error instanceof ElizaError ? error.context?.status : undefined;
+      if (status === 401 || status === 403) {
         return { valid: false, error: "Invalid API key" };
       }
 

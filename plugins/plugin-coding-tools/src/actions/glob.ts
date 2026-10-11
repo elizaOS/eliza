@@ -120,7 +120,10 @@ export async function walkContainedGlob(
   readDirectory: ReadDirectory = readDirectoryWithTypes,
 ): Promise<string[]> {
   const results: string[] = [];
-  const canMatchDescendants = /[\\/]/.test(pattern);
+  // A "**" segment can match a path separator even when the pattern itself
+  // contains no separator (a bare "**" matches nested paths), so it must
+  // also allow the walk to descend.
+  const canMatchDescendants = /[\\/]/.test(pattern) || pattern.includes("**");
 
   async function walk(dir: string): Promise<void> {
     let entries: Array<import("node:fs").Dirent>;

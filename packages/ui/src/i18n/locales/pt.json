@@ -5427,7 +5427,7 @@
   "localinference.modelActivated": "Modelo ativado",
   "localinference.modelUninstalled": "Modelo desinstalado",
   "localinference.verifyOk": "Modelo verificado",
-  "localinference.verifyUnknown": "Hash base registrado — verificações futuras serão comparadas com ele",
+  "localinference.verifyUnknown": "O arquivo do modelo está presente e é um GGUF válido. Não há hash de instalação registrado para comparar.",
   "localinference.verifyMissing": "Arquivo do modelo está ausente no disco",
   "localinference.verifyTruncated": "Arquivo do modelo está corrompido (não é um GGUF válido)",
   "localinference.verifyMismatch": "Hash do modelo não corresponde à cópia instalada — recomenda-se baixar novamente",

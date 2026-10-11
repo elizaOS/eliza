@@ -57,6 +57,8 @@ export async function handleImageDescription(
 
   logger.log(`[Anthropic] Using ${ModelType.IMAGE_DESCRIPTION} model: ${modelName}`);
 
+  const maxOutputTokens = resolveAnthropicMaxOutputTokens(runtime, modelName);
+
   try {
     const response = await executeWithRetry(
       operationName,
@@ -72,27 +74,34 @@ export async function handleImageDescription(
               ],
             },
           ],
-          maxOutputTokens: resolveAnthropicMaxOutputTokens(runtime, modelName),
+          maxOutputTokens,
           ...(signal ? { abortSignal: signal } : {}),
         }),
       undefined,
       signal
     );
+
+    const usage = response.usage
+      ? emitModelUsageEvent(
+          runtime,
+          ModelType.IMAGE_DESCRIPTION,
+          promptText,
+          response.usage,
+          modelName
+        )
+      : undefined;
+
+    // Billed tokens are reported before an incomplete output is rejected,
+    // and the rejection carries the usage and the output cap as evidence.
+    // The text path in this plugin and the Eliza Cloud image handler use
+    // the same order; asserting first dropped the billed usage entirely.
     assertModelOutputComplete({
       finishReason: response.finishReason,
       provider: "anthropic",
       model: modelName,
+      maxTokens: maxOutputTokens,
+      usage,
     });
-
-    if (response.usage) {
-      emitModelUsageEvent(
-        runtime,
-        ModelType.IMAGE_DESCRIPTION,
-        promptText,
-        response.usage,
-        modelName
-      );
-    }
 
     return {
       title: parseTitle(response.text),

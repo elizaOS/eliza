@@ -22,6 +22,7 @@ import { Button } from "../ui/button";
 import { DownloadProgress } from "./DownloadProgress";
 import {
   bucketLabel,
+  canRedownloadInstalledModel,
   computeFit,
   displayModelName,
   type FitLevel,
@@ -286,7 +287,8 @@ function ModelListRow({
               {t("modelhub.verify", { defaultValue: "Verify" })}
             </Button>
           ) : null}
-          {installedEntry?.source === "eliza-download" && onRedownload ? (
+          {onRedownload &&
+          canRedownloadInstalledModel(model, installedEntry) ? (
             <Button
               size="tiny"
               variant="ghostMuted"

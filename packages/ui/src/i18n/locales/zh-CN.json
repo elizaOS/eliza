@@ -5427,7 +5427,7 @@
   "localinference.modelActivated": "模型已激活",
   "localinference.modelUninstalled": "模型已卸载",
   "localinference.verifyOk": "模型验证通过",
-  "localinference.verifyUnknown": "已记录基准哈希——未来验证将与此对比",
+  "localinference.verifyUnknown": "模型文件存在且是有效的 GGUF。没有记录安装时的哈希，无法进行对比。",
   "localinference.verifyMissing": "模型文件在磁盘上不存在",
   "localinference.verifyTruncated": "模型文件已损坏（非有效 GGUF）",
   "localinference.verifyMismatch": "模型哈希与已安装副本不匹配——建议重新下载",

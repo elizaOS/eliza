@@ -64,6 +64,7 @@ function makeBackendWithConversation(runtime: IAgentRuntime): IosBridgeBackend {
   return {
     runtime,
     dispatchRoute: async () => null,
+    cloudInferenceRejection: () => null,
     conversations:
       conversations as unknown as IosBridgeBackend["conversations"],
     close: async () => {},

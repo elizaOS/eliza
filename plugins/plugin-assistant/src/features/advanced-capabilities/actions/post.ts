@@ -680,7 +680,21 @@ export const POST_PARAMETERS: ActionParameter[] = [
     name: "attachments",
     description: "Media attachments for supported connectors.",
     required: false,
-    schema: { type: "array" },
+    schema: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          url: { type: "string" },
+          title: { type: "string" },
+          source: { type: "string" },
+          description: { type: "string" },
+          contentType: { type: "string" },
+        },
+        required: ["url"],
+      },
+    },
   },
   {
     name: "persist",
