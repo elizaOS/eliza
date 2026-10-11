@@ -42,7 +42,7 @@ function readQuery(parameters: Record<string, unknown>): string | undefined {
 
 export interface WebSearchSourceEvidence {
     url: string;
-    /** Complete JSON object that contained this URL; never aggregate provider prose. */
+    /** Complete JSON objects that contained this URL; never aggregate provider prose. */
     text: string;
 }
 
@@ -162,7 +162,12 @@ export function webSearchSourceEvidence(text: string): {
             for (const url of recordUrls) sourceUrls.add(url);
             if (recordUrls.size === 1 && !recordContainsUnsafeUrl) {
                 const [recordUrl] = recordUrls;
-                sourceTextByUrl.set(recordUrl, JSON.stringify(scalarRecord));
+                const previous = sourceTextByUrl.get(recordUrl);
+                const sourceText = JSON.stringify(scalarRecord);
+                sourceTextByUrl.set(
+                    recordUrl,
+                    previous === undefined ? sourceText : `${previous}\n${sourceText}`
+                );
             }
         }
     } catch {
