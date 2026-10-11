@@ -114,6 +114,40 @@ describe("SECRETS umbrella action", () => {
     },
   );
 
+  test.each(["get", "list", "check"])(
+    "the handler refuses action=%s in a public channel without reading secrets",
+    async (action) => {
+      // PAGE_DELEGATE validates a child without arguments, then calls its
+      // handler directly, so the handler must hold the DM rule itself.
+      let reads = 0;
+      const read = async () => {
+        reads += 1;
+        return "sk-abcdef12345678901234567890ABCD";
+      };
+      const runtime = {
+        ...createRuntime(),
+        getService: (name: string) =>
+          name === "SECRETS"
+            ? { get: read, list: read, exists: read, has: read }
+            : null,
+      };
+
+      const result = await secretsAction.handler(
+        runtime as never,
+        createMessage(ChannelType.GROUP) as never,
+        undefined,
+        { parameters: { action, key: "OPENAI_API_KEY", mask: false } } as never,
+      );
+
+      expect(result).toMatchObject({
+        success: false,
+        text: "Refused: secrets can only be managed in DMs",
+        data: { actionName: "SECRETS", action },
+      });
+      expect(reads).toBe(0);
+    },
+  );
+
   test.each([
     ["a supported action", { action: "get" }],
     ["a non-empty key", { key: " OPENAI_API_KEY " }],

@@ -74,6 +74,11 @@ function resolveSecretsAction(
     : undefined;
 }
 
+function isOutsideDm(message: Memory): boolean {
+  const channelType = message.content.channelType;
+  return channelType !== undefined && channelType !== ChannelType.DM;
+}
+
 /**
  * Dispatch table mapping resolved actions to their atomic handlers. Every
  * handler returns the same ActionResult shape, so callers can rely on
@@ -247,11 +252,12 @@ export const secretsAction: Action = {
     // validate without arguments; the DM rule cannot apply there or `request`
     // is never offered outside a DM. It applies at execution, where the
     // chosen action is known.
-    if (resolved !== undefined && resolved !== "request") {
-      const channelType = message.content.channelType;
-      if (channelType !== undefined && channelType !== ChannelType.DM) {
-        return false;
-      }
+    if (
+      resolved !== undefined &&
+      resolved !== "request" &&
+      isOutsideDm(message)
+    ) {
+      return false;
     }
 
     const hasStructuredAction = typeof resolved === "string";
@@ -293,6 +299,18 @@ export const secretsAction: Action = {
         success: false,
         text: "No clear secret operation found in the request; ask the user whether they want to get, set, delete, list, check, mirror, or request a secret.",
         data: { actionName: "SECRETS", action: null },
+      };
+    }
+
+    // validate() cannot enforce the DM rule for callers that validate without
+    // arguments and then run the handler (PAGE_DELEGATE), so it is enforced
+    // here for every operation that reads or writes secrets.
+    if (resolved !== "request" && isOutsideDm(message)) {
+      logger.warn(`[SECRETS:${resolved}] Refused: non-DM channel`);
+      return {
+        success: false,
+        text: "Refused: secrets can only be managed in DMs",
+        data: { actionName: "SECRETS", action: resolved },
       };
     }
 
