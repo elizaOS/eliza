@@ -1,9 +1,10 @@
 /**
  * The unified MCP action: a single entry point that routes an agent request to
- * call_tool or read_resource (search_actions / list_connections are cloud-only
- * and rejected here). The op is taken from structured parameters when present,
- * else inferred from message text. Tool and resource selection are model-driven
- * with retry/feedback; results are synthesized back to the user and persisted as
+ * call_tool or read_resource. The op is taken from structured parameters when
+ * present, else inferred from message text. A complete structured selection
+ * (serverName with toolName or uri) is used as given; with none, tool and
+ * resource selection are model-driven with retry/feedback; a partial one is
+ * refused. Results are synthesized back to the user and persisted as
  * memories. validate() gates the action on there being at least one connected
  * server that exposes a tool or resource.
  */
@@ -39,7 +40,7 @@ import {
 } from "../utils/validation";
 import { withModelRetry } from "../utils/wrapper";
 export const MCP_ACTION_CONTEXT = "mcp";
-export type McpOp = "call_tool" | "read_resource" | "search_actions" | "list_connections";
+export type McpOp = "call_tool" | "read_resource";
 function readOptions(options?: HandlerOptions | Record<string, unknown>): Record<string, unknown> {
   const direct = (options ?? {}) as Record<string, unknown>;
   const parameters =
@@ -53,8 +54,6 @@ function normalizeOp(value: unknown): McpOp | null {
   const v = value.trim().toLowerCase();
   if (v === "call_tool" || v === "tool" || v === "call") return "call_tool";
   if (v === "read_resource" || v === "resource" || v === "read") return "read_resource";
-  if (v === "search_actions" || v === "search" || v === "discover") return "search_actions";
-  if (v === "list_connections" || v === "list" || v === "connections") return "list_connections";
   return null;
 }
 function inferOpFromText(text: string): McpOp | null {
@@ -120,6 +119,35 @@ export function getDirectToolSelection(options?: unknown): DirectToolSelection |
         ? params.reasoning.trim()
         : "Selected from structured MCP call_tool parameters.",
   };
+}
+/**
+ * Why a structured selection cannot be used, or null when it can. The direct
+ * path needs the server and the target together and the model path reads only
+ * the request text, so a partial selection would be dropped, not honored.
+ */
+function incompleteSelectionReason(op: McpOp, params: Record<string, unknown>): string | null {
+  const given = (key: string): boolean => {
+    const value = params[key];
+    return typeof value === "string" && value.trim() !== "";
+  };
+  const serverName = given("serverName");
+  if (op === "read_resource") {
+    const uri = given("uri");
+    if (uri && !serverName) return "MCP read_resource needs serverName together with uri.";
+    if (serverName && !uri) {
+      return "MCP read_resource needs uri together with serverName. Omit serverName to select the resource from the request text.";
+    }
+    return null;
+  }
+  const toolName = given("toolName");
+  if (toolName && !serverName) return "MCP call_tool needs serverName together with toolName.";
+  if (serverName && !toolName) {
+    return "MCP call_tool needs toolName together with serverName. Omit serverName to select the tool from the request text.";
+  }
+  if (!toolName && params.arguments !== undefined) {
+    return "MCP call_tool needs serverName and toolName together with arguments.";
+  }
+  return null;
 }
 function createResourceSelectionPrompt(composedState: State, userMessage: string): string {
   const mcpData = (composedState.values.mcp ?? {}) as Record<string, McpServerInfo>;
@@ -476,69 +504,46 @@ export const mcpAction: Action = {
     "ACCESS_MCP_RESOURCE",
   ],
   description:
-    "Single MCP entry point. Use action=call_tool to invoke an MCP tool, action=read_resource to read an MCP resource. Cloud runtimes also accept action=search_actions and action=list_connections.",
-  descriptionCompressed: "MCP call_tool read_resource search_actions list_connections",
+    "Single MCP entry point. Use action=call_tool to invoke an MCP tool, action=read_resource to read an MCP resource.",
+  descriptionCompressed: "MCP call_tool read_resource",
   routingHint:
     "call a tool or read a resource on a connected external MCP server -> MCP; do NOT use to invoke an agent skill -> USE_SKILL, or to run a local shell command / edit files -> BASH / FILE",
   parameters: [
     {
       name: "action",
-      description: "MCP operation: call_tool | read_resource | search_actions | list_connections",
+      description: "MCP operation: call_tool | read_resource",
       required: false,
       schema: {
         type: "string",
-        enum: ["call_tool", "read_resource", "search_actions", "list_connections"],
+        enum: ["call_tool", "read_resource"],
       },
     },
     {
       name: "serverName",
-      description: "Optional MCP server name that owns the tool or resource.",
+      description:
+        "MCP server name that owns the tool or resource. Give it together with toolName (call_tool) or uri (read_resource). Omit all three to select from the request text.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "toolName",
-      description: "For action=call_tool: optional exact MCP tool name to call.",
+      description: "For action=call_tool: exact MCP tool name on serverName. Requires serverName.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "arguments",
       description:
-        "For action=call_tool: optional JSON arguments to pass to the selected MCP tool.",
+        "For action=call_tool: JSON arguments to pass to toolName. Requires serverName and toolName.",
       required: false,
-      schema: { type: "object" },
+      schema: { type: "object", additionalProperties: true },
     },
     {
       name: "uri",
-      description: "For action=read_resource: exact MCP resource URI to read.",
-      required: false,
-      schema: { type: "string" },
-    },
-    {
-      name: "query",
       description:
-        "Natural-language description of the tool call or resource to select; for action=search_actions, the keyword query.",
+        "For action=read_resource: exact MCP resource URI on serverName. Requires serverName.",
       required: false,
       schema: { type: "string" },
-    },
-    {
-      name: "platform",
-      description: "For action=search_actions: filter results to a single connected platform.",
-      required: false,
-      schema: { type: "string" },
-    },
-    {
-      name: "limit",
-      description: "For action=search_actions: maximum results to return.",
-      required: false,
-      schema: { type: "number" },
-    },
-    {
-      name: "offset",
-      description: "For action=search_actions: skip first N results for pagination.",
-      required: false,
-      schema: { type: "number" },
     },
   ],
   validate: async (runtime) => {
@@ -555,18 +560,19 @@ export const mcpAction: Action = {
     const opts = readOptions(options);
     const requested = normalizeOp(opts.action ?? opts.subaction ?? opts.op ?? opts.operation);
     const op = requested ?? inferOpFromText(textOf(message)) ?? "call_tool";
-    if (op === "read_resource") {
-      return handleReadResource(runtime, message, options, callback);
-    }
-    if (op === "search_actions" || op === "list_connections") {
-      const text = `MCP op=${op} is only available in the cloud runtime.`;
-      await callback?.({ text, source: message.content?.source });
+    const incomplete = incompleteSelectionReason(op, opts);
+    if (incomplete) {
+      await callback?.({ text: incomplete, source: message.content?.source });
       return {
         success: false,
-        text,
-        values: { error: "OP_NOT_SUPPORTED" },
+        text: incomplete,
+        values: { error: "INCOMPLETE_SELECTION" },
         data: { actionName: "MCP", op },
+        error: new McpError(incomplete, "INCOMPLETE_SELECTION"),
       };
+    }
+    if (op === "read_resource") {
+      return handleReadResource(runtime, message, options, callback);
     }
     return handleCallTool(runtime, message, options, callback);
   },

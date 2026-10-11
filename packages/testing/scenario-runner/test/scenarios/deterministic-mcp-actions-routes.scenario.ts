@@ -21,11 +21,8 @@ import {
   scenario,
 } from "@elizaos/testing";
 import {
-  type DeterministicModelCall,
-  matchesScenarioInput,
   type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
-  strictActionRouteFixtures,
 } from "@elizaos/testing/models";
 import mcpPlugin, {
   handleMcpRoutes,
@@ -47,10 +44,6 @@ const RESOURCE_TEXT = "mcp-resource-note:alpha-42";
 const RESOURCE_ANALYSIS_TEXT = "mcp-resource-analysis: alpha-42 is present";
 const readResourceInput = `Fetch the ${RESOURCE_URI} MCP resource file from the scenario MCP server.`;
 const callToolInput = `Execute the scenario MCP ${TOOL_NAME} tool with ${TOOL_CODE}.`;
-const parentListConnectionsInput =
-  "Fetch deterministic MCP connections through the parent action.";
-const searchActionsInput = "Search deterministic MCP actions.";
-const listConnectionsInput = "Fetch deterministic MCP connections.";
 const scenarioDir = dirname(fileURLToPath(import.meta.url));
 const fixturePath = resolve(scenarioDir, "../fixtures/mcp-stdio-fixture.mjs");
 const fixtureSource = readFileSync(fixturePath, "utf8");
@@ -64,16 +57,6 @@ const callToolParameters = {
   action: "call_tool",
   serverName: MCP_SERVER_NAME,
   toolName: TOOL_NAME,
-};
-const parentListConnectionsParameters = {
-  action: "list_connections",
-};
-const searchActionsParameters = {
-  action: "search_actions",
-  query: "echo",
-};
-const listConnectionsParameters = {
-  action: "list_connections",
 };
 const strictMcpRoutes = [
   {
@@ -90,171 +73,7 @@ const strictMcpRoutes = [
     input: callToolInput,
     messageToUser: TOOL_REASONING_TEXT,
   },
-  {
-    actionName: "MCP",
-    args: parentListConnectionsParameters,
-    contextIds: ["mcp"],
-    input: parentListConnectionsInput,
-    messageToUser:
-      "MCP op=list_connections is only available in the cloud runtime.",
-  },
-  {
-    actionName: "MCP_SEARCH_ACTIONS",
-    args: searchActionsParameters,
-    contextIds: ["mcp"],
-    input: searchActionsInput,
-    messageToUser:
-      "MCP op=search_actions is only available in the cloud runtime.",
-  },
-  {
-    actionName: "MCP_LIST_CONNECTIONS",
-    args: listConnectionsParameters,
-    contextIds: ["mcp"],
-    input: listConnectionsInput,
-    messageToUser:
-      "MCP op=list_connections is only available in the cloud runtime.",
-  },
 ];
-function matchesUnsupportedMcpEvaluation(
-  expectedInput: string,
-  op: string,
-  phase: "evaluation" | "final-reply" = "evaluation",
-) {
-  const route = strictMcpRoutes.find(
-    (candidate) => candidate.input === expectedInput,
-  );
-  if (!route) throw new Error("Missing declared MCP route");
-  return (call: DeterministicModelCall) => {
-    if (
-      call.modelType !==
-        (phase === "evaluation"
-          ? ModelType.RESPONSE_HANDLER
-          : ModelType.ACTION_PLANNER) ||
-      call.toolNames.length !== 0
-    )
-      return false;
-    const messages = call.params.messages ?? [];
-    if (
-      !messages.some(
-        (message) =>
-          message.role === "system" &&
-          typeof message.content === "string" &&
-          message.content.includes(
-            phase === "evaluation" ? "evaluator_stage:\n" : "planner_stage:\n",
-          ),
-      )
-    )
-      return false;
-    // Final-reply generation appends a failure instruction after the original
-    // user message. The fixture must match the correlated receipt, not treat
-    // that appended instruction as a new user request.
-    if (phase === "final-reply") {
-      const finalMessage = messages.at(-1);
-      if (
-        finalMessage?.role !== "user" ||
-        typeof finalMessage.content !== "string" ||
-        !finalMessage.content.startsWith(
-          `The ${route.actionName} step failed and the turn is ending without a usable result. Recorded failure cause: MCP op=${op} is only available in the cloud runtime. Do not call any tool and do not claim the failed step succeeded.`,
-        )
-      )
-        return false;
-    }
-    const inputs = messages.filter(
-      (message) =>
-        message.role === "user" &&
-        typeof message.content === "string" &&
-        (message.content.includes("message:user:\n") ||
-          message.content.includes("# Current message\n")),
-    );
-    if (
-      inputs.length !== 1 ||
-      typeof inputs[0].content !== "string" ||
-      !matchesScenarioInput(expectedInput)(inputs[0].content)
-    )
-      return false;
-    const calls = messages
-      .filter((message) => message.role === "assistant")
-      .flatMap((message) =>
-        Array.isArray(message.content) ? message.content : [],
-      )
-      .filter((part) => part.type === "tool-call");
-    const results = messages
-      .filter((message) => message.role === "tool")
-      .flatMap((message) =>
-        Array.isArray(message.content) ? message.content : [],
-      )
-      .filter((part) => part.type === "tool-result");
-    if (calls.length !== 1 || results.length !== 1) return false;
-    const tool = calls[0];
-    const result = results[0];
-    if (
-      tool.type !== "tool-call" ||
-      result.type !== "tool-result" ||
-      tool.toolName !== route.actionName ||
-      stableStringify(tool.input) !== stableStringify(route.args) ||
-      result.toolName !== route.actionName ||
-      result.toolCallId !== tool.toolCallId ||
-      typeof result.output !== "object" ||
-      result.output === null ||
-      !("type" in result.output) ||
-      result.output.type !== "text" ||
-      !("value" in result.output) ||
-      typeof result.output.value !== "string"
-    )
-      return false;
-    try {
-      const receipt: unknown = JSON.parse(result.output.value);
-      return (
-        typeof receipt === "object" &&
-        receipt !== null &&
-        "success" in receipt &&
-        receipt.success === false &&
-        "text" in receipt &&
-        receipt.text ===
-          `MCP op=${op} is only available in the cloud runtime.` &&
-        readPath(receipt, "data.actionName") === route.actionName &&
-        readPath(receipt, "data.op") === op &&
-        readPath(receipt, "data.values.error") === "OP_NOT_SUPPORTED"
-      );
-    } catch {
-      // error-policy:J3 Malformed results cannot prove the unsupported-operation boundary.
-      return false;
-    }
-  };
-}
-function unsupportedMcpEvaluationFixture(input: string, op: string) {
-  const text = `MCP op=${op} is only available in the cloud runtime.`;
-  return {
-    name: `mcp-unsupported-${op}-evaluator-${input}`,
-    match: matchesUnsupportedMcpEvaluation(input, op),
-    response: {
-      success: false,
-      decision: "FINISH",
-      thought: `The ${op} action reported the local-runtime boundary.`,
-      messageToUser: text,
-    },
-    times: 1,
-  };
-}
-function unsupportedMcpReply(op: string): string {
-  return `I could not run ${op}: this MCP operation requires the cloud runtime.`;
-}
-function unsupportedMcpPostToolFixture(input: string, op: string) {
-  const text = unsupportedMcpReply(op);
-  return {
-    name: `mcp-unsupported-${op}-post-tool-${input}`,
-    match: matchesUnsupportedMcpEvaluation(input, op, "final-reply"),
-    response: {
-      text,
-      thought: `Report the ${op} local-runtime boundary.`,
-      messageToUser: text,
-      completed: true,
-      finishReason: "stop",
-      toolCalls: [],
-    },
-    times: 1,
-  };
-}
 type RuntimeWithMcpScenario = IAgentRuntime &
   RuntimeWithScenarioModelFixtures & {
     plugins?: Plugin[];
@@ -424,42 +243,6 @@ function expectMcpCallToolAction(
   }
   return undefined;
 }
-function expectUnsupportedMcpCloudOp(
-  actionName: "MCP" | "MCP_SEARCH_ACTIONS" | "MCP_LIST_CONNECTIONS",
-  op: "search_actions" | "list_connections",
-  expectedParameters: JsonRecord,
-): (execution: ScenarioTurnExecution) => string | undefined {
-  return (execution) => {
-    const action = firstAction(execution, actionName);
-    if (typeof action === "string") return action;
-    const parametersFailure = expectActionParameters(
-      action,
-      expectedParameters,
-    );
-    if (parametersFailure) return parametersFailure;
-    const text = `MCP op=${op} is only available in the cloud runtime.`;
-    if (action.result?.success !== false) {
-      return `expected ${actionName} result.success=false, saw ${stableStringify(action.result)}`;
-    }
-    for (const [path, expected] of Object.entries({
-      text,
-      "data.actionName": "MCP",
-      "data.op": op,
-      "values.error": "OP_NOT_SUPPORTED",
-    })) {
-      const failure = expectEqual(
-        readPath(action.result, path),
-        expected,
-        path,
-      );
-      if (failure) return failure;
-    }
-    const reply = unsupportedMcpReply(op);
-    return execution.responseText === reply
-      ? undefined
-      : `expected ${actionName} response ${JSON.stringify(reply)}, saw ${JSON.stringify(execution.responseText)}`;
-  };
-}
 function mcpConfig(): McpRouteConfig {
   return {
     mcp: {
@@ -608,24 +391,7 @@ async function seedMcp(ctx: ScenarioContext): Promise<string | undefined> {
   restoreMcpGetService = () => {
     runtime.getService = originalGetService as typeof runtime.getService;
   };
-  registerStrictActionRouteFixtures(
-    runtime,
-    strictMcpRoutes.filter(
-      (route) =>
-        route.actionName === "MCP_READ_RESOURCE" ||
-        route.actionName === "MCP_CALL_TOOL",
-    ),
-  );
-  for (const route of strictMcpRoutes.filter(
-    (route) =>
-      route.actionName !== "MCP_READ_RESOURCE" &&
-      route.actionName !== "MCP_CALL_TOOL",
-  )) {
-    // Unsupported operations have failure evaluators below, so they cannot
-    // consume the success-only evaluator bundled with ordinary route fixtures.
-    const [stage1, planner] = strictActionRouteFixtures(route);
-    runtime.scenarioModelFixtures?.register(stage1, planner);
-  }
+  registerStrictActionRouteFixtures(runtime, strictMcpRoutes);
   runtime.scenarioModelFixtures?.register(
     {
       name: "mcp-resource-analysis",
@@ -689,18 +455,6 @@ async function seedMcp(ctx: ScenarioContext): Promise<string | undefined> {
       response: TOOL_REASONING_TEXT,
       times: 1,
     },
-    unsupportedMcpEvaluationFixture(
-      parentListConnectionsInput,
-      "list_connections",
-    ),
-    unsupportedMcpEvaluationFixture(searchActionsInput, "search_actions"),
-    unsupportedMcpEvaluationFixture(listConnectionsInput, "list_connections"),
-    unsupportedMcpPostToolFixture(
-      parentListConnectionsInput,
-      "list_connections",
-    ),
-    unsupportedMcpPostToolFixture(searchActionsInput, "search_actions"),
-    unsupportedMcpPostToolFixture(listConnectionsInput, "list_connections"),
   );
   const registered = (runtime.plugins ?? []).some(
     (plugin) => plugin.name === mcpPlugin.name,
@@ -809,36 +563,6 @@ export default scenario({
       assertTurn: expectMcpCallToolAction,
     },
     {
-      kind: "message",
-      name: "parent MCP action reports local-only list-connections boundary",
-      text: parentListConnectionsInput,
-      assertTurn: expectUnsupportedMcpCloudOp(
-        "MCP",
-        "list_connections",
-        parentListConnectionsParameters,
-      ),
-    },
-    {
-      kind: "message",
-      name: "MCP search-actions virtual action reports local-only boundary",
-      text: searchActionsInput,
-      assertTurn: expectUnsupportedMcpCloudOp(
-        "MCP_SEARCH_ACTIONS",
-        "search_actions",
-        searchActionsParameters,
-      ),
-    },
-    {
-      kind: "message",
-      name: "MCP list-connections virtual action reports local-only boundary",
-      text: listConnectionsInput,
-      assertTurn: expectUnsupportedMcpCloudOp(
-        "MCP_LIST_CONNECTIONS",
-        "list_connections",
-        listConnectionsParameters,
-      ),
-    },
-    {
       kind: "api",
       name: "MCP status route reports discovered fixture capabilities",
       method: "GET",
@@ -858,21 +582,6 @@ export default scenario({
       type: "actionCalled",
       actionName: "MCP_CALL_TOOL",
       status: "success",
-      minCount: 1,
-    },
-    {
-      type: "actionCalled",
-      actionName: "MCP",
-      minCount: 1,
-    },
-    {
-      type: "actionCalled",
-      actionName: "MCP_SEARCH_ACTIONS",
-      minCount: 1,
-    },
-    {
-      type: "actionCalled",
-      actionName: "MCP_LIST_CONNECTIONS",
       minCount: 1,
     },
     {
