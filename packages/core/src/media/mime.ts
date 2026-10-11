@@ -76,10 +76,11 @@ export function getFileExtension(filePath?: string | null): string | undefined {
 	try {
 		if (/^https?:\/\//i.test(filePath)) {
 			candidate = new URL(filePath).pathname;
+			candidate = decodeURIComponent(candidate);
 		}
 	} catch {
-		// error-policy:J3 URL paths are untrusted input; malformed URLs are
-		// treated as plain paths without partial decoding.
+		// error-policy:J3 Malformed URLs or unsupported percent encodings retain
+		// the original path instead of losing its filename or extension.
 		// fall back to plain path parsing
 	}
 	// Only the last path segment can carry an extension; splitting the whole
