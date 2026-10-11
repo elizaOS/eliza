@@ -1194,6 +1194,7 @@ function buildCalendarServiceErrorFallback(
 ): string {
   if (
     error.code === "CALENDAR_SEARCH_QUERY_REQUIRED" ||
+    error.code === "CALENDAR_TRIP_LOCATION_REQUIRED" ||
     error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
     error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" ||
     error.code === "CALENDAR_TARGET_SELECTOR_INVALID"

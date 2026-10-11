@@ -945,6 +945,9 @@ describe("CALENDAR receipt grounding over real PGlite", () => {
     expect(missingPlace, JSON.stringify(missingPlace)).toMatchObject({
       success: false,
       data: {
+        replyContext: {
+          facts: expect.stringContaining("location in query"),
+        },
         subaction: "trip_window",
         error: "CALENDAR_TRIP_LOCATION_REQUIRED",
         coachingFailure: true,
