@@ -319,6 +319,7 @@ function readTaskIdempotencyKey(task: Task): string | undefined {
 function resolveDispatchIdempotencyKey(
   task: Task,
   trigger: WorkflowTriggerConfig,
+  source: TriggerExecutionOptions["source"],
   event?: TriggerExecutionOptions["event"],
 ): string | undefined {
   const eventId = readNestedRunEvent(event?.payload)?.id;
@@ -331,7 +332,10 @@ function resolveDispatchIdempotencyKey(
       .digest("hex");
     return `event:${trigger.triggerId}:${digest}`;
   }
-  return readTaskIdempotencyKey(task);
+  // The stored key belongs to the next scheduled fire. A manual run is its
+  // own run: reusing that key would make the dispatcher drop the scheduled
+  // fire (and any later manual run) as a duplicate.
+  return source === "manual" ? undefined : readTaskIdempotencyKey(task);
 }
 
 /**
@@ -398,6 +402,7 @@ async function dispatchWorkflow(
   runtime: IAgentRuntime,
   task: Task,
   trigger: WorkflowTriggerConfig,
+  source: TriggerExecutionOptions["source"],
   event?: TriggerExecutionOptions["event"],
 ): Promise<
   | { ok: true; executionId?: string; dedup?: boolean }
@@ -422,7 +427,12 @@ async function dispatchWorkflow(
         "workflow subsystem unavailable: the workflow plugin is not enabled on this agent",
     };
   }
-  const idempotencyKey = resolveDispatchIdempotencyKey(task, trigger, event);
+  const idempotencyKey = resolveDispatchIdempotencyKey(
+    task,
+    trigger,
+    source,
+    event,
+  );
   const payload = event
     ? {
         eventKind: event.kind,
@@ -737,7 +747,13 @@ export async function executeTriggerTask(
 
   const result =
     trigger.kind === "workflow"
-      ? await dispatchWorkflow(runtime, task, trigger, options.event)
+      ? await dispatchWorkflow(
+          runtime,
+          task,
+          trigger,
+          options.source,
+          options.event,
+        )
       : await dispatchPrompt(runtime, trigger, task.roomId);
   if (result.ok === true && "dedup" in result && result.dedup === true) {
     // The workflow dispatcher has already accepted this native event identity.
