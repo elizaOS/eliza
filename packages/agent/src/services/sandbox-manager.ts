@@ -308,7 +308,7 @@ export class SandboxManager {
             await this.engine.pullImage(config.image);
           } catch {
             throw new Error(
-              `Sandbox image "${config.image}" not found. Build with: scripts/sandbox-setup.sh`,
+              `Sandbox image "${config.image}" not found. Build from packages/app with: ./scripts/sandbox-setup.sh`,
             );
           }
         }

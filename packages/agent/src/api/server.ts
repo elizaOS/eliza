@@ -5,7 +5,7 @@ import "./waifu-chat-role-resolver.ts";
  *
  * Exposes HTTP endpoints that the UI frontend expects, backed by the
  * elizaOS AgentRuntime. Default port: 2138. In dev mode, the Vite UI
- * dev server proxies /api and /ws here (see eliza/packages/app/scripts/dev-ui.ts).
+ * dev server proxies /api and /ws here (see packages/app/scripts/dev-ui.ts).
  */
 import fs from "node:fs";
 import http from "node:http";
