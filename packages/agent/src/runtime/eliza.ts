@@ -6066,22 +6066,24 @@ export async function startEliza(
     return runtime;
   }
   // ── Interactive chat loop ────────────────────────────────────────────────
-  const agentName = agentIdentityName(character) ?? "Eliza";
+  const agentName = character.name ?? "Eliza";
+  // Chat ids keep the identity name, so a renamed agent keeps its CLI room.
+  const identityName = agentIdentityName(character) ?? "Eliza";
   const userId = crypto.randomUUID() as UUID;
   // Use `let` so the fallback path can reassign to fresh IDs.
-  let roomId = stringToUuid(`${agentName}-chat-room`);
+  let roomId = stringToUuid(`${identityName}-chat-room`);
   try {
-    const worldId = stringToUuid(`${agentName}-chat-world`);
+    const worldId = stringToUuid(`${identityName}-chat-world`);
     // Use a deterministic messageServerId so the settings provider
     // can reference the world by serverId after it is found.
-    const messageServerId = stringToUuid(`${agentName}-cli-server`) as UUID;
+    const messageServerId = stringToUuid(`${identityName}-cli-server`) as UUID;
     await runtime.ensureConnection({
       entityId: userId,
       roomId,
       worldId,
       userName: "User",
       source: "cli",
-      channelId: `${agentName}-chat`,
+      channelId: `${identityName}-chat`,
       type: ChannelType.DM,
       messageServerId,
       metadata: { ownership: { ownerId: userId } },
@@ -6129,7 +6131,7 @@ export async function startEliza(
         worldId: freshWorldId,
         userName: "User",
         source: "cli",
-        channelId: `${agentName}-chat`,
+        channelId: `${identityName}-chat`,
         type: ChannelType.DM,
         messageServerId: freshServerId,
         metadata: { ownership: { ownerId: userId } },

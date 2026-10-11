@@ -29,7 +29,10 @@ import {
   isDevCloudInternalEnvKey,
   resolveDevCloudEnvAuthority,
 } from "../config/dev-cloud-env-authority.ts";
-import { buildCharacterFromConfig } from "../runtime/build-character-config.ts";
+import {
+  agentIdentityName,
+  buildCharacterFromConfig,
+} from "../runtime/build-character-config.ts";
 import { reconcileDirectTextModelSettings } from "../runtime/runtime-settings.ts";
 import {
   hasBlockedObjectKeyDeep,
@@ -279,6 +282,9 @@ async function applyReloadedConfig(params: {
   // them to the live runtime. This propagates renames, system prompt
   // edits, bio/style updates, and topic/adjective changes.
   if (runtime) {
+    // The live agent keeps its id after a rename; keep the identity name that
+    // id came from instead of the rebuilt one (the new display name).
+    const liveIdentityName = agentIdentityName(runtime.character);
     const rebuilt = buildCharacterFromConfig(next);
     const character = asConfigRecord(runtime.character);
     const HOT_CHARACTER_FIELDS = [
@@ -298,6 +304,22 @@ async function applyReloadedConfig(params: {
       const value = rebuiltRecord[field];
       if (value !== undefined) {
         character[field as string] = value;
+      }
+    }
+    if (liveIdentityName && liveIdentityName !== rebuilt.name) {
+      runtime.character.settings = {
+        ...runtime.character.settings,
+        identityName: liveIdentityName,
+      };
+      state.agents ??= {};
+      const agentList = state.agents.list ?? [];
+      const primaryAgent = agentList[0] ?? { id: "main", default: true };
+      if (!primaryAgent.identityName) {
+        state.agents.list = [
+          { ...primaryAgent, identityName: liveIdentityName },
+          ...agentList.slice(1),
+        ];
+        saveElizaConfig(state);
       }
     }
     reconcileDirectTextModelSettings(runtime, previous, next);
