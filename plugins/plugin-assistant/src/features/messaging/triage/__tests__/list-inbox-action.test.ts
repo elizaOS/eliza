@@ -115,58 +115,53 @@ describe("listInboxAction", () => {
     ).toEqual(["gmail-1", "whatsapp-1"]);
   });
 
-  it("scopes cached unread messages to the requested accounts and channels", async () => {
-    getDefaultMessageRefStore().saveMessages([
+  it("asks the adapter for a channel scope instead of filtering cached refs", async () => {
+    // A Gmail ref carries one channelId but the message is in every label in
+    // its tags. Filtering the cache by channelId would drop "both-labels".
+    const refs = [
       messageRef({
-        id: "work-inbox",
-        externalId: "work-inbox-external",
+        id: "both-labels",
+        externalId: "both-labels-external",
         worldId: "work@example.com",
         channelId: "INBOX",
+        tags: ["INBOX", "Label_7"],
         receivedAtMs: 3_000,
       }),
       messageRef({
-        id: "work-promotions",
-        externalId: "work-promotions-external",
+        id: "label-only",
+        externalId: "label-only-external",
         worldId: "work@example.com",
-        channelId: "CATEGORY_PROMOTIONS",
+        channelId: "Label_7",
+        tags: ["Label_7"],
         receivedAtMs: 2_000,
       }),
-      messageRef({
-        id: "personal-inbox",
-        externalId: "personal-inbox-external",
-        worldId: "me@example.com",
-        channelId: "INBOX",
-      }),
-    ]);
+    ];
+    getDefaultMessageRefStore().saveMessages(refs);
+    const adapter = new FixedListAdapter(refs);
+    await registerAdapter(adapter);
 
-    const byWorld = await listInboxAction.handler(
-      createFakeRuntime(),
-      messageRef({ id: "turn" }) as never,
-      undefined,
-      { parameters: { worldIds: ["work@example.com"] } } as never,
-    );
-    expect(
-      (byWorld.data as { messages: Array<{ id: string }> }).messages.map(
-        (m) => m.id,
-      ),
-    ).toEqual(["work-inbox", "work-promotions"]);
-
-    const byChannel = await listInboxAction.handler(
+    const result = await listInboxAction.handler(
       createFakeRuntime(),
       messageRef({ id: "turn" }) as never,
       undefined,
       {
         parameters: {
           worldIds: ["work@example.com"],
-          channelIds: ["INBOX"],
+          channelIds: ["Label_7"],
         },
       } as never,
     );
+
+    expect(adapter.seenOptions).toHaveLength(1);
+    expect(adapter.seenOptions[0]).toMatchObject({
+      worldIds: ["work@example.com"],
+      channelIds: ["Label_7"],
+    });
     expect(
-      (byChannel.data as { messages: Array<{ id: string }> }).messages.map(
+      (result.data as { messages: Array<{ id: string }> }).messages.map(
         (m) => m.id,
       ),
-    ).toEqual(["work-inbox"]);
+    ).toEqual(["both-labels", "label-only"]);
   });
 
   it("rejects an unsupported source instead of listing every source", async () => {

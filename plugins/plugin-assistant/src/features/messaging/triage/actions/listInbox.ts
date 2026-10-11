@@ -22,7 +22,6 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { filterInMemory } from "../adapters/base.ts";
 import { rankScored } from "../triage-engine.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
 import { ALL_MESSAGE_SOURCES } from "../types.ts";
@@ -106,13 +105,20 @@ export const listInboxAction: Action = {
       const service = getDefaultTriageService();
       const store = service.getStore();
 
-      // Same scope semantics as the adapters and the search path: a requested
-      // source, account, or channel excludes refs that do not carry it.
-      let messages = filterInMemory(store.listMessages(), {
-        sources: params.sources,
-        worldIds: params.worldIds,
-        channelIds: params.channelIds,
-      });
+      // The adapters own account and channel scope (a Gmail message is in
+      // every label it carries, not only the one on its ref), so the cached
+      // refs answer only requests without that scope. A scoped request goes
+      // to the live pull below.
+      const scoped =
+        params.worldIds !== undefined || params.channelIds !== undefined;
+      const requestedSources = params.sources;
+      let messages = scoped
+        ? []
+        : requestedSources
+          ? store
+              .listMessages()
+              .filter((m) => requestedSources.includes(m.source))
+          : store.listMessages();
 
       messages = rankScored(messages);
       const sinceMs = params.sinceMs;
@@ -121,7 +127,8 @@ export const listInboxAction: Action = {
       }
       let unread = messages.filter((m) => !m.isRead);
 
-      // A cold, all-read, or out-of-window cache needs exactly one live pull
+      // A scoped request, or a cold, all-read, or out-of-window cache, needs
+      // exactly one live pull
       // before it can establish that no unread messages match the request.
       if (unread.length === 0) {
         messages = await service.triage(runtime, {
