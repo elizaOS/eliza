@@ -584,6 +584,9 @@ export class HealthDomain {
           ),
         ]
       : await this.getHealthDataConnectorStatuses(requestUrl, mode, side);
+    // No row limit: the date window bounds this read. A limit keeps only the
+    // newest rows, so the daily summaries and metric totals lose the older days
+    // (one provider can store a heart rate sample for each 5 minutes).
     const samples = await this.ctx.repository.listHealthMetricSamples(
       this.ctx.agentId(),
       {
@@ -591,7 +594,6 @@ export class HealthDomain {
         startDate,
         endDate,
         metrics: normalizeHealthMetrics(request.metrics),
-        limit: 2_000,
       },
     );
     const [workouts, sleepEpisodes] = await Promise.all([
