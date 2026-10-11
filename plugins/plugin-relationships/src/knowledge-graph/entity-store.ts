@@ -32,6 +32,7 @@ import {
   type ConfirmedEmailRecipient,
   confirmEmailRecipient,
 } from "./confirmed-email-recipient.ts";
+import { laterIso } from "./recency.ts";
 import {
   type GraphRecordRepository,
   graphRecordRepository,
@@ -687,29 +688,56 @@ export class EntityStore {
       interaction.direction === "inbound"
         ? "state_last_inbound_at"
         : "state_last_outbound_at";
+    // A late older interaction (backfill, out-of-order connector event) must not
+    // move recency or the platform backwards.
     if (this.records) {
       const existing = await this.getOperation(entityId);
       if (!existing) return;
+      const lastObservedAt = laterIso(
+        existing.state.lastObservedAt,
+        interaction.occurredAt,
+      );
       await this.records.putEntity({
         ...existing,
         state: {
           ...existing.state,
           ...(interaction.direction === "inbound"
-            ? { lastInboundAt: interaction.occurredAt }
-            : { lastOutboundAt: interaction.occurredAt }),
-          lastObservedAt: interaction.occurredAt,
-          lastInteractionPlatform: interaction.platform,
+            ? {
+                lastInboundAt: laterIso(
+                  existing.state.lastInboundAt,
+                  interaction.occurredAt,
+                ),
+              }
+            : {
+                lastOutboundAt: laterIso(
+                  existing.state.lastOutboundAt,
+                  interaction.occurredAt,
+                ),
+              }),
+          lastObservedAt,
+          ...(lastObservedAt === interaction.occurredAt
+            ? { lastInteractionPlatform: interaction.platform }
+            : {}),
         },
         updatedAt: isoNow(),
       });
       return;
     }
+    // The SQL path has no transaction or lock around this operation, so the
+    // comparison is done inside the one UPDATE: overlapping interactions cannot
+    // read the same old row and let the older one write last.
+    const occurredAt = sqlQuote(interaction.occurredAt);
+    const storedIsLater = (column: string) =>
+      `${column} IS NOT NULL AND ${column}::timestamptz > ${occurredAt}::timestamptz`;
     await executeRawSql(
       this.runtime,
       `UPDATE app_lifeops.life_entities
-          SET ${directionColumn} = ${sqlQuote(interaction.occurredAt)},
-              state_last_observed_at = ${sqlQuote(interaction.occurredAt)},
-              state_last_interaction_platform = ${sqlQuote(interaction.platform)},
+          SET ${directionColumn} = CASE WHEN ${storedIsLater(directionColumn)}
+                THEN ${directionColumn} ELSE ${occurredAt} END,
+              state_last_observed_at = CASE WHEN ${storedIsLater("state_last_observed_at")}
+                THEN state_last_observed_at ELSE ${occurredAt} END,
+              state_last_interaction_platform = CASE WHEN ${storedIsLater("state_last_observed_at")}
+                THEN state_last_interaction_platform ELSE ${sqlQuote(interaction.platform)} END,
               updated_at = ${sqlQuote(isoNow())}
         WHERE agent_id = ${sqlQuote(this.agentId)}
           AND entity_id = ${sqlQuote(entityId)}`,
