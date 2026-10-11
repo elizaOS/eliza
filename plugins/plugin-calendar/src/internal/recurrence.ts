@@ -79,11 +79,17 @@ export interface ParsedCalendarRecurrenceRule {
   /** Days of month (1..31 or -31..-1 counting from month end). MONTHLY only. */
   byMonthDay?: number[];
   /**
-   * BYDAY of a MONTHLY rule, set only when the caller asks for it: `2TU` is
-   * the second Tuesday of the month, `-1FR` the last Friday, and `TU` (null
-   * ordinal) each Tuesday of the month.
+   * BYDAY of a MONTHLY rule, or of a YEARLY rule that has BYMONTH, set only
+   * when the caller asks for it: `2TU` is the second Tuesday of the month,
+   * `-1FR` the last Friday, and `TU` (null ordinal) each Tuesday of the month.
    */
   byDayOfMonth?: Array<{ ordinal: number | null; weekday: number }>;
+  /**
+   * BYMONTH of a YEARLY rule (1..12, ascending), set only when the caller
+   * asks for it. The series has an occurrence in each listed month: on the
+   * BYDAY weekdays, on the BYMONTHDAY days, or on the day of DTSTART.
+   */
+  byMonthOfYear?: number[];
   /** Total occurrence count including the first occurrence (DTSTART). */
   count?: number;
   /** Inclusive UTC cutoff for occurrences. */
@@ -205,7 +211,11 @@ function parsePositiveInt(value: string, part: string): number {
  */
 export function parseRecurrenceRule(
   value: string,
-  options: { localUntil?: boolean; monthlyByDay?: boolean } = {},
+  options: {
+    localUntil?: boolean;
+    monthlyByDay?: boolean;
+    yearlyByMonth?: boolean;
+  } = {},
 ): ParsedCalendarRecurrenceRule {
   const body = value.trim().replace(/^RRULE:/i, "");
   if (body.length === 0) invalidRecurrence("empty rule");
@@ -215,6 +225,7 @@ export function parseRecurrenceRule(
   let byDay: number[] | undefined;
   let byDayTokens: ParsedCalendarRecurrenceRule["byDayOfMonth"];
   let byMonthDay: number[] | undefined;
+  let byMonthRaw: string | undefined;
   let weekStart: number | undefined;
   let count: number | undefined;
   let untilMs: number | undefined;
@@ -300,6 +311,8 @@ export function parseRecurrenceRule(
         if (weekStart === undefined) invalidRecurrence(`WKST=${raw}`);
         break;
       case "BYMONTH":
+        byMonthRaw = raw;
+        break;
       case "BYSETPOS":
       case "BYHOUR":
       case "BYMINUTE":
@@ -317,11 +330,23 @@ export function parseRecurrenceRule(
   if (count !== undefined && untilMs !== undefined) {
     invalidRecurrence("COUNT and UNTIL are mutually exclusive");
   }
-  // BYDAY of a MONTHLY rule names weekdays of the month. A month has at most
-  // five of one weekday. Other ordinal weekdays stay outside the subset.
+  // BYMONTH of a YEARLY rule lists the months of the year that have an
+  // occurrence. Other uses of BYMONTH stay outside the subset.
+  const months = /^\d{1,2}(?:,\d{1,2})*$/.test(byMonthRaw ?? "")
+    ? [...new Set((byMonthRaw ?? "").split(",").map(Number))]
+    : [];
+  const byMonthOfYear =
+    options.yearlyByMonth === true &&
+    freq === "YEARLY" &&
+    months.length > 0 &&
+    months.every((month) => month >= 1 && month <= 12)
+      ? months.sort((a, b) => a - b)
+      : undefined;
+  // BYDAY of a MONTHLY rule, or of a YEARLY rule that has BYMONTH, names
+  // weekdays of the month. A month has at most five of one weekday. Other
+  // ordinal weekdays stay outside the subset.
   const byDayOfMonth =
-    options.monthlyByDay === true &&
-    freq === "MONTHLY" &&
+    ((options.monthlyByDay === true && freq === "MONTHLY") || byMonthOfYear) &&
     byMonthDay === undefined &&
     byDayTokens?.every(
       ({ ordinal }) =>
@@ -335,7 +360,10 @@ export function parseRecurrenceRule(
     }
     if (byDay && freq !== "WEEKLY") beyondExpansionSubset = true;
   }
-  if (byMonthDay && freq !== "MONTHLY") beyondExpansionSubset = true;
+  if (byMonthRaw !== undefined && !byMonthOfYear) beyondExpansionSubset = true;
+  if (byMonthDay && freq !== "MONTHLY" && !byMonthOfYear) {
+    beyondExpansionSubset = true;
+  }
 
   return {
     freq,
@@ -343,6 +371,7 @@ export function parseRecurrenceRule(
     byDay,
     byMonthDay,
     byDayOfMonth,
+    byMonthOfYear,
     weekStart,
     count,
     untilMs,
@@ -393,7 +422,11 @@ export function normalizeRecurrence(value: unknown): string[] | undefined {
 /** First RRULE line from a recurrence line set, parsed; null when none. */
 export function firstRecurrenceRule(
   recurrence: readonly string[] | null | undefined,
-  options: { localUntil?: boolean; monthlyByDay?: boolean } = {},
+  options: {
+    localUntil?: boolean;
+    monthlyByDay?: boolean;
+    yearlyByMonth?: boolean;
+  } = {},
 ): ParsedCalendarRecurrenceRule | null {
   if (!recurrence) return null;
   for (const line of recurrence) {
@@ -597,6 +630,28 @@ function* generateOccurrences(args: {
     return compareLocalDates(date, rangeEndDate) > 0;
   }
 
+  // Days of one month in ascending order: the weekdays that BYDAY names, or
+  // the BYMONTHDAY days. A day that the month does not have is skipped per
+  // RFC 5545 (Feb 29 in non-leap years). A positive day and a negative day
+  // can name the same date (31 and -1 in a 31-day month); it is emitted once.
+  function daysOfMonth(
+    year: number,
+    month: number,
+    byMonthDay: number[],
+  ): number[] {
+    if (rule.byDayOfMonth) {
+      return daysOfMonthForWeekdays(year, month, rule.byDayOfMonth);
+    }
+    const monthLength = daysInMonth(year, month);
+    return [
+      ...new Set(
+        byMonthDay
+          .map((day) => (day < 0 ? monthLength + day + 1 : day))
+          .filter((day) => day >= 1 && day <= monthLength),
+      ),
+    ].sort((a, b) => a - b);
+  }
+
   function* localDates(): Generator<LocalDateOnly> {
     switch (rule.freq) {
       case "DAILY": {
@@ -641,31 +696,26 @@ function* generateOccurrences(args: {
           const { year, month } = addMonthsToLocalMonth(anchorDate, step);
           const monthStart = { year, month, day: 1 };
           if (beyondRangeEnd(monthStart)) return;
-          const monthLength = daysInMonth(year, month);
-          // A positive day and a negative day can name the same date
-          // (31 and -1 in a 31-day month); emit each date once.
-          const days = rule.byDayOfMonth
-            ? daysOfMonthForWeekdays(year, month, rule.byDayOfMonth)
-            : [
-                ...new Set(
-                  byMonthDay
-                    .map((day) => (day < 0 ? monthLength + day + 1 : day))
-                    .filter((day) => day >= 1 && day <= monthLength),
-                ),
-              ].sort((a, b) => a - b);
-          for (const day of days) {
+          for (const day of daysOfMonth(year, month, byMonthDay)) {
             yield { year, month, day };
           }
         }
       }
       case "YEARLY": {
+        const months = rule.byMonthOfYear ?? [anchorDate.month];
+        const byMonthDay =
+          rule.byMonthOfYear && rule.byMonthDay
+            ? rule.byMonthDay
+            : [anchorDate.day];
         for (let step = 0; ; step += rule.interval) {
           const year = anchorDate.year + step;
           const yearStart = { year, month: 1, day: 1 };
           if (beyondRangeEnd(yearStart)) return;
-          // Skip invalid anniversaries (Feb 29 in non-leap years) per RFC 5545.
-          if (anchorDate.day > daysInMonth(year, anchorDate.month)) continue;
-          yield { year, month: anchorDate.month, day: anchorDate.day };
+          for (const month of months) {
+            for (const day of daysOfMonth(year, month, byMonthDay)) {
+              yield { year, month, day };
+            }
+          }
         }
       }
     }

@@ -202,6 +202,7 @@ export function expandIcsCalendarEvents(args: {
         ? firstRecurrenceRule(recurrence, {
             localUntil: true,
             monthlyByDay: true,
+            yearlyByMonth: true,
           })
         : null;
     if (!rule || rule.beyondExpansionSubset || hasRdate) {

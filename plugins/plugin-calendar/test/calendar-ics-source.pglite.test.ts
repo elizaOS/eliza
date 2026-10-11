@@ -1393,6 +1393,74 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     );
   });
 
+  it("expands the RFC 5545 yearly examples that list months", async () => {
+    const source = await createSource();
+    const example = (uid: string, start: string, rrule: string) =>
+      [
+        "BEGIN:VEVENT",
+        `UID:${uid}`,
+        "DTSTAMP:19970301T000000Z",
+        `DTSTART;TZID=America/New_York:${start}`,
+        "DURATION:PT1H",
+        `RRULE:${rrule}`,
+        `SUMMARY:${uid}`,
+        "END:VEVENT",
+      ].join("\r\n");
+    await syncBody(
+      source.id,
+      calendar(
+        example(
+          "january-february-march",
+          "19970310T090000",
+          "FREQ=YEARLY;INTERVAL=2;COUNT=10;BYMONTH=1,2,3",
+        ),
+        // The RFC example has no end. UNTIL keeps the expected list short.
+        example(
+          "thursdays-in-march",
+          "19970313T090000",
+          "FREQ=YEARLY;BYMONTH=3;BYDAY=TH;UNTIL=19981231T000000Z",
+        ),
+      ),
+    );
+    const feed = await service.getCalendarFeed(
+      new URL("http://internal.test/api/calendar"),
+      {
+        grantId: source.id,
+        timeMin: "1997-01-01T00:00:00.000Z",
+        timeMax: "2004-01-01T00:00:00.000Z",
+      },
+      new Date(),
+    );
+
+    expect(feed.state).toBe("complete");
+    const startsOf = (title: string) =>
+      feed.events
+        .filter((event) => event.title === title)
+        .map((event) => event.startAt.slice(0, 10));
+    // RFC 5545 3.8.5.3 gives these dates for the two rules.
+    expect(startsOf("january-february-march")).toEqual([
+      "1997-03-10",
+      "1999-01-10",
+      "1999-02-10",
+      "1999-03-10",
+      "2001-01-10",
+      "2001-02-10",
+      "2001-03-10",
+      "2003-01-10",
+      "2003-02-10",
+      "2003-03-10",
+    ]);
+    expect(startsOf("thursdays-in-march")).toEqual([
+      "1997-03-13",
+      "1997-03-20",
+      "1997-03-27",
+      "1998-03-05",
+      "1998-03-12",
+      "1998-03-19",
+      "1998-03-26",
+    ]);
+  });
+
   it("does not load unrelated historical rows for a short expansion window", async () => {
     const source = await createSource();
     await syncBody(
