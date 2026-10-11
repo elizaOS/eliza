@@ -61,18 +61,31 @@ export function normalizeBrowserWorkspaceText(value: unknown): string {
     .trim();
 }
 
+const BROWSER_WORKSPACE_BLOCK_SELECTOR =
+  "address, article, aside, blockquote, body, caption, dd, details, dialog, div, dl, dt, fieldset, figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, header, hgroup, li, main, nav, ol, option, p, pre, section, summary, table, tbody, td, tfoot, th, thead, tr, ul";
+
 /** Page prose only; raw HTML remains available through the explicit html read. */
 export function readBrowserWorkspaceElementText(
   element: Element | null,
 ): string {
   if (!element || element.closest("script, style, template")) return "";
-  // SHOW_TEXT: walk without cloning or modifying the document being controlled.
-  // SHOW_ELEMENT | SHOW_TEXT: keep explicit line breaks without modifying the page.
+  // SHOW_ELEMENT | SHOW_TEXT: walk without cloning or modifying the document being controlled.
   const walker = element.ownerDocument.createTreeWalker(element, 5);
   const text: string[] = [];
+  let previousBlock: Element | null | undefined;
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    if (!node.parentElement?.closest("script, style, template")) {
-      text.push(node.nodeName === "BR" ? " " : (node.nodeValue ?? ""));
+    if (node.parentElement?.closest("script, style, template")) continue;
+    if (node.nodeName === "BR" || node.nodeName === "HR") {
+      text.push(" ");
+    } else if (node.nodeType === 3) {
+      // Text in a different block than the preceding text starts a new line;
+      // inline elements share their block and stay unseparated.
+      const block = node.parentElement?.closest(
+        BROWSER_WORKSPACE_BLOCK_SELECTOR,
+      );
+      if (block !== previousBlock) text.push(" ");
+      previousBlock = block;
+      text.push(node.nodeValue ?? "");
     }
   }
   return normalizeBrowserWorkspaceText(text.join(""));

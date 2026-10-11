@@ -123,7 +123,7 @@ describe("browser workspace web-mode real-code command flow", () => {
       { id: tab.id, subaction: "get", selector: "body" },
       webEnv,
     );
-    expect(text.value).toBe("RehearsalKeep all prose.");
+    expect(text.value).toBe("Rehearsal Keep all prose.");
     const snapshot = await executeBrowserWorkspaceCommand(
       { id: tab.id, subaction: "snapshot" },
       webEnv,
@@ -139,6 +139,38 @@ describe("browser workspace web-mode real-code command flow", () => {
     );
     expect(html.value).toContain("script-noise");
     expect(html.value).toContain("style-noise");
+  });
+
+  it("separates line breaks and block elements in text reads, not inline elements", async () => {
+    const tab = await openBrowserWorkspaceTab(
+      { show: true, url: "about:blank" },
+      webEnv,
+    );
+    await executeBrowserWorkspaceCommand(
+      {
+        id: tab.id,
+        subaction: "network",
+        networkAction: "route",
+        url: "https://example.test/breaks",
+        responseBody:
+          '<html><body><p id="copy">First<br>Second<br><span>Third</span> <b>line</b></p><ul><li>One</li><li>Tw<i>o</i></li></ul>tail<table><tr><td>A</td><td>B</td></tr></table></body></html>',
+      },
+      webEnv,
+    );
+    await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "navigate", url: "https://example.test/breaks" },
+      webEnv,
+    );
+    const copy = await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "get", selector: "#copy" },
+      webEnv,
+    );
+    expect(copy.value).toBe("First Second Third line");
+    const body = await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "get", selector: "body" },
+      webEnv,
+    );
+    expect(body.value).toBe("First Second Third line One Two tail A B");
   });
 
   it("navigates, clicks, types, screenshots, and extracts DOM through the command router", async () => {
