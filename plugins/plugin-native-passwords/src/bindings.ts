@@ -17,10 +17,15 @@ export function normalizeWebsite(input: string): string {
   const text = typeof input === "string" ? input.trim() : "";
   if (!text || text.length > 512)
     throw new PasswordBindingError("Enter a website address.");
-  // `host:8443` is a bare host with a port, not a URL with the scheme `host`.
-  const withScheme = /^[a-z][a-z0-9+.-]*:(?!\d{1,5}([/?#]|$))/i.test(text)
-    ? text
-    : `https://${text}`;
+  // `example.com:8443` is a bare host with a port, not a URL with the scheme `example.com`.
+  // Only a dotted hostname or `localhost` is read that way: a single label before the colon
+  // (`javascript:123`, `tel:123`, `http:8080`) stays a scheme and is refused below.
+  const bareHostWithPort =
+    /^([a-z0-9-]+(\.[a-z0-9-]+)+\.?|localhost):\d{1,5}([/?#]|$)/i.test(text);
+  const withScheme =
+    !bareHostWithPort && /^[a-z][a-z0-9+.-]*:/i.test(text)
+      ? text
+      : `https://${text}`;
   let url: URL;
   try {
     url = new URL(withScheme);
