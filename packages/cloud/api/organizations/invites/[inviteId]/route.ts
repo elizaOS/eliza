@@ -48,7 +48,9 @@ app.delete("/", async (c) => {
       ? 404
       : message.includes("does not belong")
         ? 403
-        : 500;
+        : message.includes("Can only revoke pending invites")
+          ? 409
+          : 500;
     return c.json({ success: false, error: message }, status);
   }
 });
