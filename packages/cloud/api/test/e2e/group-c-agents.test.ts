@@ -1219,30 +1219,29 @@ describeE2E("/api/my-agents/characters/:id/track-interaction", () => {
     expect(res.status).toBe(401);
   });
 
-  // Current contract for authed callers is 500, NOT the intended 410: the
-  // handler calls requireUserWithOrg (session-only — it rejects eliza_* API
-  // keys) inside a blanket try/catch that converts the auth rejection into
-  // "Failed to track interaction" 500. Pinned so the contract is visible;
-  // update to 410 if the handler drops the swallow (compare track-view).
-  test("POST with API-key Bearer returns 500 (auth rejection swallowed by the route's catch)", async () => {
+  // The handler returns the 410 directly, like track-view: it does not call
+  // requireUserWithOrg (session-only — it rejects eliza_* API keys), so an
+  // API-key caller gets the intended "gone" answer instead of an auth error.
+  // Credential-less requests still stop at the global gate with 401 (above).
+  test("POST with API-key Bearer returns 410 Gone", async () => {
     const res = await api.post(
       `/api/my-agents/characters/${UNOWNED_AGENT_ID}/track-interaction`,
       undefined,
       { headers: bearerHeaders() },
     );
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(410);
     const body = (await res.json()) as { success?: boolean; error?: string };
     expect(body.success).toBe(false);
     expect(body.error).toBeTruthy();
   });
 
-  test("POST with body behaves the same (500 for API-key callers)", async () => {
+  test("POST with body behaves the same (410 for API-key callers)", async () => {
     const res = await api.post(
       `/api/my-agents/characters/${UNOWNED_AGENT_ID}/track-interaction`,
       { eventType: "click" },
       { headers: bearerHeaders() },
     );
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(410);
   });
 });
 
