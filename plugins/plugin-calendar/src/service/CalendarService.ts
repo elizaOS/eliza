@@ -5146,12 +5146,18 @@ export class CalendarService extends Service {
     if (!fresh && !args.allowStale) {
       return null;
     }
-    const events = await this.listCalendarFeedWindowEvents(
-      args.calendar.provider,
-      args.timeMin,
-      args.timeMax,
-      args.calendar.side,
-      args.calendar.grantId,
+    const events = (
+      await this.listCalendarFeedWindowEvents(
+        args.calendar.provider,
+        args.timeMin,
+        args.timeMax,
+        args.calendar.side,
+        args.calendar.grantId,
+      )
+    ).filter(
+      (event) =>
+        args.calendar.calendarId === "all" ||
+        event.calendarId === args.calendar.calendarId,
     );
     const health = calendarSourceHealth({
       calendar: args.calendar,
