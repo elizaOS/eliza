@@ -120,6 +120,38 @@ const TERMINAL_TASK_STATUSES: ReadonlySet<ScheduledTaskStatusParam> = new Set([
   "dismissed",
 ]);
 
+const ISO_HISTORY_TIMESTAMP_RE =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+
+function normalizeHistoryTimestamp(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const match = ISO_HISTORY_TIMESTAMP_RE.exec(value);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  const calendarProbe = new Date(0);
+  calendarProbe.setUTCFullYear(year, month - 1, day);
+  calendarProbe.setUTCHours(hour, minute, second, 0);
+  if (
+    calendarProbe.getUTCFullYear() !== year ||
+    calendarProbe.getUTCMonth() !== month - 1 ||
+    calendarProbe.getUTCDate() !== day ||
+    calendarProbe.getUTCHours() !== hour ||
+    calendarProbe.getUTCMinutes() !== minute ||
+    calendarProbe.getUTCSeconds() !== second
+  ) {
+    return null;
+  }
+
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
 interface ScheduledTaskParams {
   action?: Subaction;
   subaction?: Subaction;
@@ -1738,8 +1770,8 @@ async function handleHistory(
   ] as const) {
     const raw = params[name];
     if (raw === undefined || raw === null || raw === "") continue;
-    const ms = typeof raw === "string" ? Date.parse(raw) : Number.NaN;
-    if (!Number.isFinite(ms)) {
+    const normalized = normalizeHistoryTimestamp(raw);
+    if (!normalized) {
       return {
         success: false,
         text: "I need a valid date range for that history.",
@@ -1750,7 +1782,7 @@ async function handleHistory(
         },
       };
     }
-    bounds[target] = new Date(ms).toISOString();
+    bounds[target] = normalized;
   }
   const entries: ScheduledTaskLogEntry[] = await repo.listScheduledTaskLog({
     agentId: scope.agentId,

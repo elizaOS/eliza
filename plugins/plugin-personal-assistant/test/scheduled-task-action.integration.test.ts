@@ -805,6 +805,17 @@ describe("SCHEDULED_TASK action", () => {
     const badRange = await call({ action: "history", sinceIso: "yesterday" });
     expect(badRange?.success).toBe(false);
     expect(errorOf(badRange)).toBe("INVALID_HISTORY_RANGE");
+    for (const sinceIso of ["0", "1", "123"]) {
+      const ambiguousRange = await call({ action: "history", sinceIso });
+      expect(ambiguousRange?.success).toBe(false);
+      expect(errorOf(ambiguousRange)).toBe("INVALID_HISTORY_RANGE");
+    }
+    const dateOnlyRange = await call({
+      action: "history",
+      untilHistoryIso: "2026-10-11",
+    });
+    expect(dateOnlyRange?.success).toBe(false);
+    expect(errorOf(dateOnlyRange)).toBe("INVALID_HISTORY_RANGE");
     // A bound with an offset is compared as an instant. One hour from now,
     // written at -12:00, has wall-clock text 11 hours before now: as raw text
     // it would sort before every stored UTC row and return nothing.
