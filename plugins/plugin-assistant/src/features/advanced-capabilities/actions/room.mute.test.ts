@@ -381,7 +381,9 @@ describe("ROOM action — declared parameters match the handler", () => {
       ctx.runtime,
       msg("mute that other channel"),
       { ...state, data: { room: room(ROOM_ID) } } as State,
-      opts({ action: "mute", roomId: SIBLING_ROOM_ID }),
+      // roomId selects the room by itself, so a chatName sent with it is not
+      // refused for a missing platform.
+      opts({ action: "mute", roomId: SIBLING_ROOM_ID, chatName: "room-d2" }),
     );
     expect(result?.success).toBe(true);
     expect(ctx.states.get(`${SIBLING_ROOM_ID}:${AGENT_ID}`)).toBe("MUTED");

@@ -267,7 +267,7 @@ async function validateRoomOpAvailability(
   const platform = normalizePlatform(params.platform);
   const explicitRoomId = normalizeString(params.roomId);
   const chatName = normalizeString(params.chatName);
-  if (chatName && !platform) {
+  if (chatName && !platform && !explicitRoomId) {
     // The handler refuses this call with ROOM_PLATFORM_REQUIRED; do not judge
     // it by the current room's state.
     return true;
@@ -793,9 +793,9 @@ export const roomOpAction: Action = {
         success: false,
       };
     }
-    if (chatName && !platform) {
+    if (chatName && !platform && !explicitRoomId) {
       // chatName is only resolved among one connector's rooms. Without a
-      // platform the call used to fall through to the current room.
+      // platform or a roomId the call used to fall through to the current room.
       return {
         text: "chatName needs platform (telegram, discord, ...). Supply platform with chatName, or use roomId.",
         values: { success: false, error: "ROOM_PLATFORM_REQUIRED" },
