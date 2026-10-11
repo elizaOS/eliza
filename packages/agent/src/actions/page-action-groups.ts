@@ -396,16 +396,9 @@ export const pageDelegateAction: PageActionGroup = {
     {
       name: "action",
       description:
-        "Child action name to run, e.g. BROWSER, CHECK_BALANCE, MODIFY_CHARACTER, UPDATE_AI_PROVIDER, LIST_CONNECTORS.",
+        "Child action name to run, e.g. BROWSER, WALLET_TOKEN_INFO, MODIFY_CHARACTER, UPDATE_AI_PROVIDER, LIST_CONNECTORS.",
       required: true,
       schema: { type: "string" as const },
-    },
-    {
-      name: "parameters",
-      description:
-        "Parameters forwarded to the selected child action. Use the child action's parameter names.",
-      required: false,
-      schema: { type: "object" as const, additionalProperties: true },
     },
   ],
   examples: [
@@ -427,15 +420,15 @@ export const pageDelegateAction: PageActionGroup = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Show my wallet balance." },
+        content: { text: "What is the price of SOL?" },
       },
       {
         name: "{{agentName}}",
         content: {
-          text: "Pulling wallet balances.",
+          text: "Looking up SOL.",
           actions: ["PAGE_DELEGATE"],
           thought:
-            "Balance request maps to the wallet page; PAGE_DELEGATE dispatches to the CHECK_BALANCE child action.",
+            "Token price request maps to the wallet page; PAGE_DELEGATE dispatches to the WALLET action=token_info child.",
         },
       },
     ],
