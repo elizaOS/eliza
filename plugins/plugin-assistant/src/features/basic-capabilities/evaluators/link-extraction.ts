@@ -163,8 +163,23 @@ function decodeHtmlEntities(value: string): string {
     "#39": "'",
   };
   return value.replace(
-    /&(amp|apos|lt|gt|quot|#39|nbsp);/gi,
-    (entity, name: string) => namedEntities[name.toLowerCase()] ?? entity,
+    /&(amp|apos|lt|gt|quot|nbsp|#x[0-9a-f]+|#\d+);/gi,
+    (entity, name: string) => {
+      const key = name.toLowerCase();
+      const named = namedEntities[key];
+      if (named !== undefined) return named;
+      // Page titles often write characters as numeric references, such as
+      // &#x27; for an apostrophe or &#8217; for a curly one.
+      const hex = /^#x([0-9a-f]+)$/.exec(key);
+      const digits = hex?.[1] ?? /^#(\d+)$/.exec(key)?.[1];
+      if (!digits) return entity;
+      const code = Number.parseInt(digits, hex ? 16 : 10);
+      if (!Number.isInteger(code) || code <= 0 || code > 0x10ffff)
+        return entity;
+      if (code >= 0xd800 && code <= 0xdfff) return entity;
+      if (code === 0xa0) return " ";
+      return String.fromCodePoint(code);
+    },
   );
 }
 
