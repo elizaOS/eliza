@@ -22,6 +22,12 @@ interface RSSItem {
 
 export const DEFAULT_NEWS_RSS_FETCH_TIMEOUT_MS = 10_000;
 
+// HTML maps &#128;-&#159; through windows-1252 (WHATWG numeric character
+// reference table); the five unassigned slots stay C1 and are left as written.
+const WINDOWS_1252_C1 =
+  "\u20ac\u0081\u201a\u0192\u201e\u2026\u2020\u2021\u02c6\u2030\u0160\u2039\u0152\u008d\u017d\u008f" +
+  "\u0090\u2018\u2019\u201c\u201d\u2022\u2013\u2014\u02dc\u2122\u0161\u203a\u0153\u009d\u017e\u0178";
+
 export class NewsDataService extends Service {
   static serviceType = "NEWS_DATA_SERVICE";
   private rssUrl: string = "https://bravenewcoin.com/rss/insights";
@@ -156,6 +162,14 @@ export class NewsDataService extends Service {
       }
       if (code >= 0xd800 && code <= 0xdfff) {
         return entity;
+      }
+      // HTML maps &#128;-&#159; through windows-1252 (WHATWG numeric
+      // character reference table), so &#150; is an en dash, not the
+      // invisible U+0096 control. The five unassigned slots stay as
+      // written. This mirrors decodeBasicHtmlEntities in plugin-assistant.
+      if (code >= 0x80 && code <= 0x9f) {
+        const mapped = WINDOWS_1252_C1[code - 0x80];
+        return mapped.charCodeAt(0) === code ? entity : mapped;
       }
       return String.fromCodePoint(code);
     });
