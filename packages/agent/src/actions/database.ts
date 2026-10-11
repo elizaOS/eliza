@@ -392,7 +392,7 @@ async function opGetTable(
   if (!requestedName) {
     return {
       success: false,
-      text: "tableName is required for op:get_table.",
+      text: "tableName is required for action=get_table.",
       values: { error: "DATABASE_GET_TABLE_FAILED", reason: "MISSING_TABLE" },
     };
   }
@@ -427,11 +427,23 @@ async function opGetTable(
       runtime,
       `SELECT column_name FROM information_schema.columns
        WHERE table_name = '${safe}'
-         AND table_schema = '${safeSchema}'`,
+         AND table_schema = '${safeSchema}'
+       ORDER BY ordinal_position`,
     );
-    if (cols.rows.some((r) => String(r.column_name) === params.sortBy)) {
-      validSort = params.sortBy;
+    const columnNames = cols.rows.map((r) => String(r.column_name));
+    // An unknown sort column used to be dropped, and the rows came back in
+    // primary-key order under a success text.
+    if (!columnNames.includes(params.sortBy)) {
+      return {
+        success: false,
+        text: `sortBy "${params.sortBy}" is not a column of "${resolved.schema}.${tableName}". Columns: ${columnNames.join(", ")}.`,
+        values: {
+          error: "DATABASE_GET_TABLE_FAILED",
+          reason: "UNKNOWN_SORT_COLUMN",
+        },
+      };
     }
+    validSort = params.sortBy;
   }
   // OFFSET pages are separate queries. A sort column with ties, or no sort,
   // lets rows trade places between pages. The primary key makes the order
@@ -491,6 +503,9 @@ async function opGetTable(
       total,
       offset,
       ...(limit === undefined ? {} : { limit }),
+      ...(validSort
+        ? { sortBy: validSort, sortDir: sortDir === "DESC" ? "desc" : "asc" }
+        : {}),
     },
   };
 }
@@ -503,7 +518,7 @@ async function opQuery(
   if (!sqlText) {
     return {
       success: false,
-      text: "sql is required for op:query.",
+      text: "sql is required for action=query.",
       values: { error: "DATABASE_QUERY_FAILED", reason: "MISSING_SQL" },
     };
   }
@@ -563,7 +578,7 @@ async function opSearchVectors(
   if (!query) {
     return {
       success: false,
-      text: "query is required for op:search_vectors.",
+      text: "query is required for action=search_vectors.",
       values: {
         error: "DATABASE_SEARCH_VECTORS_FAILED",
         reason: "MISSING_QUERY",

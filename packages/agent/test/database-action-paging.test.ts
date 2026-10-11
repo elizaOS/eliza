@@ -65,7 +65,28 @@ it("returns every tied row once and ignores another schema's primary key", async
       return (rows ?? []).map((row) => Number(row.id));
     }
 
-    for (const sortBy of ["kind", "item_key", undefined] as const) {
+    // item_key is a column of plugin_x.action_paging_ties only. The read of the
+    // public table must refuse it, not fall back to primary-key order.
+    const foreignSort = await handler(
+      runtime,
+      {} as never,
+      undefined,
+      {
+        parameters: {
+          action: "get_table",
+          tableName: "action_paging_ties",
+          sortBy: "item_key",
+          limit: 8,
+        },
+      },
+      undefined,
+    );
+    expect(foreignSort.success).toBe(false);
+    expect(foreignSort.text).toBe(
+      'sortBy "item_key" is not a column of "public.action_paging_ties". Columns: room_id, id, kind.',
+    );
+
+    for (const sortBy of ["kind", undefined] as const) {
       const seen: number[] = [];
       for (let offset = 0; offset < 40; offset += 8) {
         if (offset === 8) {

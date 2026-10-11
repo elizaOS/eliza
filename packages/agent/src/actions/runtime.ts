@@ -310,7 +310,7 @@ async function reloadConfigOp(): Promise<ActionResult> {
     ];
     if (requiresRestart.length) {
       lines.push(
-        `Restart required for: ${requiresRestart.join(", ")} (run RUNTIME op=restart).`,
+        `Restart required for: ${requiresRestart.join(", ")} (run RUNTIME action=restart).`,
       );
     }
     return {
