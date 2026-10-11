@@ -32,6 +32,7 @@ import {
   type ConfirmedEmailRecipient,
   confirmEmailRecipient,
 } from "./confirmed-email-recipient.ts";
+import { laterIso, oneAtATime } from "./ordering.ts";
 import {
   type GraphRecordRepository,
   graphRecordRepository,
@@ -53,12 +54,7 @@ import {
 function isoNow(): string {
   return new Date().toISOString();
 }
-function entityRowToEntity(args: {
-  row: Record<string, unknown>;
-  identities: EntityIdentity[];
-  attributes: Record<string, EntityAttribute>;
-}): Entity {
-  const { row, identities, attributes } = args;
+function entityRowToState(row: Record<string, unknown>): EntityState {
   const state: EntityState = {};
   if (row.state_last_observed_at) {
     state.lastObservedAt = toText(row.state_last_observed_at);
@@ -72,6 +68,15 @@ function entityRowToEntity(args: {
   if (row.state_last_interaction_platform) {
     state.lastInteractionPlatform = toText(row.state_last_interaction_platform);
   }
+  return state;
+}
+function entityRowToEntity(args: {
+  row: Record<string, unknown>;
+  identities: EntityIdentity[];
+  attributes: Record<string, EntityAttribute>;
+}): Entity {
+  const { row, identities, attributes } = args;
+  const state = entityRowToState(row);
   const fullName = row.full_name ? toText(row.full_name) : undefined;
   return {
     entityId: toText(row.entity_id),
@@ -343,6 +348,22 @@ export class EntityStore {
       identities: identities.get(entityId) ?? [],
       attributes: attributes.get(entityId) ?? {},
     });
+  }
+  /** Only the recency columns, without the identity and attribute reads. */
+  private async getStateOperation(
+    entityId: string,
+  ): Promise<EntityState | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT state_last_observed_at, state_last_inbound_at,
+              state_last_outbound_at, state_last_interaction_platform
+         FROM app_lifeops.life_entities
+        WHERE agent_id = ${sqlQuote(this.agentId)}
+          AND entity_id = ${sqlQuote(entityId)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? entityRowToState(row) : null;
   }
   async list(filter?: EntityFilter): Promise<Entity[]> {
     return this.operation(() => this.listOperation(filter));
@@ -670,8 +691,12 @@ export class EntityStore {
       occurredAt: string;
     },
   ): Promise<void> {
-    return this.operation(() =>
-      this.recordInteractionOperation(entityId, interaction),
+    // The read-compare-write below has no transaction on the SQL adapters, so
+    // overlapping interactions for one entity run one at a time.
+    return oneAtATime(JSON.stringify(["entity", this.agentId, entityId]), () =>
+      this.operation(() =>
+        this.recordInteractionOperation(entityId, interaction),
+      ),
     );
   }
   private async recordInteractionOperation(
@@ -683,32 +708,31 @@ export class EntityStore {
       occurredAt: string;
     },
   ): Promise<void> {
-    const directionColumn =
-      interaction.direction === "inbound"
-        ? "state_last_inbound_at"
-        : "state_last_outbound_at";
-    const existing = await this.getOperation(entityId);
-    if (!existing) return;
+    const entity = this.records ? await this.records.getEntity(entityId) : null;
+    const state = this.records
+      ? entity?.state
+      : await this.getStateOperation(entityId);
+    if (!state) return;
     // An older interaction recorded late must not rewind recency.
-    const later = (current: string | undefined) =>
-      current && Date.parse(current) > Date.parse(interaction.occurredAt)
-        ? current
-        : interaction.occurredAt;
-    const directionAt = later(
+    const directionAt = laterIso(
       interaction.direction === "inbound"
-        ? existing.state.lastInboundAt
-        : existing.state.lastOutboundAt,
+        ? state.lastInboundAt
+        : state.lastOutboundAt,
+      interaction.occurredAt,
     );
-    const lastObservedAt = later(existing.state.lastObservedAt);
+    const lastObservedAt = laterIso(
+      state.lastObservedAt,
+      interaction.occurredAt,
+    );
     const lastInteractionPlatform =
       lastObservedAt === interaction.occurredAt
         ? interaction.platform
-        : existing.state.lastInteractionPlatform;
-    if (this.records) {
+        : state.lastInteractionPlatform;
+    if (entity) {
       await this.records.putEntity({
-        ...existing,
+        ...entity,
         state: {
-          ...existing.state,
+          ...state,
           ...(interaction.direction === "inbound"
             ? { lastInboundAt: directionAt }
             : { lastOutboundAt: directionAt }),
@@ -719,6 +743,10 @@ export class EntityStore {
       });
       return;
     }
+    const directionColumn =
+      interaction.direction === "inbound"
+        ? "state_last_inbound_at"
+        : "state_last_outbound_at";
     await executeRawSql(
       this.runtime,
       `UPDATE app_lifeops.life_entities

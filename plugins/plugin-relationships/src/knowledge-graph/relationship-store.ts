@@ -21,6 +21,7 @@ import type {
   LifeOpsGraphRelationshipStatus as RelationshipStatus,
 } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
+import { laterIso, oneAtATime } from "./ordering.ts";
 import {
   type GraphRecordRepository,
   graphRecordRepository,
@@ -38,10 +39,6 @@ import {
   toText,
 } from "./sql.ts";
 
-/** The later of two instants; an older backfilled observation must not rewind recency. */
-function laterIso(current: string | undefined, next: string): string {
-  return current && Date.parse(current) > Date.parse(next) ? current : next;
-}
 function isoNow(): string {
   return new Date().toISOString();
 }
@@ -95,30 +92,17 @@ function rowToRelationship(row: Record<string, unknown>): Relationship {
     updatedAt: toText(row.updated_at),
   };
 }
-/**
- * Strengthen-or-create reads the matching edge and then writes it. Without a
- * record transaction (the SQL adapters) two concurrent observations of one
- * edge would both see "no edge" and insert twice, or both merge into the same
- * snapshot and lose one's evidence, so they run one at a time per edge.
- */
-const edgeQueues = new Map<string, Promise<void>>();
-function oneAtATime<T>(key: string, work: () => Promise<T>): Promise<T> {
-  const run = (edgeQueues.get(key) ?? Promise.resolve()).then(work);
-  const settled = run.then(
-    () => undefined,
-    () => undefined,
-  );
-  edgeQueues.set(key, settled);
-  void settled.then(() => {
-    if (edgeQueues.get(key) === settled) edgeQueues.delete(key);
-  });
-  return run;
-}
 export class RelationshipStore {
   private readonly records: GraphRecordRepository | null;
   private operation<T>(work: () => Promise<T>): Promise<T> {
     return this.records ? this.records.transaction(work) : work();
   }
+  /**
+   * Strengthen-or-create reads the matching edge and then writes it. Without a
+   * record transaction (the SQL adapters) two concurrent observations of one
+   * edge would both see "no edge" and insert twice, or both merge into the same
+   * snapshot and lose one's evidence, so they run one at a time per edge.
+   */
   private edgeOperation<T>(
     edge: { fromEntityId: string; toEntityId: string; type: string },
     work: () => Promise<T>,

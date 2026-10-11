@@ -321,7 +321,9 @@ class MemoryKnowledgeGraph {
     if (/SELECT e\.\* FROM app_lifeops\.life_entities e\b/i.test(sql)) {
       return this.selectEntities(sql);
     }
-    if (/SELECT \* FROM app_lifeops\.life_entities\b/i.test(sql)) {
+    if (
+      /SELECT (?:\*|[\w\s,]+?) FROM app_lifeops\.life_entities\b/i.test(sql)
+    ) {
       const agentId = quotedEquals(sql, "agent_id");
       const entityId = quotedEquals(sql, "entity_id");
       const rows = this.entities.filter(
