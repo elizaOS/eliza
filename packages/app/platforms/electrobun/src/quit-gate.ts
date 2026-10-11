@@ -6,6 +6,10 @@
  * never runs. The gate vetoes that first quit, runs cleanup, and quits again
  * once cleanup has settled. Cleanup is bounded by a deadline so one hung
  * callback cannot leave the app unable to quit.
+ *
+ * A relaunch uses the same sequence and starts the new instance only after
+ * cleanup, so the old agent has released its database locks before the new
+ * host tries to take them.
  */
 
 /** Upper bound for shutdown cleanup before the host quits regardless. */
@@ -29,6 +33,11 @@ export interface QuitGateOptions {
 export interface QuitGate {
 	/** Runs cleanup (bounded by the deadline) and then quits. Idempotent. */
 	requestQuit: () => Promise<void>;
+	/**
+	 * Like `requestQuit`, but calls `spawn` after cleanup and before the quit.
+	 * `spawn` starts the replacement instance.
+	 */
+	requestRelaunch: (spawn: () => void) => Promise<void>;
 	/** `before-quit` handler: vetoes the quit until cleanup has settled. */
 	handleBeforeQuit: (event: BeforeQuitEvent) => void;
 	/** Marks cleanup as settled so the next quit is allowed through. */
@@ -39,6 +48,7 @@ export function createQuitGate(options: QuitGateOptions): QuitGate {
 	const deadlineMs = options.deadlineMs ?? SHUTDOWN_CLEANUP_DEADLINE_MS;
 	let cleanupSettled = false;
 	let quitRequest: Promise<void> | null = null;
+	let spawnReplacement: (() => void) | null = null;
 
 	const markCleanupSettled = (): void => {
 		cleanupSettled = true;
@@ -64,9 +74,15 @@ export function createQuitGate(options: QuitGateOptions): QuitGate {
 			}
 			// Settled or abandoned: either way the next before-quit must pass.
 			markCleanupSettled();
+			spawnReplacement?.();
 			options.quit();
 		})();
 		return quitRequest;
+	};
+
+	const requestRelaunch = (spawn: () => void): Promise<void> => {
+		spawnReplacement = spawn;
+		return requestQuit();
 	};
 
 	const handleBeforeQuit = (event: BeforeQuitEvent): void => {
@@ -75,5 +91,5 @@ export function createQuitGate(options: QuitGateOptions): QuitGate {
 		void requestQuit();
 	};
 
-	return { requestQuit, handleBeforeQuit, markCleanupSettled };
+	return { requestQuit, requestRelaunch, handleBeforeQuit, markCleanupSettled };
 }

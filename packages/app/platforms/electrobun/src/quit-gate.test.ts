@@ -136,4 +136,34 @@ describe("createQuitGate", () => {
 		expect(host.quitCalls).toBe(1);
 		expect(host.exited).toBe(true);
 	});
+
+	it("starts the relaunched instance after cleanup and before the quit", async () => {
+		const host = createHost();
+		const cleanup = deferred();
+		const order: string[] = [];
+		const gate = createQuitGate({
+			runCleanup: () =>
+				cleanup.promise.then(() => {
+					order.push("cleanup");
+				}),
+			quit: () => {
+				order.push("quit");
+				host.quit();
+			},
+		});
+		host.onBeforeQuit(gate.handleBeforeQuit);
+
+		const relaunch = gate.requestRelaunch(() => {
+			order.push("spawn");
+		});
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(order).toEqual([]);
+
+		cleanup.resolve();
+		await relaunch;
+
+		expect(order).toEqual(["cleanup", "spawn", "quit"]);
+		expect(host.exited).toBe(true);
+	});
 });

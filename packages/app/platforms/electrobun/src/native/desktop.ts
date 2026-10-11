@@ -406,6 +406,9 @@ export class DesktopManager {
 		| ((url: string) => boolean | Promise<boolean>)
 		| null = null;
 	private requestQuitCallback: (() => void | Promise<void>) | null = null;
+	private requestRelaunchCallback:
+		| ((spawn: () => void) => void | Promise<void>)
+		| null = null;
 	private restoreMainWindowCallback: (() => void | Promise<void>) | null = null;
 	/**
 	 * Dockless (tray-first) mode: the Dock icon reflects the presence of FULL
@@ -533,6 +536,16 @@ export class DesktopManager {
 
 	setRequestQuitCallback(cb: (() => void | Promise<void>) | null): void {
 		this.requestQuitCallback = cb;
+	}
+
+	/**
+	 * Lets the host run shutdown cleanup before the replacement instance starts.
+	 * The host calls `spawn` once cleanup has settled, then quits.
+	 */
+	setRequestRelaunchCallback(
+		cb: ((spawn: () => void) => void | Promise<void>) | null,
+	): void {
+		this.requestRelaunchCallback = cb;
 	}
 
 	setRestoreMainWindowCallback(cb: (() => void | Promise<void>) | null): void {
@@ -1835,20 +1848,29 @@ X-GNOME-Autostart-enabled=true
 
 	async relaunch(): Promise<void> {
 		await this.beginAppExit("desktop-relaunch");
-		try {
-			const child = Bun.spawn([process.execPath, ...process.argv.slice(1)], {
-				detached: true,
-				stdout: "ignore",
-				stderr: "ignore",
-				stdin: "ignore",
-			});
-			// Detach so the new instance survives the parent quitting
-			child.unref();
-		} catch (err) {
-			logger.error(
-				`[DesktopManager] relaunch: failed to spawn new instance: ${err instanceof Error ? err.message : String(err)}`,
-			);
+		const spawnNewInstance = (): void => {
+			try {
+				const child = Bun.spawn([process.execPath, ...process.argv.slice(1)], {
+					detached: true,
+					stdout: "ignore",
+					stderr: "ignore",
+					stdin: "ignore",
+				});
+				// Detach so the new instance survives the parent quitting
+				child.unref();
+			} catch (err) {
+				logger.error(
+					`[DesktopManager] relaunch: failed to spawn new instance: ${err instanceof Error ? err.message : String(err)}`,
+				);
+			}
+		};
+		// The host stops the agent and releases its PGlite locks before the new
+		// instance starts; spawning first lets the new agent hit a live lock.
+		if (this.requestRelaunchCallback) {
+			await this.requestRelaunchCallback(spawnNewInstance);
+			return;
 		}
+		spawnNewInstance();
 		Utils.quit();
 	}
 

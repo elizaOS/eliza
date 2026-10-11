@@ -772,6 +772,10 @@ function requestAppQuit(): Promise<void> {
 	isQuitting = true;
 	return quitGate.requestQuit();
 }
+function requestAppRelaunch(spawn: () => void): Promise<void> {
+	isQuitting = true;
+	return quitGate.requestRelaunch(spawn);
+}
 /**
  * True for packaged desktop builds, false for the in-repo dev runtime.
  * The compiled bundle no longer runs out of a `/src/` directory, so its
@@ -2868,6 +2872,9 @@ async function main(): Promise<void> {
 	getDesktopManager().setRestoreMainWindowCallback(() => restoreWindow());
 	getDesktopManager().setRequestQuitCallback(() => {
 		void requestAppQuit();
+	});
+	getDesktopManager().setRequestRelaunchCallback((spawn) => {
+		void requestAppRelaunch(spawn);
 	});
 	getDesktopManager().setOpenSurfaceWindowCallback(
 		(surface, browse, alwaysOnTop) => {
