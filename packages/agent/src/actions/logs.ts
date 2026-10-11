@@ -27,6 +27,14 @@ type LogsOp = (typeof LOGS_OPS)[number];
 
 const LOG_LEVELS = ["trace", "debug", "info", "warn", "error"] as const;
 type LogLevel = (typeof LOG_LEVELS)[number];
+/** Parameters that narrow a search. The clear route accepts none of them. */
+const LOGS_SEARCH_FILTERS = [
+  "source",
+  "level",
+  "tags",
+  "since",
+  "limit",
+] as const satisfies ReadonlyArray<keyof LogsParams>;
 type RuntimeLoggerWithLevel = typeof logger & { level: string };
 
 interface LogsParams {
@@ -322,7 +330,7 @@ export const logsAction: Action = {
     "CONFIGURE_LOGGING",
   ],
   description:
-    "Polymorphic log control: action='search' tails the in-memory log buffer (filterable by source/level/tag/since), action='delete' clears that buffer, action='set_level' overrides the per-room log level (trace/debug/info/warn/error).",
+    "Polymorphic log control: action='search' tails the in-memory log buffer (filterable by source/level/tag/since), action='delete' clears that whole buffer (it takes no filter), action='set_level' overrides the per-room log level (trace/debug/info/warn/error).",
   descriptionCompressed:
     "search/delete in-mem agent logs or set_level per-room owner-only",
   validate: async () => true,
@@ -347,6 +355,21 @@ export const logsAction: Action = {
 
     if (op === "set_level") {
       return setLogLevel(runtime, message, params, callback);
+    }
+
+    if (op === "delete") {
+      const filters = LOGS_SEARCH_FILTERS.filter(
+        (name) => params[name] !== undefined,
+      );
+      if (filters.length > 0) {
+        // The clear route takes no filter: honoring the call would remove
+        // every buffered entry, not the subset the planner named.
+        return failure(
+          `LOGS delete clears the whole in-memory log buffer and cannot be limited by ${filters.join(", ")}. Nothing was cleared. Send action=delete with no filter to clear every entry.`,
+          "LOGS_INVALID",
+          { unsupportedFilters: filters },
+        );
+      }
     }
 
     try {
@@ -426,7 +449,7 @@ export const logsAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Clear the debug logs from the agent buffer." },
+        content: { text: "Clear the agent log buffer." },
       },
       {
         name: "{{agentName}}",
