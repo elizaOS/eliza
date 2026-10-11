@@ -47,6 +47,8 @@ function getBridge(runtime: IAgentRuntime): SubAgentCredentialBridge | null {
 
 export const declareSubAgentCredentialScopeAction: Action = {
   name: "DECLARE_SUB_AGENT_CREDENTIAL_SCOPE",
+  contexts: ["code", "agent_internal"],
+  roleGate: { minRole: "OWNER" },
   description:
     "Declare a short-lived credential scope for a spawned coding sub-agent. Returns a one-time bearer token plus the request ids dispatched to collect missing values from the owner.",
   descriptionCompressed:

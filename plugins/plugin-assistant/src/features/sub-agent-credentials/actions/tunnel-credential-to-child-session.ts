@@ -47,6 +47,8 @@ function getBridge(runtime: IAgentRuntime): SubAgentCredentialBridge | null {
 
 export const tunnelCredentialToChildSessionAction: Action = {
   name: "TUNNEL_CREDENTIAL_TO_CHILD_SESSION",
+  contexts: ["code", "agent_internal"],
+  roleGate: { minRole: "OWNER" },
   description:
     "Encrypt and stage a credential value under the named scope so the child can retrieve it once.",
   descriptionCompressed: "Stage credential ciphertext for a child sub-agent.",

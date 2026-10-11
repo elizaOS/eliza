@@ -39,6 +39,7 @@ function getClient(runtime: IAgentRuntime): SubAgentChildResultsClient | null {
 
 export const retrieveChildAgentResultsAction: Action = {
   name: "RETRIEVE_CHILD_AGENT_RESULTS",
+  contexts: ["code", "agent_internal"],
   description:
     "Fetch the final result bundle (transcript, artifacts, structured result) for a child coding-agent session.",
   descriptionCompressed: "Fetch child sub-agent result bundle.",
