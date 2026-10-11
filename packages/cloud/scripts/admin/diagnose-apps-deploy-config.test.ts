@@ -106,3 +106,21 @@ test("classifies an unreadable deploy key before emitting any key material", asy
       error.category === "deploy_key_unreadable",
   )
 })
+
+test("rejects inventory without explicit pagination metadata", async () => {
+  await assert.rejects(
+    () =>
+      diagnose({
+        token: "project-token",
+        deployHost: "203.0.113.10",
+        fetchImpl: async () =>
+          response({
+            servers: [{ public_net: { ipv4: { ip: "203.0.113.10" } } }],
+          }),
+        fingerprintImpl: fingerprint,
+      }),
+    error =>
+      error instanceof DiagnosticError &&
+      error.category === "hcloud_inventory_invalid",
+  )
+})

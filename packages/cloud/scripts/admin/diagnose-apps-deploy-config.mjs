@@ -88,7 +88,14 @@ async function readInventory(token, fetchImpl, apiBaseUrl) {
     fail("hcloud_inventory_invalid")
   }
 
-  const lastPage = Number(payload.meta?.pagination?.last_page ?? 1)
+  const rawLastPage = payload.meta?.pagination?.last_page
+  const lastPage = Number(rawLastPage)
+  if (
+    (typeof rawLastPage !== "number" && typeof rawLastPage !== "string") ||
+    !String(rawLastPage).trim()
+  ) {
+    fail("hcloud_inventory_invalid")
+  }
   if (!Number.isInteger(lastPage) || lastPage < 1) {
     fail("hcloud_inventory_invalid")
   }
