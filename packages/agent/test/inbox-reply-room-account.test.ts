@@ -33,6 +33,8 @@ interface ReplyCase {
   accounts: typeof telegramAccounts;
   sendHandlerKeys: string[];
   accountId?: string;
+  callerRole?: string
+  roomMetadata?: Record<string, unknown>
 }
 
 async function reply(input: ReplyCase) {
