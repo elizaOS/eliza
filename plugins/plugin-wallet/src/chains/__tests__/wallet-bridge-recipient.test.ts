@@ -269,6 +269,8 @@ describe("wallet bridge recipient guard", () => {
       "0x123",
       "vitalik.eth",
       "0x742d35Cc6634C0532925a3b844Bc454e4438f44e00",
+      SOLANA_RECIPIENT,
+      "So11111111111111111111111111111111111111112",
     ]) {
       const rejected = await walletRouterAction.handler(
         runtime,
@@ -281,9 +283,7 @@ describe("wallet bridge recipient guard", () => {
       expect(rejected?.success).toBe(false);
       expect(rejected?.data?.error).toBe("INVALID_PARAMS");
       expect(rejected?.data?.requiresConfirmation).toBeUndefined();
-      expect(rejected?.text).toBe(
-        "recipient must be a valid EVM or Solana address.",
-      );
+      expect(rejected?.text).toBe("recipient must be a valid EVM address.");
     }
     expect(base.execute).not.toHaveBeenCalled();
   });
@@ -372,12 +372,16 @@ describe("wallet bridge recipient guard", () => {
     expect(base.execute).not.toHaveBeenCalled();
   });
 
-  it("accepts a content-driven bridge whose Solana-format recipient appears in the user message", async () => {
+  it("rejects a content-driven bridge whose Solana-format recipient appears in the user message", async () => {
     const { runtime, service } = walletRuntime();
     const base = evmHandler("base", "Base", "8453");
     service.registerChainHandler(base);
 
-    const first = await walletRouterAction.handler(
+    // Bridge is EVM-only: a Solana-format recipient passes the
+    // recipient-authorization guard (it appears in the user message) but
+    // the bridge executor can never accept it, so the preflight refuses
+    // it before the spend confirmation.
+    const rejected = await walletRouterAction.handler(
       runtime,
       contentDrivenMessage(
         `please bridge 0.5 ETH from base to arbitrum to ${SOLANA_RECIPIENT}`,
@@ -395,7 +399,12 @@ describe("wallet bridge recipient guard", () => {
       undefined,
     );
 
-    expect(first?.data?.requiresConfirmation).toBe(true);
+    expect(rejected?.success).toBe(false);
+    expect(rejected?.data?.error).toBe("INVALID_PARAMS");
+    expect(rejected?.data?.requiresConfirmation).toBeUndefined();
+    expect(String(rejected?.text)).toContain(
+      "recipient must be a valid EVM address.",
+    );
     expect(base.execute).not.toHaveBeenCalled();
   });
 });
