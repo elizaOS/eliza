@@ -136,3 +136,16 @@ it("still reports a missing token when nothing names one", async () => {
   expect(result?.error).toBe("MISSING_TOKEN_ADDRESS");
   expect(calls).toEqual([]);
 });
+
+it("lists the top pairs on the chain named by the declared chain argument", async () => {
+  const result = await run("show me the top pairs on ethereum", {
+    action: "token_info",
+    chain: "ethereum",
+  });
+
+  expect(result?.success).toBe(true);
+  expect(result?.text).toContain("Top ethereum pairs by volume");
+  expect(result?.text).toContain("PEPE");
+  expect(calls).toHaveLength(1);
+  expect(calls[0]).toContain("q=ethereum");
+});
