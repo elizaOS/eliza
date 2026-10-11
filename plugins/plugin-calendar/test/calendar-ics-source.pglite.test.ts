@@ -719,6 +719,52 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     }
   });
 
+  it("reads a libical TZID as the IANA zone after its prefix", async () => {
+    const source = await createSource();
+    const event = (uid: string, tzid: string) =>
+      [
+        "BEGIN:VEVENT",
+        `UID:${uid}`,
+        "DTSTAMP:20261101T000000Z",
+        `DTSTART;TZID=${tzid}:20261201T180000`,
+        `DTEND;TZID=${tzid}:20261201T190000`,
+        `SUMMARY:${uid}`,
+        "END:VEVENT",
+      ].join("\r\n");
+    await syncBody(
+      source.id,
+      calendar(
+        event("libical", "/freeassociation.sourceforge.net/Europe/Berlin"),
+        event(
+          "libical-old",
+          "/freeassociation.sourceforge.net/Tzfile/Europe/Berlin",
+        ),
+        event("citadel", "/citadel.org/20190914_1/Europe/Berlin"),
+      ),
+    );
+    const feed = await service.getCalendarFeed(
+      new URL("http://internal.test/api/calendar"),
+      {
+        grantId: source.id,
+        timeMin: "2026-12-01T00:00:00.000Z",
+        timeMax: "2026-12-03T00:00:00.000Z",
+      },
+      new Date(),
+    );
+
+    expect(feed.state).toBe("complete");
+    // 18:00 in Berlin (UTC+1 in December) is 17:00 UTC.
+    expect(
+      feed.events
+        .map((item) => [item.title, item.startAt, item.timezone])
+        .sort(),
+    ).toEqual([
+      ["citadel", "2026-12-01T17:00:00.000Z", "Europe/Berlin"],
+      ["libical", "2026-12-01T17:00:00.000Z", "Europe/Berlin"],
+      ["libical-old", "2026-12-01T17:00:00.000Z", "Europe/Berlin"],
+    ]);
+  });
+
   it("ends a day-length DURATION at the same local time across a DST change", async () => {
     const source = await createSource();
     await syncBody(
