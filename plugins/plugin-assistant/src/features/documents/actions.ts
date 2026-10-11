@@ -1724,7 +1724,8 @@ export const documentAction: Action = {
     },
     {
       name: "content",
-      description: "Text content for import_file. For write, use text.",
+      description:
+        "Text content for import_file; also accepted as replacement text for edit. For write, use text.",
       required: false,
       schema: { type: "string" },
     },
