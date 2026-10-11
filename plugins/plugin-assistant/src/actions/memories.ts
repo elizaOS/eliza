@@ -345,7 +345,7 @@ function hasNonEmptyString(value: unknown): value is string {
  * yerba" → `MEMORY {text, kind, tags}` → a second planner model call before
  * create ran). Names the promoted child only when the arguments can mean one
  * operation under this action's own contract: a legacy discriminator
- * (`op`/`subaction`, which this description's `op:create` wording invites) is
+ * (`op`/`subaction`) is
  * honored as declared; otherwise text without a target is a create, a target
  * with replacement text an update, a target with confirm a delete, and a bare
  * query a search. Anything else — including a target with neither text nor
@@ -1834,7 +1834,7 @@ async function doDelete(
  * The read is pinned to the requesting entity's identity cluster: a text-only
  * match in a multi-user room would also hit another user's identical-text
  * fact, so "forget that I play guitar" may only remove the asking user's own
- * rows. Cross-entity deletes must go through op:search + delete by memoryId.
+ * rows. Cross-entity deletes must go through action:search + delete by memoryId.
  */
 async function doDeleteByQuery(
   runtime: IAgentRuntime,
@@ -2040,11 +2040,11 @@ export const memoryAction: Action = {
     "MODIFY_MEMORY",
   ],
   description:
-    "Manage agent memory records. op:create stores a new memory (text is required); op:search filters by type/entityId/roomId/query; op:count returns fresh totals, categories and newest timestamps without record bodies; op:update edits by memoryId or a unique requester-scoped query match (requires confirm:true); op:delete removes by memoryId or requester-scoped query match (requires confirm:true). To forget something the user states, call delete with query and confirm:true directly — a prior search is unnecessary.",
+    "Manage agent memory records. action:create stores a new memory (text is required); action:search filters by type/entityId/roomId/query; action:count returns fresh totals, categories and newest timestamps without record bodies; action:update edits by memoryId or a unique requester-scoped query match (requires confirm:true); action:delete removes by memoryId or requester-scoped query match (requires confirm:true). To forget something the user states, call delete with query and confirm:true directly — a prior search is unnecessary.",
   descriptionCompressed:
     "manage agent memory create search count update delete; update/delete by memoryId or query; update/delete require confirm:true",
   routingHint:
-    "NOTES ARE NOT MEMORY: 'make a note', 'note to self', 'jot this down', 'what notes do i have' -> NOTES. MEMORY manages the agent's stored knowledge: create/search/update/delete. Use supplied conversation and fact evidence directly when it answers the question, applying later corrections; referring to an earlier turn alone does not require a search. Use op:search for evidence absent from supplied context, other conversations, or specific source records. Use op:count for current totals, inventory, category counts and newest timestamps, even if older counts appear in dialogue. Omit type for an overall inventory; use type only for an explicitly restricted category. Rendered dialogue is not a storage count. Search type=facts for saved facts/preferences; type=messages for conversation history. Do NOT use for open-web lookups -> WEB_SEARCH, connected external inboxes -> MESSAGE, or skill catalog -> SKILL",
+    "NOTES ARE NOT MEMORY: 'make a note', 'note to self', 'jot this down', 'what notes do i have' -> NOTES. MEMORY manages the agent's stored knowledge: create/search/update/delete. Use supplied conversation and fact evidence directly when it answers the question, applying later corrections; referring to an earlier turn alone does not require a search. Use action:search for evidence absent from supplied context, other conversations, or specific source records. Use action:count for current totals, inventory, category counts and newest timestamps, even if older counts appear in dialogue. Omit type for an overall inventory; use type only for an explicitly restricted category. Rendered dialogue is not a storage count. Search type=facts for saved facts/preferences; type=messages for conversation history. Do NOT use for open-web lookups -> WEB_SEARCH, connected external inboxes -> MESSAGE, or skill catalog -> SKILL",
   validate: async () => true,
   inferSubaction: inferMemorySubaction,
   handler: async (
@@ -2092,7 +2092,7 @@ export const memoryAction: Action = {
     }
     if (!op) {
       return fail(
-        `op/subaction is required and must be one of ${MEMORY_OPS.join(", ")}.`,
+        `action is required and must be one of ${MEMORY_OPS.join(", ")}.`,
         "MEMORY_INVALID",
       );
     }
