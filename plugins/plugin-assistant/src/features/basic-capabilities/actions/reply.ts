@@ -164,7 +164,7 @@ export const replyAction = {
     {
       name: "text",
       description:
-        "Reply text. Omit with questions absent to compose from state.",
+        "Reply text. With questions, sent as the lead-in above them. Omit with questions absent to compose from state.",
       required: false,
       schema: { type: "string" },
     },
@@ -261,7 +261,11 @@ export const replyAction = {
         }
         questions.push(parsed);
       }
-      const text = renderQuestions(questions);
+      // text and questions may be sent together: text is the lead-in the
+      // caller wrote for the questions, so it is delivered above them.
+      const leadIn = readTextParam(_options)?.trim();
+      const rendered = renderQuestions(questions);
+      const text = leadIn ? `${leadIn}\n\n${rendered}` : rendered;
       logger.debug(
         {
           src: "plugin:basic-capabilities:action:reply:questions",
