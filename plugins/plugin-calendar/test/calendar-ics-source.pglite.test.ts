@@ -755,6 +755,56 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     ]);
   });
 
+  it("expands the RFC 5545 weekly examples that set WKST", async () => {
+    const source = await createSource();
+    const example = (uid: string, wkst: string) =>
+      [
+        "BEGIN:VEVENT",
+        `UID:${uid}`,
+        "DTSTAMP:19970801T000000Z",
+        "DTSTART;TZID=America/New_York:19970805T090000",
+        "DURATION:PT1H",
+        `RRULE:FREQ=WEEKLY;INTERVAL=2;COUNT=4;BYDAY=TU,SU;WKST=${wkst}`,
+        `SUMMARY:${uid}`,
+        "END:VEVENT",
+      ].join("\r\n");
+    await syncBody(
+      source.id,
+      calendar(
+        example("week-starts-monday", "MO"),
+        example("week-starts-sunday", "SU"),
+      ),
+    );
+    const feed = await service.getCalendarFeed(
+      new URL("http://internal.test/api/calendar"),
+      {
+        grantId: source.id,
+        timeMin: "1997-08-01T00:00:00.000Z",
+        timeMax: "1997-09-15T00:00:00.000Z",
+      },
+      new Date(),
+    );
+
+    expect(feed.state).toBe("complete");
+    const startsOf = (title: string) =>
+      feed.events
+        .filter((event) => event.title === title)
+        .map((event) => event.startAt.slice(0, 10));
+    // RFC 5545 3.8.5.3: August 5, 10, 19, 24 for MO; August 5, 17, 19, 31 for SU.
+    expect(startsOf("week-starts-monday")).toEqual([
+      "1997-08-05",
+      "1997-08-10",
+      "1997-08-19",
+      "1997-08-24",
+    ]);
+    expect(startsOf("week-starts-sunday")).toEqual([
+      "1997-08-05",
+      "1997-08-17",
+      "1997-08-19",
+      "1997-08-31",
+    ]);
+  });
+
   it("expands a recurring series minus EXDATE and an instance moved outside the window", async () => {
     const source = await createSource();
     await syncBody(

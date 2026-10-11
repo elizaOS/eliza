@@ -70,6 +70,12 @@ export interface ParsedCalendarRecurrenceRule {
   interval: number;
   /** JS weekday indexes (0 = Sunday … 6 = Saturday). WEEKLY rules only. */
   byDay?: number[];
+  /**
+   * WKST as a JS weekday index. It sets the day that starts a week, which
+   * selects the weeks of a WEEKLY rule with INTERVAL above 1. Absent means
+   * Monday (RFC 5545 default).
+   */
+  weekStart?: number;
   /** Days of month (1..31 or -31..-1 counting from month end). MONTHLY only. */
   byMonthDay?: number[];
   /** Total occurrence count including the first occurrence (DTSTART). */
@@ -162,7 +168,7 @@ function parsePositiveInt(value: string, part: string): number {
 /**
  * Parse and validate one RRULE line (with or without the `RRULE:` prefix).
  * Throws `CalendarServiceError(400)` on anything malformed. Rules using parts
- * outside the local expansion subset (ordinal BYDAY, BYSETPOS, BYMONTH, WKST,
+ * outside the local expansion subset (ordinal BYDAY, BYSETPOS, BYMONTH,
  * BYHOUR, BYMINUTE) still validate — they are provider-supported RFC 5545 —
  * and come back flagged `beyondExpansionSubset`.
  */
@@ -176,6 +182,7 @@ export function parseRecurrenceRule(
   let interval = 1;
   let byDay: number[] | undefined;
   let byMonthDay: number[] | undefined;
+  let weekStart: number | undefined;
   let count: number | undefined;
   let untilMs: number | undefined;
   let beyondExpansionSubset = false;
@@ -248,9 +255,14 @@ export function parseRecurrenceRule(
         byMonthDay = days;
         break;
       }
+      case "WKST":
+        // WKST has an effect only on a WEEKLY rule (and on BYWEEKNO, which
+        // stays outside the subset), so a rule that has it can be expanded.
+        weekStart = BYDAY_TOKEN_TO_WEEKDAY[raw];
+        if (weekStart === undefined) invalidRecurrence(`WKST=${raw}`);
+        break;
       case "BYMONTH":
       case "BYSETPOS":
-      case "WKST":
       case "BYHOUR":
       case "BYMINUTE":
       case "BYSECOND":
@@ -275,6 +287,7 @@ export function parseRecurrenceRule(
     interval,
     byDay,
     byMonthDay,
+    weekStart,
     count,
     untilMs,
     beyondExpansionSubset,
@@ -515,12 +528,15 @@ function* generateOccurrences(args: {
       }
       case "WEEKLY": {
         const byDay = [...(rule.byDay ?? [getWeekdayForLocalDate(anchorDate)])];
-        // Monday-based week start (RFC 5545 default WKST=MO).
-        const mondayOffset = (getWeekdayForLocalDate(anchorDate) + 6) % 7;
-        const anchorWeekStart = addDaysToLocalDate(anchorDate, -mondayOffset);
-        const dayOffsets = byDay
-          .map((weekday) => (weekday + 6) % 7)
-          .sort((a, b) => a - b);
+        // Weeks start on WKST (RFC 5545 default MO). With INTERVAL above 1,
+        // this day decides which days are in the same week as DTSTART.
+        const weekStart = rule.weekStart ?? 1;
+        const offsetInWeek = (weekday: number) => (weekday - weekStart + 7) % 7;
+        const anchorWeekStart = addDaysToLocalDate(
+          anchorDate,
+          -offsetInWeek(getWeekdayForLocalDate(anchorDate)),
+        );
+        const dayOffsets = byDay.map(offsetInWeek).sort((a, b) => a - b);
         for (let week = 0; ; week += rule.interval) {
           for (const offset of dayOffsets) {
             const dayDelta = week * 7 + offset;
