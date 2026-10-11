@@ -3105,7 +3105,7 @@ async function searchConversationMessages(
 ): Promise<boolean> {
   const { req, res, json, error, state, requestUrl } = ctx;
   if (!state.runtime) {
-    json(res, { results: [], count: 0 });
+    error(res, "Agent runtime not available", 503);
     return true;
   }
   const query = normalizeMessageSearchQuery(requestUrl.searchParams.get("q"));
