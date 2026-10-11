@@ -55,8 +55,7 @@ and will not receive patches.
 In-scope:
 
 - Source code in this repository.
-- Official installer scripts shipped from this repository, including
-  `packages/homepage/public/install.sh` and `packages/homepage/public/install.ps1`.
+- Official installer scripts shipped from this repository.
 - Officially published packages on npm and PyPI.
 
 Out-of-scope:
