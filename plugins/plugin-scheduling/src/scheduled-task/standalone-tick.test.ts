@@ -188,6 +188,7 @@ describe("standalone scheduling tick", () => {
         pipeline: {
           onSkip: [
             {
+              taskId: "st_on_skip_template",
               kind: "reminder",
               promptInstructions: "standup skipped",
               trigger: { kind: "manual" },
@@ -196,6 +197,7 @@ describe("standalone scheduling tick", () => {
               source: "user_chat",
               createdBy: runtime.agentId,
               ownerVisible: true,
+              state: { status: "scheduled", followupCount: 0 },
             },
           ],
         },
