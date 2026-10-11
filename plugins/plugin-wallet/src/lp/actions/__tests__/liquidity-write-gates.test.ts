@@ -6,10 +6,20 @@
  * as WALLET. Runs the real `liquidityAction` handler and gate code against an
  * in-memory runtime (no live chain, model, or network).
  */
-import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
+import {
+  type HandlerCallback,
+  type IAgentRuntime,
+  type Memory,
+  validateToolArgs,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { assertWalletFinancialActionAllowed } from "../../../security/wallet-context-safety";
-import { LP_MANAGEMENT_SERVICE_TYPE } from "../../services/LpManagementService";
+import {
+  createEvmLpProtocolProvider,
+  createSolanaLpProtocolProvider,
+  LP_MANAGEMENT_SERVICE_TYPE,
+  LpManagementService,
+} from "../../services/LpManagementService";
 import { liquidityAction } from "../liquidity";
 
 const HARDHAT_KEY =
@@ -76,11 +86,34 @@ function lpRuntime() {
       transactionId: "0xreposition",
     })),
     listPools: vi.fn(async () => []),
+    resolveProtocol: vi.fn(() => ({
+      chain: "evm",
+      dex: "uniswap",
+      repositionPosition: vi.fn(),
+    })),
   };
   vi.mocked(runtime.getService).mockImplementation((name: string) =>
     name === LP_MANAGEMENT_SERVICE_TYPE ? lp : null,
   );
   return { runtime, cache, lp };
+}
+
+// The runtime hands a handler its validated planner arguments on
+// `options.parameters`, so the suite calls the handler the same way.
+function invoke(
+  runtime: IAgentRuntime,
+  memory: Memory,
+  state: undefined,
+  parameters: Record<string, unknown>,
+  callback?: HandlerCallback,
+) {
+  return liquidityAction.handler(
+    runtime,
+    memory,
+    state,
+    { parameters },
+    callback,
+  );
 }
 
 function recordingCallback(): {
@@ -116,9 +149,10 @@ describe("LIQUIDITY write gates", () => {
       /GHSA-gh63/,
     );
 
-    const result = await liquidityAction.handler(runtime, flagged, undefined, {
+    const result = await invoke(runtime, flagged, undefined, {
       action: "close",
       chain: "evm",
+      chainId: 8453,
       position: "pos-1",
     });
 
@@ -131,11 +165,17 @@ describe("LIQUIDITY write gates", () => {
     const { runtime, cache, lp } = lpRuntime();
     const { prompts, callback } = recordingCallback();
 
-    const first = await liquidityAction.handler(
+    const first = await invoke(
       runtime,
       message("open an LP position"),
       undefined,
-      { action: "open", chain: "evm", pool: "0xpool", amount: "100" },
+      {
+        action: "open",
+        chain: "evm",
+        chainId: 8453,
+        pool: "0xpool",
+        amount: "100",
+      },
       callback,
     );
 
@@ -153,11 +193,12 @@ describe("LIQUIDITY write gates", () => {
     const params = {
       action: "open",
       chain: "evm",
+      chainId: 8453,
       pool: "0xpool",
       amount: "100",
     };
 
-    const first = await liquidityAction.handler(
+    const first = await invoke(
       runtime,
       message("open an LP position"),
       undefined,
@@ -167,7 +208,7 @@ describe("LIQUIDITY write gates", () => {
     expect(first?.data?.requiresConfirmation).toBe(true);
     expect(lp.openPosition).not.toHaveBeenCalled();
 
-    const second = await liquidityAction.handler(
+    const second = await invoke(
       runtime,
       message("yes"),
       undefined,
@@ -182,20 +223,32 @@ describe("LIQUIDITY write gates", () => {
     const { runtime, lp } = lpRuntime();
     const { callback } = recordingCallback();
 
-    const first = await liquidityAction.handler(
+    const first = await invoke(
       runtime,
       message("open an LP position"),
       undefined,
-      { action: "open", chain: "evm", pool: "0xpoolA", amount: "100" },
+      {
+        action: "open",
+        chain: "evm",
+        chainId: 8453,
+        pool: "0xpoolA",
+        amount: "100",
+      },
       callback,
     );
     expect(first?.data?.requiresConfirmation).toBe(true);
 
-    const second = await liquidityAction.handler(
+    const second = await invoke(
       runtime,
       message("yes"),
       undefined,
-      { action: "open", chain: "evm", pool: "0xpoolB", amount: "100" },
+      {
+        action: "open",
+        chain: "evm",
+        chainId: 8453,
+        pool: "0xpoolB",
+        amount: "100",
+      },
       callback,
     );
     expect(second?.data?.requiresConfirmation).toBe(true);
@@ -208,6 +261,7 @@ describe("LIQUIDITY write gates", () => {
     const confirmed = {
       action: "open",
       chain: "evm",
+      chainId: 8453,
       pool: "0xpool",
       amount: "100",
       dex: "uniswap",
@@ -217,7 +271,7 @@ describe("LIQUIDITY write gates", () => {
       range: { tickLowerIndex: -100, tickUpperIndex: 100 },
     };
 
-    const first = await liquidityAction.handler(
+    const first = await invoke(
       runtime,
       message("open an LP position"),
       undefined,
@@ -230,7 +284,7 @@ describe("LIQUIDITY write gates", () => {
     expect(prompt).toContain("tl=-100");
     expect(prompt).toContain("0xtokenA");
 
-    const second = await liquidityAction.handler(
+    const second = await invoke(
       runtime,
       message("yes"),
       undefined,
@@ -252,9 +306,10 @@ describe("LIQUIDITY write gates", () => {
       /GHSA-gh63/,
     );
 
-    const result = await liquidityAction.handler(runtime, flagged, undefined, {
+    const result = await invoke(runtime, flagged, undefined, {
       action: "open",
       chain: "evm",
+      chainId: 8453,
       pool: "0xpool",
       amount: "100",
       dex: "uniswap",
@@ -269,22 +324,34 @@ describe("LIQUIDITY write gates", () => {
     const { runtime, cache, lp } = lpRuntime();
     const { prompts, callback } = recordingCallback();
 
-    const first = await liquidityAction.handler(
+    const first = await invoke(
       runtime,
       message("close my LP"),
       undefined,
-      { action: "close", chain: "evm", position: "pos-1", pool: "0xpool" },
+      {
+        action: "close",
+        chain: "evm",
+        chainId: 8453,
+        position: "pos-1",
+        pool: "0xpool",
+      },
       callback,
     );
     expect(first?.data?.requiresConfirmation).toBe(true);
     expect(confirmationKeys(cache)).toHaveLength(1);
     expect(prompts.join("\n")).toContain("pos-1");
 
-    const second = await liquidityAction.handler(
+    const second = await invoke(
       runtime,
       message("yes"),
       undefined,
-      { action: "close", chain: "evm", position: "pos-2", pool: "0xpool" },
+      {
+        action: "close",
+        chain: "evm",
+        chainId: 8453,
+        position: "pos-2",
+        pool: "0xpool",
+      },
       callback,
     );
     expect(second?.data?.requiresConfirmation).toBe(true);
@@ -294,12 +361,9 @@ describe("LIQUIDITY write gates", () => {
   it("does not pend reads: list_pools runs with no confirmation record", async () => {
     const { runtime, cache, lp } = lpRuntime();
 
-    const result = await liquidityAction.handler(
-      runtime,
-      message("show pools"),
-      undefined,
-      { action: "list_pools" },
-    );
+    const result = await invoke(runtime, message("show pools"), undefined, {
+      action: "list_pools",
+    });
 
     expect(lp.listPools).toHaveBeenCalledTimes(1);
     expect(result?.success).toBe(true);
@@ -313,21 +377,135 @@ describe("LIQUIDITY write gates", () => {
       displayName: `Pool ${index}`,
       dex: "test-dex",
       chain: "evm",
+      chainId: 8453,
       tokenA: { symbol: "AAA", address: `0xa${index}` },
       tokenB: { symbol: "BBB", address: `0xb${index}` },
     }));
     lp.listPools.mockResolvedValue(pools as never[]);
 
-    const result = await liquidityAction.handler(
-      runtime,
-      message("show pools"),
-      undefined,
-      { action: "list_pools" },
-    );
+    const result = await invoke(runtime, message("show pools"), undefined, {
+      action: "list_pools",
+    });
 
     expect(result?.text).toContain("Pool 11");
     expect(result?.text).not.toContain("Showing 10 of");
     expect(result?.data?.pools as unknown[]).toHaveLength(12);
+  });
+
+  it("accepts the planner calls the schema declares", () => {
+    const check = (args: Record<string, unknown>) =>
+      validateToolArgs(liquidityAction, args);
+    expect(
+      check({
+        action: "open",
+        dex: "raydium",
+        pool: "pool-1",
+        amount: "100",
+        range: { tickLowerIndex: -100, tickUpperIndex: 100 },
+      }).valid,
+    ).toBe(true);
+    expect(
+      check({
+        action: "set_preferences",
+        autoRebalanceEnabled: true,
+        minGainThresholdPercent: 2,
+        preferredDexes: ["orca"],
+      }).valid,
+    ).toBe(true);
+    // No provider reads price bounds, so the schema does not offer them.
+    expect(
+      check({ action: "open", range: { priceLower: 1, priceUpper: 2 } }).errors,
+    ).toEqual([
+      "Unexpected argument 'range.priceLower'",
+      "Unexpected argument 'range.priceUpper'",
+    ]);
+  });
+
+  describe("refuses an incomplete write before the confirmation prompt", () => {
+    function realLpRuntime() {
+      const { runtime, cache } = createRuntime({
+        EVM_PRIVATE_KEY: HARDHAT_KEY,
+      });
+      const lp = new LpManagementService(runtime);
+      const raydium = { addLiquidity: vi.fn(), removeLiquidity: vi.fn() };
+      const uniswap = {
+        getSupportedChainIds: () => [8453],
+        addLiquidity: vi.fn(),
+        removeLiquidity: vi.fn(),
+      };
+      lp.registerProtocol(
+        createSolanaLpProtocolProvider({
+          dex: "raydium",
+          service: raydium as never,
+        }),
+      );
+      lp.registerProtocol(
+        createEvmLpProtocolProvider({
+          dex: "uniswap",
+          service: uniswap as never,
+        }),
+      );
+      vi.mocked(runtime.getService).mockImplementation((name: string) =>
+        name === LP_MANAGEMENT_SERVICE_TYPE ? lp : null,
+      );
+      return { runtime, cache, raydium, uniswap };
+    }
+
+    const cases: Array<[string, Record<string, unknown>, RegExp]> = [
+      [
+        "a Solana open without a pool",
+        { action: "open", dex: "raydium", amount: 100 },
+        /pool is required to open/,
+      ],
+      [
+        "a Solana close without a pool or position",
+        { action: "close", dex: "raydium" },
+        /pool or position is required/,
+      ],
+      [
+        "an EVM open without a chainId",
+        { action: "open", dex: "uniswap", pool: "0xpool", amount: "1" },
+        /chainId is required/,
+      ],
+      [
+        "a decimal amount",
+        { action: "open", dex: "raydium", pool: "pool-1", amount: "1.5" },
+        /whole number of the token's base units/,
+      ],
+      [
+        "a reposition on a protocol without reposition",
+        { action: "reposition", dex: "raydium", position: "pos-1" },
+        /does not support reposition/,
+      ],
+      [
+        "a dex with no registered protocol",
+        { action: "open", dex: "orca", pool: "pool-1", amount: "1" },
+        /No registered LP protocol matches/,
+      ],
+    ];
+
+    for (const [name, parameters, reason] of cases) {
+      it(name, async () => {
+        const { runtime, cache, raydium, uniswap } = realLpRuntime();
+        const { prompts, callback } = recordingCallback();
+
+        const result = await invoke(
+          runtime,
+          message("manage my LP"),
+          undefined,
+          parameters,
+          callback,
+        );
+
+        expect(result?.success).toBe(false);
+        expect(String(result?.text)).toMatch(reason);
+        expect(prompts).toHaveLength(0);
+        expect(confirmationKeys(cache)).toHaveLength(0);
+        expect(raydium.addLiquidity).not.toHaveBeenCalled();
+        expect(raydium.removeLiquidity).not.toHaveBeenCalled();
+        expect(uniswap.addLiquidity).not.toHaveBeenCalled();
+      });
+    }
   });
 
   it("gates the umbrella at ADMIN like the WALLET action", () => {

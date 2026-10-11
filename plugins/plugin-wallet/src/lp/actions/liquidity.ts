@@ -13,6 +13,7 @@
 import type {
   Action,
   ActionExample,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
@@ -228,12 +229,14 @@ function subactionFromLegacyIntent(
 
 function normalizeParams(
   message: Memory,
-  handlerParams?: Record<string, unknown>,
+  options?: HandlerOptions,
 ): LpActionParams | null {
   const contentParams = (message.content || {}) as Record<string, unknown>;
+  // The runtime delivers the validated planner arguments on
+  // `options.parameters`; the options object itself carries no LP fields.
   const params = {
     ...contentParams,
-    ...(handlerParams || {}),
+    ...(options?.parameters ?? {}),
   } as LpActionParams & {
     action?: LpManagementSubaction;
     op?: LpManagementSubaction;
@@ -324,6 +327,67 @@ function getRangeParam(params: LpActionParams): LpActionParams["range"] {
       priceUpper: params.priceUpper,
     }
   );
+}
+
+function isBaseUnitAmount(value: unknown): boolean {
+  if (typeof value === "number")
+    return Number.isSafeInteger(value) && value >= 0;
+  return typeof value === "string" && /^\d+$/.test(value.trim());
+}
+
+/**
+ * Request-shape checks for open/close/reposition that the protocol providers
+ * otherwise make only after the user has confirmed. Returns the reason the
+ * write cannot run, so the handler refuses before the confirmation prompt.
+ * Protocol resolution throws `NoMatchingLpProtocolError` like the write does.
+ */
+function lpWriteRejection(
+  lp: LpManagementService,
+  params: LpActionParams,
+): string | undefined {
+  const { subaction } = params;
+  if (
+    subaction !== "open" &&
+    subaction !== "close" &&
+    subaction !== "reposition"
+  ) {
+    return undefined;
+  }
+  const route = baseRoute(params);
+  // operationAuth routes a write with no resolved chain to the Solana vault.
+  const protocol = lp.resolveProtocol({
+    ...route,
+    chain: route.chain ?? "solana",
+  });
+  if (subaction === "reposition" && !protocol.repositionPosition) {
+    return `${protocol.label || protocol.dex} does not support reposition.`;
+  }
+  const pool = getPoolParam(params);
+  if (protocol.chain === "evm") {
+    if (!route.chainId) return "chainId is required for an EVM LP write.";
+    if (!pool) return `pool is required to ${subaction} an EVM LP position.`;
+  } else if (subaction === "open" && !pool) {
+    return "pool is required to open an LP position. Use action=list_pools to find the pool id.";
+  } else if (subaction === "close" && !pool && !getPositionParam(params)) {
+    return "pool or position is required to close an LP position.";
+  }
+  const amount = getAmountParam(params);
+  const amounts =
+    amount !== null && typeof amount === "object"
+      ? [amount.value, amount.tokenA, amount.tokenB, amount.lpToken]
+      : [amount];
+  amounts.push(
+    params.amounts?.tokenA,
+    params.amounts?.tokenB,
+    params.amounts?.lpToken,
+  );
+  const invalid = amounts.find(
+    (value) => value !== undefined && !isBaseUnitAmount(value),
+  );
+  if (invalid !== undefined) {
+    return `amount must be a whole number of the token's base units (lamports or wei); got ${invalid}.`;
+  }
+  return undefined;
 }
 
 function amountLabel(amount: LpActionParams["amount"]): string | undefined {
@@ -490,15 +554,20 @@ async function handlePreferences(
     updates.push(`preferredDexes=${params.preferredDexes.join(",")}`);
   }
 
+  if (updates.length === 0) {
+    return {
+      success: false,
+      text: "No LP preference was provided. Set autoRebalanceEnabled, minGainThresholdPercent, slippageBps, or preferredDexes.",
+    };
+  }
+
   await profileService.updateProfile(userId, {
     autoRebalanceConfig: newConfig,
   });
 
   return {
     success: true,
-    text: updates.length
-      ? `LP preferences updated: ${updates.join(", ")}`
-      : "No LP preference changes were provided.",
+    text: `LP preferences updated: ${updates.join(", ")}`,
   };
 }
 
@@ -734,7 +803,7 @@ export const liquidityAction: Action = {
     {
       name: "amount",
       description:
-        "Liquidity amount for open, close, or reposition operations.",
+        "Liquidity amount for open, close, or reposition, as a whole number of the token's base units (lamports or wei), not a decimal token amount.",
       required: false,
       schema: {
         anyOf: [{ type: "string" }, { type: "number" }],
@@ -742,25 +811,35 @@ export const liquidityAction: Action = {
     },
     {
       name: "range",
-      description: "Desired concentrated liquidity price range.",
+      description:
+        "Concentrated liquidity tick range for open or reposition. Price bounds are not supported.",
       required: false,
-      schema: { type: "object" },
+      schema: {
+        type: "object",
+        properties: {
+          tickLowerIndex: { type: "integer" },
+          tickUpperIndex: { type: "integer" },
+        },
+      },
     },
     {
       name: "tokenA",
-      description: "First token filter or deposit token.",
+      description:
+        "First token filter for list_pools. Not used by open, close, or reposition.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "tokenB",
-      description: "Second token filter or deposit token.",
+      description:
+        "Second token filter for list_pools. Not used by open, close, or reposition.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "chainId",
-      description: "Optional numeric EVM chain id.",
+      description:
+        "Numeric EVM chain id. Required for open, close, and reposition on an EVM dex.",
       required: false,
       schema: { type: "number" },
     },
@@ -769,6 +848,25 @@ export const liquidityAction: Action = {
       description: "Maximum allowed slippage in basis points.",
       required: false,
       schema: { type: "number" },
+    },
+    {
+      name: "autoRebalanceEnabled",
+      description: "set_preferences: turn automatic rebalancing on or off.",
+      required: false,
+      schema: { type: "boolean" },
+    },
+    {
+      name: "minGainThresholdPercent",
+      description:
+        "set_preferences: minimum expected gain, in percent, before a rebalance runs.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "preferredDexes",
+      description: "set_preferences: DEX names to prefer when rebalancing.",
+      required: false,
+      schema: { type: "array", items: { type: "string" } },
     },
   ],
 
@@ -795,7 +893,7 @@ export const liquidityAction: Action = {
       {
         name: "{{name1}}",
         content: {
-          text: "Open a Raydium LP position with 100 USDC paired against SOL.",
+          text: "Open an LP position in Raydium pool 58oQChx4yWmvKdwLLZzBi4ChoCc2fqCUWBkwMihLYQo2 with 100000000 base units.",
           source: "chat",
         },
       },
@@ -805,7 +903,7 @@ export const liquidityAction: Action = {
           text: "Opening the LP position.",
           actions: ["LIQUIDITY"],
           thought:
-            "User wants to provide liquidity on a DEX; LIQUIDITY action=open with the token pair and amount routes to the LP manager.",
+            "User wants to provide liquidity on a DEX; LIQUIDITY action=open needs dex, the pool id and a base-unit amount. When only the token pair is known, find the pool with action=list_pools first.",
         },
       },
     ],
@@ -831,7 +929,7 @@ export const liquidityAction: Action = {
       {
         name: "{{name1}}",
         content: {
-          text: "Close my SOL/USDC liquidity position.",
+          text: "Close my liquidity position in Raydium pool 58oQChx4yWmvKdwLLZzBi4ChoCc2fqCUWBkwMihLYQo2.",
           source: "chat",
         },
       },
@@ -841,7 +939,7 @@ export const liquidityAction: Action = {
           text: "Closing the LP position.",
           actions: ["LIQUIDITY"],
           thought:
-            "Withdraw / unwind intent maps to LIQUIDITY action=close on the named pair.",
+            "Withdraw / unwind intent maps to LIQUIDITY action=close with dex and the pool or position id.",
         },
       },
     ],
@@ -871,8 +969,8 @@ export const liquidityAction: Action = {
     return false;
   },
 
-  handler: async (runtime, message, _state, handlerParams, callback) => {
-    const params = normalizeParams(message, handlerParams);
+  handler: async (runtime, message, _state, options, callback) => {
+    const params = normalizeParams(message, options);
     if (!params) {
       return {
         success: true,
@@ -911,6 +1009,11 @@ export const liquidityAction: Action = {
           success: false,
           text: "LP management service is currently unavailable.",
         };
+      }
+
+      const rejection = lpWriteRejection(lp, params);
+      if (rejection) {
+        return { success: false, text: rejection };
       }
 
       // GHSA-rqm7-f4jc-84x3: open/close/reposition pend for user confirmation

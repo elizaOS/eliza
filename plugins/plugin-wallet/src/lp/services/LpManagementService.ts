@@ -413,7 +413,7 @@ export class LpManagementService extends Service implements ILpService {
     });
   }
 
-  private resolveProtocol(request: LpProtocolRequest): LpProtocolProvider {
+  resolveProtocol(request: LpProtocolRequest): LpProtocolProvider {
     const matches = this.matchingProtocols(request);
     if (matches.length === 0) {
       throw new NoMatchingLpProtocolError(request);
