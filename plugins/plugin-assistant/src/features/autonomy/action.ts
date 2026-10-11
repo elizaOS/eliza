@@ -173,17 +173,17 @@ export const escalateAction: Action = {
   contexts: ["admin", "messaging", "agent_internal"],
   roleGate: { minRole: "ADMIN" },
   description:
-    "Escalate from autonomous context to a human. action=admin sends to the configured admin; owner/third_party return an explicit unsupported-target result unless a plugin provides its own route.",
+    "Escalate from autonomous context to a human. Sends to the configured admin.",
   similes: ["SEND_TO_ADMIN"],
   parameters: [
     {
       name: "action",
       description:
-        "Escalation target: admin | owner | third_party. Defaults to admin when omitted.",
+        "Escalation target. Only admin is supported; defaults to admin when omitted.",
       required: false,
       schema: {
         type: "string",
-        enum: [...ESCALATE_SUBACTIONS],
+        enum: ["admin"],
       },
     },
     {
