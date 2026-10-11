@@ -628,13 +628,18 @@ export function analyzeMessages(
     ],
     timezone,
   );
+  // Bedtimes use the hours-past-noon convention [12, 36) like session end
+  // hours ("25 = 1 AM next day") and the health baseline: a raw 00:30 onset
+  // sorted as hour 0 and pulled a 23:30/00:30 median to noon.
   const sleepHoursFromHealth = healthSnapshots
     .filter((snapshot) => snapshot.sleepStartedAt !== null)
-    .map(
-      (snapshot) =>
-        getZonedDateParts(new Date(snapshot.sleepStartedAt ?? 0), timezone)
-          .hour,
-    );
+    .map((snapshot) => {
+      const hour = getZonedDateParts(
+        new Date(snapshot.sleepStartedAt ?? 0),
+        timezone,
+      ).hour;
+      return hour < 12 ? hour + 24 : hour;
+    });
   const wakeHoursFromHealth = healthSnapshots
     .filter((snapshot) => snapshot.sleepEndedAt !== null)
     .map(

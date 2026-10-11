@@ -4853,7 +4853,12 @@ platform.delete(
           throw new Error("Cannot unlink the user's last login method");
         }
 
-        const revokedBefore = await revocationStore.revokeUserTokens(userId);
+        const revokedBefore = await revocationStore.revokeUserTokens(
+          userId,
+          undefined,
+          undefined,
+          tx,
+        );
         const [deleted] = await tx
           .delete(accounts)
           .where(
@@ -5047,10 +5052,18 @@ platform.post(
           );
         }
 
-        const fromRevokedBefore =
-          await revocationStore.revokeUserTokens(fromUserId);
-        const toRevokedBefore =
-          await revocationStore.revokeUserTokens(toUserId);
+        const fromRevokedBefore = await revocationStore.revokeUserTokens(
+          fromUserId,
+          undefined,
+          undefined,
+          tx,
+        );
+        const toRevokedBefore = await revocationStore.revokeUserTokens(
+          toUserId,
+          undefined,
+          undefined,
+          tx,
+        );
         const [updated] = await tx
           .update(accounts)
           .set({ userId: toUserId })
@@ -6229,6 +6242,8 @@ platform.patch("/tenants/:id/members/:userId", async (c) => {
         await revocationStore.revokeUserTokens(
           userId,
           revokedUserTokensIssuedBefore,
+          undefined,
+          tx,
         );
         await tx
           .delete(refreshTokens)

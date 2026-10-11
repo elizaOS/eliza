@@ -62,7 +62,6 @@ import type {
   CloudCompatAgent,
   CloudCompatAgentProvisionResponse,
   CloudCompatAgentStatus,
-  CloudCompatDiscordConfig,
   CloudCompatJob,
   CloudCompatLaunchResult,
   CloudCompatManagedDiscordStatus,
@@ -1850,17 +1849,6 @@ declare module "./client-base.js" {
       success: boolean;
       data: CloudCompatManagedDiscordStatus;
     }>;
-    getCloudCompatAgentDiscordConfig(agentId: string): Promise<{
-      success: boolean;
-      data: CloudCompatDiscordConfig;
-    }>;
-    updateCloudCompatAgentDiscordConfig(
-      agentId: string,
-      config: CloudCompatDiscordConfig,
-    ): Promise<{
-      success: boolean;
-      data: CloudCompatDiscordConfig;
-    }>;
     getCloudCompatAgentManagedGithub(agentId: string): Promise<{
       success: boolean;
       data: CloudCompatManagedGithubStatus;
@@ -2891,29 +2879,6 @@ ElizaClient.prototype.disconnectCloudCompatAgentManagedDiscord =
       },
     );
   };
-
-ElizaClient.prototype.getCloudCompatAgentDiscordConfig = async function (
-  this: ElizaClient,
-  agentId,
-) {
-  return this.fetch(
-    `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/discord/config`,
-  );
-};
-
-ElizaClient.prototype.updateCloudCompatAgentDiscordConfig = async function (
-  this: ElizaClient,
-  agentId,
-  config,
-) {
-  return this.fetch(
-    `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/discord/config`,
-    {
-      method: "PATCH",
-      body: JSON.stringify(config),
-    },
-  );
-};
 
 ElizaClient.prototype.getCloudCompatAgentManagedGithub = async function (
   this: ElizaClient,

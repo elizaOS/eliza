@@ -69,6 +69,13 @@ export function createPostgresAuthSql(
   return Object.assign(query, { begin });
 }
 
+/** Auth-store SQL that runs on one open transaction instead of a new connection checkout. */
+export function createTransactionAuthSql(
+  transaction: Pick<ReturnType<typeof getDb>, "execute">,
+) {
+  return queryTag(() => transaction);
+}
+
 export function createDatabaseAuthSql() {
   const query = queryTag(getDb);
   type Callback = (transaction: typeof query) => Promise<void>;

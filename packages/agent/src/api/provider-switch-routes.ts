@@ -28,6 +28,7 @@ import {
 import {
   applyFirstRunConnectionConfig,
   createProviderSwitchConnection,
+  ELIZA_CLOUD_CLI_PROXY_BASE_URL,
 } from "./provider-switch-config.ts";
 
 // ---------------------------------------------------------------------------
@@ -181,10 +182,9 @@ export async function handleProviderSwitchRoutes(
 
           await applyFirstRunConnectionConfig(config, connection);
           if (normalizedProvider === "elizacloud" && trimmedApiKey) {
-            const cloudProxyBaseUrl = "https://cloud.eliza.app/api/v1";
-            process.env.ANTHROPIC_BASE_URL = cloudProxyBaseUrl;
+            process.env.ANTHROPIC_BASE_URL = ELIZA_CLOUD_CLI_PROXY_BASE_URL;
             process.env.ANTHROPIC_API_KEY = trimmedApiKey;
-            process.env.OPENAI_BASE_URL = cloudProxyBaseUrl;
+            process.env.OPENAI_BASE_URL = ELIZA_CLOUD_CLI_PROXY_BASE_URL;
             process.env.OPENAI_API_KEY = trimmedApiKey;
           }
           ctx.saveElizaConfig(config);

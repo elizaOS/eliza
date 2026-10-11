@@ -84,6 +84,7 @@ import { findActiveSession, SESSION_COOKIE_NAME } from "./auth/sessions";
 import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
+  ensureRouteMinRole,
 } from "./auth.ts";
 import {
   type CompatRouteChainEntry,
@@ -720,8 +721,19 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
         handleLocalInferenceAsrRoute,
         handleLocalInferenceCompatRoutes,
         handleLocalInferenceTtsRoute,
+        handleVoiceModelsRoutes,
       } = await getLocalInferenceRoutes();
       if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
+      // Served here, not by the upstream agent listener, so the owner-only
+      // voice-update toggles are decided by the app's role resolver.
+      if (
+        await handleVoiceModelsRoutes(req, res, {
+          authorizeOwnerRequest: (request, response) =>
+            ensureRouteMinRole(request, response, state, "OWNER"),
+        })
+      ) {
+        return true;
+      }
       // Voice routes share the app AuthStore/CSRF resolver. Configuration and
       // sensitive model-management routes retain their existing token policy.
       const voiceState = {

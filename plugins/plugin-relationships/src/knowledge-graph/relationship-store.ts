@@ -21,6 +21,7 @@ import type {
   LifeOpsGraphRelationshipStatus as RelationshipStatus,
 } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
+import { laterIso } from "./recency.ts";
 import {
   type GraphRecordRepository,
   graphRecordRepository,
@@ -462,8 +463,11 @@ export class RelationshipStore {
         confidence: Math.max(active.confidence, obs.confidence),
         state: {
           ...active.state,
-          lastObservedAt: occurredAt,
-          lastInteractionAt: occurredAt,
+          lastObservedAt: laterIso(active.state.lastObservedAt, occurredAt),
+          lastInteractionAt: laterIso(
+            active.state.lastInteractionAt,
+            occurredAt,
+          ),
           interactionCount: (active.state.interactionCount ?? 0) + 1,
         },
         source: obs.source ?? active.source,

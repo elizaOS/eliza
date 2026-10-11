@@ -276,7 +276,7 @@ function summarizeReport(report: DspReport | undefined): CampaignMetrics {
     clicks: totals.clicks,
     conversions: totals.conversions,
     conversionValue: totals.conversionValue,
-    ctr: totals.impressions > 0 ? totals.clicks / totals.impressions : 0,
+    ctr: totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0,
     cpc: totals.clicks > 0 ? totals.spend / totals.clicks : 0,
     cpm: totals.impressions > 0 ? (totals.spend / totals.impressions) * 1000 : 0,
     roas: totals.spend > 0 ? totals.conversionValue / totals.spend : 0,
