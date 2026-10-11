@@ -124,7 +124,12 @@ function unquoteParameter(value: string): string {
     trimmed.startsWith('"') && trimmed.endsWith('"')
       ? trimmed.slice(1, -1)
       : trimmed;
-  return unquoted.replaceAll("\\,", ",").replaceAll('\\"', '"');
+  return unquoted
+    .replaceAll("\\,", ",")
+    .replaceAll('\\"', '"')
+    .replace(/\^([\^n'])/g, (_match, escaped: string) =>
+      escaped === "n" ? "\n" : escaped === "'" ? '"' : "^",
+    );
 }
 
 function parseContentLine(line: string): IcsContentLine {
