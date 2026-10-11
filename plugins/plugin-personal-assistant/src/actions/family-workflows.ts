@@ -57,13 +57,13 @@ export const familyWorkflowsAction: Action = {
     {
       name: "schoolLevel",
       description:
-        "Required for configure_school: elementary includes district dates; all includes every school level.",
+        "configure_school only, and required there: elementary includes district dates; all includes every school level. Omit for every other operation.",
       schema: { type: "string", enum: ["elementary", "all"] },
     },
     {
       name: "updateMode",
       description:
-        "Required for configure_school: automatic applies validated school changes; review waits for an owner decision.",
+        "configure_school only, and required there: automatic applies validated school changes; review waits for an owner decision. Omit for every other operation.",
       schema: { type: "string", enum: ["automatic", "review"] },
     },
   ],
@@ -79,10 +79,24 @@ export const familyWorkflowsAction: Action = {
       (options as HandlerOptions | undefined)?.parameters,
     );
     if (!parsed.success) {
+      // The declared schema lets schoolLevel and updateMode accompany every
+      // operation, but only configure_school takes them. Name the arguments
+      // to drop instead of the generic setup hint, which reads as "add them".
+      const setupOnly = parsed.error.issues.flatMap((issue) =>
+        issue.code === "unrecognized_keys" ? issue.keys : [],
+      );
       const result = {
         success: false,
-        text: "Choose a supported family workflow. For setup, choose the school level and whether changes apply automatically or wait for review.",
-        data: { error: "FAMILY_WORKFLOW_INVALID_OPERATION" },
+        text:
+          setupOnly.length > 0
+            ? `${setupOnly.join(" and ")} only apply to configure_school. Remove ${setupOnly.length > 1 ? "them" : "it"} and call this operation again.`
+            : "Choose a supported family workflow. For setup, choose the school level and whether changes apply automatically or wait for review.",
+        data: {
+          error:
+            setupOnly.length > 0
+              ? "FAMILY_WORKFLOW_UNEXPECTED_ARGUMENT"
+              : "FAMILY_WORKFLOW_INVALID_OPERATION",
+        },
       };
       await callback?.(result);
       return result;

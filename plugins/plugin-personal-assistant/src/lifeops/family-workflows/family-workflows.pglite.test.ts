@@ -259,6 +259,19 @@ describe("FamilyWorkflowRuntimeService with real PGlite", () => {
     expect(result?.data).toMatchObject({
       error: "FAMILY_WORKFLOW_INVALID_OPERATION",
     });
+    // The declared schema allows the setup-only arguments on every operation;
+    // the refusal names the one to remove.
+    const setupOnly = await familyWorkflowsAction.handler(
+      runtime,
+      { content: { text: "School status" } } as Memory,
+      undefined,
+      { parameters: { operation: "status", schoolLevel: "all" } },
+    );
+    expect(setupOnly?.success).toBe(false);
+    expect(setupOnly?.data).toMatchObject({
+      error: "FAMILY_WORKFLOW_UNEXPECTED_ARGUMENT",
+    });
+    expect(setupOnly?.text).toContain("schoolLevel only apply");
     const tables = await db.query(
       "SELECT table_name FROM information_schema.tables WHERE table_schema='app_lifeops' AND table_name='life_family_workflow_runs'",
     );
