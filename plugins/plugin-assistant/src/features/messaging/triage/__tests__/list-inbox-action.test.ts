@@ -183,6 +183,23 @@ describe("listInboxAction", () => {
     expect(result.data?.messages).toBeUndefined();
   });
 
+  it("rejects malformed source values instead of widening to every source", async () => {
+    getDefaultMessageRefStore().saveMessages([
+      messageRef({ id: "gmail-1", externalId: "gmail-external-1" }),
+    ]);
+
+    const result = await listInboxAction.handler(
+      createFakeRuntime(),
+      messageRef({ id: "turn" }) as never,
+      undefined,
+      { parameters: { sources: [123] } } as never,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("non-empty supported message source");
+    expect(result.data?.messages).toBeUndefined();
+  });
+
   it("validates messaging contexts and rejects unrelated contexts", async () => {
     const message = { content: { text: "show inbox" } } as never;
     const runtime = createFakeRuntime();

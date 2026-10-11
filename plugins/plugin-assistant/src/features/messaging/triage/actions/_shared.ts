@@ -142,10 +142,22 @@ function asStringList(value: unknown): string[] | undefined {
 function parseSourceList(
   value: unknown,
 ): { sources: MessageSource[] | undefined } | { error: string } {
-  const strings = asStringList(value);
-  if (!strings) return { sources: undefined };
+  if (value === undefined || value === null) return { sources: undefined };
+  const candidates: unknown[] = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(",")
+      : [value];
+  if (candidates.length === 0) return { sources: undefined };
+
   const out: MessageSource[] = [];
-  for (const s of strings) {
+  for (const candidate of candidates) {
+    const s = asString(candidate);
+    if (!s) {
+      return {
+        error: `source must be a non-empty supported message source: ${SUPPORTED_MESSAGE_SOURCES_TEXT}`,
+      };
+    }
     const lower = s.toLowerCase();
     if (!(ALL_MESSAGE_SOURCES as readonly string[]).includes(lower)) {
       return {
