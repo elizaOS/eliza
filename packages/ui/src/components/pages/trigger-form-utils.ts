@@ -6,7 +6,10 @@
  * by TriggersView and its tests so neither duplicates the logic.
  */
 
-import type { TranslateFn as AppTranslateFn } from "@elizaos/contracts";
+import {
+  type TranslateFn as AppTranslateFn,
+  resolveDefaultTimeZone,
+} from "@elizaos/contracts";
 import type { TriggerType, TriggerWakeMode } from "@elizaos/core";
 import { parsePositiveInteger } from "@elizaos/core/protocol";
 import { CronExpressionParser } from "cron-parser";
@@ -258,7 +261,9 @@ export function buildCreateRequest(
   return {
     displayName: form.displayName.trim(),
     instructions: form.instructions.trim() || undefined,
-    kind: form.kind === "workflow" ? "workflow" : undefined,
+    // The server reads a missing kind as "workflow"; a text automation is a
+    // prompt trigger.
+    kind: form.kind === "workflow" ? "workflow" : "prompt",
     workflowId: form.workflowId,
     workflowName: form.workflowName || undefined,
     triggerType: form.triggerType,
@@ -273,13 +278,19 @@ export function buildCreateRequest(
     cronExpression:
       form.triggerType === "cron" ? form.cronExpression.trim() : undefined,
     eventKind: form.triggerType === "event" ? form.eventKind.trim() : undefined,
+    // The server reads a cron expression in UTC when no zone is given; the
+    // form previews it in the browser's zone, so send that zone.
+    timezone:
+      form.triggerType === "cron" ? resolveDefaultTimeZone() : undefined,
     maxRuns,
   };
 }
 export function buildUpdateRequest(
   form: TriggerFormState,
 ): UpdateTriggerRequest {
-  return { ...buildCreateRequest(form) };
+  // An edit keeps the stored zone (the server keeps it when none is sent).
+  const { timezone: _timezone, ...request } = buildCreateRequest(form);
+  return request;
 }
 // ── Cron validation ────────────────────────────────────────────────
 /**
