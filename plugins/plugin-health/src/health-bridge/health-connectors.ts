@@ -1116,7 +1116,7 @@ async function syncWithings(
       action: "getmeas",
       startdate: startUnix,
       enddate: endUnix,
-      meastype: "1,9,10,11,54,71,73",
+      meastype: "1,9,10,11,54,71",
     }),
   ]);
   const samples: LifeOpsHealthMetricSample[] = [];
@@ -1240,9 +1240,11 @@ async function syncWithings(
         efficiency: null,
         latencySeconds: getNumber(data, "durationtosleep"),
         awakeSeconds: getNumber(data, "wakeupduration"),
-        lightSleepSeconds: getNumber(data, "lightduration"),
-        deepSleepSeconds: getNumber(data, "deepduration"),
-        remSleepSeconds: getNumber(data, "remduration"),
+        // getsummary names the stage durations `*sleepduration` (Withings
+        // OpenAPI: "lightsleepduration: Duration in state light sleep").
+        lightSleepSeconds: getNumber(data, "lightsleepduration"),
+        deepSleepSeconds: getNumber(data, "deepsleepduration"),
+        remSleepSeconds: getNumber(data, "remsleepduration"),
         sleepScore: null,
         readinessScore: null,
         averageHeartRate: getNumber(data, "hr_average"),
@@ -1328,12 +1330,6 @@ function mapWithingsMeasure(
         metric: "body_temperature_celsius",
         value: normalizedValue,
         unit: "C",
-      };
-    case 73:
-      return {
-        metric: "heart_rate_variability",
-        value: normalizedValue,
-        unit: "ms",
       };
     default:
       return null;
