@@ -180,6 +180,42 @@ describe("profiles — resolveActiveValue", () => {
     );
   });
 
+  it("matches a trailing-* wildcard keyPattern by prefix", async () => {
+    await vault.set(profileStorageKey(KEY, "personal"), "value-personal", {
+      sensitive: true,
+    });
+    await vault.set(profileStorageKey(KEY, "work"), "value-work", {
+      sensitive: true,
+    });
+    await setEntryMeta(vault, KEY, {
+      profiles: [
+        { id: "personal", label: "Personal" },
+        { id: "work", label: "Work" },
+      ],
+      activeProfile: "personal",
+    });
+    await writeRoutingConfig(vault, {
+      rules: [
+        {
+          keyPattern: "ANTHROPIC_*",
+          scope: { kind: "agent", agentId: "agent-A" },
+          profileId: "personal",
+        },
+        {
+          keyPattern: "OPENROUTER_*",
+          scope: { kind: "agent", agentId: "agent-A" },
+          profileId: "work",
+        },
+      ],
+    });
+    expect(await resolveActiveValue(vault, KEY, { agentId: "agent-A" })).toBe(
+      "value-work",
+    );
+    expect(await resolveActiveValue(vault, KEY, { agentId: "agent-B" })).toBe(
+      "value-personal",
+    );
+  });
+
   it("ignores routing rules that name an unknown profile id", async () => {
     await vault.set(profileStorageKey(KEY, "default"), "sk-default", {
       sensitive: true,

@@ -113,10 +113,20 @@ function pickRule(
 ): RoutingRule | null {
   if (!ctx) return null;
   for (const rule of rules) {
-    if (rule.keyPattern !== key) continue;
+    if (!matchesKeyPattern(rule.keyPattern, key)) continue;
     if (matchesScope(rule.scope, ctx)) return rule;
   }
   return null;
+}
+
+/**
+ * An exact key, or a trailing `*` wildcard matching every key that starts
+ * with the text before it (`OPENROUTER_*`), as the routing settings offer.
+ */
+function matchesKeyPattern(pattern: string, key: string): boolean {
+  return pattern.endsWith("*")
+    ? key.startsWith(pattern.slice(0, -1))
+    : pattern === key;
 }
 
 function matchesScope(scope: RoutingScope, ctx: ResolutionContext): boolean {
