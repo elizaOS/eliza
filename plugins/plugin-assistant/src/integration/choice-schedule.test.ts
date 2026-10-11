@@ -56,6 +56,12 @@ it("rejects a damaged choice before worker effects while healthy and repaired ch
       choiceAction.handler(f.runtime, message, undefined, {
         parameters: { taskId, option },
       });
+    expect(await choose(healthy, "the first one")).toMatchObject({
+      success: false,
+      values: { error: "INVALID_OPTION" },
+      data: { validOptions: ["run", "ABORT"] },
+    });
+    expect(effects).toEqual([]);
     expect(await choose(healthy)).toMatchObject({ success: true });
     expect(effects).toEqual([healthy]);
     await expect(choose(damaged)).rejects.toMatchObject({
