@@ -18,6 +18,7 @@ import { dbRead } from "@elizaos/cloud-shared/db/helpers";
 import { dockerNodesRepository } from "@elizaos/cloud-shared/db/repositories/docker-nodes";
 import { agentSandboxes } from "@elizaos/cloud-shared/db/schemas/agent-sandboxes";
 import { requireAdmin } from "@elizaos/cloud-shared/lib/auth";
+import { countRetainedWorkloadsOnNode } from "@elizaos/cloud-shared/lib/services/docker-node-workloads";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { and, eq, ne } from "drizzle-orm";
 import { z } from "zod";
@@ -302,6 +303,17 @@ async function __hono_DELETE(
         {
           success: false,
           error: `Cannot remove node '${nodeId}': ${activeContainers.length} active container(s) still running. Stop or migrate them first.`,
+        },
+        { status: 409 },
+      );
+    }
+
+    const retainedWorkloads = await countRetainedWorkloadsOnNode(nodeId);
+    if (retainedWorkloads > 0) {
+      return Response.json(
+        {
+          success: false,
+          error: `Cannot remove node '${nodeId}': ${retainedWorkloads} retained workload(s) still hold state on it. Stop, migrate, or delete them first.`,
         },
         { status: 409 },
       );
