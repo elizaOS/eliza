@@ -369,10 +369,14 @@ export function validateTriggerKind(
   form: TriggerFormState,
   t: TranslateFn,
 ): string | null {
-  if (!form.workflowId) {
-    return t("triggers.workflowPlaceholder");
+  // Each kind needs what the server requires for it: a workflow trigger its
+  // workflow, a text (prompt) trigger its instructions.
+  if (form.kind === "workflow") {
+    return form.workflowId ? null : t("triggers.workflowPlaceholder");
   }
-  return null;
+  return form.instructions.trim()
+    ? null
+    : t("triggersview.validationInstructionsRequired");
 }
 export function validateForm(
   form: TriggerFormState,
