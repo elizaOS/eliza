@@ -144,7 +144,7 @@ export class GoogleGmailClient {
       const historyId = response.data.historyId?.trim() || startHistoryId;
       return {
         changes: (response.data.history ?? []).map(mapGmailHistoryChange),
-        nextPageToken: response.data.nextPageToken?.trim() || null,
+        nextPageToken: response.data.nextPageToken?.trim() ? response.data.nextPageToken : null,
         historyId,
       };
     } catch (error) {
@@ -348,7 +348,7 @@ export class GoogleGmailClient {
     }
     return {
       messages: sortGmailMessages(messages),
-      nextPageToken: response.data.nextPageToken?.trim() || null,
+      nextPageToken: response.data.nextPageToken?.trim() ? response.data.nextPageToken : null,
     };
   }
 
