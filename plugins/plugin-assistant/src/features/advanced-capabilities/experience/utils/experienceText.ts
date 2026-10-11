@@ -199,9 +199,13 @@ export function isDuplicateLearning(a: string, b: string): boolean {
 }
 
 function normalizeTextForDuplicateComparison(text: string): string {
+  // Keep the same token characters as the documents BM25 tokenizer
+  // ([\p{L}\p{M}\p{N}]+): an ASCII-only class erased every non-Latin
+  // learning, so identical Korean/Russian learnings never compared equal
+  // and non-Latin experiences stored no keywords.
   return text
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
