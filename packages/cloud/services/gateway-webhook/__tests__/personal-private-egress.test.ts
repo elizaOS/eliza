@@ -19,6 +19,7 @@ import {
   PlatformDeliveryError,
   type WebhookConfig,
 } from "../src/adapters/types";
+import { whatsappAdapter } from "../src/adapters/whatsapp";
 import type { GatewayRedis } from "../src/redis";
 import { handleWebhook } from "../src/webhook-handler";
 import {
@@ -104,6 +105,8 @@ let providerSent: Promise<ProviderCall>;
 let resolveProviderSent: (call: ProviderCall) => void;
 /** 1-based Twilio call index from which the provider answers 400. */
 let twilioRejectFromCall: number | undefined;
+/** 1-based WhatsApp call index from which the provider answers 400. */
+let whatsappRejectFromCall: number | undefined;
 
 beforeEach(() => {
   for (const key of envKeys) savedEnv.set(key, process.env[key]);
@@ -111,6 +114,7 @@ beforeEach(() => {
   resetTelegramIdentityAttestation();
   providerCalls = [];
   twilioRejectFromCall = undefined;
+  whatsappRejectFromCall = undefined;
   providerSent = new Promise((resolve) => {
     resolveProviderSent = resolve;
   });
@@ -153,6 +157,20 @@ beforeEach(() => {
       }
       resolveProviderSent(call);
       return Response.json({ sid: `SMprovider${providerCalls.length}` });
+    }
+    if (url.startsWith("https://graph.facebook.com/")) {
+      const call = {
+        url,
+        body: JSON.parse(String(init?.body ?? "{}")),
+      } satisfies ProviderCall;
+      providerCalls.push(call);
+      const rejection = whatsappRejectFromCall;
+      if (rejection !== undefined && providerCalls.length >= rejection) {
+        return Response.json({ error: { code: 100 } }, { status: 400 });
+      }
+      return Response.json({
+        messages: [{ id: `wamid.provider${providerCalls.length}` }],
+      });
     }
     return originalFetch(input, init);
   }) as typeof fetch;
@@ -744,6 +762,98 @@ describe("Twilio Personal Shared egress", () => {
 
     const error = await twilioAdapter
       .sendReplyWithReceipt?.(TWILIO_CONFIG, TWILIO_EVENT, "a".repeat(3500))
+      .catch((caught: unknown) => caught);
+
+    expect(providerCalls).toHaveLength(1);
+    expect(error).toMatchObject({ deliveryStatus: "failed" });
+  });
+});
+
+const WHATSAPP_CONFIG = {
+  accessToken: "whatsapp-access-token",
+  phoneNumberId: "1090001",
+} satisfies WebhookConfig;
+
+const WHATSAPP_EVENT = {
+  platform: "whatsapp",
+  messageId: "wamid.inbound1",
+  chatId: "15551234567",
+  senderId: "15551234567",
+  text: "write me a detailed packing list",
+  rawPayload: {},
+} satisfies ChatEvent;
+
+function whatsappBodies(): string[] {
+  return providerCalls.map((call) =>
+    String((call.body.text as { body: string }).body),
+  );
+}
+
+describe("WhatsApp reply egress", () => {
+  test("a reply over the 4096-character text limit is sent as ordered parts", async () => {
+    // The emoji straddles the first 4096-unit boundary.
+    const reply = `${"a".repeat(4095)}\u{1F5FC}${"b".repeat(4903)}`;
+    expect(reply).toHaveLength(9000);
+
+    const receipt = await whatsappAdapter.sendReplyWithReceipt?.(
+      WHATSAPP_CONFIG,
+      WHATSAPP_EVENT,
+      reply,
+    );
+
+    const bodies = whatsappBodies();
+    expect(bodies).toHaveLength(3);
+    expect(bodies.every((body) => body.length <= 4096)).toBe(true);
+    expect(bodies.join("")).toBe(reply);
+    expect(bodies[0]).toBe("a".repeat(4095));
+    expect(
+      providerCalls.every(
+        (call) =>
+          call.url === "https://graph.facebook.com/v21.0/1090001/messages" &&
+          call.body.to === "15551234567",
+      ),
+    ).toBe(true);
+    expect(receipt?.providerMessageIds).toEqual([
+      "wamid.provider1",
+      "wamid.provider2",
+      "wamid.provider3",
+    ]);
+  });
+
+  test("a reply at the limit is one message", async () => {
+    const reply = "a".repeat(4096);
+
+    await whatsappAdapter.sendReplyWithReceipt?.(
+      WHATSAPP_CONFIG,
+      WHATSAPP_EVENT,
+      reply,
+    );
+
+    expect(whatsappBodies()).toEqual([reply]);
+  });
+
+  test("a rejection after an accepted part is uncertain, not failed", async () => {
+    whatsappRejectFromCall = 2;
+
+    const error = await whatsappAdapter
+      .sendReplyWithReceipt?.(WHATSAPP_CONFIG, WHATSAPP_EVENT, "a".repeat(9000))
+      .catch((caught: unknown) => caught);
+
+    expect(providerCalls).toHaveLength(2);
+    expect(error).toBeInstanceOf(PlatformDeliveryError);
+    expect(error).toMatchObject({
+      deliveryStatus: "uncertain",
+      code: "DELIVERY_PROVIDER_REJECTED",
+      retryable: false,
+      providerStatus: 400,
+    });
+  });
+
+  test("a rejection of the first part stays failed", async () => {
+    whatsappRejectFromCall = 1;
+
+    const error = await whatsappAdapter
+      .sendReplyWithReceipt?.(WHATSAPP_CONFIG, WHATSAPP_EVENT, "a".repeat(9000))
       .catch((caught: unknown) => caught);
 
     expect(providerCalls).toHaveLength(1);
