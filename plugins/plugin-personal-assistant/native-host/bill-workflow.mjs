@@ -92,6 +92,8 @@ export class BillWorkflow {
     if (
       outcome?.kind !== "outcome" ||
       outcome.saveStatus !== "saved" ||
+      // A receipt is matched by its reference; without one no lookup is spent.
+      typeof outcome.reference !== "string" ||
       typeof this.receipts?.find !== "function" ||
       typeof this.outcomes?.loadReceiptCheck !== "function" ||
       typeof this.outcomes?.beginReceiptCheck !== "function" ||

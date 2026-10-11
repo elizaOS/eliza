@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { AgentRuntime, Memory } from "@elizaos/core";
+import type { AgentRuntime, Content, Memory } from "@elizaos/core";
 import {
   afterAll,
   afterEach,
@@ -953,6 +953,50 @@ describe("ComputerUseService file and terminal execution (real host I/O)", () =>
       // A late Approve click must not run the cancelled action.
       expect(service.resolveApproval(approval.id, true)).toBeNull();
       expect(fs.existsSync(target)).toBe(false);
+    } finally {
+      service.setApprovalMode("full_control");
+    }
+  }, 20_000);
+
+  it("relays a pending CLIPBOARD approval to the chat callback", async () => {
+    expect(service.setApprovalMode("smart_approve")).toBe("smart_approve");
+    try {
+      const relayed: Array<{ content: Content; actionName?: string }> = [];
+      const pending = clipboardAction.handler(
+        runtime,
+        {
+          content: {},
+          metadata: { telegramUserId: "4242" },
+        } as unknown as Memory,
+        undefined,
+        { parameters: { action: "write", text: "must not be written" } },
+        async (content, actionName) => {
+          relayed.push({ content, actionName });
+          return [];
+        },
+      );
+      await expect
+        .poll(() => service.getApprovalSnapshot().pendingCount)
+        .toBe(1);
+      const [approval] = service.getApprovalSnapshot().pendingApprovals;
+      await expect.poll(() => relayed.length).toBe(1);
+
+      expect(approval.command).toBe("clipboard_write");
+      expect(relayed[0].actionName).toBe("COMPUTER_USE_APPROVAL");
+      // The connector parses these callback values to resolve the approval.
+      expect(relayed[0].content.text).toContain(
+        `cua:${approval.id}:approve:u4242=Approve`,
+      );
+      expect(relayed[0].content.text).toContain(
+        `cua:${approval.id}:deny:u4242=Deny`,
+      );
+
+      // Deny, so the host clipboard is not written.
+      service.resolveApproval(approval.id, false);
+      const result = await pending;
+
+      expect(result?.success).toBe(false);
+      expect(result?.text).toContain("approval rejected");
     } finally {
       service.setApprovalMode("full_control");
     }

@@ -5427,7 +5427,7 @@
   "localinference.modelActivated": "モデルがアクティベートされました",
   "localinference.modelUninstalled": "モデルがアンインストールされました",
   "localinference.verifyOk": "モデルが確認されました",
-  "localinference.verifyUnknown": "ベースラインハッシュを記録しました — 今後の確認でこれと比較します",
+  "localinference.verifyUnknown": "モデルファイルは存在し、有効な GGUF です。比較対象となるインストール時のハッシュは記録されていません。",
   "localinference.verifyMissing": "モデルファイルがディスクに見つかりません",
   "localinference.verifyTruncated": "モデルファイルが破損しています（有効な GGUF ではありません）",
   "localinference.verifyMismatch": "モデルハッシュがインストール済みコピーと一致しません — 再ダウンロードを推奨します",
