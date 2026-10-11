@@ -912,10 +912,11 @@ export const pluginAction: Action = {
     "reinject (drop ejected copy and use npm), configure (save key/value " +
     "config + auto-test), read_config (return current state), toggle " +
     "(enable/disable), list (enumerate plugins or connectors with optional " +
-    "filter), disconnect (sign out connector and drop session). type='plugin' " +
-    "(default) targets installed plugins; type='connector' targets plugins in " +
-    "the 'connector' category and manages their **package** install/eject " +
-    "only, not account state. For **account**-level connector lifecycle (log " +
+    "filter), disconnect (sign out connector and drop session). type only " +
+    "scopes list: type='connector' (default) lists plugins in the 'connector' " +
+    "category, type='plugin' lists every installed plugin. Connector " +
+    "operations here manage the **package** and its config only, not account " +
+    "state. For **account**-level connector lifecycle (log " +
     "in, log out, verify account, list account status), use the `CONNECTOR` " +
     "action instead.",
   descriptionCompressed:
@@ -1007,7 +1008,7 @@ export const pluginAction: Action = {
     {
       name: "type",
       description:
-        "What we are operating on. 'plugin' (default) = any installed plugin; 'connector' = a plugin in the 'connector' category (discord, telegram, slack, etc.).",
+        "list scope. 'connector' (default) = only plugins in the 'connector' category (discord, telegram, slack, etc.); 'plugin' = every installed plugin. Other operations ignore it.",
       required: false,
       schema: { type: "string" as const, enum: [...PLUGIN_TYPES] },
     },
@@ -1030,7 +1031,19 @@ export const pluginAction: Action = {
       description:
         "configure: object of key/value strings to save. Keys are plugin parameter names; values are their new settings.",
       required: false,
-      schema: { type: "object" as const },
+      // A bare object schema is closed by the validator and would reject
+      // every config key, so the map shape is declared. Values match what
+      // normalizeConfig accepts.
+      schema: {
+        type: "object" as const,
+        additionalProperties: {
+          anyOf: [
+            { type: "string" as const },
+            { type: "number" as const },
+            { type: "boolean" as const },
+          ],
+        },
+      },
     },
     {
       name: "enabled",

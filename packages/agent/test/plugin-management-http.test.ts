@@ -3,7 +3,11 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { type Memory, promoteSubactionsToActions } from "@elizaos/core";
+import {
+  type Memory,
+  promoteSubactionsToActions,
+  validateToolArgs,
+} from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import {
@@ -402,16 +406,25 @@ it("executes narrow promoted plugin schemas through authenticated HTTP without c
     expect(
       configure.parameters?.some((parameter) => parameter.name === "enabled"),
     ).toBe(false);
+    const configureParameters = {
+      connectorId: "openai",
+      config: { OPENAI_API_KEY: secret },
+    };
+    // The planner path validates arguments before the handler runs, so the
+    // config map the handler requires must pass the declared schema.
+    for (const action of [configure, pluginAction]) {
+      expect(
+        validateToolArgs(action, {
+          ...(action === pluginAction ? { action: "configure" } : {}),
+          ...configureParameters,
+        }),
+      ).toMatchObject({ valid: true, errors: [] });
+    }
     const configured = await configure.handler(
       fixture.runtime,
       message,
       undefined,
-      {
-        parameters: {
-          connectorId: "openai",
-          config: { OPENAI_API_KEY: secret },
-        },
-      },
+      { parameters: configureParameters },
     );
     expect(configured).toMatchObject({ success: true });
     expect(JSON.stringify(configured)).not.toContain(secret);
