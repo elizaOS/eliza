@@ -396,7 +396,7 @@ export const pageDelegateAction: PageActionGroup = {
     {
       name: "action",
       description:
-        "Child action name to run, e.g. BROWSER, WALLET_TOKEN_INFO, MODIFY_CHARACTER, UPDATE_AI_PROVIDER, LIST_CONNECTORS.",
+        "Child action name to run. PAGE_DELEGATE consumes `action`, so the child never receives it: select a child operation with the <CHILD>_<operation> name, e.g. WALLET_TOKEN_INFO, SETTINGS_UPDATE_AI_PROVIDER, PLUGIN_LIST, CHARACTER_MODIFY. A bare child name (e.g. BROWSER) runs the child with only the other top-level fields.",
       required: true,
       schema: { type: "string" as const },
     },
@@ -428,7 +428,7 @@ export const pageDelegateAction: PageActionGroup = {
           text: "Looking up SOL.",
           actions: ["PAGE_DELEGATE"],
           thought:
-            "Token price request maps to the wallet page; PAGE_DELEGATE dispatches to the WALLET action=token_info child.",
+            "Token price request maps to the wallet page; PAGE_DELEGATE dispatches to the WALLET_TOKEN_INFO child.",
         },
       },
     ],
@@ -443,7 +443,7 @@ export const pageDelegateAction: PageActionGroup = {
           text: "Pulling tomorrow's events.",
           actions: ["PAGE_DELEGATE"],
           thought:
-            "Calendar query falls under the owner page; PAGE_DELEGATE dispatches to the CALENDAR action=feed child.",
+            "Calendar query falls under the owner page; PAGE_DELEGATE dispatches to the CALENDAR_FEED child.",
         },
       },
     ],

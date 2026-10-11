@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { pageDelegateAction } from "./page-action-groups.ts";
 
 function recordingChild(
-  fields: Pick<Action, "name" | "contexts" | "parameters">,
+  fields: Pick<Action, "name" | "contexts" | "parameters" | "similes">,
   seen: unknown[],
 ): Action {
   return {
@@ -93,4 +93,62 @@ describe("PAGE_DELEGATE call shape", () => {
     });
     expect(seen).toEqual([{ action: "token_info", query: "SOL" }]);
   });
+
+  // The legacy similes resolve to the umbrella child but carry no operation,
+  // and PAGE_DELEGATE consumes `action`, so the child fails on its required
+  // discriminator. Only the <CHILD>_<operation> names may be advertised.
+  it.each([
+    {
+      page: "settings",
+      advertised: "SETTINGS_UPDATE_AI_PROVIDER",
+      legacy: "UPDATE_AI_PROVIDER",
+      child: "SETTINGS",
+      contexts: ["settings"],
+      op: "update_ai_provider",
+    },
+    {
+      page: "connectors",
+      advertised: "PLUGIN_LIST",
+      legacy: "LIST_CONNECTORS",
+      child: "PLUGIN",
+      contexts: ["connectors"],
+      op: "list",
+    },
+    {
+      page: "settings",
+      advertised: "CHARACTER_MODIFY",
+      legacy: "MODIFY_CHARACTER",
+      child: "CHARACTER",
+      contexts: ["settings"],
+      op: "modify",
+    },
+  ])(
+    "advertises $advertised, which delivers the $child operation",
+    async ({ page, advertised, legacy, child, contexts, op }) => {
+      const description = pageDelegateAction.parameters?.find(
+        (p) => p.name === "action",
+      )?.description;
+      expect(description).toContain(advertised);
+      expect(description?.replace(advertised, "")).not.toContain(legacy);
+      const seen: unknown[] = [];
+      const umbrella = recordingChild(
+        {
+          name: child,
+          similes: [legacy],
+          contexts,
+          parameters: [
+            {
+              name: "action",
+              description: "Operation.",
+              required: true,
+              schema: { type: "string", enum: [op, "other"] },
+            },
+          ],
+        },
+        seen,
+      );
+      await delegate([umbrella], { page, action: advertised });
+      expect(seen).toEqual([{ action: op }]);
+    },
+  );
 });
