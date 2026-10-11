@@ -81,13 +81,13 @@ export const setFollowupThresholdAction: Action = {
           ? Number(rawThreshold)
           : Number.NaN;
 
-    if (!Number.isFinite(thresholdDays) || thresholdDays <= 0) {
+    if (!Number.isInteger(thresholdDays) || thresholdDays < 1) {
       return {
         success: false,
         text: "SET_FOLLOWUP_THRESHOLD requires a positive integer thresholdDays.",
       };
     }
-    const thresholdInt = Math.floor(thresholdDays);
+    const thresholdInt = thresholdDays;
 
     const service = getRelationshipsServiceLike(runtime);
     if (!service) {
@@ -208,9 +208,9 @@ export const setFollowupThresholdAction: Action = {
     {
       name: "thresholdDays",
       description:
-        "Number of days after last contact before this contact is considered overdue.",
+        "Whole number of days (1 or more) after last contact before this contact is considered overdue.",
       required: true,
-      schema: { type: "number" as const },
+      schema: { type: "integer" as const, minimum: 1 },
     },
   ],
   examples: [
