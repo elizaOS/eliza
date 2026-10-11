@@ -530,7 +530,9 @@ async function resolveRegisteredRoomAccountId(
     storedAccountId,
   )
   return account?.id === storedAccountId ? storedAccountId : undefined
-}async function resolveInboxAccountRouting(
+}
+
+async function resolveInboxAccountRouting(
   runtime: AgentRuntime,
   source: string,
   callerAuthorization: InboxRouteCallerAuthorization,
