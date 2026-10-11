@@ -89,7 +89,7 @@ test("runner executes the canonical JVM assertions and propagates compiler failu
     fixture: "JobRunRegistryTest",
     processTimeoutMs: 30000,
   });
-  assert.match(result.stdout, /JobRunRegistry: 26 assertions passed/);
+  assert.match(result.stdout, /JobRunRegistry: 28 assertions passed/);
   assert.equal(
     result.mainClass,
     "ai.eliza.plugins.agent.updater.JobRunRegistryTest",

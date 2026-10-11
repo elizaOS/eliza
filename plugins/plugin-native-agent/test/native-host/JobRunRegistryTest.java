@@ -32,6 +32,9 @@ public final class JobRunRegistryTest {
    active.start(7,c->{c.onCancel(closes::incrementAndGet);entered.countDown();while(true){try{release.await();break;}catch(InterruptedException ignored){}}exited.countDown();return false;},retry->notified.incrementAndGet());
    check(entered.await(2,TimeUnit.SECONDS));active.stop(7);check(closes.get()==2);release.countDown();check(exited.await(2,TimeUnit.SECONDS));pool.shutdown();check(pool.awaitTermination(2,TimeUnit.SECONDS));completion.drain();check(notified.get()==0);check(active.size()==0);
   } finally {release.countDown();active.close();pool.shutdownNow();}
+  // An Error from the work still reports completion, so the job is not held.
+  JobRunRegistry failing=new JobRunRegistry(work,main);List<Boolean> errors=new ArrayList<>();
+  failing.start(8,c->{throw new UnsatisfiedLinkError("missing native library");},errors::add);work.drain();main.drain();check(errors.equals(List.of(true)));check(failing.size()==0);
   System.out.println("JobRunRegistry: "+assertions+" assertions passed");
  }
 }

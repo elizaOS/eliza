@@ -42,8 +42,11 @@ public class JobRunRegistry implements AutoCloseable {
    boolean retry=true;
    try{if(!run.cancellation.isCancelled())retry=work.run(run.cancellation);}
    catch(Exception failure){retry=true;}
-   final boolean result=retry;
-   lifecycle.execute(()->complete(id,run,result,finish));
+   finally{
+    // An Error (for example UnsatisfiedLinkError) still finishes the job, with retry.
+    final boolean result=retry;
+    lifecycle.execute(()->complete(id,run,result,finish));
+   }
    return null;
   });
   try{workers.execute(run.task);}
