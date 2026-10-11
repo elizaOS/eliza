@@ -4,9 +4,21 @@ import { defineConfig } from "vitest/config";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appCoreSrcRoot = path.resolve(__dirname, "../../src");
+const srcRoot = path.resolve(__dirname, "src");
 const coreSrcRoot = path.resolve(__dirname, "../../../core/src");
 
 export default defineConfig({
+	plugins: [
+		{
+			name: "bun-import-meta-dir",
+			transform(code, id) {
+				if (!id.startsWith(srcRoot) || !code.includes("import.meta.dir")) {
+					return null;
+				}
+				return code.replace(/\bimport\.meta\.dir\b/g, "import.meta.dirname");
+			},
+		},
+	],
 	resolve: {
 		alias: [
 			{

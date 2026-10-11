@@ -1714,6 +1714,12 @@ export class AgentManager {
 				healthPollTimeoutMs,
 				proc,
 			);
+			if (this.childProcess !== proc) {
+				diagnosticLog(
+					`[Agent] Startup of pid ${proc.pid} was superseded by stop/restart; leaving current runtime state untouched`,
+				);
+				return this.status;
+			}
 			if (!healthy) {
 				// Check if process already exited
 				if (proc.exitCode !== null) {
