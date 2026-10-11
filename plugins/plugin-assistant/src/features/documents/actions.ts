@@ -399,8 +399,12 @@ function getSearchMode(value: unknown): SearchMode | undefined {
     : undefined;
 }
 
+/**
+ * The `limit` parameter tells the planner to send 0 when the field does not
+ * apply, so 0 means the same as an omitted limit.
+ */
 function getLimit(value: unknown): number | undefined {
-  if (value === undefined) return undefined;
+  if (value === undefined || value === 0) return undefined;
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) {
     throw new ElizaError(
       "Document result limit must be a positive safe integer",
@@ -411,21 +415,6 @@ function getLimit(value: unknown): number | undefined {
     );
   }
   return value;
-}
-
-/**
- * The `limit` parameter tells the planner to send 0 when the field does not
- * apply. A 0 the user did not write is that placeholder, not a requested limit.
- */
-function isPlaceholderLimit(value: unknown, message: Memory): boolean {
-  return value === 0 && !/(?:^|\D)0(?:\D|$)/.test(message.content.text ?? "");
-}
-
-function getOptionalPlannerLimit(
-  value: unknown,
-  message: Memory,
-): number | undefined {
-  return isPlaceholderLimit(value, message) ? undefined : getLimit(value);
 }
 
 function getScope(
@@ -456,13 +445,18 @@ function getScopedToEntityId(
       ? (ownerId.trim() as UUID)
       : message.entityId;
   }
-  if (
-    typeof params?.scopedToEntityId === "string" &&
-    isUuid(params.scopedToEntityId)
-  ) {
-    return params.scopedToEntityId;
+  const supplied =
+    typeof params?.scopedToEntityId === "string"
+      ? params.scopedToEntityId.trim()
+      : "";
+  if (!supplied) return message.entityId;
+  if (!isUuid(supplied)) {
+    throw new ElizaError("Document scopedToEntityId must be an entity UUID", {
+      code: "DOCUMENT_INVALID_SCOPE_ENTITY",
+      context: { field: "scopedToEntityId" },
+    });
   }
-  return message.entityId;
+  return supplied;
 }
 
 async function getAddedByRole(
@@ -897,7 +891,7 @@ async function handleSearch(
     content: { ...message.content, text: query },
   };
   const filters = getDocumentFilterParams(params, message);
-  const limit = getOptionalPlannerLimit(params.limit, message);
+  const limit = getLimit(params.limit);
   const matches = await service.searchDocuments(
     searchMessage,
     filters.scopedToEntityId
@@ -1098,7 +1092,7 @@ async function handleRead(
     params.unit === "fragment" || params.unit === "byte" ? params.unit : "line";
   const offset = requiredReadInteger(params.offset, "offset", 0);
   const limit =
-    params.limit === undefined || isPlaceholderLimit(params.limit, message)
+    params.limit === undefined || params.limit === 0
       ? undefined
       : requiredReadInteger(params.limit, "limit", 1);
   const bounded = await service.readDocumentRange(
@@ -1418,7 +1412,7 @@ async function handleList(
       ? Math.floor(params.offset)
       : undefined;
 
-  const requestedLimit = getOptionalPlannerLimit(params.limit, message);
+  const requestedLimit = getLimit(params.limit);
   const listResult = await service.listDocumentsDetailed(message, {
     ...(requestedLimit === undefined ? {} : { limit: requestedLimit }),
     offset,

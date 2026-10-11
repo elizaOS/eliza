@@ -248,10 +248,10 @@ describe("DOCUMENT action schema-valid planner arguments", () => {
       content: "Launch notes line one\nLaunch notes line two\n",
       scope: "global",
     });
-    const run = async (parameters: Record<string, unknown>) => {
+    const run = async (parameters: Record<string, unknown>, text?: string) => {
       const actionResult = await documentAction.handler(
         harness.runtime,
-        userMessage(),
+        text ? { ...userMessage(), content: { text } } : userMessage(),
         undefined,
         { parameters },
       );
@@ -275,6 +275,38 @@ describe("DOCUMENT action schema-valid planner arguments", () => {
       limit: 0,
     });
     expect(search.success, search.text).toBe(true);
+
+    // A 0 inside the user's text (a version number, a UUID) changes nothing.
+    const readWithZeroInText = await run(
+      { action: "read", documentId, limit: 0 },
+      `read document ${documentId} for the v2.0 launch`,
+    );
+    expect(readWithZeroInText.success, readWithZeroInText.text).toBe(true);
+    const searchWithZeroInText = await run(
+      {
+        action: "search",
+        query: "launch notes",
+        searchMode: "keyword",
+        limit: 0,
+      },
+      "Search my documents for the v2.0 launch notes",
+    );
+    expect(searchWithZeroInText.success, searchWithZeroInText.text).toBe(true);
+  });
+
+  it("rejects a write whose scopedToEntityId is not an entity UUID", async () => {
+    const { run } = await makeActionHarness();
+
+    const written = await run({
+      action: "write",
+      text: "private note",
+      scope: "user-private",
+      scopedToEntityId: "Alice",
+    });
+    expect(written.success).toBe(false);
+    expect(written.values).toMatchObject({
+      error: "DOCUMENT_INVALID_SCOPE_ENTITY",
+    });
   });
 
   it("rejects a list or search filter value it cannot read", async () => {
