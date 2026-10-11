@@ -44,6 +44,7 @@ import {
   isTextGenerationModelType,
   type AgentLogEntry as LogEntry,
   MESSAGE_SOURCE_CLIENT_CHAT,
+  type Media,
   type Memory,
   type MessageReplyRecoveryContext,
   ModelType,
@@ -2406,6 +2407,7 @@ async function generateChatResponseWithTiming(
     let blockedUnexecutedActionPayload = false;
     let activeStreamSource: StreamSource = "unset";
     let visibleCallbackDeliveries = 0;
+    const deliveredActionAttachments: Media[] = [];
     const deliveredActionCallbacks: Array<{
       actionName: string;
       text?: string;
@@ -2703,6 +2705,9 @@ async function generateChatResponseWithTiming(
                       : chunk;
                     const attributedActionName =
                       normalizeActionName(actionName);
+                    if (attributedActionName && content.attachments?.length) {
+                      deliveredActionAttachments.push(...content.attachments);
+                    }
                     const progressCallback = isProgressActionCallback(content);
                     if (!visibleChunk) {
                       if (attributedActionName) {
@@ -3219,6 +3224,14 @@ async function generateChatResponseWithTiming(
             const content = {
               ...result.responseContent,
               text: finalText,
+              ...(deliveredActionAttachments.length > 0
+                ? {
+                    attachments: [
+                      ...(result.responseContent.attachments ?? []),
+                      ...deliveredActionAttachments,
+                    ],
+                  }
+                : {}),
               ...(terminalFailureKind
                 ? { failureKind: terminalFailureKind }
                 : {}),
@@ -3245,6 +3258,9 @@ async function generateChatResponseWithTiming(
         : finalText
           ? ({
               text: finalText,
+              ...(deliveredActionAttachments.length > 0
+                ? { attachments: [...deliveredActionAttachments] }
+                : {}),
               ...(terminalFailureKind
                 ? { failureKind: terminalFailureKind }
                 : {}),
