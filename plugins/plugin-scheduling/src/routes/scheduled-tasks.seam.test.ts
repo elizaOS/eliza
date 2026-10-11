@@ -15,6 +15,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createInMemoryScheduledTaskStore,
+  type ScheduledTaskStore,
   TestNoopScheduledTaskDispatcher,
 } from "../scheduled-task/runner.js";
 import {
@@ -22,7 +23,10 @@ import {
   ScheduledTaskRunnerService,
 } from "../scheduled-task/runner-service.js";
 import { createInMemoryScheduledTaskLogStore } from "../scheduled-task/state-log.js";
-import type { ScheduledTaskLogEntry } from "../scheduled-task/types.js";
+import type {
+  ScheduledTask,
+  ScheduledTaskLogEntry,
+} from "../scheduled-task/types.js";
 import { buildSchedulingRoutes } from "./plugin-routes.js";
 
 const AGENT_ID = "seam-test-agent";
@@ -82,6 +86,8 @@ interface SeamHarness {
     runtime: IAgentRuntime,
   ) => Promise<void>;
   runtime: IAgentRuntime;
+  store: ScheduledTaskStore;
+  service: ScheduledTaskRunnerService;
   logRows: (taskId: string) => Promise<ScheduledTaskLogEntry[]>;
   stop: () => Promise<void>;
 }
@@ -123,6 +129,8 @@ async function makeSeam(): Promise<SeamHarness> {
   return {
     handler,
     runtime: runtimeWithService,
+    store,
+    service,
     logRows: (taskId) =>
       logStore.list({ agentId: AGENT_ID, taskId, excludeRollups: true }),
     stop: async () => {
@@ -437,6 +445,40 @@ describe("scheduled-tasks REST seam (real reader, real service, real routes)", (
     expect(res.body).toContain(
       "task.trigger.tz must be a valid IANA time zone",
     );
+  });
+
+  it("keeps a stored cron task with an unresolvable zone editable and importable", async () => {
+    // A row stored before the trigger checks existed keeps firing; pausing it
+    // or moving it in a cutover must not fail on its stored trigger.
+    const { seam, taskId } = await seedTask();
+    const seeded = await seam.store.get(taskId);
+    if (!seeded) throw new Error("seeded task missing");
+    const stored: ScheduledTask = {
+      ...seeded,
+      trigger: { kind: "cron", expression: "every day", tz: "Pacific Time" },
+    };
+    await seam.store.upsert(stored);
+
+    const body = JSON.stringify({ priority: "high" });
+    const res = responseRecorder();
+    await seam.handler(
+      jsonRequest("POST", `/api/lifeops/scheduled-tasks/${taskId}/edit`, body, {
+        "content-length": String(Buffer.byteLength(body)),
+      }),
+      res,
+      seam.runtime,
+    );
+    expect(res.statusCode).toBe(200);
+    expect((await seam.store.get(taskId))?.priority).toBe("high");
+
+    const imported = await seam.service
+      .getRunner({ agentId: AGENT_ID })
+      .importTask(
+        { ...stored, taskId: "stored-cron-import" },
+        { sourceAgentId: "shared-agent", cutoverToken: "cutover-1" },
+      );
+    expect(imported.imported).toBe(true);
+    expect(imported.task.trigger).toEqual(stored.trigger);
   });
 
   it("accepts a cron trigger with an IANA zone or owner_local", async () => {

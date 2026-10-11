@@ -11,8 +11,8 @@ export const OWNER_LOCAL_TZ = "owner_local";
  * Resolve a cron trigger's `tz` to a concrete IANA zone before it reaches
  * core's cron scheduler. `owner_local` resolves against owner facts, with an
  * explicit UTC fallback when the owner has no timezone on file. Any other
- * value passes through unchanged — core warns once and evaluates in UTC for
- * invalid IANA names.
+ * value passes through unchanged. Validation refuses an invalid IANA name on a
+ * new trigger; core evaluates one stored before that check in UTC.
  */
 export function resolveTriggerTz(
   tz: string,

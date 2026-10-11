@@ -8,6 +8,7 @@
  * on violation.
  */
 
+import { isValidTimeZone } from "@elizaos/contracts";
 import { parseCronExpression } from "@elizaos/core";
 import type { CompletionCheckRegistry } from "./completion-check-registry.js";
 import type { EscalationLadderRegistry } from "./escalation.js";
@@ -112,21 +113,10 @@ function isValidIso(value: unknown): boolean {
   return isNonEmptyString(value) && !Number.isNaN(new Date(value).getTime());
 }
 
-/** The same Intl constructor core's cron scheduler uses to resolve a zone. */
-function isResolvableTimeZone(timeZone: string): boolean {
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone }).format(0);
-    return true;
-  } catch {
-    // error-policy:J3 trigger zones are untrusted task input; a zone Intl
-    // rejects is reported as a validation issue.
-    return false;
-  }
-}
-
 function validateTrigger(
   trigger: Record<string, unknown>,
   path: string,
+  newTrigger: boolean,
 ): string[] {
   const issues: string[] = [];
   switch (trigger.kind) {
@@ -138,7 +128,7 @@ function validateTrigger(
     case "cron":
       if (!isNonEmptyString(trigger.expression)) {
         issues.push(`${path}.trigger.expression must be a non-empty string`);
-      } else if (!parseCronExpression(trigger.expression)) {
+      } else if (newTrigger && !parseCronExpression(trigger.expression)) {
         // Core's cron scheduler returns no next run for an expression it
         // cannot parse, so the task would never fire.
         issues.push(
@@ -148,9 +138,10 @@ function validateTrigger(
       if (trigger.tz !== undefined && !isNonEmptyString(trigger.tz)) {
         issues.push(`${path}.trigger.tz must be a non-empty string`);
       } else if (
+        newTrigger &&
         trigger.tz !== undefined &&
         trigger.tz !== OWNER_LOCAL_TZ &&
-        !isResolvableTimeZone(trigger.tz)
+        !isValidTimeZone(trigger.tz)
       ) {
         // Core's cron scheduler evaluates a zone it cannot resolve on UTC.
         issues.push(
@@ -300,6 +291,7 @@ function validateTaskRef(
   path: string,
   depth: number,
   seen: WeakSet<object>,
+  newPipeline: boolean,
 ): string[] {
   if (typeof ref === "string") {
     return ref.trim().length > 0 ? [] : [`${path} must be a non-empty task id`];
@@ -321,17 +313,33 @@ function validateTaskRef(
       path,
       depth: depth + 1,
       seen,
+      newTrigger: newPipeline,
+      newPipeline,
     });
   } finally {
     if (trackRef) seen.delete(ref);
   }
 }
 
+/**
+ * `newTrigger` and `newPipeline` mark the task's trigger and its inline
+ * pipeline children as caller input, which must be a cron schedule core can
+ * run. A stored task keeps a trigger that was accepted before these checks,
+ * so an import or an edit of another field does not refuse it.
+ */
 export function validateScheduledTaskInput(
   input: ScheduledTaskInput,
   deps: ScheduledTaskValidationDeps,
-  opts: { path?: string; depth?: number; seen?: WeakSet<object> } = {},
+  opts: {
+    path?: string;
+    depth?: number;
+    seen?: WeakSet<object>;
+    newTrigger?: boolean;
+    newPipeline?: boolean;
+  } = {},
 ): string[] {
+  const newTrigger = opts.newTrigger ?? false;
+  const newPipeline = opts.newPipeline ?? false;
   const path = opts.path ?? "task";
   const depth = opts.depth ?? 0;
   const seen = opts.seen ?? new WeakSet<object>();
@@ -373,7 +381,7 @@ export function validateScheduledTaskInput(
   if (!input.trigger || !isRecord(input.trigger)) {
     issues.push(`${path}.trigger must be an object`);
   } else {
-    issues.push(...validateTrigger(input.trigger, path));
+    issues.push(...validateTrigger(input.trigger, path, newTrigger));
   }
 
   if (input.subject !== undefined) {
@@ -558,6 +566,7 @@ export function validateScheduledTaskInput(
               `${path}.pipeline.${key}[${index}]`,
               depth,
               seen,
+              newPipeline,
             ),
           );
         });

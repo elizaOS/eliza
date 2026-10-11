@@ -1387,6 +1387,12 @@ export function createScheduledTaskRunner(
     return (await scheduleWithResult(input)).task;
   }
 
+  function scheduleWithResult(
+    input: Omit<ScheduledTask, "taskId" | "state">,
+  ): Promise<ScheduledTaskScheduleResult> {
+    return scheduleInput(input, true);
+  }
+
   async function creationCommit(
     task: ScheduledTask,
   ): Promise<ScheduledTaskLogEntry> {
@@ -1449,8 +1455,13 @@ export function createScheduledTaskRunner(
     return { task, commit: await creationCommit(task), replayed: true };
   }
 
-  async function scheduleWithResult(
+  /**
+   * `callerInput` is false for an inline pipeline child: its trigger was
+   * validated with the parent, or stored before cron triggers were checked.
+   */
+  async function scheduleInput(
     input: Omit<ScheduledTask, "taskId" | "state">,
+    callerInput: boolean,
   ): Promise<ScheduledTaskScheduleResult> {
     if (input.idempotencyKey) {
       const existing = await deps.store.findByIdempotencyKey(
@@ -1459,7 +1470,10 @@ export function createScheduledTaskRunner(
       if (existing) return replaySchedule(existing);
     }
 
-    const validationIssues = validateScheduledTaskInput(input, deps);
+    const validationIssues = validateScheduledTaskInput(input, deps, {
+      newTrigger: callerInput,
+      newPipeline: callerInput,
+    });
     if (validationIssues.length > 0) {
       throw new ScheduledTaskValidationError(validationIssues);
     }
@@ -1831,7 +1845,10 @@ export function createScheduledTaskRunner(
     const edited = structuredClone(task);
     Object.assign(edited, payload);
     const { taskId: _taskId, state: _state, ...input } = edited;
-    const validationIssues = validateScheduledTaskInput(input, deps);
+    const validationIssues = validateScheduledTaskInput(input, deps, {
+      newTrigger: Object.hasOwn(payload, "trigger"),
+      newPipeline: Object.hasOwn(payload, "pipeline"),
+    });
     if (validationIssues.length > 0) {
       throw new ScheduledTaskValidationError(validationIssues);
     }
@@ -2274,7 +2291,7 @@ export function createScheduledTaskRunner(
           index,
         ].join(":");
       }
-      const fresh = await schedule(childInput);
+      const fresh = (await scheduleInput(childInput, false)).task;
       fresh.state.pipelineParentId = parent.taskId;
       await persist(fresh);
       created.push(fresh);
