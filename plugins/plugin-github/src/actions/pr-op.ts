@@ -11,14 +11,10 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  ElizaError,
-  logger,
-  requireConfirmation,
-  toWellFormedUnicode,
-} from "@elizaos/core";
+import { ElizaError, logger, toWellFormedUnicode } from "@elizaos/core";
 import {
   buildResolvedClient,
+  confirmPreviewedRequest,
   describeSelection,
   requireNumber,
   requireString,
@@ -239,8 +235,12 @@ async function runReview(
 
   // Reject what the review cannot run with before asking: a confirmation the
   // user answers must not be followed by an argument or account error.
-  if (action === "request-changes" && !body) {
-    const err = "request-changes review requires a body explaining the changes";
+  // GitHub requires a body for both REQUEST_CHANGES and COMMENT reviews.
+  if (action !== "approve" && !body) {
+    const err =
+      action === "request-changes"
+        ? "request-changes review requires a body explaining the changes"
+        : "comment review requires a body";
     await callback?.({ text: err });
     return { success: false, error: err };
   }
@@ -257,15 +257,16 @@ async function runReview(
     body,
     describeSelection(selection),
   );
-  const decision = await requireConfirmation({
+  const decision = await confirmPreviewedRequest({
     runtime,
     message,
     actionName: GitHubActions.GITHUB_PR_OP,
     pendingKey: `review:${repo}:${number}:${action}`,
     prompt: `${preview} Reply yes to confirm or no to cancel.`,
     callback,
+    request: { repo, number, action, body, selection },
   });
-  if (decision.status === "pending") {
+  if (decision === "pending") {
     const text = `${preview} Reply yes to confirm or no to cancel.`;
     // requireConfirmation already delivered the pending prompt exactly once.
     return {
@@ -274,7 +275,7 @@ async function runReview(
       data: { requiresConfirmation: true, preview, awaitingUserInput: true },
     };
   }
-  if (decision.status === "cancelled") {
+  if (decision === "cancelled") {
     const text = "GitHub PR review cancelled.";
     await callback?.({ text });
     return { success: true, text, data: { cancelled: true } };
@@ -356,7 +357,8 @@ export const prOpAction: Action = {
     },
     {
       name: "body",
-      description: "Review body for comment or request-changes.",
+      description:
+        "Review body. Required for review_action comment and request-changes; optional for approve.",
       required: false,
       schema: { type: "string" },
     },

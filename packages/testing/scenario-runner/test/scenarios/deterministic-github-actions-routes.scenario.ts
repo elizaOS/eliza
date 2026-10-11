@@ -38,7 +38,7 @@ const COMMENT_URL = "https://github.test/octo/repo/issues/17#issuecomment-99";
 const PR_URL = "https://github.test/octo/repo/pull/17";
 const REVIEW_BODY = "Looks good";
 const ISSUE_CREATE_PREVIEW =
-  'About to create octo/repo issue: "Deterministic issue" [labels: scenario] [assignees: hubot] as agent.';
+  'About to create octo/repo issue: "Deterministic issue" body: "Created by scenario" [labels: scenario] [assignees: hubot] as agent.';
 type JsonRecord = Record<string, unknown>;
 type RuntimeWithGithubScenario = IAgentRuntime &
   RuntimeWithScenarioModelFixtures & {

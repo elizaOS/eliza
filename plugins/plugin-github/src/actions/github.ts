@@ -156,7 +156,8 @@ export const githubAction: Action = {
     },
     {
       name: "body",
-      description: "Issue body, issue comment body, or PR review body.",
+      description:
+        "Issue body, issue comment body, or PR review body. Required for issue_comment and for pr_review with review_action comment or request-changes.",
       required: false,
       schema: { type: "string" },
     },

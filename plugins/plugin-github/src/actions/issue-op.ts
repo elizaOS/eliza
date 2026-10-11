@@ -12,13 +12,10 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  logger,
-  requireConfirmation,
-  toWellFormedUnicode,
-} from "@elizaos/core";
+import { logger, toWellFormedUnicode } from "@elizaos/core";
 import {
   buildResolvedClient,
+  confirmPreviewedRequest,
   describeSelection,
   optionalStringArray,
   type ResolvedClient,
@@ -293,7 +290,7 @@ export function buildPreview(
   const detail = (() => {
     switch (op) {
       case "create":
-        return ` issue: "${title ?? "(no title)"}"${labels ? ` [labels: ${labels.join(", ")}]` : ""}${assignees ? ` [assignees: ${assignees.join(", ")}]` : ""}`;
+        return ` issue: "${title ?? "(no title)"}"${body ? ` body: "${toWellFormedUnicode(body)}"` : ""}${labels ? ` [labels: ${labels.join(", ")}]` : ""}${assignees ? ` [assignees: ${assignees.join(", ")}]` : ""}`;
       case "assign":
         return ` with [${assignees?.join(", ") ?? ""}]`;
       case "label":
@@ -446,15 +443,16 @@ export const issueOpAction: Action = {
       options,
     );
     const prompt = `${preview} Reply yes to confirm or no to cancel.`;
-    const decision = await requireConfirmation({
+    const decision = await confirmPreviewedRequest({
       runtime,
       message,
       actionName: "GITHUB_ISSUE_OP",
       pendingKey: `${op}:${repo}`,
       prompt,
       callback,
+      request: { repo, request, selection },
     });
-    if (decision.status === "pending") {
+    if (decision === "pending") {
       return {
         success: false,
         requiresConfirmation: true,
@@ -466,7 +464,7 @@ export const issueOpAction: Action = {
         data: { requiresConfirmation: true, preview, awaitingUserInput: true },
       };
     }
-    if (decision.status === "cancelled") {
+    if (decision === "cancelled") {
       const cancelMessage = "GitHub issue operation cancelled.";
       await callback?.({ text: cancelMessage });
       return { success: false, error: cancelMessage };
