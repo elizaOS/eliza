@@ -4503,7 +4503,7 @@ export class SlackService extends Service implements ISlackService {
       const result = await client.conversations.replies({
         channel: channelId,
         ts: threadTs,
-        limit: Math.min(15, requestedLimit ?? 15),
+        limit: 15,
         latest: options?.before,
         oldest: options?.after,
         cursor,
@@ -4511,15 +4511,14 @@ export class SlackService extends Service implements ISlackService {
       rawMessages.push(
         ...((result.messages ?? []) as Array<Record<string, unknown>>),
       );
-      if (requestedLimit !== undefined && rawMessages.length >= requestedLimit)
-        break;
+      if (requestedLimit !== undefined && rawMessages.length > requestedLimit)
+        rawMessages.splice(0, rawMessages.length - requestedLimit);
       cursor = nextSlackCursor(result, seen, "thread replies");
     } while (cursor);
-    const selected =
-      requestedLimit === undefined
-        ? rawMessages
-        : rawMessages.slice(0, requestedLimit);
-    return selected.map((msg) => this.wireMessageToSlackMessage(msg));
+    // conversations.replies is oldest-first; return newest-first like readHistory.
+    return rawMessages
+      .reverse()
+      .map((msg) => this.wireMessageToSlackMessage(msg));
   }
 
   private async listAllConnectorUsers(
