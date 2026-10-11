@@ -782,6 +782,14 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
           "RRULE:FREQ=WEEKLY",
           "SUMMARY:Trash day",
           "END:VEVENT",
+          "BEGIN:VEVENT",
+          "UID:trash",
+          "DTSTAMP:20260601T000000Z",
+          "RECURRENCE-ID;VALUE=DATE:20260616",
+          "DTSTART:20260619T100000Z",
+          "DTEND:20260619T110000Z",
+          "SUMMARY:Trash pickup (moved)",
+          "END:VEVENT",
         ].join("\r\n"),
       ),
     );
@@ -813,6 +821,16 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     );
     expect(losAngelesMonday.state).toBe("complete");
     expect(losAngelesMonday.events).toEqual([]);
+
+    // 00:00 to 06:00 on June 16 in Tokyo. A timed override replaced the
+    // June 16 occurrence, and its recurrence instant is after this window.
+    const tokyoMovedMorning = await readFeed(
+      "Asia/Tokyo",
+      "2026-06-15T15:00:00.000Z",
+      "2026-06-15T21:00:00.000Z",
+    );
+    expect(tokyoMovedMorning.state).toBe("complete");
+    expect(tokyoMovedMorning.events).toEqual([]);
   });
 
   it("expands an established daily series after more than 1000 prior occurrences", async () => {

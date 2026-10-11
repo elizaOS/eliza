@@ -658,7 +658,9 @@ export class CalendarRepository {
    * overrides whose original recurrence instant is in the window even when the
    * override moved out. The window is [timeMin, timeMax) for a timed row and
    * the wider [allDayTimeMin, allDayTimeMax) for an all-day row, which is a
-   * civil date that the caller places on local days.
+   * civil date that the caller places on local days. An override can be timed
+   * while the occurrence it replaces is all-day, so every original recurrence
+   * instant is matched in the wider window.
    */
   async listIcsCalendarEventsForExpansion(args: {
     agentId: string;
@@ -703,8 +705,8 @@ export class CalendarRepository {
               )
             )
             OR (
-              ${metadata} ->> 'icsRecurrenceId' >= ${windowMin}
-              AND ${metadata} ->> 'icsRecurrenceId' < ${windowMax}
+              ${metadata} ->> 'icsRecurrenceId' >= ${sqlQuote(args.allDayTimeMin)}
+              AND ${metadata} ->> 'icsRecurrenceId' < ${sqlQuote(args.allDayTimeMax)}
             )
           )
         ORDER BY start_at ASC`,
