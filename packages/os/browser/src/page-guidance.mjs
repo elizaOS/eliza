@@ -594,19 +594,19 @@ export function pageGuidance(request) {
                 p.y >= avoid.bottom + 8,
             ),
         );
+      Object.assign(ring.style, {
+        left: `${rect.left}px`,
+        top: `${rect.top}px`,
+        width: `${rect.width}px`,
+        height: `${rect.height}px`,
+        borderRadius: css.borderRadius,
+      });
       if (position) {
         label.style.left = `${position.x}px`;
         label.style.top = `${position.y}px`;
         tail.hidden = position.tail === undefined;
         tail.className = position.tail ? "tail up" : "tail";
         tail.style.left = `${Math.max(14, Math.min(rect.left + 28 - position.x, width - 32))}px`;
-        Object.assign(ring.style, {
-          left: `${rect.left}px`,
-          top: `${rect.top}px`,
-          width: `${rect.width}px`,
-          height: `${rect.height}px`,
-          borderRadius: css.borderRadius,
-        });
         const point = [
           rect.left + Math.min(rect.width / 2, 120),
           rect.top + rect.height / 2,
@@ -654,7 +654,12 @@ export function pageGuidance(request) {
         state.visible = true;
         state.appeared = true;
         if (!visibleSince) visibleSince = now;
-      } else hide();
+      } else {
+        hide();
+        // Only the label needs room. A show-only step keeps its ring on the
+        // control; an action still needs its label and Cancel.
+        ring.hidden = Boolean(request.action);
+      }
     } else hide();
     frame = requestAnimationFrame(update);
   };

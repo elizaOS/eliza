@@ -21,20 +21,12 @@ import type {
   DesktopActionType,
 } from "../types.js";
 import {
+  approvalOwnerIdFromMemory,
   buildScreenshotAttachment,
   resolveActionParams,
   toComputerUseActionResult,
 } from "./helpers.js";
 import { withApprovalRelay } from "./progress.js";
-
-function approvalOwnerIdFromMemory(message: Memory): string | undefined {
-  const metadata = message.metadata;
-  if (!metadata || typeof metadata !== "object") return undefined;
-  const telegramUserId = (metadata as Record<string, unknown>).telegramUserId;
-  return typeof telegramUserId === "string" && telegramUserId.length > 0
-    ? telegramUserId
-    : undefined;
-}
 
 function getComputerUseService(
   runtime: IAgentRuntime,

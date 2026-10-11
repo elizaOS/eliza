@@ -12,6 +12,7 @@ import path from "node:path";
 import process from "node:process";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
+import type { VerifyResult } from "@elizaos/contracts";
 import {
   ChannelType,
   compareMemoryIds,
@@ -52,11 +53,14 @@ import {
   writeDownloadChunk,
 } from "../shared/download-writer.ts";
 import {
+  closeSync,
   createWriteStream,
   existsSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
+  readSync,
   renameSync,
   rmSync,
   statSync,
@@ -2441,6 +2445,39 @@ function normalizeInstalledModelPath(rawPath: string): string | null {
     existsSync(p),
   );
 }
+/**
+ * Structural check behind the Verify button. The iOS registry stores no
+ * install-time sha256, so a present file with a GGUF header is `unknown`,
+ * never `ok`: there is no baseline to compare a hash against.
+ */
+function verifyInstalledModelFile(modelPath: string): VerifyResult {
+  if (!existsSync(modelPath)) {
+    return {
+      state: "missing",
+      currentSha256: null,
+      expectedSha256: null,
+      currentBytes: null,
+    };
+  }
+  const currentBytes = statSync(modelPath).size;
+  const header = Buffer.alloc(4);
+  const fd = openSync(modelPath, "r");
+  let headerBytes: number;
+  try {
+    headerBytes = readSync(fd, header, 0, 4, 0);
+  } finally {
+    closeSync(fd);
+  }
+  return {
+    state:
+      headerBytes === 4 && header.toString("ascii") === "GGUF"
+        ? "unknown"
+        : "truncated",
+    currentSha256: null,
+    expectedSha256: null,
+    currentBytes,
+  };
+}
 function readInstalledModels(): InstalledModelEntry[] {
   const parsed = readJsonObjectFile(localInferenceRegistryPath());
   const rawModels = Array.isArray(parsed.models) ? parsed.models : [];
@@ -3865,13 +3902,7 @@ async function handleNativeIosLocalInferenceRoute(
     const model = readInstalledModels().find((entry) => entry.id === id);
     if (!model)
       return jsonResponse(404, { error: `Model not installed: ${id}` });
-    return jsonResponse(200, {
-      ok: true,
-      modelId: model.id,
-      path: model.path,
-      sizeBytes: model.sizeBytes ?? 0,
-      verifiedAt: new Date().toISOString(),
-    });
+    return jsonResponse(200, verifyInstalledModelFile(model.path));
   }
   return null;
 }
@@ -4014,10 +4045,43 @@ async function handleDirectConversationMessage(
   }));
   if (nativeReply) {
     const agentName = runtimeAgentName(backend.runtime);
+    const nativeText =
+      typeof nativeReply.text === "string" ? nativeReply.text : "";
+    // The native path does not run messageService, so nothing else stores the
+    // reply. A generation-failure notice is not a model reply and is not stored.
+    if (
+      nativeText &&
+      !(nativeReply.localInference as { error?: string } | undefined)?.error
+    ) {
+      try {
+        await runtime.createMemory?.(
+          createMessageMemory({
+            id: crypto.randomUUID() as UUID,
+            entityId: backend.runtime.agentId,
+            roomId: conversation.roomId,
+            content: {
+              text: nativeText,
+              source: "ios-local",
+              channelType,
+              inReplyTo: message.id,
+            },
+          }),
+          "messages",
+        );
+      } catch (error) {
+        // error-policy:J6 best-effort secondary persistence — the person has
+        // already watched this reply stream in; a failed transcript write must
+        // not turn the finished turn into a failed POST. The failure is
+        // surfaced to stderr and the reply is absent from the next GET.
+        console.error(
+          "[ios-bridge] createMemory(messages) failed for the native reply:",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
     conversation.updatedAt = new Date().toISOString();
     conversation.lastUserText = prompt.trim();
-    conversation.lastAssistantText =
-      typeof nativeReply.text === "string" ? nativeReply.text : "";
+    conversation.lastAssistantText = nativeText;
     conversation.lastAgentName = agentName;
     return {
       ...nativeReply,
@@ -4060,6 +4124,60 @@ async function handleDirectConversationMessage(
     agentName,
     conversationId: conversation.id,
   };
+}
+/**
+ * GET /api/conversations/:id/messages — the stored turns of the conversation
+ * room, oldest first. The newest-history read returns the whole room, so a
+ * `before` page holds only rows the store has below that cursor and the
+ * response never reports more.
+ */
+async function handleConversationMessagesRoute(
+  runtime: IAgentRuntime,
+  conversation: IosConversation,
+  query: Record<string, string | string[]>,
+): Promise<BufferedHttpResponse> {
+  const before = parseCanonicalInteger(queryParam(query, "before"));
+  if (before === "invalid") {
+    return jsonResponse(400, {
+      error: "before must be a Unix timestamp in milliseconds",
+    });
+  }
+  const beforeIdParam = queryParam(query, "beforeId");
+  const beforeId =
+    beforeIdParam === null ? undefined : validateUuid(beforeIdParam);
+  if (beforeIdParam !== null && (before === undefined || beforeId === null)) {
+    return jsonResponse(400, {
+      error: "beforeId must be a UUID paired with before",
+    });
+  }
+  const memories = await runtime.getMemories({
+    roomId: conversation.roomId,
+    tableName: "messages",
+    ...(before === undefined
+      ? {}
+      : beforeId
+        ? { cursor: { createdAt: before, id: beforeId } }
+        : { end: before - 1 }),
+  });
+  memories.sort(
+    (a, b) =>
+      memoryCreatedAt(a) - memoryCreatedAt(b) ||
+      compareMemoryIds(a.id ?? "", b.id ?? ""),
+  );
+  return jsonResponse(200, {
+    messages: memories.map((memory) => {
+      const role = memory.entityId === runtime.agentId ? "assistant" : "user";
+      const text =
+        typeof memory.content.text === "string" ? memory.content.text : "";
+      return {
+        id: memory.id ?? "",
+        role,
+        text: role === "assistant" ? stripReasoningBlocks(text).trim() : text,
+        timestamp: memoryCreatedAt(memory),
+      };
+    }),
+    ...(before === undefined ? {} : { hasMore: false }),
+  });
 }
 function cachedConversationMessageResult(
   conversation: IosConversation,
@@ -4463,7 +4581,22 @@ export async function handleDirectCoreRoute(
     /^\/api\/conversations\/([^/]+)\/messages\/stream$/,
   );
   if (method === "GET" && messageMatch) {
-    return jsonResponse(200, { messages: [] });
+    const conversationId = decodePathComponent(messageMatch[1] ?? "");
+    if (conversationId === null) {
+      return jsonResponse(400, {
+        error: "invalid conversation id: malformed URL encoding",
+      });
+    }
+    const conversation = backend.conversations.get(conversationId);
+    if (!conversation) {
+      return jsonResponse(404, { error: "Conversation not found" });
+    }
+    const { query } = splitPathAndQuery(rawPath);
+    return handleConversationMessagesRoute(
+      backend.runtime,
+      conversation,
+      query,
+    );
   }
   if (method === "POST" && messageStreamMatch) {
     const conversationId = decodePathComponent(messageStreamMatch[1] ?? "");

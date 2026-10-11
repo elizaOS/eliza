@@ -5427,7 +5427,7 @@
   "localinference.modelActivated": "모델이 활성화되었습니다",
   "localinference.modelUninstalled": "모델이 제거되었습니다",
   "localinference.verifyOk": "모델 검증 완료",
-  "localinference.verifyUnknown": "기준 해시가 기록되었습니다 — 향후 검증은 이를 기준으로 비교합니다",
+  "localinference.verifyUnknown": "모델 파일이 존재하며 유효한 GGUF입니다. 비교할 설치 시점 해시가 기록되어 있지 않습니다.",
   "localinference.verifyMissing": "모델 파일이 디스크에 없습니다",
   "localinference.verifyTruncated": "모델 파일이 손상되었습니다 (유효한 GGUF가 아님)",
   "localinference.verifyMismatch": "모델 해시가 설치된 복사본과 일치하지 않습니다 — 재다운로드를 권장합니다",

@@ -10,6 +10,7 @@
 
 import { logger } from "@elizaos/core";
 import { Redis } from "ioredis";
+import type { getDb } from "../db/client";
 import { assertRedisUrlTls } from "../redis/index.ts";
 import { redactedThrownDiagnostics } from "../shared/index.ts";
 import { MONOTONIC_REVOCATION_SCRIPT } from "./revocation-script";
@@ -23,6 +24,9 @@ export class TokenRevokedError extends Error {
 
 type ExpiresAt = Date | number;
 
+/** An open identity-database transaction a database-backed store can write through. */
+export type RevocationTransaction = Pick<ReturnType<typeof getDb>, "execute">;
+
 export interface RevocationStore {
   revokeToken(jti: string, expiresAt: ExpiresAt): Promise<void>;
   isRevoked(jti: string): Promise<boolean>;
@@ -32,10 +36,17 @@ export interface RevocationStore {
     expiresAt?: ExpiresAt,
   ): Promise<number>;
   getAgentRevokedBefore(agentId: string): Promise<number | null>;
+  /**
+   * `transaction` is for a caller that already holds an identity-database
+   * transaction. A database-backed store writes the line in it, so the write
+   * commits with the caller's work and never waits for a second connection.
+   * Stores that keep the line elsewhere ignore it.
+   */
   revokeUserTokens(
     userId: string,
     issuedBefore?: number,
     expiresAt?: ExpiresAt,
+    transaction?: RevocationTransaction,
   ): Promise<number>;
   getUserRevokedBefore(userId: string): Promise<number | null>;
 }

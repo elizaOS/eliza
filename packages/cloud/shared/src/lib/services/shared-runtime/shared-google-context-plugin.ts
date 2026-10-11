@@ -47,7 +47,7 @@ export function createSharedGoogleContextPlugin(
       },
       {
         name: "timeZone",
-        description: "Optional owner-requested IANA timezone. Defaults to UTC when omitted.",
+        description: "Owner IANA timezone. Required for calendar; the read is rejected without it.",
         schema: { type: "string" },
       },
     ],
@@ -115,7 +115,15 @@ export function createSharedGoogleContextPlugin(
           /^Google Calendar feed exceeded \d+ events; narrow the requested time range\.$/u.test(
             error.message,
           );
-        const code = calendarLimit ? "GOOGLE_CONTEXT_LIMIT_EXCEEDED" : "GOOGLE_CONTEXT_UNAVAILABLE";
+        const invalidRequest =
+          error instanceof ElizaError &&
+          (error.code === "SHARED_GOOGLE_INVALID_INPUT" ||
+            error.code === "SHARED_GOOGLE_CALENDAR_WINDOW_REQUIRED");
+        const code = calendarLimit
+          ? "GOOGLE_CONTEXT_LIMIT_EXCEEDED"
+          : invalidRequest
+            ? "GOOGLE_CONTEXT_INVALID_REQUEST"
+            : "GOOGLE_CONTEXT_UNAVAILABLE";
         _runtime.reportError(
           "SharedGoogleContext",
           new ElizaError("Google personal context operation failed", { code }),
@@ -125,7 +133,9 @@ export function createSharedGoogleContextPlugin(
           success: false,
           text: calendarLimit
             ? "Google Calendar context exceeded the event limit. No partial result was returned. Request a narrower time range."
-            : "Google personal context could not be read. Check the selected account's connection and consent, or retry the request. No successful read is claimed.",
+            : invalidRequest
+              ? "The Google request was rejected before any read. gmail_search needs query. gmail_message needs messageId. calendar needs timeMin, timeMax (ISO timestamps, end after start) and the owner's IANA timeZone."
+              : "Google personal context could not be read. Check the selected account's connection and consent, or retry the request. No successful read is claimed.",
           data: {
             actionName: GOOGLE_CONTEXT_ACTION,
             operation,

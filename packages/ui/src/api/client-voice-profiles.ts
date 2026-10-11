@@ -64,6 +64,33 @@ export interface VoiceProfilePatch {
   retentionDays?: number | null;
 }
 
+/** Wire schema tag of the document `POST /api/voice/profiles/export` returns. */
+export const VOICE_PROFILES_EXPORT_SCHEMA = "eliza.voice_profiles_export.v1";
+
+/** The export document. `profiles` is the server's own DTO list, saved as-is. */
+export interface VoiceProfilesExport {
+  schema: typeof VOICE_PROFILES_EXPORT_SCHEMA;
+  exportedAt: string;
+  ownerEntityId: string | null;
+  profiles: unknown[];
+}
+
+function isVoiceProfilesExport(value: unknown): value is VoiceProfilesExport {
+  if (typeof value !== "object" || value === null) return false;
+  const doc = value as {
+    schema?: unknown;
+    exportedAt?: unknown;
+    ownerEntityId?: unknown;
+    profiles?: unknown;
+  };
+  return (
+    doc.schema === VOICE_PROFILES_EXPORT_SCHEMA &&
+    typeof doc.exportedAt === "string" &&
+    (doc.ownerEntityId === null || typeof doc.ownerEntityId === "string") &&
+    Array.isArray(doc.profiles)
+  );
+}
+
 /**
  * Single failure context used by every adapter call so the UI can render a
  * stable empty state instead of a generic toast/spinner.
@@ -225,19 +252,26 @@ export class VoiceProfilesClient {
     }
   }
 
-  /** Bulk export (metadata only). Returns a server-signed download URL. */
-  async exportAll(): Promise<{ downloadUrl: string | null }> {
+  /** Bulk export (metadata only). Returns the export document itself. */
+  async exportAll(): Promise<VoiceProfilesExport> {
+    let raw: unknown;
     try {
-      return await this.client.fetch<{ downloadUrl: string | null }>(
-        "/api/voice/profiles/export",
-        { method: "POST" },
-      );
+      raw = await this.client.fetch<unknown>("/api/voice/profiles/export", {
+        method: "POST",
+      });
     } catch (err) {
       throw new VoiceProfilesUnavailableError(
         "/api/voice/profiles/export",
         err,
       );
     }
+    if (!isVoiceProfilesExport(raw)) {
+      throw new VoiceProfilesUnavailableError(
+        "/api/voice/profiles/export",
+        new Error("the server did not return a voice profile export document"),
+      );
+    }
+    return raw;
   }
 
   /** Delete all profiles. `includeOwner` is opt-in; default keeps OWNER. */
