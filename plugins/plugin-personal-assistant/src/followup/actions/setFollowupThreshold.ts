@@ -87,7 +87,6 @@ export const setFollowupThresholdAction: Action = {
         text: "SET_FOLLOWUP_THRESHOLD requires a positive integer thresholdDays.",
       };
     }
-    const thresholdInt = thresholdDays;
 
     const service = getRelationshipsServiceLike(runtime);
     if (!service) {
@@ -171,23 +170,23 @@ export const setFollowupThresholdAction: Action = {
 
     const nextFields: Record<string, string | number> = {
       ...(resolvedContact.customFields as Record<string, string | number>),
-      followupThresholdDays: thresholdInt,
+      followupThresholdDays: thresholdDays,
     };
     await service.updateContact(resolvedContact.entityId, {
       customFields: nextFields,
     });
 
     logger.info(
-      `[SET_FOLLOWUP_THRESHOLD] Set ${resolvedDisplayName} (${resolvedContact.entityId}) threshold to ${thresholdInt} days`,
+      `[SET_FOLLOWUP_THRESHOLD] Set ${resolvedDisplayName} (${resolvedContact.entityId}) threshold to ${thresholdDays} days`,
     );
 
     return {
       success: true,
-      text: `Set follow-up threshold for ${resolvedDisplayName} to ${thresholdInt} days.`,
+      text: `Set follow-up threshold for ${resolvedDisplayName} to ${thresholdDays} days.`,
       data: {
         entityId: String(resolvedContact.entityId),
         displayName: resolvedDisplayName,
-        thresholdDays: thresholdInt,
+        thresholdDays: thresholdDays,
       },
     };
   },
