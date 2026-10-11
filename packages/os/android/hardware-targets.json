@@ -70,6 +70,29 @@
         "No validated bootloader unlock, flash, or rollback procedure exists."
       ],
       "labExperimentsEligible": false
+    },
+    {
+      "targetId": "lenovo-ideatab-tb336fu",
+      "marketingName": "Lenovo Idea Tab / Tab K11 Gen 2 Wi-Fi",
+      "manufacturer": "Lenovo",
+      "codenames": ["TB336FU"],
+      "reviewedAt": "2026-10-10",
+      "authoritativeReferences": [
+        "https://xdaforums.com/t/rom-gsi-unofficial-android-16-lineageos-23-2-vanilla-v1-2-0-for-lenovo-tab-k11-gen-2-tb336fu.4797103/",
+        "https://xdaforums.com/t/guide-dev-lenovo-tb336fu-bootloader-unlock-root-twrp-device-tree.4790938/",
+        "https://github.com/lenovo/gplcc/issues/14",
+        "https://source.android.com/docs/core/tests/vts/gsi"
+      ],
+      "sourceStatus": "blocked",
+      "installerEligible": false,
+      "labExperimentsEligible": false,
+      "blockedReasons": [
+        "Read-only stock Android 16 observation is not an Eliza or downstream GSI boot; no exact-image VINTF, boot, hardware, runtime or rollback qualification exists.",
+        "Community Android 16 GSI success on Lenovo 17.5.10.271 does not qualify the Eliza Android 17 GSI or other Lenovo SKUs.",
+        "The observed device remains locked. Device-specific Lenovo unlock authorization, stock restore inputs and an installation contract are not provisioned.",
+        "Matching Lenovo kernel/vendor/DTBO/module source and a custom-key relock contract have not been verified. Community installers retain stock binaries and disable AVB verification."
+      ],
+      "decisionNote": "TB336FU / sycamore_row_wifi is the Wi-Fi model. TB336ZU, TB336ZA and TB335FC are not interchangeable. Keep downstream UI and product policy in the consumer; use stage-launcher-overlay with partition system for a system-only image."
     }
   ]
 }

@@ -95,7 +95,10 @@ is unchanged. Development unpacked-extension proofs do not qualify release build
   and the Ed25519 release keys, and the signing-environment decryptor.
 - Read-only device qualification against a requirements file. The shipped
   [`device-requirements/treble-gsi.json`](device-requirements/treble-gsi.json)
-  checks Treble/GSI readiness; products pass their own thresholds:
+  checks Treble/GSI readiness; products pass their own thresholds. An `identity`
+  requirement uses `field` (`manufacturer`, `model`, `device`, `fingerprint`, or
+  `vendorFingerprint`) and a nonempty exact `equals` value to bind observations
+  to a reviewed SKU/baseline. Missing values remain incomplete:
 
   ```bash
   node packages/os/scripts/android/device-qualify.ts --serial SERIAL \
@@ -148,3 +151,14 @@ and additive. Device provisioning must select the HOME role. The helper does not
 replace the full local-agent APK contract, grant roles, build an image, or qualify
 boot, OTA, Chromium signer admission, or physical hardware. Keep those checks
 separate. Test with `node --test packages/os/scripts/__tests__/stage-launcher-overlay.node.test.ts`.
+
+For a downstream **system-only GSI**, set `partition: "system"` in the reviewed
+launcher descriptor. Both the nonprivileged APK and optional revocable permission
+file then install in `/system`; the default remains `/product`. Inherit the staged
+`product.mk` in the consumer's own AOSP product. This does not select an Android
+release, add Treble compatibility patches, or import Eliza's launcher identity.
+
+`lenovo-ideatab-tb336fu` records an observed stock candidate and remains blocked.
+The linked community Android 16 package is an unofficial GSI retaining Lenovo's
+`.271` vendor/kernel stack, not a device source port or evidence for Eliza's
+Android 17 target. Read-only stock qualification cannot enable installation.

@@ -24,6 +24,8 @@ export interface LauncherDescriptor {
    * a product default-permissions file. Each must be declared by the APK.
    */
   defaultPermissions?: string[];
+  /** Default: product. A system-only GSI must carry both APK and grants in system. */
+  partition?: "product" | "system";
 }
 const PERMISSION = /^android\.permission\.[A-Z][A-Z0-9_]{0,63}$/;
 export function validateDescriptor(value: unknown): LauncherDescriptor {
@@ -62,6 +64,8 @@ export function validateDescriptor(value: unknown): LauncherDescriptor {
       ))
   )
     throw new Error("Invalid default permissions");
+  if (d.partition !== undefined && !["product", "system"].includes(d.partition))
+    throw new Error("Invalid launcher partition");
   return d;
 }
 
@@ -214,12 +218,15 @@ export function validateInspection(
       throw new Error(`Launcher does not declare ${permission}`);
 }
 export function renderOverlay(d: LauncherDescriptor) {
+  validateDescriptor(d);
+  const partitionProperty =
+    d.partition === "system" ? "" : "    product_specific: true,\n";
   const permissionsModule = `${d.moduleName}DefaultPermissions`;
   const permissions = d.defaultPermissions?.length
     ? `<?xml version="1.0" encoding="utf-8"?>\n<!-- Generated from the reviewed launcher descriptor. -->\n<exceptions>\n    <exception package="${d.packageName}">\n${d.defaultPermissions.map((permission) => `        <permission name="${permission}" fixed="false"/>\n`).join("")}    </exception>\n</exceptions>\n`
     : null;
   return {
-    blueprint: `// Generated from a hash- and signer-verified downstream launcher.\nandroid_app_import {\n    name: "${d.moduleName}",\n    apk: "Launcher.apk",\n    presigned: true,\n    preprocessed: true,\n    product_specific: true,\n    dex_preopt: { enabled: false },\n}\n${permissions ? `\n// First-boot runtime grants the person can still revoke (fixed="false").\nprebuilt_etc {\n    name: "${permissionsModule}",\n    src: "default-permissions.xml",\n    sub_dir: "default-permissions",\n    filename: "default-permissions-${d.packageName}.xml",\n    product_specific: true,\n}\n` : ""}`,
+    blueprint: `// Generated from a hash- and signer-verified downstream launcher.\nandroid_app_import {\n    name: "${d.moduleName}",\n    apk: "Launcher.apk",\n    presigned: true,\n    preprocessed: true,\n${partitionProperty}    dex_preopt: { enabled: false },\n}\n${permissions ? `\n// First-boot runtime grants the person can still revoke (fixed="false").\nprebuilt_etc {\n    name: "${permissionsModule}",\n    src: "default-permissions.xml",\n    sub_dir: "default-permissions",\n    filename: "default-permissions-${d.packageName}.xml",\n${partitionProperty}}\n` : ""}`,
     product: `# Additive: default HOME selection and privilege policy belong to device provisioning.\nPRODUCT_PACKAGES += ${d.moduleName}${permissions ? ` ${permissionsModule}` : ""}\n`,
     permissions,
   };

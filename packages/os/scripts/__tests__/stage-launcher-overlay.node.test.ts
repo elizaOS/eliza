@@ -249,3 +249,37 @@ test("reviewed default permissions are declared by the APK and granted revocably
   assert.equal(renderOverlay(descriptor).permissions, null);
   assert.doesNotMatch(renderOverlay(descriptor).blueprint, /prebuilt_etc/);
 });
+
+// Explicit system placement avoids relying on the base product partition layout.
+test("system-only launcher keeps the APK and revocable grants in the same image", () => {
+  const d = {
+    ...descriptor,
+    partition: "system" as const,
+    defaultPermissions: ["android.permission.RECORD_AUDIO"],
+  };
+  const generated = renderOverlay(d);
+  assert.doesNotMatch(
+    generated.blueprint,
+    /product_specific|system_ext_specific|privileged:/,
+  );
+  assert.match(generated.blueprint, /android_app_import/);
+  assert.match(generated.blueprint, /prebuilt_etc/);
+  assert.ok(generated.permissions);
+  assert.match(generated.permissions, /fixed="false"/);
+  assert.equal(
+    (
+      renderOverlay({ ...d, partition: "product" }).blueprint.match(
+        /product_specific: true/g,
+      ) ?? []
+    ).length,
+    2,
+  );
+  assert.throws(
+    () => validateDescriptor({ ...d, partition: "vendor" }),
+    /partition/,
+  );
+  assert.throws(
+    () => renderOverlay({ ...d, partition: "vendor" } as never),
+    /partition/,
+  );
+});
