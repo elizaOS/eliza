@@ -17,6 +17,7 @@ import type { MeetingService } from "../service.js";
 import {
   MEETING_URL_PARAMETER,
   messageText,
+  optionString,
   reply,
   requireMeetingService,
   resolveTargetSession,
@@ -74,10 +75,18 @@ export const leaveMeetingAction: Action = {
   similes: ["EXIT_MEETING", "STOP_MEETING_TRANSCRIPTION"],
   description:
     "Leave a meeting the notetaker bot is currently attending and finalize its transcript.",
-  validate: async (runtime, message) => {
+  // The keyword test guards an untargeted leave. A planner call that names the
+  // meeting (the follow-up to "which one should I leave?") carries no keyword.
+  validate: async (runtime, message, _state, options) => {
     const service = runtime.getService<MeetingService>("meetings");
     if (!service) return false;
     if (service.listSessions({ active: true }).length === 0) return false;
+    if (
+      optionString(options, "sessionId") ||
+      optionString(options, "meetingUrl")
+    ) {
+      return true;
+    }
     return /\b(leave|exit|stop|end|drop)\b/i.test(messageText(message));
   },
   parameters: [SESSION_ID_PARAMETER, MEETING_URL_PARAMETER],

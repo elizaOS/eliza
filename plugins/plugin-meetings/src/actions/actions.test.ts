@@ -224,6 +224,41 @@ describe("LEAVE_MEETING", () => {
     ).toBe(true);
   });
 
+  it("validate true for a planner-named target with no keyword in the message", async () => {
+    // The reply to "which one should I leave?" carries no leave keyword.
+    const two = harness({
+      service: svc([session({ id: "s1" }), session({ id: "s2" })]),
+    });
+    expect(
+      await leaveMeetingAction.validate(
+        two.runtime,
+        msg("the Zoom one"),
+        NO_STATE,
+        {
+          parameters: { sessionId: "s1" },
+        },
+      ),
+    ).toBe(true);
+    expect(
+      await leaveMeetingAction.validate(
+        two.runtime,
+        msg("that one"),
+        NO_STATE,
+        {
+          parameters: { meetingUrl: MEET },
+        },
+      ),
+    ).toBe(true);
+    expect(
+      await leaveMeetingAction.validate(
+        harness({ service: svc([]) }).runtime,
+        msg("the Zoom one"),
+        NO_STATE,
+        { parameters: { sessionId: "s1" } },
+      ),
+    ).toBe(false);
+  });
+
   it("service down reply", async () => {
     const h = harness({ service: null });
     const res = await leaveMeetingAction.handler(
@@ -421,13 +456,22 @@ describe("GET_MEETING_TRANSCRIPT", () => {
     expect(res.text).toContain("hello");
   });
 
-  it("validate gated on service + sessions + keyword", async () => {
+  it("validate gated on service + sessions, not on message wording", async () => {
     const v = getMeetingTranscriptAction.validate;
     expect(
       await v(harness({ service: null }).runtime, msg("transcript"), NO_STATE),
     ).toBe(false);
+    expect(
+      await v(
+        harness({ service: svc([]) }).runtime,
+        msg("transcript"),
+        NO_STATE,
+      ),
+    ).toBe(false);
     const has = harness({ service: svc([session({})]) });
-    expect(await v(has.runtime, msg("hello there"), NO_STATE)).toBe(false);
     expect(await v(has.runtime, msg("show me the notes"), NO_STATE)).toBe(true);
+    expect(
+      await v(has.runtime, msg("summarize my last meeting"), NO_STATE),
+    ).toBe(true);
   });
 });
