@@ -156,7 +156,7 @@ async function graphApiRequest<T>(
 
   const url = new URL(endpoint.startsWith("http") ? endpoint : `${GRAPH_API_BASE}${endpoint}`);
 
-  if (options.method === "GET") {
+  if ((options.method ?? "GET").toUpperCase() === "GET") {
     url.searchParams.set("access_token", accessToken);
   }
 
