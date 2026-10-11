@@ -494,6 +494,18 @@ describe("ComputerUseService validates input before the approval gate", () => {
       expect(result?.text).toContain("paused");
     }
   }, 10_000);
+
+  it("does not use the chat message as an omitted CLIPBOARD text argument", async () => {
+    const result = await clipboardAction.handler(
+      runtime,
+      { content: { text: "copy my email address" } } as Memory,
+      undefined,
+      { parameters: { action: "write" } },
+    );
+
+    expect(result?.success).toBe(false);
+    expect(result?.text).toContain("text is required for clipboard write");
+  }, 10_000);
 });
 
 // Real filesystem + child-process execution driven end to end through the
