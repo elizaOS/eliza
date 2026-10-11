@@ -158,6 +158,17 @@ describe("meeting ghost care-about matching", () => {
     expect(result.careHits.map((hit) => hit.careAbout)).toEqual(["채용"]);
   });
 
+  it("keeps Arabic short phrases bounded by Arabic letters", () => {
+    const result = analyze(
+      [alice],
+      [
+        seg("Alice Park", 0, "هذا المنزل قريب"),
+        seg("Alice Park", 5000, "من هنا نبدأ"),
+      ],
+      ["من"],
+    )
+    expect(result.careHits.map((hit) => hit.text)).toEqual(["من هنا نبدأ"])
+  })
   it("still matches an English multi-word phrase inside a sentence", () => {
     const result = analyze(
       [alice],
