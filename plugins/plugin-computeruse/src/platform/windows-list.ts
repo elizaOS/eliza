@@ -129,7 +129,28 @@ function appleScriptWindowMatchTerms(target: WindowInfo): string[] {
     .filter((value) => value.length > 0 && value !== "unknown");
 }
 
-function runDarwinWindowScript(target: WindowInfo, body: string): string {
+const DARWIN_WINDOW_NOT_FOUND = "__eliza_window_not_found__";
+
+class DarwinWindowNotFoundError extends Error {
+  constructor(target: WindowInfo) {
+    super(`Window not found: ${target.title || target.app}`);
+    this.name = "DarwinWindowNotFoundError";
+  }
+}
+
+/**
+ * Run `body(windowRef)` against the window that `target` names. `target` is a
+ * row from the window list, so its title selects the window inside the owning
+ * process. Without that, two windows of one app are indistinguishable and the
+ * operation lands on whichever is frontmost. A row with no title (no Screen
+ * Recording permission, or an app-level row) addresses `window 1 of proc`.
+ * Throws when no process matches or the process has no window with that title.
+ */
+function runDarwinWindowScript(
+  target: WindowInfo,
+  body: (windowRef: string) => string,
+): string {
+  const title = escapeAppleScriptString(target.title.trim());
   const terms = appleScriptWindowMatchTerms(target);
   const termList =
     terms.length > 0
@@ -140,8 +161,41 @@ function runDarwinWindowScript(target: WindowInfo, body: string): string {
   // walked `every window of` every non-matching process via System Events,
   // which on a busy desktop blew past the osascript timeout and surfaced as a
   // bogus "Accessibility denied" error (the timeout message matches the
-  // accessibility classifier). Window operations are process-level
-  // (`window 1 of proc`), so a process match is sufficient to act.
+  // accessibility classifier). The not-found result is a returned sentinel,
+  // not an AppleScript `error`, for the same reason: a System Events error
+  // would be classified as an Accessibility denial.
+  //
+  // Window choice: the exact title first, then a title that contains it. When
+  // the process exposes no windows at all (no Accessibility permission), the
+  // script addresses `window 1 of proc` so System Events raises its own error
+  // and the caller still reports the permission problem.
+  const selectWindow = title
+    ? `set procWindows to (every window of proc)
+        set targetWindow to missing value
+        repeat with w in procWindows
+          try
+            if (name of w) is "${title}" then
+              set targetWindow to contents of w
+              exit repeat
+            end if
+          end try
+        end repeat
+        if targetWindow is missing value then
+          repeat with w in procWindows
+            try
+              if (name of w) contains "${title}" then
+                set targetWindow to contents of w
+                exit repeat
+              end if
+            end try
+          end repeat
+        end if
+        if targetWindow is missing value then
+          if (count of procWindows) > 0 then return "${DARWIN_WINDOW_NOT_FOUND}"
+          set targetWindow to window 1 of proc
+        end if`
+    : "";
+  const windowRef = title ? "targetWindow" : "window 1 of proc";
   const script = `
       tell application "System Events"
         set matchedProc to missing value
@@ -173,13 +227,17 @@ function runDarwinWindowScript(target: WindowInfo, body: string): string {
             if matchedProc is not missing value then exit repeat
           end repeat
         end if
-        if matchedProc is not missing value then
-          set proc to matchedProc
-          ${body}
-        end if
+        if matchedProc is missing value then return "${DARWIN_WINDOW_NOT_FOUND}"
+        set proc to matchedProc
+        ${selectWindow}
+        ${body(windowRef)}
       end tell`;
 
-  return runCommand("osascript", ["-e", script], 15000);
+  const output = runCommand("osascript", ["-e", script], 15000);
+  if (output.trim() === DARWIN_WINDOW_NOT_FOUND) {
+    throw new DarwinWindowNotFoundError(target);
+  }
+  return output;
 }
 
 // ── List Windows ────────────────────────────────────────────────────────────
@@ -574,8 +632,8 @@ export async function getWindowBounds(
     const target = resolveWindowTargetOrThrow(id);
     const out = runDarwinWindowScript(
       target,
-      `set winPos to position of window 1 of proc
-       set winSize to size of window 1 of proc
+      (win) => `set winPos to position of ${win}
+       set winSize to size of ${win}
        return ((item 1 of winPos) as text) & "," & ((item 2 of winPos) as text) & "," & ((item 1 of winSize) as text) & "," & ((item 2 of winSize) as text)`,
     ).trim();
     const [x, y, width, height] = out.split(",").map((v) => Number(v.trim()));
@@ -656,8 +714,16 @@ export async function focusWindow(windowId: string): Promise<void> {
   if (os === "darwin") {
     const commandTarget = target ?? resolveWindowTargetOrThrow(windowId);
     try {
-      runDarwinWindowScript(commandTarget, "set frontmost of proc to true");
-    } catch {
+      runDarwinWindowScript(commandTarget, (win) =>
+        commandTarget.title.trim()
+          ? `perform action "AXRaise" of ${win}
+              set frontmost of proc to true`
+          : "set frontmost of proc to true",
+      );
+    } catch (err) {
+      // A named window that does not exist is not focused by activating its
+      // app: that would report success for a different window.
+      if (err instanceof DarwinWindowNotFoundError) throw err;
       // error-policy:J4 designed two-tier focus — app-level `activate` is the
       // fallback for windows System Events cannot address, and its failure
       // throws to the caller.
@@ -716,11 +782,11 @@ async function setWindowBounds(
     const target = resolveWindowTargetOrThrow(windowId);
     runDarwinWindowScript(
       target,
-      `
-              set position of window 1 of proc to {${safeX}, ${safeY}}
+      (win) => `
+              set position of ${win} to {${safeX}, ${safeY}}
               ${
                 safeWidth !== undefined && safeHeight !== undefined
-                  ? `set size of window 1 of proc to {${safeWidth}, ${safeHeight}}`
+                  ? `set size of ${win} to {${safeWidth}, ${safeHeight}}`
                   : ""
               }`,
     );
@@ -922,7 +988,7 @@ export async function minimizeWindow(windowId: string): Promise<void> {
   if (os === "darwin") {
     runDarwinWindowScript(
       target ?? resolveWindowTargetOrThrow(windowId),
-      "set miniaturized of window 1 of proc to true",
+      (win) => `set miniaturized of ${win} to true`,
     );
   } else if (os === "linux") {
     const commandId = resolveWindowCommandId(windowId);
@@ -946,7 +1012,7 @@ export async function maximizeWindow(windowId: string): Promise<void> {
   if (os === "darwin") {
     runDarwinWindowScript(
       target ?? resolveWindowTargetOrThrow(windowId),
-      'set value of attribute "AXFullScreen" of window 1 of proc to true',
+      (win) => `set value of attribute "AXFullScreen" of ${win} to true`,
     );
   } else if (os === "linux") {
     const commandId = resolveWindowCommandId(windowId);
@@ -972,9 +1038,9 @@ export async function restoreWindow(windowId: string): Promise<void> {
   if (os === "darwin") {
     runDarwinWindowScript(
       target ?? resolveWindowTargetOrThrow(windowId),
-      `
+      (win) => `
               try
-                set miniaturized of window 1 of proc to false
+                set miniaturized of ${win} to false
               end try
               set frontmost of proc to true`,
     );
@@ -1007,7 +1073,7 @@ export async function closeWindow(windowId: string): Promise<void> {
   if (os === "darwin") {
     runDarwinWindowScript(
       target ?? resolveWindowTargetOrThrow(windowId),
-      "click button 1 of window 1 of proc",
+      (win) => `click button 1 of ${win}`,
     );
   } else if (os === "linux") {
     const commandId = resolveWindowCommandId(windowId);
