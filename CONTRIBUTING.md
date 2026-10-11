@@ -109,10 +109,10 @@ includes machine provenance, use the following interoperable footer:
 ```text
 AI provider/model: <provider> / <exact-model-id>
 Client / agent tooling: <client>
-Contribution skill revision: elizaOS/eliza@<full-commit-sha>:packages/skills/skills/contribute-to-eliza
+Contribution skill revision: SlopDotCash/slopdotcash@<full-commit-sha>:skills/contribute-to-eliza
 Attribution status: self-reported
 — [<lane-tag>]
-<!-- eliza-computer-attribution:v1 {"provider":"<provider-slug>","model":"<exact-model-id>","client":"<client>","skill_revision":"elizaOS/eliza@<full-commit-sha>:packages/skills/skills/contribute-to-eliza"} -->
+<!-- eliza-computer-attribution:v1 {"provider":"<provider-slug>","model":"<exact-model-id>","client":"<client>","skill_revision":"SlopDotCash/slopdotcash@<full-commit-sha>:skills/contribute-to-eliza"} -->
 ```
 
 Voluntary attribution is self-reported provenance, not a verified attestation
