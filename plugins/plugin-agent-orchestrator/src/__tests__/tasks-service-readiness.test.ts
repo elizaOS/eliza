@@ -33,11 +33,11 @@ describe("TASKS validate reads the planner arguments", () => {
       { action: "create", task: "Fix the login bug", repo: "acme/api" },
     ],
     [
-      "Create a task for codex: migrate the test suite to vitest",
+      "Create a task to fix the login bug in the checkout",
       {
         action: "create",
-        task: "Migrate the test suite to vitest",
-        agentType: "codex",
+        task: "Fix the login bug",
+        workdir: "/workspaces/acme-api",
       },
     ],
     [
@@ -62,13 +62,16 @@ describe("TASKS validate reads the planner arguments", () => {
     ).resolves.toBe(true);
   });
 
-  it("keeps a plain to-do with only task text unavailable", async () => {
+  it.each([
+    [{ action: "create", task: "Buy milk" }],
+    [{ action: "create", task: "Buy milk", agentType: "claude" }],
+  ])("keeps a plain to-do unavailable for %o", async (parameters) => {
     await expect(
       tasksAction.validate(
         runtimeWithAcp(),
         chat("Add a task to buy milk"),
         undefined,
-        { parameters: { action: "create", task: "Buy milk" } },
+        { parameters },
       ),
     ).resolves.toBe(false);
   });

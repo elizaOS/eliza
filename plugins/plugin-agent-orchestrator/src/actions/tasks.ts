@@ -697,7 +697,6 @@ const PLANNER_CODING_TARGET_FIELDS = [
   "repo",
   "workdir",
   "agents",
-  "agentType",
   "sessionId",
   "threadId",
   "taskId",
@@ -5959,8 +5958,9 @@ export const tasksAction: Action & {
     )
       return true;
     // Planner arguments that cannot describe a personal to-do: an operation on
-    // existing orchestrator work, or a named coding target. A bare
-    // create / spawn_agent with only task text stays under the text check.
+    // existing orchestrator work, or a named coding target. agentType is not
+    // one: the planner guesses it for any create, so a create / spawn_agent
+    // with only task text and a backend guess stays under the text check.
     if (op !== null && op !== "create" && op !== "spawn_agent") return true;
     if (
       PLANNER_CODING_TARGET_FIELDS.some(
