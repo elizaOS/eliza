@@ -70,6 +70,20 @@ const OUTBOUND_DRAFT_PARAMETERS: ActionParameter[] = [
     required: false,
     schema: { type: "string" as const },
   },
+  {
+    name: "channelId",
+    description:
+      "Platform channel for a new outbound draft. A new discord draft requires it.",
+    required: false,
+    schema: { type: "string" as const },
+  },
+  {
+    name: "worldId",
+    description:
+      "Account or server scope for a new outbound draft: the worldId shown on inbox messages (for gmail, the Google account id). Omit it for the default account.",
+    required: false,
+    schema: { type: "string" as const },
+  },
 ];
 
 function getParameters(

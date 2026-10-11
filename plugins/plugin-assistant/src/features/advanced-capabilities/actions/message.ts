@@ -5758,9 +5758,10 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   {
     name: "worldId",
     description:
-      "For op=list_rooms, an exact world UUID returned by list_worlds. Omit it to inspect the current room's world.",
+      "For op=list_rooms, an exact world UUID returned by list_worlds. Omit it to inspect the current room's world. " +
+      "For op=draft_followup and op=send_draft, the account or server scope of a new draft: the worldId shown on inbox messages (for gmail, the Google account id). Omit it for the default account.",
     required: false,
-    subactions: ["list_rooms"],
+    subactions: ["list_rooms", "draft_followup", "send_draft"],
     schema: { type: "string" },
   },
   {
@@ -5869,7 +5870,8 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   },
   {
     name: "channelId",
-    description: "Platform channel ID.",
+    description:
+      "Platform channel ID. A new discord draft (draft_followup, send_draft) requires it.",
     required: false,
     subactions: [
       "read_channel",
@@ -5881,6 +5883,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
       "delete",
       "pin",
       "draft_followup",
+      "send_draft",
       "manage_server",
     ],
     schema: { type: "string" },
