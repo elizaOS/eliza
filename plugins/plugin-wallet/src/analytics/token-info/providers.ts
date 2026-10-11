@@ -140,8 +140,17 @@ async function executeDexScreener(
   }
 
   const { params } = context;
+  // DexScreener resolves a token by contract address. A `token` request that
+  // names the token only by symbol/name is a search, the same way the Birdeye
+  // provider resolves it.
+  const subaction =
+    params.subaction === "token" &&
+    !(params.tokenAddress ?? params.address) &&
+    params.query?.trim()
+      ? "search"
+      : params.subaction;
   try {
-    switch (params.subaction) {
+    switch (subaction) {
       case "search": {
         const query = params.query?.trim();
         if (!query) {
@@ -349,7 +358,7 @@ async function executeDexScreener(
       context,
       failure(describeError(error), describeError(error), {
         target: "dexscreener",
-        subaction: params.subaction,
+        subaction,
       }),
     );
   }
