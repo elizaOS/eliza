@@ -192,6 +192,9 @@ export function splitRepo(
     path = path.slice(1);
   } else if (hasScheme) {
     return null;
+  } else if (path.endsWith("/")) {
+    // Match the URL form above, which drops one trailing slash.
+    path = path.slice(0, -1);
   }
 
   const parts = path.split("/");
