@@ -15,7 +15,6 @@ import { resolveActionContexts } from "@elizaos/core";
 const PAGE_KEYS = [
   "browser",
   "wallet",
-  "character",
   "settings",
   "connectors",
   "automation",
@@ -28,7 +27,6 @@ type PageKey = (typeof PAGE_KEYS)[number];
 const PAGE_CONTEXTS: Record<PageKey, AgentContext[]> = {
   browser: ["browser"],
   wallet: ["wallet"],
-  character: ["character"],
   settings: ["settings"],
   connectors: ["connectors"],
   automation: ["automation"],

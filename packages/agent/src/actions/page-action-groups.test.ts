@@ -59,6 +59,48 @@ describe("PAGE_DELEGATE call shape", () => {
     ]);
   });
 
+  it("does not advertise the character page, which no child action is registered under", async () => {
+    expect(
+      validateToolArgs(pageDelegateAction, {
+        page: "character",
+        action: "CHARACTER_MODIFY",
+      }).valid,
+    ).toBe(false);
+    // The character actions declare the settings context, so the child name
+    // the `action` description advertises is reached through that page.
+    const seen: unknown[] = [];
+    const character = recordingChild(
+      {
+        name: "CHARACTER",
+        contexts: ["settings", "agent_internal", "media", "admin"],
+        parameters: [
+          {
+            name: "action",
+            description: "op",
+            required: true,
+            schema: {
+              type: "string",
+              enum: ["modify", "persist", "update_identity"],
+            },
+          },
+          {
+            name: "request",
+            description: "change",
+            required: false,
+            schema: { type: "string" },
+          },
+        ],
+      },
+      seen,
+    );
+    await delegate([character], {
+      page: "settings",
+      action: "CHARACTER_MODIFY",
+      request: "be more playful",
+    });
+    expect(seen).toEqual([{ action: "modify", request: "be more playful" }]);
+  });
+
   it("advertises a wallet child name that resolves to the WALLET discriminator", async () => {
     const advertised = pageDelegateAction.parameters?.find(
       (p) => p.name === "action",
