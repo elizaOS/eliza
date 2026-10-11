@@ -3565,7 +3565,8 @@ export function resolveChatAdminEntityId(state: ChatRouteState): UUID {
 export async function ensureCompatChatConnection(
   state: ChatRouteState,
   runtime: AgentRuntime,
-  agentName: string,
+  /** agentIdentityName(runtime.character): stays the same after a rename. */
+  identityName: string,
   channelIdPrefix: string,
   roomKey: string,
   principal: TrustedApiPrincipal,
@@ -3579,16 +3580,16 @@ export async function ensureCompatChatConnection(
   const userId = ownerPrincipal
     ? ensureAdminEntityIdForChat(state)
     : (stringToUuid(
-        `${agentName}:${channelIdPrefix}:external:${principal.principalId}`,
+        `${identityName}:${channelIdPrefix}:external:${principal.principalId}`,
       ) as UUID);
   const principalScopedRoomKey = ownerPrincipal
     ? roomKey
     : `${principal.kind}:${principal.principalId}:${roomKey}`;
   const roomId = stringToUuid(
-    `${agentName}-${channelIdPrefix}-room-${principalScopedRoomKey}`,
+    `${identityName}-${channelIdPrefix}-room-${principalScopedRoomKey}`,
   ) as UUID;
-  const worldId = stringToUuid(`${agentName}-web-chat-world`) as UUID;
-  const messageServerId = stringToUuid(`${agentName}-web-server`) as UUID;
+  const worldId = stringToUuid(`${identityName}-web-chat-world`) as UUID;
+  const messageServerId = stringToUuid(`${identityName}-web-server`) as UUID;
   await runtime.ensureConnection({
     entityId: userId,
     roomId,
