@@ -44,6 +44,7 @@ import {
   hasHealthyPooledAccount,
   reportCodingAccountFailure,
 } from "./coding-account-selection.js";
+import { isLoopbackUrl } from "./completion-evidence.js";
 import {
   beginPendingHandoff,
   settlePendingHandoff,
@@ -464,16 +465,6 @@ function comparableUrlTarget(url: string): string | undefined {
   } catch {
     // error-policy:J3 URL parse of untrusted narration; unparseable → undefined.
     return undefined;
-  }
-}
-
-function isLoopbackUrl(url: string): boolean {
-  try {
-    const host = new URL(url).hostname.toLowerCase();
-    return host === "localhost" || host === "::1" || host.startsWith("127.");
-  } catch {
-    // error-policy:J3 URL parse of untrusted input; unparseable = not loopback.
-    return false;
   }
 }
 

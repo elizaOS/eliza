@@ -21,6 +21,7 @@
 import {
   type AgentContext,
   type IAgentRuntime,
+  isLoopbackHost,
   MESSAGE_SOURCE_SUB_AGENT,
   type Memory,
   type MessageHandlerResult,
@@ -227,11 +228,6 @@ function parseUrl(value: string): URL | undefined {
     // error-policy:J3 untrusted string probed as a URL; a parse failure returns the explicit "not a URL" signal (undefined).
     return undefined;
   }
-}
-
-function isLoopbackHost(hostname: string): boolean {
-  const host = hostname.toLowerCase();
-  return host === "localhost" || host === "127.0.0.1" || host === "::1";
 }
 
 function looksLikeCapturedToolOutput(text: string): boolean {

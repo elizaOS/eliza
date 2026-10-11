@@ -31,7 +31,7 @@
  * @module services/completion-evidence
  */
 
-import { toWellFormedUnicode } from "@elizaos/core";
+import { isLoopbackHost, toWellFormedUnicode } from "@elizaos/core";
 import type { WorkspaceChangeSet } from "./workspace-diff.js";
 
 /** One recorded signal (a durable event or sub-agent message) the assembler
@@ -167,10 +167,14 @@ export function appendCompletionEvidenceSection(
 const BUILD_TEST_LINE_RE =
   /\b(?:tests?|test\s+files?|suites?|specs?|passed|passing|failed|failing|✓|✗|✔|✖|pass|fail|error|errors?|warning|warnings?|tsc|typecheck|type-check|type\s+error|biome|eslint|lint|build\s+(?:succeeded|failed|complete)|compiled|compilation|exit\s+code|exited\s+with|coverage|\bpytest\b|\bcargo\b|\bvitest\b|\bjest\b)\b/i;
 
-function isLoopbackUrl(value: string): boolean {
+/**
+ * True when `value` parses as a URL whose host is loopback (core
+ * `isLoopbackHost`: localhost, 127.0.0.0/8, ::1 bracketed or not,
+ * IPv4-mapped loopback). Labeling only — never a fetch/allow gate.
+ */
+export function isLoopbackUrl(value: string): boolean {
   try {
-    const host = new URL(value).hostname.toLowerCase();
-    return host === "localhost" || host === "127.0.0.1" || host === "::1";
+    return isLoopbackHost(new URL(value).hostname);
   } catch {
     // error-policy:J3 unparseable URL string is an explicit not-loopback result
     return false;
