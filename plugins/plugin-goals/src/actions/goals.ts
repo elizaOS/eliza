@@ -130,13 +130,13 @@ export const ownerGoalsAction: Action = {
   parameters: [
     {
       name: "action",
-      description: "Action: create | update | delete | review.",
+      description: "Action: create | update | delete | review | checkin.",
       required: true,
       schema: { type: "string" as const, enum: [...GOAL_ACTIONS] },
     },
     {
       name: "id",
-      description: "Goal id (update/delete/review).",
+      description: "Goal id (update/delete/review/checkin).",
       required: false,
       schema: { type: "string" as const },
     },
