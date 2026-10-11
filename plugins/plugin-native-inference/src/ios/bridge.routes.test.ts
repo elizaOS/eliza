@@ -978,7 +978,8 @@ describe("iOS bridge — conversation transcript route", () => {
     expect(conversations.map(({ id, title }) => ({ id, title }))).toEqual([
       { id, title: "Trip plan" },
     ]);
-    expect(Date.parse(conversations[0].createdAt)).toBeLessThanOrEqual(
+    // The user turn is the oldest row and the reply the newest.
+    expect(Date.parse(conversations[0].createdAt)).toBeLessThan(
       Date.parse(conversations[0].updatedAt),
     );
     const transcript = await call(

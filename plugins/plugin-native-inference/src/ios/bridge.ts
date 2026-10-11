@@ -2116,19 +2116,30 @@ export async function restoreIosConversations(
         context: { roomId: room.id, channelId: room.channelId },
       });
     }
-    const memories = await runtime.getMemories({
+    // Only the two end rows are needed, so the start does not load every
+    // stored turn (and its embedding) of every conversation.
+    const [oldest] = await runtime.getMemories({
       roomId: room.id,
       tableName: "messages",
+      orderDirection: "asc",
+      limit: 1,
+      includeEmbedding: false,
     });
-    if (memories.length === 0) continue;
-    const times = memories.map(memoryCreatedAt);
+    if (!oldest) continue;
+    const [newest] = await runtime.getMemories({
+      roomId: room.id,
+      tableName: "messages",
+      orderDirection: "desc",
+      limit: 1,
+      includeEmbedding: false,
+    });
     const id = room.channelId.slice(IOS_CONVERSATION_CHANNEL_PREFIX.length);
     conversations.set(id, {
       id,
       title: room.name,
       roomId: room.id,
-      createdAt: new Date(Math.min(...times)).toISOString(),
-      updatedAt: new Date(Math.max(...times)).toISOString(),
+      createdAt: new Date(memoryCreatedAt(oldest)).toISOString(),
+      updatedAt: new Date(memoryCreatedAt(newest)).toISOString(),
     });
   }
   return conversations;
