@@ -40,7 +40,7 @@ async function reply(input: ReplyCase) {
     id: "11111111-1111-4111-8111-111111111111",
     source: input.source,
     channelId: "777000",
-    metadata: { accountId: input.roomAccountId },
+    metadata: input.roomMetadata ?? { accountId: input.roomAccountId },
   };
   const sends: Array<{ target: { accountId?: string } }> = [];
   const manager = {
@@ -76,7 +76,7 @@ async function reply(input: ReplyCase) {
     "POST",
     {
       runtime: runtime as never,
-      callerAuthorization: { ok: true, role: "OWNER" },
+      callerAuthorization: { ok: true, role: input.callerRole ?? "OWNER" },
     } as never,
     {
       readJsonBody: async () => ({
@@ -145,3 +145,45 @@ it("keeps account routing for a room whose stored account no longer exists", asy
   expect(selected.status).toBe(200);
   expect(selected.sends.map((send) => send.target.accountId)).toEqual(["work"]);
 });
+
+it("prefers a case-insensitive source-scoped room account", async () => {
+  const { status, sends } = await reply({
+    source: "telegram",
+    roomAccountId: "personal",
+    roomMetadata: { accountId: "personal", Telegram: { accountId: "work" } },
+    accounts: telegramAccounts,
+    sendHandlerKeys: ["telegram\u0000personal", "telegram\u0000work"],
+  })
+  expect(status).toBe(200)
+  expect(sends.map((send) => send.target.accountId)).toEqual(["work"])
+})
+
+it("checks room account authorization before exposing a mismatch", async () => {
+  const accounts = [
+    {
+      ...telegramAccounts[0],
+    },
+    {
+      id: "owner",
+      provider: "telegram",
+      status: "connected",
+      accessGate: "owner_binding",
+      purpose: ["messaging"],
+      role: "AGENT",
+      metadata: {},
+    },
+  ] as typeof telegramAccounts
+  const result = await reply({
+    source: "telegram",
+    roomAccountId: "owner",
+    accounts,
+    sendHandlerKeys: ["telegram\u0000personal", "telegram\u0000owner"],
+    accountId: "personal",
+    callerRole: "USER",
+  })
+  expect(result.status).toBe(403)
+  expect(result.body).toMatchObject({
+    code: "INBOX_CONNECTOR_ACCOUNT_CALLER_UNAUTHORIZED",
+  })
+  expect(result.sends).toEqual([])
+})
