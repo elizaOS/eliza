@@ -5201,6 +5201,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           channelId: roomTable.channelId,
           agentId: roomTable.agentId,
           messageServerId: roomTable.messageServerId,
+          serverId: roomTable.serverId,
           worldId: roomTable.worldId,
           type: roomTable.type,
           source: roomTable.source,
