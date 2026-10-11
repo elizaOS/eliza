@@ -1101,10 +1101,15 @@ function containsSecretSignal(value: string): boolean {
     )
   );
 }
+// One Han, kana or Hangul character carries a syllable or word, so it counts
+// twice toward the floor: 지호 and 犬好き pass, a lone 犬 does not.
+const CJK_SCRIPT_CHAR =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu;
 function isLowSignalCandidate(value: string): boolean {
   const normalized = normalizeForComparison(value);
+  const cjkChars = normalized.match(CJK_SCRIPT_CHAR)?.length ?? 0;
   return (
-    normalized.length < 4 ||
+    normalized.length + cjkChars < 4 ||
     /^(?:by the way|remind me|can you|could you|please|thanks|thank you)\b/.test(
       normalized,
     ) ||
