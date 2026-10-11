@@ -123,11 +123,9 @@ function failure(error: string, extra?: Record<string, unknown>): ActionResult {
     MISSING_QUERY:
       "Which login should I look up? Tell me the service (e.g. GitHub, AWS).",
     MISSING_ITEM_ID: "I need the password manager item id to copy a field.",
-    ITEM_NOT_FOUND:
-      "No saved login has that item id. Search or list saved logins to get the id.",
     CANCELLED: "Cancelled. Nothing was copied.",
     PASSWORD_MANAGER_FAILED:
-      "Open and unlock your password manager, then try again.",
+      "The password manager request failed. Unlock your password manager and check the item id with search or list, then try again.",
     CONFIRMATION_REQUIRED:
       "Copying a credential needs your confirmation. Reply yes to confirm or no to cancel.",
     UNKNOWN_SUBACTION:
@@ -215,13 +213,7 @@ export async function runPasswordManagerHandler(
         subaction === "inject_username" ? "username" : "password";
       const itemId = (params.itemId ?? "").toString().trim();
       if (!itemId) return failure("MISSING_ITEM_ID");
-      // Resolve the item before asking: an id that names nothing is refused
-      // here, not after the owner has already confirmed.
-      const item = (await listPasswordItems({}, config)).find(
-        (entry) => entry.id === itemId,
-      );
-      if (!item) return failure("ITEM_NOT_FOUND", { itemId });
-      const prompt = `Copy ${field} for '${item.title}' to the clipboard?`;
+      const prompt = `Copy ${field} for item '${itemId}' to the clipboard?`;
       const decision = await requireConfirmation({
         runtime,
         message,
@@ -233,7 +225,6 @@ export async function runPasswordManagerHandler(
         return {
           ...failure("CONFIRMATION_REQUIRED", {
             itemId,
-            title: item.title,
             field,
             awaitingUserInput: true,
           }),
@@ -262,7 +253,7 @@ export async function runPasswordManagerHandler(
         ? " [fixture backend: no actual clipboard write — test/benchmark mode]"
         : "";
       return {
-        text: `Copied ${field} for '${item.title}' to clipboard (scheduled to clear in ${result.expiresInSeconds}s).${fixtureSuffix}`,
+        text: `Copied ${field} for item '${itemId}' to clipboard (scheduled to clear in ${result.expiresInSeconds}s).${fixtureSuffix}`,
         success: true,
         values: {
           success: true,

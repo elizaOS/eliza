@@ -193,7 +193,7 @@ export const credentialsAction: Action & {
     {
       name: "itemId",
       description:
-        "(action=inject_username|inject_password) Password manager item id as returned by search or list, not the title.",
+        "(action=inject_username|inject_password) Password manager item id from search or list.",
       required: false,
       schema: { type: "string" as const },
     },
