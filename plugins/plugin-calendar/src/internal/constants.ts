@@ -38,6 +38,9 @@ export const CALENDAR_TIME_ZONE_ALIASES: Record<string, string> = {
   eastern: "America/New_York",
   utc: "UTC",
   gmt: "UTC",
+  // A planner that reads "2026-08-19T14:00:00Z" stamps timeZone "Z". Intl
+  // rejects it, but it names UTC.
+  z: "UTC",
 };
 
 export function resolveDefaultTimeZone(): string {

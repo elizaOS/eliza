@@ -336,6 +336,89 @@ it.each(["lookup", "boot", "concurrent"] as const)(
   120_000,
 );
 
+it("waits for the boot restore before answering a message search", async () => {
+  const { agentId, adapter, adminId, dataDir, runtime, state } =
+    await createFixture();
+  const original = runtime.getMemories;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let reached!: () => void;
+  const reading = new Promise<void>((resolve) => {
+    reached = resolve;
+  });
+  let restoring: Promise<unknown> | undefined;
+  try {
+    const created = await call(state, "POST", "/api/conversations", {
+      title: "Stored conversation",
+    });
+    const { conversation } = created.payload as {
+      conversation: { id: string; roomId: UUID };
+    };
+    await runtime.createMemory(
+      {
+        entityId: adminId,
+        agentId,
+        roomId: conversation.roomId,
+        content: { text: "the pineapple invoice is overdue" },
+      } as never,
+      "messages",
+    );
+    // A relaunch starts with an empty registry and a restore in flight.
+    state.conversations.clear();
+    let gated = false;
+    runtime.getMemories = async (params) => {
+      const memories = await original.call(runtime, params);
+      if (
+        !gated &&
+        params.roomId === conversation.roomId &&
+        params.limit === 1
+      ) {
+        gated = true;
+        reached();
+        await gate;
+      }
+      return memories;
+    };
+    restoring = restoreConversationsFromDb(runtime, state);
+    // The restore stays blocked until the route asks for it, so a route that
+    // does not wait answers from the empty registry.
+    const pending = restoring.then(() => undefined);
+    Object.defineProperty(state, "conversationRestorePromise", {
+      get: () => {
+        release();
+        return pending;
+      },
+    });
+    await reading;
+    expect(state.conversations.size).toBe(0);
+
+    const searched = await call(
+      state,
+      "GET",
+      "/api/conversations/messages/search?q=pineapple",
+    );
+
+    expect(searched.status).toBe(200);
+    const { results } = searched.payload as {
+      results: Array<{ conversationId: string; text: string }>;
+    };
+    expect(results).toEqual([
+      expect.objectContaining({
+        conversationId: conversation.id,
+        text: "the pineapple invoice is overdue",
+      }),
+    ]);
+  } finally {
+    release();
+    await restoring;
+    runtime.getMemories = original;
+    await adapter.close();
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+}, 120_000);
+
 it.each(["\ud800", "valid-prefix\udfffsuffix"])(
   "rejects an import source identity with a lone surrogate before any write: %j",
   async (sourceId) => {

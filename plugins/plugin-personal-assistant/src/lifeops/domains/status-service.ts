@@ -21,10 +21,10 @@ import type {
 } from "@elizaos/plugin-browser";
 import type { HealthBackend } from "@elizaos/plugin-health";
 import { loadLifeOpsAppState } from "../app-state.js";
-import { resolveDefaultTimeZone } from "../defaults.js";
 import { createFeatureFlagService } from "../feature-flags.js";
 import type { FeatureFlagState } from "../feature-flags.types.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
+import { resolveOwnerTimeZone } from "../owner/fact-store.js";
 import type { LifeOpsScheduleMergedStateRecord } from "../repository.js";
 import {
   LIFEOPS_TASK_NAME,
@@ -224,7 +224,8 @@ export class StatusDomain {
     now = new Date(),
   ): Promise<LifeOpsCapabilitiesStatus> {
     const checkedAt = now.toISOString();
-    const timezone = resolveDefaultTimeZone();
+    // Read the row the scheduler tick maintains (owner zone).
+    const timezone = await resolveOwnerTimeZone(this.ctx.runtime, now);
     const [appState, features, schedule, health, xLocal, schedulerTasks] =
       await Promise.all([
         runCheck(checkedAt, () => loadLifeOpsAppState(this.ctx.runtime)),

@@ -7,6 +7,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { createRealTestRuntime } from "../../../packages/app/test/helpers/real-runtime.ts";
 import { resolveDefaultTimeZone } from "../src/lifeops/defaults.js";
+import { resolveOwnerFactStore } from "../src/lifeops/owner/fact-store.js";
 import { resolveNextRelativeScheduleInstant } from "../src/lifeops/relative-schedule-resolver.js";
 import { resolveLifeOpsRelativeTime } from "../src/lifeops/relative-time.js";
 import {
@@ -291,6 +292,45 @@ describe("merged schedule state", () => {
   });
   // A 01:30 bedtime rolled across the London spring-forward (29 Mar 2026)
   // keeps 01:30 on later days instead of the gap-shifted 02:30.
+  it("builds the scheduler tick sleep state in the owner time zone", async () => {
+    // On a cloud host the owner zone comes from the owner fact, not the host.
+    const previousDeviceKind = process.env.ELIZA_DEVICE_KIND;
+    process.env.ELIZA_DEVICE_KIND = "cloud";
+    const fixture = await createFixture("lifeops-tick-owner-zone-agent");
+    try {
+      await resolveOwnerFactStore(fixture.runtime).update(
+        { timezone: "Pacific/Auckland" },
+        { source: "profile_save", recordedAt: new Date().toISOString() },
+      );
+      await seedScheduleTelemetry(fixture.service);
+      const domain = (
+        fixture.service as unknown as {
+          remindersDomain: {
+            processSleepCycleCheckins: (args: {
+              currentSchedule: { timezone: string } | null;
+            }) => Promise<unknown[]>;
+          };
+        }
+      ).remindersDomain;
+      const original = domain.processSleepCycleCheckins.bind(domain);
+      let tickZone: string | null = null;
+      domain.processSleepCycleCheckins = async (args) => {
+        tickZone = args.currentSchedule?.timezone ?? null;
+        return original(args);
+      };
+      await fixture.service.processScheduledWork({
+        now: "2026-04-19T13:00:00.000Z",
+        sleepCycleCheckins: true,
+      });
+      expect(tickZone).toBe("Pacific/Auckland");
+    } finally {
+      await fixture.cleanup();
+      if (previousDeviceKind === undefined)
+        delete process.env.ELIZA_DEVICE_KIND;
+      else process.env.ELIZA_DEVICE_KIND = previousDeviceKind;
+    }
+  });
+
   it("rolls a bedtime in the spring-forward gap back onto its clock time", () => {
     const state = buildCloudState(
       "agent",

@@ -4983,7 +4983,7 @@ async function runLifeOperationHandlerInner(
                   detailString(details, "timeZone") ??
                     deferredDefinitionDraft?.request.timezone ??
                     windowPolicy?.timezone,
-                ) ?? undefined,
+                ) ?? ownerFactTimeZone,
             }));
         } catch (error) {
           // error-policy:J4 Explicit create parameters remain usable without a
@@ -6141,6 +6141,7 @@ async function runLifeOperationHandlerInner(
           currentWindows: target.definition.windowPolicy.windows.map(
             (w) => w.name,
           ),
+          timeZone: requestedTimeZone ?? target.definition.timezone,
         });
         if (llmFields) {
           if (llmFields.title) request.title = llmFields.title;

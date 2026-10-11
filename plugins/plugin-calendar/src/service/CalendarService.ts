@@ -114,6 +114,7 @@ import {
 } from "../ics/fetch.js";
 import { parseIcsCalendar } from "../ics/parser.js";
 import {
+  expandIcsCalendarEvents,
   icsCalendarSummary,
   lifeOpsCalendarEventFromIcs,
   publicIcsCalendarSource,
@@ -176,7 +177,11 @@ import {
   recurrenceOriginalStartAtFrom,
   recurringEventIdFrom,
 } from "../internal/recurrence.js";
-import { getZonedDateParts } from "../internal/time.js";
+import {
+  addDaysToLocalDate,
+  buildUtcDateFromLocalParts,
+  getZonedDateParts,
+} from "../internal/time.js";
 import {
   cancelAllMeetingAutoJoinTasks,
   reconcileMeetingAutoJoin,
@@ -344,6 +349,81 @@ function googleEventIntersectsWindow(
     Number.isFinite(end) &&
     end > windowStart &&
     start < windowEnd
+  );
+}
+
+/**
+ * UTC offsets span -12:00 to +14:00, so one civil day starts at most 26 hours
+ * apart in two zones. One more hour covers an inclusive 23:59:59 all-day end.
+ */
+const ALL_DAY_FEED_READ_MARGIN_MS = 27 * 60 * 60 * 1000;
+
+/** The widened window that selects all-day rows for a feed read. */
+function allDayFeedReadWindow(
+  timeMin: string,
+  timeMax: string,
+): { allDayTimeMin: string; allDayTimeMax: string } {
+  return {
+    allDayTimeMin: new Date(
+      Date.parse(timeMin) - ALL_DAY_FEED_READ_MARGIN_MS,
+    ).toISOString(),
+    allDayTimeMax: new Date(
+      Date.parse(timeMax) + ALL_DAY_FEED_READ_MARGIN_MS,
+    ).toISOString(),
+  };
+}
+
+function localDayStartMs(
+  date: { year: number; month: number; day: number },
+  timeZone: string,
+): number {
+  return buildUtcDateFromLocalParts(timeZone, {
+    ...date,
+    hour: 0,
+    minute: 0,
+    second: 0,
+  }).getTime();
+}
+
+/**
+ * Whether an all-day event is on a local day of `timeZone` inside the window.
+ *
+ * An all-day event is a civil date, not an instant. Most providers store it
+ * date-encoded: the civil date at UTC midnight with an exclusive end date.
+ * Apple Calendar stores real instants: local midnight in the event zone, with
+ * an end at 23:59:59 of the last day. The civil dates are read per event, then
+ * placed on the owner's local days. An Apple row with no zone has only its
+ * instants, so those are compared with the window as they are.
+ */
+export function allDayEventIntersectsLocalWindow(
+  event: Pick<
+    LifeOpsCalendarEvent,
+    "provider" | "startAt" | "endAt" | "timezone"
+  >,
+  timeMin: string,
+  timeMax: string,
+  timeZone: string,
+): boolean {
+  const windowStart = Date.parse(timeMin);
+  const windowEnd = Date.parse(timeMax);
+  const instantEncoded = event.provider === APPLE_CALENDAR_PROVIDER;
+  if (instantEncoded && !event.timezone) {
+    return (
+      Date.parse(event.endAt) > windowStart &&
+      Date.parse(event.startAt) < windowEnd
+    );
+  }
+  const eventZone = instantEncoded && event.timezone ? event.timezone : "UTC";
+  const startDate = getZonedDateParts(new Date(event.startAt), eventZone);
+  const endDateExclusive = instantEncoded
+    ? addDaysToLocalDate(
+        getZonedDateParts(new Date(Date.parse(event.endAt) - 1), eventZone),
+        1,
+      )
+    : getZonedDateParts(new Date(event.endAt), eventZone);
+  return (
+    localDayStartMs(endDateExclusive, timeZone) > windowStart &&
+    localDayStartMs(startDate, timeZone) < windowEnd
   );
 }
 
@@ -4289,8 +4369,7 @@ export class CalendarService extends Service {
         changedEvents.push(event);
       }
       nextEvents = (
-        await this.repo.listCalendarEvents(
-          this.agentId(),
+        await this.listCalendarFeedWindowEvents(
           "google",
           args.timeMin,
           args.timeMax,
@@ -4708,8 +4787,7 @@ export class CalendarService extends Service {
         changedEvents.push(event);
       }
       nextEvents = (
-        await this.repo.listCalendarEvents(
-          this.agentId(),
+        await this.listCalendarFeedWindowEvents(
           MICROSOFT_CALENDAR_PROVIDER,
           args.timeMin,
           args.timeMax,
@@ -5014,6 +5092,30 @@ export class CalendarService extends Service {
     };
   }
 
+  /**
+   * Store read for a feed source. Timed rows overlap the window exactly.
+   * All-day rows are civil dates, so they are selected with a widened window;
+   * `aggregateCalendarFeedsAcrossCalendars` then keeps the ones on a local day
+   * of the request zone inside the window.
+   */
+  private listCalendarFeedWindowEvents(
+    provider: LifeOpsCalendarEvent["provider"],
+    timeMin: string,
+    timeMax: string,
+    side: LifeOpsConnectorSide,
+    grantId: string,
+  ): Promise<LifeOpsCalendarEvent[]> {
+    return this.repo.listCalendarFeedWindowEvents({
+      agentId: this.agentId(),
+      provider,
+      timeMin,
+      timeMax,
+      ...allDayFeedReadWindow(timeMin, timeMax),
+      side,
+      grantId,
+    });
+  }
+
   private async readCachedCalendarFeed(args: {
     calendar: LifeOpsCalendarSummary;
     timeMin: string;
@@ -5044,8 +5146,7 @@ export class CalendarService extends Service {
     if (!fresh && !args.allowStale) {
       return null;
     }
-    const events = await this.repo.listCalendarEvents(
-      this.agentId(),
+    const events = await this.listCalendarFeedWindowEvents(
       args.calendar.provider,
       args.timeMin,
       args.timeMax,
@@ -5103,22 +5204,44 @@ export class CalendarService extends Service {
     if (!hasSnapshot && !fresh) {
       return null;
     }
-    const events = (
-      await this.repo.listCalendarEvents(
-        this.agentId(),
-        "ics",
-        args.timeMin,
-        args.timeMax,
-        "owner",
-        args.source.id,
-      )
-    ).filter((event) => event.status !== "cancelled");
+    // All-day rows are civil dates: select and expand them in the widened
+    // window; `aggregateCalendarFeedsAcrossCalendars` keeps the ones on a
+    // local day of the request zone inside the window.
+    const allDayWindow = allDayFeedReadWindow(args.timeMin, args.timeMax);
+    const expansion = expandIcsCalendarEvents({
+      events: await this.repo.listIcsCalendarEventsForExpansion({
+        agentId: this.agentId(),
+        sourceId: args.source.id,
+        timeMin: args.timeMin,
+        timeMax: args.timeMax,
+        ...allDayWindow,
+      }),
+      timeMin: args.timeMin,
+      timeMax: args.timeMax,
+      ...allDayWindow,
+    });
+    for (const code of expansion.diagnostics) {
+      this.runtime.reportError(
+        "calendar:ics-expansion",
+        new CalendarServiceError(
+          422,
+          code === "CALENDAR_ICS_EXDATE_INVALID"
+            ? "The subscribed calendar contains an invalid EXDATE value."
+            : "The subscribed calendar recurrence exceeds supported date arithmetic.",
+          code,
+        ),
+        { sourceId: args.source.id },
+      );
+    }
+    const events = expansion.events.filter(
+      (event) => event.status !== "cancelled",
+    );
     const calendar = icsCalendarSummary(args.source);
     return {
       calendarId: args.source.id,
       events,
       source: args.sourceKind ?? "cache",
-      state: fresh ? "complete" : "partial",
+      state: fresh && expansion.complete ? "complete" : "partial",
       sources: [
         calendarSourceHealth({
           calendar,
@@ -5206,8 +5329,7 @@ export class CalendarService extends Service {
     timeMax: string;
   }): Promise<LifeOpsCalendarFeed> {
     assertCalendarRecordsAllowed();
-    const events = await this.repo.listCalendarEvents(
-      this.agentId(),
+    const events = await this.listCalendarFeedWindowEvents(
       ELIZA_CALENDAR_PROVIDER,
       args.timeMin,
       args.timeMax,
@@ -5584,7 +5706,9 @@ export class CalendarService extends Service {
       ...discoveryFailures,
       ...sources.flatMap((source) => source.feed.sources),
     ];
-    const allFresh = health.every((source) => source.status === "fresh");
+    const allFresh =
+      health.every((source) => source.status === "fresh") &&
+      sources.every((source) => source.feed.state === "complete");
     const hasUsableSource = health.some(
       (source) => source.status === "fresh" || source.status === "stale",
     );
@@ -5599,7 +5723,13 @@ export class CalendarService extends Service {
       .sort();
     return {
       calendarId: calendars.length === 1 ? calendars[0].calendarId : "all",
-      events: mergeAggregatedCalendarFeedEvents(sources, links),
+      // The store reads select all-day rows with a widened window. Keep the
+      // ones on a local day of the request zone inside the window.
+      events: mergeAggregatedCalendarFeedEvents(sources, links).filter(
+        (event) =>
+          !event.isAllDay ||
+          allDayEventIntersectsLocalWindow(event, timeMin, timeMax, timeZone),
+      ),
       source: sources.every((source) => source.feed.source === "synced")
         ? "synced"
         : "cache",
