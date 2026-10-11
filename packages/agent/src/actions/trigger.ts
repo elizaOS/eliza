@@ -682,9 +682,9 @@ async function opCreate(
       ? new Date(Date.now() + delayMs).toISOString()
       : undefined;
   const scheduledAtIso = explicitScheduledAtIso ?? scheduledFromDelay;
-  // A relative delay is one-shot by definition; a contradictory explicit
-  // triggerType (e.g. "interval") must not silently drop it. Cron resolved
-  // above, so a delay can no longer demote a recurring schedule to one-shot.
+  // A relative delay that survived to here is one-shot by definition. Cron and
+  // an explicit interval with a usable intervalMs resolved above and discarded
+  // it, so a delay can no longer demote a recurring schedule to one-shot.
   const triggerType: TriggerType = wantsCron
     ? "cron"
     : delayMs !== undefined
