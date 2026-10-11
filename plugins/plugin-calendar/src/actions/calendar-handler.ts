@@ -1346,7 +1346,7 @@ function normalizeText(value: string): string {
 }
 
 function normalizeLookupKey(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return value.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
 }
 
 function wordCount(value: string): number {
