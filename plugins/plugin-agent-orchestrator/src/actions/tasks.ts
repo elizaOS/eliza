@@ -1385,6 +1385,15 @@ async function runCreate(
   content: Record<string, unknown>,
   callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
+  // create does not clone or select a repository. Refuse a `repo` argument
+  // before any spawn, so the sub-agent never starts in an unrelated directory.
+  if (typeof params.repo === "string" && params.repo.trim()) {
+    return errorResult(
+      "REPO_NOT_SUPPORTED",
+      "action=create does not take repo. Call action=provision_workspace with repo first, then action=create with workdir set to the returned path.",
+    );
+  }
+
   // Fail fast on empty/derived-only tasks BEFORE any planner or ACP work; this
   // single gate covers the lane-planner path and every runCreateLegacy fallback.
   // A missing ACP service still wins (SERVICE_UNAVAILABLE) — capability absence
@@ -2558,6 +2567,43 @@ async function runListAgents(
 
 // ── action: cancel (CANCEL_TASK) ────────────────────────────────────────────
 
+type TaskSessionLookup =
+  | { sessions: SessionInfo[] }
+  | { error: "UNSUPPORTED_OPERATION" | "TASK_NOT_FOUND"; text: string };
+
+/**
+ * The ACP sessions that belong to one durable task. A task id names a durable
+ * task, not a session, so only the task service can map it: without the
+ * service or the task the lookup reports that instead of letting the caller
+ * act on an unrelated session.
+ */
+async function sessionsOfTask(
+  runtime: IAgentRuntime,
+  service: NonNullable<ReturnType<typeof getAcpService>>,
+  taskId: string,
+): Promise<TaskSessionLookup> {
+  const taskService = runtime.getService?.(
+    OrchestratorTaskService.serviceType,
+  ) as OrchestratorTaskService | null | undefined;
+  if (!taskService) {
+    return {
+      error: "UNSUPPORTED_OPERATION",
+      text: `Task ${taskId} cannot be resolved without the orchestrator task service; pass sessionId instead.`,
+    };
+  }
+  const detail = await taskService.getTask(taskId);
+  if (!detail) {
+    return { error: "TASK_NOT_FOUND", text: `Task ${taskId} not found.` };
+  }
+  const owned = new Set(detail.sessions.map((session) => session.sessionId));
+  const sessions = await Promise.resolve(service.listSessions());
+  return { sessions: sessions.filter((session) => owned.has(session.id)) };
+}
+
+function isLiveSession(session: SessionInfo): boolean {
+  return !TERMINAL_SESSION_STATUSES.has(session.status.toLowerCase());
+}
+
 async function runCancel(
   runtime: IAgentRuntime,
   _message: Memory,
@@ -2573,14 +2619,13 @@ async function runCancel(
 
   try {
     const all = pickBoolean(params, content, "all") ?? false;
-    const threadId = pickString(params, content, "threadId");
-    const sessionId =
-      pickString(params, content, "sessionId") ??
-      (state as { codingSession?: { id?: string } } | undefined)?.codingSession
-        ?.id;
+    const taskId =
+      pickString(params, content, "threadId") ??
+      pickString(params, content, "taskId");
+    const requestedSessionId = pickString(params, content, "sessionId");
     const search = pickString(params, content, "search")?.toLowerCase();
     const sessions = (await Promise.resolve(service.listSessions())).filter(
-      (session) => !TERMINAL_SESSION_STATUSES.has(session.status.toLowerCase()),
+      isLiveSession,
     );
 
     if (all) {
@@ -2604,6 +2649,47 @@ async function runCancel(
       };
     }
 
+    // A task id selects that task's running sub-agents. It never falls back
+    // to another session: the reply names the task as canceled.
+    if (taskId && !requestedSessionId) {
+      const owned = await sessionsOfTask(runtime, service, taskId);
+      if ("error" in owned) return errorResult(owned.error, owned.text);
+      const running = owned.sessions.filter(isLiveSession);
+      if (running.length === 0) {
+        return errorResult(
+          "NO_SESSION",
+          `Task ${taskId} has no running sub-agent to cancel.`,
+        );
+      }
+      for (const session of running) {
+        await (service.cancelSession?.(session.id) ??
+          service.stopSession(session.id));
+      }
+      const text = `Canceled task ${taskId}.`;
+      await callbackText(callback, text);
+      return {
+        success: true,
+        text,
+        userFacingText: text,
+        verifiedUserFacing: true,
+        turnComplete: true,
+        data: {
+          threadId: taskId,
+          sessionId: running[0].id,
+          stoppedSessions: running.map((session) => session.id),
+          status: "canceled",
+        },
+      };
+    }
+
+    // A search term is an explicit selector, so it wins over the session
+    // remembered in state.
+    const sessionId =
+      requestedSessionId ??
+      (search
+        ? undefined
+        : (state as { codingSession?: { id?: string } } | undefined)
+            ?.codingSession?.id);
     const target = sessionId
       ? await Promise.resolve(service.getSession(sessionId))
       : search
@@ -2628,8 +2714,7 @@ async function runCancel(
 
     await (service.cancelSession?.(target.id) ??
       service.stopSession(target.id));
-    const id = threadId ?? target.id;
-    const text = `Canceled task ${id}.`;
+    const text = `Canceled task ${target.id}.`;
     await callbackText(callback, text);
     return {
       success: true,
@@ -2638,7 +2723,6 @@ async function runCancel(
       verifiedUserFacing: true,
       turnComplete: true,
       data: {
-        ...(threadId ? { threadId } : {}),
         sessionId: target.id,
         stoppedSessions: [target.id],
         status: "canceled",
@@ -2748,19 +2832,29 @@ function normalizeHistoryStatus(
   return undefined;
 }
 
-function historyStatusesValue(value: unknown): OrchestratorTaskStatus[] {
+/**
+ * The status filter of a history query. A value that names no task status is
+ * returned in `unknown`: dropping it would widen the query to every task and
+ * report the wrong list or count.
+ */
+function historyStatusesValue(value: unknown): {
+  statuses: OrchestratorTaskStatus[];
+  unknown: string[];
+} {
   const raw = Array.isArray(value)
     ? value
     : typeof value === "string"
       ? value.split(",")
       : [];
   const statuses = new Set<OrchestratorTaskStatus>();
+  const unknown: string[] = [];
   for (const item of raw) {
-    if (typeof item !== "string") continue;
+    if (typeof item !== "string" || !item.trim()) continue;
     const status = normalizeHistoryStatus(item);
     if (status) statuses.add(status);
+    else if (item.trim().toLowerCase() !== "all") unknown.push(item.trim());
   }
-  return Array.from(statuses);
+  return { statuses: Array.from(statuses), unknown };
 }
 
 function buildWindowFilters(window: HistoryWindow | undefined): {
@@ -3162,7 +3256,17 @@ async function runHistory(
   const fallbackLimit = metric === "detail" ? 1 : 10;
   const limit = parseHistoryLimit(params.limit ?? content.limit, fallbackLimit);
   const window = historyWindowValue(params.window ?? content.window);
-  const statuses = historyStatusesValue(params.statuses ?? content.statuses);
+  const { statuses, unknown: unknownStatuses } = historyStatusesValue(
+    params.statuses ?? content.statuses,
+  );
+  if (unknownStatuses.length > 0) {
+    return failureResult(
+      "TASKS:history",
+      "INVALID_STATUS",
+      `Unknown task status: ${unknownStatuses.join(", ")}. Valid statuses: ${[...TASK_HISTORY_STATUSES].join(", ")}.`,
+      { reason: "invalid_status", statuses: unknownStatuses },
+    );
+  }
   const search = textValue(params.search) ?? textValue(content.search);
   // Session-scoped history resolves through the durable session index. A task
   // may have several sessions, so comparing only its latest session would make
@@ -3449,15 +3553,14 @@ async function runControl(
   // session send can never unpause the task (and after a pause there is
   // usually no live session left to send to), so without this pause would be
   // a one-way door from the action surface. Session-only calls (no
-  // taskId/threadId, or no task service) keep the plain ACP-send fallback.
+  // taskId/threadId) keep the plain ACP-send path.
   const controlTaskId =
-    action === "resume" || action === "continue"
-      ? (pickString(params, content, "taskId") ??
-        pickString(params, content, "threadId"))
-      : undefined;
+    pickString(params, content, "taskId") ??
+    pickString(params, content, "threadId");
+  const requestedSessionId = pickString(params, content, "sessionId");
   let resumedTask: Awaited<ReturnType<OrchestratorTaskService["resumeTask"]>> =
     null;
-  if (controlTaskId) {
+  if (controlTaskId && action !== "stop") {
     const taskService = runtime.getService?.(
       OrchestratorTaskService.serviceType,
     ) as OrchestratorTaskService | null | undefined;
@@ -3478,11 +3581,28 @@ async function runControl(
     }
   }
 
-  const target = await resolveSession(
-    service,
-    pickString(params, content, "sessionId"),
-    state,
-  );
+  // A task id selects that task's running sessions. It never falls back to the
+  // newest session, which can belong to a different task.
+  let targets: SessionInfo[];
+  let missingId: string | undefined;
+  if (controlTaskId && !requestedSessionId) {
+    const owned = await sessionsOfTask(runtime, service, controlTaskId);
+    if ("error" in owned) {
+      return failureResult("TASKS:control", owned.error, owned.text, {
+        reason: owned.error.toLowerCase(),
+        action,
+        taskId: controlTaskId,
+      });
+    }
+    const running = owned.sessions.filter(isLiveSession);
+    const newest = newestSession(running);
+    targets = action === "stop" ? running : newest ? [newest] : [];
+  } else {
+    const resolved = await resolveSession(service, requestedSessionId, state);
+    targets = resolved.session ? [resolved.session] : [];
+    missingId = resolved.missingId;
+  }
+  const target = { session: targets[0], missingId };
   if (!target.session) {
     if (resumedTask && controlTaskId) {
       const out = "Resumed the coding task.";
@@ -3507,7 +3627,9 @@ async function runControl(
     // in-voice reply was a double message.
     const msg = target.missingId
       ? `Session ${target.missingId} not found.`
-      : "No active ACP session found.";
+      : controlTaskId && !requestedSessionId
+        ? `Task ${controlTaskId} has no running coding session.`
+        : "No active ACP session found.";
     return failureResult("TASKS:control", "SESSION_NOT_FOUND", msg, {
       reason: "session_not_found",
       action,
@@ -3519,13 +3641,13 @@ async function runControl(
     sessionId: target.session.id,
     action,
   };
-  if (resumedTask && controlTaskId) {
+  if (controlTaskId && (resumedTask || !requestedSessionId)) {
     data = { ...data, taskId: controlTaskId };
   }
 
   let responseText = "";
   if (action === "stop") {
-    await service.stopSession(target.session.id);
+    for (const session of targets) await service.stopSession(session.id);
     responseText = "Stopped the coding task.";
   } else {
     const nextInstruction =
@@ -3571,13 +3693,27 @@ async function runShare(
     return { success: false, error: "SERVICE_UNAVAILABLE" };
   }
 
-  const target = await resolveSession(
-    service,
-    pickString(params, _content, "sessionId"),
-    state,
-  );
+  const requestedSessionId = pickString(params, _content, "sessionId");
+  const taskId =
+    pickString(params, _content, "taskId") ??
+    pickString(params, _content, "threadId");
+  // A task id selects that task's latest session. It never falls back to the
+  // newest session, which can belong to a different task.
+  let target: { session?: SessionInfo };
+  if (taskId && !requestedSessionId) {
+    const owned = await sessionsOfTask(runtime, service, taskId);
+    if ("error" in owned) {
+      return { success: false, error: owned.error, text: owned.text };
+    }
+    target = { session: newestSession(owned.sessions) };
+  } else {
+    target = await resolveSession(service, requestedSessionId, state);
+  }
   if (!target.session) {
-    const text = "I could not find an active ACP session to share.";
+    const text =
+      taskId && !requestedSessionId
+        ? `Task ${taskId} has no ACP session to share.`
+        : "I could not find an active ACP session to share.";
     if (callback) await callback({ text });
     return { success: false, error: "SESSION_NOT_FOUND", text };
   }
@@ -3998,6 +4134,17 @@ export function extractBulkItems(
   return [];
 }
 
+const ISSUE_ACTIONS = [
+  "create",
+  "list",
+  "get",
+  "update",
+  "comment",
+  "close",
+  "reopen",
+  "add_labels",
+] as const;
+
 function inferIssueAction(text: string): string {
   const lower = text.toLowerCase();
 
@@ -4314,9 +4461,13 @@ async function handleIssueAction(
       default:
         if (callback)
           await callback({
-            text: `Unknown issue action: ${action}. Use: create, list, get, update, comment, close, reopen, add_labels`,
+            text: `Unknown issue action: ${action}. Use: ${ISSUE_ACTIONS.join(", ")}`,
           });
-        return { success: false, error: "UNKNOWN_OPERATION" };
+        return {
+          success: false,
+          error: "UNKNOWN_OPERATION",
+          text: `Unknown issueAction '${action}'. Valid values: ${ISSUE_ACTIONS.join(", ")}.`,
+        };
     }
   } catch (error) {
     // error-policy:J1 issue-operation boundary → in-voice user line +
@@ -4542,6 +4693,7 @@ const TASKS_REJECTED_FAILURE_CODES: ReadonlySet<string> = new Set([
   "FORBIDDEN",
   "INVALID_CREDENTIALS",
   "INVALID_REPO_DOMAIN",
+  "INVALID_STATUS",
   "LINK_SHARE_NOT_A_TASK",
   "MISSING_INPUT",
   "MISSING_ISSUE_NUMBER",
@@ -4554,6 +4706,7 @@ const TASKS_REJECTED_FAILURE_CODES: ReadonlySet<string> = new Set([
   "CHILD_TASK_REQUIRED",
   "NO_SESSION",
   "NO_WORKSPACE",
+  "REPO_NOT_SUPPORTED",
   "SESSION_NOT_FOUND",
   "SERVICE_UNAVAILABLE",
   "SMITHERS_DURABLE_TASK_UNAVAILABLE",
@@ -5226,7 +5379,7 @@ export const tasksAction: Action & {
   description:
     "Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (elizaos / pi-agent / claude / codex). " +
     "Available operations (pick via `action`): create or spawn_agent (delegate new coding work), send (forward a message to an existing coding sub-agent), list_agents / history (read state), " +
-    "control (pause | resume | continue | archive | reopen a task), share (surface task output), provision_workspace / submit_workspace (workspace setup and PR submission), manage_issues (GitHub issue operations), cancel / stop_agent (end a coding sub-agent run when the user asks to). " +
+    "control (pause | stop | resume | continue | archive | reopen a task), share (report a task session's id, agent, status and workspace path), provision_workspace / submit_workspace (workspace setup and PR submission), manage_issues (GitHub issue operations), cancel / stop_agent (end a coding sub-agent run when the user asks to). " +
     "Choose this when the user asks to delegate coding work, use a coding adapter by name, or run multi-step development work — it is the canonical path for coding sub-agents and is preferred over inline FILE / BASH for delegated work. " +
     "NOT for building a web app/page/site/interactive HTML the user wants hosted with a live link — that is APP action=create, which builds, verifies, AND publishes; a task workspace has no hosting path, so files built here never get a URL.",
   descriptionCompressed:
@@ -5282,7 +5435,7 @@ export const tasksAction: Action & {
     {
       name: "agentType",
       description:
-        "Heuristic backend guess (elizaos, pi-agent, codex, or claude) for create / spawn_agent / control.resume. This is a weak hint — it loses to the operator default/pin and to character routing. To honor an EXPLICIT user request use requestedBackend instead.",
+        "Heuristic backend guess (elizaos, pi-agent, codex, or claude) for create / spawn_agent. This is a weak hint — it loses to the operator default/pin and to character routing. To honor an EXPLICIT user request use requestedBackend instead.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -5337,7 +5490,7 @@ export const tasksAction: Action & {
     {
       name: "repo",
       description:
-        "Repository URL/slug for action=create / action=manage_issues / action=provision_workspace.",
+        "Repository URL/slug for action=manage_issues / action=provision_workspace. action=create does not take repo: provision the workspace first, then pass its path as workdir.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -5356,8 +5509,7 @@ export const tasksAction: Action & {
     },
     {
       name: "label",
-      description:
-        "Task label for action=create / action=spawn_agent / action=send.",
+      description: "Task label for action=create / action=spawn_agent.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -5401,14 +5553,13 @@ export const tasksAction: Action & {
     {
       name: "threadId",
       description:
-        "Target task-thread id for action=cancel / action=control / action=share / action=archive / action=reopen.",
+        "Durable task id for action=cancel / action=control / action=share / action=archive / action=reopen. Selects that task's sessions; an explicit sessionId wins.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "taskId",
-      description:
-        "Alias for threadId; preferred for action=archive / action=reopen.",
+      description: "Alias for threadId.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -5422,13 +5573,7 @@ export const tasksAction: Action & {
     {
       name: "search",
       description:
-        "Free-text search for thread/task lookup in action=cancel / action=control / action=history / action=share.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "reason",
-      description: "Cancellation reason for action=cancel.",
+        "Free-text search for thread/task lookup in action=cancel / action=history.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -5451,7 +5596,8 @@ export const tasksAction: Action & {
     },
     {
       name: "statuses",
-      description: "Status filter list for action=history.",
+      description:
+        "Status filter list for action=history: open, active, waiting_on_user, blocked, validating, done, failed, archived, interrupted. Any other value is an error.",
       required: false,
       schema: { type: "array" as const, items: { type: "string" as const } },
     },
@@ -5487,14 +5633,7 @@ export const tasksAction: Action & {
       description:
         "Child action for action=manage_issues: create | list | get | update | comment | close | reopen | add_labels.",
       required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "note",
-      description:
-        "Optional note for action=control with controlAction=pause|stop.",
-      required: false,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, enum: [...ISSUE_ACTIONS] },
     },
     {
       name: "instruction",
@@ -5587,7 +5726,12 @@ export const tasksAction: Action & {
       description:
         "Labels (csv string or array) for action=manage_issues with issueAction=create|update|add_labels|list.",
       required: false,
-      schema: { type: "string" as const },
+      schema: {
+        anyOf: [
+          { type: "string" as const },
+          { type: "array" as const, items: { type: "string" as const } },
+        ],
+      },
     },
     {
       name: "state",
@@ -5869,7 +6013,7 @@ export const tasksAction: Action & {
           text: "Creating the task and dispatching a coding sub-agent.",
           actions: ["TASKS"],
           thought:
-            "User asked to delegate a coding job; TASKS action=create with kind=coding routes to the orchestrator's spawn path.",
+            "User asked to delegate a coding job; TASKS action=create with the task text routes to the orchestrator's spawn path.",
         },
       },
     ],
@@ -5887,7 +6031,7 @@ export const tasksAction: Action & {
           text: "Listing active tasks.",
           actions: ["TASKS"],
           thought:
-            "Status check maps to TASKS action=list_agents filtering for in_progress / queued tasks.",
+            "Status check maps to TASKS action=list_agents, which lists every task-agent session with its status.",
         },
       },
     ],

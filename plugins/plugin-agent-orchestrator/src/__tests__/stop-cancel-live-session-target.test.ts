@@ -11,6 +11,8 @@ import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { tasksAction } from "../actions/tasks.ts";
 import { AcpService } from "../services/acp-service.ts";
+import { OrchestratorTaskService } from "../services/orchestrator-task-service.ts";
+import { OrchestratorTaskStore } from "../services/orchestrator-task-store.ts";
 
 const FAKE_ACPX = `#!/usr/bin/env node
 const args = process.argv.slice(2);
@@ -29,7 +31,10 @@ if (args.includes("prompt")) {
 let workdir: string;
 let cliPath: string;
 
-function runtimeWith(getAcp: () => AcpService | undefined): IAgentRuntime {
+function runtimeWith(
+  getAcp: () => AcpService | undefined,
+  getTasks: () => OrchestratorTaskService | undefined = () => undefined,
+): IAgentRuntime {
   const values: Record<string, string> = {
     ELIZA_ACP_TRANSPORT: "cli",
     ELIZA_ACP_CLI: cliPath,
@@ -42,7 +47,9 @@ function runtimeWith(getAcp: () => AcpService | undefined): IAgentRuntime {
     getService: (type: string) =>
       type === "ACP_SERVICE" || type === "ACP_SUBPROCESS_SERVICE"
         ? (getAcp() ?? null)
-        : null,
+        : type === OrchestratorTaskService.serviceType
+          ? (getTasks() ?? null)
+          : null,
     hasService: () => false,
     services: new Map(),
     reportError: () => {},
@@ -169,4 +176,149 @@ describe("TASKS stop_agent / cancel default target", () => {
       });
     }, 20_000);
   }
+});
+
+/**
+ * Two sub-agents run at once. The older one belongs to a durable task; the
+ * newer one does not. A task id must select the older one.
+ */
+async function withTaskAndNewerSession(
+  body: (ctx: {
+    runtime: IAgentRuntime;
+    service: AcpService;
+    taskId: string;
+    taskSessionId: string;
+    newerSessionId: string;
+  }) => Promise<void>,
+): Promise<void> {
+  let service: AcpService | undefined;
+  let tasks: OrchestratorTaskService | undefined;
+  const runtime = runtimeWith(
+    () => service,
+    () => tasks,
+  );
+  service = new AcpService(runtime);
+  await service.start();
+  const store = new OrchestratorTaskStore({ backend: "memory" });
+  tasks = new OrchestratorTaskService(runtime, { store });
+  const turns: Promise<unknown>[] = [];
+  const ids: string[] = [];
+  try {
+    const owned = await service.spawnSession({
+      name: "task-owned",
+      agentType: "codex",
+      workdir,
+    });
+    ids.push(owned.sessionId);
+    turns.push(service.sendPrompt(owned.sessionId, "long build"));
+    await waitForStatus(service, owned.sessionId, "busy");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const newer = await service.spawnSession({
+      name: "unrelated",
+      agentType: "codex",
+      workdir,
+    });
+    ids.push(newer.sessionId);
+    turns.push(service.sendPrompt(newer.sessionId, "other work"));
+    await waitForStatus(service, newer.sessionId, "busy");
+
+    const task = await store.createTask({
+      title: "Owned task",
+      goal: "finish the long build",
+      acceptanceCriteria: [],
+      roomId: "target-room",
+      worldId: "target-world",
+    });
+    await tasks.attachSession(task.task.id, {
+      sessionId: owned.sessionId,
+      agentType: "codex",
+      workdir,
+      status: "busy",
+    });
+    await body({
+      runtime,
+      service,
+      taskId: task.task.id,
+      taskSessionId: owned.sessionId,
+      newerSessionId: newer.sessionId,
+    });
+  } finally {
+    for (const id of ids) await service.stopSession(id).catch(() => {});
+    await Promise.all(turns);
+    await service.stop();
+  }
+}
+
+describe("TASKS task id selects that task's session", () => {
+  it("cancel with threadId ends the task's sub-agent, not the newest one", async () => {
+    await withTaskAndNewerSession(async (ctx) => {
+      const result = await runTasks(ctx.runtime, {
+        action: "cancel",
+        threadId: ctx.taskId,
+      });
+
+      expect(result?.success).toBe(true);
+      expect(result?.data).toMatchObject({
+        threadId: ctx.taskId,
+        stoppedSessions: [ctx.taskSessionId],
+      });
+      expect((await ctx.service.getSession(ctx.taskSessionId))?.status).toBe(
+        "cancelled",
+      );
+      expect((await ctx.service.getSession(ctx.newerSessionId))?.status).toBe(
+        "busy",
+      );
+    });
+  }, 20_000);
+
+  it("cancel with an unknown taskId cancels nothing", async () => {
+    await withTaskAndNewerSession(async (ctx) => {
+      const result = await runTasks(ctx.runtime, {
+        action: "cancel",
+        taskId: "no-such-task",
+      });
+
+      expect(result).toMatchObject({ success: false, error: "TASK_NOT_FOUND" });
+      expect((await ctx.service.getSession(ctx.taskSessionId))?.status).toBe(
+        "busy",
+      );
+      expect((await ctx.service.getSession(ctx.newerSessionId))?.status).toBe(
+        "busy",
+      );
+    });
+  }, 20_000);
+
+  it("control stop with taskId stops the task's sub-agent, not the newest one", async () => {
+    await withTaskAndNewerSession(async (ctx) => {
+      const result = await runTasks(ctx.runtime, {
+        action: "control",
+        controlAction: "stop",
+        taskId: ctx.taskId,
+      });
+
+      expect(result?.success).toBe(true);
+      expect(result?.data).toMatchObject({
+        sessionId: ctx.taskSessionId,
+        taskId: ctx.taskId,
+      });
+      expect((await ctx.service.getSession(ctx.taskSessionId))?.status).toBe(
+        "stopped",
+      );
+      expect((await ctx.service.getSession(ctx.newerSessionId))?.status).toBe(
+        "busy",
+      );
+    });
+  }, 20_000);
+
+  it("share with threadId reports the task's session", async () => {
+    await withTaskAndNewerSession(async (ctx) => {
+      const result = await runTasks(ctx.runtime, {
+        action: "share",
+        threadId: ctx.taskId,
+      });
+
+      expect(result?.success).toBe(true);
+      expect(result?.data).toMatchObject({ sessionId: ctx.taskSessionId });
+    });
+  }, 20_000);
 });
