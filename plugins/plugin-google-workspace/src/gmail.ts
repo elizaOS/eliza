@@ -21,7 +21,9 @@ import {
   MAX_GMAIL_ATTACHMENT_BYTES,
 } from "./gmail-attachments.js";
 import {
+  decodeGmailPartData,
   extractGmailMimeBody,
+  gmailPartCharset,
   snapshotGmailMimePart,
   walkGmailMimeParts,
 } from "./gmail-mime-parts.js";
@@ -1524,7 +1526,9 @@ function collectMessagePart(
   body: Pick<GoogleMessageSummary, "bodyHtml" | "bodyText">
 ): void {
   walkGmailMimeParts(part, (node) => {
-    const data = node.body?.data ? decodeBase64Url(node.body.data) : undefined;
+    const data = node.body?.data
+      ? decodeGmailPartData(node.body.data, gmailPartCharset(node))
+      : undefined;
 
     if (data && node.mimeType === "text/plain" && !body.bodyText) {
       body.bodyText = data;
@@ -1556,10 +1560,6 @@ function formatEmailAddresses(addresses: readonly GoogleEmailAddress[]): string 
   return addresses
     .map((address) => (address.name ? `"${address.name}" <${address.email}>` : address.email))
     .join(", ");
-}
-
-function decodeBase64Url(value: string): string {
-  return Buffer.from(value, "base64url").toString("utf8");
 }
 
 function normalizedLimit(value: number | undefined, fallback: number, max: number): number {
@@ -1883,7 +1883,7 @@ function extractGoogleGmailBody(payload: gmail_v1.Schema$MessagePart | undefined
   const snapshot = snapshotGmailMimePart(payload);
   const directBody = snapshot.body?.data;
   if (typeof directBody === "string") {
-    const decoded = decodeBase64Url(directBody);
+    const decoded = decodeGmailPartData(directBody, gmailPartCharset(snapshot));
     return snapshot.mimeType === "text/html" ? htmlToPlainText(decoded) : decoded.trim();
   }
   return "";
@@ -1896,7 +1896,7 @@ function extractGoogleGmailBodyByMime(
   return extractGmailMimeBody(payload, mimeType, (node) => {
     const directBody = node.body?.data;
     if (typeof directBody !== "string") return "";
-    const decoded = decodeBase64Url(directBody);
+    const decoded = decodeGmailPartData(directBody, gmailPartCharset(node));
     return mimeType === "text/html" ? htmlToPlainText(decoded) : decoded.trim();
   });
 }

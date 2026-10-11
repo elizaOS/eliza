@@ -15,9 +15,12 @@ export type GmailMimePartLike = {
   mimeType?: string | null;
   partId?: string | null;
   filename?: string | null;
+  headers?: GmailMimeHeader[] | null;
   body?: { data?: string | null; attachmentId?: string | null; size?: number | null } | null;
   parts?: GmailMimePartLike[] | null;
 };
+
+export type GmailMimeHeader = { name?: string | null; value?: string | null };
 
 type WalkContext = {
   visits: number;
@@ -60,13 +63,36 @@ function ownData(object: object, key: PropertyKey, field: string): OwnData {
   return { found: true, value: descriptor.value };
 }
 
-function isMimeChildArray(value: unknown): value is unknown[] {
+function isMimeChildArray(value: unknown, field = "parts"): value is unknown[] {
   try {
     return Array.isArray(value);
   } catch (cause) {
     // error-policy:J2 revoked or trapping arrays become typed MIME fail-closed.
-    failUnbounded({ reflection: "Array.isArray", field: "parts" }, cause);
+    failUnbounded({ reflection: "Array.isArray", field }, cause);
   }
+}
+
+function snapshotHeaders(part: object): GmailMimeHeader[] | undefined {
+  const headersOwn = ownData(part, "headers", "headers");
+  if (!headersOwn.found || !isMimeChildArray(headersOwn.value, "headers")) return undefined;
+  const rows = headersOwn.value;
+  const lengthOwn = ownData(rows, "length", "headers.length");
+  const length = lengthOwn.found ? lengthOwn.value : 0;
+  if (typeof length !== "number" || !Number.isInteger(length) || length < 0) {
+    failUnbounded({ field: "headers.length", length });
+  }
+  const headers: GmailMimeHeader[] = [];
+  for (let index = 0; index < length; index += 1) {
+    const slot = ownData(rows, index, "headers[]");
+    if (!slot.found || !slot.value || typeof slot.value !== "object") continue;
+    const name = ownData(slot.value, "name", "headers[].name");
+    const value = ownData(slot.value, "value", "headers[].value");
+    headers.push({
+      name: name.found && typeof name.value === "string" ? name.value : undefined,
+      value: value.found && typeof value.value === "string" ? value.value : undefined,
+    });
+  }
+  return headers;
 }
 
 export function snapshotGmailMimePart(part: object): GmailMimePartLike {
@@ -80,6 +106,8 @@ export function snapshotGmailMimePart(part: object): GmailMimePartLike {
   if (mime.found) {
     snapshot.mimeType = mime.value as string | null | undefined;
   }
+  const headers = snapshotHeaders(part);
+  if (headers) snapshot.headers = headers;
   if (!bodyOwn.found) return snapshot;
   if (bodyOwn.value == null) {
     snapshot.body = bodyOwn.value as null | undefined;
@@ -217,4 +245,76 @@ function extractGmailMimeBodyInner(
   } finally {
     ctx.visiting.delete(part);
   }
+}
+
+// Windows-1252 bytes 0x80-0x9f (ISO-8859-1 maps them to C1 controls). Undefined bytes stay as-is.
+export const WINDOWS_1252_HIGH = [
+  0x20ac, 0x81, 0x201a, 0x0192, 0x201e, 0x2026, 0x2020, 0x2021, 0x02c6, 0x2030, 0x0160, 0x2039,
+  0x0152, 0x8d, 0x017d, 0x8f, 0x90, 0x2018, 0x2019, 0x201c, 0x201d, 0x2022, 0x2013, 0x2014, 0x02dc,
+  0x2122, 0x0161, 0x203a, 0x0153, 0x9d, 0x017e, 0x0178,
+];
+const LATIN1_LABELS = new Set([
+  "iso-8859-1",
+  "iso8859-1",
+  "iso_8859-1",
+  "latin1",
+  "latin-1",
+  "l1",
+  "us-ascii",
+  "ascii",
+  "windows-1252",
+  "cp1252",
+  "x-cp1252",
+  "cp819",
+  "ibm819",
+]);
+function decodeWindows1252(bytes: Uint8Array): string {
+  let out = "";
+  for (const byte of bytes)
+    out += String.fromCharCode(
+      byte >= 0x80 && byte <= 0x9f ? WINDOWS_1252_HIGH[byte - 0x80] : byte
+    );
+  return out;
+}
+
+/** The `charset` parameter of a part's Content-Type header, lower-cased, or null. */
+export function gmailPartCharset(
+  part: { headers?: readonly (GmailMimeHeader | null | undefined)[] | null } | null | undefined
+): string | null {
+  const header = part?.headers?.find((row) => row?.name?.toLowerCase() === "content-type")?.value;
+  if (typeof header !== "string") return null;
+  const match = /;\s*charset\s*=\s*(?:"([^"]{1,64})"|([^\s;"]{1,64}))/i.exec(header);
+  const label = (match?.[1] ?? match?.[2])?.trim().toLowerCase();
+  return label || null;
+}
+
+/**
+ * Decodes base64url part data with its declared charset. ISO-8859-1, US-ASCII and Windows-1252
+ * decode as Windows-1252 (the WHATWG mapping, available even where TextDecoder lacks legacy
+ * encodings); other labels use TextDecoder when the runtime supports them. Unknown labels and
+ * undeclared charsets fall back to UTF-8.
+ */
+export function decodeGmailPartData(
+  data: string,
+  charset: string | null = null,
+  strict = false
+): string {
+  const bytes = Buffer.from(data, "base64url");
+  if (
+    strict &&
+    (!/^[A-Za-z0-9_-]*={0,2}$/.test(data) ||
+      bytes.toString("base64url") !== data.replace(/=+$/, ""))
+  )
+    throw new Error("Draft part encoding is invalid");
+  const label = charset?.toLowerCase() ?? "utf-8";
+  if (LATIN1_LABELS.has(label)) return decodeWindows1252(bytes);
+  if (label !== "utf-8" && label !== "utf8") {
+    try {
+      return new TextDecoder(label, { fatal: strict }).decode(bytes);
+    } catch {
+      if (strict) throw new Error("Draft charset cannot be decoded losslessly");
+      // Unsupported or invalid label: UTF-8 below.
+    }
+  }
+  return new TextDecoder("utf-8", { fatal: strict }).decode(bytes);
 }
