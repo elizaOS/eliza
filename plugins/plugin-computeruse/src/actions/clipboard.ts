@@ -27,7 +27,12 @@ import {
   writeClipboard as driverWriteClipboard,
 } from "../platform/clipboard.js";
 import type { ComputerUseService } from "../services/computer-use-service.js";
-import { resolveActionParams, toComputerUseActionResult } from "./helpers.js";
+import {
+  approvalOwnerIdFromMemory,
+  resolveActionParams,
+  toComputerUseActionResult,
+} from "./helpers.js";
+import { withApprovalRelay } from "./progress.js";
 
 const CLIPBOARD_ACTIONS = ["read", "write"] as const;
 export type ClipboardActionType = (typeof CLIPBOARD_ACTIONS)[number];
@@ -194,13 +199,21 @@ export const clipboardAction: Action = {
 
     let result: ClipboardActionResult;
     try {
-      result = await runClipboardAction(
-        {
-          ...params,
-          action,
-        } satisfies ClipboardActionParams,
+      // The relay sends the pending approval to the chat, so a connector user
+      // gets Approve/Deny controls instead of a turn that never completes.
+      result = await withApprovalRelay(
         service,
-        options?.abortSignal,
+        callback,
+        () =>
+          runClipboardAction(
+            {
+              ...params,
+              action,
+            } satisfies ClipboardActionParams,
+            service,
+            options?.abortSignal,
+          ),
+        { ownerId: approvalOwnerIdFromMemory(message) },
       );
     } catch (error) {
       // error-policy:J1 action boundary — the platform failure becomes a
