@@ -17,6 +17,7 @@ import {
   CalendarServiceError,
 } from "@elizaos/plugin-calendar";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { CalendarLocalTimeError } from "../../../plugin-calendar/src/internal/time.js";
 import {
   handleLifeOpsRoutes,
   type LifeOpsRouteContext,
@@ -31,6 +32,11 @@ class RouteCalendarService extends CalendarService {
   static override serviceType = "calendar";
 
   sourceReads = 0;
+  nextContextError: Error = new CalendarServiceError(
+    503,
+    "Calendar sources are unavailable.",
+    "CALENDAR_SOURCES_UNAVAILABLE",
+  );
 
   static override async start(
     runtime: IAgentRuntime,
@@ -44,11 +50,7 @@ class RouteCalendarService extends CalendarService {
   }
 
   override async getNextCalendarEventContext(): Promise<never> {
-    throw new CalendarServiceError(
-      503,
-      "Calendar sources are unavailable.",
-      "CALENDAR_SOURCES_UNAVAILABLE",
-    );
+    throw this.nextContextError;
   }
 }
 
@@ -147,6 +149,33 @@ describe("LifeOps calendar route ownership", () => {
     expect(response).toEqual({
       statusCode: 503,
       body: '{"error":"Calendar sources are unavailable."}',
+    });
+  });
+
+  it("answers a repeated local time with a 409 clarification instead of a crash", async () => {
+    const possibleInstants = [
+      new Date("2026-11-01T05:30:00.000Z"),
+      new Date("2026-11-01T06:30:00.000Z"),
+    ];
+    calendar.nextContextError = new CalendarLocalTimeError(
+      "America/New_York",
+      { year: 2026, month: 11, day: 1, hour: 1, minute: 30, second: 0 },
+      possibleInstants,
+    );
+    const { context, response } = routeContext({
+      runtime,
+      pathname: "/api/lifeops/calendar/next-context",
+    });
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+    expect(response.statusCode).toBe(409);
+    expect(JSON.parse(response.body)).toMatchObject({
+      code: "CALENDAR_LOCAL_TIME_AMBIGUOUS",
+      requiresInput: true,
+      timeClarification: {
+        timeZone: "America/New_York",
+        possibleInstants: possibleInstants.map((d) => d.toISOString()),
+      },
     });
   });
 });

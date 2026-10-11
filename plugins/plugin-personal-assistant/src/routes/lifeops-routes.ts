@@ -72,6 +72,7 @@ import {
 import {
   type AgentRuntime,
   createIntegrationTelemetrySpan,
+  isElizaError,
   logger,
   type Memory,
   requireConfirmation,
@@ -849,6 +850,25 @@ async function runCalendarRoute(
         errorKind: "calendar_service_error",
       });
       ctx.error(ctx.res, error.message, error.status);
+      return true;
+    }
+    // Skipped or repeated local times are rejected before any write.
+    if (isElizaError(error) && error.code.startsWith("CALENDAR_LOCAL_TIME_")) {
+      span.failure({
+        statusCode: 409,
+        error,
+        errorKind: "calendar_local_time",
+      });
+      ctx.json(
+        ctx.res,
+        {
+          error: error.message,
+          code: error.code,
+          requiresInput: true,
+          timeClarification: error.context,
+        },
+        409,
+      );
       return true;
     }
     runtime.reportError("CalendarRoutes.ownerBoundary", error, { operation });

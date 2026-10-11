@@ -19,7 +19,10 @@ import {
   isGoogleCalendarWebhookEnabled,
 } from "../google-watch/index.js";
 import { CalendarServiceError } from "../internal/errors.js";
-import { CalendarLocalTimeError } from "../internal/time.js";
+import {
+  CalendarLocalTimeError,
+  calendarLocalTimeClarification,
+} from "../internal/time.js";
 import {
   type CalendarRouteRateLimitKey,
   type CalendarRouteService,
@@ -525,8 +528,7 @@ async function runCalendarRoute(
         {
           error: error.message,
           code: error.code,
-          requiresInput: true,
-          timeClarification: error.context,
+          ...calendarLocalTimeClarification(error),
         },
         error.status,
       );

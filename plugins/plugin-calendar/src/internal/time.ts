@@ -37,6 +37,14 @@ export class CalendarLocalTimeError extends ElizaError {
   }
 }
 
+/** Input request shared by every surface that refuses a skipped or repeated local time. */
+export function calendarLocalTimeClarification(error: CalendarLocalTimeError): {
+  requiresInput: true;
+  timeClarification: CalendarLocalTimeError["context"];
+} {
+  return { requiresInput: true, timeClarification: error.context };
+}
+
 export interface ZonedDateParts {
   year: number;
   month: number;

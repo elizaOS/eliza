@@ -31,6 +31,8 @@ import { formatCalendarEventDateTime } from "./internal/format.js";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,
+  CalendarLocalTimeError,
+  calendarLocalTimeClarification,
   getZonedDateParts,
   isRealCalendarDay,
 } from "./internal/time.js";
@@ -366,10 +368,10 @@ async function dispatchCapability(
 
 /**
  * Execute one Calendar view capability against a resolved service. Expected
- * domain failures (validation, 4xx service refusals) become explicit
- * `success: false` results with honest user-facing text; systemic failures
- * (5xx, unknown capability, programming errors) propagate to the shared views
- * route boundary.
+ * domain failures (validation, 4xx service refusals, skipped or repeated local
+ * times) become explicit `success: false` results with honest user-facing
+ * text; systemic failures (5xx, unknown capability, programming errors)
+ * propagate to the shared views route boundary.
  */
 export async function interact(
   capability: string,
@@ -391,6 +393,14 @@ export async function interact(
       now,
     );
   } catch (error) {
+    if (error instanceof CalendarLocalTimeError) {
+      return {
+        success: false,
+        text: error.message,
+        data: calendarLocalTimeClarification(error),
+        error: { code: error.code, message: error.message },
+      };
+    }
     if (error instanceof CalendarServiceError && error.status < 500) {
       return {
         success: false,

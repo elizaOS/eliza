@@ -268,6 +268,46 @@ describe("calendar view server capabilities (real PGlite)", {
     expect(await eventRowCount()).toBe(0);
   });
 
+  it.each([
+    {
+      label: "repeated",
+      startAt: "2026-11-01T01:30",
+      code: "CALENDAR_LOCAL_TIME_AMBIGUOUS",
+      possibleInstants: [
+        "2026-11-01T05:30:00.000Z",
+        "2026-11-01T06:30:00.000Z",
+      ],
+    },
+    {
+      label: "skipped",
+      startAt: "2026-03-08T02:30",
+      code: "CALENDAR_LOCAL_TIME_NONEXISTENT",
+      possibleInstants: [],
+    },
+  ])(
+    "asks for clarification on a $label local time without writing",
+    async ({ startAt, code, possibleInstants }) => {
+      const result = await interact(
+        "create-event",
+        { title: "Call", startAt, timeZone: "America/New_York" },
+        service,
+      );
+      expect(result).toMatchObject({
+        success: false,
+        error: { code },
+        data: {
+          requiresInput: true,
+          timeClarification: {
+            timeZone: "America/New_York",
+            possibleInstants,
+          },
+        },
+      });
+      expect(result.text).toBe(result.error?.message);
+      expect(await eventRowCount()).toBe(0);
+    },
+  );
+
   it("escalates unknown capabilities to the route boundary", async () => {
     await expect(
       interact("delete-event", { id: "anything" }, service),
