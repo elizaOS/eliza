@@ -131,7 +131,9 @@ export function lifeOpsCalendarEventFromIcs(args: {
 /**
  * A subscribed feed stores each recurring VEVENT once, at DTSTART. Expand
  * every series into its occurrences inside [timeMin, timeMax), minus EXDATEs
- * and instances replaced by a RECURRENCE-ID override. A series this module
+ * and instances replaced by a RECURRENCE-ID override. An all-day event is a
+ * civil date that the caller places on local days, so its window is the wider
+ * [allDayTimeMin, allDayTimeMax). A series this module
  * cannot expand exactly (RDATE, rule parts outside the local subset, the
  * generator cap) keeps its stored event and makes the result incomplete.
  */
@@ -139,6 +141,8 @@ export function expandIcsCalendarEvents(args: {
   events: readonly LifeOpsCalendarEvent[];
   timeMin: string;
   timeMax: string;
+  allDayTimeMin: string;
+  allDayTimeMax: string;
 }): {
   events: LifeOpsCalendarEvent[];
   complete: boolean;
@@ -146,10 +150,14 @@ export function expandIcsCalendarEvents(args: {
     "CALENDAR_ICS_EXDATE_INVALID" | "CALENDAR_RECURRENCE_EXPANSION_INVALID_DATE"
   >;
 } {
-  const minMs = Date.parse(args.timeMin);
-  const maxMs = Date.parse(args.timeMax);
-  const overlaps = (startMs: number, endMs: number) =>
-    endMs > minMs && startMs < maxMs;
+  const timedWindow = {
+    minMs: Date.parse(args.timeMin),
+    maxMs: Date.parse(args.timeMax),
+  };
+  const allDayWindow = {
+    minMs: Date.parse(args.allDayTimeMin),
+    maxMs: Date.parse(args.allDayTimeMax),
+  };
   const overridden = new Set<string>();
   for (const event of args.events) {
     const recurrenceId = event.metadata.icsRecurrenceId;
@@ -165,6 +173,9 @@ export function expandIcsCalendarEvents(args: {
   for (const event of args.events) {
     const startMs = Date.parse(event.startAt);
     const endMs = Date.parse(event.endAt);
+    const { minMs, maxMs } = event.isAllDay ? allDayWindow : timedWindow;
+    const overlaps = (overlapStartMs: number, overlapEndMs: number) =>
+      overlapEndMs > minMs && overlapStartMs < maxMs;
     const recurrence = event.recurrence ?? [];
     const ruleLineCount = recurrence.filter((line) =>
       /^RRULE[:;]/i.test(line),

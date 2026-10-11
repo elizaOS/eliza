@@ -11,6 +11,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { allDayEventIntersectsLocalWindow } from "../src/service/CalendarService.js";
 import {
   type CalendarHostGate,
   CalendarService,
@@ -226,5 +227,108 @@ describe("calendar feed all-day events on the owner's local day (real PGlite)", 
       "Jun 3 holiday",
       "Design review",
     ]);
+  });
+
+  it("shows today's all-day event in a cached Tokyo early-morning window", async () => {
+    await readFeed({
+      timeZone: "Asia/Tokyo",
+      timeMin: "2026-05-30T15:00:00.000Z",
+      timeMax: "2026-06-06T15:00:00.000Z",
+      forceSync: true,
+    });
+
+    // 00:00 to 06:00 on June 3 in Tokyo. The June 3 row starts at
+    // 2026-06-03T00:00Z, after this window ends.
+    const morning = await readFeed({
+      timeZone: "Asia/Tokyo",
+      timeMin: "2026-06-02T15:00:00.000Z",
+      timeMax: "2026-06-02T21:00:00.000Z",
+    });
+
+    expect(morning.source).toBe("cache");
+    expect(morning.events.map((event) => event.title)).toEqual([
+      "Jun 3 holiday",
+    ]);
+  });
+
+  it("shows today's all-day event in a cached Los Angeles evening window", async () => {
+    await readFeed({
+      timeZone: "America/Los_Angeles",
+      timeMin: "2026-05-31T07:00:00.000Z",
+      timeMax: "2026-06-07T07:00:00.000Z",
+      forceSync: true,
+    });
+
+    // 18:00 to 23:00 on June 3 in Los Angeles. The June 3 row ends at
+    // 2026-06-04T00:00Z, before this window starts.
+    const evening = await readFeed({
+      timeZone: "America/Los_Angeles",
+      timeMin: "2026-06-04T01:00:00.000Z",
+      timeMax: "2026-06-04T06:00:00.000Z",
+    });
+
+    expect(evening.source).toBe("cache");
+    expect(evening.events.map((event) => event.title)).toEqual([
+      "Jun 3 holiday",
+    ]);
+  });
+});
+
+describe("all-day event local-day placement", () => {
+  // EventKit sends real instants: June 3 on a Tokyo device.
+  const appleJune3 = {
+    provider: "apple_calendar" as const,
+    startAt: "2026-06-02T15:00:00.000Z",
+    endAt: "2026-06-03T14:59:59.000Z",
+    timezone: "Asia/Tokyo",
+  };
+  const tokyoDay = (day: number) =>
+    [
+      `2026-06-0${day - 1}T15:00:00.000Z`,
+      `2026-06-0${day}T15:00:00.000Z`,
+      "Asia/Tokyo",
+    ] as const;
+
+  it("keeps an Apple Calendar all-day event on its day for an owner in Tokyo", () => {
+    expect(allDayEventIntersectsLocalWindow(appleJune3, ...tokyoDay(2))).toBe(
+      false,
+    );
+    expect(allDayEventIntersectsLocalWindow(appleJune3, ...tokyoDay(3))).toBe(
+      true,
+    );
+    expect(allDayEventIntersectsLocalWindow(appleJune3, ...tokyoDay(4))).toBe(
+      false,
+    );
+  });
+
+  it("places the Apple Calendar civil date on the local day of an owner in another zone", () => {
+    const losAngelesDay = (day: number) =>
+      [
+        `2026-06-0${day}T07:00:00.000Z`,
+        `2026-06-0${day + 1}T07:00:00.000Z`,
+        "America/Los_Angeles",
+      ] as const;
+    expect(
+      allDayEventIntersectsLocalWindow(appleJune3, ...losAngelesDay(2)),
+    ).toBe(false);
+    expect(
+      allDayEventIntersectsLocalWindow(appleJune3, ...losAngelesDay(3)),
+    ).toBe(true);
+    expect(
+      allDayEventIntersectsLocalWindow(appleJune3, ...losAngelesDay(4)),
+    ).toBe(false);
+  });
+
+  it("compares the instants of an Apple Calendar event that has no zone", () => {
+    const floating = { ...appleJune3, timezone: null };
+    expect(allDayEventIntersectsLocalWindow(floating, ...tokyoDay(2))).toBe(
+      false,
+    );
+    expect(allDayEventIntersectsLocalWindow(floating, ...tokyoDay(3))).toBe(
+      true,
+    );
+    expect(allDayEventIntersectsLocalWindow(floating, ...tokyoDay(4))).toBe(
+      false,
+    );
   });
 });
