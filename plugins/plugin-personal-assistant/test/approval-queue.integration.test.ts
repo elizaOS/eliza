@@ -1947,6 +1947,43 @@ describe("ApprovalQueue integration (real PGlite)", () => {
     }
   }, 180_000);
 
+  it("refuses a sign_document deadline the scheduler cannot parse before queueing the approval", async () => {
+    const subjectUserId = String(runtime.agentId);
+    const signDocuments = () =>
+      queue.list({
+        subjectUserId,
+        state: null,
+        action: "sign_document",
+        limit: 100,
+      });
+    const before = (await signDocuments()).length;
+    const args = validateToolArgs(personalAssistantAction, {
+      action: "sign_document",
+      documentName: "NDA",
+      deadline: "next Friday",
+    });
+    expect(args.errors).toEqual([]);
+
+    const result = await personalAssistantAction.handler(
+      runtime,
+      {
+        id: runtime.agentId,
+        entityId: subjectUserId,
+        roomId: runtime.agentId,
+        content: { text: "Send the NDA for signature" },
+      } as never,
+      undefined,
+      { parameters: args.args } as never,
+      async () => [],
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      data: { action: "sign_document", error: "INVALID_DEADLINE" },
+    });
+    expect(await signDocuments()).toHaveLength(before);
+  }, 60_000);
+
   it("enqueue → reject records resolver", async () => {
     const enqueued = await queue.enqueue(
       messageInput({ subjectUserId: "owner-reject" }),

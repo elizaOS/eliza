@@ -20,7 +20,10 @@ import { FOLLOW_UP_CAPABLE_ACTION_TAG } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { isOwnerReminderNonCommandContext } from "../lifeops/reminders/direct-routing.js";
 import { runBookTravelHandler } from "./book-travel.js";
-import { enqueueSignatureRequest } from "./document.js";
+import {
+  enqueueSignatureRequest,
+  unschedulableDeadlineText,
+} from "./document.js";
 import { createOwnerHealthAction, runHealthHandler } from "./health.js";
 import {
   runSchedulingNegotiationHandler,
@@ -677,8 +680,30 @@ async function enqueueDocumentSignatureApproval(args: {
     readStringParam(args.options, "signatureUrl") ??
     firstUrl(text) ??
     undefined;
-  const deadline =
-    readStringParam(args.options, "deadline") ?? defaultSignatureDeadline(text);
+  const requestedDeadline = readStringParam(args.options, "deadline");
+  // The deadline becomes the watcher's `once` trigger. The scheduler refuses an
+  // unparseable one only after the approval row is queued, so refuse it here,
+  // before any write.
+  const deadlineRefusal = requestedDeadline
+    ? unschedulableDeadlineText(requestedDeadline)
+    : null;
+  if (deadlineRefusal) {
+    await args.callback?.({
+      text: deadlineRefusal,
+      source: "action",
+      action: "PERSONAL_ASSISTANT",
+    });
+    return {
+      success: false,
+      text: deadlineRefusal,
+      data: {
+        actionName: "PERSONAL_ASSISTANT",
+        action: "sign_document",
+        error: "INVALID_DEADLINE",
+      },
+    };
+  }
+  const deadline = requestedDeadline ?? defaultSignatureDeadline(text);
   // The OWNER_DOCUMENTS signature path creates the DocumentRequest that
   // RESOLVE_REQUEST dispatches on approval; an approval row without it could
   // only fail with DOCUMENT_REQUEST_NOT_FOUND once the owner approved. This
@@ -875,7 +900,8 @@ export const personalAssistantAction: Action = {
     {
       name: "deadline",
       subactions: ["sign_document"],
-      description: "Signature deadline (ISO-8601).",
+      description:
+        "Signature deadline as an ISO-8601 timestamp, e.g. 2026-11-06T17:00:00Z. A relative phrase such as 'next Friday' fails with INVALID_DEADLINE.",
       required: false,
       schema: { type: "string" as const },
     },

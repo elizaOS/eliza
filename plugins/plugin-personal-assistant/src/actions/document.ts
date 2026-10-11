@@ -225,16 +225,22 @@ const DEADLINE_SUBACTIONS: ReadonlySet<Subaction> = new Set([
  * or the stored request is patched, so an unparseable deadline is refused here,
  * by the scheduler's own test, before any of those writes.
  */
+export function unschedulableDeadlineText(deadline: string): string | null {
+  if (!Number.isNaN(new Date(deadline).getTime())) return null;
+  return `"${deadline}" is not a deadline I can schedule. Give the deadline as an ISO-8601 timestamp, for example 2026-11-06T17:00:00Z.`;
+}
+
 function invalidDeadline(
   params: DocActionParameters,
   subaction: Subaction,
 ): ActionResult | null {
   if (!DEADLINE_SUBACTIONS.has(subaction)) return null;
   const deadline = params.deadline?.trim();
-  if (!deadline || !Number.isNaN(new Date(deadline).getTime())) return null;
+  const text = deadline ? unschedulableDeadlineText(deadline) : null;
+  if (!text) return null;
   return {
     success: false,
-    text: `"${deadline}" is not a deadline I can schedule. Give the deadline as an ISO-8601 timestamp, for example 2026-11-06T17:00:00Z.`,
+    text,
     data: { subaction, error: "INVALID_DEADLINE" },
   };
 }
@@ -960,13 +966,14 @@ export const ownerDocumentsAction: Action & {
     },
     {
       name: "documentTitle",
-      description: "Short doc label.",
+      description:
+        "Short doc label; required request_signature/request_approval.",
       schema: { type: "string" as const },
     },
     {
       name: "deadline",
       description:
-        "Deadline as an ISO-8601 timestamp, e.g. 2026-11-06T17:00:00Z. A relative phrase such as 'next Friday' fails with INVALID_DEADLINE.",
+        "Deadline as an ISO-8601 timestamp, e.g. 2026-11-06T17:00:00Z; required request_signature, and track_deadline when the stored request has none. A relative phrase such as 'next Friday' fails with INVALID_DEADLINE.",
       schema: { type: "string" as const },
     },
     {
