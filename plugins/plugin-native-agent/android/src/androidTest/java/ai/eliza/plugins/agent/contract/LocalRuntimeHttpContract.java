@@ -36,6 +36,10 @@ public final class LocalRuntimeHttpContract {
     require(seen.contains("X-Host-Correlation: v1;task=7;req=abc 123") && seen.contains("x-second: ~"), "Host header changed");
     for (String owned : new String[]{"Host", "Authorization", "Content-Type", "Content-Length", "Connection", "Transfer-Encoding"})
       require(Collections.frequency(lower(seen), owned.toLowerCase(Locale.ROOT)) <= 1, "Transport header repeated");
+    Map<String, String> most = new LinkedHashMap<>(); most.put("x".repeat(64), "v".repeat(256)); for (int i = 1; i < 8; i++) most.put("x-" + i, "v");
+    List<String> bounded = new ArrayList<>();
+    require(exchange("HTTP/1.1 200 OK\r\nContent-Length: 11\r\n\r\n{\"ok\":true}", 0, 1024, 2000, most, bounded).getInt("status") == 200, "Largest allowed headers rejected");
+    require(bounded.contains("x".repeat(64) + ": " + "v".repeat(256)) && bounded.contains("x-7: v"), "Largest allowed headers changed");
     Map<String, String> many = new LinkedHashMap<>(); for (int i = 0; i < 9; i++) many.put("x-" + i, "v");
     Map<String, String> twice = new LinkedHashMap<>(); twice.put("x-a", "1"); twice.put("X-A", "2");
     List<Map<String, String>> unsafe = new ArrayList<>(List.of(many, twice));
