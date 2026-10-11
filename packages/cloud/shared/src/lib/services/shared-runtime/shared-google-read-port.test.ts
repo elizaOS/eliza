@@ -119,14 +119,56 @@ describe("server-owned Shared Google read seam", () => {
       deps,
     );
     for (const request of [
-      { kind: "other", timeMin: "2026-10-08", timeMax: "2026-10-09", timeZone: "UTC" },
-      { kind: "calendar", timeMin: "2026-10-08", timeMax: "2026-10-09" },
-      { kind: "calendar", timeMin: "2026-10-08", timeMax: "2026-10-09", timeZone: " " },
-      { kind: "calendar", timeMin: "2026-10-08", timeMax: "2026-10-09", timeZone: "Not/AZone" },
+      {
+        kind: "other",
+        timeMin: "2026-10-08T00:00:00Z",
+        timeMax: "2026-10-09T00:00:00Z",
+        timeZone: "UTC",
+      },
+      { kind: "calendar", timeMin: "2026-10-08T00:00:00Z", timeMax: "2026-10-09T00:00:00Z" },
+      {
+        kind: "calendar",
+        timeMin: "2026-10-08T00:00:00Z",
+        timeMax: "2026-10-09T00:00:00Z",
+        timeZone: " ",
+      },
+      {
+        kind: "calendar",
+        timeMin: "2026-10-08T00:00:00Z",
+        timeMax: "2026-10-09T00:00:00Z",
+        timeZone: "Not/AZone",
+      },
       { kind: "gmail_search", query: 42 },
       null,
     ]) {
       await expect(port.read(request)).rejects.toThrow("SHARED_GOOGLE_INVALID_INPUT");
+    }
+    expect(authorizations).toBe(0);
+    expect(calls).toHaveLength(0);
+  });
+
+  test("calendar bounds without an explicit UTC offset are rejected before authorization", async () => {
+    const { calls, deps } = fixture();
+    let authorizations = 0;
+    const port = createSharedGoogleReadPort(
+      {
+        organizationId: "org",
+        userId: "owner",
+        grantId: "grant",
+        authorizePrivateRead: async () => {
+          authorizations += 1;
+        },
+      },
+      deps,
+    );
+    for (const [timeMin, timeMax] of [
+      ["2026-10-12T00:00:00", "2026-10-13T00:00:00"],
+      ["2026-10-12", "2026-10-13"],
+      ["2026-10-12T00:00:00-07:00", "2026-10-13T00:00:00"],
+    ]) {
+      await expect(
+        port.read({ kind: "calendar", timeMin, timeMax, timeZone: "America/Los_Angeles" }),
+      ).rejects.toThrow("SHARED_GOOGLE_CALENDAR_WINDOW_REQUIRED");
     }
     expect(authorizations).toBe(0);
     expect(calls).toHaveLength(0);
@@ -150,7 +192,7 @@ describe("server-owned Shared Google read seam", () => {
     expect(
       await port.read({
         kind: "calendar",
-        timeMin: "2026-10-08T00:00:00Z",
+        timeMin: "2026-10-08T00:00:00-07:00",
         timeMax: "2026-11-09T00:00:00Z",
         timeZone: "America/Los_Angeles",
       }),
@@ -160,7 +202,7 @@ describe("server-owned Shared Google read seam", () => {
       args: {
         grantId: "grant",
         calendarId: "primary",
-        timeMin: "2026-10-08T00:00:00.000Z",
+        timeMin: "2026-10-08T07:00:00.000Z",
         timeMax: "2026-11-09T00:00:00.000Z",
         timeZone: "America/Los_Angeles",
       },
