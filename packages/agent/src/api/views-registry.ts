@@ -358,12 +358,17 @@ export async function registerPluginViews(
     options.installation ??
     beginViewInstallation(runtime, plugin.name, plugin.packageName);
   try {
+    const views = plugin.views ?? [];
+    // Only view bundles need the package root; probing it for a view-less
+    // plugin just warns about a directory nothing would read.
     const resolvedDir =
-      options.pluginDir ??
-      boundPluginPackageDirectories.get(plugin) ??
-      (await resolvePluginPackageDir(plugin.packageName ?? plugin.name));
+      views.length === 0
+        ? undefined
+        : (options.pluginDir ??
+          boundPluginPackageDirectories.get(plugin) ??
+          (await resolvePluginPackageDir(plugin.packageName ?? plugin.name)));
     const registered: ViewRegistryEntry[] = [];
-    for (const view of plugin.views ?? []) {
+    for (const view of views) {
       for (const viewType of getViewModalities(view)) {
         registered.push(
           await buildEntry({ ...view, viewType }, plugin.name, resolvedDir),
