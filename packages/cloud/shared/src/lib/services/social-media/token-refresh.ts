@@ -52,7 +52,9 @@ export function isTokenExpired(credentials: SocialCredentials): boolean {
 
 export function needsRefresh(credentials: SocialCredentials): boolean {
   if (!credentials.tokenExpiresAt) return false;
-  if (!credentials.refreshToken) return false;
+  const usesAccessTokenExchange =
+    credentials.platform === "facebook" || credentials.platform === "instagram";
+  if (!credentials.refreshToken && !usesAccessTokenExchange) return false;
   return isTokenExpired(credentials);
 }
 
