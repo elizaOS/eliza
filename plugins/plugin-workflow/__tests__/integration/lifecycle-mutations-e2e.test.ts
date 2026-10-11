@@ -136,6 +136,16 @@ test('HTTP lifecycle remove/restore: retained history, blocked admissions, pendi
       source: `/** @jsxImportSource smthrs */
 import {createSmithers} from 'smthrs/create';import {z} from 'zod';const {Workflow,Task,smithers,outputs}=createSmithers({answer:z.object({value:z.number()})},{dbPath:process.env.ELIZA_SMTHRS_DB_PATH});export default smithers(()=><Workflow name="lifecycle"><Task id="answer" output={outputs.answer}>{{value:56}}</Task></Workflow>);`,
     };
+    // A zone the scheduler cannot resolve would run on UTC, so arming is refused.
+    await expect(
+      embedded!.createWorkflow({
+        ...definition,
+        name: 'Unresolvable zone fixture',
+        active: true,
+        schedule: { cron: '0 9 * * 1-5', timezone: 'Pacific Time', enabled: true },
+      } as any)
+    ).rejects.toThrow('Invalid workflow schedule time zone: Pacific Time');
+    expect(tasks.size).toBe(0);
     const held = await embedded!.createWorkflow({
       ...definition,
       name: 'Held lifecycle fixture',

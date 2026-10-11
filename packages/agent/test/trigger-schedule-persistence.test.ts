@@ -300,6 +300,15 @@ it("persists the timezone through pause and re-enable and schedules in that zone
   const trigger = buildTriggerConfig({ draft: normalized.draft, triggerId });
   const metadata = buildTriggerMetadata({ trigger, nowMs: Date.now() });
   expect(metadata).not.toBeNull();
+  // A zone Intl rejects would be scheduled on UTC, so the draft is refused.
+  for (const timezone of ["Pacific Time", "America/LosAngeles", ""]) {
+    expect(
+      normalizeTriggerDraft({
+        input: { ...normalized.draft, timezone },
+        fallback: normalized.draft,
+      }),
+    ).toEqual({ error: "timezone must be a valid IANA time zone" });
+  }
   const taskId = await fixture.runtime.createTask({
     name: "trigger",
     agentId: fixture.runtime.agentId,
