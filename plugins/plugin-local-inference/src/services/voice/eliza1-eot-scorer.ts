@@ -168,7 +168,17 @@ export class Eliza1EotScorer {
 
 	private async ensureReady(): Promise<void> {
 		if (this.context && this.sequence && this.tokenContract !== null) return;
-		if (!this.initPromise) this.initPromise = this.initialize();
+		if (!this.initPromise) {
+			this.initPromise = this.initialize().catch((error: unknown) => {
+				// Withdraw the failed attempt and preserve its failure: a
+				// cached rejection would replay to every later score() call
+				// for the scorer's lifetime and block retry after a transient
+				// context-allocation failure (same contract as the core
+				// embedding service initialization).
+				this.initPromise = null;
+				throw error;
+			});
+		}
 		await this.initPromise;
 	}
 
