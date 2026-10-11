@@ -170,6 +170,19 @@ function resolveHealthWindow(
   if (startDate > endDate) {
     fail(400, "startDate must be on or before endDate");
   }
+  // The sample read has no row limit, so the window is its only bound. A
+  // window above the maximum is refused, not read in part.
+  const windowDays =
+    (Date.parse(`${endDate}T00:00:00.000Z`) -
+      Date.parse(`${startDate}T00:00:00.000Z`)) /
+      86_400_000 +
+    1;
+  if (windowDays > MAX_HEALTH_SUMMARY_DAYS) {
+    fail(
+      400,
+      `startDate to endDate must be ${MAX_HEALTH_SUMMARY_DAYS} days or less`,
+    );
+  }
   return { startDate, endDate, instantEndDate, days };
 }
 
