@@ -15,6 +15,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 import { assertWalletFinancialActionAllowed } from "../../../security/wallet-context-safety";
 import {
+  createSolanaLpProtocolProvider,
   LP_MANAGEMENT_SERVICE_TYPE,
   LpManagementService,
   type LpProtocolProvider,
@@ -85,7 +86,11 @@ function lpRuntime() {
       transactionId: "0xreposition",
     })),
     listPools: vi.fn(async () => []),
-    resolveProtocol: vi.fn(() => ({ chain: "evm", dex: "uniswap" })),
+    resolveProtocol: vi.fn(() => ({
+      chain: "evm",
+      dex: "uniswap",
+      appliesRange: true,
+    })),
   };
   vi.mocked(runtime.getService).mockImplementation((name: string) =>
     name === LP_MANAGEMENT_SERVICE_TYPE ? lp : null,
@@ -388,11 +393,16 @@ describe("LIQUIDITY write gates", () => {
 function registryRuntime() {
   const { runtime, cache } = createRuntime({ EVM_PRIVATE_KEY: HARDHAT_KEY });
   const lp = new LpManagementService(runtime);
-  const provider = (chain: "solana" | "evm", dex: string) => {
+  const provider = (
+    chain: "solana" | "evm",
+    dex: string,
+    appliesRange?: boolean,
+  ) => {
     const entry: LpProtocolProvider = {
       id: `${chain}:${dex}`,
       chain,
       dex,
+      appliesRange,
       listPools: vi.fn(async () => []),
       openPosition: vi.fn(async () => ({ success: true })),
       closePosition: vi.fn(async () => ({ success: true })),
@@ -401,7 +411,12 @@ function registryRuntime() {
     return entry;
   };
   const raydium = provider("solana", "raydium");
-  const uniswap = provider("evm", "uniswap");
+  const uniswap = provider("evm", "uniswap", true);
+  // Real Solana adapter wrapper around a DEX service with no LP writes, as
+  // the Orca and Raydium services are.
+  lp.registerProtocol(
+    createSolanaLpProtocolProvider({ dex: "orca", service: {} }),
+  );
   vi.mocked(runtime.getService).mockImplementation((name: string) =>
     name === LP_MANAGEMENT_SERVICE_TYPE ? lp : null,
   );
@@ -458,8 +473,9 @@ describe("LIQUIDITY planner arguments", () => {
   it("shows the tick range in the confirmation prompt", async () => {
     const { result, prompts } = await runPlannerCall({
       action: "open",
-      dex: "raydium",
-      pool: "pool-1",
+      dex: "uniswap",
+      chainId: 8453,
+      pool: "0xpool",
       amount: "100000000",
       range: { tickLowerIndex: -100, tickUpperIndex: 100 },
     });
@@ -491,8 +507,29 @@ describe("LIQUIDITY planner arguments", () => {
     ],
     [
       "a dex with no registered provider",
-      { action: "open", dex: "orca", pool: "pool-1", amount: "1" },
+      { action: "open", dex: "meteora", pool: "pool-1", amount: "1" },
       /No registered LP protocol matches/,
+    ],
+    [
+      "an open on a DEX adapter that has no addLiquidity",
+      { action: "open", dex: "orca", pool: "pool-1", amount: "1" },
+      /open is unavailable for orca on solana/,
+    ],
+    [
+      "a close on a DEX adapter that has no removeLiquidity",
+      { action: "close", dex: "orca", pool: "pool-1" },
+      /close is unavailable for orca on solana/,
+    ],
+    [
+      "a tick range on a DEX that does not apply one",
+      {
+        action: "open",
+        dex: "raydium",
+        pool: "pool-1",
+        amount: "1",
+        range: { tickLowerIndex: -100, tickUpperIndex: 100 },
+      },
+      /does not apply a tick range/,
     ],
     [
       "a reposition the provider does not implement",

@@ -84,6 +84,10 @@ export interface LpProtocolProvider {
   label?: string;
   service?: unknown;
   supportedChainIds?: number[];
+  /** Writes the DEX adapter cannot perform. Refused before the user confirms. */
+  unsupportedWrites?: ReadonlyArray<"open" | "close">;
+  /** True when openPosition applies range ticks. A range is refused otherwise. */
+  appliesRange?: boolean;
   supportsRequest?: (request: LpProtocolRequest) => boolean;
   listPools(params: LpListPoolsParams): Promise<PoolInfo[]>;
   openPosition(params: LpPositionOperationParams): Promise<TransactionResult>;
@@ -472,12 +476,20 @@ export function createSolanaLpProtocolProvider({
   service: SolanaLpServiceAdapter;
 }): LpProtocolProvider {
   const normalizedDex = normalizeRequiredDex(dex);
+  const unsupportedWrites: Array<"open" | "close"> = [];
+  if (typeof service.addLiquidity !== "function") {
+    unsupportedWrites.push("open");
+  }
+  if (typeof service.removeLiquidity !== "function") {
+    unsupportedWrites.push("close");
+  }
   const provider: LpProtocolProvider = {
     id: `solana:${normalizedDex}`,
     chain: "solana",
     dex: normalizedDex,
     label,
     service,
+    unsupportedWrites,
     supportsRequest: (request) =>
       (!request.chain || normalizeChain(request.chain) === "solana") &&
       (!request.dex || normalizeDex(request.dex) === normalizedDex),
@@ -552,10 +564,13 @@ export function createEvmLpProtocolProvider({
   dex,
   label,
   service,
+  appliesRange,
 }: {
   dex: string;
   label?: string;
   service: IEvmLpService;
+  /** Set for concentrated-liquidity adapters whose addLiquidity reads the ticks. */
+  appliesRange?: boolean;
 }): LpProtocolProvider {
   const supportedChainIds =
     typeof service.getSupportedChainIds === "function"
@@ -569,6 +584,7 @@ export function createEvmLpProtocolProvider({
     label,
     service,
     supportedChainIds,
+    appliesRange,
     supportsRequest: (request) => {
       if (request.chain && normalizeChain(request.chain) !== "evm") {
         return false;

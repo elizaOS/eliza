@@ -326,6 +326,18 @@ function getRangeParam(params: LpActionParams): LpActionParams["range"] {
   );
 }
 
+function hasRangeValue(range: LpActionParams["range"]): boolean {
+  return (
+    range !== undefined &&
+    (range.tickLowerIndex !== undefined ||
+      range.tickUpperIndex !== undefined ||
+      range.tickLower !== undefined ||
+      range.tickUpper !== undefined ||
+      range.priceLower !== undefined ||
+      range.priceUpper !== undefined)
+  );
+}
+
 function amountLabel(amount: LpActionParams["amount"]): string | undefined {
   if (amount === undefined) return undefined;
   if (typeof amount === "string") return amount;
@@ -344,14 +356,6 @@ function amountLabel(amount: LpActionParams["amount"]): string | undefined {
 // single-sourced write subactions (open/close/reposition here).
 function lpGateParams(params: LpActionParams): WalletFinancialWriteParams {
   const range = getRangeParam(params);
-  const hasRange =
-    range &&
-    (range.tickLowerIndex !== undefined ||
-      range.tickUpperIndex !== undefined ||
-      range.tickLower !== undefined ||
-      range.tickUpper !== undefined ||
-      range.priceLower !== undefined ||
-      range.priceUpper !== undefined);
   return {
     subaction: params.subaction as string,
     chain: resolveChain(params).chain,
@@ -362,7 +366,7 @@ function lpGateParams(params: LpActionParams): WalletFinancialWriteParams {
     tokenA: params.tokenA,
     tokenB: params.tokenB,
     feeTier: params.feeTier,
-    range: hasRange ? range : undefined,
+    range: hasRangeValue(range) ? range : undefined,
     slippageBps: params.slippageBps ?? params.maxSlippageBps,
     mode: "execute",
     dryRun: false,
@@ -542,8 +546,19 @@ function lpWriteRejection(
   const chain = route.chain ?? "solana";
   const protocol = lp.resolveProtocol({ ...route, chain });
 
-  if (subaction === "reposition" && !protocol.repositionPosition) {
-    return `LP reposition is unavailable for ${protocol.dex} on ${protocol.chain}.`;
+  const unavailable =
+    subaction === "reposition"
+      ? !protocol.repositionPosition
+      : protocol.unsupportedWrites?.includes(subaction);
+  if (unavailable) {
+    return `LP ${subaction} is unavailable for ${protocol.dex} on ${protocol.chain}.`;
+  }
+  if (
+    subaction === "open" &&
+    !protocol.appliesRange &&
+    hasRangeValue(getRangeParam(params))
+  ) {
+    return `LP open on ${protocol.dex} does not apply a tick range. Omit range.`;
   }
   if (chain === "evm" && !route.chainId) {
     return `LP ${subaction} on an EVM chain needs chainId.`;
@@ -736,7 +751,7 @@ export const liquidityAction: Action = {
   // above reads without leaving the parent LIQUIDITY path open.
   roleGate: { minRole: "ADMIN" },
   description:
-    "Single LP/liquidity management action. action=onboard|list_pools|open|close|reposition|list_positions|get_position|set_preferences. dex=orca|raydium|meteora|uniswap|aerodrome|pancakeswap selects the protocol; chain=solana|evm is inferred from dex when omitted.",
+    "Single LP/liquidity management action. action=onboard|list_pools|open|close|reposition|list_positions|get_position|set_preferences. dex=orca|raydium|meteora|uniswap|aerodrome|pancakeswap selects the protocol; chain=solana|evm is inferred from dex when omitted. open and close run on meteora, uniswap, aerodrome, and pancakeswap.",
   descriptionCompressed:
     "Manage LP positions by action, chain, dex, pool, position, amount, range, token filters.",
   parameters: [
@@ -803,7 +818,7 @@ export const liquidityAction: Action = {
     {
       name: "range",
       description:
-        "Concentrated liquidity tick range for open or reposition. Price bounds are not supported.",
+        "Concentrated liquidity tick range for open on uniswap or pancakeswap. Other DEXes refuse a range. Price bounds are not supported.",
       required: false,
       schema: {
         type: "object",
@@ -890,7 +905,7 @@ export const liquidityAction: Action = {
       {
         name: "{{name1}}",
         content: {
-          text: "Add 100 USDC to Raydium pool 58oQChx4yWmvKdwLLZzBi4ChoCc2fqCUWBkwMihLYQo2.",
+          text: "Add 1 SOL to Meteora pool 5rCf1DM8LjKTw4YqhnoLcngyZYeNnQqztScTogYHAS6.",
           source: "chat",
         },
       },
@@ -900,7 +915,7 @@ export const liquidityAction: Action = {
           text: "Opening the LP position.",
           actions: ["LIQUIDITY"],
           thought:
-            "User wants to provide liquidity on a DEX; LIQUIDITY action=open with dex, the pool id, and the amount in base units (100 USDC = 100000000) routes to the LP manager.",
+            "User wants to provide liquidity on a DEX; LIQUIDITY action=open with dex, the pool id, and the amount in base units (1 SOL = 1000000000) routes to the LP manager.",
         },
       },
     ],
@@ -926,7 +941,7 @@ export const liquidityAction: Action = {
       {
         name: "{{name1}}",
         content: {
-          text: "Close my liquidity position in Raydium pool 58oQChx4yWmvKdwLLZzBi4ChoCc2fqCUWBkwMihLYQo2.",
+          text: "Close my liquidity position in Meteora pool 5rCf1DM8LjKTw4YqhnoLcngyZYeNnQqztScTogYHAS6.",
           source: "chat",
         },
       },
