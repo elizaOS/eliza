@@ -70,6 +70,8 @@ import {
   waitForScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
 
+import { parseFiniteAmount } from "./ui/inventory/constants.ts";
+
 /** Contributed dispatch channel the watcher's escalation step names. */
 export const WALLET_BALANCE_DELTA_CHANNEL = "wallet_balance_delta";
 /** Stable notification groupKey so repeated deltas coalesce (§C.3 supersede). */
@@ -149,8 +151,14 @@ export type WalletBalanceSampleSource =
   () => Promise<WalletBalancesResponse | null>;
 
 function parseUsd(value: string | number | null | undefined): number {
-  const n = typeof value === "number" ? value : Number.parseFloat(value ?? "");
-  return Number.isFinite(n) ? n : 0;
+  // Use the same strict decimal parser as the inventory and summary paths
+  // (parseFiniteAmount). Number.parseFloat accepts a numeric prefix and
+  // silently ignores trailing characters, so a malformed API value such as
+  // "12.5oops" counted as 12.5 here while every UI total counted it as 0 —
+  // the watcher total then disagreed with the displayed total for the same
+  // balances response and could trip the balance-change threshold on a
+  // phantom value.
+  return parseFiniteAmount(value);
 }
 
 /**
