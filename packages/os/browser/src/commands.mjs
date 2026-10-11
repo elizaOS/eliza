@@ -416,6 +416,14 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
   }
   if (command.subaction === "fill" && (node.disabled || node.readOnly))
     return denied();
+  // A control the provider disabled stays as the provider left it. A script
+  // click on an aria-disabled control would still run the page's handlers.
+  if (
+    policy &&
+    command.subaction === "click" &&
+    node.matches(':disabled,[aria-disabled="true"]')
+  )
+    return denied();
   if (validateOnly) return { validated: true };
   if (policy?.actionId) {
     const feedback = globalThis.__elizaPageGuidanceV1;

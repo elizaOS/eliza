@@ -39,6 +39,7 @@ import {
   autoTopUpChargeBreakdownFromCents,
   computeAutoTopUpChargeCents,
 } from "./auto-top-up-charge-breakdown";
+import { billingHoldService } from "./billing-hold";
 import { CreatorMonetizationRetiredError } from "./creator-monetization-retirement";
 import { emailService } from "./email";
 import { invalidateOrgTierCache } from "./org-rate-limits";
@@ -1356,6 +1357,24 @@ export class AutoTopUpService {
       );
     }
 
+    let repaidShortfallUsd: string;
+    try {
+      ({ appliedUsd: repaidShortfallUsd } = await billingHoldService.settleOutstandingShortfalls(
+        attempt.organizationId,
+      ));
+    } catch (error) {
+      logger.error("[AutoTopUp] Credit applied but billing hold settlement failed", {
+        organizationId: attempt.organizationId,
+        attemptId: attempt.id,
+        error: safeErrorMessage(error),
+      });
+      return resultFromAttempt(
+        settled.attempt,
+        recovered,
+        "Credit applied; billing hold settlement will be retried",
+      );
+    }
+
     const credited = await this.repository.markCredited({
       attemptId: attempt.id,
       leaseToken,
@@ -1375,7 +1394,9 @@ export class AutoTopUpService {
       status: credited.status,
     });
 
-    const newBalance = canonicalBalanceNumber(settled.newBalance);
+    const newBalance = canonicalBalanceNumber(
+      new Decimal(settled.newBalance).minus(repaidShortfallUsd).toFixed(6),
+    );
     const amount = centsToNumber(credited.creditAmountCents);
     if (settled.outcome === "applied") {
       const previousBalance = new Decimal(settled.newBalance)

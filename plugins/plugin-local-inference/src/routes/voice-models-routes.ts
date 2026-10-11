@@ -31,14 +31,15 @@
  *     Toggles the on-disk pin file so the auto-updater skips this id.
  *
  *   GET  /api/local-inference/voice-models/preferences
- *     → { preferences: NetworkPolicyPreferences, isOwner: boolean }
+ *     → { preferences: NetworkPolicyPreferences }
  *
  *   POST /api/local-inference/voice-models/preferences
  *     Body: Partial<NetworkPolicyPreferences>
  *     → { ok: true, preferences }
  *     Writes the user's Wi-Fi/cellular/metered policy preferences.
  *     Per R5 §5.4 the cellular + metered toggles are OWNER-only — the
- *     route returns 403 if a non-OWNER caller tries to flip them.
+ *     route returns 403 if a non-OWNER caller tries to flip them. The role
+ *     comes from the host's in-process resolver, never from the request.
  *
  * Preferences land at
  * `<state-dir>/local-inference/voice-update-prefs.json`; the pin set is
@@ -123,28 +124,24 @@ export type VoiceModelManagementResult =
 	  };
 /* ----------------------------------------------------------------- *
  * Owner gate — the cellular + metered toggles are OWNER-only.        *
- * `ELIZA_ADMIN_ENTITY_ID` is the canonical owner setting.          *
  * ----------------------------------------------------------------- */
 /**
- * `isOwnerRequest()` strategy:
- *
- * 1. If `ELIZA_ADMIN_ENTITY_ID` is unset, no OWNER exists yet — return
- *    `false` (gate stays locked). This is the safe default during first
- *    boot before voice first-run completes.
- * 2. If the request carries `X-Eliza-Entity-Id` (set by the UI shell for
- *    authenticated sessions), compare against the admin id. Equality
- *    matches case-insensitively because entity ids are UUIDv4.
- * 3. Otherwise return `false`. The UI surfaces the toggle as
- *    "Owner only" rather than throwing — the route still 403s on a
- *    POST that tries to flip a locked toggle.
+ * What the serving host supplies. The plugin does not own roles, so the OWNER
+ * decision is delegated to the host that resolved the caller's session.
  */
-function isOwnerRequest(req: http.IncomingMessage): boolean {
-	const adminId = process.env.ELIZA_ADMIN_ENTITY_ID?.trim();
-	if (!adminId) return false;
-	const header = req.headers["x-eliza-entity-id"];
-	const value = typeof header === "string" ? header.trim() : null;
-	if (!value) return false;
-	return value.toLowerCase() === adminId.toLowerCase();
+export interface VoiceModelsRouteHost {
+	/**
+	 * In-process host resolver for the OWNER role; never populated from request
+	 * headers or body. Resolves `true` for an owner. Otherwise it writes the
+	 * 401/403 response itself and resolves `false`.
+	 *
+	 * A host that serves these routes without it cannot establish an owner, so
+	 * the owner-only toggles stay locked there.
+	 */
+	authorizeOwnerRequest?: (
+		req: http.IncomingMessage,
+		res: http.ServerResponse,
+	) => Promise<boolean>;
 }
 /* ----------------------------------------------------------------- *
  * State-dir helpers — pure I/O around the prefs + pins files.        *
@@ -432,6 +429,7 @@ function resolveBundleVersion(): string {
 export async function handleVoiceModelsRoutes(
 	req: http.IncomingMessage,
 	res: http.ServerResponse,
+	host?: VoiceModelsRouteHost,
 ): Promise<boolean> {
 	const method = (req.method ?? "GET").toUpperCase();
 	const url = new URL(req.url ?? "/", "http://localhost");
@@ -505,14 +503,13 @@ export async function handleVoiceModelsRoutes(
 	// GET /api/local-inference/voice-models/preferences
 	if (method === "GET" && pathname === `${ROUTE_PREFIX}/preferences`) {
 		const preferences = await readPreferences();
-		sendJson(res, { preferences, isOwner: isOwnerRequest(req) });
+		sendJson(res, { preferences });
 		return true;
 	}
 	// POST /api/local-inference/voice-models/preferences
 	if (method === "POST" && pathname === `${ROUTE_PREFIX}/preferences`) {
 		const body = await readCompatJsonBody(req, res);
 		if (!body) return true;
-		const owner = isOwnerRequest(req);
 		const current = await readPreferences();
 		// Build the candidate by overlaying provided fields onto current.
 		const candidate = normalizePrefs({
@@ -535,18 +532,20 @@ export async function handleVoiceModelsRoutes(
 					}>)
 				: current.quietHours.map((q) => ({ start: q.start, end: q.end })),
 		});
-		// OWNER gate: only the OWNER can flip cellular or metered to true.
+		// OWNER gate: only the OWNER can change the cellular or metered toggle.
 		if (
-			!owner &&
-			(candidate.autoUpdateOnCellular !== current.autoUpdateOnCellular ||
-				candidate.autoUpdateOnMetered !== current.autoUpdateOnMetered)
+			candidate.autoUpdateOnCellular !== current.autoUpdateOnCellular ||
+			candidate.autoUpdateOnMetered !== current.autoUpdateOnMetered
 		) {
-			sendJsonError(
-				res,
-				"cellular + metered auto-update toggles are owner-only",
-				403,
-			);
-			return true;
+			if (!host?.authorizeOwnerRequest) {
+				sendJsonError(
+					res,
+					"cellular + metered auto-update toggles are owner-only",
+					403,
+				);
+				return true;
+			}
+			if (!(await host.authorizeOwnerRequest(req, res))) return true;
 		}
 		await writePreferences(candidate);
 		sendJson(res, { ok: true, preferences: candidate });

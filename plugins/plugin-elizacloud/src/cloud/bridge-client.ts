@@ -575,9 +575,12 @@ export class ElizaCloudClient {
 
     if (!response.ok) {
       const text = await response.text().catch(() => "");
+      const detail = formatApiErrorBody(text);
       return {
         success: false,
-        error: formatApiErrorBody(text) ?? `HTTP ${response.status}`,
+        error: detail
+          ? `HTTP ${response.status}: ${detail}`
+          : `HTTP ${response.status}`,
       };
     }
 

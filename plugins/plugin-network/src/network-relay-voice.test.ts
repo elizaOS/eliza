@@ -56,7 +56,7 @@ function serviceSetup(response: unknown, relayEnabled = true) {
     },
     { relayEnabled },
   );
-  return { calls, store };
+  return { calls, client, store };
 }
 
 function relayAction(store: ReturnType<typeof serviceSetup>["store"]) {
@@ -179,6 +179,42 @@ describe("RELAY action", () => {
       authority: { memberId: "m" },
     });
     assert(!plugin.actions?.some((a) => a.name === "RELAY"));
+  });
+});
+
+describe("Network service response boundary", () => {
+  it("rejects an unknown turn outcome instead of releasing the message", async () => {
+    const { client } = serviceSetup({
+      outcome: "future-schema",
+      reason: "unexpected service response",
+    });
+    await assert.rejects(
+      client.turn({
+        messageId: "msg_1",
+        channel: "blooio",
+        from: "+15550000001",
+        to: "+15550000002",
+        text: "hello",
+        transport: "imessage",
+        receivedAt: Date.now(),
+      }),
+      /invalid turn response/,
+    );
+  });
+
+  it("rejects a malformed acknowledgement instead of confirming the effect", async () => {
+    const { client } = serviceSetup({ ok: true });
+    await assert.rejects(
+      client.turnReceipt({
+        channel: "blooio",
+        messageId: "msg_1",
+        replyIds: ["reply_1"],
+        outcome: "accepted",
+        providerMessageIds: ["provider_1"],
+        historyRecorded: true,
+      }),
+      /invalid turn receipt/,
+    );
   });
 });
 

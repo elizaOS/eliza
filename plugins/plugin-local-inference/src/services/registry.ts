@@ -410,12 +410,12 @@ export async function removeElizaModel(id: string): Promise<{
 	if (removable.status === "unsafe") {
 		return { removed: false, reason: "external" };
 	}
-	try {
-		if (removable.status === "safe") {
-			await fs.rm(removable.path, { recursive: true, force: true });
-		}
-	} catch {
-		// If the file was already gone we still want to clear the registry entry.
+	// A path that is already gone resolves as "missing" above, and `force`
+	// ignores a file that vanishes mid-delete, so a throw here is a real
+	// failure (EACCES, EPERM, EBUSY). Let it propagate: the entry stays in the
+	// registry so the files that are still on disk remain manageable.
+	if (removable.status === "safe") {
+		await fs.rm(removable.path, { recursive: true, force: true });
 	}
 
 	await writeElizaOwned(owned.filter((m) => m.id !== id));

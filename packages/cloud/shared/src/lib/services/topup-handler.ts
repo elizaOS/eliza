@@ -114,48 +114,40 @@ interface TopupRecipient {
 }
 
 /**
- * Resolve topup recipient: from wallet signature headers (if present) or from body.walletAddress.
+ * Resolve topup recipient from wallet signature headers (if present).
  */
-async function getTopupRecipient(
+async function getSignedTopupRecipient(
   request: Request,
-  body: {
-    walletAddress?: string;
-    ref?: string;
-    referral_code?: string;
-    appOwnerId?: string;
-  },
   rawBody?: string,
-): Promise<TopupRecipient> {
+): Promise<TopupRecipient | null> {
   const hasWalletSig =
-    !!request.headers.get("X-Wallet-Address") &&
-    !!request.headers.get("X-Timestamp") &&
+    !!request.headers.get("X-Wallet-Address") ||
+    !!request.headers.get("X-Timestamp") ||
     !!request.headers.get("X-Wallet-Signature");
 
-  if (hasWalletSig) {
-    const walletUser = await verifyWalletSignature(request, {
-      bodyText: rawBody,
-    });
-    if (!walletUser) throw new Error("Wallet signature verification failed");
-    return {
-      user: walletUser,
-      organizationId: walletUser.organization_id!,
-      walletAddress: walletUser.wallet_address ?? request.headers.get("X-Wallet-Address")!,
-    };
-  }
+  if (!hasWalletSig) return null;
 
-  if (!body?.walletAddress?.trim()) {
-    throw new Error("walletAddress is required (body or wallet signature headers)");
-  }
+  const walletUser = await verifyWalletSignature(request, {
+    bodyText: rawBody,
+  });
+  if (!walletUser) throw new Error("Wallet signature verification failed");
+  return {
+    user: walletUser,
+    organizationId: walletUser.organization_id!,
+    walletAddress: walletUser.wallet_address ?? request.headers.get("X-Wallet-Address")!,
+  };
+}
 
+async function getBodyTopupRecipient(walletAddress: string): Promise<TopupRecipient> {
   // No `walletProven`: this branch is the one with NO wallet signature — the
   // address came out of the request body, so the account it opens must not
   // claim the wallet was verified.
-  const { user } = await findOrCreateUserByWalletAddress(body.walletAddress);
+  const { user } = await findOrCreateUserByWalletAddress(walletAddress);
 
   return {
     user,
     organizationId: user.organization_id!,
-    walletAddress: body.walletAddress,
+    walletAddress,
   };
 }
 
@@ -399,6 +391,13 @@ export function createTopupHandler(options: CreateTopupHandlerOptions) {
       );
     }
 
+    let signedRecipient: TopupRecipient | null;
+    try {
+      signedRecipient = await getSignedTopupRecipient(req, rawBody);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return Response.json({ error: msg }, { status: 401 });
+    }
     const settlement = await x402FacilitatorService.settle(
       paymentPayload as Parameters<typeof x402FacilitatorService.settle>[0],
       requirements as Parameters<typeof x402FacilitatorService.settle>[1],
@@ -416,15 +415,14 @@ export function createTopupHandler(options: CreateTopupHandlerOptions) {
       );
     }
 
-    let recipient;
-    try {
-      recipient = await getTopupRecipient(req, body, rawBody);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg.includes("walletAddress is required")) {
-        return Response.json({ error: msg }, { status: 400 });
+    let recipient = signedRecipient;
+    if (!recipient) {
+      try {
+        recipient = await getBodyTopupRecipient(body.walletAddress!);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return Response.json({ error: msg }, { status: 503 });
       }
-      return Response.json({ error: msg }, { status: 401 });
     }
 
     const { user, organizationId, walletAddress } = recipient;

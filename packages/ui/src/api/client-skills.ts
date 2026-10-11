@@ -895,43 +895,55 @@ ElizaClient.prototype.disconnectTelegramAccount = async function (
     method: "POST",
   });
 };
+type DiscordLocalStatus = Awaited<
+  ReturnType<ElizaClient["getDiscordLocalStatus"]>
+>;
 ElizaClient.prototype.getDiscordLocalStatus = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/discord-local/status");
+  // plugin-discord serves setup as /api/setup/discord/* and wraps the
+  // service status in { connector, state, detail }.
+  const res = await this.fetch<{ detail: DiscordLocalStatus }>(
+    "/api/setup/discord/status",
+  );
+  return res.detail;
 };
 ElizaClient.prototype.authorizeDiscordLocal = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/discord-local/authorize", {
-    method: "POST",
-  });
+  const res = await this.fetch<{ detail: DiscordLocalStatus }>(
+    "/api/setup/discord/start",
+    { method: "POST" },
+  );
+  return res.detail;
 };
 ElizaClient.prototype.disconnectDiscordLocal = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/discord-local/disconnect", {
-    method: "POST",
-  });
+  const res = await this.fetch<{ state?: string }>(
+    "/api/setup/discord/cancel",
+    { method: "POST" },
+  );
+  return { ok: res.state === "idle" };
 };
 ElizaClient.prototype.listDiscordLocalGuilds = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/discord-local/guilds");
+  return this.fetch("/api/discord/guilds");
 };
 ElizaClient.prototype.listDiscordLocalChannels = async function (
   this: ElizaClient,
   guildId,
 ) {
   return this.fetch(
-    `/api/discord-local/channels?guildId=${encodeURIComponent(guildId)}`,
+    `/api/discord/channels?guildId=${encodeURIComponent(guildId)}`,
   );
 };
 ElizaClient.prototype.saveDiscordLocalSubscriptions = async function (
   this: ElizaClient,
   channelIds,
 ) {
-  return this.fetch("/api/discord-local/subscriptions", {
+  return this.fetch("/api/discord/subscriptions", {
     method: "POST",
     body: JSON.stringify({ channelIds }),
   });

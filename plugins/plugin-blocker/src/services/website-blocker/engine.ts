@@ -705,7 +705,12 @@ export async function startSelfControlBlock(
   const nativeBackend = getNativeWebsiteBlockerBackend();
   if (nativeBackend) {
     resetSelfControlStatusCache();
-    return await nativeBackend.startBlock(request);
+    try {
+      return await nativeBackend.startBlock(request);
+    } finally {
+      // A status read made while the native call ran must not stay cached.
+      resetSelfControlStatusCache();
+    }
   }
 
   const normalizedRequest = normalizeSelfControlBlockRequest(request);
@@ -867,7 +872,11 @@ export async function stopSelfControlBlock(
   const nativeBackend = getNativeWebsiteBlockerBackend();
   if (nativeBackend) {
     resetSelfControlStatusCache();
-    return await nativeBackend.stopBlock();
+    try {
+      return await nativeBackend.stopBlock();
+    } finally {
+      resetSelfControlStatusCache();
+    }
   }
 
   const status = await reconcileSelfControlBlockState(config);
