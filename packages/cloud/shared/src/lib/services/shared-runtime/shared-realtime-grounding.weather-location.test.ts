@@ -67,6 +67,6 @@ describe("Shared public weather location", () => {
           },
         ],
       }),
-    ).toContain("couldn’t verify an answer");
+    ).toContain("couldn’t safely bind");
   });
 });

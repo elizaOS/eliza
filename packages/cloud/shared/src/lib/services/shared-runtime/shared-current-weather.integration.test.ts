@@ -58,7 +58,7 @@ test("actual NWS source preserves exact C/F facts and rejects city/unit/value sw
       const final = finalizeSharedRealtimeReply(correct + mark, grounding);
       expect(final).toContain(correct);
       expect(final).toContain(url);
-      expect(final).toBe(`${correct}\n\nSource: ${url}`);
+      expect(final).toContain(obs.properties.timestamp);
     }
     for (const wrong of [
       "Springfield, Missouri is 99.8°F and Clear.",
@@ -69,9 +69,7 @@ test("actual NWS source preserves exact C/F facts and rejects city/unit/value sw
       "Springfield, Missouri is 69.8 Celsius and Clear.",
     ]) {
       expect(validateSharedRealtimeReply(wrong + mark, grounding!)).toBe(false);
-      expect(finalizeSharedRealtimeReply(wrong + mark, grounding)).toContain(
-        "couldn’t verify an answer",
-      );
+      expect(finalizeSharedRealtimeReply(wrong + mark, grounding)).toContain("won’t guess");
     }
     clock.mockReturnValue(Date.parse(obs.properties.timestamp) + 91 * 60 * 1000);
     expect(requireTraceableRealtimeSearch(result, query, Date.now(), "weather").success).toBe(
@@ -79,7 +77,7 @@ test("actual NWS source preserves exact C/F facts and rejects city/unit/value sw
     );
     expect(
       finalizeSharedRealtimeReply("Springfield, Missouri is 69.8°F and Clear." + mark, grounding),
-    ).toContain("couldn’t check that right now");
+    ).toContain("can’t verify");
   } finally {
     clock.mockRestore();
   }
