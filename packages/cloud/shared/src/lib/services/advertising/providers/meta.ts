@@ -833,7 +833,7 @@ export const metaAdsProvider: AdProvider = {
           spend: string;
           impressions: string;
           clicks: string;
-          conversions?: string;
+          conversions?: Array<{ value?: string }>;
           ctr?: string;
           cpc?: string;
           cpm?: string;
@@ -857,7 +857,11 @@ export const metaAdsProvider: AdProvider = {
         spend: parseFloat(data.spend) || 0,
         impressions: parseInt(data.impressions) || 0,
         clicks: parseInt(data.clicks) || 0,
-        conversions: parseInt(data.conversions || "0") || 0,
+        conversions:
+          data.conversions?.reduce(
+            (total, conversion) => total + (Number.parseFloat(conversion.value ?? "0") || 0),
+            0,
+          ) ?? 0,
         ctr: parseFloat(data.ctr || "0") || undefined,
         cpc: parseFloat(data.cpc || "0") || undefined,
         cpm: parseFloat(data.cpm || "0") || undefined,
