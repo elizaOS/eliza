@@ -361,8 +361,10 @@ export const recentMessagesProvider: Provider = {
       // Format recent messages and posts in parallel, using only dialogue messages
       const [formattedMessageSegments, formattedRecentPosts] =
         await Promise.all([
+          // formatMessageSegments walks its input back-to-front, so hand it the
+          // window newest-first to get oldest-first segments (and transcript).
           formatMessageSegments({
-            messages: dialogueMessages,
+            messages: [...dialogueMessages].reverse(),
             entities: entitiesForFormatting,
           }),
           formatPosts({
