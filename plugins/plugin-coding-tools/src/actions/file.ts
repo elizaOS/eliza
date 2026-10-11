@@ -475,6 +475,13 @@ export const fileAction: Action = {
       schema: { type: "string" },
     },
     {
+      name: "overwrite",
+      description:
+        "For action=write: set true only to intentionally replace an existing file after reading it completely. Default false.",
+      required: false,
+      schema: { type: "boolean" },
+    },
+    {
       name: "old_string",
       description: "Exact substring to replace for action=edit.",
       required: false,
@@ -489,6 +496,13 @@ export const fileAction: Action = {
     {
       name: "replace_all",
       description: "For action=edit: replace all matches, not exactly one.",
+      required: false,
+      schema: { type: "boolean" },
+    },
+    {
+      name: "allow_literal_escapes",
+      description:
+        "For action=edit: set true only when literal backslash-n or backslash-r text is intentionally part of the source. Default false.",
       required: false,
       schema: { type: "boolean" },
     },
