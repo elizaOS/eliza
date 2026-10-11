@@ -161,22 +161,32 @@ function explicitConnectorLimit(value: number | undefined): number | undefined {
   return value;
 }
 
+/** The other user of a one-to-one conversation id ("<id>-<id>") that the account is in. */
+function dmConversationCounterpart(
+  conversationId: string | undefined,
+  ownUserId: string | undefined,
+): string | null {
+  const pair = conversationId?.match(/^(\d+)-(\d+)$/);
+  if (!pair || !ownUserId) return null;
+  const participants = new Set(pair.slice(1));
+  if (participants.size !== 2 || !participants.has(ownUserId)) return null;
+  return [...participants].find((id) => id !== ownUserId) ?? null;
+}
+
 /** Resolve only authenticated one-to-one conversations, never group membership. */
 function dmCounterpartId(message: {
   senderId: string;
   ownUserId?: string;
   conversationId?: string;
 }): string | null {
-  const pair = message.conversationId?.match(/^(\d+)-(\d+)$/);
-  if (!pair || !message.ownUserId) return null;
-  const participants = new Set(pair.slice(1));
-  if (
-    participants.size !== 2 ||
-    !participants.has(message.ownUserId) ||
-    !participants.has(message.senderId)
-  )
-    return null;
-  return [...participants].find((id) => id !== message.ownUserId) ?? null;
+  const counterpart = dmConversationCounterpart(
+    message.conversationId,
+    message.ownUserId,
+  );
+  return counterpart &&
+    (message.senderId === counterpart || message.senderId === message.ownUserId)
+    ? counterpart
+    : null;
 }
 
 function readContentString(
@@ -758,24 +768,35 @@ export class XService extends Service {
         : undefined;
     const accountId = this.resolveAccountId(target.accountId);
     await this.withDmSession(accountId, async (base, session) => {
-      const recipient = await this.resolveDmRecipient(
+      const candidate =
         (typeof metadataRecord?.xUserId === "string"
           ? metadataRecord.xUserId
           : undefined) ??
-          (typeof metadataRecord?.twitterUserId === "string"
-            ? metadataRecord.twitterUserId
-            : undefined) ??
-          (typeof metadataRecord?.xUsername === "string"
-            ? metadataRecord.xUsername
-            : undefined) ??
-          (typeof metadataRecord?.twitterUsername === "string"
-            ? metadataRecord.twitterUsername
-            : undefined) ??
-          (typeof target.entityId === "string" ? target.entityId : undefined) ??
-          target.channelId ??
-          target.threadId,
-        base,
-      );
+        (typeof metadataRecord?.twitterUserId === "string"
+          ? metadataRecord.twitterUserId
+          : undefined) ??
+        (typeof metadataRecord?.xUsername === "string"
+          ? metadataRecord.xUsername
+          : undefined) ??
+        (typeof metadataRecord?.twitterUsername === "string"
+          ? metadataRecord.twitterUsername
+          : undefined) ??
+        (typeof target.entityId === "string" ? target.entityId : undefined) ??
+        target.channelId ??
+        target.threadId;
+      // A stored DM room's channelId is the conversation id, not a user.
+      const conversationRecipient = candidate?.match(/^\d+-\d+$/)
+        ? dmConversationCounterpart(candidate, session.profile.userId)
+        : undefined;
+      if (conversationRecipient === null) {
+        throw new ElizaError(
+          "X DM conversation does not belong to this account",
+          { code: "X_DM_CONVERSATION_NOT_OWNED", context: { accountId } },
+        );
+      }
+      const recipient =
+        conversationRecipient ??
+        (await this.resolveDmRecipient(candidate, base));
       if (!recipient) {
         throw new Error(
           "X DM connector requires a resolvable recipient user id.",
