@@ -896,9 +896,9 @@ export async function resolvePlannedReplyEgress(args: {
         : {}),
     },
   });
-  let recoveryError: unknown;
+  const abortSignal = getStreamingContext()?.abortSignal;
   const rewrite = async (selected: boolean) => {
-    getStreamingContext()?.abortSignal?.throwIfAborted();
+    abortSignal?.throwIfAborted();
     const jsonPayload = payload(selected);
     const text = JSON.stringify(jsonPayload);
     try {
@@ -912,10 +912,19 @@ export async function resolvePlannedReplyEgress(args: {
         groundingFailure: reason,
       });
     } catch (error) {
+      if (abortSignal?.aborted) throw error;
       // error-policy:J2 required recovery cannot expose the rejected draft.
-      // The grounding boundary below rethrows with this original cause.
-      recoveryError = error;
-      return null;
+      // Preserve the provider failure at the recovery boundary.
+      const recoveryFailure = new ElizaError(
+        "A grounded conversational reply could not be generated",
+        {
+          code: "REPLY_GROUNDING_FAILED",
+          cause: error,
+          context: { roomId: args.message.roomId, messageId: args.message.id },
+        },
+      );
+      args.runtime.reportError("MessageService.replyRecovery", recoveryFailure);
+      throw recoveryFailure;
     }
   };
   let selected = historySelection !== undefined;
@@ -969,7 +978,6 @@ export async function resolvePlannedReplyEgress(args: {
       "A grounded conversational reply could not be generated",
       {
         code: "REPLY_GROUNDING_FAILED",
-        cause: recoveryError,
         context: { roomId: args.message.roomId, messageId: args.message.id },
       },
     );

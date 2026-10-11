@@ -4,6 +4,7 @@ import {
   ElizaError,
   type Memory,
   ModelType,
+  runWithStreamingContext,
   stringToUuid,
 } from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
@@ -11,7 +12,7 @@ import { expect, test } from "vitest";
 import { rewriteActionCallbackInCharacter } from "./delivery";
 import { resolvePlannedReplyEgress } from "./egress-policy";
 
-function fixture() {
+function fixture(modelHandler?: () => Promise<never>) {
   const runtime = createSQLiteTestRuntime({
     character: { name: "Recovery", bio: "test", settings: {} },
     logLevel: "fatal",
@@ -23,10 +24,11 @@ function fixture() {
   let calls = 0;
   runtime.registerModel(
     ModelType.TEXT_SMALL,
-    async () => {
-      calls += 1;
-      throw failure;
-    },
+    modelHandler ??
+      (async () => {
+        calls += 1;
+        throw failure;
+      }),
     "openai",
   );
   const message: Memory = {
@@ -69,6 +71,32 @@ test("required reply recovery retains the actual model failure without an action
     expect(outcome).toMatchObject({ code: "REPLY_GROUNDING_FAILED" });
     expect(retainsCause(outcome, f.failure)).toBe(true);
     expect(f.calls()).toBeGreaterThan(0);
+  } finally {
+    await f.runtime.stop();
+    await f.runtime.close();
+  }
+});
+
+test("required reply recovery rethrows cancellation instead of recasting it as grounding failure", async () => {
+  const controller = new AbortController();
+  const cancellation = new Error("controlled cancellation");
+  const f = fixture(async () => {
+    controller.abort(cancellation);
+    throw cancellation;
+  });
+  try {
+    await expect(
+      runWithStreamingContext(
+        { abortSignal: controller.signal, messageId: f.message.id },
+        () =>
+          resolvePlannedReplyEgress({
+            runtime: f.runtime,
+            message: f.message,
+            reply: "",
+            actionResults: [],
+          }),
+      ),
+    ).rejects.toBe(cancellation);
   } finally {
     await f.runtime.stop();
     await f.runtime.close();
