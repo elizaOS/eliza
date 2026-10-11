@@ -191,3 +191,56 @@ it.each(["a", "__proto__"])(
   },
   120_000,
 );
+
+it("matches provenance digests over code-unit key order on every host locale", async () => {
+  // A signer outside this process hashes RFC 8785 / canonicalJsonString bytes:
+  // "PORT" sorts before "host" by UTF-16 code unit, unlike ICU collation.
+  const canonical =
+    '{"config":{"PORT":"8080","host":"127.0.0.1"},"id":"module-a","name":"provenance-order"}';
+  const module: RemotePluginModuleManifest = {
+    id: "module-a",
+    name: "provenance-order",
+    config: { host: "127.0.0.1", PORT: "8080" },
+    provenance: {
+      issuer: "issuer-a",
+      subject: "module-a",
+      digestSha256: createHash("sha256").update(canonical).digest("hex"),
+      signatureAlgorithm: "ed25519",
+      signature: "digest-only",
+    },
+  };
+  const server = createServer(async (request, response) => {
+    for await (const _chunk of request);
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ modules: [module] }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const fixture = await createTestRuntime({
+    characterName: "RemoteProvenanceOrder",
+    settings: {
+      ELIZA_CAPABILITY_ROUTER_ENABLED: "true",
+      ELIZA_CAPABILITY_ROUTER_URLS: JSON.stringify([
+        {
+          id: "a",
+          baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+          token: "fixture-a",
+        },
+      ]),
+      ELIZA_CAPABILITY_ROUTER_TRUST_POLICY: JSON.stringify({
+        requireProvenanceDigestMatch: true,
+      }),
+    },
+  });
+  try {
+    expect(
+      (await bootstrapRemoteCapabilityPlugins(fixture.runtime)).registered.map(
+        (plugin) => plugin.name,
+      ),
+    ).toEqual(["provenance-order"]);
+  } finally {
+    await fixture.cleanup();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
+}, 120_000);

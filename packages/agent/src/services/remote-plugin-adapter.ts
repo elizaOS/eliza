@@ -19,7 +19,9 @@ import {
 import {
   type ActionResult,
   CAPABILITY_ROUTER_SERVICE_TYPE,
+  type CanonicalJsonOptions,
   CapabilityError,
+  canonicalJsonString,
   type ElizaCapabilityRouter,
   getCapabilityRouter,
   type IAgentRuntime,
@@ -1235,9 +1237,6 @@ type RemotePluginProvenanceWalkBound =
   | "depth"
   | "nodes"
   | "reflection";
-type RemotePluginProvenanceWalkBudget = {
-  remaining: number;
-};
 class RemotePluginProvenanceWalkBoundError extends Error {
   readonly reason: RemotePluginProvenanceWalkBound;
   constructor(
@@ -1266,130 +1265,36 @@ function reflectForRemotePluginProvenance<T>(read: () => T): T {
   try {
     return read();
   } catch (error) {
+    if (error instanceof RemotePluginProvenanceWalkBoundError) throw error;
     throw new RemotePluginProvenanceWalkBoundError("reflection", {
       cause: error,
     });
   }
 }
-function chargeRemotePluginProvenanceNodes(
-  budget: RemotePluginProvenanceWalkBudget,
-  cost: number,
-): void {
-  budget.remaining -= cost;
-  if (budget.remaining < 0) {
-    throw new RemotePluginProvenanceWalkBoundError("nodes");
-  }
-}
 /**
- * Reads one own property descriptor's data value. Accessor properties are
- * refused rather than invoked: running an untrusted getter during trust
- * evaluation is exactly the execution this walk must not perform.
+ * Core's bounded canonical JSON (descriptor-only reads, path-local cycles,
+ * width charged before reflection). Keys sort in UTF-16 code-unit order, so an
+ * external signer and every agent host agree on the digest whatever the ICU
+ * locale; `localeCompare` collation changes with `LC_ALL`.
  */
-function remotePluginProvenanceDescriptorValue(
-  descriptor: PropertyDescriptor | undefined,
-): unknown {
-  if (descriptor === undefined) return undefined;
-  if (!("value" in descriptor)) {
-    throw new RemotePluginProvenanceWalkBoundError("reflection");
-  }
-  return descriptor.value;
-}
-function canonicalizeForRemotePluginProvenance(
-  value: unknown,
-  ancestors: Set<object> = new Set(),
-  depth = 0,
-  budget: RemotePluginProvenanceWalkBudget = {
-    remaining: MAX_REMOTE_PLUGIN_PROVENANCE_NODES,
+const REMOTE_PLUGIN_PROVENANCE_CANONICAL_JSON: CanonicalJsonOptions = {
+  maxDepth: MAX_REMOTE_PLUGIN_PROVENANCE_DEPTH,
+  maxNodes: MAX_REMOTE_PLUGIN_PROVENANCE_NODES,
+  sparseArrayHoles: "null",
+  onUnbounded: (context, cause) => {
+    throw new RemotePluginProvenanceWalkBoundError(
+      remotePluginProvenanceWalkBound(context),
+      { cause },
+    );
   },
-): unknown {
-  if (value === null || typeof value !== "object") return value;
-  if (depth > MAX_REMOTE_PLUGIN_PROVENANCE_DEPTH) {
-    throw new RemotePluginProvenanceWalkBoundError("depth");
-  }
-  // Path-local visiting: only the ancestors of the current path count as a
-  // cycle and each is dropped on unwind, so an acyclic DAG that repeats a
-  // shared reference still serializes at every path exactly like the
-  // unbounded walker did.
-  if (ancestors.has(value)) {
-    throw new RemotePluginProvenanceWalkBoundError("cycle");
-  }
-  const isArray = reflectForRemotePluginProvenance(() => Array.isArray(value));
-  ancestors.add(value);
-  try {
-    return isArray
-      ? canonicalizeRemotePluginProvenanceArray(value, ancestors, depth, budget)
-      : canonicalizeRemotePluginProvenanceObject(
-          value,
-          ancestors,
-          depth,
-          budget,
-        );
-  } finally {
-    ancestors.delete(value);
-  }
-}
-function canonicalizeRemotePluginProvenanceArray(
-  value: object,
-  ancestors: Set<object>,
-  depth: number,
-  budget: RemotePluginProvenanceWalkBudget,
-): unknown[] {
-  const lengthDescriptor = reflectForRemotePluginProvenance(() =>
-    Object.getOwnPropertyDescriptor(value, "length"),
-  );
-  const length = remotePluginProvenanceDescriptorValue(lengthDescriptor);
-  if (
-    typeof length !== "number" ||
-    !Number.isSafeInteger(length) ||
-    length < 0
-  ) {
-    throw new RemotePluginProvenanceWalkBoundError("reflection");
-  }
-  chargeRemotePluginProvenanceNodes(budget, length);
-  const canonical: unknown[] = new Array(length);
-  for (let index = 0; index < length; index += 1) {
-    const descriptor = reflectForRemotePluginProvenance(() =>
-      Object.getOwnPropertyDescriptor(value, String(index)),
-    );
-    canonical[index] = canonicalizeForRemotePluginProvenance(
-      remotePluginProvenanceDescriptorValue(descriptor),
-      ancestors,
-      depth + 1,
-      budget,
-    );
-  }
-  return canonical;
-}
-function canonicalizeRemotePluginProvenanceObject(
-  value: object,
-  ancestors: Set<object>,
-  depth: number,
-  budget: RemotePluginProvenanceWalkBudget,
-): Record<string, unknown> {
-  const keys = reflectForRemotePluginProvenance(() => Reflect.ownKeys(value));
-  chargeRemotePluginProvenanceNodes(budget, keys.length);
-  const entries: Array<[string, unknown]> = [];
-  for (const key of keys) {
-    if (typeof key !== "string") continue;
-    const descriptor = reflectForRemotePluginProvenance(() =>
-      Object.getOwnPropertyDescriptor(value, key),
-    );
-    if (descriptor === undefined || !descriptor.enumerable) continue;
-    const entry = remotePluginProvenanceDescriptorValue(descriptor);
-    if (entry === undefined) continue;
-    entries.push([key, entry]);
-  }
-  entries.sort(([left], [right]) => left.localeCompare(right));
-  const canonical: Record<string, unknown> = {};
-  for (const [key, entry] of entries) {
-    canonical[key] = canonicalizeForRemotePluginProvenance(
-      entry,
-      ancestors,
-      depth + 1,
-      budget,
-    );
-  }
-  return canonical;
+};
+function remotePluginProvenanceWalkBound(
+  context: Record<string, unknown>,
+): RemotePluginProvenanceWalkBound {
+  if ("cycle" in context) return "cycle";
+  if ("depth" in context) return "depth";
+  if ("visits" in context) return "nodes";
+  return "reflection";
 }
 function remotePluginModuleProvenanceDigestResult(
   module: RemotePluginModuleManifest,
@@ -1449,8 +1354,9 @@ function canonicalJsonForRemotePluginProvenance(
     } = module;
     return clone;
   });
-  const canonical = canonicalizeForRemotePluginProvenance(rest);
-  return reflectForRemotePluginProvenance(() => JSON.stringify(canonical));
+  return reflectForRemotePluginProvenance(() =>
+    canonicalJsonString(rest, REMOTE_PLUGIN_PROVENANCE_CANONICAL_JSON),
+  );
 }
 function trustDecision(
   module: RemotePluginModuleManifest,
