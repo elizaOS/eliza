@@ -412,4 +412,35 @@ describe("screen-time handler — real PGLite", () => {
     ).data;
     expect(Array.isArray(data?.summary?.items)).toBe(true);
   });
+
+  it("screenTimeAction summary with no source reads apps and websites", async () => {
+    const result = await requireScreenTimeHandler()(
+      runtime,
+      makeMessage(runtime, "screen time summary") as never,
+      undefined,
+      { parameters: { action: "summary", windowDays: 7 } } as never,
+      async () => {},
+    );
+    expect(result?.success).toBe(true);
+    const data = (
+      result as {
+        data?: {
+          summary?: { items: Array<{ source: string; identifier: string }> };
+        };
+      }
+    ).data;
+    const items = data?.summary?.items ?? [];
+    expect(items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "app",
+          identifier: "com.summary.VSCodeX",
+        }),
+        expect.objectContaining({
+          source: "website",
+          identifier: "github.com",
+        }),
+      ]),
+    );
+  });
 });

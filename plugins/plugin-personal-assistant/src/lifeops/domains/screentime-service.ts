@@ -365,6 +365,11 @@ export class ScreenTimeDomain {
     );
   }
 
+  /**
+   * `source` restricts the read to one surface. Omitted, it reads both apps
+   * and websites: the summary, breakdown and history callers pass no source
+   * and mean "all screen time".
+   */
   async collectScreenTimeRows(opts: {
     since: string;
     until: string;
@@ -374,7 +379,7 @@ export class ScreenTimeDomain {
     const { sinceMs, untilMs } = buildWindowBounds(opts.since, opts.until);
     const rows: ScreenTimeAggregateRow[] = [];
 
-    if (opts.source === "app") {
+    if (opts.source !== "website") {
       const appReport = await getActivityReportBetween(
         this.ctx.runtime,
         this.ctx.agentId(),
@@ -439,7 +444,7 @@ export class ScreenTimeDomain {
       );
     }
 
-    if (opts.source === "website") {
+    if (opts.source !== "app") {
       const websiteSessions =
         await this.ctx.repository.listScreenTimeSessionsOverlapping(
           this.ctx.agentId(),
