@@ -15,7 +15,7 @@ export const roomTable = pgTable("rooms", {
   }),
   source: text("source").notNull(),
   type: text("type").notNull(),
-  messageServerId: uuid("message_server_id"),
+  messageServerId: uuid("message_server_id"),`n  serverId: text("connector_server_id"),
   worldId: uuid("world_id"),
   name: text("name"),
   metadata: jsonb("metadata").$type<Metadata>(),
