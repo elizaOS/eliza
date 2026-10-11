@@ -1063,6 +1063,22 @@ export async function handleLocalInferenceChatCommand(
 		return getLocalInferenceChatStatus(intent);
 	}
 	if (intent === "redownload") {
+		// Redownload uninstalls first, so a tier the downloader would refuse
+		// (unpublished, or its published manifest fails the activation gate)
+		// must keep its installed copy — the same rule merged #35203 applied
+		// to the Settings Redownload button via canRedownloadInstalledModel.
+		if (!isCatalogModelOfferable(model)) {
+			return buildLocalInferenceChatResult(
+				{
+					intent,
+					status: "failed",
+					modelId: model.id,
+					activeModelId: activeModelState.modelId,
+					error: `Eliza-1 tier ${model.id} is no longer downloadable, so the installed copy was kept.`,
+				},
+				"Redownload uninstalls the model before downloading it again, and this tier can no longer be downloaded, so I kept the installed copy.",
+			);
+		}
 		await removeInstalledModel(model.id).catch(() => false);
 	}
 	const job = await startDownload(model.id);
