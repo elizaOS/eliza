@@ -48,9 +48,6 @@ const TIME_ZONE_ALIASES: Record<string, string> = {
   "new york": "America/New_York",
   utc: "UTC",
   gmt: "UTC",
-  // A planner that reads "2026-08-19T14:00:00Z" stamps timeZone "Z". Intl
-  // rejects it, but it names UTC.
-  z: "UTC",
 };
 
 const IANA_TIME_ZONE_PATTERN = /\b([A-Za-z]+(?:\/[A-Za-z0-9_+-]+)+)\b/g;
@@ -112,7 +109,16 @@ export function normalizeExplicitTimeZoneToken(
   if (!trimmed) {
     return null;
   }
-  const alias = TIME_ZONE_ALIASES[canonicalizeTimeZoneAliasKey(trimmed)];
+  const canonical = canonicalizeTimeZoneAliasKey(trimmed);
+  // A planner that reads "2026-08-19T14:00:00Z" stamps timeZone "Z". Intl
+  // rejects it, but it names UTC. This alias applies to the exact token
+  // only: it stays out of TIME_ZONE_ALIASES because that table is also
+  // scanned as free-text words by extractExplicitTimeZoneFromText, where a
+  // bare "z" in prose ("Jay Z", "Gen Z", "A-Z") is not a time zone.
+  if (canonical === "z") {
+    return isValidTimeZone("UTC") ? "UTC" : null;
+  }
+  const alias = TIME_ZONE_ALIASES[canonical];
   if (alias && isValidTimeZone(alias)) {
     return alias;
   }
