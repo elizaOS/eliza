@@ -32,8 +32,25 @@ import { checkAgentCreditGate } from "@elizaos/cloud-shared/lib/services/agent-b
 import { insufficientCredits402 } from "@elizaos/cloud-shared/lib/services/agent-billing-gate-402";
 import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
-import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
+
+function registerNudge(c: AppContext, nudge: Promise<unknown>): void {
+  // A Worker can cancel an unregistered promise when the response ends.
+  let waitUntil: ((promise: Promise<unknown>) => void) | undefined;
+  try {
+    waitUntil = c.executionCtx?.waitUntil?.bind(c.executionCtx);
+  } catch {
+    // error-policy:J4 Hono local/test contexts have no ExecutionContext; the
+    // queued job stays visible to the polling worker.
+    waitUntil = undefined;
+  }
+  if (waitUntil) waitUntil(nudge);
+  else void nudge;
+}
 
 const app = new Hono<AppEnv>();
 
@@ -104,14 +121,17 @@ app.post("/", async (c) => {
       stateLossAcknowledged,
     });
     if (enqueue.created) {
-      void provisioningJobService.triggerImmediate(c.env).catch((error) => {
-        // error-policy:J7 the durable job remains visible to the polling worker.
-        logger.warn("[service-api] Restart worker nudge failed", {
-          agentId,
-          jobId: enqueue.job.id,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      });
+      registerNudge(
+        c,
+        provisioningJobService.triggerImmediate(c.env).catch((error) => {
+          // error-policy:J7 the durable job remains visible to the polling worker.
+          logger.warn("[service-api] Restart worker nudge failed", {
+            agentId,
+            jobId: enqueue.job.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }),
+      );
     }
 
     const existingJobCarriesWaiver =

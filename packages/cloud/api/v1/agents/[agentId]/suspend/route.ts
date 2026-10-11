@@ -21,9 +21,26 @@ import { requireServiceKey } from "@elizaos/cloud-shared/lib/auth/service-key-ho
 import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
 import { decodeOptionalRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
-import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
+
+function registerNudge(c: AppContext, nudge: Promise<unknown>): void {
+  // A Worker can cancel an unregistered promise when the response ends.
+  let waitUntil: ((promise: Promise<unknown>) => void) | undefined;
+  try {
+    waitUntil = c.executionCtx?.waitUntil?.bind(c.executionCtx);
+  } catch {
+    // error-policy:J4 Hono local/test contexts have no ExecutionContext; the
+    // queued job stays visible to the polling worker.
+    waitUntil = undefined;
+  }
+  if (waitUntil) waitUntil(nudge);
+  else void nudge;
+}
 
 const app = new Hono<AppEnv>();
 
@@ -83,9 +100,12 @@ app.post("/", async (c) => {
       authorization: "user_request",
     });
 
-    void provisioningJobService.triggerImmediate(c.env).catch(() => {
-      // error-policy:J5 fire-and-forget provisioning kick; the rejection is observed and logged inside provisioningJobService.
-    });
+    registerNudge(
+      c,
+      provisioningJobService.triggerImmediate(c.env).catch(() => {
+        // error-policy:J5 fire-and-forget provisioning kick; the rejection is observed and logged inside provisioningJobService.
+      }),
+    );
 
     return c.json(
       {
