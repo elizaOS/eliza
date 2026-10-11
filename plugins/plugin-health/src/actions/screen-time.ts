@@ -448,9 +448,9 @@ export const SCREEN_TIME_PARAMETERS: readonly ActionParameter[] = [
   {
     name: "windowHours",
     description:
-      "Window in hours for activity_report / time_on_app / time_on_site (default 24, max 720).",
+      "Window in hours for activity_report / time_on_app / time_on_site, 0.25 to 720 (default 24).",
     required: false,
-    schema: { type: "number" as const },
+    schema: { type: "number" as const, minimum: 0.25, maximum: 720 },
   },
   {
     name: "appNameOrBundleId",
