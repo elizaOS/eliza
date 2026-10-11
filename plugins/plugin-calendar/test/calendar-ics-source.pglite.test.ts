@@ -873,6 +873,59 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     expect(feed.events.every((event) => event.recurringEventId)).toBe(true);
   });
 
+  it.each([false, true])(
+    "includes an ICS instant at the feed window start (recurring=%s)",
+    async (recurring) => {
+      const source = await createSource();
+      await syncBody(
+        source.id,
+        calendar(
+          [
+            "BEGIN:VEVENT",
+            "UID:instant-reminder",
+            "DTSTAMP:20260701T080000Z",
+            "DTSTART:20260701T100000Z",
+            ...(recurring ? ["RRULE:FREQ=DAILY;COUNT=3"] : []),
+            "SUMMARY:Instant reminder",
+            "END:VEVENT",
+          ].join("\r\n"),
+          vevent({
+            uid: "ended-meeting",
+            title: "Meeting ended at the boundary",
+          })
+            .replace("DTSTART:20260701T100000Z", "DTSTART:20260701T090000Z")
+            .replace("DTEND:20260701T110000Z", "DTEND:20260701T100000Z"),
+        ),
+      );
+      const read = (timeMin: string, timeMax: string) =>
+        service.getCalendarFeed(
+          INTERNAL_URL,
+          { grantId: source.id, timeMin, timeMax },
+          new Date(),
+        );
+      const boundary = await read(
+        "2026-07-01T10:00:00.000Z",
+        "2026-07-02T10:00:00.000Z",
+      );
+      expect(boundary.state).toBe("complete");
+      expect(
+        boundary.events.map((event) => [event.startAt, event.endAt]),
+      ).toEqual([["2026-07-01T10:00:00.000Z", "2026-07-01T10:00:00.000Z"]]);
+      const after = await read(
+        "2026-07-01T10:00:00.001Z",
+        "2026-07-02T10:00:00.000Z",
+      );
+      expect(after.events).toEqual([]);
+      const next = await read(
+        "2026-07-02T10:00:00.000Z",
+        "2026-07-03T10:00:00.000Z",
+      );
+      expect(next.events.map((event) => event.startAt)).toEqual(
+        recurring ? ["2026-07-02T10:00:00.000Z"] : [],
+      );
+    },
+  );
+
   it("keeps usable EXDATE values when another EXDATE is malformed", async () => {
     const source = await createSource();
     await syncBody(

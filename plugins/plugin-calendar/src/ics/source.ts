@@ -174,8 +174,11 @@ export function expandIcsCalendarEvents(args: {
     const startMs = Date.parse(event.startAt);
     const endMs = Date.parse(event.endAt);
     const { minMs, maxMs } = event.isAllDay ? allDayWindow : timedWindow;
+    // RFC 5545 permits a timed VEVENT with no DTEND/DURATION: an instant.
     const overlaps = (overlapStartMs: number, overlapEndMs: number) =>
-      overlapEndMs > minMs && overlapStartMs < maxMs;
+      (overlapEndMs > minMs ||
+        (overlapEndMs === overlapStartMs && overlapStartMs >= minMs)) &&
+      overlapStartMs < maxMs;
     const recurrence = event.recurrence ?? [];
     const ruleLineCount = recurrence.filter((line) =>
       /^RRULE[:;]/i.test(line),
@@ -209,7 +212,7 @@ export function expandIcsCalendarEvents(args: {
         rule,
         startAt: new Date(startMs),
         timeZone: event.isAllDay ? "UTC" : (event.timezone ?? "UTC"),
-        rangeStart: new Date(minMs - durationMs + 1),
+        rangeStart: new Date(minMs - durationMs + (durationMs === 0 ? 0 : 1)),
         rangeEnd: new Date(maxMs),
       });
     } catch (error) {
