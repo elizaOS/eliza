@@ -197,7 +197,64 @@ function parseMetadataDate(value: unknown): Date | undefined {
   }
 
   const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? date : undefined;
+  if (!Number.isFinite(date.getTime())) {
+    return undefined;
+  }
+  // `new Date()` normalizes a calendar date that does not exist (February 30
+  // becomes March 2) instead of failing. The spec path above drops such a
+  // date, so the fallback must drop it too: check that the parsed instant
+  // names the same components the string states. Strings that do not start
+  // with an ISO calendar date keep the permissive parse.
+  return matchesStatedIsoComponents(date, value) ? date : undefined;
+}
+
+const ISO_DATE_PREFIX =
+  /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?\s*(Z|[+-]\d{2}:?\d{2})?)?/;
+
+function matchesStatedIsoComponents(date: Date, value: string): boolean {
+  const m = ISO_DATE_PREFIX.exec(value.trim());
+  if (!m) {
+    return true;
+  }
+  const year = Number(m[1]);
+  const monthIndex = Number(m[2]) - 1;
+  const dayOfMonth = Number(m[3]);
+  const hasTime = m[4] !== undefined;
+  const hour = hasTime ? Number(m[4]) : 0;
+  const minute = hasTime ? Number(m[5]) : 0;
+  const second = m[6] !== undefined ? Number(m[6]) : 0;
+  const zone = m[7];
+
+  // Compare in the frame the string states its components in: UTC for a
+  // date-only or `Z` form, the stated offset for an offset form, and host
+  // local time for a form with no zone.
+  let framed = date;
+  if (zone && zone !== "Z") {
+    const sign = zone.startsWith("-") ? -1 : 1;
+    const digits = zone.slice(1).replace(":", "");
+    const offsetMs = sign * (Number(digits.slice(0, 2)) * 60 + Number(digits.slice(2, 4))) * 60_000;
+    framed = new Date(date.getTime() + offsetMs);
+  }
+  const useLocal = hasTime && zone === undefined;
+  const actual = useLocal
+    ? [
+        framed.getFullYear(),
+        framed.getMonth(),
+        framed.getDate(),
+        framed.getHours(),
+        framed.getMinutes(),
+        framed.getSeconds(),
+      ]
+    : [
+        framed.getUTCFullYear(),
+        framed.getUTCMonth(),
+        framed.getUTCDate(),
+        framed.getUTCHours(),
+        framed.getUTCMinutes(),
+        framed.getUTCSeconds(),
+      ];
+  const stated = [year, monthIndex, dayOfMonth, hour, minute, second];
+  return actual.every((component, index) => component === stated[index]);
 }
 
 export class PdfService extends Service {
