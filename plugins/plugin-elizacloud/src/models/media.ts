@@ -12,10 +12,12 @@ interface CloudMediaClient {
   routes: {
     postApiV1GenerateVideo<T = unknown>(options: {
       json: Record<string, unknown>;
+      signal?: AbortSignal;
       timeoutMs?: number;
     }): Promise<T>;
     postApiV1GenerateMusic<T = unknown>(options: {
       json: Record<string, unknown>;
+      signal?: AbortSignal;
       timeoutMs?: number;
     }): Promise<T>;
   };
@@ -184,6 +186,7 @@ export async function handleVideoGeneration(
           audio: booleanValue(params.audio),
           voiceControl: booleanValue(params.voiceControl),
         }),
+        signal: params.signal,
         timeoutMs: resolveCloudTimeoutMs(
           "ELIZAOS_CLOUD_VIDEO_TIMEOUT_MS",
           300_000,
@@ -262,6 +265,7 @@ export async function handleAudioGeneration(
           runtime,
         ).routes.postApiV1GenerateMusic<CloudMusicResponse>({
           json,
+          signal: params.signal,
           timeoutMs,
         }),
       "Music generation",

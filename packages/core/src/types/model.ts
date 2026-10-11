@@ -1169,6 +1169,7 @@ export interface AudioProcessingParams {
 	outputFormat?: string;
 	referenceUrl?: string;
 	seed?: number;
+	signal?: AbortSignal;
 }
 
 /**
@@ -1187,6 +1188,7 @@ export interface VideoProcessingParams {
 	resolution?: string;
 	audio?: boolean;
 	voiceControl?: boolean;
+	signal?: AbortSignal;
 }
 
 // Research Model Types (Deep Research)

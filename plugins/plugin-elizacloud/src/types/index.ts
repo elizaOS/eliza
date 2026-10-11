@@ -15,6 +15,7 @@ export interface OpenAITextToSpeechParams {
   voice?: string;
   format?: "mp3" | "wav" | "flac" | string;
   instructions?: string;
+  signal?: AbortSignal;
 }
 
 export interface ImageDescriptionResult {

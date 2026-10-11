@@ -21,6 +21,7 @@ export interface CloudTtsClient {
     postApiV1VoiceTts<T = unknown>(options: {
       headers?: Record<string, unknown>;
       json: { text: string; voiceId?: string; modelId?: string };
+      signal?: AbortSignal;
       timeoutMs?: number;
     }): Promise<T>;
   };
@@ -159,6 +160,7 @@ async function fetchTextToSpeech(
           ...(voiceId ? { voiceId } : {}),
           ...(modelId ? { modelId } : {}),
         },
+        signal: options.signal,
         timeoutMs: resolveCloudTimeoutMs(
           "ELIZAOS_CLOUD_TTS_TIMEOUT_MS",
           60_000,
