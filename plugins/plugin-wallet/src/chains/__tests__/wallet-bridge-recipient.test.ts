@@ -281,9 +281,7 @@ describe("wallet bridge recipient guard", () => {
       expect(rejected?.success).toBe(false);
       expect(rejected?.data?.error).toBe("INVALID_PARAMS");
       expect(rejected?.data?.requiresConfirmation).toBeUndefined();
-      expect(rejected?.text).toBe(
-        "recipient must be a valid EVM or Solana address.",
-      );
+      expect(rejected?.text).toBe("recipient must be a valid EVM address.");
     }
     expect(base.execute).not.toHaveBeenCalled();
   });
@@ -372,7 +370,7 @@ describe("wallet bridge recipient guard", () => {
     expect(base.execute).not.toHaveBeenCalled();
   });
 
-  it("accepts a content-driven bridge whose Solana-format recipient appears in the user message", async () => {
+  it("refuses a content-driven bridge to a Solana-format recipient the user stated, before the spend confirmation", async () => {
     const { runtime, service } = walletRuntime();
     const base = evmHandler("base", "Base", "8453");
     service.registerChainHandler(base);
@@ -395,7 +393,10 @@ describe("wallet bridge recipient guard", () => {
       undefined,
     );
 
-    expect(first?.data?.requiresConfirmation).toBe(true);
+    expect(first?.success).toBe(false);
+    expect(first?.data?.error).toBe("INVALID_PARAMS");
+    expect(first?.data?.requiresConfirmation).toBeUndefined();
+    expect(first?.text).toBe("recipient must be a valid EVM address.");
     expect(base.execute).not.toHaveBeenCalled();
   });
 });
