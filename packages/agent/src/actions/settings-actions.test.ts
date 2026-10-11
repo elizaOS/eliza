@@ -1,4 +1,5 @@
 import { validateToolArgs } from "@elizaos/core";
+import { normalizeFirstRunProviderId } from "@elizaos/host/protocol";
 import { describe, expect, it } from "vitest";
 import { settingsAction } from "./settings-actions.ts";
 
@@ -90,6 +91,17 @@ describe("SETTINGS single-value and model slot parameters", () => {
       args,
       errors: [],
     });
+  });
+
+  it("advertises only provider ids the update_ai_provider handler accepts", () => {
+    const description = settingsAction.parameters?.find(
+      (parameter) => parameter.name === "provider",
+    )?.description;
+    const ids = /\(([^)]+)\)/.exec(description ?? "")?.[1]?.split(", ") ?? [];
+    expect(ids).toContain("cerebras");
+    for (const id of ids) {
+      expect(normalizeFirstRunProviderId(id), id).toBe(id);
+    }
   });
 
   it("rejects a model slot the handler does not read", () => {
