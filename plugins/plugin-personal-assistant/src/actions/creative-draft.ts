@@ -544,7 +544,19 @@ export const creativeDraftAction: Action & {
       name: "request",
       description:
         "Draft request: { title, targetForm: essay|launch_thread|narrative|memo, ownerAsk, requestedVoice? }. Required for compose.",
-      schema: { type: "object" as const, additionalProperties: true },
+      schema: {
+        type: "object" as const,
+        properties: {
+          title: { type: "string" as const, minLength: 1 },
+          targetForm: {
+            type: "string" as const,
+            enum: ["essay", "launch_thread", "narrative", "memo"],
+          },
+          ownerAsk: { type: "string" as const, minLength: 1 },
+          requestedVoice: { type: "string" as const },
+        },
+        required: ["title", "targetForm", "ownerAsk"],
+      },
     },
     {
       name: "memos",
@@ -610,8 +622,20 @@ export const creativeDraftAction: Action & {
     {
       name: "revision",
       description:
-        "Revision to apply: { instruction, acceptedEdit?, vetoedPhrase?, replacementText?, sectionId?, sectionIndex?, revisedAt }. Required for revise.",
-      schema: { type: "object" as const, additionalProperties: true },
+        "Revision to apply: { instruction, acceptedEdit?, vetoedPhrase?, replacementText?, sectionId?, sectionIndex?, revisedAt }. Required for revise. instruction is the owner's requested change in their words and is given to the drafting model. sectionId or sectionIndex (0-based) names the section the revision targets: replacementText rewrites that section's text, and without replacementText the instruction becomes that section's directive. An unknown section is refused.",
+      schema: {
+        type: "object" as const,
+        properties: {
+          instruction: { type: "string" as const, minLength: 1 },
+          acceptedEdit: { type: "string" as const },
+          vetoedPhrase: { type: "string" as const },
+          replacementText: { type: "string" as const },
+          sectionId: { type: "string" as const },
+          sectionIndex: { type: "integer" as const, minimum: 0 },
+          revisedAt: { type: "string" as const },
+        },
+        required: ["instruction"],
+      },
     },
   ],
   examples,
@@ -689,7 +713,7 @@ export const creativeDraftAction: Action & {
         const styleCard = buildOwnerVoiceStyleCard(ownerSources);
         const narrative = await composeDraftNarrative({
           runtime,
-          request: reconstructRequest(revisedBase),
+          request: reconstructRequest(revisedBase, params.revision),
           memos: [],
           styleCard,
           currentDraft: revisedBase,
@@ -825,14 +849,17 @@ export const creativeDraftAction: Action & {
 
 /**
  * A revise turn no longer carries the original request, but the compose pass
- * needs one. Reconstruct it from the durable fields the artifact preserves.
+ * needs one. Reconstruct it from the durable fields the artifact preserves and
+ * the owner's instruction for this revision, so the drafting model receives
+ * the change the owner asked for.
  */
 function reconstructRequest(
   draft: CreativeDraftArtifact,
+  revision: CreativeDraftRevision,
 ): CreativeDraftRequest {
   return {
     title: draft.title,
     targetForm: draft.targetForm,
-    ownerAsk: `Revise the standing "${draft.title}" draft, keeping accepted edits and honoring vetoed phrasing.`,
+    ownerAsk: `Revise the standing "${draft.title}" draft, keeping accepted edits and honoring vetoed phrasing. Owner's revision instruction: ${revision.instruction}`,
   };
 }
