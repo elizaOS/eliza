@@ -21,7 +21,8 @@ import {
   type RouteExtended,
   resumeRoute,
 } from "@lifi/sdk";
-import { type Address, type Chain, parseAbi } from "viem";
+import { PublicKey } from "@solana/web3.js";
+import { type Address, type Chain, isAddress, parseAbi } from "viem";
 import * as viemChains from "viem/chains";
 import {
   BRIDGE_POLL_INTERVAL_MS,
@@ -571,7 +572,33 @@ export function validateWalletBridgeParams(
   if (params.chain === params.toChain) {
     return "Source and destination chains must be different for bridge.";
   }
+  if (params.recipient && !isBridgeRecipientAddress(params.recipient)) {
+    return "recipient must be a valid EVM or Solana address.";
+  }
   return null;
+}
+
+/**
+ * A bridge recipient is the Li.Fi destination `toAddress`: an EVM address
+ * for an EVM destination chain or a Solana base58 address for a Solana
+ * destination. The format check ran only inside the bridge execution,
+ * after the financial confirmation gate, so a malformed recipient the
+ * planner produced (a short `0x` value, an ENS name, a truncated address)
+ * was confirmed by the user before it failed. Validate the format here so
+ * the refusal lands before the confirmation prompt, mirroring the
+ * transfer preflight in `validateWalletTransferParams`. An absent
+ * recipient stays valid: the bridge then pays the sender's own address.
+ */
+function isBridgeRecipientAddress(value: string): boolean {
+  if (isAddress(value)) {
+    return true;
+  }
+  try {
+    new PublicKey(value);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function routeEvmBridge(
