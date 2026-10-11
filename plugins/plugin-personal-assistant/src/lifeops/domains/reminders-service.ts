@@ -3361,7 +3361,10 @@ export class RemindersDomain {
   }): Promise<Record<string, unknown>> {
     try {
       const [activityProfile, policies] = await Promise.all([
-        this.readReminderActivityProfileSnapshot({ now: args.now }),
+        this.readReminderActivityProfileSnapshot({
+          now: args.now,
+          timezone: await resolveOwnerTimeZone(this.ctx.runtime, args.now),
+        }),
         this.ctx.repository.listChannelPolicies(this.ctx.agentId()),
       ]);
       const candidates = await this.resolveOwnerContactRouteCandidates({
