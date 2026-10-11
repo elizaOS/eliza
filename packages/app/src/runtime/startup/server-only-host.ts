@@ -56,7 +56,7 @@ export async function startServerOnlyHost({
 }: StartServerOnlyHostOptions): Promise<AgentRuntime | undefined> {
   bootLap("startEliza:serverOnly entry");
   let currentRuntime: AgentRuntime | undefined;
-  /** Teardown started by an API stop or restart; close() waits for it. */
+  /** API stop or restart (teardown and replacement boot) in flight; close() waits for it. */
   let pendingRuntimeTeardown: Promise<unknown> | undefined;
   let runtimePublished = false;
   let postReadyPhase: "pending" | "complete" | "failed" = "pending";
@@ -209,41 +209,45 @@ export async function startServerOnlyHost({
           await triggerDeferredRuntimeBoot("agent start requested via API");
           return currentRuntime ?? null;
         }
-        if (currentRuntime) {
-          // Relinquish ownership before teardown, as the API stop does, so a
-          // signal during the restart waits for it instead of closing the
-          // same adapter again.
-          const runtimeToStop = currentRuntime;
-          currentRuntime = undefined;
+        // close() owns the whole restart — the old runtime's teardown and the
+        // replacement boot — so a signal cannot finish shutdown while the
+        // replacement is still opening resources.
+        const restart = (async (): Promise<AgentRuntime | null> => {
+          if (currentRuntime) {
+            // Relinquish ownership before teardown, as the API stop does, so
+            // close() waits for it instead of closing the same adapter again.
+            const runtimeToStop = currentRuntime;
+            currentRuntime = undefined;
+            runtimePublished = false;
+            await stopRuntime(runtimeToStop, "server-only restart");
+          }
           runtimePublished = false;
-          const teardown = stopRuntime(runtimeToStop, "server-only restart");
-          pendingRuntimeTeardown = teardown;
+          postReadyPhase = "pending";
+          publishStartup("runtime-starting");
           try {
-            await teardown;
-          } finally {
-            if (pendingRuntimeTeardown === teardown) {
-              pendingRuntimeTeardown = undefined;
-            }
+            currentRuntime = await bootServerOnlyRuntime();
+          } catch (error) {
+            // error-policy:J1 restart orchestration boundary — publish a failed
+            // lifecycle state before propagating the boot failure to the route.
+            publishStartup("failed");
+            throw error;
+          }
+          if (!currentRuntime) {
+            publishStartup("failed");
+            return null;
+          }
+          runtimePublished = true;
+          publishPostReadyPhase(postReadyPhase);
+          return currentRuntime ?? null;
+        })();
+        pendingRuntimeTeardown = restart;
+        try {
+          return await restart;
+        } finally {
+          if (pendingRuntimeTeardown === restart) {
+            pendingRuntimeTeardown = undefined;
           }
         }
-        runtimePublished = false;
-        postReadyPhase = "pending";
-        publishStartup("runtime-starting");
-        try {
-          currentRuntime = await bootServerOnlyRuntime();
-        } catch (error) {
-          // error-policy:J1 restart orchestration boundary — publish a failed
-          // lifecycle state before propagating the boot failure to the route.
-          publishStartup("failed");
-          throw error;
-        }
-        if (!currentRuntime) {
-          publishStartup("failed");
-          return null;
-        }
-        runtimePublished = true;
-        publishPostReadyPhase(postReadyPhase);
-        return currentRuntime ?? null;
       },
     });
     actualApiPort = startedApiServer.port;

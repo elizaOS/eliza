@@ -479,6 +479,10 @@ async function shutdown(): Promise<void> {
   // by the forced-exit timer above) so the adapter closes before exit.
   if (pendingRuntimeTeardown)
     await pendingRuntimeTeardown.catch(() => undefined);
+  // A restart in flight boots a replacement after its teardown; wait for the
+  // whole restart so the replacement is stopped below instead of opening
+  // resources after shutdown.
+  if (restartPromise) await restartPromise.catch(() => undefined);
   if (currentRuntime) {
     try {
       // currentRuntime is only ever set inside createRuntime(), which has

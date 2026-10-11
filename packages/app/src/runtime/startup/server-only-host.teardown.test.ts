@@ -29,7 +29,7 @@ afterEach(async () => {
   );
 });
 
-async function startHost() {
+async function startHost(holdReplacementBoot?: Promise<void>) {
   const dir = await mkdtemp(path.join(tmpdir(), "server-only-teardown-"));
   dirs.push(dir);
   const configPath = path.join(dir, "eliza.json");
@@ -46,6 +46,10 @@ async function startHost() {
   vi.stubEnv("ELIZA_API_PORT", String(port));
   const runtimes: AgentRuntime[] = [];
   const adapterCloses: number[] = [];
+  let replacementBootEntered: () => void = () => {};
+  const replacementBootStarted = new Promise<void>((resolve) => {
+    replacementBootEntered = resolve;
+  });
   let host: ServerOnlyHost | undefined;
   await startServerOnlyHost({
     options: {
@@ -55,6 +59,10 @@ async function startHost() {
     },
     bootRuntime: async () => {
       const index = runtimes.length;
+      if (index > 0) {
+        replacementBootEntered();
+        await holdReplacementBoot;
+      }
       const runtime = new AgentRuntime({
         character: { name: "Eliza", bio: ["test"] },
         plugins: [],
@@ -91,7 +99,7 @@ async function startHost() {
       headers: { "Content-Type": "application/json" },
       body: "{}",
     }).catch(() => undefined);
-  return { host, post, runtimes, adapterCloses };
+  return { host, post, runtimes, adapterCloses, replacementBootStarted };
 }
 
 it.each(["stop", "restart"] as const)(
@@ -114,3 +122,28 @@ it.each(["stop", "restart"] as const)(
   },
   60_000,
 );
+
+it("waits for a replacement boot that is still running when the signal arrives", async () => {
+  let releaseBoot: () => void = () => {};
+  const hold = new Promise<void>((resolve) => {
+    releaseBoot = resolve;
+  });
+  const { host, post, runtimes, adapterCloses, replacementBootStarted } =
+    await startHost(hold);
+  const request = post("restart");
+  // The old runtime is torn down and the replacement boot is held open.
+  await replacementBootStarted;
+  expect(adapterCloses[0]).toBe(1);
+  let closed = false;
+  const closing = host.close().then(() => {
+    closed = true;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  expect(closed).toBe(false);
+  releaseBoot();
+  await closing;
+  // close() returned only after the replacement booted and was stopped.
+  expect(runtimes).toHaveLength(2);
+  expect(adapterCloses).toEqual([1, 1]);
+  await request;
+}, 60_000);
