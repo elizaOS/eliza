@@ -648,6 +648,26 @@ function validatePumpFunBuyParams(params: WalletRouterParams): {
   return { mint, amountSol };
 }
 
+/**
+ * Preflight counterpart to `validatePumpFunBuyParams`, which runs inside
+ * `executePumpFunBuy` and `simulatePumpFunBuy` — after the financial
+ * confirmation gate. A malformed mint the planner produced (a token symbol,
+ * an EVM address, a non-canonical base58 string) was therefore confirmed by
+ * the user before it failed. Run the same checks here so the refusal lands
+ * before the confirmation prompt, mirroring the governance preflight in
+ * `validateWalletGovParams`.
+ */
+export function validateWalletPumpFunBuyParams(
+  params: WalletRouterParams,
+): string | null {
+  try {
+    validatePumpFunBuyParams(params);
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
 interface PumpFunTradeLocalSettings {
   readonly tradeLocalUrl: string;
   readonly priorityFee: number;

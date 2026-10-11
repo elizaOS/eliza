@@ -704,6 +704,39 @@ describe("wallet router action", () => {
     expect(pumpfun.execute).not.toHaveBeenCalled();
   });
 
+  it("rejects pump.fun buys with a malformed mint before confirmation", async () => {
+    const { runtime, service } = createService();
+    const pumpfun = handler(
+      "pumpfun",
+      "pump.fun",
+      "pump.fun-solana",
+      "solana",
+      ["pump_fun_buy"],
+    );
+    service.registerChainHandler(pumpfun);
+
+    for (const toToken of [
+      "BONK",
+      "0x123",
+      "111111111111111111111111111111111",
+    ]) {
+      const result = await run(runtime, {
+        subaction: "pump_fun_buy",
+        chain: "pumpfun",
+        toToken,
+        amount: "0.1",
+        mode: "execute",
+      });
+
+      expect(result?.success).toBe(false);
+      expect(result?.data?.error).toBe("INVALID_PARAMS");
+      expect(String(result?.text)).toContain(
+        "toToken must be a valid pump.fun token mint address.",
+      );
+    }
+    expect(pumpfun.execute).not.toHaveBeenCalled();
+  });
+
   it("does not execute when LLM sets confirmed:true without a user yes reply", async () => {
     const { runtime, service } = createService();
     const base = handler("base", "Base", "8453", "evm");

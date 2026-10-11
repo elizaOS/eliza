@@ -32,6 +32,7 @@ import { validateWalletBridgeParams } from "../chains/evm/bridge-router.js";
 import { validateWalletGovParams } from "../chains/evm/gov-router.js";
 import {
   registerDefaultWalletChainHandlers,
+  validateWalletPumpFunBuyParams,
   validateWalletTransferParams,
 } from "../chains/registry.js";
 import type {
@@ -405,12 +406,9 @@ export class WalletBackendService extends Service {
         };
       }
     }
-    if (params.subaction === "pump_fun_buy" && !params.toToken) {
-      return {
-        ok: false,
-        error: "INVALID_PARAMS",
-        detail: "toToken must be the pump.fun token mint address.",
-      };
+    if (params.subaction === "pump_fun_buy") {
+      const detail = validateWalletPumpFunBuyParams(params);
+      return detail ? { ok: false, error: "INVALID_PARAMS", detail } : null;
     }
     return null;
   }
