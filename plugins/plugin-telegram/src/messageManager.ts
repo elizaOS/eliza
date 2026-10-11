@@ -873,6 +873,8 @@ export class MessageManager {
         // Use structured data directly instead of regex parsing
         const title = documentInfo.title;
         const fullText = documentInfo.fullText;
+        const isImage = contentTypeForMime(document.mime_type) === "image";
+        const imageInfo = isImage ? await this.processImage(message) : null;
 
         // Add document content to processedContent so agent can access it
         if (fullText) {
@@ -890,8 +892,10 @@ export class MessageManager {
             ? "PDF"
             : "Document",
           contentType: contentTypeForMime(document.mime_type),
-          description: documentInfo.formattedDescription,
-          text: fullText,
+          description: isImage
+            ? imageInfo?.description
+            : documentInfo.formattedDescription,
+          text: isImage ? imageInfo?.description : fullText,
         });
         logger.debug(
           {
