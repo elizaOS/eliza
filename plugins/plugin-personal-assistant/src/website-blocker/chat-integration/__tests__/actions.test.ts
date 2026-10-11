@@ -179,6 +179,58 @@ describe("WEBSITE_BLOCK list_active / release subactions", () => {
     expect(actionData(draft).requiresConfirmation).toBe(true);
   });
 
+  it("block keeps every supplied hostname when the message names only some of them", async () => {
+    const draft = await invokeSubaction(
+      harness,
+      "block",
+      {
+        hostnames: ["x.com", "twitter.com", "news.ycombinator.com"],
+        durationMinutes: 120,
+      },
+      {
+        ...EMPTY_MESSAGE,
+        content: { text: "Block Twitter and Hacker News for 2 hours." },
+      } as Memory,
+    );
+    expect(draft.success).toBe(true);
+    expect(actionData(draft).websites).toEqual([
+      "x.com",
+      "twitter.com",
+      "news.ycombinator.com",
+    ]);
+    expect(draft.text).toContain("news.ycombinator.com");
+  });
+
+  it("release refuses an unknown or already released rule before asking for confirmation", async () => {
+    const unknown = await invokeSubaction(harness, "release", {
+      ruleId: "x.com",
+    });
+    expect(unknown.success).toBe(false);
+    expect(actionData(unknown).error).toBe("BLOCK_RULE_NOT_FOUND");
+    expect(actionData(unknown).requiresConfirmation).toBeUndefined();
+
+    const missing = await invokeSubaction(harness, "release", {
+      ruleId: "00000000-0000-4000-8000-00000000dead",
+    });
+    expect(missing.success).toBe(false);
+    expect(actionData(missing).error).toBe("BLOCK_RULE_NOT_FOUND");
+    expect(actionData(missing).requiresConfirmation).toBeUndefined();
+
+    const writer = new BlockRuleWriter(harness.runtime);
+    const ruleId = await writer.createBlockRule({
+      profile: "focus",
+      websites: ["x.com"],
+      gateType: "until_todo",
+      gateTodoId: "todo-released",
+    });
+    await writer.releaseBlockRule(ruleId, { confirmed: true, reason: "done" });
+
+    const released = await invokeSubaction(harness, "release", { ruleId });
+    expect(released.success).toBe(false);
+    expect(actionData(released).error).toBe("BLOCK_RULE_ALREADY_RELEASED");
+    expect(actionData(released).requiresConfirmation).toBeUndefined();
+  });
+
   it("release without confirmed fails; harsh_no_bypass cannot be released", async () => {
     const writer = new BlockRuleWriter(harness.runtime);
     const normalId = await writer.createBlockRule({

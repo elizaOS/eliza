@@ -301,7 +301,7 @@ export const blockAction: Action & {
   ],
   description:
     "Block/unblock phone apps or desktop websites. " +
-    "Scope phone apps, websites only; NOT calendar/focus/deep-work blocks -> CALENDAR subaction=create_event. " +
+    "Scope phone apps, websites only; NOT calendar/focus/deep-work blocks -> CALENDAR action=create_event. " +
     "target=app phone apps; target=website desktop websites. " +
     "Actions block|unblock|status all targets; request_permission|release|list_active website-only. " +
     "Website block + release ask the owner first; after the owner replies yes, repeat the same call (same hostnames, durationMinutes, ruleId).",
@@ -355,7 +355,8 @@ export const blockAction: Action & {
     },
     {
       name: "ruleId",
-      description: "(target=website action=release) Managed block rule id.",
+      description:
+        "(target=website action=release) Managed block rule id (UUID from action=list_active), not a hostname.",
       required: false,
       schema: { type: "string" as const },
     },

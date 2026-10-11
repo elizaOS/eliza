@@ -19,6 +19,7 @@ import {
   runWithTrajectoryPurpose,
   type SubactionsMap,
   toWellFormedUnicode,
+  validateUuid,
 } from "@elizaos/core";
 import {
   formatWebsiteList,
@@ -289,17 +290,6 @@ function extractHeuristicDurationMinutes(
   return undefined;
 }
 
-function shouldTrustExplicitWebsites(
-  explicitWebsites: readonly string[],
-  heuristicWebsites: readonly string[],
-): boolean {
-  if (explicitWebsites.length === 0) return false;
-  if (heuristicWebsites.length === 0) return true;
-  return explicitWebsites.every((website) =>
-    heuristicWebsites.includes(website),
-  );
-}
-
 function createdAtSortKey(memory: { createdAt?: number }): number {
   const value = memory.createdAt;
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -547,6 +537,9 @@ async function handleBlock(
   params: WebsiteBlockParams,
 ): Promise<ActionResult> {
   const messageText = getMessageText(message);
+  // Supplied hostnames are the request. The owner sees the full list in the
+  // confirmation prompt before anything is blocked, so they are never
+  // narrowed to the hosts the message-text heuristic happens to recognise.
   const explicitWebsites = normalizeWebsiteTargets(
     normalizeWebsiteCandidates(params.hostnames),
   );
@@ -556,28 +549,21 @@ async function handleBlock(
   const heuristicWebsites = normalizeWebsiteTargets(
     extractHostsFromIntent(messageText),
   );
-  const trustedExplicitWebsites = shouldTrustExplicitWebsites(
-    explicitWebsites,
-    heuristicWebsites,
-  )
-    ? explicitWebsites
-    : [];
   const heuristicDurationMinutes =
     explicitDurationMinutes === undefined
       ? extractHeuristicDurationMinutes(messageText)
       : explicitDurationMinutes;
   const llmPlan =
-    trustedExplicitWebsites.length === 0 && heuristicWebsites.length === 0
+    explicitWebsites.length === 0 && heuristicWebsites.length === 0
       ? await resolveWebsiteBlockPlanWithLlm({ runtime, message, state })
       : null;
   const recoveredWebsites =
-    trustedExplicitWebsites.length === 0 &&
-    (llmPlan?.websites.length ?? 0) === 0
+    explicitWebsites.length === 0 && (llmPlan?.websites.length ?? 0) === 0
       ? await recoverWebsiteContextWithLlm({ runtime, message, state })
       : [];
   const plannedWebsites =
-    trustedExplicitWebsites.length > 0
-      ? trustedExplicitWebsites
+    explicitWebsites.length > 0
+      ? explicitWebsites
       : heuristicWebsites.length > 0
         ? heuristicWebsites
         : (((llmPlan?.websites.length ?? 0) > 0
@@ -585,7 +571,7 @@ async function handleBlock(
             : recoveredWebsites) ?? []);
 
   const plannedWebsitesSafe: readonly string[] = plannedWebsites;
-  if (llmPlan?.shouldAct === false && trustedExplicitWebsites.length === 0) {
+  if (llmPlan?.shouldAct === false && explicitWebsites.length === 0) {
     return {
       success: false,
       text:
@@ -834,8 +820,36 @@ async function handleRelease(
   }
   // harsh_no_bypass rules can never be released by confirmation — reject up
   // front so we don't offer a confirmation prompt that could never succeed.
-  const rule = await new BlockRuleReader(runtime).getBlockRuleById(ruleId);
-  if (rule?.gateType === "harsh_no_bypass") {
+  // Rule ids are UUIDs; any other string cannot name a rule, and the uuid
+  // column would reject it with a raw SQL error.
+  const rule = validateUuid(ruleId)
+    ? await new BlockRuleReader(runtime).getBlockRuleById(ruleId)
+    : null;
+  if (!rule) {
+    return {
+      success: false,
+      text: `No website block rule has id ${ruleId}. Use BLOCK action=list_active to get the rule id.`,
+      data: {
+        actionName: ACTION_NAME,
+        subaction: "release",
+        ruleId,
+        error: "BLOCK_RULE_NOT_FOUND",
+      },
+    };
+  }
+  if (!rule.active) {
+    return {
+      success: false,
+      text: `Block rule ${ruleId} is already released.`,
+      data: {
+        actionName: ACTION_NAME,
+        subaction: "release",
+        ruleId,
+        error: "BLOCK_RULE_ALREADY_RELEASED",
+      },
+    };
+  }
+  if (rule.gateType === "harsh_no_bypass") {
     return {
       success: false,
       text: `Block rule ${ruleId} is harsh_no_bypass and cannot be released by confirmation — it must wait for gate fulfillment.`,
