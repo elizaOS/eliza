@@ -11,6 +11,7 @@
  * active deployment's hash so the user can redeploy; the bytes are not embedded.
  */
 
+import { appFrontendDeploymentsRepository } from "../../db/repositories/app-frontend-deployments";
 import type { App } from "../../db/repositories/apps";
 import { logger } from "../utils/logger";
 import { parseAppMonetizationNumber } from "./app-credit-math";
@@ -50,7 +51,8 @@ export interface AppBackup {
 export class AppBackupService {
   /** Build a secret-free config snapshot of an app. */
   async exportApp(app: App): Promise<AppBackup> {
-    const contentHash: string | null = null;
+    const activeDeployment = await appFrontendDeploymentsRepository.getActive(app.id);
+    const contentHash = activeDeployment?.content_hash ?? null;
 
     return {
       version: APP_BACKUP_VERSION,
