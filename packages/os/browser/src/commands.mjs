@@ -497,17 +497,42 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       );
       if (control?.matches(':disabled,[aria-disabled="true"]')) return;
       const keyboard = event.type === "keydown";
-      const field =
-        target.isContentEditable ||
-        target.matches(
-          "textarea,select,input:not([type=submit]):not([type=button]):not([type=reset])",
-        );
-      // A custom control (no button element or role) can send its form from
-      // script seconds later. Her press inside a form makes that form hers.
-      // A press on a field or its label is not a press on a control.
+      const fields =
+        "textarea,select,input:not([type=submit]):not([type=button]):not([type=reset])";
+      const field = target.isContentEditable || target.matches(fields);
+      // A custom control (no button element or button role) can send its form
+      // from script seconds later. Her press on such a control makes that form
+      // hers for the rest of this watch. Only an element that presents itself
+      // as a control counts: a widget role, a tabindex, an inline click
+      // handler, or a pointer cursor on the pressed element. A press on the
+      // form's own padding, on plain text, on a field, on a label, or on an
+      // element that wraps a field is a stray tap and releases nothing.
       const form = target.closest("form");
-      if (!keyboard && form && !field && !target.closest("label"))
-        personForms.add(form);
+      if (
+        !keyboard &&
+        form &&
+        target !== form &&
+        !field &&
+        !target.closest("label")
+      ) {
+        for (
+          let item = target;
+          item && item !== form;
+          item = item.parentElement
+        ) {
+          if (item.querySelector(fields) || item.querySelector("label")) break;
+          if (
+            item === control ||
+            item.matches(
+              '[tabindex],[onclick],[role="menuitem"],[role="option"],[role="switch"],[role="checkbox"],[role="radio"],[role="tab"]',
+            ) ||
+            (item === target && getComputedStyle(item).cursor === "pointer")
+          ) {
+            if (!item.matches('[aria-disabled="true"]')) personForms.add(form);
+            break;
+          }
+        }
+      }
       const enterForm =
         event.key === "Enter" &&
         target instanceof HTMLInputElement &&
