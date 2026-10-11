@@ -1591,16 +1591,27 @@ export function createContactActions(dependencies: ContactActionDependencies): {
     }
     const { timeZone } = await resolveCalendarTimeZone(runtime, new Date());
     // A date-time without an offset is the owner's wall-clock time, not the
-    // host's: `new Date()` would read it in the server's zone.
+    // host's: `new Date()` would read it in the server's zone. Resolve the
+    // minute through the strict zoned parser, then retain optional seconds.
     const localWallTime =
-      /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(?::00(?:\.0+)?)?$/.exec(
+      /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(?::(\d{2})(?:\.(\d+))?)?$/.exec(
         scheduledAtRaw,
-      )?.[1];
-    const scheduledAt = localWallTime
-      ? new Date(
-          parseUnambiguousZonedDateTime(localWallTime, timeZone) ?? Number.NaN,
-        )
-      : new Date(scheduledAtRaw);
+      );
+    const hasExplicitOffset = /(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(scheduledAtRaw);
+    let scheduledAtMs = Number.NaN;
+    if (localWallTime) {
+      const minute = parseUnambiguousZonedDateTime(localWallTime[1], timeZone);
+      const seconds = Number(localWallTime[2] ?? "0");
+      const milliseconds = Number(
+        (localWallTime[3] ?? "").padEnd(3, "0").slice(0, 3),
+      );
+      if (minute !== null && seconds < 60) {
+        scheduledAtMs = minute + seconds * 1_000 + milliseconds;
+      }
+    } else if (hasExplicitOffset) {
+      scheduledAtMs = new Date(scheduledAtRaw).getTime();
+    }
+    const scheduledAt = new Date(scheduledAtMs);
     if (Number.isNaN(scheduledAt.getTime())) {
       return fail("Invalid scheduledAt.", "INVALID_SCHEDULED_AT", "followup");
     }
