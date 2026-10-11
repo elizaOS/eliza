@@ -161,13 +161,22 @@ const entities: Record<string, string> = {
 function decodeEntities(value: string): string {
   return value.replace(/&(#x[0-9a-f]{1,6}|#[0-9]{1,7}|[a-z0-9]{2,8});/gi, (match, name: string) => {
     const lower = name.toLowerCase();
-    if (lower.startsWith("#x")) {
-      const code = Number.parseInt(lower.slice(2), 16);
-      return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : match;
-    }
-    if (lower.startsWith("#")) {
-      const code = Number.parseInt(lower.slice(1), 10);
-      return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : match;
+    if (lower.startsWith("#x") || lower.startsWith("#")) {
+      const code = Number.parseInt(
+        lower.startsWith("#x") ? lower.slice(2) : lower.slice(1),
+        lower.startsWith("#x") ? 16 : 10,
+      );
+      if (!(code > 0 && code <= 0x10ffff)) return match;
+      // A lone surrogate is not a scalar value; leave the reference as written.
+      if (code >= 0xd800 && code <= 0xdfff) return match;
+      if (code === 0xa0) return " ";
+      // HTML maps &#128;-&#159; through windows-1252 (WHATWG numeric character
+      // reference table); the unassigned slots stay as written.
+      if (code >= 0x80 && code <= 0x9f) {
+        const mapped = WINDOWS_1252_HIGH[code - 0x80];
+        return mapped === code ? match : String.fromCodePoint(mapped);
+      }
+      return String.fromCodePoint(code);
     }
     return entities[lower] ?? match;
   });

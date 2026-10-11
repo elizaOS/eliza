@@ -184,3 +184,18 @@ test("text/plain in a later sibling wins over text/html nested in an earlier con
   expect(extractGmailBodyText(nest(19))).toBe("PLAIN version");
   expect(() => extractGmailBodyText(nest(20))).toThrow("nesting exceeds");
 });
+
+test("numeric references in link text follow the WHATWG windows-1252 table", () => {
+  const html = `<a href="https://example.org/a">price &#128;100 &#150; deal &#159;</a>
+    <a href="https://example.org/b">unassigned &#129; stays</a>
+    <a href="https://example.org/c">surrogate &#xD800; stays</a>`;
+  const links = extractGmailHtmlLinks({
+    mimeType: "text/html",
+    body: part("text/html", html).body,
+  });
+  expect(links).toEqual([
+    { href: "https://example.org/a", text: "price \u20ac100 \u2013 deal \u0178" },
+    { href: "https://example.org/b", text: "unassigned &#129; stays" },
+    { href: "https://example.org/c", text: "surrogate &#xD800; stays" },
+  ]);
+});
