@@ -61,16 +61,24 @@ type StreamResult = Awaited<
 >;
 
 let chat: ReturnType<typeof useChatSend>;
+let harnessDeps: UseChatSendDeps;
+let harnessMessagesRef: { current: ConversationMessage[] };
 
-function Harness() {
-  const [messages, setMessages] = useState<ConversationMessage[]>(HISTORY);
-  const conversationMessagesRef = useRef<ConversationMessage[]>(HISTORY);
+function Harness({
+  history = HISTORY,
+  armed = ARMED,
+}: {
+  history?: ConversationMessage[];
+  armed?: ChatReplyTarget | null;
+}) {
+  const [messages, setMessages] = useState<ConversationMessage[]>(history);
+  const conversationMessagesRef = useRef<ConversationMessage[]>(history);
   const [input, setInput] = useState("");
   const chatInputRef = useRef("");
   const [replyTarget, setReplyTarget] = useState<ChatReplyTarget | null>(
-    ARMED,
+    armed,
   );
-  const chatReplyTargetRef = useRef<ChatReplyTarget | null>(ARMED);
+  const chatReplyTargetRef = useRef<ChatReplyTarget | null>(armed);
   const deps: UseChatSendDeps = {
     t: (key) => key,
     uiLanguage: "en",
@@ -123,6 +131,8 @@ function Harness() {
     pollCloudCredits: async () => true,
   };
   chat = useChatSend(deps);
+  harnessDeps = deps;
+  harnessMessagesRef = conversationMessagesRef;
   return (
     <div>
       <ol>
@@ -148,7 +158,12 @@ function Harness() {
   );
 }
 
-function mockServer() {
+function mockServer(
+  respond: (text: string) => Partial<StreamResult> = () => ({
+    text: "ok",
+    completed: true,
+  }),
+) {
   vi.spyOn(client, "sendWsMessage").mockImplementation(() => {});
   vi.spyOn(client, "abortConversationTurn").mockResolvedValue({
     aborted: false,
@@ -170,11 +185,7 @@ function mockServer() {
       metadata,
     ) => {
       sent.push({ text, replyToMessageId: metadata?.replyToMessageId });
-      return {
-        text: "ok",
-        agentName: "Eliza",
-        completed: true,
-      } as StreamResult;
+      return { agentName: "Eliza", ...respond(text) } as StreamResult;
     },
   );
   return sent;
@@ -248,4 +259,54 @@ it("keeps the armed reply for the next message when an earlier message is edited
     ]),
   );
   expect(screen.queryByTestId("chat-reply-pill")).toBeNull();
+});
+
+it("retries a turn that failed before it was saved with its original reply and keeps the armed reply", async () => {
+  let failNext = true;
+  const sent = mockServer(() => {
+    if (!failNext) return { text: "ok", completed: true };
+    failNext = false;
+    return { text: "", completed: true, failureKind: "provider_issue" };
+  });
+  render(
+    <Harness
+      history={[HISTORY[0]]}
+      armed={{
+        messageId: "m-agent-1",
+        senderName: "Eliza",
+        snippet: "Pick a city",
+      }}
+    />,
+  );
+
+  await sendFromComposer("plan my trip");
+
+  await waitFor(() =>
+    expect(sent).toEqual([
+      { text: "plan my trip", replyToMessageId: "m-agent-1" },
+    ]),
+  );
+  let failed: ConversationMessage | undefined;
+  await waitFor(() => {
+    failed = harnessMessagesRef.current.find(
+      (message) => message.failureKind === "provider_issue",
+    );
+    expect(failed?.id).toMatch(/^temp-resp-/);
+  });
+  expect(screen.queryByTestId("chat-reply-pill")).toBeNull();
+
+  act(() => harnessDeps.setChatReplyTarget(ARMED));
+  await act(async () => {
+    await chat.handleChatRetry(failed?.id ?? "");
+  });
+
+  await waitFor(() =>
+    expect(sent).toEqual([
+      { text: "plan my trip", replyToMessageId: "m-agent-1" },
+      { text: "plan my trip", replyToMessageId: "m-agent-1" },
+    ]),
+  );
+  expect(screen.getByTestId("chat-reply-pill").textContent).toContain(
+    "Replying to Eliza",
+  );
 });

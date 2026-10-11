@@ -398,10 +398,14 @@ function createOptimisticTurn(
   };
 }
 function createOptimisticUserMessage(
-  turn: Pick<QueuedChatSend, "rawInput" | "images" | "optimisticTurn">,
+  turn: Pick<
+    QueuedChatSend,
+    "rawInput" | "images" | "metadata" | "optimisticTurn"
+  >,
 ): ConversationMessage {
   const { userMsgId, timestamp } = turn.optimisticTurn;
   const rawText = turn.rawInput.trim();
+  const replyToMessageId = turn.metadata?.replyToMessageId;
   const attachments = turn.images?.length
     ? turn.images.map((image, index) => ({
         id: `${userMsgId}-img-${index}`,
@@ -428,6 +432,7 @@ function createOptimisticUserMessage(
         : rawText,
     timestamp,
     ...(attachments ? { attachments } : {}),
+    ...(typeof replyToMessageId === "string" ? { replyToMessageId } : {}),
   };
 }
 // ── Deps interface ──────────────────────────────────────────────────
@@ -3222,7 +3227,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         ),
       );
       void sendChatTextInternal(retryText, {
-        [CHAT_SEND_REPLAY]: true,
+        ...replayedTurnOptions(convId, userMsg),
         ...(clientMessageId
           ? {
               [CHAT_SEND_IDENTITY_OVERRIDE]: {
