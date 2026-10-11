@@ -119,20 +119,18 @@ export function calculateLinearRegression(values: number[]): LinearRegressionRes
 }
 
 /**
- * Day series with a zero-usage point for every UTC day from the first observed
- * day through endDate. Usage queries group by day and return only active days,
- * while the projections and runway alerts assume one point per day. Rows past
- * endDate extend the range so input is never silently dropped.
+ * Day series with a zero-usage point for every idle UTC day between the first
+ * and the last observed day. Usage queries group by day and return only active
+ * days, while the projections and runway alerts assume one point per day.
+ * Days after the last usage are not added: a weekend or the current day before
+ * its first request would otherwise read as a falling trend.
  */
-export function fillIdleUsageDays(
-  points: readonly TimeSeriesDataPoint[],
-  endDate: Date,
-): TimeSeriesDataPoint[] {
+export function fillIdleUsageDays(points: readonly TimeSeriesDataPoint[]): TimeSeriesDataPoint[] {
   if (points.length === 0) return [];
   const dayMs = 24 * 60 * 60 * 1000;
   const byDay = new Map<number, TimeSeriesDataPoint>();
   let firstDay = Number.POSITIVE_INFINITY;
-  let lastDay = Math.floor(endDate.getTime() / dayMs);
+  let lastDay = Number.NEGATIVE_INFINITY;
   for (const point of points) {
     const day = Math.floor(point.timestamp.getTime() / dayMs);
     byDay.set(day, point);
@@ -309,10 +307,12 @@ export function generateProjectionAlerts(
     });
   }
 
-  const avgDailyCost =
-    historicalData.length > 0
-      ? historicalData.reduce((sum, d) => sum + d.totalCost, 0) / historicalData.length
-      : 0;
+  // Usage series list only days with usage: divide by the calendar days the
+  // series covers, not by its row count, or idle days shorten the runway.
+  const dayMs = 24 * 60 * 60 * 1000;
+  const days = historicalData.map((d) => Math.floor(d.timestamp.getTime() / dayMs));
+  const spanDays = Math.max(...days) - Math.min(...days) + 1;
+  const avgDailyCost = historicalData.reduce((sum, d) => sum + d.totalCost, 0) / spanDays;
   const numericBalance = Number(creditBalance);
   if (avgDailyCost > 0 && numericBalance / avgDailyCost < 7) {
     const daysRemaining = Math.floor(numericBalance / avgDailyCost);

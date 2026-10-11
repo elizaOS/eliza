@@ -61,13 +61,15 @@ app.get("/", async (c) => {
     if (!organization) {
       throw new Error(`Organization ${user.organization_id} not found`);
     }
-    const historicalData = fillIdleUsageDays(activeDays, now);
+    // The chart gets one point per day; the alerts keep the active-day series
+    // (an idle day is not a trend change) and compute the runway per calendar day.
+    const historicalData = fillIdleUsageDays(activeDays);
 
     const creditBalance = Number(organization.credit_balance ?? 0);
     const projections = generateProjections(historicalData, periods);
     const alerts = generateProjectionAlerts(
-      historicalData,
-      projections,
+      activeDays,
+      generateProjections(activeDays, periods),
       creditBalance,
     );
     const alertEvents = await analyticsAlertsService.persistProjectionAlerts({
