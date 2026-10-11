@@ -9,7 +9,7 @@
  * surface today while the retained modality contract stays available for future
  * adapters.
  *
- * The default fetcher builds the URL from `client.getBaseUrl()`; tests inject a
+ * The default fetcher uses the authenticated `client.fetch`; tests inject a
  * `fetchStatus` / `releaseBlock` so they stay offline.
  */
 
@@ -34,33 +34,13 @@ interface FocusViewProps {
 /** Focus JSON GET is a short UI read — same 15s family as InboxView / HealthView. */
 export const FOCUS_VIEW_JSON_TIMEOUT_MS = 15_000;
 
-export async function getFocusJsonWithFetch<T>(
-  url: string,
-  fetchImpl: typeof fetch,
-  timeoutMs: number = FOCUS_VIEW_JSON_TIMEOUT_MS,
-  callerSignal?: AbortSignal,
-): Promise<T> {
-  const deadline = AbortSignal.timeout(timeoutMs);
-  const response = await fetchImpl(url, {
-    method: "GET",
-    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
-  });
-  if (!response.ok) {
-    throw new Error(
-      `Website blocker status request failed (${response.status}).`,
-    );
-  }
-  return (await response.json()) as T;
-}
-
 async function defaultFetchStatus(
   signal?: AbortSignal,
 ): Promise<SelfControlStatus> {
-  return getFocusJsonWithFetch<SelfControlStatus>(
-    `${client.getBaseUrl()}/api/website-blocker`,
-    globalThis.fetch,
-    FOCUS_VIEW_JSON_TIMEOUT_MS,
-    signal,
+  return client.fetch<SelfControlStatus>(
+    "/api/website-blocker",
+    { method: "GET", signal },
+    { timeoutMs: FOCUS_VIEW_JSON_TIMEOUT_MS },
   );
 }
 
