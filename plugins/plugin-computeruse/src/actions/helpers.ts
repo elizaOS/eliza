@@ -21,22 +21,18 @@ export function resolveActionParams<T>(
   message: Memory,
   options?: HandlerOptions,
 ): T {
-  const params = {
-    ...(((options as Record<string, unknown> | undefined)?.parameters ??
-      {}) as Record<string, unknown>),
-  };
-
-  if (message.content && typeof message.content === "object") {
-    for (const [key, value] of Object.entries(
-      message.content as Record<string, unknown>,
-    )) {
-      if (params[key] === undefined) {
-        params[key] = value;
-      }
-    }
+  // A planner call carries its arguments in options.parameters. Those are the
+  // whole argument set: message.content is the user's chat message, so reading
+  // it here would turn the chat text into an omitted `text` argument.
+  const parameters = (options as Record<string, unknown> | undefined)
+    ?.parameters;
+  if (parameters && typeof parameters === "object") {
+    return { ...(parameters as Record<string, unknown>) } as T;
   }
 
-  return params as T;
+  // Direct invocation with no planner arguments: the content is the argument
+  // record.
+  return { ...(message.content as Record<string, unknown>) } as T;
 }
 
 /**
