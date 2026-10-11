@@ -21,6 +21,9 @@ const DOCUMENT_TEXT =
   "Refund requests are processed within five business days of approval.";
 const PROVIDER_CONTEXT = "context-from-direct-provider";
 const RUNTIME_MODEL_CONTEXT = "context-from-runtime-model";
+// Each "$" sequence is a replacement pattern for String.prototype.replace.
+const DOLLAR_PATTERN_TEXT =
+  "Invoice total is $$40. Run echo $& then print '$' and a$'b to finish.";
 
 const SETTING_KEYS = [
   "CTX_DOCUMENTS_ENABLED",
@@ -34,20 +37,26 @@ const SETTING_KEYS = [
   "RATE_LIMIT_ENABLED",
   "BATCH_EMBEDDINGS",
   "ELIZA_MODEL_GATEWAY_URL",
+  "OPENROUTER_API_KEY",
+  "OPENROUTER_BASE_URL",
 ] as const;
 
 interface ProviderStub {
   baseUrl: string;
   requestCount: () => number;
+  requestBodies: () => string[];
   close: () => Promise<void>;
 }
 
 async function startOpenAiCompatibleServer(): Promise<ProviderStub> {
   let requests = 0;
+  const bodies: string[] = [];
   const server: Server = createServer((req, res) => {
     requests += 1;
-    req.resume();
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => chunks.push(chunk));
     req.on("end", () => {
+      bodies.push(Buffer.concat(chunks).toString("utf8"));
       res.writeHead(200, { "content-type": "application/json" });
       res.end(
         JSON.stringify({
@@ -78,6 +87,7 @@ async function startOpenAiCompatibleServer(): Promise<ProviderStub> {
   return {
     baseUrl: `http://127.0.0.1:${address.port}/v1`,
     requestCount: () => requests,
+    requestBodies: () => bodies,
     close: () =>
       new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
@@ -89,11 +99,13 @@ interface Harness {
   runtime: IAgentRuntime;
   savedFragments: Memory[];
   runtimeModelCalls: () => number;
+  runtimeModelPrompts: string[];
 }
 
 function makeHarness(settings: Record<string, string>): Harness {
   const savedFragments: Memory[] = [];
   let runtimeModelCalls = 0;
+  const runtimeModelPrompts: string[] = [];
   const runtime = createMockRuntime({
     getSetting: (key: string) => settings[key] ?? null,
     redactSecrets: (text: string) => text,
@@ -105,12 +117,13 @@ function makeHarness(settings: Record<string, string>): Harness {
       type === ModelType.TEXT_EMBEDDING
         ? async () => [0.1, 0.2, 0.3]
         : undefined,
-    useModel: (async (type: string) => {
+    useModel: (async (type: string, params: { prompt: string }) => {
       if (type === ModelType.TEXT_EMBEDDING) {
         return [0.1, 0.2, 0.3];
       }
       if (type === ModelType.TEXT_LARGE) {
         runtimeModelCalls += 1;
+        runtimeModelPrompts.push(params.prompt);
         return RUNTIME_MODEL_CONTEXT;
       }
       throw new Error(`Unexpected model request: ${type}`);
@@ -124,14 +137,18 @@ function makeHarness(settings: Record<string, string>): Harness {
     runtime,
     savedFragments,
     runtimeModelCalls: () => runtimeModelCalls,
+    runtimeModelPrompts,
   };
 }
 
-async function ingest(runtime: IAgentRuntime): Promise<number> {
+async function ingest(
+  runtime: IAgentRuntime,
+  fullDocumentText = DOCUMENT_TEXT,
+): Promise<number> {
   return processFragmentsSynchronously({
     runtime,
     documentId: DOCUMENT_ID,
-    fullDocumentText: DOCUMENT_TEXT,
+    fullDocumentText,
     agentId: MOCK_AGENT_ID,
   });
 }
@@ -222,6 +239,40 @@ describe("document contextualization custom-LLM gate", () => {
     expect(harness.runtimeModelCalls()).toBe(1);
     expect(fragmentText(harness.savedFragments)).toContain(
       RUNTIME_MODEL_CONTEXT,
+    );
+  });
+
+  test('the full-document prompt carries "$" sequences from the document verbatim', async () => {
+    const harness = makeHarness({
+      CTX_DOCUMENTS_ENABLED: "true",
+      TEXT_EMBEDDING_MODEL: "test-embedding",
+    });
+
+    await ingest(harness.runtime, DOLLAR_PATTERN_TEXT);
+
+    expect(harness.runtimeModelPrompts).toHaveLength(1);
+    expect(harness.runtimeModelPrompts[0]).toContain(
+      `<document>\n${DOLLAR_PATTERN_TEXT}\n</document>`,
+    );
+    expect(harness.runtimeModelPrompts[0]).toContain(
+      `<chunk>\n${DOLLAR_PATTERN_TEXT}\n</chunk>`,
+    );
+  });
+
+  test('the cached-document prompt carries "$" sequences from the chunk verbatim', async () => {
+    const harness = makeHarness({
+      CTX_DOCUMENTS_ENABLED: "true",
+      TEXT_PROVIDER: "openrouter",
+      TEXT_MODEL: "google/gemini-test",
+      OPENROUTER_API_KEY: "runtime-openrouter-key",
+      OPENROUTER_BASE_URL: provider.baseUrl,
+    });
+
+    await ingest(harness.runtime, DOLLAR_PATTERN_TEXT);
+
+    expect(provider.requestBodies()).toHaveLength(1);
+    expect(provider.requestBodies()[0]).toContain(
+      JSON.stringify(`<chunk>\n${DOLLAR_PATTERN_TEXT}\n</chunk>`).slice(1, -1),
     );
   });
 });
