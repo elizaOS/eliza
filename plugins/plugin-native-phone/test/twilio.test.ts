@@ -1,0 +1,112 @@
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from "bun:test";
+import { sendTwilioSms } from "../src/twilio";
+
+const credentials = {
+  accountSid: "ACtest",
+  authToken: "token",
+  fromPhoneNumber: "+15550000000",
+};
+
+let bodies: string[] = [];
+let rejectFromCall: number | undefined;
+let server: ReturnType<typeof Bun.serve>;
+let savedBase: string | undefined;
+
+beforeAll(() => {
+  server = Bun.serve({
+    port: 0,
+    async fetch(request) {
+      const form = new URLSearchParams(await request.text());
+      bodies.push(form.get("Body") ?? "");
+      if (rejectFromCall !== undefined && bodies.length >= rejectFromCall) {
+        return Response.json(
+          { code: 21610, message: "rejected" },
+          { status: 400 },
+        );
+      }
+      return Response.json({ sid: `SM${bodies.length}` }, { status: 201 });
+    },
+  });
+  savedBase = process.env.ELIZA_MOCK_TWILIO_BASE;
+  process.env.ELIZA_MOCK_TWILIO_BASE = `http://127.0.0.1:${server.port}`;
+});
+
+afterAll(() => {
+  server.stop(true);
+  if (savedBase === undefined) delete process.env.ELIZA_MOCK_TWILIO_BASE;
+  else process.env.ELIZA_MOCK_TWILIO_BASE = savedBase;
+});
+
+beforeEach(() => {
+  bodies = [];
+  rejectFromCall = undefined;
+});
+
+describe("sendTwilioSms", () => {
+  test("a body over the 1600-character limit is sent as ordered parts", async () => {
+    const body = "a".repeat(2000);
+
+    const result = await sendTwilioSms({
+      credentials,
+      to: "+15551234567",
+      body,
+    });
+
+    expect(bodies).toHaveLength(2);
+    expect(bodies.every((part) => part.length <= 1600)).toBe(true);
+    expect(bodies.join("")).toBe(body);
+    expect(result.ok).toBe(true);
+    expect(result.sid).toBe("SM1");
+    expect(result.sids).toEqual(["SM1", "SM2"]);
+    expect(result.billing?.segments).toBe(13);
+  });
+
+  test("a short body is sent as one message", async () => {
+    const result = await sendTwilioSms({
+      credentials,
+      to: "+15551234567",
+      body: "hello",
+    });
+
+    expect(bodies).toEqual(["hello"]);
+    expect(result.ok).toBe(true);
+    expect(result.sid).toBe("SM1");
+    expect(result.billing?.segments).toBe(1);
+  });
+
+  test("a rejection after an accepted part is reported as unknown, not rejected", async () => {
+    rejectFromCall = 2;
+
+    const result = await sendTwilioSms({
+      credentials,
+      to: "+15551234567",
+      body: "a".repeat(3500),
+    });
+
+    expect(bodies).toHaveLength(2);
+    expect(result.ok).toBe(false);
+    expect(result.status).toBeNull();
+    expect(result.sids).toEqual(["SM1"]);
+  });
+
+  test("a rejection of the first part stays a rejection", async () => {
+    rejectFromCall = 1;
+
+    const result = await sendTwilioSms({
+      credentials,
+      to: "+15551234567",
+      body: "a".repeat(3500),
+    });
+
+    expect(bodies).toHaveLength(1);
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(400);
+  });
+});
