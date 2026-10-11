@@ -179,7 +179,7 @@ export const INSUFFICIENT_CREDITS_REPLY =
 // "out of credits" and tell the user to spend money on a condition that
 // resolves by waiting.
 const INSUFFICIENT_CREDITS_RE =
-	/\b(?:insufficient(?:[_\s]+(?:credits?|quota|funds))|insufficient_quota|out of credits|max usage reached|quota(?:\s+exceeded)?|billing.*disabled|payment.*required|account.*suspended|spending.*limit|budget.*exceeded|no.*api.*credits|credit.*balance.*zero)\b/i;
+	/\b(?:insufficient(?:[_\s]+(?:credits?|quota|funds))|insufficient_quota|out of credits|max usage reached|quota(?:\s+exceeded)?|billing.*disabled|payment.*required|account.*suspended|spending.*limit|budget.*exceeded|no.*api.*credits|credit.*balance.*(?:zero|too low))\b/i;
 
 const BILLING_KEYWORDS_RE =
 	/\b(?:billing|quota|credits?|budget|spending|payment|subscription|plan limit)\b/i;
