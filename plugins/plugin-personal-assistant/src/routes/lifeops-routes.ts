@@ -90,6 +90,7 @@ import {
   LIFEOPS_SCHEDULE_STATE_SCOPES,
   type SyncLifeOpsScheduleObservationsRequest,
 } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
+import { GoalsServiceError } from "@elizaos/plugin-goals/goal-normalize";
 import { areLifeOpsActivitySignalsActive } from "../lifeops/activity-signal-lifecycle.js";
 import {
   loadLifeOpsAppState,
@@ -726,7 +727,12 @@ async function runRoute(
     });
     return true;
   } catch (error) {
-    if (error instanceof LifeOpsServiceError) {
+    // Goals CRUD delegates to @elizaos/plugin-goals, whose typed failures carry
+    // their own HTTP status just like LifeOpsServiceError.
+    if (
+      error instanceof LifeOpsServiceError ||
+      error instanceof GoalsServiceError
+    ) {
       const logFn =
         error.status === 401
           ? logger.debug.bind(logger)
