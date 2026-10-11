@@ -758,7 +758,17 @@ export const settingsAction: Action = {
       description:
         "[update_ai_provider] Optional model slot overrides — `nano|small|medium|large|mega` or `primary`.",
       required: false,
-      schema: { type: "object" as const },
+      // A bare object schema is closed by the validator, so every slot key
+      // the handler reads has to be declared here.
+      schema: {
+        type: "object" as const,
+        properties: {
+          primary: { type: "string" as const },
+          ...Object.fromEntries(
+            MODEL_SLOTS.map((slot) => [slot, { type: "string" as const }]),
+          ),
+        },
+      },
     },
     {
       name: "capability",
@@ -810,7 +820,13 @@ export const settingsAction: Action = {
       name: "value",
       description: "[set] Setting value (string | boolean | number).",
       required: false,
-      schema: { type: "string" as const },
+      schema: {
+        anyOf: [
+          { type: "string" as const },
+          { type: "number" as const },
+          { type: "boolean" as const },
+        ],
+      },
     },
     {
       name: "updates",

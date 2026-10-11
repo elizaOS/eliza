@@ -2,6 +2,43 @@ import { validateToolArgs } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { settingsAction } from "./settings-actions.ts";
 
+describe("SETTINGS single-value and model slot parameters", () => {
+  it("accepts a boolean or number `value`, as the description states", () => {
+    for (const value of [true, 5, "text"]) {
+      expect(
+        validateToolArgs(settingsAction, { action: "set", key: "FOO", value }),
+      ).toEqual({
+        valid: true,
+        args: { action: "set", key: "FOO", value },
+        errors: [],
+      });
+    }
+  });
+
+  it("accepts the model slots the update_ai_provider handler reads", () => {
+    const args = {
+      action: "update_ai_provider",
+      provider: "openai",
+      modelConfigs: { primary: "gpt-5", large: "gpt-5", nano: "gpt-5-nano" },
+    };
+    expect(validateToolArgs(settingsAction, args)).toEqual({
+      valid: true,
+      args,
+      errors: [],
+    });
+  });
+
+  it("rejects a model slot the handler does not read", () => {
+    expect(
+      validateToolArgs(settingsAction, {
+        action: "update_ai_provider",
+        provider: "openai",
+        modelConfigs: { huge: "gpt-5" },
+      }).errors,
+    ).toEqual(["Unexpected argument 'modelConfigs.huge'"]);
+  });
+});
+
 describe("SETTINGS updates parameter", () => {
   it("accepts the documented `{ key, value }` bulk-write entries", () => {
     expect(
