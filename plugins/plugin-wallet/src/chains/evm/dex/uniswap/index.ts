@@ -29,6 +29,7 @@ export const uniswapPlugin: Plugin = {
         label: "Uniswap V3",
         service,
         appliesRange: true,
+        closeNeedsTokenId: true,
       }),
     );
   },

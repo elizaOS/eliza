@@ -88,6 +88,10 @@ export interface LpProtocolProvider {
   unsupportedWrites?: ReadonlyArray<"open" | "close">;
   /** True when openPosition applies range ticks. A range is refused otherwise. */
   appliesRange?: boolean;
+  /** True when closePosition removes the given LP token amount. A close amount is refused otherwise. */
+  closeAppliesAmount?: boolean;
+  /** True when closePosition selects the position by its NFT token id. */
+  closeNeedsTokenId?: boolean;
   supportsRequest?: (request: LpProtocolRequest) => boolean;
   listPools(params: LpListPoolsParams): Promise<PoolInfo[]>;
   openPosition(params: LpPositionOperationParams): Promise<TransactionResult>;
@@ -565,12 +569,18 @@ export function createEvmLpProtocolProvider({
   label,
   service,
   appliesRange,
+  closeAppliesAmount,
+  closeNeedsTokenId,
 }: {
   dex: string;
   label?: string;
   service: IEvmLpService;
   /** Set for concentrated-liquidity adapters whose addLiquidity reads the ticks. */
   appliesRange?: boolean;
+  /** Set for adapters whose removeLiquidity reads lpTokenAmount. */
+  closeAppliesAmount?: boolean;
+  /** Set for adapters whose removeLiquidity needs the position NFT token id. */
+  closeNeedsTokenId?: boolean;
 }): LpProtocolProvider {
   const supportedChainIds =
     typeof service.getSupportedChainIds === "function"
@@ -585,6 +595,8 @@ export function createEvmLpProtocolProvider({
     service,
     supportedChainIds,
     appliesRange,
+    closeAppliesAmount,
+    closeNeedsTokenId,
     supportsRequest: (request) => {
       if (request.chain && normalizeChain(request.chain) !== "evm") {
         return false;

@@ -27,6 +27,7 @@ export const aerodromePlugin: Plugin = {
         dex: "aerodrome",
         label: "Aerodrome",
         service,
+        closeAppliesAmount: true,
       }),
     );
   },

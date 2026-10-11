@@ -567,6 +567,14 @@ function lpWriteRejection(
   if (subaction === "open" && !pool) {
     return "LP open needs pool. Use action=list_pools to find the pool id/address.";
   }
+  const amount = getAmountParam(params);
+  if (
+    subaction === "open" &&
+    amount === undefined &&
+    params.amounts === undefined
+  ) {
+    return "LP open needs amount, a whole number of token base units.";
+  }
   if (subaction === "close" && !pool) {
     if (chain === "evm") {
       return "LP close on an EVM chain needs pool.";
@@ -575,12 +583,26 @@ function lpWriteRejection(
       return "LP close needs pool or position. Use action=list_positions to find it.";
     }
   }
-  const amount = getAmountParam(params);
-  if (
-    (typeof amount === "string" || typeof amount === "number") &&
-    !BASE_UNIT_AMOUNT.test(String(amount).trim())
-  ) {
+  const scalarAmount = typeof amount === "string" || typeof amount === "number";
+  if (scalarAmount && !BASE_UNIT_AMOUNT.test(String(amount).trim())) {
     return `LP amount must be a whole number of token base units; got ${amount}.`;
+  }
+  if (subaction === "close") {
+    if (scalarAmount && !protocol.closeAppliesAmount) {
+      return `LP close on ${protocol.dex} removes the whole position. Omit amount.`;
+    }
+    const position = getPositionParam(params);
+    if (protocol.closeNeedsTokenId && !position) {
+      return `LP close on ${protocol.dex} needs position, the position NFT token id. Use action=list_positions to find it.`;
+    }
+    // The EVM adapter converts position to a BigInt token id.
+    if (
+      chain === "evm" &&
+      position &&
+      !BASE_UNIT_AMOUNT.test(String(position).trim())
+    ) {
+      return `LP close position on an EVM chain must be the position NFT token id, a whole number; got ${position}.`;
+    }
   }
   return undefined;
 }
@@ -751,14 +773,14 @@ export const liquidityAction: Action = {
   // above reads without leaving the parent LIQUIDITY path open.
   roleGate: { minRole: "ADMIN" },
   description:
-    "Single LP/liquidity management action. action=onboard|list_pools|open|close|reposition|list_positions|get_position|set_preferences. dex=orca|raydium|meteora|uniswap|aerodrome|pancakeswap selects the protocol; chain=solana|evm is inferred from dex when omitted. open and close run on meteora, uniswap, aerodrome, and pancakeswap.",
+    "Single LP/liquidity management action. action=onboard|list_pools|open|close|list_positions|get_position|set_preferences. dex=orca|raydium|meteora|uniswap|aerodrome|pancakeswap selects the protocol; chain=solana|evm is inferred from dex when omitted. open and close run on meteora, uniswap, aerodrome, and pancakeswap. No DEX can move the range of an open position.",
   descriptionCompressed:
     "Manage LP positions by action, chain, dex, pool, position, amount, range, token filters.",
   parameters: [
     {
       name: "action",
       description:
-        "Liquidity operation: onboard, list_pools, open, close, reposition, list_positions, get_position, set_preferences.",
+        "Liquidity operation: onboard, list_pools, open, close, list_positions, get_position, set_preferences.",
       required: true,
       schema: {
         type: "string",
@@ -767,7 +789,6 @@ export const liquidityAction: Action = {
           "list_pools",
           "open",
           "close",
-          "reposition",
           "list_positions",
           "get_position",
           "set_preferences",
@@ -783,7 +804,7 @@ export const liquidityAction: Action = {
     {
       name: "chain",
       description:
-        "Chain for the LP operation. evm writes (open, close, reposition) also need chainId.",
+        "Chain for the LP operation. evm writes (open, close) also need chainId.",
       required: false,
       schema: { type: "string", enum: ["solana", "evm"] },
     },
@@ -802,14 +823,15 @@ export const liquidityAction: Action = {
     },
     {
       name: "position",
-      description: "LP position id/mint/address.",
+      description:
+        "LP position id. Required for close on uniswap or pancakeswap, where it is the position NFT token id (a whole number). meteora close does not read it: it closes the wallet's first position in the pool.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "amount",
       description:
-        "Liquidity amount as a whole number of token base units (lamports / wei-style), not a decimal token amount. tokenA amount for open; LP token amount for close.",
+        "Liquidity amount as a whole number of token base units (lamports / wei-style), not a decimal token amount. Required for open: the tokenA amount. For close, only aerodrome accepts it (LP token amount); the other DEXes remove the whole position and refuse an amount.",
       required: false,
       schema: {
         anyOf: [{ type: "string" }, { type: "number" }],
@@ -850,7 +872,7 @@ export const liquidityAction: Action = {
     {
       name: "chainId",
       description:
-        "Numeric EVM chain id. Required for open, close, and reposition when chain is evm.",
+        "Numeric EVM chain id. Required for open and close when chain is evm.",
       required: false,
       schema: { type: "number" },
     },
@@ -982,11 +1004,20 @@ export const liquidityAction: Action = {
   },
 
   handler: async (runtime, message, _state, handlerParams, callback) => {
-    const params = normalizeParams(message, handlerParams);
+    // The runtime passes the validated planner arguments under
+    // `options.parameters`; direct callers pass them flat.
+    const options = handlerParams as Record<string, unknown> | undefined;
+    const planned = options?.parameters;
+    const params = normalizeParams(
+      message,
+      planned && typeof planned === "object"
+        ? (planned as Record<string, unknown>)
+        : options,
+    );
     if (!params) {
       return {
-        success: true,
-        text: "Use LIQUIDITY with action=list_pools, open, close, reposition, list_positions, get_position, set_preferences, or onboard.",
+        success: false,
+        text: "Use LIQUIDITY with action=list_pools, open, close, list_positions, get_position, set_preferences, or onboard.",
       };
     }
 

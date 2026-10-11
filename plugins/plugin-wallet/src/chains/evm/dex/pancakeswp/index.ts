@@ -29,6 +29,7 @@ export const pancakeswapPlugin: Plugin = {
         label: "PancakeSwap V3",
         service,
         appliesRange: true,
+        closeNeedsTokenId: true,
       }),
     );
   },

@@ -314,14 +314,14 @@ describe("LIQUIDITY write gates", () => {
         action: "close",
         chain: "evm",
         chainId: 8453,
-        position: "pos-1",
+        position: "101",
         pool: "0xpool",
       },
       callback,
     );
     expect(first?.data?.requiresConfirmation).toBe(true);
     expect(confirmationKeys(cache)).toHaveLength(1);
-    expect(prompts.join("\n")).toContain("pos-1");
+    expect(prompts.join("\n")).toContain("101");
 
     const second = await liquidityAction.handler(
       runtime,
@@ -331,7 +331,7 @@ describe("LIQUIDITY write gates", () => {
         action: "close",
         chain: "evm",
         chainId: 8453,
-        position: "pos-2",
+        position: "102",
         pool: "0xpool",
       },
       callback,
@@ -397,12 +397,14 @@ function registryRuntime() {
     chain: "solana" | "evm",
     dex: string,
     appliesRange?: boolean,
+    closeNeedsTokenId?: boolean,
   ) => {
     const entry: LpProtocolProvider = {
       id: `${chain}:${dex}`,
       chain,
       dex,
       appliesRange,
+      closeNeedsTokenId,
       listPools: vi.fn(async () => []),
       openPosition: vi.fn(async () => ({ success: true })),
       closePosition: vi.fn(async () => ({ success: true })),
@@ -411,7 +413,8 @@ function registryRuntime() {
     return entry;
   };
   const raydium = provider("solana", "raydium");
-  const uniswap = provider("evm", "uniswap", true);
+  // As the Uniswap V3 adapter registers: close selects the position NFT.
+  const uniswap = provider("evm", "uniswap", true, true);
   // Real Solana adapter wrapper around a DEX service with no LP writes, as
   // the Orca and Raydium services are.
   lp.registerProtocol(
@@ -434,7 +437,8 @@ async function runPlannerCall(
     setup.runtime,
     message("manage my LP"),
     undefined,
-    validation.args,
+    // The shape the runtime passes: validated arguments under `parameters`.
+    { parameters: validation.args },
     callback,
   );
   return { result, prompts, ...setup };
@@ -459,6 +463,16 @@ describe("LIQUIDITY planner arguments", () => {
         preferredDexes: ["raydium", "orca"],
       }).errors,
     ).toEqual([]);
+  });
+
+  it("does not advertise reposition, which no provider implements", () => {
+    expect(
+      validateToolArgs(liquidityAction, {
+        action: "reposition",
+        dex: "raydium",
+        position: "pos-1",
+      }).errors,
+    ).not.toEqual([]);
   });
 
   it("does not accept price bounds no provider reads", () => {
@@ -532,9 +546,37 @@ describe("LIQUIDITY planner arguments", () => {
       /does not apply a tick range/,
     ],
     [
-      "a reposition the provider does not implement",
-      { action: "reposition", dex: "raydium", position: "pos-1" },
-      /reposition is unavailable for raydium on solana/,
+      "an open with no amount",
+      { action: "open", dex: "raydium", pool: "pool-1" },
+      /needs amount/,
+    ],
+    [
+      "a close amount on a DEX that removes the whole position",
+      {
+        action: "close",
+        dex: "uniswap",
+        chainId: 8453,
+        pool: "0xpool",
+        position: "123",
+        amount: "500000",
+      },
+      /removes the whole position/,
+    ],
+    [
+      "a close with no position on a DEX that selects the position NFT",
+      { action: "close", dex: "uniswap", chainId: 8453, pool: "0xpool" },
+      /needs position/,
+    ],
+    [
+      "an EVM close with a position that is not a token id",
+      {
+        action: "close",
+        dex: "uniswap",
+        chainId: 8453,
+        pool: "0xpool",
+        position: "my-usdc-position",
+      },
+      /whole number/,
     ],
   ])(
     "rejects %s before the confirmation prompt",
