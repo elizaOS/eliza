@@ -477,7 +477,7 @@ export const fileAction: Action = {
     {
       name: "overwrite",
       description:
-        "For action=write: set true only to intentionally replace an existing file after reading it completely. Default false.",
+        "For action=write on the workspace target: set true only to intentionally replace an existing file after reading it completely. Default false. Not read for target=device, where a write always replaces the file.",
       required: false,
       schema: { type: "boolean" },
     },
