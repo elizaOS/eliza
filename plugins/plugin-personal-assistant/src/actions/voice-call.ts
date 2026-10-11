@@ -94,7 +94,7 @@ function isPlaceholderOrNonNumeric(value: string): boolean {
 function normalizeLookup(value: string): string {
   return value
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, " ")
     .trim();
 }
 
