@@ -5,7 +5,6 @@
  */
 import type http from "node:http";
 import type { RouteHelpers, RouteRequestMeta } from "@elizaos/host/protocol";
-import { z } from "zod";
 import { parseIMessageContactId } from "../contact-path.js";
 /**
  * Route helper options accepted by the host. This plugin depends on core, not
@@ -132,19 +131,20 @@ const IMESSAGE_SERVICE_NAME = "imessage";
 const MAX_BODY_BYTES = 256 * 1024; // Contacts payloads are tiny; cap aggressively.
 const DEFAULT_MESSAGES_LIMIT = 50;
 const MAX_MESSAGES_LIMIT = 500;
-const IMessageMessagesLimitSchema = z
-  .string()
-  .trim()
-  .regex(/^[+-]?\d+$/)
-  .transform(Number)
-  .refine(Number.isSafeInteger)
-  .transform((value) => Math.min(Math.max(1, value), MAX_MESSAGES_LIMIT));
+/**
+ * Canonical positive page size, matching the data-routes handler for the
+ * same `GET /api/imessage/messages` endpoint. A signed, zero, or
+ * leading-zero token must be rejected, not clamped or coerced into a
+ * different page size.
+ */
 function parseMessagesLimit(raw: string | null): number | null {
-  if (raw === null || raw.trim() === "") {
+  if (raw === null || raw === "") {
     return DEFAULT_MESSAGES_LIMIT;
   }
-  const parsed = IMessageMessagesLimitSchema.safeParse(raw);
-  return parsed.success ? parsed.data : null;
+  if (!/^[1-9]\d*$/.test(raw)) {
+    return null;
+  }
+  return Math.min(Number.parseInt(raw, 10), MAX_MESSAGES_LIMIT);
 }
 function resolveService(state: IMessageRouteState): IMessageServiceLike | null {
   if (!state.runtime) return null;
@@ -194,7 +194,7 @@ export async function handleIMessageRoute(
     const url = new URL(req.url ?? pathname, "http://localhost");
     const limit = parseMessagesLimit(url.searchParams.get("limit"));
     if (limit === null) {
-      helpers.error(res, "limit must be an integer", 400);
+      helpers.error(res, "limit must be a positive integer", 400);
       return true;
     }
     try {
