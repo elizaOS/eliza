@@ -45,14 +45,20 @@ export class OrganizationInvitesRepository {
   /**
    * Finds a pending, unexpired invite by email address (case-insensitive).
    * The status stays "pending" after expires_at until a token check marks it
-   * expired, so the expiry is checked here too.
+   * expired, so the expiry is checked here too. Pass organizationId to look
+   * only at that organization's invites; without it, any organization's
+   * pending invite may be returned.
    */
-  async findPendingInviteByEmail(email: string): Promise<OrganizationInvite | undefined> {
+  async findPendingInviteByEmail(
+    email: string,
+    organizationId?: string,
+  ): Promise<OrganizationInvite | undefined> {
     return await dbRead.query.organizationInvites.findFirst({
       where: and(
         eq(organizationInvites.invited_email, email.toLowerCase()),
         eq(organizationInvites.status, "pending"),
         gt(organizationInvites.expires_at, new Date()),
+        organizationId ? eq(organizationInvites.organization_id, organizationId) : undefined,
       ),
       with: {
         organization: true,

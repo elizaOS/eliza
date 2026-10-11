@@ -96,9 +96,11 @@ export class InvitesService {
       throw new Error("User is already a member of this organization");
     }
 
-    const existingInvite =
-      await organizationInvitesRepository.findPendingInviteByEmail(normalizedEmail);
-    if (existingInvite && existingInvite.organization_id === organizationId) {
+    const existingInvite = await organizationInvitesRepository.findPendingInviteByEmail(
+      normalizedEmail,
+      organizationId,
+    );
+    if (existingInvite) {
       throw new Error("An invite for this email is already pending");
     }
 
