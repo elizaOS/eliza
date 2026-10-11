@@ -166,4 +166,51 @@ describe("createQuitGate", () => {
 		expect(order).toEqual(["cleanup", "spawn", "quit"]);
 		expect(host.exited).toBe(true);
 	});
+
+	it("still starts the relaunched instance when cleanup misses the deadline", async () => {
+		const host = createHost();
+		const order: string[] = [];
+		const gate = createQuitGate({
+			runCleanup: () => new Promise<void>(() => {}),
+			deadlineMs: 5,
+			onDeadline: () => {
+				order.push("deadline");
+			},
+			quit: () => {
+				order.push("quit");
+				host.quit();
+			},
+		});
+		host.onBeforeQuit(gate.handleBeforeQuit);
+
+		await gate.requestRelaunch(() => {
+			order.push("spawn");
+		});
+
+		expect(order).toEqual(["deadline", "spawn", "quit"]);
+		expect(host.quitCalls).toBe(1);
+		expect(host.exited).toBe(true);
+	});
+
+	it("starts the replacement once when a relaunch joins a quit in flight", async () => {
+		const host = createHost();
+		const cleanup = deferred();
+		let spawns = 0;
+		const gate = createQuitGate({
+			runCleanup: () => cleanup.promise,
+			quit: host.quit,
+		});
+		host.onBeforeQuit(gate.handleBeforeQuit);
+
+		const quit = gate.requestQuit();
+		const relaunch = gate.requestRelaunch(() => {
+			spawns += 1;
+		});
+		cleanup.resolve();
+		await Promise.all([quit, relaunch]);
+
+		expect(spawns).toBe(1);
+		expect(host.quitCalls).toBe(1);
+		expect(host.exited).toBe(true);
+	});
 });
