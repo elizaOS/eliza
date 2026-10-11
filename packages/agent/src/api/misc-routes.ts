@@ -39,6 +39,7 @@ import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   buildTestHandler,
   registerCustomActionLive,
+  unregisterCustomActionLive,
 } from "../runtime/custom-actions.ts";
 import { runShell } from "../services/shell-execution-router.ts";
 import { customActionGenerateTemplate } from "./custom-action-prompt.js";
@@ -938,6 +939,11 @@ export async function handleMiscRoutes(
     config.customActions = actions;
     saveElizaConfig(config);
     state.config.customActions = config.customActions;
+    if (updated.enabled) {
+      registerCustomActionLive(updated);
+    } else {
+      unregisterCustomActionLive(updated.id);
+    }
     json(res, { ok: true, action: updated });
     return true;
   }
@@ -964,6 +970,7 @@ export async function handleMiscRoutes(
     config.customActions = actions;
     saveElizaConfig(config);
     state.config.customActions = config.customActions;
+    unregisterCustomActionLive(actionId);
     json(res, { ok: true });
     return true;
   }

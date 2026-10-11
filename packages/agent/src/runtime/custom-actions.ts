@@ -34,23 +34,41 @@ import { hasSelectedContextOrSignalSync } from "@elizaos/plugin-assistant";
 /** Cached runtime reference for hot-registration of new actions. */
 let _runtime: IAgentRuntime | null = null;
 
+/** Live Action instances this module installed, keyed by custom action id. */
+const liveActions = new Map<string, Action>();
+
 /**
  * Store the runtime reference so we can hot-register actions later.
  * Called once from plugin.init().
  */
 export function setCustomActionsRuntime(runtime: IAgentRuntime): void {
+  if (_runtime !== runtime) liveActions.clear();
   _runtime = runtime;
 }
 
 /**
- * Hot-register a CustomActionDef into the running agent.
+ * Hot-register a CustomActionDef into the running agent, replacing any live
+ * Action previously installed for the same id.
  * Returns the elizaOS Action that was registered, or null if no runtime.
  */
 export function registerCustomActionLive(def: CustomActionDef): Action | null {
   if (!_runtime) return null;
+  unregisterCustomActionLive(def.id);
   const action = defToAction(def);
   _runtime.registerAction(action);
+  if (_runtime.actions.includes(action)) liveActions.set(def.id, action);
   return action;
+}
+
+/**
+ * Remove the live Action installed for a custom action id. Only removes the
+ * instance this module registered, never a same-named action from elsewhere.
+ */
+export function unregisterCustomActionLive(id: string): boolean {
+  const action = liveActions.get(id);
+  liveActions.delete(id);
+  if (!_runtime || !action || !_runtime.actions.includes(action)) return false;
+  return _runtime.unregisterAction(action.name);
 }
 
 /** Valid handler types that we actually support. */
