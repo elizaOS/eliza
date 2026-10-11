@@ -193,6 +193,14 @@ function run(
   };
 }
 
+/** The command started but did not finish within its spawnSync timeout. */
+function timedOut(error: unknown): boolean {
+  return (
+    error instanceof HostCommandError &&
+    (error.cause as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT"
+  );
+}
+
 function fastbootDevices(result: RunResult): RawAdbDevice[] {
   if (result.status !== 0)
     throw new Error(`Fastboot discovery failed: ${result.stderr.trim()}`);
@@ -914,12 +922,17 @@ export class AdbFlasherBackend implements AospFlasherBackend {
       );
     } else {
       onProgress("unlock-bootloader", "waiting-user", "Initiating unlock...");
-      // The unlock command itself may return non-zero before the user confirms.
-      // Don't fail on its exit code — poll for the unlocked state instead.
-      run(this.fastboot, ["-s", serial, "flashing", "unlock"]);
-
+      // The unlock command itself may return non-zero before the user confirms,
+      // and it can wait on the device prompt until the user answers. Give it the
+      // whole confirmation window and ignore its exit code or timeout — poll for
+      // the unlocked state instead.
       let confirmed = false;
       const deadline = performance.now() + 120_000;
+      try {
+        run(this.fastboot, ["-s", serial, "flashing", "unlock"], 120_000);
+      } catch (error) {
+        if (!timedOut(error)) throw error;
+      }
       while (performance.now() < deadline) {
         await sleep(Math.min(5_000, deadline - performance.now()));
         const remaining = Math.ceil(deadline - performance.now());

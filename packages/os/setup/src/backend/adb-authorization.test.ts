@@ -187,47 +187,65 @@ test("explicit standalone bootloader guide does not require installation artifac
   ).toBe(false);
 });
 
-test("standalone unlock resumes in fastboot and verifies completion without ADB", async () => {
-  const plan = await fixture();
-  plan.device.state = "bootloader";
-  plan.request.stopAfter = "unlock-bootloader";
-  const result = (stdout: string, stderr = "") => ({
-    status: 0,
-    stdout,
-    stderr,
-  });
-  vi.mocked(spawnSync)
-    .mockReturnValueOnce(
-      result("fixture fastboot\n") as ReturnType<typeof spawnSync>,
-    )
-    .mockReturnValueOnce(
-      result("", "(bootloader) product: grizzly\n") as ReturnType<
-        typeof spawnSync
-      >,
-    )
-    .mockReturnValueOnce(
-      result("", "unlocked: no\n") as ReturnType<typeof spawnSync>,
-    )
-    .mockReturnValueOnce(result("") as ReturnType<typeof spawnSync>)
-    .mockReturnValueOnce(
-      result("", "unlocked: yes\n") as ReturnType<typeof spawnSync>,
-    );
-  vi.useFakeTimers();
-  const progress = vi.fn();
-  const execution = new AdbFlasherBackend().executeFlashPlan(plan, progress);
-  await vi.advanceTimersByTimeAsync(5_000);
-  await execution;
-  expect(
-    vi
-      .mocked(spawnSync)
-      .mock.calls.every(([command]) => command === "fastboot"),
-  ).toBe(true);
-  expect(progress.mock.calls).toContainEqual([
-    "unlock-bootloader",
-    "complete",
-    "Bootloader unlocked",
-  ]);
-});
+test.each([
+  ["returns", { status: 0, stdout: "", stderr: "" }],
+  [
+    // `fastboot flashing unlock` can wait on the device prompt; spawnSync then
+    // kills it at its timeout and reports ETIMEDOUT.
+    "is still waiting for the user at its timeout",
+    {
+      status: null,
+      stdout: "",
+      stderr: "",
+      error: Object.assign(new Error("spawnSync fastboot ETIMEDOUT"), {
+        code: "ETIMEDOUT",
+      }),
+    },
+  ],
+])(
+  "standalone unlock resumes in fastboot and verifies completion without ADB when the unlock command %s",
+  async (_, unlockCommand) => {
+    const plan = await fixture();
+    plan.device.state = "bootloader";
+    plan.request.stopAfter = "unlock-bootloader";
+    const result = (stdout: string, stderr = "") => ({
+      status: 0,
+      stdout,
+      stderr,
+    });
+    vi.mocked(spawnSync)
+      .mockReturnValueOnce(
+        result("fixture fastboot\n") as ReturnType<typeof spawnSync>,
+      )
+      .mockReturnValueOnce(
+        result("", "(bootloader) product: grizzly\n") as ReturnType<
+          typeof spawnSync
+        >,
+      )
+      .mockReturnValueOnce(
+        result("", "unlocked: no\n") as ReturnType<typeof spawnSync>,
+      )
+      .mockReturnValueOnce(unlockCommand as ReturnType<typeof spawnSync>)
+      .mockReturnValueOnce(
+        result("", "unlocked: yes\n") as ReturnType<typeof spawnSync>,
+      );
+    vi.useFakeTimers();
+    const progress = vi.fn();
+    const execution = new AdbFlasherBackend().executeFlashPlan(plan, progress);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await execution;
+    expect(
+      vi
+        .mocked(spawnSync)
+        .mock.calls.every(([command]) => command === "fastboot"),
+    ).toBe(true);
+    expect(progress.mock.calls).toContainEqual([
+      "unlock-bootloader",
+      "complete",
+      "Bootloader unlocked",
+    ]);
+  },
+);
 
 test("a serial substring cannot authorize unlocking a different device", async () => {
   const plan = await fixture();
