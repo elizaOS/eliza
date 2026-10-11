@@ -272,7 +272,7 @@ async function resolveExternalCallRecipient(args: {
 
   const service = new LifeOpsService(args.runtime);
   const relationships = await service.listRelationships();
-  const matches = relationships.filter((relationship) => {
+  const partialMatches = relationships.filter((relationship) => {
     if (typeof relationship.phone !== "string" || !relationship.phone) {
       return false;
     }
@@ -290,6 +290,12 @@ async function resolveExternalCallRecipient(args: {
           (haystack.includes(value) || value.includes(haystack)),
       );
   });
+  // A contact whose whole name was given wins over contacts that only contain
+  // it ("Bob" over "Bob Jones"), so the short name stays callable.
+  const namedMatches = partialMatches.filter(
+    (relationship) => normalizeLookup(relationship.name) === haystack,
+  );
+  const matches = namedMatches.length > 0 ? namedMatches : partialMatches;
 
   const [first] = matches;
   if (!first?.phone) {

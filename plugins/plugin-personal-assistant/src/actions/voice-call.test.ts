@@ -282,6 +282,28 @@ describe("VOICE_CALL confirmation and recipient binding", () => {
     );
   });
 
+  it("calls the contact whose whole name was given when another name contains it", async () => {
+    vi.spyOn(LifeOpsService.prototype, "listRelationships").mockResolvedValue([
+      relationship("rel-alice", "Bob Alison", "+14155550111"),
+      relationship("rel-bob", "Bob", "+14155550222"),
+    ] as never);
+
+    const draft = await dial(makeRuntime(), "call Bob", {
+      recipientKind: "external",
+      recipient: "Bob",
+    });
+
+    expect(draft?.data?.error).toBeUndefined();
+    expect(draft?.data?.to).toBe("+14155550222");
+
+    const partial = await dial(makeRuntime(), "call Bo", {
+      recipientKind: "external",
+      recipient: "Bo",
+    });
+
+    expect(partial?.data?.error).toBe("AMBIGUOUS_RECIPIENT");
+  });
+
   it("asks which contact when the message text names more than one", async () => {
     const result = await dial(
       makeRuntime(),
