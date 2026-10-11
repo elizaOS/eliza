@@ -199,7 +199,10 @@ export function expandIcsCalendarEvents(args: {
     // form for a local DTSTART); it ends the series in the series time zone.
     const rule =
       ruleLineCount === 1
-        ? firstRecurrenceRule(recurrence, { localUntil: true })
+        ? firstRecurrenceRule(recurrence, {
+            localUntil: true,
+            monthlyByDay: true,
+          })
         : null;
     if (!rule || rule.beyondExpansionSubset || hasRdate) {
       complete = false;

@@ -78,6 +78,12 @@ export interface ParsedCalendarRecurrenceRule {
   weekStart?: number;
   /** Days of month (1..31 or -31..-1 counting from month end). MONTHLY only. */
   byMonthDay?: number[];
+  /**
+   * BYDAY of a MONTHLY rule, set only when the caller asks for it: `2TU` is
+   * the second Tuesday of the month, `-1FR` the last Friday, and `TU` (null
+   * ordinal) each Tuesday of the month.
+   */
+  byDayOfMonth?: Array<{ ordinal: number | null; weekday: number }>;
   /** Total occurrence count including the first occurrence (DTSTART). */
   count?: number;
   /** Inclusive UTC cutoff for occurrences. */
@@ -199,7 +205,7 @@ function parsePositiveInt(value: string, part: string): number {
  */
 export function parseRecurrenceRule(
   value: string,
-  options: { localUntil?: boolean } = {},
+  options: { localUntil?: boolean; monthlyByDay?: boolean } = {},
 ): ParsedCalendarRecurrenceRule {
   const body = value.trim().replace(/^RRULE:/i, "");
   if (body.length === 0) invalidRecurrence("empty rule");
@@ -207,6 +213,7 @@ export function parseRecurrenceRule(
   let freq: CalendarRecurrenceFrequency | undefined;
   let interval = 1;
   let byDay: number[] | undefined;
+  let byDayTokens: ParsedCalendarRecurrenceRule["byDayOfMonth"];
   let byMonthDay: number[] | undefined;
   let weekStart: number | undefined;
   let count: number | undefined;
@@ -251,25 +258,24 @@ export function parseRecurrenceRule(
       }
       case "BYDAY": {
         const days: number[] = [];
+        const tokens: NonNullable<typeof byDayTokens> = [];
         for (const token of raw.split(",")) {
           const match = token
             .trim()
             .match(/^([+-]?\d{1,2})?(SU|MO|TU|WE|TH|FR|SA)$/);
           if (!match) invalidRecurrence(`BYDAY token "${token}"`);
-          if (match[1]) {
-            // Ordinal weekday (e.g. 2MO = second Monday): provider-valid,
-            // outside the local expansion subset.
-            beyondExpansionSubset = true;
-          }
           const weekdayToken = match[2];
           if (!weekdayToken) invalidRecurrence(`BYDAY token "${token}"`);
           const weekday = BYDAY_TOKEN_TO_WEEKDAY[weekdayToken];
           if (weekday === undefined)
             invalidRecurrence(`BYDAY token "${token}"`);
+          // An ordinal weekday (2MO = second Monday) is provider-valid.
+          tokens.push({ ordinal: match[1] ? Number(match[1]) : null, weekday });
           if (!days.includes(weekday)) days.push(weekday);
         }
         if (days.length === 0) invalidRecurrence("BYDAY has no days");
         byDay = days;
+        byDayTokens = tokens;
         break;
       }
       case "BYMONTHDAY": {
@@ -311,7 +317,24 @@ export function parseRecurrenceRule(
   if (count !== undefined && untilMs !== undefined) {
     invalidRecurrence("COUNT and UNTIL are mutually exclusive");
   }
-  if (byDay && freq !== "WEEKLY") beyondExpansionSubset = true;
+  // BYDAY of a MONTHLY rule names weekdays of the month. A month has at most
+  // five of one weekday. Other ordinal weekdays stay outside the subset.
+  const byDayOfMonth =
+    options.monthlyByDay === true &&
+    freq === "MONTHLY" &&
+    byMonthDay === undefined &&
+    byDayTokens?.every(
+      ({ ordinal }) =>
+        ordinal === null || (ordinal !== 0 && Math.abs(ordinal) <= 5),
+    )
+      ? byDayTokens
+      : undefined;
+  if (!byDayOfMonth) {
+    if (byDayTokens?.some(({ ordinal }) => ordinal !== null)) {
+      beyondExpansionSubset = true;
+    }
+    if (byDay && freq !== "WEEKLY") beyondExpansionSubset = true;
+  }
   if (byMonthDay && freq !== "MONTHLY") beyondExpansionSubset = true;
 
   return {
@@ -319,6 +342,7 @@ export function parseRecurrenceRule(
     interval,
     byDay,
     byMonthDay,
+    byDayOfMonth,
     weekStart,
     count,
     untilMs,
@@ -369,7 +393,7 @@ export function normalizeRecurrence(value: unknown): string[] | undefined {
 /** First RRULE line from a recurrence line set, parsed; null when none. */
 export function firstRecurrenceRule(
   recurrence: readonly string[] | null | undefined,
-  options: { localUntil?: boolean } = {},
+  options: { localUntil?: boolean; monthlyByDay?: boolean } = {},
 ): ParsedCalendarRecurrenceRule | null {
   if (!recurrence) return null;
   for (const line of recurrence) {
@@ -411,6 +435,31 @@ function daysInMonth(year: number, month: number): number {
   d.setUTCFullYear(year, month, 0);
   d.setUTCHours(12, 0, 0, 0);
   return d.getUTCDate();
+}
+
+/** Days of one month that a MONTHLY BYDAY list names, in ascending order. */
+function daysOfMonthForWeekdays(
+  year: number,
+  month: number,
+  byDayOfMonth: NonNullable<ParsedCalendarRecurrenceRule["byDayOfMonth"]>,
+): number[] {
+  const monthLength = daysInMonth(year, month);
+  const firstWeekday = getWeekdayForLocalDate({ year, month, day: 1 });
+  const days = new Set<number>();
+  for (const { ordinal, weekday } of byDayOfMonth) {
+    const matches: number[] = [];
+    const first = 1 + ((weekday - firstWeekday + 7) % 7);
+    for (let day = first; day <= monthLength; day += 7) matches.push(day);
+    // A month without a fifth such weekday has no occurrence for 5 or -5.
+    const picked =
+      ordinal === null
+        ? matches
+        : [matches.at(ordinal > 0 ? ordinal - 1 : ordinal)];
+    for (const day of picked) {
+      if (day !== undefined) days.add(day);
+    }
+  }
+  return [...days].sort((a, b) => a - b);
 }
 
 export const MAX_EXPANDED_RECURRENCE_OCCURRENCES = 1000;
@@ -595,13 +644,15 @@ function* generateOccurrences(args: {
           const monthLength = daysInMonth(year, month);
           // A positive day and a negative day can name the same date
           // (31 and -1 in a 31-day month); emit each date once.
-          const days = [
-            ...new Set(
-              byMonthDay
-                .map((day) => (day < 0 ? monthLength + day + 1 : day))
-                .filter((day) => day >= 1 && day <= monthLength),
-            ),
-          ].sort((a, b) => a - b);
+          const days = rule.byDayOfMonth
+            ? daysOfMonthForWeekdays(year, month, rule.byDayOfMonth)
+            : [
+                ...new Set(
+                  byMonthDay
+                    .map((day) => (day < 0 ? monthLength + day + 1 : day))
+                    .filter((day) => day >= 1 && day <= monthLength),
+                ),
+              ].sort((a, b) => a - b);
           for (const day of days) {
             yield { year, month, day };
           }

@@ -1251,6 +1251,76 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     expect(first.state).toBe("partial");
   });
 
+  it("expands the RFC 5545 monthly examples that name weekdays of the month", async () => {
+    const source = await createSource();
+    const example = (uid: string, start: string, rrule: string) =>
+      [
+        "BEGIN:VEVENT",
+        `UID:${uid}`,
+        "DTSTAMP:19970801T000000Z",
+        `DTSTART;TZID=America/New_York:${start}`,
+        "DURATION:PT1H",
+        `RRULE:${rrule}`,
+        `SUMMARY:${uid}`,
+        "END:VEVENT",
+      ].join("\r\n");
+    await syncBody(
+      source.id,
+      calendar(
+        example(
+          "first-friday",
+          "19970905T090000",
+          "FREQ=MONTHLY;COUNT=10;BYDAY=1FR",
+        ),
+        example(
+          "first-and-last-sunday",
+          "19970907T090000",
+          "FREQ=MONTHLY;INTERVAL=2;COUNT=10;BYDAY=1SU,-1SU",
+        ),
+      ),
+    );
+    const feed = await service.getCalendarFeed(
+      new URL("http://internal.test/api/calendar"),
+      {
+        grantId: source.id,
+        timeMin: "1997-08-01T00:00:00.000Z",
+        timeMax: "1998-07-01T00:00:00.000Z",
+      },
+      new Date(),
+    );
+
+    expect(feed.state).toBe("complete");
+    const startsOf = (title: string) =>
+      feed.events
+        .filter((event) => event.title === title)
+        .map((event) => event.startAt.slice(0, 10));
+    // RFC 5545 3.8.5.3 gives these dates for the two rules.
+    expect(startsOf("first-friday")).toEqual([
+      "1997-09-05",
+      "1997-10-03",
+      "1997-11-07",
+      "1997-12-05",
+      "1998-01-02",
+      "1998-02-06",
+      "1998-03-06",
+      "1998-04-03",
+      "1998-05-01",
+      "1998-06-05",
+    ]);
+    expect(startsOf("first-and-last-sunday")).toEqual([
+      "1997-09-07",
+      "1997-09-28",
+      "1997-11-02",
+      "1997-11-30",
+      "1998-01-04",
+      "1998-01-25",
+      "1998-03-01",
+      "1998-03-29",
+      "1998-05-03",
+      "1998-05-31",
+    ]);
+  });
+
   it("stops a monthly rule whose candidate months never contain its day", async () => {
     const source = await createSource();
     await syncBody(
