@@ -134,10 +134,16 @@ function readParams(
 
 // ── op: update_ai_provider ────────────────────────────────────────────────
 
-/** The ids `normalizeFirstRunProviderId` accepts, as advertised to the planner. */
-const AI_PROVIDER_IDS = FIRST_RUN_PROVIDER_CATALOG.map(
-  (provider) => provider.id,
-).join(", ");
+/**
+ * The chat provider ids `normalizeFirstRunProviderId` accepts, as advertised
+ * to the planner. Subscription entries are coding-agent credentials and do not
+ * set the chat route, so they are not offered as an AI provider.
+ */
+const AI_PROVIDER_IDS = FIRST_RUN_PROVIDER_CATALOG.filter(
+  (provider) => provider.authMode !== "subscription",
+)
+  .map((provider) => provider.id)
+  .join(", ");
 
 async function handleUpdateAiProvider(
   params: Record<string, unknown>,

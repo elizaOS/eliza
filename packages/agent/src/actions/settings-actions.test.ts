@@ -99,6 +99,7 @@ describe("SETTINGS single-value and model slot parameters", () => {
     )?.description;
     const ids = /\(([^)]+)\)/.exec(description ?? "")?.[1]?.split(", ") ?? [];
     expect(ids).toContain("cerebras");
+    expect(ids).not.toContain("anthropic-subscription");
     for (const id of ids) {
       expect(normalizeFirstRunProviderId(id), id).toBe(id);
     }
