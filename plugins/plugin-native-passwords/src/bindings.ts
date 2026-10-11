@@ -17,7 +17,8 @@ export function normalizeWebsite(input: string): string {
   const text = typeof input === "string" ? input.trim() : "";
   if (!text || text.length > 512)
     throw new PasswordBindingError("Enter a website address.");
-  const withScheme = /^[a-z][a-z0-9+.-]*:(?!\d)/i.test(text)
+  // `host:8443` is a bare host with a port, not a URL with the scheme `host`.
+  const withScheme = /^[a-z][a-z0-9+.-]*:(?!\d{1,5}([/?#]|$))/i.test(text)
     ? text
     : `https://${text}`;
   let url: URL;
