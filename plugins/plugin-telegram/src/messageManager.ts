@@ -163,6 +163,21 @@ async function resolveTelegramFileBytes(
 }
 
 const MAX_MESSAGE_LENGTH = 4096; // Telegram's max message length
+
+// The pinned runtimes provide Intl.Segmenter, while the declaration library
+// does not expose its type.
+const GraphemeSegmenter = (
+  Intl as unknown as {
+    Segmenter: new (
+      locale: string,
+      options: { granularity: "grapheme" },
+    ) => { segment(text: string): Iterable<{ segment: string }> };
+  }
+).Segmenter;
+
+const graphemeSegmenter = new GraphemeSegmenter("en", {
+  granularity: "grapheme",
+});
 const MAX_MEDIA_CAPTION_LENGTH = 1024;
 const INTERACTION_ONLY_FALLBACK_TEXT = "Choose an option:";
 const ACTION_PROGRESS_SOURCE = "action_progress";
@@ -1524,6 +1539,26 @@ export class MessageManager {
    * @param {string} text - The text to split into chunks.
    * @returns {string[]} An array of strings with each element representing a chunk of the original text.
    */
+  /**
+   * `truncateWellFormed` that also never ends inside a grapheme cluster (a
+   * ZWJ emoji sequence, a regional-indicator flag, a combining mark, or a
+   * skin-tone modifier), so a cluster is never split across two Telegram
+   * messages. The pinned runtimes provide Intl.Segmenter, while the
+   * declaration library does not expose its type. When a single cluster
+   * alone exceeds `maxLength`, fall back to the surrogate-safe cut; it is
+   * the only case with no clean boundary.
+   */
+  private truncateGraphemeSafe(text: string, maxLength: number): string {
+    if (text.length <= maxLength) return text;
+    let end = 0;
+    for (const { segment } of graphemeSegmenter.segment(text)) {
+      if (end + segment.length > maxLength) break;
+      end += segment.length;
+    }
+    if (end > 0) return text.slice(0, end);
+    return truncateWellFormed(text, maxLength);
+  }
+
   private splitMessage(text: string): string[] {
     const chunks: string[] = [];
     if (!text) {
@@ -1545,7 +1580,7 @@ export class MessageManager {
         chunk =
           newlineIndex > 0
             ? remaining.slice(0, newlineIndex)
-            : truncateWellFormed(remaining, MAX_MESSAGE_LENGTH);
+            : this.truncateGraphemeSafe(remaining, MAX_MESSAGE_LENGTH);
       }
       if (chunk.length === 0) {
         throw new Error("Unable to split Telegram message without data loss");
