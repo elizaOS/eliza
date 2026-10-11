@@ -364,9 +364,12 @@ async function buildAssignmentsFromParams(args: {
   runtime: IAgentRuntime;
   message: Memory;
   params: RoleHandlerParams;
-  defaultRole: RoleName | null;
+  op: "assign" | "revoke";
 }): Promise<{ assignments: RoleAssignment[]; errors: string[] }> {
-  const { runtime, message, params, defaultRole } = args;
+  const { runtime, message, params, op } = args;
+  // Revoke always lands on GUEST. A `role`/`newRole` supplied with revoke names
+  // the role being taken away, so it must never be written back to the target.
+  const revoking = op === "revoke";
   const errors: string[] = [];
   const assignments: RoleAssignment[] = [];
 
@@ -376,9 +379,11 @@ async function buildAssignmentsFromParams(args: {
       errors.push("Assignment missing entityId");
       continue;
     }
-    const newRole = entry.newRole
-      ? normalizeRoleInput(entry.newRole)
-      : defaultRole;
+    const newRole = revoking
+      ? "GUEST"
+      : entry.newRole
+        ? normalizeRoleInput(entry.newRole)
+        : null;
     if (!newRole) {
       errors.push(`Invalid role for ${entry.entityId}`);
       continue;
@@ -392,11 +397,13 @@ async function buildAssignmentsFromParams(args: {
       errors.push("Could not determine target user.");
       return { assignments, errors };
     }
-    const newRole = params.role
-      ? normalizeRoleInput(params.role)
-      : params.label
-        ? (NATURAL_ROLE_MAP[params.label.trim().toLowerCase()] ?? null)
-        : defaultRole;
+    const newRole = revoking
+      ? "GUEST"
+      : params.role
+        ? normalizeRoleInput(params.role)
+        : params.label
+          ? (NATURAL_ROLE_MAP[params.label.trim().toLowerCase()] ?? null)
+          : null;
     if (!newRole) {
       errors.push("Could not determine target role.");
       return { assignments, errors };
@@ -682,7 +689,7 @@ export const roleAction: Action = {
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
   description:
-    "Manage world roles OWNER/ADMIN/USER/GUEST. Ops assign, revoke, list. Use assignments[] or target name.",
+    "Manage world roles OWNER/ADMIN/USER/GUEST. Ops assign, revoke, list. Use assignments[] or target name. revoke always sets the target to GUEST; use assign to set any other role.",
   parameters: [
     {
       name: "action",
@@ -712,7 +719,8 @@ export const roleAction: Action = {
     },
     {
       name: "role",
-      description: "Role for single-target assign.",
+      description:
+        "Role for single-target assign. Not used by revoke, which always sets GUEST.",
       required: false,
       schema: {
         type: "string" as const,
@@ -721,13 +729,15 @@ export const roleAction: Action = {
     },
     {
       name: "label",
-      description: "Natural label (boss, coworker, etc.) to derive role.",
+      description:
+        "Natural label (boss, coworker, etc.) to derive the role for assign.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "assignments",
-      description: "Batch assignments by entityId for assign/revoke.",
+      description:
+        "Batch assignments by entityId for assign/revoke. newRole applies to assign only; revoke always sets GUEST.",
       required: false,
       schema: {
         type: "array" as const,
@@ -792,12 +802,11 @@ export const roleAction: Action = {
       return handleList({ runtime, message, callback });
     }
 
-    const defaultRole: RoleName | null = op === "revoke" ? "GUEST" : null;
     const { assignments, errors } = await buildAssignmentsFromParams({
       runtime,
       message,
       params,
-      defaultRole,
+      op,
     });
 
     if (assignments.length === 0) {
@@ -877,7 +886,7 @@ export const roleAction: Action = {
           text: "Revoked 1 role(s)",
           actions: ["ROLE"],
           thought:
-            "Revoke intent maps to ROLE action=revoke; defaultRole becomes GUEST so Pat drops to GUEST.",
+            "Revoke intent maps to ROLE action=revoke with target='Pat'; revoke always drops Pat to GUEST.",
         },
       },
     ],
