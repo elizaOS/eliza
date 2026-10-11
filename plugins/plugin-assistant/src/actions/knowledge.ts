@@ -831,12 +831,12 @@ export const sendMediaToAction: Action = {
     };
     const dispatch = await dispatchToRoom(
       runtime,
-      targetRoom?.source ?? "",
+      targetRoom.source ?? "",
       {
-        source: targetRoom?.source ?? "",
+        source: targetRoom.source ?? "",
         roomId: targetRoomId,
-        ...(targetRoom?.channelId ? { channelId: targetRoom.channelId } : {}),
-        ...(targetRoom?.serverId ? { serverId: targetRoom.serverId } : {}),
+        ...(targetRoom.channelId ? { channelId: targetRoom.channelId } : {}),
+        ...(targetRoom.serverId ? { serverId: targetRoom.serverId } : {}),
       },
       content,
     );
