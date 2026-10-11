@@ -1,9 +1,10 @@
 /**
  * MOCKED invalid-url guard (#11856, `pr-deterministic`). A non-meeting URL must
- * NOT start a meeting: JOIN_MEETING's `validate` rejects it (no recognizable
- * Meet/Teams/Zoom link), so the bot never joins and nothing crashes. Asserts the
- * graceful non-join through the runtime-registered production action validator;
- * no handler, session, provider call, or language-model routing is allowed.
+ * NOT start a meeting: JOIN_MEETING's handler finds no recognizable
+ * Meet/Teams/Zoom link and replies that it needs one before any side effect, so
+ * the bot never joins and nothing crashes. Asserts the graceful non-join through
+ * the runtime-registered production action; no session, provider call, or
+ * language-model routing is allowed.
  */
 
 import { type ScenarioContext, scenario } from "@elizaos/testing";
@@ -43,7 +44,7 @@ export default scenario({
   modelFixtures: {
     mode: "model-free",
     reason:
-      "A direct action turn proves the registered production validator rejects invalid input.",
+      "A direct action turn proves the registered production action declines invalid input.",
   },
   title: "Mocked JOIN_MEETING declines a non-meeting URL gracefully",
   domain: "meetings",
@@ -55,19 +56,16 @@ export default scenario({
   turns: [
     {
       kind: "action",
-      name: "registered JOIN_MEETING rejects a non-meeting URL",
+      name: "registered JOIN_MEETING asks for a link on a non-meeting URL",
       room: "main",
       actionName: "JOIN_MEETING",
       text: `join this: ${BAD_URL}`,
-      expectedValidation: "rejected",
       assertTurn(turn) {
-        const validation = turn.validation;
-        return validation?.actionName === "JOIN_MEETING" &&
-          validation.accepted === false &&
-          validation.expected === "rejected" &&
-          turn.actionsCalled.length === 0
+        const body = turn.responseBody as { success?: unknown } | null;
+        return body?.success === false &&
+          turn.responseText?.includes("I need a meeting link")
           ? undefined
-          : `expected registered validation rejection, saw ${JSON.stringify(validation ?? null)}`;
+          : `expected the need-a-link failure reply, saw ${JSON.stringify(turn.responseBody ?? null)}`;
       },
     },
     {
@@ -80,7 +78,7 @@ export default scenario({
   finalChecks: [
     {
       type: "custom",
-      name: "no meeting joined after registered validation rejection",
+      name: "no meeting joined for a non-meeting URL",
       predicate: gracefulInvalidUrl,
     },
     {

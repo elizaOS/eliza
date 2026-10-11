@@ -73,30 +73,18 @@ describe("JOIN_MEETING", () => {
     expect(joinMeetingAction.roleGate).toEqual({ minRole: "OWNER" });
   });
 
-  it("validate is true only for a real meeting URL", async () => {
+  it("validate is gated on the meetings service, not on a link", async () => {
     const v = joinMeetingAction.validate;
-    expect(await v({} as IAgentRuntime, msg(`join ${MEET}`), NO_STATE)).toBe(
-      true,
-    );
+    const up = harness({ service: {} });
+    const down = harness({ service: null });
+    expect(await v(up.runtime, msg(`join ${MEET}`), NO_STATE)).toBe(true);
+    // No link is not a missing capability: the handler asks for one.
     expect(
-      await v(
-        {} as IAgentRuntime,
-        msg("join https://example.com/not-a-meeting"),
-        NO_STATE,
-      ),
-    ).toBe(false);
-    expect(await v({} as IAgentRuntime, msg("no link"), NO_STATE)).toBe(false);
-  });
-
-  it("validate true via explicit option even with no URL in text", async () => {
-    expect(
-      await joinMeetingAction.validate(
-        {} as IAgentRuntime,
-        msg("please join"),
-        NO_STATE,
-        { meetingUrl: MEET },
-      ),
+      await v(up.runtime, msg("join my 3pm standup and take notes"), NO_STATE, {
+        parameters: {},
+      }),
     ).toBe(true);
+    expect(await v(down.runtime, msg(`join ${MEET}`), NO_STATE)).toBe(false);
   });
 
   it("asks for a link when none present", async () => {
