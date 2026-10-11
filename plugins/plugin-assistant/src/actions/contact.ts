@@ -3,9 +3,9 @@
  * entity / relationship lifecycle.
  *
  * Op-based dispatch (Pattern C):
- *   create   — create a new contact entity (and optionally a contact_info
- *              component via RelationshipsService when categories/tags/
- *              preferences/customFields are provided).
+ *   create   — create a new contact entity and its contact_info component
+ *              via RelationshipsService (entity only when that service
+ *              is not registered).
  *   read     — load full identity + facts + recent conversations +
  *              relationships for an entity by id or name.
  *   search   — search the Rolodex by name/handle/platform with
