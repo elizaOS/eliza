@@ -48,6 +48,7 @@ import {
   factClaimsEquivalent,
   scoreFactKeywordRelevance,
 } from "../features/advanced-capabilities/fact-keywords.ts";
+import { tokenize } from "../features/documents/bm25.ts";
 export const FACTS_AND_RELATIONSHIPS_TOOL_NAME =
   "FACTS_AND_RELATIONSHIPS_VALIDATE";
 /**
@@ -1085,12 +1086,10 @@ function cleanPredicate(value: string): string {
     .replace(/^_+|_+$/g, "")
     .toLowerCase();
 }
+// Unicode-aware: an ASCII-only class reduced Hangul, kana, Cyrillic and
+// Greek candidates to "" and dropped them as low signal.
 function normalizeForComparison(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return tokenize(value).join(" ");
 }
 function containsSecretSignal(value: string): boolean {
   return (
