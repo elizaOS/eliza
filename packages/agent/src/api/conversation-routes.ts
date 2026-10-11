@@ -7043,7 +7043,7 @@ async function cleanupEmptyConversations(
   await waitForConversationRestore(state);
   const runtime = state.runtime;
   if (!runtime) {
-    json(res, { deleted: [] });
+    error(res, "Agent runtime not available", 503);
     return true;
   }
   const keepId = parsedCleanup.data.keepId;
