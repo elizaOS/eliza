@@ -81,16 +81,6 @@ function normalizeCharacters(
   });
 }
 
-async function fetchRuntimeCharacters(
-  signal?: AbortSignal,
-): Promise<Character[]> {
-  const data = await api<{ agents?: Array<{ id?: unknown; name?: unknown }> }>(
-    "/api/agents",
-    { signal, skipAuth: true },
-  );
-  return normalizeCharacters(data.agents);
-}
-
 type DiscordDmPolicy = "open" | "allowlist" | "pairing" | "disabled";
 
 const DISCORD_SNOWFLAKE_RE = /^\d{15,20}$/;
@@ -275,35 +265,14 @@ export function DiscordGatewayConnection() {
         }>("/api/v1/dashboard", { signal });
         if (!signal?.aborted) {
           const nextCharacters = normalizeCharacters(data.agents);
-          const fallbackCharacters =
-            nextCharacters.length > 0
-              ? nextCharacters
-              : await fetchRuntimeCharacters(signal);
-          if (!signal?.aborted) {
-            setCharacters(fallbackCharacters);
-            setCharactersUnavailable(false);
-            setCharacterId(
-              (current) => current || fallbackCharacters[0]?.id || "",
-            );
-          }
+          setCharacters(nextCharacters);
+          setCharactersUnavailable(false);
+          setCharacterId((current) => current || nextCharacters[0]?.id || "");
         }
       } catch {
-        if (!signal?.aborted) {
-          try {
-            const fallbackCharacters = await fetchRuntimeCharacters(signal);
-            if (!signal?.aborted) {
-              setCharacters(fallbackCharacters);
-              setCharactersUnavailable(false);
-              setCharacterId(
-                (current) => current || fallbackCharacters[0]?.id || "",
-              );
-            }
-          } catch {
-            // error-policy:J4 Character discovery is required for setup. Fold
-            // this background failure into the section-level degraded state.
-            if (!signal?.aborted) setCharactersUnavailable(true);
-          }
-        }
+        // error-policy:J4 Character discovery is required for setup. Fold
+        // this background failure into the section-level degraded state.
+        if (!signal?.aborted) setCharactersUnavailable(true);
       } finally {
         if (!signal?.aborted) {
           setIsLoadingCharacters(false);
