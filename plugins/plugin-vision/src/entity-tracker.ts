@@ -216,6 +216,10 @@ export class EntityTracker {
         }
         // A known face that differs is a different person: the identity is
         // decisive in both directions, so position must not merge them.
+        // VisionService registers a new profile whenever recognition misses
+        // the match threshold, so a person whose embedding drifts for a frame
+        // is tracked as a second entity until the original profile matches
+        // again. That follows the recognizer's verdict and is intended.
         continue;
       }
 
