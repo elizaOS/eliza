@@ -172,12 +172,6 @@ export const formAction: Action = {
         enum: [...FORM_SUBACTIONS],
       },
     },
-    {
-      name: "sessionId",
-      description: "Optional stashed form session id to restore.",
-      required: false,
-      schema: { type: "string" },
-    },
   ],
 
   /**
