@@ -107,11 +107,17 @@ async function responseBytes(
 
 function canonicalIsoTimestamp(value: unknown): value is string {
   if (typeof value !== "string") return false;
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value))
+    return false;
   const parsed = Date.parse(value);
-  return (
-    Number.isFinite(parsed) &&
-    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value)
-  );
+  if (!Number.isFinite(parsed)) return false;
+  // Date.parse normalizes impossible field values (2027-02-30 becomes
+  // 2027-03-02, hour 24 becomes the next day), so the shape check alone
+  // accepts dates that do not exist. Require the parsed value to name
+  // the same instant the text names, allowing only the optional
+  // millisecond part this module accepts in either form.
+  const iso = new Date(parsed).toISOString();
+  return iso === value || iso === value.replace(/Z$/, ".000Z");
 }
 
 const artifactFields = new Set<keyof ElizaOsReleaseArtifact>([
