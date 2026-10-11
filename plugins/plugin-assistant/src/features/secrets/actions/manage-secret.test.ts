@@ -5,7 +5,7 @@
  * no handler module, model, database, or secret implementation is mocked.
  */
 
-import { ChannelType } from "@elizaos/core";
+import { ChannelType, validateToolArgs } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
 import { maskSecretValue, secretsAction } from "./manage-secret.ts";
 
@@ -160,6 +160,70 @@ describe("SECRETS umbrella action", () => {
     expect(result.data).toMatchObject({
       actionName: "SECRETS",
       action: expected,
+    });
+  });
+
+  test("the declared schema accepts a key array for check", () => {
+    const parameters = {
+      action: "check",
+      key: ["OPENAI_API_KEY", "DISCORD_BOT_TOKEN"],
+    };
+
+    const validation = validateToolArgs(secretsAction, parameters);
+
+    expect(validation.errors).toEqual([]);
+    expect(validation.args).toEqual(parameters);
+  });
+
+  test("set stores the planner's key and value without model extraction", async () => {
+    const stored: unknown[][] = [];
+    let extractions = 0;
+    const runtime = {
+      ...createRuntime(),
+      getService: (name: string) =>
+        name === "SECRETS"
+          ? {
+              set: async (...args: unknown[]) => {
+                stored.push(args);
+                return true;
+              },
+            }
+          : null,
+      dynamicPromptExecFromState: async () => {
+        extractions += 1;
+        return {};
+      },
+    };
+    const parameters = {
+      action: "set",
+      key: "OPENAI_API_KEY",
+      value: "sk-abc123",
+      description: "OpenAI key",
+      type: "api_key",
+    };
+    expect(validateToolArgs(secretsAction, parameters).errors).toEqual([]);
+
+    const result = await secretsAction.handler(
+      runtime as never,
+      createMessage() as never,
+      { values: {} } as never,
+      { parameters } as never,
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        action: "set",
+        results: [{ key: "OPENAI_API_KEY", success: true }],
+      },
+    });
+    expect(extractions).toBe(0);
+    expect(stored).toHaveLength(1);
+    expect(stored[0]?.[0]).toBe("OPENAI_API_KEY");
+    expect(stored[0]?.[1]).toBe("sk-abc123");
+    expect(stored[0]?.[3]).toMatchObject({
+      type: "api_key",
+      description: "OpenAI key",
     });
   });
 });

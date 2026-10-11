@@ -140,7 +140,12 @@ export const secretsAction: Action = {
       name: "key",
       description: "Secret key; key array for check; omit for list.",
       required: false,
-      schema: { type: "string" as const },
+      schema: {
+        anyOf: [
+          { type: "string" as const },
+          { type: "array" as const, items: { type: "string" as const } },
+        ],
+      },
     },
     {
       name: "value",
