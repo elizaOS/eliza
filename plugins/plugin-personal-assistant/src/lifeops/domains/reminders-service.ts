@@ -253,7 +253,10 @@ import {
   normalizeOptionalString,
   requireNonEmptyString,
 } from "../service-normalize.js";
-import type { ReminderActivityProfileSnapshot } from "../service-types.js";
+import {
+  LifeOpsServiceError,
+  type ReminderActivityProfileSnapshot,
+} from "../service-types.js";
 import { getActivitySignalBus } from "../signals/bus.js";
 import { publishDerivedHealthSignals } from "../signals/health-signal-publisher.js";
 import {
@@ -3871,6 +3874,24 @@ export class RemindersDomain {
             );
             return;
           }
+        }
+        if (
+          error instanceof LifeOpsServiceError &&
+          error.code === "LIFEOPS_SNOOZE_PAST_QUOTA_DAY"
+        ) {
+          // The owner asked for a snooze this occurrence cannot take. Record
+          // the reply as unresolved so the review asks for a new time; a throw
+          // here would abort the reminder tick on every run until day end.
+          await this.markReminderReviewObservedResponse({
+            attempt: args.attempt,
+            decision: "needs_clarification",
+            respondedAt: args.respondedAt,
+            responseText: args.responseText,
+            reason: "snooze_past_daily_count_day_end",
+            classifierSource: args.classifierSource,
+            semanticReason: args.semanticReason,
+          });
+          return;
         }
         throw error;
       }

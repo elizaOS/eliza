@@ -1164,6 +1164,7 @@ export class DefinitionsDomain {
       fail(
         409,
         `a daily-count occurrence cannot be snoozed past the end of its day (${occurrence.relevanceEndAt})`,
+        "LIFEOPS_SNOOZE_PAST_QUOTA_DAY",
       );
     }
     const updatedOccurrence: LifeOpsOccurrence = {

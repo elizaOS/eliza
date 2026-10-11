@@ -174,4 +174,39 @@ it("rejects a count-per-day snooze past the end of its day and delivers one insi
     ),
   ).toMatchObject({ state: "snoozed", snoozedUntil });
   await expectDeliveredAt(occurrence.id, snoozedUntil);
+
+  // The reminder-reply path asks for the same past-day snooze. The review
+  // records an unresolved reply; it must not throw out of the reminder tick.
+  const [delivered] = await service.repository.listReminderAttempts(
+    fixture.runtime.agentId,
+  );
+  const repliedAt = "2026-10-12T19:05:00.000Z";
+  await service.remindersDomain.resolveReminderReviewFromOwnerResponse({
+    ownerType: "occurrence",
+    ownerId: occurrence.id,
+    attempt: delivered,
+    reviewedAt: repliedAt,
+    resolution: "snoozed",
+    responseText: "tomorrow morning",
+    respondedAt: repliedAt,
+    snoozeRequest: { preset: "tomorrow_morning" },
+    confidence: 1,
+    reason: "admitted_semantic_response",
+    classifierSource: "semantic",
+  });
+  expect(
+    await service.repository.listReminderAttempts(fixture.runtime.agentId),
+  ).toMatchObject([
+    {
+      id: delivered.id,
+      reviewStatus: "needs_clarification",
+      deliveryMetadata: { reviewReason: "snooze_past_daily_count_day_end" },
+    },
+  ]);
+  expect(
+    await service.repository.getOccurrence(
+      fixture.runtime.agentId,
+      occurrence.id,
+    ),
+  ).toMatchObject({ state: "visible", snoozedUntil });
 }, 120_000);
