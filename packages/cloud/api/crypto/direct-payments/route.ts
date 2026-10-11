@@ -8,6 +8,10 @@
 import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import { ORGANIZATION_CREDIT_CHECKOUT_LIMITS } from "@elizaos/cloud-shared/billing";
 import {
+  ApiError,
+  failureResponse,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
   moneyRateLimit,
   RateLimitPresets,
   rateLimit,
@@ -83,6 +87,11 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
       instructions: result.paymentInstructions,
     });
   } catch (error) {
+    // A rejected credential or inactive account is a typed 401/403, not a bad
+    // payment request; the 400 mapping below is only for createPayment errors.
+    if (error instanceof ApiError) {
+      return failureResponse(c, error);
+    }
     logger.error("[Direct Crypto Payments API] Create payment error:", error);
     const message =
       error instanceof Error ? error.message : "Failed to create payment";
