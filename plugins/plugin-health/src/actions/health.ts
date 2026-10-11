@@ -80,6 +80,8 @@ export interface HealthActionService {
   }>;
   getHealthSummary(request?: {
     days?: number;
+    startDate?: string;
+    endDate?: string;
   }): Promise<LifeOpsHealthSummaryResponse>;
   /** Walks `days` local calendar days ending on today in `window.timeZone`. */
   getHealthTrend(
@@ -349,15 +351,19 @@ function formatConnectorDailySummary(
   return parts.join("\n");
 }
 
-function latestConnectorSummaryForDate(
+/**
+ * The connector summary for `date`. Only a request that named no date may
+ * read the latest synced day instead; an explicit date with no summary is
+ * "no data for that day", never another day's numbers.
+ */
+function connectorSummaryForDate(
   summary: LifeOpsHealthSummaryResponse,
   date: string,
+  explicitDate: boolean,
 ): LifeOpsHealthSummaryResponse["summaries"][number] | null {
-  return (
-    summary.summaries.find((candidate) => candidate.date === date) ??
-    summary.summaries[0] ??
-    null
-  );
+  const match = summary.summaries.find((candidate) => candidate.date === date);
+  if (match || explicitDate) return match ?? null;
+  return summary.summaries[0] ?? null;
 }
 
 export const HEALTH_SIMILES: readonly string[] = [
@@ -407,7 +413,10 @@ export const HEALTH_PARAMETERS: readonly ActionParameter[] = [
     name: "date",
     description: "YYYY-MM-DD for single-day queries.",
     descriptionCompressed: "YYYY-MM-DD single-day",
-    schema: { type: "string" as const },
+    schema: {
+      type: "string" as const,
+      pattern: "^\\d{4}-\\d{2}-\\d{2}$",
+    },
     examples: ["2026-05-10"],
   },
   {
@@ -586,10 +595,14 @@ export function createHealthActionRunner(
 
     const connectorStatus = await service.getHealthConnectorStatus();
     let healthSummary: LifeOpsHealthSummaryResponse | null = null;
+    // A single-day read for a named date must fetch that day; the default
+    // trailing window ends today and would miss an older date.
+    const summaryRequest =
+      subaction === "today" && params.date
+        ? { startDate: params.date, endDate: params.date }
+        : { days: plannedDays ?? params.days ?? 7 };
     try {
-      healthSummary = await service.getHealthSummary({
-        days: plannedDays ?? params.days ?? 7,
-      });
+      healthSummary = await service.getHealthSummary(summaryRequest);
     } catch (error) {
       // error-policy:J4 the connector summary is one input to the health
       // response; a load failure must not read as "no providers connected", so
@@ -597,7 +610,7 @@ export function createHealthActionRunner(
       // while the response still renders from the separate connectorStatus.
       runtime.reportError("Health.connectorSummary", error, {
         subaction,
-        days: plannedDays ?? params.days ?? 7,
+        ...summaryRequest,
       });
       runtime.logger.warn(
         {
@@ -715,13 +728,16 @@ export function createHealthActionRunner(
             data: { subaction, metric, points, healthSummary },
           });
         }
-        const daily = latestConnectorSummaryForDate(
+        const daily = connectorSummaryForDate(
           healthSummary,
           params.date ?? localTodayKey(timeZone),
+          params.date !== undefined,
         );
         const fallback = daily
           ? `Health summary for ${formatConnectorDailySummary(daily)}`
-          : "Connected health providers have not synced daily summaries yet.";
+          : params.date
+            ? `Connected health providers have no daily summary for ${params.date}.`
+            : "Connected health providers have not synced daily summaries yet.";
         return respond({
           success: true,
           scenario: "health_connector_today",

@@ -427,9 +427,9 @@ export const SCREEN_TIME_PARAMETERS: readonly ActionParameter[] = [
   {
     name: "days",
     description:
-      "Number of days back from now for weekly / weekly_average_by_app windows.",
+      "Number of days back from now for weekly / weekly_average_by_app windows, 1 to 31 (default 7). Other subactions do not read it; use windowDays for summary / by_app / by_website.",
     required: false,
-    schema: { type: "number" as const },
+    schema: { type: "number" as const, minimum: 1, maximum: 31 },
   },
   {
     name: "limit",
@@ -440,9 +440,10 @@ export const SCREEN_TIME_PARAMETERS: readonly ActionParameter[] = [
   },
   {
     name: "windowDays",
-    description: "Window in days for by_app / by_website summary queries.",
+    description:
+      "Window in days for summary / by_app / by_website, 1 to 31 (default 1). weekly / weekly_average_by_app do not read it; use days.",
     required: false,
-    schema: { type: "number" as const },
+    schema: { type: "number" as const, minimum: 1, maximum: 31 },
   },
   {
     name: "windowHours",
