@@ -127,6 +127,7 @@ export async function executeSkillChatCompletion(
     throw error;
   }
 
+  let settled = false;
   try {
     const result = await streamText({
       model: getLanguageModel(model),
@@ -140,11 +141,7 @@ export async function executeSkillChatCompletion(
 
     let fullText = "";
     for await (const delta of result.textStream) fullText += delta;
-    assertModelOutputComplete({
-      finishReason: await result.finishReason,
-      provider,
-      model,
-    });
+    const finishReason = await result.finishReason;
     const usage = await result.usage;
 
     const { inputCost, outputCost, totalCost } = await calculateCost(
@@ -154,8 +151,21 @@ export async function executeSkillChatCompletion(
       usage?.outputTokens || 0,
     );
 
-    // Reconcile with actual cost
+    // Reconcile with actual cost. The provider bills a truncated output too,
+    // so charge it before rejecting it; refunding it to 0 served it unbilled.
     await reservation.reconcile(totalCost);
+    settled = true;
+    assertModelOutputComplete({
+      finishReason,
+      provider,
+      model,
+      maxTokens: effectiveMaxTokens ?? null,
+      usage: {
+        promptTokens: usage?.inputTokens || 0,
+        completionTokens: usage?.outputTokens || 0,
+        totalTokens: usage?.totalTokens || 0,
+      },
+    });
 
     await usageService.create({
       organization_id: ctx.user.organization_id,
@@ -182,8 +192,8 @@ export async function executeSkillChatCompletion(
       cost: totalCost,
     };
   } catch (error) {
-    // Refund on failure
-    await reservation.reconcile(0);
+    // Refund on failure, unless the provider call was already charged.
+    if (!settled) await reservation.reconcile(0);
     throw error;
   }
 }
