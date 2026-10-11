@@ -390,6 +390,27 @@ describe("ROOM action — declared parameters match the handler", () => {
     expect(result?.text).toBe("Room muted: room-d2");
   });
 
+  it("reports a roomId that names no room before the model gate runs", async () => {
+    const ctx = makeRuntime({ rooms: [room(ROOM_ID)], worlds: [world()] });
+    let modelCalls = 0;
+    ctx.runtime.useModel = (async () => {
+      modelCalls += 1;
+      return "yes";
+    }) as IAgentRuntime["useModel"];
+    const parameters = { action: "mute", roomId: SIBLING_ROOM_ID };
+    expect(validateToolArgs(roomOpAction, parameters).errors).toEqual([]);
+    const result = await roomOpAction.handler(
+      ctx.runtime,
+      msg("mute that other channel"),
+      { ...state, data: { room: room(ROOM_ID) } } as State,
+      opts(parameters),
+    );
+    expect(result?.success).toBe(false);
+    expect(result?.values?.error).toBe("ROOM_NOT_FOUND");
+    expect(modelCalls).toBe(0);
+    expect(ctx.memories).toEqual([]);
+  });
+
   it("a child action does not declare or obey the parent's action discriminator", async () => {
     expect(followRoomAction.parameters?.map((p) => p.name)).not.toContain(
       "action",

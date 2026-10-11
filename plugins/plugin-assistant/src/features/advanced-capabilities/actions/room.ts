@@ -927,7 +927,8 @@ export const roomOpAction: Action = {
     if (!preconditionMet(op, current)) {
       return roomPreconditionFailureResult({ op, current, roomId });
     }
-    const proceed = await decide(runtime, message, state, cfg, op);
+    // Resolve the room before decide(): decide() spends a model call and
+    // stores a thought, neither of which belongs to a room that does not exist.
     // state.data.room is the room the message arrived in; it only names the
     // target when no other roomId was given.
     const room =
@@ -947,6 +948,7 @@ export const roomOpAction: Action = {
       };
     }
     const roomName = room.name ?? `Room-${String(roomId)}`;
+    const proceed = await decide(runtime, message, state, cfg, op);
     if (!proceed) {
       return {
         text: cfg.declinedText(roomName),
