@@ -101,3 +101,39 @@ it("selects the newly consented number over a policy stored under the previous k
       .map((policy) => policy.allowReminders),
   ).toEqual([false, false]);
 });
+
+it("leaves the primary phone policy in place when the consent request is rejected", async () => {
+  await service.repository.upsertChannelPolicy({
+    ...createLifeOpsChannelPolicy({
+      agentId: fixture.runtime.agentId,
+      channelType: "sms",
+      channelRef: "+15550000001",
+      privacyClass: "private",
+      allowReminders: true,
+      allowEscalation: false,
+      allowPosts: false,
+      requireConfirmationForActions: true,
+      metadata: {},
+    }),
+    createdAt: "2020-01-01T00:00:00.000Z",
+  });
+  await service.capturePhoneConsent({
+    phoneNumber: "+15557654321",
+    consentGiven: true,
+    allowSms: true,
+    allowVoice: true,
+  });
+
+  await expect(
+    service.capturePhoneConsent({
+      phoneNumber: "+15558889999",
+      consentGiven: true,
+      allowSms: "yes" as unknown as boolean,
+      allowVoice: true,
+    }),
+  ).rejects.toThrow("allowSms must be a boolean");
+
+  expect((await service.resolvePrimaryChannelPolicy("sms"))?.channelRef).toBe(
+    "+15557654321",
+  );
+});
