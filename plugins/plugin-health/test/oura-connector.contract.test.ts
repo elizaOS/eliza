@@ -21,6 +21,7 @@ const recorded = JSON.parse(
   personalInfo: Record<string, unknown>;
   dailyActivity: unknown;
   dailyReadiness: unknown;
+  dailySleep: unknown;
   sleep: unknown;
   heartRate: unknown;
   workout: unknown;
@@ -62,6 +63,9 @@ beforeEach(() => {
     }
     if (url.includes("/usercollection/daily_readiness")) {
       return jsonResponse(recorded.dailyReadiness);
+    }
+    if (url.includes("/usercollection/daily_sleep")) {
+      return jsonResponse(recorded.dailySleep);
     }
     if (url.includes("/usercollection/sleep")) {
       return jsonResponse(recorded.sleep);
@@ -128,7 +132,8 @@ describe("Oura connector — recorded real API contract", () => {
     expect(ep.lightSleepSeconds).toBe(15120);
     expect(ep.deepSleepSeconds).toBe(6480);
     expect(ep.remSleepSeconds).toBe(5760);
-    // score -> sleepScore; readinessScore stays null (not on sleep records).
+    // The sleep record has no score. The long_sleep episode takes the
+    // daily_sleep score of its day; readinessScore stays null.
     expect(ep.sleepScore).toBe(86);
     expect(ep.readinessScore).toBeNull();
     // biometrics map across.
@@ -140,7 +145,7 @@ describe("Oura connector — recorded real API contract", () => {
     expect(ep.timezone).toBe("0");
     expect(ep.metadata.source).toBe("oura_sleep");
 
-    // sleep samples derived from the episode: sleep_hours + sleep_score.
+    // sleep sample derived from the episode: sleep_hours.
     const sleepHours = payload.samples.find(
       (s) => s.sourceExternalId === "slp-2026-05-01:sleep_hours",
     );
@@ -150,12 +155,13 @@ describe("Oura connector — recorded real API contract", () => {
     // is the wake date 2026-05-01. Daily summaries group by sample.localDate.
     expect(sleepHours?.startAt).toBe("2026-04-30T22:48:00.000Z");
     expect(sleepHours?.localDate).toBe("2026-05-01");
+    // daily_sleep -> sleep_score sample, dated by the daily document's day.
     const sleepScore = payload.samples.find(
-      (s) => s.sourceExternalId === "slp-2026-05-01:sleep_score",
+      (s) => s.sourceExternalId === "dsl-2026-05-01:sleep_score",
     );
     expect(sleepScore?.value).toBe(86);
     expect(sleepScore?.unit).toBe("score");
-    expect(sleepScore?.startAt).toBe("2026-04-30T22:48:00.000Z");
+    expect(sleepScore?.startAt).toBe("2026-05-01T12:00:00.000Z");
     expect(sleepScore?.localDate).toBe("2026-05-01");
 
     // daily_activity -> steps/calories/distance samples.

@@ -804,6 +804,7 @@ async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
     personal,
     dailyActivity,
     dailyReadiness,
+    dailySleep,
     sleep,
     heartRate,
     workoutsRaw,
@@ -821,6 +822,12 @@ async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
     fetchOuraCollection({
       token: args.token,
       path: "/v2/usercollection/daily_readiness",
+      query: { start_date: args.startDate, end_date: args.endDate },
+      deadlineAt,
+    }),
+    fetchOuraCollection({
+      token: args.token,
+      path: "/v2/usercollection/daily_sleep",
       query: { start_date: args.startDate, end_date: args.endDate },
       deadlineAt,
     }),
@@ -901,6 +908,29 @@ async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
       ]),
     );
   }
+  // Oura puts the sleep score on the daily_sleep document of the day. The
+  // sleep (period) document has no score field.
+  const sleepScoreByDay = new Map<string, number>();
+  for (const day of dailySleep) {
+    const date = getText(day, "day");
+    const score = getNumber(day, "score");
+    if (date && score !== null) {
+      sleepScoreByDay.set(date, score);
+    }
+    samples.push(
+      ...compactSamples([
+        sample({
+          token: args.token,
+          grantId: args.grantId,
+          metric: "sleep_score",
+          value: score,
+          unit: "score",
+          startAt: date ? `${date}T12:00:00.000Z` : null,
+          sourceExternalId: `${getText(day, "id") ?? date}:sleep_score`,
+        }),
+      ]),
+    );
+  }
   for (const entry of sleep) {
     const id = getText(entry, "id");
     const startAt = normalizeIso(getText(entry, "bedtime_start"));
@@ -909,7 +939,6 @@ async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
       continue;
     }
     const date = getText(entry, "day") ?? localDateFromIso(startAt);
-    const sleepScore = getNumber(entry, "score");
     samples.push(
       ...compactSamples([
         sample({
@@ -925,17 +954,6 @@ async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           endAt,
           localDate: date,
           sourceExternalId: `${id}:sleep_hours`,
-        }),
-        sample({
-          token: args.token,
-          grantId: args.grantId,
-          metric: "sleep_score",
-          value: sleepScore,
-          unit: "score",
-          startAt,
-          endAt,
-          localDate: date,
-          sourceExternalId: `${id}:sleep_score`,
         }),
       ]),
     );
@@ -965,7 +983,11 @@ async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           Math.trunc(getNumber(entry, "deep_sleep_duration") ?? 0) || null,
         remSleepSeconds:
           Math.trunc(getNumber(entry, "rem_sleep_duration") ?? 0) || null,
-        sleepScore,
+        // The daily score rates the main sleep period of that day.
+        sleepScore:
+          getText(entry, "type") === "long_sleep"
+            ? (sleepScoreByDay.get(date) ?? null)
+            : null,
         readinessScore: null,
         averageHeartRate: getNumber(entry, "average_heart_rate"),
         lowestHeartRate: getNumber(entry, "lowest_heart_rate"),

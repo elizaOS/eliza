@@ -78,7 +78,7 @@ describe.skipIf(!LIVE)("Oura connector — live API parser validation", () => {
       expect(typeof s.value).toBe("number");
       expect(Number.isFinite(s.value)).toBe(true);
       expect(isoString(s.startAt)).toBe(true);
-      if (s.metric === "sleep_hours" || s.metric === "sleep_score") {
+      if (s.metric === "sleep_hours") {
         const episode = payload.sleepEpisodes.find(
           (ep) => s.sourceExternalId === `${ep.sourceExternalId}:${s.metric}`,
         );
