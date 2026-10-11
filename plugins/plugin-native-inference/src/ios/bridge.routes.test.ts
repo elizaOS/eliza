@@ -816,7 +816,12 @@ describe("iOS bridge — conversation transcript route", () => {
     return makeBackend(runtime);
   }
   it("returns the stored user turn and native reply, oldest first", async () => {
-    const backend = createNativeReplyBackend(async () => "Hello from Eliza-1.");
+    // Generation takes time on a device. Without it both rows share one
+    // millisecond and their order falls to the random-id tiebreak.
+    const backend = createNativeReplyBackend(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return "Hello from Eliza-1.";
+    });
     const created = await call(backend, "POST", "/api/conversations", {});
     const id = (created.json.conversation as { id: string }).id;
     const sent = await call(
