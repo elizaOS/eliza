@@ -1,7 +1,12 @@
 /**
  * Cache and OAuth modules avoid importing runtime-factory (breaks circular imports).
  * runtime-factory calls registerRuntimeCacheActions after the factory singleton exists.
+ * Until that import happens no runtime cache entries can exist, so invalidation
+ * through this registry is a logged no-op, never a failure of the write that
+ * requested it.
  */
+
+import { logger } from "../utils/logger";
 
 type RuntimeCacheActions = {
   invalidateRuntime: (agentId: string) => Promise<boolean>;
@@ -17,9 +22,10 @@ export function registerRuntimeCacheActions(next: RuntimeCacheActions): void {
 export async function invalidateRuntimeFromRegistry(agentId: string): Promise<boolean> {
   const a = actions;
   if (!a) {
-    throw new Error(
-      "[RuntimeCacheRegistry] registerRuntimeCacheActions was not called (runtime-factory not loaded)",
+    logger.debug(
+      `[RuntimeCacheRegistry] runtime factory not loaded; nothing to invalidate for agent ${agentId}`,
     );
+    return false;
   }
   return a.invalidateRuntime(agentId);
 }
@@ -29,9 +35,10 @@ export async function invalidateOrganizationRuntimesFromRegistry(
 ): Promise<number> {
   const a = actions;
   if (!a) {
-    throw new Error(
-      "[RuntimeCacheRegistry] registerRuntimeCacheActions was not called (runtime-factory not loaded)",
+    logger.debug(
+      `[RuntimeCacheRegistry] runtime factory not loaded; nothing to invalidate for organization ${organizationId}`,
     );
+    return 0;
   }
   return a.invalidateByOrganization(organizationId);
 }
