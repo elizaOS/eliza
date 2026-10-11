@@ -89,9 +89,9 @@ function parseMetaConversionCount(conversions: MetaConversionActionStat[] | unde
     return 0;
   }
 
-  // Meta action types can overlap, so adding several rows can count the same
-  // conversion more than once. This service has no configured action type to
-  // select; fail instead of storing an invented aggregate.
+  // Each row identifies a different action type, but this service has no
+  // configured action type to select. Fail instead of storing an aggregate
+  // whose meaning the campaign did not define.
   if (conversions.length !== 1) {
     throw new Error("Meta Ads returned multiple conversion action types");
   }
