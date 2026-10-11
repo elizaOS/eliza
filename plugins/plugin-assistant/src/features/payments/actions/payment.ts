@@ -96,8 +96,6 @@ interface PaymentParams {
   paymentContext?: unknown;
   reason?: unknown;
   expiresInMs?: unknown;
-  callbackUrl?: unknown;
-  metadata?: unknown;
   paymentRequestId?: unknown;
   target?: unknown;
   targetChannelId?: unknown;
@@ -197,16 +195,6 @@ function buildCreateInput(
       return { error: "expiresInMs must produce a valid future expiration" };
     }
     input.expiresInMs = params.expiresInMs;
-  }
-  if (typeof params.callbackUrl === "string" && params.callbackUrl.length > 0) {
-    input.callbackUrl = params.callbackUrl;
-  }
-  if (
-    params.metadata &&
-    typeof params.metadata === "object" &&
-    !Array.isArray(params.metadata)
-  ) {
-    input.metadata = params.metadata as Record<string, unknown>;
   }
   return { input };
 }
@@ -588,53 +576,40 @@ async function handleCancelRequest(
   };
 }
 
-function validateParams(
+const PAYMENT_ACTION_SERVICES: Record<PaymentAction, readonly string[]> = {
+  create_request: [PAYMENT_REQUESTS_CLIENT_SERVICE],
+  deliver_link: [
+    SENSITIVE_DISPATCH_REGISTRY_SERVICE,
+    PAYMENT_REQUESTS_CLIENT_SERVICE,
+  ],
+  verify_payload: [PAYMENT_BUS_CLIENT_SERVICE],
+  settle: [PAYMENT_SETTLER_SERVICE],
+  await_callback: [PAYMENT_BUS_CLIENT_SERVICE],
+  cancel_request: [PAYMENT_REQUESTS_CLIENT_SERVICE],
+};
+
+function hasServicesFor(runtime: IAgentRuntime, action: PaymentAction) {
+  return PAYMENT_ACTION_SERVICES[action].every(
+    (service) => runtime.getService(service) !== null,
+  );
+}
+
+/**
+ * Availability only. The planner tool surface calls validate without
+ * arguments, so an argument check here would hide PAYMENT from every planner;
+ * at execution time it would replace the handler's specific argument error
+ * with a generic "not available". Arguments are checked by the declared schema
+ * and by each operation's handler.
+ */
+function isPaymentAvailable(
   runtime: IAgentRuntime,
   params: PaymentParams,
 ): boolean {
   const action = normalizePaymentAction(params.action);
-  if (!action) return false;
-  switch (action) {
-    case "create_request":
-      return (
-        runtime.getService(PAYMENT_REQUESTS_CLIENT_SERVICE) !== null &&
-        "input" in buildCreateInput(params)
-      );
-    case "deliver_link":
-      return (
-        runtime.getService(SENSITIVE_DISPATCH_REGISTRY_SERVICE) !== null &&
-        runtime.getService(PAYMENT_REQUESTS_CLIENT_SERVICE) !== null &&
-        typeof params.paymentRequestId === "string" &&
-        params.paymentRequestId.length > 0 &&
-        typeof params.target === "string" &&
-        ALL_TARGETS.has(params.target as DeliveryTarget)
-      );
-    case "verify_payload":
-      return (
-        runtime.getService(PAYMENT_BUS_CLIENT_SERVICE) !== null &&
-        typeof params.paymentRequestId === "string" &&
-        params.paymentRequestId.length > 0 &&
-        params.proof !== undefined
-      );
-    case "settle":
-      return (
-        runtime.getService(PAYMENT_SETTLER_SERVICE) !== null &&
-        typeof params.paymentRequestId === "string" &&
-        params.paymentRequestId.length > 0
-      );
-    case "await_callback":
-      return (
-        runtime.getService(PAYMENT_BUS_CLIENT_SERVICE) !== null &&
-        typeof params.paymentRequestId === "string" &&
-        params.paymentRequestId.length > 0
-      );
-    case "cancel_request":
-      return (
-        runtime.getService(PAYMENT_REQUESTS_CLIENT_SERVICE) !== null &&
-        typeof params.paymentRequestId === "string" &&
-        params.paymentRequestId.length > 0
-      );
-  }
+  if (action) return hasServicesFor(runtime, action);
+  return (Object.keys(PAYMENT_ACTION_SERVICES) as PaymentAction[]).some(
+    (candidate) => hasServicesFor(runtime, candidate),
+  );
 }
 
 export const paymentAction: Action = {
@@ -691,9 +666,9 @@ export const paymentAction: Action = {
     },
     {
       name: "amountCents",
-      description: "For create_request: amount, minor units.",
+      description: "For create_request: amount, whole minor units.",
       required: false,
-      schema: { type: "number" as const },
+      schema: { type: "integer" as const, minimum: 1 },
     },
     {
       name: "currency",
@@ -791,7 +766,7 @@ export const paymentAction: Action = {
     _message: Memory,
     _state?: State,
     options?: HandlerOptions,
-  ): Promise<boolean> => validateParams(runtime, readParams(options)),
+  ): Promise<boolean> => isPaymentAvailable(runtime, readParams(options)),
 
   handler: async (
     runtime: IAgentRuntime,
