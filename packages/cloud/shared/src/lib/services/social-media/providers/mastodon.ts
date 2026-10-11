@@ -233,7 +233,13 @@ export const mastodonProvider: SocialMediaProvider = {
       instanceUrl,
       "/statuses",
       credentials.accessToken,
-      { method: "POST", body: JSON.stringify(payload) },
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+        // withRetry replays this POST after a timeout or a 5xx, when the status
+        // may already exist; one key per post lets Mastodon drop the replay.
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+      },
     );
 
     return {
