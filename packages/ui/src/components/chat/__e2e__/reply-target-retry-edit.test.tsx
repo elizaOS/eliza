@@ -312,6 +312,7 @@ it("retries a turn that failed before it was saved with its original reply and k
 });
 
 const PHOTO_BYTES = "photo-bytes";
+const STORED_PHOTO_URL = `/api/media/${"a".repeat(64)}.png`;
 const PHOTO_HISTORY: ConversationMessage[] = [
   {
     id: "m-user-photo",
@@ -321,7 +322,7 @@ const PHOTO_HISTORY: ConversationMessage[] = [
     attachments: [
       {
         id: "abc",
-        url: "/api/media/abc.png",
+        url: STORED_PHOTO_URL,
         title: "photo.png",
         mimeType: "image/png",
         contentType: "image",
@@ -376,7 +377,7 @@ it("sends the stored image again when a failed turn is retried", async () => {
   });
 
   await waitFor(() => expect(sentImages).toEqual([PHOTO_UPLOAD]));
-  expect(media).toHaveBeenCalledWith("/api/media/abc.png");
+  expect(media).toHaveBeenCalledWith(STORED_PHOTO_URL);
 });
 
 it("sends the stored image again when the turn text is edited", async () => {
@@ -417,6 +418,30 @@ it("does not read a scheme-relative attachment URL with the API credential", asy
       ...PHOTO_HISTORY[0],
       attachments: [
         { id: "abc", url: "//media.example/abc.png", mimeType: "image/png" },
+      ],
+    },
+    PHOTO_HISTORY[1],
+  ];
+  render(<Harness history={history} armed={null} />);
+
+  await act(async () => {
+    await chat.handleChatRetry("m-agent-photo");
+  });
+
+  expect(media).not.toHaveBeenCalled();
+  expect(client.truncateConversationMessages).not.toHaveBeenCalled();
+  expect(sentImages).toEqual([]);
+  expect(harnessMessagesRef.current).toEqual(history);
+});
+
+it("does not read another same-origin API path with the API credential", async () => {
+  const sentImages = mockServerImages();
+  const media = mockStoredMedia();
+  const history: ConversationMessage[] = [
+    {
+      ...PHOTO_HISTORY[0],
+      attachments: [
+        { id: "config", url: "/api/config", mimeType: "image/png" },
       ],
     },
     PHOTO_HISTORY[1],

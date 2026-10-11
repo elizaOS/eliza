@@ -55,7 +55,6 @@ import { emitViewEvent, VIEW_EVENTS } from "../events/view-events";
 import { logger } from "../logger.ts";
 import type { Tab } from "../navigation";
 import { isNative } from "../platform/init";
-import { isSafeAttachmentUrl } from "../utils/attachment-url";
 import { directCloudSharedAgentIdFromBase } from "../utils/cloud-agent-base";
 import { filesToImageAttachments } from "../utils/image-attachment";
 import {
@@ -385,6 +384,8 @@ function replayedTurnOptions(
   };
 }
 const BASE64_DATA_URL = /^data:([^;,]+);base64,(.+)$/s;
+const STORED_MEDIA_URL =
+  /^\/api\/media\/[a-f0-9]{64}\.[a-z0-9]{1,8}(?:[?#][^\r\n]*)?$/;
 /**
  * Rebuild the upload payload for a turn's attachments so a replayed turn
  * (Retry / Edit) carries its media. The send route accepts bytes only and the
@@ -422,12 +423,9 @@ async function readReplayedTurnImages(
           ...transcript,
         };
       }
-      // Only a root-relative app path is read with the API credential; a
-      // scheme-relative `//host` URL would send it to another origin.
-      if (
-        !attachment.url.startsWith("/") ||
-        !isSafeAttachmentUrl(attachment.url)
-      ) {
+      // Only a content-addressed media path is read with the API credential.
+      // Other root-relative paths could expose authenticated API responses.
+      if (!STORED_MEDIA_URL.test(attachment.url)) {
         throw new Error(`attachment "${name}" is not stored media`);
       }
       const blob = await (await client.rawRequest(attachment.url)).blob();
