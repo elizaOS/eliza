@@ -4,7 +4,11 @@
  */
 
 import { SELF_ENTITY_ID } from "@elizaos/contracts";
-import type { AgentRuntime, Memory } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  type Memory,
+  validateToolArgs,
+} from "@elizaos/core";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
@@ -19,14 +23,15 @@ import {
 import { createHouseholdOperationsAction } from "./action.js";
 import { HouseholdOperationsRepository } from "./repository.js";
 import { HouseholdOperationsService } from "./service.js";
-import type {
-  AlmanacEntryDefinition,
-  HouseholdObservationInput,
-  HouseholdSourceProvenance,
-  ItemReplacementThresholdDefinition,
-  OpportunityDefinition,
-  ResponsibilityAssignmentDefinition,
-  VendorProfileDefinition,
+import {
+  type AlmanacEntryDefinition,
+  type HouseholdObservationInput,
+  type HouseholdSourceProvenance,
+  type ItemReplacementThresholdDefinition,
+  normalizeOperationDefinition,
+  type OpportunityDefinition,
+  type ResponsibilityAssignmentDefinition,
+  type VendorProfileDefinition,
 } from "./types.js";
 
 describe("household operations — real PGlite and runtime graph", () => {
@@ -259,6 +264,54 @@ describe("household operations — real PGlite and runtime graph", () => {
       now: currentDate,
     });
     await service.initialize();
+    // Schema/handler parity: every input the real service accepts anywhere in
+    // this file must also pass validateToolArgs on the real action, so the
+    // declared nested contract can never be narrower than the handler's.
+    const planned = createHouseholdOperationsAction({
+      authorize: async () => true,
+    });
+    const admitted = (args: Record<string, unknown>): void => {
+      expect(validateToolArgs(planned, args).errors).toEqual([]);
+    };
+    const putRevision = service.putRevision.bind(service);
+    service.putRevision = async (input) => {
+      const result = await putRevision(input);
+      admitted({
+        action: "put_record",
+        input: input.definition,
+        expectedRevision: input.expectedRevision,
+      });
+      return result;
+    };
+    const recordObservation = service.recordObservation.bind(service);
+    service.recordObservation = async (input) => {
+      const result = await recordObservation(input);
+      admitted({ action: "record_observation", input: input.observation });
+      return result;
+    };
+    const recordServiceEvent = service.recordServiceEvent.bind(service);
+    service.recordServiceEvent = async (input) => {
+      const result = await recordServiceEvent(input);
+      admitted({ action: "record_service_event", input: input.event });
+      return result;
+    };
+    const recordSignal = service.recordResponsibilitySignal.bind(service);
+    service.recordResponsibilitySignal = async (input) => {
+      const result = await recordSignal(input);
+      admitted({ action: "record_responsibility_signal", input: input.signal });
+      return result;
+    };
+    const generateWeeklyBrief = service.generateWeeklyBrief.bind(service);
+    service.generateWeeklyBrief = async (input) => {
+      const result = await generateWeeklyBrief(input);
+      admitted({
+        action: "generate_weekly_brief",
+        householdId: input.householdId,
+        window: input.window,
+        calendarChecks: input.calendarChecks,
+      });
+      return result;
+    };
   }, 180000);
   afterAll(async () => {
     await runtimeResult?.cleanup();
@@ -319,6 +372,38 @@ describe("household operations — real PGlite and runtime graph", () => {
         committedAt: persisted?.createdAt,
       },
     });
+  });
+  it("rejects a guessed planner shape before the handler and names allowed enum values", () => {
+    const action = createHouseholdOperationsAction({
+      authorize: async () => true,
+      getService: () => service,
+    });
+    expect(
+      validateToolArgs(action, {
+        action: "put_record",
+        expectedRevision: 0,
+        input: { kind: "vendor", name: "Ace Plumbing", phone: "+14155550100" },
+      }).errors,
+    ).toEqual(["Argument 'input' did not satisfy any anyOf branch"]);
+    expect(
+      validateToolArgs(action, {
+        action: "generate_weekly_brief",
+        householdId,
+        window: {
+          start: "2027-03-10T00:00:00.000Z",
+          end: "2027-03-17T00:00:00.000Z",
+        },
+        calendarChecks: [],
+      }).errors,
+    ).toEqual([
+      "Missing required argument 'window.startsAt'",
+      "Missing required argument 'window.endsAt'",
+      "Unexpected argument 'window.start'",
+      "Unexpected argument 'window.end'",
+    ]);
+    expect(() => normalizeOperationDefinition({ kind: "vendor" })).toThrow(
+      "household operation definition.kind has an unsupported value; expected one of: vendor_profile, almanac_entry, opportunity, item_threshold, responsibility_assignment",
+    );
   });
   it("G29 preserves vendor/service history and blocks outreach until an exact calendar check", async () => {
     await service.putRevision({

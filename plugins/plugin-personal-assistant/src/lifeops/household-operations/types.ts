@@ -667,7 +667,10 @@ function enumValue<T extends string>(
   const text = requireOperationsText(value, field, 100);
   const match = allowed.find((candidate) => candidate === text);
   if (!match) {
-    return invalid(`${field} has an unsupported value`, { field, value: text });
+    return invalid(
+      `${field} has an unsupported value; expected one of: ${allowed.join(", ")}`,
+      { field, value: text },
+    );
   }
   return match;
 }
