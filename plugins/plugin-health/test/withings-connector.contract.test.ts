@@ -98,11 +98,11 @@ describe("Withings connector — recorded real API contract", () => {
     expect(steps?.startAt).toBe(dayAt);
     expect(steps?.sourceExternalId).toBe("2026-05-01:withings:steps");
 
-    // .active seconds -> active_minutes (4140 s = 69 min).
+    // .active is seconds (moderate 28 + intense 41 = 69 s) -> 1.15 min.
     const activeMinutes = payload.samples.find(
       (s) => s.metric === "active_minutes",
     );
-    expect(activeMinutes?.value).toBe(69);
+    expect(activeMinutes?.value).toBeCloseTo(69 / 60);
     expect(activeMinutes?.unit).toBe("min");
 
     // totalcalories preferred over calories.
