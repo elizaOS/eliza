@@ -1,5 +1,6 @@
 // Handles cloud API training vertex assignments route traffic with route-local auth expectations.
 
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   requireAdmin,
   requireAuthOrApiKeyWithOrg,
@@ -110,6 +111,9 @@ async function __hono_GET(request: Request) {
 
     return Response.json({ assignments });
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
     return Response.json(
       {
         error:
@@ -169,6 +173,9 @@ async function __hono_POST(request: Request) {
 
     return Response.json({ assignment }, { status: 201 });
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
     const message =
       error instanceof Error
         ? error.message
@@ -219,6 +226,9 @@ async function __hono_DELETE(request: Request) {
 
     return Response.json({ deactivatedCount });
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
     const message =
       error instanceof Error
         ? error.message

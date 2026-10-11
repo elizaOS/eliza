@@ -3,6 +3,7 @@
  * Query and JSON-body limits are validated before the export service can read rows.
  */
 
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import {
   llmTrajectoryService,
@@ -105,6 +106,9 @@ async function __hono_GET(request: Request) {
     );
     return buildJsonlResponse(jsonl);
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
     // error-policy:J1 route boundary translates failures into structured HTTP errors.
     return Response.json(
       {
@@ -140,6 +144,9 @@ async function __hono_POST(request: Request) {
     );
     return buildJsonlResponse(jsonl);
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
     // error-policy:J1 route boundary translates failures into structured HTTP errors.
     return Response.json(
       {

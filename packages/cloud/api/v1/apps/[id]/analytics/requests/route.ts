@@ -1,6 +1,9 @@
 /** Handles app request analytics views with shared date-range validation. */
 
-import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  ApiError,
+  failureResponse,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { parseDateRangeParams } from "@elizaos/cloud-shared/lib/api/date-range-params";
 import { nextStyleParams } from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
@@ -192,6 +195,9 @@ async function handleGET(
       }
     }
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
     // error-policy:J1 This route boundary translates failures into structured HTTP errors.
     logger.error("Failed to get app request analytics:", error);
     return Response.json(

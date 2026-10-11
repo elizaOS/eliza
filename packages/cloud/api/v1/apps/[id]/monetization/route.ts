@@ -1,5 +1,6 @@
 /** Handles monetization settings for an authenticated cloud application. */
 
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
 import { appCreditsService } from "@elizaos/cloud-shared/lib/services/app-credits";
@@ -60,6 +61,9 @@ async function __hono_GET(
 
     return Response.json({ success: true, monetization: settings });
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
     logger.error("Failed to get monetization settings:", error);
     return Response.json(
       {
@@ -161,6 +165,9 @@ async function __hono_PUT(
 
     return Response.json({ success: true, monetization: updatedSettings });
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
     logger.error("Failed to update monetization settings:", error);
     return Response.json(
       {

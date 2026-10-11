@@ -1,6 +1,7 @@
 /** Handles app analytics summaries with shared date-range validation. */
 
 import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { parseDateRangeParams } from "@elizaos/cloud-shared/lib/api/date-range-params";
 import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
 import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
@@ -88,6 +89,9 @@ app.get("/", async (c) => {
       },
     });
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
     // error-policy:J1 route boundary — every catch in v1/apps/* translates a thrown error into a structured HTTP failure (500 with an error body), never a fabricated 200 with empty analytics.
     logger.error("Failed to get app analytics:", error);
     return c.json(

@@ -1,5 +1,6 @@
 /** Handles character associations for an authenticated cloud application. */
 
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
 import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
@@ -227,6 +228,9 @@ async function __hono_PUT(
       linked_character_ids: character_ids,
     });
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
     logger.error("Failed to update app characters:", error);
     return Response.json(
       {

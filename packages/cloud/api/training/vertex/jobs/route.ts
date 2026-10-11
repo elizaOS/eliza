@@ -1,5 +1,6 @@
 // Handles cloud API training vertex jobs route traffic with route-local auth expectations.
 
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import { vertexModelRegistryService } from "@elizaos/cloud-shared/lib/services/vertex-model-registry";
 import {
@@ -106,6 +107,9 @@ async function __hono_GET(request: Request) {
     const jobs = await listTuningJobs(projectId, region);
     return Response.json({ jobs, persistedJobs });
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
     return Response.json(
       {
         error:

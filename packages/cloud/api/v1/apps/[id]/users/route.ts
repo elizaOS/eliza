@@ -2,6 +2,7 @@
  * Lists an app's users after validating pagination and access at the HTTP boundary.
  */
 
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
 import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
@@ -88,6 +89,9 @@ async function __hono_GET(
       },
     });
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
     // error-policy:J1 route boundary translates failures into structured HTTP errors.
     logger.error("Failed to get app users:", error);
     return Response.json(

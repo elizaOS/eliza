@@ -1,5 +1,6 @@
 // Handles cloud API training vertex models route traffic with route-local auth expectations.
 
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import { vertexModelRegistryService } from "@elizaos/cloud-shared/lib/services/vertex-model-registry";
 import type {
@@ -88,6 +89,9 @@ async function __hono_GET(request: Request) {
       resolvedModelPreferences: resolved.modelPreferences,
     });
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
     return Response.json(
       {
         error:
