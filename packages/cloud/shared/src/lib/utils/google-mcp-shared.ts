@@ -8,17 +8,19 @@
 import { extractGmailBodyText, type GmailPayloadPart } from "./gmail-mime-text";
 import { logger } from "./logger";
 
-// ── Constants ────────────────────────────────────────────────────────────────
+// ���� Constants ��������������������������������������������������������������������������������������������������������������������������������
 
 export const GOOGLE_API_TIMEOUT_MS = 30_000;
 
-// ── Authenticated fetch with timeout + rich error extraction ─────────────────
+// ���� Authenticated fetch with timeout + rich error extraction ����������������������������������
 
 export async function googleFetchWithToken(
   token: string,
   url: string,
   options: RequestInit = {},
 ): Promise<Response> {
+  const headers = new Headers({ Authorization: `Bearer ${token}` });
+  new Headers(options.headers).forEach((value, name) => headers.set(name, value));
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), GOOGLE_API_TIMEOUT_MS);
 
@@ -26,7 +28,7 @@ export async function googleFetchWithToken(
   try {
     response = await fetch(url, {
       ...options,
-      headers: { Authorization: `Bearer ${token}`, ...options.headers },
+      headers,
       signal: controller.signal,
     });
   } catch (err) {
@@ -55,7 +57,7 @@ export async function googleFetchWithToken(
         logger.warn("[GoogleMCP] Rate limit hit", { url, retryAfter });
         if (retryAfter) parts.push(`retry after ${retryAfter}s`);
       }
-      errorDetail = parts.length > 0 ? parts.join(" — ") : `Google API error: ${response.status}`;
+      errorDetail = parts.length > 0 ? parts.join(" ? ") : `Google API error: ${response.status}`;
     } catch {
       errorDetail = `Google API error: ${response.status} ${response.statusText}`;
     }
@@ -64,13 +66,13 @@ export async function googleFetchWithToken(
   return response;
 }
 
-// ── Error message extraction ─────────────────────────────────────────────────
+// ���� Error message extraction ��������������������������������������������������������������������������������������������������
 
 export function errMsg(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-// ── Email helpers ────────────────────────────────────────────────────────────
+// ���� Email helpers ������������������������������������������������������������������������������������������������������������������������
 
 export function sanitizeHeaderValue(value: string): string {
   return value.replace(/[\r\n]/g, "");
@@ -81,7 +83,7 @@ export function extractBody(payload: Record<string, unknown>): string {
   return extractGmailBodyText(payload as GmailPayloadPart);
 }
 
-// ── Mappers ──────────────────────────────────────────────────────────────────
+// ���� Mappers ������������������������������������������������������������������������������������������������������������������������������������
 
 export function mapGmailMessage(d: Record<string, unknown>): Record<string, unknown> {
   const payload = d.payload as Record<string, unknown> | undefined;
@@ -135,7 +137,7 @@ export function mapContact(person: Record<string, unknown>): Record<string, unkn
   };
 }
 
-// ── Timezone helpers ─────────────────────────────────────────────────────────
+// ���� Timezone helpers ������������������������������������������������������������������������������������������������������������������
 
 /**
  * Builds a Google Calendar datetime payload while preserving the intended
