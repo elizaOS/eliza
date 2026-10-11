@@ -138,7 +138,6 @@ export interface MessageAdapterCapabilities {
     spam?: boolean;
     label?: boolean;
     tag?: boolean;
-    muteThread?: boolean;
     markRead?: boolean;
     unsubscribe?: boolean;
   };

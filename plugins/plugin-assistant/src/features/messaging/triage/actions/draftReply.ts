@@ -48,7 +48,7 @@ export const draftReplyAction: Action = {
   description:
     "Compose a draft reply to an existing message. Use this when the user asks to draft a reply, including natural-language targets like latest email from Sarah; pass messageId when known, otherwise pass sender/content hints. Never sends — produces a preview that must be confirmed via MESSAGE.",
   descriptionCompressed:
-    "draft reply only; can target by messageId or latest/from sender/content hints; never sends",
+    "draft reply only; target by messageId or sender/content hint; never sends",
   similes: ["COMPOSE_REPLY", "DRAFT_MESSAGE_REPLY"],
   parameters: [
     { ...messageIdParameter, required: false },
