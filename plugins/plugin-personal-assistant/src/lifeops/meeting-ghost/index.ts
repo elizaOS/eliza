@@ -287,10 +287,15 @@ function speakerOf(segment: TranscriptSegment): string {
   return segment.speakerLabel ?? segment.speakerEntityId ?? "Unknown";
 }
 
-// Letters of space-separated scripts; Hangul/kana/Han may abut particles or
-// neighboring characters, so they never block a match.
-const SPACED_WORD_CHAR =
-  /[\p{Script=Latin}\p{Script=Cyrillic}\p{Script=Greek}\p{N}]/u;
+// Space-separated scripts need word boundaries. Hangul, Han, Hiragana and
+// Katakana allow attached particles, so they do not block a match.
+const WORD_CHAR = /[\p{L}\p{N}]/u;
+const ATTACHED_PARTICLE_CHAR =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+
+function requiresWordBoundary(value: string): boolean {
+  return WORD_CHAR.test(value) && !ATTACHED_PARTICLE_CHAR.test(value);
+}
 
 function includesWholePhrase(text: string, phrase: string): boolean {
   const first = phrase[0] ?? "";
@@ -303,9 +308,9 @@ function includesWholePhrase(text: string, phrase: string): boolean {
     const before = text[index - 1] ?? "";
     const after = text[index + phrase.length] ?? "";
     const joinedBefore =
-      SPACED_WORD_CHAR.test(first) && SPACED_WORD_CHAR.test(before);
+      requiresWordBoundary(first) && requiresWordBoundary(before);
     const joinedAfter =
-      SPACED_WORD_CHAR.test(last) && SPACED_WORD_CHAR.test(after);
+      requiresWordBoundary(last) && requiresWordBoundary(after);
     if (!joinedBefore && !joinedAfter) return true;
   }
   return false;
