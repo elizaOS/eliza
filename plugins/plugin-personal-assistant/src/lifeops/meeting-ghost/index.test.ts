@@ -133,6 +133,22 @@ describe("meeting ghost care-about matching", () => {
     expect(result.careHits.map((hit) => hit.text)).toEqual(["ok, let's go."]);
   });
 
+  it("does not match a Latin acronym care-about inside unrelated words", () => {
+    const result = analyze(
+      [alice],
+      [
+        seg("Alice Park", 0, "We booked a room."),
+        seg("Alice Park", 5000, "She said the email can wait."),
+        seg("Alice Park", 10000, "Three people joined."),
+        seg("Alice Park", 15000, "The AI review moves to Monday."),
+      ],
+      ["ok", "AI", "HR"],
+    );
+    expect(result.careHits.map((hit) => [hit.careAbout, hit.text])).toEqual([
+      ["AI", "The AI review moves to Monday."],
+    ]);
+  });
+
   it("matches a Korean two-character care-about followed by a particle", () => {
     const result = analyze(
       [minsu],
