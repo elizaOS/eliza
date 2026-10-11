@@ -126,7 +126,8 @@ export const ownerAgreementKnowledgeAction: Action = {
     },
     {
       name: "reason",
-      description: "Owner-provided reason for a review or revocation decision.",
+      description:
+        "Owner-provided reason for the review decision. Required for approve and reject; no other action reads it.",
       schema: { type: "string" as const },
     },
     {
