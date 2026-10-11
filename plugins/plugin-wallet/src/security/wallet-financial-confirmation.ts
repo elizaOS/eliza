@@ -101,6 +101,11 @@ export function walletFinancialPendingKey(
     | "op"
     | "governor"
     | "proposalId"
+    | "support"
+    | "targets"
+    | "values"
+    | "calldatas"
+    | "description"
     | "pool"
     | "position"
     | "dex"
@@ -126,6 +131,24 @@ export function walletFinancialPendingKey(
     ["governor", (params.governor ?? "").toLowerCase()],
     ["proposalId", params.proposalId ?? ""],
   ];
+  // Governance payload binds only when present so non-gov pending keys keep
+  // their exact shape. A "yes" must not authorize a different vote direction
+  // or a different proposal payload than the one previewed.
+  if (params.support !== undefined) {
+    entries.push(["support", String(params.support)]);
+  }
+  if (params.targets !== undefined) {
+    entries.push(["targets", params.targets.join(",").toLowerCase()]);
+  }
+  if (params.values !== undefined) {
+    entries.push(["values", params.values.join(",")]);
+  }
+  if (params.calldatas !== undefined) {
+    entries.push(["calldatas", params.calldatas.join(",").toLowerCase()]);
+  }
+  if (params.description !== undefined) {
+    entries.push(["description", params.description]);
+  }
   // LP identifiers bind only when present so existing wallet pending keys
   // keep their exact shape; pool/position stay case-sensitive because Solana
   // mints and position ids are base58. dex/range/tokens/feeTier bind the LP
@@ -180,6 +203,13 @@ export function walletFinancialPreview(
     | "toToken"
     | "slippageBps"
     | "op"
+    | "governor"
+    | "proposalId"
+    | "support"
+    | "targets"
+    | "values"
+    | "calldatas"
+    | "description"
     | "pool"
     | "position"
     | "dex"
@@ -214,8 +244,29 @@ export function walletFinancialPreview(
       const destination = params.recipient ? ` to ${params.recipient}` : "";
       return `Bridge ${params.amount ?? "?"} ${params.fromToken ?? "?"} from ${params.chain ?? "?"} to ${params.toChain ?? "?"}${destination}${slippage}? Reply yes to submit or no to cancel.`;
     }
-    case "gov":
-      return `Governance ${params.op ?? "operation"} on ${chainLabel}? Reply yes to submit or no to cancel.`;
+    case "gov": {
+      // The governor is the contract the wallet signs a call to, and the
+      // vote direction / proposal targets, values and calldatas are what that
+      // call does, so the user must see them before confirming.
+      const proposal = params.proposalId
+        ? ` proposal ${params.proposalId}`
+        : "";
+      const support =
+        params.support === undefined
+          ? ""
+          : ` ${["against", "for", "abstain"][params.support] ?? `support=${params.support}`}`;
+      const targets = params.targets?.length
+        ? ` targets ${params.targets.join(", ")}`
+        : "";
+      const values = params.values?.length
+        ? ` values ${params.values.join(", ")}`
+        : "";
+      const calldatas = params.calldatas?.length
+        ? ` calldatas ${params.calldatas.join(", ")}`
+        : "";
+      const description = params.description ? ` "${params.description}"` : "";
+      return `Governance ${params.op ?? "operation"}${proposal}${support}${targets}${values}${calldatas}${description} at governor ${params.governor ?? "?"} on ${chainLabel}? Reply yes to submit or no to cancel.`;
+    }
     case "pump_fun_buy":
       return `Buy ${params.amount ?? "?"} SOL of ${params.toToken ?? "the selected pump.fun token"} through pump.fun on ${chainLabel}? Reply yes to submit or no to cancel.`;
     case "open":

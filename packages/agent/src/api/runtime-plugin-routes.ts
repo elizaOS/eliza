@@ -21,7 +21,10 @@ import {
 } from "@elizaos/host/protocol";
 
 import { matchPluginRoutePath } from "./plugin-route-path.ts";
-import type { X402PluginModule } from "./x402-contract.ts";
+import {
+  loadX402PaymentModule,
+  X402_ENFORCEMENT_UNAVAILABLE,
+} from "./x402-contract.ts";
 
 const EXPRESS_SHIM = Symbol("elizaExpressResponseShim");
 type ExpressLikeResponse = ServerResponse & {
@@ -30,18 +33,6 @@ type ExpressLikeResponse = ServerResponse & {
   send?: (data: unknown) => ExpressLikeResponse;
 };
 type RuntimePluginRouteHandler = NonNullable<Route["handler"]>;
-type X402RoutesModule = Pick<
-  X402PluginModule,
-  "createPaymentAwareHandler" | "isRoutePaymentWrapped"
->;
-let x402RoutesModulePromise: Promise<X402RoutesModule> | null = null;
-function getX402RoutesModule(): Promise<X402RoutesModule> {
-  const specifier = "@elizaos/plugin-x402";
-  x402RoutesModulePromise ??= import(
-    /* @vite-ignore */ specifier
-  ) as Promise<X402RoutesModule>;
-  return x402RoutesModulePromise;
-}
 
 export { matchPluginRoutePath } from "./plugin-route-path.ts";
 export function isPublicRuntimePluginRoute(options: {
@@ -254,13 +245,19 @@ export async function tryHandleRuntimePluginRoute(options: {
     let effectiveHandler: RuntimePluginRouteHandler =
       handler as RuntimePluginRouteHandler;
     if (route.x402 != null) {
-      const { createPaymentAwareHandler, isRoutePaymentWrapped } =
-        await getX402RoutesModule();
-      if (!isRoutePaymentWrapped(route)) {
-        const wrapped = createPaymentAwareHandler(route as PaymentEnabledRoute);
-        if (wrapped) {
-          effectiveHandler = wrapped;
-        }
+      const x402 = await loadX402PaymentModule();
+      if (!x402) {
+        // A paid route is never served unpaid: refuse when the payment plugin
+        // is absent (not installed, or the mobile null stub).
+        res.statusCode = X402_ENFORCEMENT_UNAVAILABLE.status;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify(X402_ENFORCEMENT_UNAVAILABLE.body));
+        return true;
+      }
+      if (!x402.isRoutePaymentWrapped(route)) {
+        effectiveHandler = x402.createPaymentAwareHandler(
+          route as PaymentEnabledRoute,
+        );
       }
     }
     const restoreHostContext = hostContext

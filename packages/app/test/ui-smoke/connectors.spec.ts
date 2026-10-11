@@ -161,7 +161,7 @@ async function installConnectorRoutes(
     });
   });
 
-  await page.route("**/api/discord-local/status", async (route) => {
+  await page.route("**/api/setup/discord/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
       return;
@@ -169,7 +169,11 @@ async function installConnectorRoutes(
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(discordLocalStatus),
+      body: JSON.stringify({
+        connector: "discord",
+        state: discordLocalStatus.authenticated ? "paired" : "idle",
+        detail: discordLocalStatus,
+      }),
     });
   });
 

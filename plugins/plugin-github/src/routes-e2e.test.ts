@@ -260,6 +260,43 @@ describe("plugin-github routes (real dispatch)", () => {
     expect(await loadMetadata()).toBeNull();
   });
 
+  it("maps an exhausted GitHub rate limit to 502, not a rejected token", async () => {
+    // GitHub answers 403 with x-ratelimit-remaining: 0 for a valid token when
+    // the rate limit is used up. That is not a bad token.
+    globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const target = typeof input === "string" ? input : String(input);
+      if (target !== "https://api.github.com/user") {
+        return realFetch(input, init);
+      }
+      return new Response(
+        JSON.stringify({ message: "API rate limit exceeded" }),
+        {
+          status: 403,
+          headers: {
+            "content-type": "application/json",
+            "x-ratelimit-remaining": "0",
+            "x-ratelimit-reset": "1760200000",
+          },
+        },
+      );
+    }) as typeof fetch;
+
+    const base = await startServer();
+    const res = await rawPost(
+      base,
+      "text/plain",
+      JSON.stringify({ token: "ghp_rate_limited" }),
+    );
+    expect(res.status).toBe(502);
+    expect((res.json as { error: string }).error).toContain(
+      "rate limit exhausted",
+    );
+    expect(await loadMetadata()).toBeNull();
+  });
+
   it("maps a 2xx GitHub response with an unparseable body to 502, not 500", async () => {
     // GitHub returning 200 with a non-JSON body is the same upstream-defect
     // class as a missing login field — an upstream error (502), not an internal

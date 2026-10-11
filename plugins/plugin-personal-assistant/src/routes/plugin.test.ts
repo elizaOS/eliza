@@ -192,6 +192,35 @@ describe("LifeOps raw route owner/admin gate", () => {
     expect(res.statusCode).toBe(401);
     expect(JSON.parse(res.body)).toEqual({ error: "Unauthorized" });
   });
+  it("reports an auth store fault before failing closed", async () => {
+    process.env.ELIZA_API_TOKEN = "owner-token";
+    const res = createResponse();
+    const reportError = vi.fn();
+    const runtime = {
+      ...createRuntime(),
+      // A database handle the auth store cannot use: resolving the store throws.
+      adapter: { db: {} },
+      reportError,
+    } as AgentRuntime;
+    const allowed = await requireLifeOpsRouteOwnerAdminAccess({
+      req: createRequest("/api/lifeops/app-state?q=private", {
+        authorization: "Bearer owner-token",
+      }),
+      res,
+      runtime,
+    });
+    expect(allowed).toBe(false);
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body)).toEqual({
+      error: "LifeOps route access could not be verified",
+    });
+    expect(reportError).toHaveBeenCalledTimes(1);
+    expect(reportError).toHaveBeenCalledWith(
+      "LifeOps.routeAccess",
+      expect.objectContaining({ code: "AUTH_DATABASE_INCOMPATIBLE" }),
+      { method: "GET", path: "/api/lifeops/app-state" },
+    );
+  });
   it("denies spoofed actor headers even when they name the canonical owner", async () => {
     const res = createResponse();
     const runtime = createRuntime();

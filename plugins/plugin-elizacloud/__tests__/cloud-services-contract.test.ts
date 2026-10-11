@@ -1,8 +1,8 @@
 /**
  * Deterministic contract tests for the cloud services' HTTP layer.
  *
- * CloudAuthService, CloudContainerService, and CloudBackupService all use
- * CloudApiClient which calls real `fetch`; a loopback HTTP double returns
+ * CloudAuthService and CloudContainerService both use CloudApiClient, which
+ * calls real `fetch`; a loopback HTTP double returns
  * controlled responses so the client-side code paths run for real.
  *
  * This is NOT live-cloud coverage. It was formerly misnamed
@@ -127,69 +127,12 @@ describe("CloudApiClient with route-based server", () => {
   it("GET /credits/balance returns numeric balance", async () => {
     route("GET", "/credits/balance", () => ({
       status: 200,
-      body: { success: true, data: { balance: 4.37, currency: "USD" } },
+      body: { balance: 4.37 },
     }));
 
     const client = new CloudApiClient(baseUrl, "eliza_test");
-    const result = await client.requestData<{ data: { balance: number } }>(
-      "GET",
-      "/credits/balance"
-    );
-    expect(result.data.balance).toBeCloseTo(4.37);
-  });
-
-  it("POST /device-auth unauthenticated creates new user", async () => {
-    let receivedAuth: string | undefined;
-    route("POST", "/device-auth", (req, body) => {
-      receivedAuth = req.headers.authorization;
-      const _parsed = JSON.parse(body);
-      return {
-        status: 201,
-        body: {
-          success: true,
-          data: {
-            apiKey: "eliza_newkey",
-            userId: "user-1",
-            organizationId: "org-1",
-            credits: 5.0,
-            isNew: true,
-          },
-        },
-      };
-    });
-
-    const client = new CloudApiClient(baseUrl, "eliza_existing_key");
-    const result = await client.postUnauthenticated<{
-      data: { apiKey: string; isNew: boolean };
-    }>("/device-auth", { deviceId: "abc", platform: "macos" });
-    // Verify NO auth header was sent (even though client has a key)
-    expect(receivedAuth).toBeUndefined();
-    expect(result.data.apiKey).toBe("eliza_newkey");
-    expect(result.data.isNew).toBe(true);
-  });
-
-  it("POST /agent-state/:id/snapshot creates snapshot", async () => {
-    route("POST", "/agent-state/c1/snapshot", () => ({
-      status: 200,
-      body: {
-        success: true,
-        data: {
-          id: "snap-1",
-          containerId: "c1",
-          snapshotType: "manual",
-          storageUrl: "https://blob.example.com/snap-1.json",
-          sizeBytes: 4096,
-          created_at: "2026-02-05T00:00:00Z",
-        },
-      },
-    }));
-
-    const client = new CloudApiClient(baseUrl, "eliza_test");
-    const result = await client.post<{
-      data: { id: string; sizeBytes: number };
-    }>("/agent-state/c1/snapshot", { snapshotType: "manual" });
-    expect(result.data.id).toBe("snap-1");
-    expect(result.data.sizeBytes).toBe(4096);
+    const result = await client.requestData<{ balance: number }>("GET", "/credits/balance");
+    expect(result.balance).toBeCloseTo(4.37);
   });
 });
 
@@ -270,7 +213,7 @@ describe("credit lifecycle", () => {
   it("balance check → insufficient credits on container create", async () => {
     route("GET", "/credits/balance", () => ({
       status: 200,
-      body: { success: true, data: { balance: 2.0, currency: "USD" } },
+      body: { balance: 2.0 },
     }));
 
     route("POST", "/containers", () => ({
@@ -285,11 +228,8 @@ describe("credit lifecycle", () => {
     const client = new CloudApiClient(baseUrl, "eliza_test");
 
     // Check balance first
-    const balance = await client.requestData<{ data: { balance: number } }>(
-      "GET",
-      "/credits/balance"
-    );
-    expect(balance.data.balance).toBe(2.0);
+    const balance = await client.requestData<{ balance: number }>("GET", "/credits/balance");
+    expect(balance.balance).toBe(2.0);
 
     // Attempt container creation — should throw InsufficientCreditsError
     let caught: Error | null = null;
@@ -299,72 +239,6 @@ describe("credit lifecycle", () => {
 
     expect(caught).toBeInstanceOf(Error);
     expect(caught?.message).toContain("Insufficient balance");
-  });
-});
-
-// ─── Snapshot lifecycle simulation ───────────────────────────────────────
-
-describe("snapshot lifecycle", () => {
-  it("create → list → restore → delete", async () => {
-    const snapshots: Array<{ id: string; snapshotType: string }> = [];
-
-    route("POST", "/agent-state/c1/snapshot", (_req, body) => {
-      const parsed = JSON.parse(body);
-      const snap = {
-        id: `snap-${snapshots.length + 1}`,
-        snapshotType: parsed.snapshotType,
-      };
-      snapshots.push(snap);
-      return {
-        status: 200,
-        body: { success: true, data: { ...snap, sizeBytes: 1024 } },
-      };
-    });
-
-    route("GET", "/agent-state/c1/snapshots", () => ({
-      status: 200,
-      body: { success: true, data: [...snapshots] },
-    }));
-
-    route("POST", "/agent-state/c1/restore", () => ({
-      status: 200,
-      body: { success: true, message: "Restored" },
-    }));
-
-    route("DELETE", "/agent-state/c1/snapshots/snap-1", () => {
-      const idx = snapshots.findIndex((s) => s.id === "snap-1");
-      if (idx >= 0) snapshots.splice(idx, 1);
-      return { status: 200, body: { success: true } };
-    });
-
-    const client = new CloudApiClient(baseUrl, "eliza_test");
-
-    // Create two snapshots
-    await client.post("/agent-state/c1/snapshot", { snapshotType: "manual" });
-    await client.post("/agent-state/c1/snapshot", { snapshotType: "auto" });
-    expect(snapshots).toHaveLength(2);
-
-    // List
-    const listed = await client.requestData<{ data: typeof snapshots }>(
-      "GET",
-      "/agent-state/c1/snapshots"
-    );
-    expect(listed.data).toHaveLength(2);
-
-    // Restore
-    const restored = await client.post<{ message: string }>("/agent-state/c1/restore", {
-      snapshotId: "snap-1",
-    });
-    expect(restored.message).toBe("Restored");
-
-    // Delete
-    await client.delete("/agent-state/c1/snapshots/snap-1");
-    const afterDelete = await client.requestData<{ data: typeof snapshots }>(
-      "GET",
-      "/agent-state/c1/snapshots"
-    );
-    expect(afterDelete.data).toHaveLength(1);
-    expect(afterDelete.data[0].id).toBe("snap-2");
   });
 });
 

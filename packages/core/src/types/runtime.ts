@@ -1350,6 +1350,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 		channelId,
 		messageServerId,
 		worldId,
+		metadata,
 	}: Room): Promise<UUID>;
 	addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
 	getParticipantsForRoom(roomId: UUID): Promise<UUID[]>;

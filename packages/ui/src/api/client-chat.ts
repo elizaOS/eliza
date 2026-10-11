@@ -705,9 +705,6 @@ declare module "./client-base.js" {
     ingestShare(payload: ShareIngestPayload): Promise<{
       item: ShareIngestItem;
     }>;
-    consumeShareIngest(): Promise<{
-      items: ShareIngestItem[];
-    }>;
     getWorkbenchOverview(): Promise<
       WorkbenchOverview & {
         triggersAvailable?: boolean;
@@ -1748,9 +1745,6 @@ ElizaClient.prototype.ingestShare = async function (
     method: "POST",
     body: JSON.stringify(payload),
   });
-};
-ElizaClient.prototype.consumeShareIngest = async function (this: ElizaClient) {
-  return this.fetch("/api/share/consume", { method: "POST" });
 };
 ElizaClient.prototype.getWorkbenchOverview = async function (
   this: ElizaClient,

@@ -193,12 +193,18 @@ function resolveDueAt(
   const { year, month, day } = getZonedDateParts(base, timeZone);
   const observedDay: LocalDate = { year, month, day };
   const weekdayNames = WEEKDAYS.join("|");
+  const tomorrow = () =>
+    dueAtOnLocalDate(addDaysToLocalDate(observedDay, 1), timeZone);
+  // A plain "tomorrow" is the committed day, even when a "by"/"before"
+  // weekday elsewhere in the sentence gives context. The possessive
+  // ("tomorrow's agenda") names a thing, not a day, so it only counts when
+  // the sentence names no weekday at all.
+  if (/\btomorrow\b(?!['’]s)/i.test(text)) return tomorrow();
   // "by Friday ... on Monday" is a Friday deadline. A later "on"/"next"
-  // day must not override an earlier "by"/"before" day, and neither may a
-  // "tomorrow" elsewhere in the sentence ("tomorrow's agenda by Friday").
-  const deadlineDay = [
+  // day must not override an earlier "by"/"before" day.
+  const deadlineWeekday = [
     ...text.matchAll(
-      new RegExp(`\\b(?:by|before)\\s+(tomorrow|${weekdayNames})\\b`, "gi"),
+      new RegExp(`\\b(?:by|before)\\s+(${weekdayNames})\\b`, "gi"),
     ),
   ].at(-1)?.[1];
   const scheduledWeekday = [
@@ -207,14 +213,10 @@ function resolveDueAt(
     ),
   ].at(-1)?.[1];
   const dueDay =
-    deadlineDay ??
-    (/\btomorrow\b(?!['’]s)/i.test(text) ? "tomorrow" : undefined) ??
+    deadlineWeekday ??
     scheduledWeekday ??
-    text.match(new RegExp(`\\b(${weekdayNames}|tomorrow)\\b`, "i"))?.[1];
-  if (dueDay?.toLowerCase() === "tomorrow") {
-    return dueAtOnLocalDate(addDaysToLocalDate(observedDay, 1), timeZone);
-  }
-  if (!dueDay) return null;
+    text.match(new RegExp(`\\b(${weekdayNames})\\b`, "i"))?.[1];
+  if (!dueDay) return /\btomorrow\b/i.test(text) ? tomorrow() : null;
   const target = WEEKDAYS.indexOf(
     dueDay.toLowerCase() as (typeof WEEKDAYS)[number],
   );

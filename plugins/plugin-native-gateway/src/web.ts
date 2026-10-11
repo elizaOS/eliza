@@ -347,14 +347,25 @@ export class GatewayWeb extends WebPlugin {
     this.pending.set(frame.id, {
       resolve: (result) => {
         clearTimeout(timeout);
-        if (result.ok && result.payload && isJsonObject(result.payload)) {
-          this.handleHelloOk(result.payload);
+        const hello =
+          result.ok && result.payload && isJsonObject(result.payload)
+            ? result.payload
+            : null;
+        // The connect frame pins minProtocol=3/maxProtocol=3. A gateway that
+        // answers any other protocol version failed the negotiation: reject
+        // the handshake the same way Android does ("Invalid gateway
+        // handshake") so connect() settles identically on every platform.
+        if (hello && getNumber(hello.protocol) === 3) {
+          this.handleHelloOk(hello);
           this.connectReject = null;
           this.connectResolve = null;
         } else {
           // Explicit refusal ends the session, including during reconnect.
           // A silent timeout above retains the existing retry policy.
-          const error = new Error(result.error?.message || "Connection failed");
+          const error = new Error(
+            result.error?.message ??
+              (result.ok ? "Invalid gateway handshake" : "Connection failed"),
+          );
           this.failConnect(error);
         }
       },

@@ -42,6 +42,7 @@ function makeBackend(): IosBridgeBackend {
       },
     } as unknown as IAgentRuntime,
     dispatchRoute: async () => null,
+    cloudInferenceRejection: () => null,
     conversations: new Map(),
     close: async () => {},
   };

@@ -18,6 +18,9 @@ export function parseJsonObject<T extends object>(raw: string): T | null {
 
 	const parsedCandidate =
 		parseObjectCandidate<T>(candidate) ??
+		parseObjectCandidate<T>(
+			repairJsonStringEscapes(candidate, { trailingBackslashQuotes: false }),
+		) ??
 		parseObjectCandidate<T>(repairJsonStringEscapes(candidate));
 	if (parsedCandidate) {
 		return parsedCandidate;
@@ -33,6 +36,9 @@ export function parseJsonObject<T extends object>(raw: string): T | null {
 
 	return (
 		parseObjectCandidate<T>(objectText) ??
+		parseObjectCandidate<T>(
+			repairJsonStringEscapes(objectText, { trailingBackslashQuotes: false }),
+		) ??
 		parseObjectCandidate<T>(repairJsonStringEscapes(objectText))
 	);
 }
@@ -189,7 +195,12 @@ export function extractJsonObjectSpans(
 	return spans;
 }
 
-export function repairJsonStringEscapes(raw: string): string {
+export function repairJsonStringEscapes(
+	raw: string,
+	{
+		trailingBackslashQuotes = true,
+	}: { trailingBackslashQuotes?: boolean } = {},
+): string {
 	let output = "";
 	let inString = false;
 	let escaped = false;
@@ -205,7 +216,11 @@ export function repairJsonStringEscapes(raw: string): string {
 		}
 
 		if (escaped) {
-			if (char === '"' && looksLikeJsonDelimiterAfterString(raw, index + 1)) {
+			if (
+				trailingBackslashQuotes &&
+				char === '"' &&
+				looksLikeJsonDelimiterAfterString(raw, index + 1)
+			) {
 				output += '\\\\"';
 				inString = false;
 				escaped = false;

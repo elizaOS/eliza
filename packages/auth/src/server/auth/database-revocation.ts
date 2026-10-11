@@ -1,7 +1,7 @@
 /** Persists logout and monotonic account revocation in the identity database across restarts. */
 import { ElizaError } from "@elizaos/core";
-import { createDatabaseAuthSql } from "./auth-sql";
-import type { RevocationStore } from "./revocation";
+import { createDatabaseAuthSql, createTransactionAuthSql } from "./auth-sql";
+import type { RevocationStore, RevocationTransaction } from "./revocation";
 
 const DEFAULT_REVOCATION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -50,9 +50,13 @@ export class DatabaseRevocationStore implements RevocationStore {
     id: string,
     timestamp: number,
     expiresAt: Date | number,
+    transaction?: RevocationTransaction,
   ): Promise<number> {
     issuedBefore(String(timestamp));
-    const [row] = await this.sql<Array<{ value: string }>>`
+    // The embedded database has one connection. A statement issued beside the
+    // caller's open transaction would queue behind it and never run.
+    const sql = transaction ? createTransactionAuthSql(transaction) : this.sql;
+    const [row] = await sql<Array<{ value: string }>>`
       INSERT INTO auth_kv_store (id, namespace, value, expires_at)
       VALUES (${id}, ${namespace}, ${String(timestamp)}, ${expiry(expiresAt)})
       ON CONFLICT (id, namespace) DO UPDATE SET
@@ -92,8 +96,15 @@ export class DatabaseRevocationStore implements RevocationStore {
     userId: string,
     timestamp = Math.floor(Date.now() / 1000),
     expiresAt: Date | number = Date.now() + DEFAULT_REVOCATION_TTL_MS,
+    transaction?: RevocationTransaction,
   ): Promise<number> {
-    return this.revokeLine("revocation:user", userId, timestamp, expiresAt);
+    return this.revokeLine(
+      "revocation:user",
+      userId,
+      timestamp,
+      expiresAt,
+      transaction,
+    );
   }
 
   getUserRevokedBefore(userId: string): Promise<number | null> {

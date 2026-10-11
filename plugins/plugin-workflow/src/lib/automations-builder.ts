@@ -625,10 +625,26 @@ export async function buildAutomationListResponse(
     );
   }
 
+  const workflowOffline = workflowFetchError !== null;
   for (const trigger of triggerItems) {
     if (trigger.kind === 'workflow' && trigger.workflowId) {
       const existing = workflowItemsById.get(trigger.workflowId);
-      if (!existing) continue;
+      if (!existing) {
+        // With the workflow runtime offline the trigger task is the ground
+        // truth for its scheduled workflow; online, a missing workflow means
+        // the trigger is orphaned and stays hidden.
+        if (workflowOffline) {
+          workflowItemsById.set(
+            trigger.workflowId,
+            buildWorkflowItem(undefined, workflowRooms.get(trigger.workflowId), {
+              workflowId: trigger.workflowId,
+              workflowName: trigger.workflowName,
+              trigger,
+            })
+          );
+        }
+        continue;
+      }
       existing.schedules = [...existing.schedules, trigger];
       existing.updatedAt =
         existing.updatedAt ??
@@ -645,7 +661,6 @@ export async function buildAutomationListResponse(
   // room/conversation wasn't cleaned up. Surfacing those creates ghost
   // rows the user can't dismiss. Skip them; the UI's deleteWorkflow path
   // also deletes the conversation, so future deletions do not leak rooms.
-  const workflowOffline = workflowFetchError !== null;
   if (workflowOffline) {
     for (const [workflowId, room] of workflowRooms.entries()) {
       if (!workflowItemsById.has(workflowId)) {
