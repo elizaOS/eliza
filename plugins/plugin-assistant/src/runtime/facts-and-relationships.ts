@@ -1080,7 +1080,7 @@ function cleanText(value: string): string {
 }
 function cleanPredicate(value: string): string {
   return value
-    .replace(/[^a-zA-Z0-9_ -]/g, "")
+    .replace(/[^\p{L}\p{M}\p{N}_ -]/gu, "")
     .replace(/[\s-]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .toLowerCase();
