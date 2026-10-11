@@ -107,12 +107,17 @@ function normalizeCanonicalRuntimeConfigForCurrentServer(args: {
   };
 }
 
+/** The 409 text for a Cloud inference first-run on an agent with no Cloud key. */
+export const CLOUD_INFERENCE_NO_API_KEY_ERROR =
+  "Eliza Cloud inference is not available on this agent: it has no Eliza Cloud API key, so it cannot reach Cloud models. Choose another provider.";
+
 /**
  * True when this agent holds the credential plugin-elizacloud authenticates
  * with: the linked key in config, a config env entry, the sealed login secret,
- * or the process environment.
+ * or the process environment. Exported for the iOS bridge, which answers
+ * `POST /api/first-run` itself and must apply the same check.
  */
-function hasCloudApiKeyForInference(config: ElizaConfig): boolean {
+export function hasCloudApiKeyForInference(config: ElizaConfig): boolean {
   const configEnv = asRecord(config.env);
   return [
     config.cloud?.apiKey,
@@ -695,11 +700,7 @@ export async function handleFirstRunRoutes(
         !hasCloudApiKeyForInference(config)
       ) {
         restoreProcessEnvironment(preCommitEnvironment, { ...process.env });
-        error(
-          res,
-          "Eliza Cloud inference is not available on this agent: it has no Eliza Cloud API key, so it cannot reach Cloud models. Choose another provider.",
-          409,
-        );
+        error(res, CLOUD_INFERENCE_NO_API_KEY_ERROR, 409);
         return true;
       }
 

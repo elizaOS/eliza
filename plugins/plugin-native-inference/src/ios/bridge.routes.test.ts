@@ -137,6 +137,7 @@ function makeBackend(runtime: IAgentRuntime): IosBridgeBackend {
   return {
     runtime,
     dispatchRoute: async () => null,
+    cloudInferenceRejection: () => null,
     conversations: new Map(),
     close: async () => {},
   };
@@ -777,6 +778,56 @@ describe("iOS bridge — conversation message failure surfacing", () => {
       "[ios-bridge] createMemory(messages) failed:",
       expect.anything(),
     );
+  });
+});
+describe("iOS bridge — first-run submit", () => {
+  const cloudRoute = {
+    serviceRouting: {
+      llmText: { backend: "elizacloud", transport: "cloud-proxy" },
+    },
+  };
+  const noKey = "agent has no Eliza Cloud API key";
+  /** The agent's key check answers through this backend seam. */
+  function backendWithKeyCheck(rejection: string | null): IosBridgeBackend {
+    return {
+      ...makeBackend(createFakeRuntime()),
+      cloudInferenceRejection: () => rejection,
+    };
+  }
+
+  it("rejects a Cloud inference selection when the agent has no Cloud API key", async () => {
+    const { status, json } = await call(
+      backendWithKeyCheck(noKey),
+      "POST",
+      "/api/first-run",
+      cloudRoute,
+    );
+    expect(status).toBe(409);
+    expect(json).toEqual({ error: noKey });
+  });
+  it("acknowledges a Cloud inference selection when the agent holds a Cloud API key", async () => {
+    const { status, json } = await call(
+      backendWithKeyCheck(null),
+      "POST",
+      "/api/first-run",
+      cloudRoute,
+    );
+    expect(status).toBe(200);
+    expect(json.complete).toBe(true);
+  });
+  it("acknowledges an on-device selection with no Cloud API key", async () => {
+    const { status, json } = await call(
+      backendWithKeyCheck(noKey),
+      "POST",
+      "/api/first-run",
+      {
+        serviceRouting: {
+          llmText: { backend: "local", transport: "direct" },
+        },
+      },
+    );
+    expect(status).toBe(200);
+    expect(json.complete).toBe(true);
   });
 });
 describe("iOS bridge — unmatched routes still fall through", () => {

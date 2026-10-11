@@ -73,6 +73,10 @@ export {
   dispatchRoute,
 } from "./api/dispatch-route.ts";
 export * from "./api/early-logs.ts";
+export {
+  CLOUD_INFERENCE_NO_API_KEY_ERROR,
+  hasCloudApiKeyForInference,
+} from "./api/first-run-routes.ts";
 export { dispatchApiRoute } from "./api/in-process-api.ts";
 export * from "./api/memory-bounds.ts";
 export * from "./api/memory-routes.ts";
