@@ -748,6 +748,7 @@ async function executeBrowserWaitForUrl(
       subaction: tabId ? "navigate" : "open",
       url: startUrl,
       id: tabId,
+      show: tabId ? undefined : true,
     };
     try {
       const opened = browserService
