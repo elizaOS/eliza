@@ -61,3 +61,44 @@ describe("SETTINGS updates parameter", () => {
     });
   });
 });
+
+describe("SETTINGS single-value and model slot parameters", () => {
+  it("accepts a boolean or number `value` for a single set", () => {
+    for (const value of [true, 4096, "eliza"]) {
+      expect(
+        validateToolArgs(settingsAction, {
+          action: "set",
+          key: "FEATURE_X",
+          value,
+        }),
+      ).toEqual({
+        valid: true,
+        args: { action: "set", key: "FEATURE_X", value },
+        errors: [],
+      });
+    }
+  });
+
+  it("accepts the model slots the update_ai_provider handler reads", () => {
+    const args = {
+      action: "update_ai_provider",
+      provider: "openai",
+      modelConfigs: { primary: "gpt-5", large: "gpt-5", nano: "gpt-5-nano" },
+    };
+    expect(validateToolArgs(settingsAction, args)).toEqual({
+      valid: true,
+      args,
+      errors: [],
+    });
+  });
+
+  it("rejects a model slot the handler does not read", () => {
+    expect(
+      validateToolArgs(settingsAction, {
+        action: "update_ai_provider",
+        provider: "openai",
+        modelConfigs: { huge: "gpt-5" },
+      }).valid,
+    ).toBe(false);
+  });
+});
