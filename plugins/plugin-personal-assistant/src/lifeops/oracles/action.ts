@@ -70,6 +70,7 @@ const SUBACTIONS: SubactionsMap<LocalConditionsSubaction> = {
     descriptionCompressed:
       "discover local activities across sources; per-source health",
     required: ["location", "startAt", "endAt", "keywords"],
+    allowEmptyArrays: ["keywords"],
     optional: ["pageSize", "maxPages"],
   },
   curate_discovered_activities: {
@@ -86,6 +87,7 @@ const SUBACTIONS: SubactionsMap<LocalConditionsSubaction> = {
       "custodyHealth",
       "maxSuggestions",
     ],
+    allowEmptyArrays: ["keywords"],
     optional: [
       "pageSize",
       "maxPages",
@@ -416,7 +418,8 @@ export function createLocalConditionsAction(
       },
       {
         name: "keywords",
-        description: 'Search keywords, e.g. ["kids", "summer camp"].',
+        description:
+          'Search keywords, e.g. ["kids", "summer camp"]. An explicit empty array searches without a keyword filter.',
         subactions: ["discover_activities", "curate_discovered_activities"],
         schema: { type: "array", items: { type: "string" } },
       },

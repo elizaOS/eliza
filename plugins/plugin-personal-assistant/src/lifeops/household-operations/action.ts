@@ -100,6 +100,7 @@ const SUBACTIONS: SubactionsMap<HouseholdOperationSubaction> = {
       "Create a scoped structural weekly brief from current revisions, source events, observations, calendar-check evidence, and non-use reviews.",
     descriptionCompressed: "generate structural weekly household brief",
     required: ["householdId", "window", "calendarChecks"],
+    allowEmptyArrays: ["calendarChecks"],
   },
   read_weekly_brief: {
     description:

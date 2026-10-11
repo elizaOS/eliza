@@ -362,6 +362,22 @@ describe("LOCAL_CONDITIONS action — registry-backed production wiring", () => 
     expect(result.text).toContain("unavailable");
   });
 
+  it("accepts an explicit empty keyword list as an unfiltered discovery", async () => {
+    registerLocalActivityAdapterRegistry(
+      runtime,
+      loopbackActivityRegistry(await startTicketmasterServer()),
+    );
+    const result = await run("discover_activities", {
+      ...discoveryParams(),
+      keywords: [],
+    });
+    expect(result.success).toBe(true);
+    expect(
+      (result.data as { observations: LocalActivitySourceObservation[] })
+        .observations,
+    ).toHaveLength(1);
+  });
+
   it("discovers activities across the registered source registry with per-source health", async () => {
     registerLocalActivityAdapterRegistry(
       runtime,
