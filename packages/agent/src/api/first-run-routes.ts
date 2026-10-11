@@ -228,6 +228,13 @@ function ensureCloudContainerCharacterDefaults(
 
   try {
     ctx.saveElizaConfig(config);
+    // Keep the live server config in step so the next full save of
+    // state.config does not drop these defaults from disk.
+    const live = ctx.state.config as Record<string, unknown>;
+    const saved = config as Record<string, unknown>;
+    for (const key of ["ui", "messages", "serviceRouting", "agents"]) {
+      if (saved[key] !== undefined) live[key] = saved[key];
+    }
     logger.info(
       `[first-run] Applied default character preset "${defaultPreset.id}" for cloud container`,
     );
