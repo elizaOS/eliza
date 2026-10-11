@@ -175,7 +175,8 @@ export const localInferenceManagementAction: Action = {
 		},
 		{
 			name: "pinned",
-			description: "Whether a voice model should be pinned from auto-updates.",
+			description:
+				"Required for pin_voice_model: true pins the voice model from auto-updates, false removes the pin.",
 			required: false,
 			schema: { type: "boolean" as const },
 		},
@@ -229,9 +230,11 @@ export const localInferenceManagementAction: Action = {
 				"../local-inference-routes.js"
 			);
 			const mutation = await applyLocalInferenceManagementMutation(input);
-			const result = ok(`Local inference ${mutation.op} updated.`, {
-				...mutation,
-			});
+			const text =
+				mutation.op === "pin_voice_model"
+					? `Voice model ${mutation.id} is now ${mutation.pinned ? "pinned" : "unpinned"}.`
+					: `Local inference ${mutation.op} updated.`;
+			const result = ok(text, { ...mutation });
 			await callback?.({ text: result.text, actions: ["LOCAL_INFERENCE"] });
 			return result;
 		} catch (error) {

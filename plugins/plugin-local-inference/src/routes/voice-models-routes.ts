@@ -222,8 +222,15 @@ export async function applyVoiceModelManagementMutation(
 ): Promise<VoiceModelManagementResult> {
 	if (input.op === "pin_voice_model") {
 		const id = requireVoiceModelId(input.id, input.op);
+		// An omitted `pinned` must not be read as "unpin": that would remove an
+		// existing pin on a request that asked to pin.
+		if (typeof input.pinned !== "boolean") {
+			throw new Error(
+				"pin_voice_model requires pinned: true to pin or false to unpin",
+			);
+		}
 		const pins = await readPins();
-		const pinned = input.pinned === true;
+		const pinned = input.pinned;
 		if (pinned) pins.add(id);
 		else pins.delete(id);
 		await writePins(pins);
