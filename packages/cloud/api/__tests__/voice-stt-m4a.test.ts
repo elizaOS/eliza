@@ -59,7 +59,7 @@ test("transcribes a .m4a voice memo the browser labels audio/x-m4a", async () =>
     { method: "POST", body: form },
     { WHISPER_STT_URL: `http://127.0.0.1:${whisper.port}` },
   );
-  console.log("STATUS", response.status, "BODY", await response.clone().text());
-  console.log("WHISPER_RECEIVED", JSON.stringify(received));
-  expect(response.status).toBe(200);
+  expect(response.status, await response.clone().text()).toBe(200);
+  expect(await response.json()).toMatchObject({ transcript: "hello" });
+  expect(received).toEqual(["audio/x-m4a"]);
 });
