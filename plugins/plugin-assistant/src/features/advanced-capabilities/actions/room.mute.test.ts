@@ -68,6 +68,7 @@ function makeRuntime(seed?: {
       states.set(`${roomId}:${entityId}`, state);
     },
     getRoom: async (roomId: UUID) => rooms.get(roomId) ?? null,
+    getRoomsForParticipant: async () => [...rooms.keys()] as UUID[],
     updateRoom: async (room: Room) => {
       rooms.set(room.id, room);
     },
@@ -327,27 +328,56 @@ describe("ROOM action — scope=server (guild-wide mute)", () => {
     );
   });
 
-  it("validate gates on world mute state for scope=server", async () => {
+  it("validate leaves a planner call to the handler, which names the failed precondition", async () => {
     const { runtime } = makeRuntime({
       rooms: [room(ROOM_ID)],
       worlds: [world({ metadata: { agentMuteState: "MUTED" } })],
     });
-    expect(
-      await roomOpAction.validate(
+    for (const [parameters, error] of [
+      [{ action: "mute", scope: "server" }, "ROOM_MUTE_PRECONDITION_FAILED"],
+      [{ action: "unmute" }, "ROOM_UNMUTE_PRECONDITION_FAILED"],
+      [{ action: "unfollow" }, "ROOM_UNFOLLOW_PRECONDITION_FAILED"],
+      [
+        { action: "mute", platform: "discord", chatName: "crypto signals" },
+        "ROOM_NOT_FOUND",
+      ],
+    ] as const) {
+      expect(validateToolArgs(roomOpAction, parameters).errors).toEqual([]);
+      expect(
+        await roomOpAction.validate(
+          runtime,
+          msg("room op"),
+          state,
+          opts(parameters),
+        ),
+      ).toBe(true);
+      const result = await roomOpAction.handler(
         runtime,
-        msg("mute the server"),
+        msg("room op"),
         state,
-        opts({ action: "mute", scope: "server" }),
-      ),
+        opts(parameters),
+      );
+      expect(result?.success).toBe(false);
+      expect(result?.values?.error).toBe(error);
+    }
+  });
+
+  it("a child action is offered only when the current room state allows the operation", async () => {
+    const { runtime } = makeRuntime({
+      rooms: [room(ROOM_ID)],
+      worlds: [world()],
+    });
+    expect(await followRoomAction.validate(runtime, msg("hi"), state)).toBe(
+      true,
+    );
+    const followed = makeRuntime({
+      states: { [`${ROOM_ID}:${AGENT_ID}`]: "FOLLOWED" },
+      rooms: [room(ROOM_ID)],
+      worlds: [world()],
+    });
+    expect(
+      await followRoomAction.validate(followed.runtime, msg("hi"), state),
     ).toBe(false);
-    expect(
-      await roomOpAction.validate(
-        runtime,
-        msg("unmute the server"),
-        state,
-        opts({ action: "unmute", scope: "server" }),
-      ),
-    ).toBe(true);
   });
 });
 
