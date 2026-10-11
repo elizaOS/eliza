@@ -4,7 +4,7 @@
  * cleared is projected back into the runtime on the next restart.
  */
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createTestVault, type TestVault } from "@elizaos/auth/testing";
@@ -24,6 +24,10 @@ let testVault: TestVault;
 const token = randomUUID();
 const fakeKey = "fake-openai-key-placeholder-not-a-secret";
 const savedBridge = getAgentHostBridge();
+const providerPlugins = [
+  ["gemini", "GOOGLE_GENERATIVE_AI_API_KEY"],
+  ["zai", "ZAI_API_KEY"],
+] as const;
 
 beforeEach(async () => {
   directory = await mkdtemp(path.join(tmpdir(), "eliza-secret-clear-vault-"));
@@ -55,12 +59,30 @@ beforeEach(async () => {
     sensitive: true,
     caller: "test",
   });
+  const installs: Record<string, { installPath: string; version: string }> = {};
+  for (const [providerId, envKey] of providerPlugins) {
+    const installPath = path.join(directory, "installs", providerId);
+    await mkdir(installPath, { recursive: true });
+    await writeFile(
+      path.join(installPath, "package.json"),
+      JSON.stringify({
+        name: `@elizaos/plugin-${providerId}`,
+        version: "0.0.0",
+        elizaos: { configKeys: [envKey] },
+      }),
+    );
+    installs[`@elizaos/plugin-${providerId}`] = {
+      installPath,
+      version: "0.0.0",
+    };
+  }
   await writeFile(
     path.join(directory, "eliza.json"),
     JSON.stringify({
       env: { OPENAI_API_KEY: "vault://OPENAI_API_KEY" },
       serviceRouting: { llmText: { backend: "openai", transport: "direct" } },
       plugins: {
+        installs,
         entries: {
           openai: {
             enabled: true,
@@ -127,6 +149,31 @@ it.each([
     expect(await bootHydration()).toEqual({ status: "missing", overlay: {} });
     expect(await testVault.vault.list("OPENAI_API_KEY")).toEqual([]);
     expect(await testVault.vault.has("providers.openai.api-key")).toBe(false);
+  },
+  120_000,
+);
+
+it.each(providerPlugins)(
+  "clearing through PUT /api/plugins/%s removes its raw and canonical vault rows",
+  async (providerId, envKey) => {
+    const vault = testVault.vault;
+    const placeholder = `fake-${providerId}-key-placeholder-not-a-secret`;
+    await persistProviderApiKey({
+      secrets: { vault } as never,
+      normalizedProvider: providerId,
+      apiKey: placeholder,
+      caller: "test",
+    });
+    await vault.set(envKey, placeholder, { sensitive: true, caller: "test" });
+    expect(await vault.has(`providers.${providerId}.api-key`)).toBe(true);
+
+    const cleared = await request(`/api/plugins/${providerId}`, "PUT", {
+      config: { [envKey]: "" },
+    });
+    expect(cleared.status, await cleared.clone().text()).toBe(200);
+
+    expect(await vault.list(envKey)).toEqual([]);
+    expect(await vault.has(`providers.${providerId}.api-key`)).toBe(false);
   },
   120_000,
 );

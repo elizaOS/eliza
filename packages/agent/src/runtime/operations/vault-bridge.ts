@@ -321,6 +321,12 @@ export function vaultKeyForProviderApiKey(normalizedProvider: string): string {
   return `providers.${normalizedProvider}.api-key`;
 }
 
+const VAULT_CREDENTIAL_PROVIDER_IDS: ReadonlySet<string> = new Set<string>([
+  ...FIRST_RUN_PROVIDER_CATALOG.map((provider) => provider.id),
+  "gemini",
+  "zai",
+]);
+
 export async function removeResetCredentialsFromVault(
   vault: Vault,
 ): Promise<void> {
@@ -329,12 +335,7 @@ export async function removeResetCredentialsFromVault(
     "ELIZAOS_CLOUD_BASE_URL",
     "ELIZAOS_CLOUD_ENABLED",
   ]);
-  const providerIds = new Set<string>([
-    ...FIRST_RUN_PROVIDER_CATALOG.map((provider) => provider.id),
-    "gemini",
-    "zai",
-  ]);
-  for (const providerId of providerIds) {
+  for (const providerId of VAULT_CREDENTIAL_PROVIDER_IDS) {
     keys.add(vaultKeyForProviderApiKey(providerId));
     for (const envKey of getFirstRunProviderSignalEnvKeys(providerId)) {
       keys.add(envKey);
@@ -356,9 +357,9 @@ export async function removeClearedCredentialsFromVault(
   const keys = new Set<string>();
   for (const envKey of envKeys) {
     keys.add(envKey);
-    for (const provider of FIRST_RUN_PROVIDER_CATALOG) {
-      if (provider.envKey === envKey) {
-        keys.add(vaultKeyForProviderApiKey(provider.id));
+    for (const providerId of VAULT_CREDENTIAL_PROVIDER_IDS) {
+      if (getFirstRunProviderSignalEnvKeys(providerId).includes(envKey)) {
+        keys.add(vaultKeyForProviderApiKey(providerId));
       }
     }
   }
