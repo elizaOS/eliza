@@ -30,7 +30,6 @@
 import type {
   Action,
   ActionExample,
-  ActionParameterSchema,
   ActionResult,
   HandlerCallback,
   HandlerOptions,
@@ -68,6 +67,7 @@ import type {
 } from "../lifeops/scheduled-task/index.js";
 import {
   ChannelKeyError,
+  SCHEDULED_TASK_EDIT_READONLY_KEYS,
   ScheduledTaskValidationError,
 } from "../lifeops/scheduled-task/index.js";
 import { getScheduledTaskRunner } from "../lifeops/scheduled-task/service.js";
@@ -152,7 +152,7 @@ interface ScheduledTaskParams {
   minutes?: number;
   /** snooze-only: ISO timestamp to defer next fire to. */
   untilIso?: string;
-  /** skip / complete / acknowledge / dismiss / reopen: free-form reason. */
+  /** skip / complete / dismiss / reopen: free-form reason. */
   reason?: string;
   /** update-only: shallow patch of editable fields. */
   patch?: Partial<Omit<ScheduledTask, "taskId" | "state">>;
@@ -1357,7 +1357,39 @@ async function handleUpdate(
       data: { subaction: "update", error: "NOT_FOUND" },
     };
   }
-  const patchEntries = Object.entries(params.patch);
+  const readOnlyKey = SCHEDULED_TASK_EDIT_READONLY_KEYS.find((key) =>
+    Object.hasOwn(params.patch as object, key),
+  );
+  if (readOnlyKey) {
+    return {
+      success: false,
+      text: "That part of a scheduled item cannot be edited directly.",
+      data: {
+        subaction: "update",
+        error: "READ_ONLY_FIELD",
+        message: `patch.${readOnlyKey} is read-only; use the snooze/skip/complete/acknowledge/dismiss/reopen ops to change task state.`,
+      },
+    };
+  }
+  // The same trigger shapes create accepts must be accepted here: the patch
+  // replaces the stored trigger wholesale, so it is normalized the same way.
+  let patch = params.patch;
+  if (Object.hasOwn(patch, "trigger")) {
+    const normalized = normalizeTriggerInput(patch.trigger);
+    if (!normalized.ok) {
+      return {
+        success: false,
+        text: PLAIN_TIMING_MISSING_TEXT,
+        data: {
+          subaction: "update",
+          error: "INVALID_TRIGGER",
+          message: normalized.message,
+        },
+      };
+    }
+    patch = { ...patch, trigger: normalized.trigger };
+  }
+  const patchEntries = Object.entries(patch);
   const unchanged =
     patchEntries.length === 0 ||
     patchEntries.every(([key, value]) => {
@@ -1379,16 +1411,45 @@ async function handleUpdate(
   // owner to reschedule or rewrite the reminder itself.
   const safePatch = existingBinding
     ? {
-        ...params.patch,
+        ...patch,
         output: existing.output,
         metadata: {
           ...(existing.metadata ?? {}),
-          ...(params.patch.metadata ?? {}),
+          ...(patch.metadata ?? {}),
           [SCHEDULED_TASK_DELIVERY_BINDING_KEY]: existingBinding,
         },
       }
-    : params.patch;
-  const updated = await scope.runner.apply(taskId, "edit", safePatch);
+    : patch;
+  let updated: ScheduledTask;
+  try {
+    updated = await scope.runner.apply(taskId, "edit", safePatch);
+  } catch (error) {
+    // error-policy:J1 the runner rejects an invalid edit before it persists;
+    // the action boundary reports the issues so the planner can repair the patch.
+    if (error instanceof ScheduledTaskValidationError) {
+      return {
+        success: false,
+        text: "I could not update that scheduled item because the change is not valid.",
+        data: {
+          subaction: "update",
+          error: "INVALID_SCHEDULED_TASK",
+          issues: error.issues,
+        },
+      };
+    }
+    if (error instanceof ChannelKeyError) {
+      return {
+        success: false,
+        text: PLAIN_DESTINATION_MISSING_TEXT,
+        data: {
+          subaction: "update",
+          error: "INVALID_SCHEDULED_TASK",
+          issues: [error.message],
+        },
+      };
+    }
+    throw error;
+  }
   return {
     success: true,
     text: "Updated that scheduled item.",
@@ -1421,6 +1482,30 @@ async function handleSnooze(
       success: false,
       text: "Tell me when to remind you again.",
       data: { subaction: "snooze", error: "MISSING_SNOOZE_TARGET" },
+    };
+  }
+  // The runner throws on a non-positive offset and on a timestamp Date cannot
+  // parse; both are planner-repairable, so they are refused here by name.
+  if (untilIso !== undefined && !Number.isFinite(Date.parse(untilIso))) {
+    return {
+      success: false,
+      text: "Tell me when to remind you again.",
+      data: {
+        subaction: "snooze",
+        error: "INVALID_SNOOZE_TARGET",
+        message: "untilIso must be an ISO-8601 timestamp.",
+      },
+    };
+  }
+  if (untilIso === undefined && minutes !== undefined && minutes <= 0) {
+    return {
+      success: false,
+      text: "Tell me when to remind you again.",
+      data: {
+        subaction: "snooze",
+        error: "INVALID_SNOOZE_TARGET",
+        message: "minutes must be greater than 0.",
+      },
     };
   }
   const existing = (await scope.runner.list()).find(
@@ -1765,19 +1850,22 @@ export const scheduledTaskAction: Action & {
       name: "kind",
       description:
         "ScheduledTaskKind create/filter: reminder|checkin|followup|approval|recap|watcher|output|custom.",
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, enum: [...SCHEDULED_TASK_KINDS] },
     },
     {
       name: "status",
       description:
-        "List status filter string|string[]: scheduled|fired|acknowledged|completed|skipped|expired|failed|dismissed.",
-      schema: { type: "string" as const } as ActionParameterSchema,
+        "List status filter, one status: scheduled|fired|acknowledged|completed|skipped|expired|failed|dismissed.",
+      schema: { type: "string" as const, enum: [...SCHEDULED_TASK_STATUSES] },
     },
     {
       name: "subjectKind",
       description:
         "ScheduledTaskSubject.kind: entity|relationship|thread|document|calendar_event|self.",
-      schema: { type: "string" as const },
+      schema: {
+        type: "string" as const,
+        enum: [...SCHEDULED_TASK_SUBJECT_KINDS],
+      },
     },
     {
       name: "subjectId",
@@ -1884,8 +1972,7 @@ export const scheduledTaskAction: Action & {
     },
     {
       name: "reason",
-      description:
-        "skip/complete/acknowledge/dismiss/reopen: reason on state log.",
+      description: "skip/complete/dismiss/cancel/reopen: reason on state log.",
       schema: { type: "string" as const },
     },
     {

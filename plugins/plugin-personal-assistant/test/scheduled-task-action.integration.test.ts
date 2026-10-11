@@ -20,6 +20,7 @@ import {
   attestDeliveryAudienceFromCanonicalRoom,
   ChannelType,
   executePlannedToolCall,
+  validateToolArgs,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { scheduledTaskAction } from "../src/actions/scheduled-task.ts";
@@ -680,6 +681,111 @@ describe("SCHEDULED_TASK action", () => {
     // First-run defaults seed check-in/watcher/recap/output tasks on a fresh
     // runtime; the rejected create must not have written its reminder row.
     expect(tasks.filter((task) => task.kind === "reminder")).toHaveLength(0);
+  });
+
+  it("refuses filter values outside the declared kind, status and subjectKind sets", () => {
+    for (const args of [
+      { action: "list", status: "pending" },
+      { action: "list", kind: "reminders" },
+      { action: "create", kind: "habit" },
+      { action: "list", subjectKind: "person", subjectId: "p1" },
+    ]) {
+      expect(validateToolArgs(scheduledTaskAction, args).valid).toBe(false);
+    }
+    expect(
+      validateToolArgs(scheduledTaskAction, {
+        action: "list",
+        kind: "reminder",
+        status: "scheduled",
+        subjectKind: "self",
+      }).valid,
+    ).toBe(true);
+  });
+
+  it("update and snooze return a structured refusal for input the runner rejects", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const call = (parameters: Record<string, unknown>) =>
+      scheduledTaskAction.handler?.(
+        runtime,
+        ownerMessage(runtime.agentId, "change that scheduled item"),
+        undefined,
+        { parameters },
+        undefined,
+        [],
+      );
+    const errorOf = (result: ActionResult | undefined) =>
+      (result?.data as { error?: string } | undefined)?.error;
+
+    const created = await scheduledTaskAction.handler?.(
+      runtime,
+      autonomyMessage(runtime.agentId, "schedule a custom task"),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          kind: "custom",
+          promptInstructions: "review the weekly numbers",
+          trigger: { kind: "manual" },
+        },
+      },
+      undefined,
+      [],
+    );
+    const taskId = (created?.data as { task?: ScheduledTask } | undefined)?.task
+      ?.taskId;
+    if (!taskId) throw new Error("create did not return a taskId");
+
+    // The trigger shape create accepts is accepted on update too.
+    const retimed = await call({
+      action: "update",
+      taskId,
+      patch: { trigger: { type: "cron", schedule: "0 8 * * *" } },
+    });
+    expect(retimed?.success).toBe(true);
+    expect(
+      (retimed?.data as { task?: ScheduledTask } | undefined)?.task?.trigger,
+    ).toMatchObject({ kind: "cron", expression: "0 8 * * *" });
+
+    const badTrigger = await call({
+      action: "update",
+      taskId,
+      patch: { trigger: { kind: "cron" } },
+    });
+    expect(badTrigger?.success).toBe(false);
+    expect(errorOf(badTrigger)).toBe("INVALID_TRIGGER");
+
+    const badGate = await call({
+      action: "update",
+      taskId,
+      patch: {
+        shouldFire: { gates: [{ kind: "not_registered", params: {} }] },
+      },
+    });
+    expect(badGate?.success).toBe(false);
+    expect(errorOf(badGate)).toBe("INVALID_SCHEDULED_TASK");
+
+    const readOnly = await call({
+      action: "update",
+      taskId,
+      patch: { state: { status: "completed" } },
+    });
+    expect(readOnly?.success).toBe(false);
+    expect(errorOf(readOnly)).toBe("READ_ONLY_FIELD");
+
+    for (const target of [{ untilIso: "tomorrow 9am" }, { minutes: 0 }]) {
+      const snoozed = await call({ action: "snooze", taskId, ...target });
+      expect(snoozed?.success).toBe(false);
+      expect(errorOf(snoozed)).toBe("INVALID_SNOOZE_TARGET");
+    }
+
+    const stored = await getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+    }).list();
+    expect(stored.find((task) => task.taskId === taskId)).toMatchObject({
+      trigger: { kind: "cron", expression: "0 8 * * *" },
+      state: { status: "scheduled" },
+    });
   });
 
   it("get returns NOT_FOUND for an unknown taskId", async () => {
