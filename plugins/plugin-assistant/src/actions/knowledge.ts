@@ -601,7 +601,7 @@ export const searchKnowledgeAction: Action = {
     },
     {
       name: "tags",
-      description: "Optional tag list (array or comma-separated)",
+      description: "Optional tag list, one string per tag",
       required: false,
       schema: { type: "array" as const, items: { type: "string" as const } },
     },
