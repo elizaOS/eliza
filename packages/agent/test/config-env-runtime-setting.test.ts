@@ -91,3 +91,79 @@ it("applies a changed or cleared config env setting to the running agent", async
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+it("applies a changed or cleared config env setting on POST /api/config/reload", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "config-env-reload-"));
+  const configPath = path.join(dir, "eliza.json");
+  vi.stubEnv("ELIZA_STATE_DIR", dir);
+  vi.stubEnv("ELIZA_CONFIG_PATH", configPath);
+  vi.stubEnv("ELIZA_PERSIST_CONFIG_PATH", configPath);
+  vi.stubEnv(KEY, "chatty");
+  const agents = { list: [{ id: "main", default: true, name: "Eliza" }] };
+  saveElizaConfig({ agents, env: { [KEY]: "chatty" } });
+  const bootConfig = loadElizaConfig();
+  const runtime = new AgentRuntime({
+    character: buildCharacterFromConfig(bootConfig),
+    settings: buildRuntimeSettingsProjection(bootConfig, { env: process.env }),
+    logLevel: "fatal",
+  });
+  runtime.registerDatabaseAdapter(
+    SQLiteDatabaseAdapter.create(
+      path.join(dir, "state.sqlite"),
+      runtime.agentId,
+    ),
+  );
+  const config = loadElizaConfig();
+  const reload = async () => {
+    let body: unknown;
+    await handleConfigRoutes({
+      req: {} as http.IncomingMessage,
+      res: {} as http.ServerResponse,
+      method: "POST",
+      pathname: "/api/config/reload",
+      url: new URL("http://localhost/api/config/reload"),
+      config,
+      runtime,
+      json: (_res, data) => {
+        body = data;
+      },
+      error: (_res, message) => {
+        throw new Error(message);
+      },
+      readJsonBody: async <T extends object>() => ({}) as T,
+      redactConfigSecrets,
+      isBlockedObjectKey,
+      stripRedactedPlaceholderValuesDeep,
+      patchTouchesProviderSelection: () => false,
+      isBlockedEnvKey,
+      CONFIG_WRITE_ALLOWED_TOP_KEYS,
+      resolveMcpServersRejection: async () => null,
+      resolveMcpTerminalAuthorizationRejection: () => null,
+    });
+    return body;
+  };
+  try {
+    await runtime.init();
+    expect(runtime.getSetting(KEY)).toBe("chatty");
+
+    saveElizaConfig({ agents, env: { [KEY]: "off" } });
+    expect(await reload()).toEqual({
+      reloaded: true,
+      applied: ["env"],
+      requiresRestart: [],
+    });
+    expect(runtime.getSetting(KEY)).toBe("off");
+
+    saveElizaConfig({ agents, env: {} });
+    expect(await reload()).toEqual({
+      reloaded: true,
+      applied: ["env"],
+      requiresRestart: [],
+    });
+    expect(runtime.getSetting(KEY)).toBeNull();
+  } finally {
+    await runtime.close();
+    vi.unstubAllEnvs();
+    await rm(dir, { recursive: true, force: true });
+  }
+});

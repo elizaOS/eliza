@@ -325,6 +325,7 @@ async function applyReloadedConfig(params: {
         saveElizaConfig(state);
       }
     }
+    reconcileConfigEnvSettings(runtime, previous, next);
     reconcileDirectTextModelSettings(runtime, previous, next);
   }
 }
