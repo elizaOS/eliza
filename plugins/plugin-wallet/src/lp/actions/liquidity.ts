@@ -983,7 +983,17 @@ export const liquidityAction: Action = {
     _runtime: IAgentRuntime,
     message: Memory,
     state?: State,
+    handlerParams?: unknown,
   ): Promise<boolean> => {
+    // The runtime validates after schema validation and passes the planner
+    // arguments under `options.parameters`; direct callers pass them flat.
+    const options = handlerParams as Record<string, unknown> | undefined;
+    const planned = options?.parameters;
+    const args =
+      planned && typeof planned === "object"
+        ? (planned as Record<string, unknown>)
+        : options;
+    if (args?.action || args?.subaction || args?.op) return true;
     if (!message.content) return false;
     if ((message.content as LpActionParams & { action?: string }).action)
       return true;

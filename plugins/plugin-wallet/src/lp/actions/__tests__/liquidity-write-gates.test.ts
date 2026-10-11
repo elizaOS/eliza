@@ -10,6 +10,7 @@ import {
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
+  promoteSubactionsToActions,
   validateToolArgs,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
@@ -433,18 +434,43 @@ async function runPlannerCall(
   const validation = validateToolArgs(liquidityAction, args);
   expect(validation.errors).toEqual([]);
   const { prompts, callback } = recordingCallback();
+  // The shape the runtime passes: validated arguments under `parameters`.
+  const options = { parameters: validation.args };
+  // The runtime drops the call when validate returns false, so the handler
+  // is only reachable when the gate reads the planner arguments.
+  expect(
+    await liquidityAction.validate(
+      setup.runtime,
+      message("manage my LP"),
+      undefined,
+      options,
+    ),
+  ).toBe(true);
   const result = await liquidityAction.handler(
     setup.runtime,
     message("manage my LP"),
     undefined,
-    // The shape the runtime passes: validated arguments under `parameters`.
-    { parameters: validation.args },
+    options,
     callback,
   );
   return { result, prompts, ...setup };
 }
 
 describe("LIQUIDITY planner arguments", () => {
+  it("is available to a promoted LIQUIDITY_* call, whose subaction arrives in the arguments", async () => {
+    const listPools = promoteSubactionsToActions(liquidityAction).find(
+      (action) => action.name === "LIQUIDITY_LIST_POOLS",
+    );
+    expect(
+      await listPools?.validate(
+        registryRuntime().runtime,
+        message("show me the raydium pools"),
+        undefined,
+        { parameters: { dex: "raydium" } },
+      ),
+    ).toBe(true);
+  });
+
   it("accepts a tick range and the set_preferences fields the handler reads", () => {
     expect(
       validateToolArgs(liquidityAction, {
