@@ -168,6 +168,16 @@ app.post("/", async (c) => {
     let customerId = orgFull.stripe_customer_id ?? null;
 
     successUrl.searchParams.set("session_id", "{CHECKOUT_SESSION_ID}");
+    // Stripe substitutes only the literal `{CHECKOUT_SESSION_ID}` template.
+    // URLSearchParams percent-encodes the braces, so the URL sent to Stripe
+    // restores them. The digest below keeps the encoded form so in-flight
+    // idempotent orders still match.
+    const stripeSuccessUrl = successUrl
+      .toString()
+      .replace(
+        /([?&])session_id=%7BCHECKOUT_SESSION_ID%7D/,
+        "$1session_id={CHECKOUT_SESSION_ID}",
+      );
 
     const requestDigest = createHash("sha256")
       .update(
@@ -249,7 +259,7 @@ app.post("/", async (c) => {
           payment_method_types: ["card"],
           line_items: lineItems,
           mode: "payment",
-          success_url: successUrl.toString(),
+          success_url: stripeSuccessUrl,
           cancel_url: cancelUrl.toString(),
           metadata: {
             checkout_order_id: order.id,

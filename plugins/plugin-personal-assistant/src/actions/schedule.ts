@@ -15,8 +15,8 @@ import type {
 } from "@elizaos/core";
 import { getCircadianInsightContract } from "@elizaos/plugin-health";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
-import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { toActionData } from "../lifeops/google/format-helpers.js";
+import { resolveOwnerTimeZone } from "../lifeops/owner/fact-store.js";
 import type { LifeOpsScheduleInspection } from "../lifeops/schedule-insight.js";
 import { LifeOpsService } from "../lifeops/service.js";
 
@@ -164,7 +164,7 @@ export async function runScheduleHandler(
   const timezone =
     typeof params.timezone === "string" && params.timezone.trim().length > 0
       ? params.timezone.trim()
-      : resolveDefaultTimeZone();
+      : await resolveOwnerTimeZone(runtime, new Date());
 
   // Consult the CircadianInsightContract registered by plugin-health for
   // high-level sleep / scheduling reads. The contract is the typed seam

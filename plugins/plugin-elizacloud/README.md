@@ -4,7 +4,7 @@ Eliza Cloud integration — multi-model inference, container provisioning, agent
 and billing for elizaOS agents.
 
 Configure `ELIZAOS_CLOUD_API_KEY`; `ELIZAOS_CLOUD_BASE_URL` overrides the API endpoint.
-`ELIZAOS_CLOUD_ENABLED` enables provisioning, device-auth, bridge, and backup services.
+`ELIZAOS_CLOUD_ENABLED` enables the provisioning and bridge services.
 Keep API keys server-side and retain per-agent routing authority.
 
 ## Development

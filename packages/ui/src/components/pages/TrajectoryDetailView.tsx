@@ -459,35 +459,45 @@ function buildTimelineEvents(params: {
       meta: event.stepId,
     }));
   }
+  // Sort by the record time, not by the clock label: "01:00:01 PM" sorts
+  // before "12:59:58 PM" as text, and the label has no milliseconds.
   return [
-    ...params.llmCalls.map<TrajectoryTimelineEvent>((call, index) => ({
-      id: call.id,
-      type: "llm_call",
-      label: formatTrajectoryStepLabel(
-        call.stepType || call.purpose || call.actionType,
-        `LLM call ${index + 1}`,
-      ),
-      stage: stageForCall(call).replace(/_/g, " "),
-      status: "success",
-      timestampLabel: formatEventTimestamp(call.timestamp, call.createdAt),
-      description: call.model,
-      meta: call.stepId,
+    ...params.llmCalls.map((call, index) => ({
+      at: eventSortValue(call),
+      event: {
+        id: call.id,
+        type: "llm_call",
+        label: formatTrajectoryStepLabel(
+          call.stepType || call.purpose || call.actionType,
+          `LLM call ${index + 1}`,
+        ),
+        stage: stageForCall(call).replace(/_/g, " "),
+        status: "success",
+        timestampLabel: formatEventTimestamp(call.timestamp, call.createdAt),
+        description: call.model,
+        meta: call.stepId,
+      } satisfies TrajectoryTimelineEvent,
     })),
-    ...params.providerAccesses.map<TrajectoryTimelineEvent>((access) => ({
-      id: access.id,
-      type: "provider_access",
-      label: access.providerName,
-      stage: "provider",
-      status: "success",
-      timestampLabel: formatEventTimestamp(access.timestamp, access.createdAt),
-      description: access.purpose,
-      meta: access.stepId,
+    ...params.providerAccesses.map((access) => ({
+      at: eventSortValue(access),
+      event: {
+        id: access.id,
+        type: "provider_access",
+        label: access.providerName,
+        stage: "provider",
+        status: "success",
+        timestampLabel: formatEventTimestamp(
+          access.timestamp,
+          access.createdAt,
+        ),
+        description: access.purpose,
+        meta: access.stepId,
+      } satisfies TrajectoryTimelineEvent,
     })),
-  ].sort((a, b) =>
-    String(a.timestampLabel ?? "").localeCompare(
-      String(b.timestampLabel ?? ""),
-    ),
-  );
+  ]
+    .map((entry, index) => ({ ...entry, index }))
+    .sort((a, b) => a.at - b.at || a.index - b.index)
+    .map(({ event }) => event);
 }
 function buildCacheMetrics(
   observations: readonly TrajectoryCacheObservation[],

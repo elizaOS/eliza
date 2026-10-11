@@ -2,6 +2,10 @@
  * Playwright UI-smoke spec for the Cloud Agent Lifecycle app flow using the
  * real renderer fixture.
  */
+import {
+  DEDICATED_COMPUTE_PRICE_HEADER,
+  getDedicatedComputePriceAcceptance,
+} from "@elizaos/cloud-sdk/browser-contracts";
 import { expect, type Page, type Route, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
@@ -191,6 +195,22 @@ async function installAgentStoreRoutes(
       const body =
         (route.request().postDataJSON() as CreateAgentRequest | null) ?? {};
       store.createRequests.push(body);
+      // Same gate as the Cloud API: a Dedicated (alwaysOn) create starts paid
+      // compute only when the request carries the accepted price.
+      if (
+        body.alwaysOn &&
+        route.request().headers()[
+          DEDICATED_COMPUTE_PRICE_HEADER.toLowerCase()
+        ] !== getDedicatedComputePriceAcceptance()
+      ) {
+        await fulfillJson(route, 428, {
+          success: false,
+          code: "DEDICATED_PRICE_CONFIRMATION_REQUIRED",
+          error:
+            "Refresh the app and review the current Dedicated price before starting. No compute was started.",
+        });
+        return;
+      }
       const id = store.createdAgentId;
       const agent: StoreAgent = {
         id,
@@ -497,7 +517,12 @@ test("cloud agents: list, delete, then reprovision another from Settings", async
 
   // --- Reprovision: create a brand-new agent; the section binds it active and
   // reloads the app (the same path a returning user takes on switch).
+  // Create asks the owner to accept the Dedicated price before the paid start.
   await page.getByPlaceholder(/Agent name/i).fill("Fresh Agent");
+  page.once("dialog", (dialog) => {
+    expect(dialog.message()).toContain("Dedicated");
+    void dialog.accept();
+  });
   await page.getByRole("button", { name: /^Create$/ }).click();
 
   // bindAndReload persists the new agent as the active cloud server and reloads.

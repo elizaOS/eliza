@@ -140,11 +140,12 @@ function mutationAcknowledged(data: PluginMutationResponse): boolean {
   );
 }
 
+// `telegram` is the bot connector. It has no entry here: the personal-account
+// cancel route does not stop the bot, so it takes the plugin-disable path.
 const CONNECTOR_DISCONNECT_PATHS: Record<string, string> = {
-  telegram: "/api/setup/telegram-account/cancel",
   "telegram-account": "/api/setup/telegram-account/cancel",
   whatsapp: "/api/whatsapp/disconnect",
-  "discord-local": "/api/discord-local/disconnect",
+  "discord-local": "/api/setup/discord/cancel",
 };
 
 function getApiBase(): string {
@@ -799,7 +800,9 @@ async function doDisconnect(params: PluginParams): Promise<ActionResult> {
           data.state === "idle" &&
           data.ok !== false &&
           data.success !== false
-        : mutationAcknowledged(data);
+        : dedicatedPath === "/api/setup/discord/cancel"
+          ? data.connector === "discord" && data.state === "idle"
+          : mutationAcknowledged(data);
     if (!resp.ok || !acknowledged) {
       const errMsg =
         data.error || data.message || `Disconnect failed (${resp.status}).`;

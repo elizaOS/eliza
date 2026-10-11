@@ -44,78 +44,10 @@ import {
 } from "@elizaos/host/protocol";
 
 import { matchPluginRoutePath } from "./plugin-route-path.ts";
-import type { X402PluginModule } from "./x402-contract.ts";
-
-// `@elizaos/plugin-x402` is optional: it is a desktop/cloud-only plugin and is
-// aliased to a null stub in the mobile agent bundle. Mirror the guarded loader
-// in api/server.ts (`getX402Plugin`) so a declared x402 route degrades to its
-// unwrapped handler instead of throwing:
-//   - not installed  → the dynamic import rejects → `.catch(() => null)`
-//   - mobile stub    → module loads but exports are no-op proxies whose
-//     `__mobileStub` flag is set and whose "functions" return `undefined`,
-//     so calling `createPaymentAwareHandler` would yield `undefined` and the
-//     subsequent invocation would be an unhandled TypeError.
-// A `null` result means "no usable payment wrapper" — callers fall through to
-// the unwrapped legacy handler.
-/**
- * Vet a resolved `@elizaos/plugin-x402` module: return it only when it exposes
- * usable payment helpers, otherwise `null`. The mobile bundle aliases the
- * plugin to a null stub whose exports are no-op proxies (flagged
- * `__mobileStub`), so `createPaymentAwareHandler` would return `undefined` and
- * calling it would throw. Exported for unit testing against the real stub.
- */
-export function vetX402Module(mod: unknown): X402PluginModule | null {
-  if (mod == null) return null;
-  if ((mod as { __mobileStub?: boolean }).__mobileStub) return null;
-  const candidate = mod as Partial<X402PluginModule>;
-  if (
-    typeof candidate.createPaymentAwareHandler !== "function" ||
-    typeof candidate.isRoutePaymentWrapped !== "function"
-  ) {
-    return null;
-  }
-  return candidate as X402PluginModule;
-}
-
-/**
- * Pick the handler an x402-declaring route should run. When no usable payment
- * wrapper is available (`x402 === null`: plugin absent or mobile stub), fall
- * through to the unwrapped legacy handler so the route serves a deliberate
- * response instead of throwing. Exported for unit testing the fall-through.
- */
-export function selectX402Handler(
-  x402: X402PluginModule | null,
-  route: Route,
-  legacyHandler: LegacyRouteHandler,
-): LegacyRouteHandler {
-  if (!x402) return legacyHandler;
-  if (x402.isRoutePaymentWrapped(route)) return legacyHandler;
-  return x402.createPaymentAwareHandler(
-    route as PaymentEnabledRoute,
-  ) as LegacyRouteHandler;
-}
-
-let x402PluginModule: X402PluginModule | null = null;
-let x402PluginModulePromise: Promise<X402PluginModule | null> | null = null;
-
-function importOptionalX402Plugin(): Promise<unknown> {
-  // Variable specifier keeps Vite's import-analysis from eagerly resolving the
-  // optional plugin's dist (which is absent in the unit lane / mobile bundle).
-  const specifier = "@elizaos/plugin-x402";
-  return import(/* @vite-ignore */ specifier);
-}
-
-async function getX402Plugin(): Promise<X402PluginModule | null> {
-  if (x402PluginModule) return x402PluginModule;
-  x402PluginModulePromise ??= importOptionalX402Plugin()
-    .then((mod) => {
-      const vetted = vetX402Module(mod);
-      if (vetted) x402PluginModule = vetted;
-      return vetted;
-    })
-    .catch(() => null);
-  return x402PluginModulePromise;
-}
+import {
+  loadX402PaymentModule,
+  X402_ENFORCEMENT_UNAVAILABLE,
+} from "./x402-contract.ts";
 
 export interface DispatchRouteArgs {
   signal?: AbortSignal;
@@ -581,8 +513,24 @@ export async function dispatchRoute(
       : undefined;
 
     try {
+      // A paid route runs only behind the payment wrapper, which wraps the
+      // legacy handler. Without the wrapper (plugin absent, mobile stub, or no
+      // legacy handler to wrap) the route is refused, never served unpaid.
+      const paid = route.x402 != null;
+      const x402 = paid ? await loadX402PaymentModule() : null;
+      if (paid && (!x402 || !route.handler)) {
+        logger.warn(
+          `[dispatchRoute] refusing x402 route ${method} ${args.path}: payment enforcement unavailable`,
+        );
+        return {
+          status: X402_ENFORCEMENT_UNAVAILABLE.status,
+          headers: { "content-type": "application/json; charset=utf-8" },
+          body: { ...X402_ENFORCEMENT_UNAVAILABLE.body },
+        };
+      }
+
       // New return-shape handler — preferred path.
-      if (route.routeHandler) {
+      if (route.routeHandler && !paid) {
         const ctx: RouteHandlerContext = {
           signal: args.signal ?? new AbortController().signal,
           body: parseBodyAsJson(args.body),
@@ -603,19 +551,10 @@ export async function dispatchRoute(
       // Legacy Express-shaped handler — run through the synthetic shim so we
       // can capture the response into a structured RouteHandlerResult.
       const legacyHandler = route.handler as LegacyRouteHandler;
-      let effectiveHandler = legacyHandler;
-      if (route.x402 != null) {
-        const x402 = await getX402Plugin();
-        if (!x402) {
-          // x402 plugin unavailable (mobile stub / not installed). Serve the
-          // route with its unwrapped handler rather than 500-ing; payment
-          // enforcement is inert where the plugin is not present.
-          logger.debug(
-            `[dispatchRoute] x402 plugin unavailable; serving ${method} ${args.path} without payment enforcement`,
-          );
-        }
-        effectiveHandler = selectX402Handler(x402, route, legacyHandler);
-      }
+      const effectiveHandler =
+        x402 && !x402.isRoutePaymentWrapped(route)
+          ? x402.createPaymentAwareHandler(route as PaymentEnabledRoute)
+          : legacyHandler;
 
       const { req, res, captured } = buildLegacyShim({
         method,

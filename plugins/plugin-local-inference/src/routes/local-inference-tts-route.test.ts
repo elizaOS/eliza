@@ -4,10 +4,13 @@
  * via a fake runtime; no audio is synthesized.
  */
 
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import * as http from "node:http";
 import { Socket } from "node:net";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { addLogListener, type LogEntry, ModelType } from "@elizaos/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The logger freezes its level at module init and the repo test setup defaults
 // LOG_LEVEL to "error", which would gate the info-level tts lines (and their
@@ -172,13 +175,8 @@ describe("local inference TTS route", () => {
 		});
 	});
 
-	it.each([
-		"eliza-local-inference",
-		"capacitor-llama",
-		"eliza-device-bridge",
-		"eliza-aosp-llama",
-	])(
-		"status reports ready for registered local TTS provider %s",
+	it.each(["capacitor-llama", "eliza-device-bridge", "eliza-aosp-llama"])(
+		"status reports ready for registered mobile TTS provider %s",
 		async (provider) => {
 			const getModelRegistrations = vi.fn(() => [
 				{ modelType: ModelType.TEXT_TO_SPEECH, provider },
@@ -242,6 +240,65 @@ describe("local inference TTS route", () => {
 			});
 		},
 	);
+
+	describe("desktop engine provider status", () => {
+		let stateDir: string;
+		let kokoroDir: string;
+		const prevEnv = {
+			state: process.env.ELIZA_STATE_DIR,
+			kokoro: process.env.ELIZA_KOKORO_MODEL_DIR,
+		};
+
+		beforeEach(() => {
+			stateDir = mkdtempSync(path.join(tmpdir(), "tts-status-"));
+			kokoroDir = path.join(stateDir, "kokoro");
+			process.env.ELIZA_STATE_DIR = stateDir;
+			process.env.ELIZA_KOKORO_MODEL_DIR = kokoroDir;
+		});
+
+		afterEach(() => {
+			if (prevEnv.state === undefined) delete process.env.ELIZA_STATE_DIR;
+			else process.env.ELIZA_STATE_DIR = prevEnv.state;
+			if (prevEnv.kokoro === undefined)
+				delete process.env.ELIZA_KOKORO_MODEL_DIR;
+			else process.env.ELIZA_KOKORO_MODEL_DIR = prevEnv.kokoro;
+			rmSync(stateDir, { recursive: true, force: true });
+		});
+
+		async function engineProviderStatus(): Promise<unknown> {
+			const state: CompatRuntimeState = {
+				current: {
+					getModelRegistrations: () => [
+						{
+							modelType: ModelType.TEXT_TO_SPEECH,
+							provider: "eliza-local-inference",
+						},
+					],
+				} as unknown as CompatRuntimeState["current"],
+			};
+			const out = fakeRes();
+			await handleLocalInferenceTtsRoute(fakeStatusReq(), out.res, state);
+			expect(out.status()).toBe(200);
+			return JSON.parse(out.bodyBuffer().toString());
+		}
+
+		it("reports not-ready when the handler is registered but no Kokoro artifacts are staged", async () => {
+			expect(await engineProviderStatus()).toEqual({
+				ready: false,
+				provider: null,
+			});
+		});
+
+		it("reports ready once the Kokoro model and a voice are staged", async () => {
+			mkdirSync(path.join(kokoroDir, "voices"), { recursive: true });
+			writeFileSync(path.join(kokoroDir, "kokoro-82m-v1_0.gguf"), "");
+			writeFileSync(path.join(kokoroDir, "voices", "af_bella.bin"), "");
+			expect(await engineProviderStatus()).toEqual({
+				ready: true,
+				provider: "local-inference",
+			});
+		});
+	});
 
 	it("status reports not-ready when the runtime is absent", async () => {
 		const state: CompatRuntimeState = { current: null };

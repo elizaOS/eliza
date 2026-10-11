@@ -44,9 +44,11 @@ function ThreadLineText({ content }: { content: string }): React.ReactNode {
 function OverlayAssistantTurnBody({
   message,
   turnStatus,
+  streaming,
 }: {
   message: ChatMessageData;
   turnStatus: ChatTurnStatus | null;
+  streaming: boolean;
 }) {
   const { t } = useTranslation();
   // Liveness consumes this marker as a prose-reply signal, so derive it from
@@ -54,6 +56,7 @@ function OverlayAssistantTurnBody({
   const renderedSegments = useParsedSegments(
     stripUnclaimedInteractionMarkup(message.text),
     false,
+    streaming,
   );
   const hasRenderedProse = renderedSegments.some(
     (segment) => segment.kind === "text" && Boolean(segment.text.trim()),
@@ -89,6 +92,7 @@ function OverlayAssistantTurnBody({
             content={message.text}
             messageId={message.id}
             producerScope={message.source}
+            streaming={streaming}
           />
           {attachmentsNode}
           {message.secretRequest ? (
@@ -193,6 +197,7 @@ export function renderOverlayMessageBody(
     <OverlayAssistantTurnBody
       message={message}
       turnStatus={ctx?.turnStatus ?? null}
+      streaming={ctx?.streaming === true}
     />
   );
 }

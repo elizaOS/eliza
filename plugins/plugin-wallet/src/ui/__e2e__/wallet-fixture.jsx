@@ -93,73 +93,6 @@ const nfts = {
   solana: null,
 };
 
-const tradingProfile = {
-  window: "30d",
-  source: "all",
-  generatedAt: "2026-08-26T12:00:00.000Z",
-  summary: {
-    totalSwaps: 4,
-    buyCount: 2,
-    sellCount: 2,
-    settledCount: 4,
-    successCount: 4,
-    revertedCount: 0,
-    tradeWinRate: 0.5,
-    txSuccessRate: 1,
-    winningTrades: 2,
-    evaluatedTrades: 4,
-    realizedPnlBnb: "1.5",
-    volumeBnb: "12",
-  },
-  pnlSeries: [
-    { day: "2026-08-22", realizedPnlBnb: "0.2", volumeBnb: "3", swaps: 1 },
-    { day: "2026-08-23", realizedPnlBnb: "0.9", volumeBnb: "4", swaps: 2 },
-    { day: "2026-08-24", realizedPnlBnb: "1.5", volumeBnb: "5", swaps: 1 },
-  ],
-  tokenBreakdown: [
-    {
-      tokenAddress: AERO_ADDRESS.toLowerCase(),
-      symbol: "AERO",
-      buyCount: 2,
-      sellCount: 1,
-      realizedPnlBnb: "1.2",
-      volumeBnb: "8",
-      tradeWinRate: 1,
-      winningTrades: 2,
-      evaluatedTrades: 2,
-    },
-    {
-      tokenAddress:
-        "0xUSDC00000000000000000000000000000000000000".toLowerCase(),
-      symbol: "USDC",
-      buyCount: 1,
-      sellCount: 1,
-      realizedPnlBnb: "-0.3",
-      volumeBnb: "4",
-      tradeWinRate: 0,
-      winningTrades: 0,
-      evaluatedTrades: 1,
-    },
-  ],
-  recentSwaps: [
-    {
-      hash: "0xswap1",
-      createdAt: "2026-08-25T12:00:00.000Z",
-      source: "agent",
-      side: "buy",
-      status: "success",
-      tokenAddress: AERO_ADDRESS.toLowerCase(),
-      tokenSymbol: "AERO",
-      inputAmount: "1",
-      inputSymbol: "ETH",
-      outputAmount: "20",
-      outputSymbol: "AERO",
-      explorerUrl: "https://basescan.org/tx/0xswap1",
-      confirmations: 12,
-    },
-  ],
-};
-
 const source = {
   providerId: "coingecko",
   providerName: "CoinGecko",
@@ -197,10 +130,6 @@ const marketOverview = {
   predictions: [],
 };
 
-client.getWalletTradingProfile = async (window) => ({
-  ...tradingProfile,
-  window: window ?? "30d",
-});
 client.getWalletMarketOverview = async () => marketOverview;
 
 const noopAsync = async () => {};

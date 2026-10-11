@@ -65,6 +65,8 @@ interface InboxWire {
   fetchedAt: string;
   /** Per-source connector health (`LifeOpsInboxSourceStatus` in shared). */
   sources: InboxSourceStatusWire[];
+  /** `false` only from the host fallback route, when no inbox backend is loaded. */
+  available?: boolean;
 }
 // ---------------------------------------------------------------------------
 // Fetcher seam — default to a real GET; tests inject an offline fake.
@@ -78,22 +80,6 @@ export interface InboxFetchers {
 }
 /** Maximum time allowed for one inbox request. */
 export const INBOX_VIEW_JSON_TIMEOUT_MS = 15000;
-export async function getInboxJsonWithFetch<T>(
-  url: string,
-  fetchImpl: typeof fetch,
-  timeoutMs: number = INBOX_VIEW_JSON_TIMEOUT_MS,
-  callerSignal?: AbortSignal,
-): Promise<T> {
-  const deadline = AbortSignal.timeout(timeoutMs);
-  const response = await fetchImpl(url, {
-    method: "GET",
-    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
-  });
-  if (!response.ok) {
-    throw new Error(`Inbox request failed (${response.status})`);
-  }
-  return (await response.json()) as T;
-}
 async function getInbox(
   channels: InboxChannel[],
   signal?: AbortSignal,
@@ -101,12 +87,10 @@ async function getInbox(
   const params = new URLSearchParams();
   if (channels.length > 0) params.set("channels", channels.join(","));
   const query = params.toString();
-  const path = `/api/lifeops/inbox${query ? `?${query}` : ""}`;
-  return getInboxJsonWithFetch<InboxWire>(
-    `${client.getBaseUrl()}${path}`,
-    globalThis.fetch,
-    INBOX_VIEW_JSON_TIMEOUT_MS,
-    signal,
+  return client.fetch<InboxWire>(
+    `/api/lifeops/inbox${query ? `?${query}` : ""}`,
+    { method: "GET", signal },
+    { timeoutMs: INBOX_VIEW_JSON_TIMEOUT_MS },
   );
 }
 const defaultFetchers: InboxFetchers = {
@@ -256,6 +240,16 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
       .fetchInbox(channels, controller.signal)
       .then((wire) => {
         if (controller.signal.aborted) return;
+        if (wire.available === false) {
+          // The host answers with an empty payload when no inbox backend is
+          // loaded. That is not an empty inbox, and connecting a channel
+          // cannot fix it, so show it as an error.
+          setState({
+            kind: "error",
+            message: "Inbox is not available on this agent.",
+          });
+          return;
+        }
         const items = wire.messages
           .map(mapMessage)
           .filter((item): item is InboxItem => item !== null);

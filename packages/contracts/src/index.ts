@@ -14,7 +14,6 @@ export * from "./contracts/apps-lifecycle-routes.js";
 export * from "./contracts/apps-loading-routes.js";
 export * from "./contracts/apps-runs-routes.js";
 export * from "./contracts/auth-routes.js";
-export * from "./contracts/automation-nodes.js";
 export * from "./contracts/character-routes.js";
 export * from "./contracts/chat.js";
 export * from "./contracts/cloud-coding-containers.js";

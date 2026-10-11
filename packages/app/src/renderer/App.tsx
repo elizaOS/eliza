@@ -2297,6 +2297,7 @@ function ShellFoundationMount({
                 messages={controller.messages}
                 onSend={controller.send}
                 canSend={controller.canSend}
+                responding={controller.responding}
                 greeting={greetingForTimeOfDay()}
                 recording={controller.recording}
                 onToggleRecording={controller.toggleRecording}

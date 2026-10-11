@@ -260,7 +260,7 @@ const EXPLICIT_MEDIA_GENERATION_REQUEST_RE =
  * (services/message.ts) — every owner-private decline it can ship must match
  * one arm here. */
 const CAPABILITY_DENIAL_REPLY_RE =
-  /\b(?:can'?t|cannot|unable to|no|don'?t have|lack)\b[^.!?]{0,80}\b(?:tool|generat|capabilit|action|model|service|setup|environment)|private surface|owner'?s private info|(?:limited|only available) to (?:the owner|them)|don'?t have access to that/i;
+  /\b(?:can'?t|cannot|unable to|no|don'?t have|lack)\b[^.!?]{0,80}\b(?:tool|generat|capabilit|action|model|service|setup|environment)|private surface|owner'?s private info|(?:limited|only available) to (?:the owner|them)|don'?t have access to that|can'?t pull it up in a shared channel|can'?t share that private information/i;
 
 /** Reminder wording supports scheduling votes and denial recovery, not intent on its own. */
 const EXPLICIT_REMINDER_REQUEST_RE =

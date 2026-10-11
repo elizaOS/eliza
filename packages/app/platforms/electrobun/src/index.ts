@@ -127,6 +127,7 @@ import {
 import { checkWebGpuSupport } from "./native/webgpu-browser-support";
 import { getPersistedDeployment } from "./persisted-deployment";
 import { printElectrobunDevSettingsBanner } from "./print-electrobun-dev-settings-banner";
+import { createQuitGate } from "./quit-gate";
 import { resumeDesktopRemoteTarget } from "./remote-target-rpc";
 import {
 	createRendererApiProxyRequestInit,
@@ -753,21 +754,23 @@ let surfaceWindowManager: SurfaceWindowManager | null = null;
 let rendererUrlPromise: Promise<string> | null = null;
 let backgroundWindowPromise: Promise<void> | null = null;
 let isQuitting = false;
-let quitRequestPromise: Promise<void> | null = null;
+const quitGate = createQuitGate({
+	runCleanup: () => runShutdownCleanup("explicit-quit"),
+	quit: () => Utils.quit(),
+	onCleanupError: (err) => {
+		logger.warn(
+			`[Main] Shutdown cleanup failed before explicit quit: ${formatError(err)}`,
+		);
+	},
+	onDeadline: (deadlineMs) => {
+		logger.warn(
+			`[Main] Shutdown cleanup did not settle within ${deadlineMs}ms; quitting anyway`,
+		);
+	},
+});
 function requestAppQuit(): Promise<void> {
-	if (quitRequestPromise) {
-		return quitRequestPromise;
-	}
 	isQuitting = true;
-	quitRequestPromise = (async () => {
-		await runShutdownCleanup("explicit-quit").catch((err) => {
-			logger.warn(
-				`[Main] Shutdown cleanup failed before explicit quit: ${formatError(err)}`,
-			);
-		});
-		Utils.quit();
-	})();
-	return quitRequestPromise;
+	return quitGate.requestQuit();
 }
 /**
  * True for packaged desktop builds, false for the in-repo dev runtime.
@@ -2437,12 +2440,19 @@ async function runShutdownCleanup(reason: string): Promise<void> {
 				`[Main] Native module disposal failed during shutdown: ${error instanceof Error ? error.message : String(error)}`,
 			);
 		}
-	})();
+	})().finally(() => {
+		quitGate.markCleanupSettled();
+	});
 	return shutdownCleanupPromise;
 }
 function setupShutdown(): void {
-	Electrobun.events.on("before-quit", () => {
-		void runShutdownCleanup("before-quit");
+	// Electrobun's quit() emits before-quit synchronously and then blocks in
+	// native teardown until the process exits, so async cleanup started here
+	// never runs and the spawned agent runtime is orphaned. The gate vetoes the
+	// quit, finishes cleanup (bounded), then quits again.
+	Electrobun.events.on("before-quit", (event) => {
+		isQuitting = true;
+		quitGate.handleBeforeQuit(event);
 	});
 }
 /**
