@@ -780,6 +780,106 @@ describe("iOS bridge — conversation message failure surfacing", () => {
     );
   });
 });
+describe("iOS bridge — conversation transcript route", () => {
+  // A scanned GGUF file makes the native reply path run, the path an ios-local
+  // build uses. The store is the in-memory runtime the other shims read.
+  const fsGlobals = globalThis as MobileFsGlobals;
+  let prevResolver: MobileFsGlobals["__ELIZA_MOBILE_FS_RESOLVE__"];
+  let prevStateDir: string | undefined;
+  beforeEach(() => {
+    prevResolver = fsGlobals.__ELIZA_MOBILE_FS_RESOLVE__;
+    fsGlobals.__ELIZA_MOBILE_FS_RESOLVE__ = (inputPath) => inputPath;
+    prevStateDir = process.env.ELIZA_STATE_DIR;
+    process.env.ELIZA_STATE_DIR = mkdtempSync(
+      path.join(tmpdir(), "ios-bridge-transcript-"),
+    );
+    const modelsDir = path.join(
+      process.env.ELIZA_STATE_DIR,
+      "local-inference",
+      "models",
+    );
+    mkdirSync(modelsDir, { recursive: true });
+    writeFileSync(path.join(modelsDir, "chat.gguf"), "GGUF-rest-of-file");
+  });
+  afterEach(() => {
+    fsGlobals.__ELIZA_MOBILE_FS_RESOLVE__ = prevResolver;
+    if (prevStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+    else process.env.ELIZA_STATE_DIR = prevStateDir;
+  });
+  function createNativeReplyBackend(
+    useModel: () => Promise<string>,
+  ): IosBridgeBackend {
+    const runtime = Object.assign(createFakeRuntime(), {
+      async ensureConnection(): Promise<void> {},
+      useModel,
+    });
+    return makeBackend(runtime);
+  }
+  it("returns the stored user turn and native reply, oldest first", async () => {
+    const backend = createNativeReplyBackend(async () => "Hello from Eliza-1.");
+    const created = await call(backend, "POST", "/api/conversations", {});
+    const id = (created.json.conversation as { id: string }).id;
+    const sent = await call(
+      backend,
+      "POST",
+      `/api/conversations/${id}/messages`,
+      {
+        text: "hi there",
+      },
+    );
+    expect(sent.json.reply).toBe("Hello from Eliza-1.");
+    const { status, json } = await call(
+      backend,
+      "GET",
+      `/api/conversations/${id}/messages`,
+    );
+    expect(status).toBe(200);
+    const messages = json.messages as Array<{
+      id: string;
+      role: string;
+      text: string;
+      timestamp: number;
+    }>;
+    expect(messages.map(({ role, text }) => ({ role, text }))).toEqual([
+      { role: "user", text: "hi there" },
+      { role: "assistant", text: "Hello from Eliza-1." },
+    ]);
+    // The whole room was returned, so the page below the oldest row is empty.
+    const older = await call(
+      backend,
+      "GET",
+      `/api/conversations/${id}/messages?before=${messages[0].timestamp}&beforeId=${messages[0].id}`,
+    );
+    expect(older.json).toEqual({ messages: [], hasMore: false });
+  });
+  it("does not store a generation-failure notice as a reply", async () => {
+    const backend = createNativeReplyBackend(async () => {
+      throw new Error("context lost");
+    });
+    const created = await call(backend, "POST", "/api/conversations", {});
+    const id = (created.json.conversation as { id: string }).id;
+    await call(backend, "POST", `/api/conversations/${id}/messages`, {
+      text: "hi there",
+    });
+    const { json } = await call(
+      backend,
+      "GET",
+      `/api/conversations/${id}/messages`,
+    );
+    expect(
+      (json.messages as Array<{ role: string }>).map((m) => m.role),
+    ).toEqual(["user"]);
+  });
+  it("answers 404 for a conversation the bridge does not hold", async () => {
+    const { status, json } = await call(
+      makeBackend(createFakeRuntime()),
+      "GET",
+      "/api/conversations/missing/messages",
+    );
+    expect(status).toBe(404);
+    expect(json.error).toBe("Conversation not found");
+  });
+});
 describe("iOS bridge — local-inference verify route", () => {
   // The bridge reads through the sandboxed fs proxy, which needs the resolver
   // the native host installs at boot. Pass paths through unchanged so the
