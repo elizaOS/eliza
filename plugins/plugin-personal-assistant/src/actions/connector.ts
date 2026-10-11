@@ -1609,7 +1609,7 @@ export const connectorAction: Action & {
     {
       name: "query",
       description:
-        "Discord verify only: search text for browser-message reads.",
+        "Discord and X verify only: search text for the read-only search (Discord browser messages, X posts).",
       required: false,
       schema: { type: "string" as const },
     },
@@ -1682,13 +1682,13 @@ export const connectorAction: Action & {
       {
         name: "{{name1}}",
         content: {
-          text: "Verify Telegram by sending a self-test to my saved messages.",
+          text: "Verify that my Telegram connector is working.",
         },
       },
       {
         name: "{{agentName}}",
         content: {
-          text: "I'll probe the Telegram connector with a read + send check and report the results.",
+          text: "I'll run a read-only probe of the Telegram connector and report the result. Verify does not send anything; to test delivery I can draft a message for your approval.",
         },
       },
     ],
