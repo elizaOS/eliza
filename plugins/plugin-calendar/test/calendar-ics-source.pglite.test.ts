@@ -1019,6 +1019,43 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     },
   );
 
+  it("removes the occurrence of the day that a DATE EXDATE names on a timed series", async () => {
+    const source = await createSource();
+    await syncBody(
+      source.id,
+      calendar(
+        [
+          "BEGIN:VEVENT",
+          "UID:evening-class",
+          "DTSTAMP:20261101T000000Z",
+          "DTSTART;TZID=America/Los_Angeles:20261201T180000",
+          "DTEND;TZID=America/Los_Angeles:20261201T190000",
+          "RRULE:FREQ=WEEKLY;COUNT=4",
+          "EXDATE;VALUE=DATE:20261208",
+          "SUMMARY:Evening class",
+          "END:VEVENT",
+        ].join("\r\n"),
+      ),
+    );
+    const feed = await service.getCalendarFeed(
+      new URL("http://internal.test/api/calendar"),
+      {
+        grantId: source.id,
+        timeMin: "2026-12-01T00:00:00.000Z",
+        timeMax: "2026-12-31T00:00:00.000Z",
+      },
+      new Date(),
+    );
+
+    expect(feed.state).toBe("complete");
+    // 18:00 Los Angeles on Dec 8 is Dec 9 in UTC; the EXDATE day is local.
+    expect(feed.events.map((event) => event.startAt)).toEqual([
+      "2026-12-02T02:00:00.000Z",
+      "2026-12-16T02:00:00.000Z",
+      "2026-12-23T02:00:00.000Z",
+    ]);
+  });
+
   it("keeps usable EXDATE values when another EXDATE is malformed", async () => {
     const source = await createSource();
     await syncBody(

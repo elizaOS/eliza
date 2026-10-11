@@ -16,6 +16,7 @@ import {
   firstRecurrenceRule,
   MAX_EXPANDED_RECURRENCE_OCCURRENCES,
 } from "../internal/recurrence.js";
+import { getZonedDateParts } from "../internal/time.js";
 import type { IcsCalendarSourceRecord } from "../service/CalendarRepository.js";
 import { readIcsExceptionDates } from "./parser.js";
 import type { IcsParsedEvent } from "./types.js";
@@ -206,12 +207,13 @@ export function expandIcsCalendarEvents(args: {
       complete = false;
       diagnostics.add("CALENDAR_ICS_EXDATE_INVALID");
     }
+    const seriesTimeZone = event.isAllDay ? "UTC" : (event.timezone ?? "UTC");
     let starts: Date[];
     try {
       starts = expandRecurrenceOccurrences({
         rule,
         startAt: new Date(startMs),
-        timeZone: event.isAllDay ? "UTC" : (event.timezone ?? "UTC"),
+        timeZone: seriesTimeZone,
         rangeStart: new Date(minMs - durationMs + (durationMs === 0 ? 0 : 1)),
         rangeEnd: new Date(maxMs),
       });
@@ -234,6 +236,14 @@ export function expandIcsCalendarEvents(args: {
       const occurrenceMs = start.getTime();
       if (!overlaps(occurrenceMs, occurrenceMs + durationMs)) continue;
       if (excluded.instants.has(occurrenceMs)) continue;
+      // A DATE EXDATE on a timed series names a day. It excludes the
+      // occurrence that starts on that day in the series time zone.
+      if (!event.isAllDay && excluded.dates.size > 0) {
+        const day = getZonedDateParts(start, seriesTimeZone);
+        if (excluded.dates.has(Date.UTC(day.year, day.month - 1, day.day))) {
+          continue;
+        }
+      }
       if (overridden.has(`${event.metadata.icsUid}\0${occurrenceMs}`)) continue;
       const occurrenceStart = start.toISOString();
       if (occurrenceMs === startMs) {

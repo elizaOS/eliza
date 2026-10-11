@@ -632,13 +632,16 @@ function recurrenceLines(component: IcsComponent): string[] {
 /**
  * Instants named by the EXDATE lines of a stored recurrence line set, parsed
  * like DTSTART (TZID, floating values in `timezone`, all-day at UTC midnight).
+ * A DATE value is also in `dates`, as the UTC midnight of its day: RFC 5545
+ * lets EXDATE be a DATE, and on a timed series it names a day, not an instant.
  * An EXDATE value that does not parse is counted, so the caller can report it.
  */
 export function readIcsExceptionDates(
   recurrence: readonly string[],
   timezone: string | null,
-): { instants: Set<number>; invalidValueCount: number } {
+): { instants: Set<number>; dates: Set<number>; invalidValueCount: number } {
   const instants = new Set<number>();
+  const dates = new Set<number>();
   let invalidValueCount = 0;
   for (const line of recurrence) {
     if (!/^EXDATE[:;]/i.test(line.trim())) continue;
@@ -659,13 +662,14 @@ export function readIcsExceptionDates(
           "EXDATE",
         );
         instants.add(Date.parse(parsed.instant));
+        if (parsed.isDate) dates.add(Date.parse(parsed.instant));
       } catch {
         // error-policy:J3 Same as above, for one value of a valid line.
         invalidValueCount += 1;
       }
     }
   }
-  return { instants, invalidValueCount };
+  return { instants, dates, invalidValueCount };
 }
 
 function parseEvent(
