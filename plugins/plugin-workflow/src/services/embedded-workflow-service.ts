@@ -42,6 +42,7 @@ import type {
   WorkflowRevision,
   WorkflowRevisionOperation,
   WorkflowRunEvent,
+  WorkflowSchedule,
   WorkflowTag,
 } from '../types/index';
 import { WORKFLOW_RUN_EVENT, WorkflowApiError } from '../types/index';
@@ -144,6 +145,27 @@ function requireMutable(workflow: WorkflowDefinition) {
     );
 }
 
+/**
+ * Next fire time of an enabled schedule, or a 400 when it cannot be armed.
+ * The cron scheduler evaluates a zone it cannot resolve on UTC, so an
+ * unrecognized zone (the model writes "PST") is rejected, not run on UTC.
+ */
+function scheduleNextRunAtMs(schedule: WorkflowSchedule, now: number): number {
+  const timeZone: unknown = schedule.timezone;
+  try {
+    if (typeof timeZone !== 'string') throw new RangeError('missing time zone');
+    new Intl.DateTimeFormat('en-US', { timeZone }).format(0);
+  } catch {
+    throw new WorkflowApiError(`Invalid workflow schedule time zone: ${String(timeZone)}`, 400);
+  }
+  const nextRunAtMs =
+    typeof schedule.cron === 'string' ? computeNextCronRunAtMs(schedule.cron, now, timeZone) : null;
+  if (nextRunAtMs === null) {
+    throw new WorkflowApiError(`Invalid workflow cron schedule: ${String(schedule.cron)}`, 400);
+  }
+  return nextRunAtMs;
+}
+
 function normalizeWorkflow(
   workflow: WorkflowDefinition,
   id: string | undefined,
@@ -183,6 +205,8 @@ function normalizeWorkflow(
   if (snapshot.steps !== undefined && !Array.isArray(snapshot.steps)) {
     throw new WorkflowApiError('Workflow steps must be an array', 400);
   }
+  // Checked before the write: activation arms this schedule after the row commits.
+  if (snapshot.schedule?.enabled) scheduleNextRunAtMs(snapshot.schedule, Date.now());
   const stepIds = new Set<string>();
   for (const step of snapshot.steps ?? []) {
     if (!step || typeof step !== 'object' || typeof step.id !== 'string' || !step.id.trim()) {
@@ -1324,6 +1348,9 @@ export class EmbeddedWorkflowService extends Service {
           409
         );
       requireMutable(current.workflow);
+      // A stored schedule that cannot be armed must not commit as active.
+      if (active && current.workflow.schedule?.enabled)
+        scheduleNextRunAtMs(current.workflow.schedule, Date.now());
       await tx
         .insert(workflowRevisions)
         .values(this.revisionValues(id, current, active ? 'activate' : 'deactivate'));
@@ -1451,20 +1478,8 @@ export class EmbeddedWorkflowService extends Service {
     await this.removeSchedule(workflow.id);
     const schedule = workflow.schedule;
     if (!workflow.active || !schedule?.enabled) return;
-    // The cron scheduler evaluates a zone it cannot resolve on UTC, so an
-    // unrecognized zone (the model writes "PST") must be rejected here.
-    const timeZone: unknown = schedule.timezone;
-    try {
-      if (typeof timeZone !== 'string') throw new RangeError('missing time zone');
-      new Intl.DateTimeFormat('en-US', { timeZone }).format(0);
-    } catch {
-      throw new WorkflowApiError(`Invalid workflow schedule time zone: ${String(timeZone)}`, 400);
-    }
     const now = Date.now();
-    const nextRunAtMs = computeNextCronRunAtMs(schedule.cron, now, timeZone);
-    if (nextRunAtMs === null) {
-      throw new WorkflowApiError(`Invalid workflow cron schedule: ${schedule.cron}`, 400);
-    }
+    const nextRunAtMs = scheduleNextRunAtMs(schedule, now);
     const triggerId = stringToUuid(`workflow-schedule:${this.tenantId}:${workflow.id}`);
     const trigger: TriggerConfig = {
       version: TRIGGER_SCHEMA_VERSION,

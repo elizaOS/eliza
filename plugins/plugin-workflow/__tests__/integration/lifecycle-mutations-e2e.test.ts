@@ -136,15 +136,27 @@ test('HTTP lifecycle remove/restore: retained history, blocked admissions, pendi
       source: `/** @jsxImportSource smthrs */
 import {createSmithers} from 'smthrs/create';import {z} from 'zod';const {Workflow,Task,smithers,outputs}=createSmithers({answer:z.object({value:z.number()})},{dbPath:process.env.ELIZA_SMTHRS_DB_PATH});export default smithers(()=><Workflow name="lifecycle"><Task id="answer" output={outputs.answer}>{{value:56}}</Task></Workflow>);`,
     };
-    // A zone the scheduler cannot resolve would run on UTC, so arming is refused.
+    // A zone the scheduler cannot resolve would run on UTC, so the workflow is
+    // refused before any row is written.
+    const badZone = { cron: '0 9 * * 1-5', timezone: 'Pacific Time', enabled: true };
     await expect(
       embedded!.createWorkflow({
         ...definition,
         name: 'Unresolvable zone fixture',
         active: true,
-        schedule: { cron: '0 9 * * 1-5', timezone: 'Pacific Time', enabled: true },
+        schedule: badZone,
       } as any)
     ).rejects.toThrow('Invalid workflow schedule time zone: Pacific Time');
+    expect(tasks.size).toBe(0);
+    expect((await embedded!.listWorkflows()).data).toHaveLength(0);
+    // A row stored before this check existed stays inactive when activation is refused.
+    const legacy = await embedded!.createWorkflow({ ...definition, name: 'Legacy zone' } as any);
+    await runtime.db
+      .update(schema.embeddedWorkflows)
+      .set({ workflow: { ...definition, id: legacy.id, name: 'Legacy zone', schedule: badZone } });
+    expect((await call(`/workflows/${legacy.id}/activate`, {})).status).toBe(400);
+    expect((await embedded!.getWorkflow(legacy.id)).active).toBe(false);
+    expect((await call(`/workflows/${legacy.id}/revisions`)).body.revisions).toHaveLength(0);
     expect(tasks.size).toBe(0);
     const held = await embedded!.createWorkflow({
       ...definition,
