@@ -232,6 +232,25 @@ describe("draftReplyAction", () => {
     expect(adapter.lastDraft?.inReplyToId).toBe("newer-match");
   });
 
+  it("rejects a draft with no message id and no sender or content hint", async () => {
+    const adapter = new RecordingReplyAdapter([messageRef()]);
+    getDefaultTriageService().register(adapter);
+
+    const result = await draftReplyAction.handler(
+      createFakeRuntime(),
+      turn,
+      undefined,
+      options({ body: "Sounds good" }),
+    );
+
+    expect(result).toEqual({
+      success: false,
+      text: "messageId or a sender/content hint is required",
+      error: "messageId or a sender/content hint is required",
+    });
+    expect(adapter.createCount).toBe(0);
+  });
+
   it("returns a distinct failure when lookup finds no matching message", async () => {
     const adapter = new RecordingReplyAdapter([messageRef()]);
     getDefaultTriageService().register(adapter);

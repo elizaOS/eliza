@@ -343,36 +343,40 @@ export class TriageService {
     };
   }
 
+  /** The adapter `manage` will route to, for checks that precede it. */
+  getManageAdapter(
+    messageId: string,
+    hint?: { source?: MessageSource },
+  ): MessageAdapter | undefined {
+    return hint?.source
+      ? this.adapters.get(hint.source)
+      : this.getAdapterForMessage(messageId);
+  }
+
   async manage(
     runtime: IAgentRuntime,
     messageId: string,
     op: ManageOperation,
     hint?: { source?: MessageSource },
   ): Promise<ManageResult> {
-    const adapter = hint?.source
-      ? this.adapters.get(hint.source)
-      : this.getAdapterForMessage(messageId);
+    const adapter = this.getManageAdapter(messageId, hint);
     if (!adapter) {
       return {
         ok: false,
         reason: `no adapter resolved for message ${messageId}`,
       };
     }
-    // Local tag mutations don't need adapter support — keep them in the store.
-    if (op.kind === "tag_add") {
-      const updated = this.store.addTag(messageId, op.tag);
-      if (!updated) {
-        return { ok: false, reason: `message ${messageId} not in store` };
-      }
-    } else if (op.kind === "tag_remove") {
-      this.store.removeTag(messageId, op.tag);
+    // Tags live only in the local store; no adapter has a tag operation.
+    if (op.kind === "tag_add" || op.kind === "tag_remove") {
+      const updated =
+        op.kind === "tag_add"
+          ? this.store.addTag(messageId, op.tag)
+          : this.store.removeTag(messageId, op.tag);
+      return updated
+        ? { ok: true }
+        : { ok: false, reason: `message ${messageId} not in store` };
     }
     if (adapter.manageMessage == null) {
-      // adapter doesn't override manage — for tag ops we already mutated the
-      // local store, so report success with a note.
-      if (op.kind === "tag_add" || op.kind === "tag_remove") {
-        return { ok: true };
-      }
       return {
         ok: false,
         reason: `${adapter.source} adapter does not implement manageMessage`,

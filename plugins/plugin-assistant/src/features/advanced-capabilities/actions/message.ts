@@ -6295,7 +6295,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   {
     name: "manageOperation",
     description:
-      "op=manage operation: archive, trash, spam, mark_read, label_add, label_remove, tag_add, tag_remove, mute_thread, unsubscribe.",
+      "op=manage operation: archive, trash, spam, mark_read, label_add, label_remove, tag_add, tag_remove, unsubscribe.",
     required: false,
     subactions: ["manage"],
     schema: { type: "string", enum: [...MANAGE_OPERATION_KINDS] },

@@ -14,8 +14,9 @@ import type {
   State,
 } from "@elizaos/core";
 
-import { logger } from "@elizaos/core";
+import { logger, validateToolArgs } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { messageAction } from "../../../advanced-capabilities/actions/message.ts";
 import { BaseMessageAdapter } from "../adapters/base.ts";
 import { __resetDefaultMessageRefStoreForTests } from "../message-ref-store.ts";
 import {
@@ -26,6 +27,7 @@ import type {
   ListOptions,
   ManageOperation,
   ManageResult,
+  MessageAdapterCapabilities,
   MessageRef,
   MessageSource,
 } from "../types.ts";
@@ -37,8 +39,17 @@ class RecordingManageAdapter extends BaseMessageAdapter {
   manageResult: ManageResult = { ok: true };
   managed: Array<{ messageId: string; operation: ManageOperation }> = [];
 
+  unsubscribe = true;
+
   isAvailable(): boolean {
     return true;
+  }
+
+  capabilities(): MessageAdapterCapabilities {
+    return {
+      ...super.capabilities(),
+      manage: { unsubscribe: this.unsubscribe },
+    };
   }
 
   protected listMessagesImpl(
@@ -257,7 +268,91 @@ describe("manageMessageAction", () => {
     expect(adapter.managed).toEqual([]);
   });
 
-  it("fails tag addition for a missing stored message but still dispatches tag removal", async () => {
+  it.each([
+    ["archive", {}],
+    ["trash", {}],
+    ["trash", { source: "gmail" }],
+    ["unsubscribe", {}],
+  ])(
+    "rejects %s with no message id and no sender or content hint",
+    async (operation, extras) => {
+      adapter.messages = [messageRef("newest", 3_000)];
+
+      const result = await manageMessageAction.handler(
+        createRuntime(),
+        turn,
+        undefined,
+        options({ operation, ...extras }),
+      );
+
+      expect(result).toEqual({
+        success: false,
+        text: "messageId or a sender/content hint is required",
+        error: "messageId or a sender/content hint is required",
+      });
+      expect(adapter.managed).toEqual([]);
+    },
+  );
+
+  it("applies tags to the local store without calling the adapter", async () => {
+    adapter.manageResult = { ok: false, reason: "adapter has no tags" };
+    const store = getDefaultTriageService().getStore();
+
+    const added = await manageMessageAction.handler(
+      createRuntime(),
+      turn,
+      undefined,
+      options({ messageId: "direct-1", operation: "tag_add", tag: "urgent" }),
+    );
+
+    expect(added).toMatchObject({
+      success: true,
+      text: "Tagged that message.",
+    });
+    expect(store.getMessage("direct-1")?.tags).toEqual(["urgent"]);
+
+    const removed = await manageMessageAction.handler(
+      createRuntime(),
+      turn,
+      undefined,
+      options({
+        messageId: "direct-1",
+        operation: "tag_remove",
+        tag: "urgent",
+      }),
+    );
+
+    expect(removed).toMatchObject({
+      success: true,
+      text: "Removed the tag.",
+    });
+    expect(store.getMessage("direct-1")?.tags).toEqual([]);
+    expect(adapter.managed).toEqual([]);
+  });
+
+  it("no longer accepts mute_thread, which no adapter implements", async () => {
+    const result = await manageMessageAction.handler(
+      createRuntime(),
+      turn,
+      undefined,
+      options({ messageId: "direct-1", operation: "mute_thread" }),
+    );
+
+    expect(
+      validateToolArgs(messageAction, {
+        action: "manage",
+        manageOperation: "mute_thread",
+        messageId: "direct-1",
+      }).valid,
+    ).toBe(false);
+    expect(result.success).toBe(false);
+    expect(result.text).toBe(
+      "manageOperation is required (archive|trash|spam|mark_read|label_add|label_remove|tag_add|tag_remove|unsubscribe)",
+    );
+    expect(adapter.managed).toEqual([]);
+  });
+
+  it("fails tag addition and tag removal for a missing stored message", async () => {
     const addResult = await manageMessageAction.handler(
       createRuntime(),
       turn,
@@ -290,16 +385,11 @@ describe("manageMessageAction", () => {
     );
 
     expect(removeResult).toMatchObject({
-      success: true,
-      text: "Removed the tag.",
+      success: false,
+      text: "message missing not in store",
       data: { messageId: "missing", operation: "tag_remove" },
     });
-    expect(adapter.managed).toEqual([
-      {
-        messageId: "missing",
-        operation: { kind: "tag_remove", tag: "follow-up" },
-      },
-    ]);
+    expect(adapter.managed).toEqual([]);
   });
 
   it.each([
@@ -394,19 +484,6 @@ describe("manageMessageAction", () => {
       "Removed the label.",
       { kind: "label_remove", label: "Receipts" },
     ],
-    [
-      "tag_add",
-      { tag: "follow-up" },
-      "Tagged that message.",
-      { kind: "tag_add", tag: "follow-up" },
-    ],
-    [
-      "tag_remove",
-      { tag: "follow-up" },
-      "Removed the tag.",
-      { kind: "tag_remove", tag: "follow-up" },
-    ],
-    ["mute_thread", {}, "Muted that thread.", { kind: "mute_thread" }],
     ["block_sender", {}, "Marked that message as spam.", { kind: "spam" }],
   ])(
     "maps %s to the real operation and success text",
@@ -424,6 +501,35 @@ describe("manageMessageAction", () => {
       ]);
     },
   );
+
+  it("refuses unsubscribe before asking when the adapter cannot unsubscribe", async () => {
+    adapter.unsubscribe = false;
+    const delivered: Content[] = [];
+
+    const result = await manageMessageAction.handler(
+      createRuntime(),
+      turn,
+      undefined,
+      options({ messageId: "direct-1", operation: "unsubscribe" }),
+      async (content) => {
+        delivered.push(content);
+        return [];
+      },
+    );
+
+    expect(result).toEqual({
+      success: false,
+      text: "gmail adapter does not support unsubscribe",
+      data: {
+        ok: false,
+        reason: "gmail adapter does not support unsubscribe",
+        messageId: "direct-1",
+        operation: "unsubscribe",
+      },
+    });
+    expect(delivered).toEqual([]);
+    expect(adapter.managed).toEqual([]);
+  });
 
   it("requires a second turn before unsubscribe and cancels a non-confirmation", async () => {
     const runtime = createRuntime();
