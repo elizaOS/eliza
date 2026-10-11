@@ -461,7 +461,10 @@ export const replyAction = {
         }
       }
     }
-    const parsedJson = parseJSONObjectFromText(response);
+    // Caller text is the reply. The JSON parse, the markup filter and the
+    // planner fallback below read model output only.
+    const callerText = directText?.trim() ?? "";
+    const parsedJson = callerText ? null : parseJSONObjectFromText(response);
     const thoughtValue = parsedJson?.thought;
     const textValue = parsedJson?.text;
     const thought: string =
@@ -469,6 +472,7 @@ export const replyAction = {
     const parsedText = typeof textValue === "string" ? textValue.trim() : "";
     const rawText = response.trim();
     const text =
+      callerText ||
       parsedText ||
       plannerReplyFallback ||
       (rawText.startsWith("<") ? "" : rawText);
