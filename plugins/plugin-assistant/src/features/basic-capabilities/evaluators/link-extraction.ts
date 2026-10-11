@@ -124,6 +124,40 @@ function extractTitle(html: string): string {
   return "";
 }
 
+// WHATWG windows-1252 mapping for the C1 range 0x80-0x9F. Numeric references
+// in that range resolve to these characters, not to C1 controls. Slots the
+// standard leaves unassigned (0x81, 0x8D, 0x8F, 0x90, 0x9D) are absent and
+// stay as written.
+const WINDOWS_1252_C1 = new Map<number, string>([
+  [0x80, "€"],
+  [0x82, "‚"],
+  [0x83, "ƒ"],
+  [0x84, "„"],
+  [0x85, "…"],
+  [0x86, "†"],
+  [0x87, "‡"],
+  [0x88, "ˆ"],
+  [0x89, "‰"],
+  [0x8a, "Š"],
+  [0x8b, "‹"],
+  [0x8c, "Œ"],
+  [0x8e, "Ž"],
+  [0x91, "‘"],
+  [0x92, "’"],
+  [0x93, "“"],
+  [0x94, "”"],
+  [0x95, "•"],
+  [0x96, "–"],
+  [0x97, "—"],
+  [0x98, "˜"],
+  [0x99, "™"],
+  [0x9a, "š"],
+  [0x9b, "›"],
+  [0x9c, "œ"],
+  [0x9e, "ž"],
+  [0x9f, "Ÿ"],
+]);
+
 function decodeHtmlEntities(value: string): string {
   const namedEntities: Record<string, string> = {
     amp: "&",
@@ -134,8 +168,26 @@ function decodeHtmlEntities(value: string): string {
     "#39": "'",
   };
   return value.replace(
-    /&(amp|lt|gt|quot|#39|nbsp);/gi,
-    (entity, name: string) => namedEntities[name.toLowerCase()] ?? entity,
+    /&(amp|lt|gt|quot|#39|nbsp|#[0-9]+|#x[0-9a-f]+);/gi,
+    (entity, name: string) => {
+      const key = name.toLowerCase();
+      const named = namedEntities[key];
+      if (named !== undefined) return named;
+      // Page titles use numeric references for punctuation WordPress-style
+      // (&#8217; &#8220; &#8211;) and Word/Outlook C1 bytes (&#128;-&#159;).
+      // HTML resolves 0x80-0x9F through windows-1252, not to C1 controls.
+      const hex = /^#x([0-9a-f]+)$/.exec(key);
+      const code = Number.parseInt(hex ? hex[1] : key.slice(1), hex ? 16 : 10);
+      if (!Number.isInteger(code) || code <= 0 || code > 0x10ffff) {
+        return entity;
+      }
+      if (code >= 0xd800 && code <= 0xdfff) return entity;
+      if (code >= 0x80 && code <= 0x9f) {
+        return WINDOWS_1252_C1.get(code) ?? entity;
+      }
+      if (code === 0xa0) return " ";
+      return String.fromCodePoint(code);
+    },
   );
 }
 

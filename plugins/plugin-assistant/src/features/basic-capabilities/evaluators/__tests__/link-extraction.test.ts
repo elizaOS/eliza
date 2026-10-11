@@ -218,6 +218,28 @@ describe("linkExtractionEvaluator", () => {
     expect(prepared?.links[0]?.title).toBe("&lt;literal&gt;");
   });
 
+  it("decodes numeric title references, mapping C1 through windows-1252", async () => {
+    stubPreviewFetch(
+      makeFetchResponse(
+        "<html><head><title>It&#8217;s &quot;quoted&quot; &#128;100 &#150; deal &#129; &#0; &amp;#8217;</title></head><body><p>page</p></body></html>",
+      ),
+    );
+    const runtime = makeRuntime(async () => "summary");
+    const context = {
+      ...makeContext(runtime, makeMessage("see https://example.com/numeric")),
+      state: { values: {}, data: {}, text: "" } as State,
+    };
+
+    const prepared = await linkExtractionEvaluator.prepare?.(context);
+
+    // &#8217; is U+2019, &#128;/&#150; resolve through windows-1252 to
+    // U+20AC/U+2013. Unassigned &#129; and out-of-range &#0; stay as written,
+    // and the single decode pass leaves &amp;#8217; as &#8217;.
+    expect(prepared?.links[0]?.title).toBe(
+      'It’s "quoted" €100 – deal &#129; &#0; &#8217;',
+    );
+  });
+
   it("prepare dedupes repeated URLs and strips trailing punctuation", async () => {
     stubPreviewFetch(
       makeFetchResponse("<html><title>doc</title><body>x</body></html>"),
