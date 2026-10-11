@@ -77,11 +77,11 @@ interface WebsiteContext {
  * must read the same as the name-first spelling.
  */
 function readMetaContent(html: string, key: "name" | "property", value: string): string {
-  for (const tag of html.matchAll(/<meta\s[^>]*>/gi)) {
+  for (const tag of html.matchAll(/<meta\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
     let matched = false;
     let content: string | undefined;
     for (const attribute of tag[0].matchAll(
-      /\s([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g,
+      /(?<=[\s"'])([^\s"'=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g,
     )) {
       const name = attribute[1].toLowerCase();
       const attributeValue = attribute[2] ?? attribute[3] ?? attribute[4] ?? "";
