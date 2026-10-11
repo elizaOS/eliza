@@ -54,9 +54,11 @@ const TWILIO_BODY_MAX_LENGTH = 1600;
 
 /**
  * Splits a body into parts of at most `TWILIO_BODY_MAX_LENGTH` characters.
- * Each part is its own SMS, so every character is kept: a part ends after the
- * last whitespace in its window when there is one, and never between the two
- * halves of a surrogate pair.
+ * Each part is its own SMS: a part ends after the last whitespace in its
+ * window when there is one, and never between the two halves of a surrogate
+ * pair. Every character is kept, except that a part holding only whitespace
+ * (for example a long body that ends with a space) is not sent: it would reach
+ * the recipient as a blank, billed message.
  */
 function splitSmsBody(body: string): string[] {
   const parts: string[] = [];
@@ -74,7 +76,10 @@ function splitSmsBody(body: string): string[] {
     rest = rest.slice(end);
   }
   parts.push(rest);
-  return parts;
+  if (parts.length === 1) return parts;
+  // The caller has checked that the body has visible text, so at least one
+  // part remains.
+  return parts.filter((part) => part.trim().length > 0);
 }
 
 function createTwilioTelemetrySpan(): TwilioTelemetrySpan {

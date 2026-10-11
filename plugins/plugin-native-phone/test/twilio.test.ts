@@ -90,6 +90,34 @@ describe("sendTwilioSms", () => {
     expect(bodies.join("")).toBe(body);
   });
 
+  test.each([
+    ["space", " "],
+    ["newline", "\n"],
+  ])(
+    "a long body that ends with a %s does not send a blank message",
+    async (_name, tail) => {
+      const result = await sendTwilioSms({
+        credentials,
+        to: "+15551234567",
+        body: `${"a".repeat(1600)}${tail}`,
+      });
+
+      expect(bodies).toEqual(["a".repeat(1600)]);
+      expect(result.ok).toBe(true);
+      expect(result.sids).toEqual(["SM1"]);
+      expect(result.billing?.segments).toBe(10);
+    },
+  );
+
+  test("a run of whitespace longer than one part is not sent as a blank message", async () => {
+    const body = `${"a".repeat(1599)}${" ".repeat(1700)}b`;
+
+    await sendTwilioSms({ credentials, to: "+15551234567", body });
+
+    expect(bodies.every((part) => part.trim().length > 0)).toBe(true);
+    expect(bodies.join("").replace(/ /g, "")).toBe(`${"a".repeat(1599)}b`);
+  });
+
   test("a short body is sent as one message", async () => {
     const result = await sendTwilioSms({
       credentials,
