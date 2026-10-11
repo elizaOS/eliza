@@ -9,12 +9,8 @@ import {
   ForbiddenError,
   failureResponse,
 } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
-import {
-  moneyRateLimit,
-  RateLimitPresets,
-} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
-import { Hono } from "hono";
+import type { Handler } from "hono";
 import { z } from "zod";
 
 const schema = z
@@ -24,7 +20,7 @@ const schema = z
     targetPlanKey: z.enum(["plus_monthly", "pro_monthly"]),
   })
   .strict();
-export function createOrganizationPlanReviewRoute(
+export function createOrganizationPlanReviewHandler(
   createQuote: (
     input: z.infer<typeof schema> & { organizationId: string; actorId: string },
     verifySession: () => Promise<void>,
@@ -34,9 +30,8 @@ export function createOrganizationPlanReviewRoute(
       | OrganizationSubscriptionUpgradeReviewDto
       | OrganizationSubscriptionDowngradeReviewDto;
   }>,
-) {
-  const app = new Hono<AppEnv>();
-  app.post("/", moneyRateLimit(RateLimitPresets.STANDARD), async (c) => {
+): Handler<AppEnv> {
+  return async (c) => {
     c.header("Cache-Control", "no-store");
     try {
       const user = await requireCurrentBillingManagerSession(c);
@@ -107,6 +102,5 @@ export function createOrganizationPlanReviewRoute(
         );
       return failureResponse(c, error);
     }
-  });
-  return app;
+  };
 }

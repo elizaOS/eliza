@@ -4,9 +4,11 @@
  * extraction trajectories belong to the scenario lane once credentials are
  * available.
  */
+import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buildCommitmentRegretAudit,
+  commitmentExtractionEvaluator,
   createDocumentObligationLedgerRecord,
   createLifeOpsCommitmentLedgerRecord,
   extractCommitmentLedgerRecords,
@@ -228,6 +230,39 @@ describe("commitment ledger extraction and audit", () => {
       status: "open",
       scheduledTaskId: null,
     });
+  });
+});
+
+describe("commitment extraction evaluator prompt", () => {
+  it("grounds named days in the owner's local date, with the UTC offset", async () => {
+    // 03:00 UTC on Sunday is still Saturday evening in Los Angeles.
+    const message = {
+      createdAt: Date.parse("2026-10-11T03:00:00.000Z"),
+      content: { text: "I'll call Mom on Sunday." },
+    } as Memory;
+    const runtime = {
+      agentId: AGENT_ID,
+      getCache: async () => null,
+      setCache: async () => true,
+      deleteCache: async () => true,
+      getSetting: (key: string) =>
+        key === "TIMEZONE" ? "America/Los_Angeles" : undefined,
+    } as unknown as IAgentRuntime;
+    const context = { runtime, message, state: {} as State };
+
+    const prepared = await commitmentExtractionEvaluator.prepare?.(context);
+    expect(prepared).toEqual({ timeZone: "America/Los_Angeles" });
+    const prompt = commitmentExtractionEvaluator.prompt({
+      ...context,
+      prepared: prepared as { timeZone: string },
+    });
+
+    expect(prompt).toContain(
+      "Source message timestamp: 2026-10-11T03:00:00.000Z",
+    );
+    expect(prompt).toContain(
+      "Owner local time of the message: Saturday 2026-10-10 20:00 (America/Los_Angeles), ISO 2026-10-10T20:00:00-07:00",
+    );
   });
 });
 

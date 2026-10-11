@@ -344,12 +344,16 @@ export class WorkflowsDomain {
       return cursorIso ? null : schedule.runAt;
     }
     if (schedule.kind === "interval") {
-      const baseIso = cursorIso ?? workflow.createdAt;
+      const baseIso = cursorIso ?? workflow.updatedAt;
       return addMinutes(new Date(baseIso), schedule.everyMinutes).toISOString();
     }
+    // A new workflow may run in the minute it was created (hence -60s). After
+    // an edit, the first run must be strictly later than the edit, so a slot
+    // that passed seconds before the edit does not run.
     const baseMs = cursorIso
       ? Date.parse(cursorIso)
-      : Date.parse(workflow.createdAt) - 60_000;
+      : Date.parse(workflow.updatedAt) -
+        (workflow.updatedAt === workflow.createdAt ? 60_000 : 0);
     const nextRunMs = computeNextCronRunAtMs(
       schedule.cronExpression,
       baseMs,
@@ -405,8 +409,8 @@ export class WorkflowsDomain {
       return null;
     }
     if (workflow.triggerType === "event") {
-      // Anchor the cursor at workflow creation so we never fire for events
-      // that ended before the workflow existed.
+      // Anchor the cursor at the last definition change (creation or edit)
+      // so we never fire for events that ended before this trigger existed.
       return {
         managedBy: "task_worker",
         nextDueAt: null,
@@ -414,7 +418,7 @@ export class WorkflowsDomain {
         lastRunId: null,
         lastRunStatus: null,
         updatedAt: new Date().toISOString(),
-        lastFiredEventEndAt: workflow.createdAt,
+        lastFiredEventEndAt: workflow.updatedAt,
         lastFiredEventId: null,
       };
     }
@@ -612,7 +616,7 @@ export class WorkflowsDomain {
         lastRunId: null,
         lastRunStatus: null,
         updatedAt: new Date().toISOString(),
-        lastFiredEventEndAt: nextWorkflow.createdAt,
+        lastFiredEventEndAt: nextWorkflow.updatedAt,
         lastFiredEventId: null,
       };
       let stateChanged = existingState === null;

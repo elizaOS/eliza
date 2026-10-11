@@ -247,3 +247,37 @@ it("retires a persisted ChatGPT/Codex subscription chat route while keeping the 
     "ChatGPT/Codex subscription cannot power chat",
   );
 });
+
+it("rejects a first-run that selects Eliza Cloud inference on a local agent with no Cloud API key, and accepts it once the key is supplied", async () => {
+  vi.stubEnv("ELIZAOS_CLOUD_API_KEY", undefined);
+  const before = await readFile(configPath, "utf8");
+  const firstRun = {
+    name: "CloudRouteAcceptance",
+    deploymentTarget: { runtime: "local" },
+    linkedAccounts: { elizacloud: { status: "linked", source: "oauth" } },
+    serviceRouting: {
+      llmText: { backend: "elizacloud", transport: "cloud-proxy" },
+    },
+  };
+
+  const rejected = await request("/api/first-run", "POST", firstRun);
+  expect(rejected.status).toBe(409);
+  expect(JSON.stringify(await rejected.json())).toContain(
+    "no Eliza Cloud API key",
+  );
+  expect(await readFile(configPath, "utf8")).toBe(before);
+  expect(process.env.ELIZAOS_CLOUD_API_KEY).toBeUndefined();
+
+  const cloudKey = "synthetic-cloud-inference-credential";
+  const accepted = await request("/api/first-run", "POST", {
+    ...firstRun,
+    credentialInputs: { cloudApiKey: cloudKey },
+  });
+  expect(accepted.status).toBe(200);
+  const saved = JSON.parse(await readFile(configPath, "utf8"));
+  expect(saved.meta.firstRunComplete).toBe(true);
+  expect(saved.cloud.apiKey).toBe(cloudKey);
+  expect(saved.serviceRouting.llmText).toMatchObject(
+    firstRun.serviceRouting.llmText,
+  );
+});

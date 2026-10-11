@@ -110,6 +110,9 @@ public abstract class EmbeddedRuntimeService extends Service {
   protected static JSONObject exchangeHttp(int port,String token,String method,String route,String body,int timeout,int maxBody)throws Exception {
     return LocalRuntimeHttp.exchange(port,token,method,route,body,timeout,maxBody,SystemClock::elapsedRealtimeNanos);
   }
+  protected static JSONObject exchangeHttp(int port,String token,String method,String route,String body,java.util.Map<String,String> headers,int timeout,int maxBody)throws Exception {
+    return LocalRuntimeHttp.exchange(port,token,method,route,body,headers,timeout,maxBody,SystemClock::elapsedRealtimeNanos);
+  }
   private JSONObject exchange(boolean gateway,String route,int timeout)throws Exception {
     EmbeddedRuntimeGroup.Endpoint endpoint=gateway?group.gateway():group.agent();
     if(endpoint==null)throw new IOException("Runtime endpoint is unavailable");

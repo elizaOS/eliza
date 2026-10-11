@@ -150,7 +150,7 @@ app.get("/", async (c) => {
             if (stewardAgent?.walletAddress) {
               walletAddress = stewardAgent.walletAddress;
               walletProvider = "steward";
-            } else {
+            } else if (stewardAgent) {
               walletProvider = "steward";
             }
           } catch {

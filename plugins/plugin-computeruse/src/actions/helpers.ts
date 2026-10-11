@@ -39,6 +39,19 @@ export function resolveActionParams<T>(
   return params as T;
 }
 
+/**
+ * Owner id the approval relay binds its Approve/Deny callback values to, so a
+ * connector honors a tap only from the user who made the request.
+ */
+export function approvalOwnerIdFromMemory(message: Memory): string | undefined {
+  const metadata = message.metadata;
+  if (!metadata || typeof metadata !== "object") return undefined;
+  const telegramUserId = (metadata as Record<string, unknown>).telegramUserId;
+  return typeof telegramUserId === "string" && telegramUserId.length > 0
+    ? telegramUserId
+    : undefined;
+}
+
 export function buildScreenshotAttachment(args: {
   idPrefix: string;
   screenshot: string;

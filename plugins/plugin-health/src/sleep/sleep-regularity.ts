@@ -76,12 +76,12 @@ function occupancyVector(args: {
     }
   >;
   nowMs: number;
-  windowDays: number;
+  totalMinutes: number;
 }): {
   occupied: boolean[];
   windowStartMs: number;
 } {
-  const totalMinutes = args.windowDays * 24 * 60;
+  const totalMinutes = args.totalMinutes;
   const windowEndMs = args.nowMs;
   const windowStartMs = windowEndMs - totalMinutes * 60000;
   const deltas = new Int16Array(totalMinutes + 1);
@@ -124,11 +124,23 @@ function computeSleepRegularityIndex(args: {
   nowMs: number;
   windowDays: number;
 }): number {
-  const totalMinutes = args.windowDays * 24 * 60;
+  // Compare only the span that has data: minutes before the first recorded
+  // episode are unknown, and counting them as awake on both days scores a
+  // short history as regular whatever it holds.
+  let earliestStartMs = args.nowMs;
+  for (const episode of args.episodes) {
+    const startMs = parseIsoMs(episode.startAt);
+    if (startMs !== null && startMs < earliestStartMs)
+      earliestStartMs = startMs;
+  }
+  const totalMinutes = Math.min(
+    args.windowDays * 24 * 60,
+    Math.floor((args.nowMs - earliestStartMs) / 60000),
+  );
   if (totalMinutes <= 24 * 60) {
     return 0;
   }
-  const { occupied } = occupancyVector(args);
+  const { occupied } = occupancyVector({ ...args, totalMinutes });
   let matches = 0;
   let comparisons = 0;
   const oneDayMinutes = 24 * 60;

@@ -7,6 +7,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import type {
   AndroidCoreRouteDeps,
   AndroidDispatchRoute,
+  AndroidElizaConfigLike,
 } from "../android/dispatch.ts";
 
 export declare function startEliza(options: {
@@ -19,6 +20,11 @@ export declare const configFileExists: AndroidCoreRouteDeps["configFileExists"];
 export declare const loadElizaConfig: AndroidCoreRouteDeps["loadElizaConfig"];
 export declare const saveElizaConfig: AndroidCoreRouteDeps["saveElizaConfig"];
 export declare const hasPersistedFirstRunState: AndroidCoreRouteDeps["hasPersistedFirstRunState"];
+
+export declare const CLOUD_INFERENCE_NO_API_KEY_ERROR: string;
+export declare function hasCloudApiKeyForInference(
+  config: AndroidElizaConfigLike,
+): boolean;
 
 export declare function bootElizaRuntime(): Promise<IAgentRuntime>;
 

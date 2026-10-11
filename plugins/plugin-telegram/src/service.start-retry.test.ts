@@ -7,7 +7,7 @@
  */
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, TurnControllerRegistry } from "@elizaos/core";
 import { Telegraf } from "telegraf";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MessageManager } from "./messageManager";
@@ -250,7 +250,10 @@ function makeRuntime(apiRoot: string): IAgentRuntime {
 
 type TestAccountState = {
   bot: Telegraf;
-  messageManager: { handleMessage: (...args: unknown[]) => Promise<void> };
+  messageManager: {
+    handleMessage: (...args: unknown[]) => Promise<void>;
+    handleCallbackQuery: (...args: unknown[]) => Promise<void>;
+  };
   wiring: {
     commands: boolean;
     poller: boolean;
@@ -440,6 +443,131 @@ describe("TelegramService poller lifecycle", () => {
       await api.waitForGetUpdatesCalls(2);
       expect(api.activeGetUpdates()).toBe(0);
       expect(api.getUpdatesCalls()).toBe(2);
+    },
+    RETRY_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "receives a button tap while the turn that asked for it is still running",
+    async () => {
+      const api = await startStubBotApi();
+      const service = await TelegramService.start(makeRuntime(api.apiRoot));
+      services.push(service);
+      const state = accountState(service);
+      const turnStarted = Promise.withResolvers<void>();
+      const turn = Promise.withResolvers<void>();
+      const tapped = Promise.withResolvers<void>();
+      vi.spyOn(state.messageManager, "handleMessage").mockImplementation(() => {
+        turnStarted.resolve();
+        return turn.promise;
+      });
+      vi.spyOn(state.messageManager, "handleCallbackQuery").mockImplementation(
+        async () => tapped.resolve(),
+      );
+      (
+        service as unknown as {
+          knownChats: Map<string, Record<string, unknown>>;
+        }
+      ).knownChats.set("42", { id: 42, type: "private", first_name: "Test" });
+      const chat = { id: 42, type: "private", first_name: "Test" };
+      const from = { id: 7, is_bot: false, first_name: "Sender" };
+
+      await api.deliverUpdate({
+        update_id: 1,
+        message: { message_id: 1, date: 1, text: "copy this", chat, from },
+      });
+      await deadline(turnStarted.promise, "Expected the turn to start");
+      // The turn is still pending. The next poll must still be issued so the
+      // tap, which is a later update, can reach the callback handler.
+      await api.deliverUpdate({
+        update_id: 2,
+        callback_query: {
+          id: "cb-1",
+          chat_instance: "ci-1",
+          data: "cua:approval_1:approve",
+          from,
+          message: { message_id: 2, date: 2, text: "Approve?", chat },
+        },
+      });
+      await deadline(tapped.promise, "Expected the tap to be handled");
+
+      await api.waitForActiveGetUpdates(1);
+
+      // Shutdown still waits for the turn that is in progress.
+      let stopped = false;
+      const stopping = service.stop().then(() => {
+        stopped = true;
+      });
+      services.length = 0;
+      // Call 4 is the offset sync that Telegraf sends after the poll loop ends.
+      await api.waitForGetUpdatesCalls(4);
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(stopped).toBe(false);
+      turn.resolve();
+      await deadline(stopping, "Expected shutdown to finish after the turn");
+    },
+    RETRY_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "aborts a turn that waits for a tap before it drains on stop",
+    async () => {
+      const api = await startStubBotApi();
+      const turnControllers = new TurnControllerRegistry();
+      const turnStarted = Promise.withResolvers<void>();
+      let abortReason: unknown;
+      const base = makeRuntime(api.apiRoot);
+      const runtime = {
+        ...base,
+        getSetting: (key: string) =>
+          key === "TELEGRAM_AUTO_REPLY" ? "true" : base.getSetting(key),
+        getCache: async () => undefined,
+        setCache: async () => true,
+        turnControllers,
+        // Stands in for a turn blocked in an approval request: it ends only
+        // when the turn's own abort signal fires.
+        messageService: {
+          handleMessage: (_runtime: unknown, memory: { roomId: string }) =>
+            turnControllers.runWith(
+              memory.roomId,
+              (signal) =>
+                new Promise<void>((_resolve, reject) => {
+                  signal.addEventListener("abort", () => {
+                    abortReason = signal.reason;
+                    reject(signal.reason);
+                  });
+                  turnStarted.resolve();
+                }),
+            ),
+        },
+      } as unknown as IAgentRuntime;
+      const service = await TelegramService.start(runtime);
+      services.push(service);
+      (
+        service as unknown as {
+          knownChats: Map<string, Record<string, unknown>>;
+        }
+      ).knownChats.set("42", { id: 42, type: "private", first_name: "Test" });
+      const chat = { id: 42, type: "private", first_name: "Test" };
+      const from = { id: 7, is_bot: false, first_name: "Sender" };
+
+      await api.deliverUpdate({
+        update_id: 1,
+        message: { message_id: 1, date: 1, text: "click it", chat, from },
+      });
+      await deadline(turnStarted.promise, "Expected the turn to start");
+      expect(turnControllers.activeRoomIds()).toHaveLength(1);
+
+      // Polling stops first, so no tap can resolve the wait. stop() must end
+      // the turn itself instead of waiting for it.
+      const stopping = service.stop();
+      services.length = 0;
+      await deadline(stopping, "Expected shutdown to abort the waiting turn");
+      expect(abortReason).toMatchObject({
+        code: "TURN_ABORTED",
+        reason: "telegram-service-stop",
+      });
+      expect(turnControllers.activeRoomIds()).toHaveLength(0);
     },
     RETRY_TEST_TIMEOUT_MS,
   );

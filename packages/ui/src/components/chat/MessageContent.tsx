@@ -1546,6 +1546,7 @@ export function MessageContent({
     Boolean(message.reasoning?.trim() || message.toolEvents?.length);
   if (
     !hasAssistantExtras &&
+    !message.attachments?.length &&
     segments.length === 1 &&
     segments[0].kind === "text"
   ) {

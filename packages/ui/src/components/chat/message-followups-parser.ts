@@ -16,6 +16,8 @@
  * `value=label` shape used by `[CHOICE]` keeps working.
  */
 
+import { contentBlockId } from "./message-block-id";
+
 export type FollowupKind = "reply" | "navigate" | "prompt";
 
 export interface FollowupOption {
@@ -32,16 +34,6 @@ const FOLLOWUP_KINDS = new Set<FollowupKind>(["reply", "navigate", "prompt"]);
 
 export const FOLLOWUPS_RE =
   /\[[ \t]*FOLLOWUPS(?:[ \t]+id=([^\s\]]+))?[ \t]*\][ \t]*\r?\n([\s\S]*?)\r?\n\[[ \t]*\/[ \t]*FOLLOWUPS[ \t]*\]/g;
-
-export function generateFollowupsId(): string {
-  if (
-    typeof crypto !== "undefined" &&
-    typeof crypto.randomUUID === "function"
-  ) {
-    return crypto.randomUUID();
-  }
-  return `followups-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
-}
 
 /** Split a `<kind>:<payload>` head into its kind + payload, defaulting to reply. */
 function parseHead(head: string): { kind: FollowupKind; payload: string } {
@@ -87,7 +79,8 @@ export function findFollowupsRegions(text: string): FollowupsMatch[] {
   FOLLOWUPS_RE.lastIndex = 0;
   let m: RegExpExecArray | null = FOLLOWUPS_RE.exec(text);
   while (m !== null) {
-    const id = m[1] && m[1].length > 0 ? m[1] : generateFollowupsId();
+    const id =
+      m[1] && m[1].length > 0 ? m[1] : contentBlockId("followups", m[0]);
     const options = parseFollowupsBody(m[2]);
     if (options.length > 0) {
       results.push({

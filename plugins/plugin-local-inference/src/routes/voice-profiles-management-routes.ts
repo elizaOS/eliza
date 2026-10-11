@@ -20,7 +20,7 @@
  *   POST   /api/voice/profiles/:id/split       { utteranceIds }
  *   POST   /api/voice/profiles/:id/bind        { entityId, label? }
  *   POST   /api/voice/profiles/:id/unbind
- *   POST   /api/voice/profiles/export          → { downloadUrl }
+ *   POST   /api/voice/profiles/export          → export document (JSON)
  *   GET    /api/voice/profiles/:id/sample      → audio/wav (consent-gated; 404 if absent)
  *
  * Route handlers in this plugin do not hold an `IAgentRuntime`, so bind here
@@ -501,10 +501,7 @@ async function exportAll(res: http.ServerResponse): Promise<true> {
 		ownerEntityId: owner,
 		profiles: records.map((r) => toDto(r, owner, root)),
 	};
-	// Self-contained data URL — no temp files, no extra serving route.
-	const json = JSON.stringify(payload, null, 2);
-	const downloadUrl = `data:application/json;base64,${Buffer.from(json, "utf8").toString("base64")}`;
-	sendJson(res, { downloadUrl });
+	sendJson(res, payload);
 	return true;
 }
 async function serveSample(

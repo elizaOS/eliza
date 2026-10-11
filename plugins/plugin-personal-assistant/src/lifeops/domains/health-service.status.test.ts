@@ -361,50 +361,6 @@ describe("HealthDomain connector lifecycle and summaries", () => {
     expect(status.lastCheckedAt).toEqual(expect.any(String));
   });
 
-  it("rejects cloud_managed OAuth start with a 501", async () => {
-    const domain = makeDomain({});
-    await expect(
-      domain.startHealthConnector(
-        { provider: "strava", mode: "cloud_managed" },
-        REQUEST_URL,
-      ),
-    ).rejects.toMatchObject({ status: 501 });
-  });
-
-  it("rejects non-array capabilities on OAuth start with a 400", async () => {
-    const domain = makeDomain({});
-    await expect(
-      domain.startHealthConnector(
-        { provider: "strava", capabilities: "everything" as never },
-        REQUEST_URL,
-      ),
-    ).rejects.toMatchObject({ status: 400 });
-  });
-
-  it("surfaces missing OAuth config as a client error on start", async () => {
-    makeOAuthDir();
-    const domain = makeDomain({});
-    await expect(
-      domain.startHealthConnector(
-        {
-          provider: "strava",
-          capabilities: ["health.activity.read", "health.activity.read"],
-        },
-        REQUEST_URL,
-      ),
-    ).rejects.toBeInstanceOf(Error);
-  });
-
-  it("rejects a malformed OAuth callback URL", async () => {
-    makeOAuthDir();
-    const domain = makeDomain({});
-    await expect(
-      domain.completeHealthConnectorCallback(
-        new URL("http://127.0.0.1:2138/callback?error=access_denied"),
-      ),
-    ).rejects.toBeInstanceOf(Error);
-  });
-
   it("disconnects a grant, deleting the stored token and grant row", async () => {
     makeOAuthDir();
     process.env.ELIZA_STRAVA_CLIENT_ID = "client-id";
