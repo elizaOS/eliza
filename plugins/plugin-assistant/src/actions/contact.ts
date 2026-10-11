@@ -1597,7 +1597,12 @@ export function createContactActions(dependencies: ContactActionDependencies): {
       /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(?::(\d{2})(?:\.(\d+))?)?$/.exec(
         scheduledAtRaw,
       );
-    const hasExplicitOffset = /(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(scheduledAtRaw);
+    // Only an ISO date-time that ends in a zone designator is read as an
+    // instant; a trailing "-2026" year is not an offset.
+    const hasExplicitOffset =
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(
+        scheduledAtRaw,
+      );
     let scheduledAtMs = Number.NaN;
     if (localWallTime) {
       const minute = parseUnambiguousZonedDateTime(localWallTime[1], timeZone);

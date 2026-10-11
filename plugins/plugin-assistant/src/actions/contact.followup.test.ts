@@ -68,6 +68,8 @@ describe("CONTACT follow-up time", () => {
       "2026-03-08T02:30:30",
       "2026-10-12 09:00",
       "2026-10-12",
+      "10-12-2026",
+      "12-Oct-2026",
     ]) {
       const result = await run(value);
       expect(result).toMatchObject({
