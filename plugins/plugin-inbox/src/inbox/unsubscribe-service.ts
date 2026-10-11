@@ -464,6 +464,20 @@ export class InboxUnsubscribeService {
     let errorMessage: string | null = null;
 
     try {
+      // Validate every requested Gmail mutation before the unsubscribe effect.
+      // Otherwise an HTTP or mailto unsubscribe can succeed, then a missing
+      // manage grant turns the combined request into a recorded failure. A
+      // caller may retry that false failure and repeat the irreversible effect.
+      if (
+        (request.blockAfter || request.trashExisting) &&
+        !grant.capabilities.includes("google.gmail.manage")
+      ) {
+        fail(
+          403,
+          "Blocking or trashing subscription email requires Gmail manage access.",
+        );
+      }
+
       if (sender.unsubscribeHttpUrl) {
         const http = await performHttpUnsubscribe({
           url: sender.unsubscribeHttpUrl,
@@ -485,15 +499,6 @@ export class InboxUnsubscribeService {
         await this.gmail.sendMailtoUnsubscribeEmail(accountId, mailto);
         method = "mailto";
         status = "succeeded";
-      }
-
-      if (request.blockAfter || request.trashExisting) {
-        if (!grant.capabilities.includes("google.gmail.manage")) {
-          fail(
-            403,
-            "Blocking or trashing subscription email requires Gmail manage access.",
-          );
-        }
       }
 
       if (request.blockAfter) {

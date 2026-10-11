@@ -434,7 +434,12 @@ test("configured emailed-code policy reaches the helper and fills only one curre
   f.args.googleReadPort = googleReadPort;
   f.args.configuration = {
     ...f.args.configuration,
-    googleSource: { senders: ["bills@example.org"] },
+    googleSource: {
+      senders: ["bills@example.org"],
+      windowDays: 45,
+      after: Date.parse("2026-01-01"),
+      before: Date.parse("2026-02-01"),
+    },
     bill: {
       company: "Example",
       accountLabel: "1234",
@@ -490,6 +495,11 @@ test("configured emailed-code policy reaches the helper and fills only one curre
   });
   assert.equal(scope.accountId, "grant-a");
   assert.equal(scope.accountEmail, "person@example.org");
+  // The search window follows the present time, so a bill that arrives
+  // after the configuration was written is still inside it.
+  const day = 24 * 60 * 60 * 1000;
+  assert.ok(scope.before > Date.now());
+  assert.ok(Math.abs(scope.after - (Date.now() - 45 * day)) < 5000);
   connected = "grant-c";
   assert.equal(await google.checkAccount(), "grant-c");
   connected = "grant-a";

@@ -1125,6 +1125,9 @@ async function syncWithings(
   const activityBody = getRecord(activityJson, "body") ?? {};
   for (const entry of getArray(activityBody, "activities")) {
     const date = getText(entry, "date");
+    // getactivity `active` is a duration in seconds (Withings OpenAPI:
+    // "Sum of intense and moderate activity durations (in seconds)").
+    const activeSeconds = getNumber(entry, "active");
     const startAt = date ? `${date}T12:00:00.000Z` : null;
     const id = date ?? "activity";
     samples.push(
@@ -1142,7 +1145,7 @@ async function syncWithings(
           token: args.token,
           grantId: args.grantId,
           metric: "active_minutes",
-          value: getNumber(entry, "active"),
+          value: activeSeconds === null ? null : activeSeconds / 60,
           unit: "min",
           startAt,
           sourceExternalId: `${id}:withings:active_minutes`,

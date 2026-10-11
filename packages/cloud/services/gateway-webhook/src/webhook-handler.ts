@@ -257,7 +257,6 @@ function parseGroupDeliveryDirective(
 
 function parsePersonalSharedMediaUrls(
   data: Record<string, unknown> | null,
-  preserveAll = false,
 ): string[] {
   if (!Array.isArray(data?.mediaUrls)) return [];
   const urls = data.mediaUrls.flatMap((value) => {
@@ -269,7 +268,7 @@ function parsePersonalSharedMediaUrls(
       return [];
     }
   });
-  return preserveAll ? [...new Set(urls)] : urls.slice(0, 4);
+  return [...new Set(urls)];
 }
 
 interface MessageTraceContext {
@@ -2129,12 +2128,7 @@ async function sendPersonalSharedReply(
       "personal Shared chat returned no reply",
     );
   }
-  const replyMediaUrls = parsePersonalSharedMediaUrls(
-    data,
-    adapter.platform === "telegram" &&
-      event.chatType === "private" &&
-      !event.membershipChange,
-  );
+  const replyMediaUrls = parsePersonalSharedMediaUrls(data);
   if (
     adapter.platform === "telegram" &&
     event.chatType === "private" &&
@@ -2155,15 +2149,10 @@ async function sendPersonalSharedReply(
   // Empty is the agent's deliberate shouldRespond=no result. Membership
   // changes and stale turns intentionally take this path with no authority
   // token because there will be no provider egress to authorize.
-  if (
-    reply.length === 0 &&
-    !(
-      adapter.platform === "telegram" &&
-      event.chatType === "private" &&
-      !event.membershipChange &&
-      replyMediaUrls.length > 0
-    )
-  ) {
+  // A direct reply that is only media still has something to deliver. A group
+  // turn with no reply text stays a no-response.
+  const hasDeliverableMedia = replyMediaUrls.length > 0 && isDirectChat(event);
+  if (reply.length === 0 && !hasDeliverableMedia) {
     return {
       cloudMs,
       cloudAttempts: attemptResult.attempts,

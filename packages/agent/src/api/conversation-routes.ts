@@ -3105,7 +3105,7 @@ async function searchConversationMessages(
 ): Promise<boolean> {
   const { req, res, json, error, state, requestUrl } = ctx;
   if (!state.runtime) {
-    json(res, { results: [], count: 0 });
+    error(res, "Agent runtime not available", 503);
     return true;
   }
   const query = normalizeMessageSearchQuery(requestUrl.searchParams.get("q"));
@@ -3134,6 +3134,10 @@ async function searchConversationMessages(
   }
   const runtime = state.runtime;
   const waifuAccess = resolveWaifuChatAccess(req);
+  // The room scope below is read from the in-memory conversation list. Wait
+  // for the boot-time restore, or a search during startup would answer "no
+  // matches" for conversations that are not loaded yet.
+  await waitForConversationRestore(state);
   const conversationsByRoomId = new Map<UUID, ConversationMeta>();
   for (const conv of state.conversations.values()) {
     if (state.deletedConversationIds.has(conv.id)) continue;

@@ -5420,7 +5420,7 @@
   "localinference.modelActivated": "Model đã được kích hoạt",
   "localinference.modelUninstalled": "Model đã được gỡ cài đặt",
   "localinference.verifyOk": "Model đã được xác minh",
-  "localinference.verifyUnknown": "Đã ghi lại hash cơ sở — các lần xác minh tiếp theo sẽ so sánh với hash này",
+  "localinference.verifyUnknown": "Tệp mô hình tồn tại và là GGUF hợp lệ. Không có hash lúc cài đặt nào được ghi lại để so sánh.",
   "localinference.verifyMissing": "Không tìm thấy file model trên đĩa",
   "localinference.verifyTruncated": "File model bị hỏng (không phải GGUF hợp lệ)",
   "localinference.verifyMismatch": "Hash model không khớp với bản đã cài — nên tải lại",

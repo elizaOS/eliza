@@ -147,7 +147,11 @@ export interface VoiceSectionProps {
    * useWakeListenWindow reads; defaults off only when no caller supplies it.
    */
   wakeWordEnabled?: boolean;
-  /** Toggle wake-word listening on/off (persisted + read by the shell). */
+  /**
+   * Toggle wake-word listening on/off (persisted + read by the shell). Omit it
+   * when no wake detector runs on this device: the switch is then disabled and
+   * the row says so.
+   */
   onWakeWordToggle?: (next: boolean) => void;
   /** Shared controls that should lead the canonical Voice stack. */
   leadingContent?: React.ReactNode;
@@ -226,6 +230,13 @@ export function VoiceSection({
             group="voice-section"
             icon={Sliders}
             label={t("voicesection.wakeWord", { defaultValue: "Wake word" })}
+            description={
+              onWakeWordToggle
+                ? undefined
+                : t("voicesection.wakeWordUnavailable", {
+                    defaultValue: "Wake word is not available on this device.",
+                  })
+            }
             checked={wakeWordEnabled}
             disabled={!onWakeWordToggle}
             agentStatus={wakeWordEnabled ? "active" : "inactive"}

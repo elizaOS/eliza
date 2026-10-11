@@ -144,8 +144,6 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     "WHATSAPP_SESSION_PATH",
     "WHATSAPP_WEBHOOK_VERIFY_TOKEN",
     "WHATSAPP_API_VERSION",
-    "WHATSAPP_DM_POLICY",
-    "WHATSAPP_GROUP_POLICY",
     "WHATSAPP_ALLOW_FROM",
     "WHATSAPP_GROUP_ALLOW_FROM",
     "TELEGRAM_ACCOUNT_PHONE",
@@ -222,6 +220,10 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     "MATRIX_REQUIRE_MENTION",
     "MATRIX_VERIFY_ALLOWLIST",
     "MATRIX_PERSONAL",
+    // WhatsApp access policies are behaviour flags (open, pairing, allowlist,
+    // disabled). As secrets they replaced those words in every message.
+    "WHATSAPP_DM_POLICY",
+    "WHATSAPP_GROUP_POLICY",
   ];
   for (const key of publicConnectorConfigKeys) {
     const value = process.env[key];

@@ -4395,7 +4395,6 @@ const server = http.createServer(async (req, res) => {
   ) {
     sendJson(req, res, 200, {
       preferences: SMOKE_NETWORK_POLICY_PREFERENCES,
-      isOwner: true,
     });
     return;
   }
