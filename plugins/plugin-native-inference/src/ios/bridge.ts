@@ -4030,20 +4030,31 @@ async function handleDirectConversationMessage(
       nativeText &&
       !(nativeReply.localInference as { error?: string } | undefined)?.error
     ) {
-      await backend.runtime.createMemory(
-        createMessageMemory({
-          id: crypto.randomUUID() as UUID,
-          entityId: backend.runtime.agentId,
-          roomId: conversation.roomId,
-          content: {
-            text: nativeText,
-            source: "ios-local",
-            channelType,
-            inReplyTo: message.id,
-          },
-        }),
-        "messages",
-      );
+      try {
+        await runtime.createMemory?.(
+          createMessageMemory({
+            id: crypto.randomUUID() as UUID,
+            entityId: backend.runtime.agentId,
+            roomId: conversation.roomId,
+            content: {
+              text: nativeText,
+              source: "ios-local",
+              channelType,
+              inReplyTo: message.id,
+            },
+          }),
+          "messages",
+        );
+      } catch (error) {
+        // error-policy:J6 best-effort secondary persistence — the person has
+        // already watched this reply stream in; a failed transcript write must
+        // not turn the finished turn into a failed POST. The failure is
+        // surfaced to stderr and the reply is absent from the next GET.
+        console.error(
+          "[ios-bridge] createMemory(messages) failed for the native reply:",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
     }
     conversation.updatedAt = new Date().toISOString();
     conversation.lastUserText = prompt.trim();

@@ -875,6 +875,82 @@ describe("iOS bridge — conversation transcript route", () => {
       (json.messages as Array<{ role: string }>).map((m) => m.role),
     ).toEqual(["user"]);
   });
+  it("still returns the reply when storing it fails", async () => {
+    const runtime = Object.assign(createFakeRuntime(), {
+      async ensureConnection(): Promise<void> {},
+      useModel: async () => "Hello from Eliza-1.",
+    });
+    const storeMemory = runtime.createMemory.bind(runtime);
+    runtime.createMemory = async (memory: Memory, tableName: string) => {
+      if (memory.entityId === runtime.agentId) throw new Error("disk full");
+      return storeMemory(memory, tableName);
+    };
+    const backend = makeBackend(runtime);
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const created = await call(backend, "POST", "/api/conversations", {});
+      const id = (created.json.conversation as { id: string }).id;
+      const sent = await call(
+        backend,
+        "POST",
+        `/api/conversations/${id}/messages`,
+        { text: "hi there" },
+      );
+      expect(sent.status).toBe(200);
+      expect(sent.json.reply).toBe("Hello from Eliza-1.");
+      expect(errorLog).toHaveBeenCalledWith(
+        "[ios-bridge] createMemory(messages) failed for the native reply:",
+        "disk full",
+      );
+      const { json } = await call(
+        backend,
+        "GET",
+        `/api/conversations/${id}/messages`,
+      );
+      expect(
+        (json.messages as Array<{ role: string }>).map((m) => m.role),
+      ).toEqual(["user"]);
+    } finally {
+      errorLog.mockRestore();
+    }
+  });
+  it("pages strictly below a bare before timestamp and rejects a bad cursor", async () => {
+    const backend = createNativeReplyBackend(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return "Hello from Eliza-1.";
+    });
+    const created = await call(backend, "POST", "/api/conversations", {});
+    const id = (created.json.conversation as { id: string }).id;
+    await call(backend, "POST", `/api/conversations/${id}/messages`, {
+      text: "hi there",
+    });
+    const all = await call(backend, "GET", `/api/conversations/${id}/messages`);
+    const [userTurn, reply] = all.json.messages as Array<{
+      id: string;
+      timestamp: number;
+    }>;
+    const below = await call(
+      backend,
+      "GET",
+      `/api/conversations/${id}/messages?before=${reply.timestamp}`,
+    );
+    expect(below.json).toEqual({
+      messages: [expect.objectContaining({ id: userTurn.id, role: "user" })],
+      hasMore: false,
+    });
+    for (const query of [
+      "before=yesterday",
+      `beforeId=${userTurn.id}`,
+      `before=${reply.timestamp}&beforeId=not-a-uuid`,
+    ]) {
+      const rejected = await call(
+        backend,
+        "GET",
+        `/api/conversations/${id}/messages?${query}`,
+      );
+      expect(rejected.status).toBe(400);
+    }
+  });
   it("answers 404 for a conversation the bridge does not hold", async () => {
     const { status, json } = await call(
       makeBackend(createFakeRuntime()),
