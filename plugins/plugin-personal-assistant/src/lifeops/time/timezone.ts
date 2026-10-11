@@ -48,6 +48,9 @@ const TIME_ZONE_ALIASES: Record<string, string> = {
   "new york": "America/New_York",
   utc: "UTC",
   gmt: "UTC",
+  // A planner that reads "2026-08-19T14:00:00Z" stamps timeZone "Z". Intl
+  // rejects it, but it names UTC.
+  z: "UTC",
 };
 
 const IANA_TIME_ZONE_PATTERN = /\b([A-Za-z]+(?:\/[A-Za-z0-9_+-]+)+)\b/g;
