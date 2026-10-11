@@ -471,7 +471,7 @@ export const searchKnowledgeAction: Action = {
     "LOOKUP_KNOWLEDGE",
   ],
   description:
-    "Search the multimedia knowledge hub (documents, transcripts, ingested attachments) by free text plus optional facets (roomId, sender/addedBy, mediaFormat, tags, scope). Returns matching items with their titles, media formats, and ids for follow-up ATTACH_TO_CHAT / SEND_MEDIA_TO. Scope-walled: owner-private items never surface to non-owner callers.",
+    "Search the multimedia knowledge hub (documents, transcripts, ingested attachments) by free text plus optional facets (roomId, addedBy, mediaFormat, tags, scope). Returns matching items with their titles, media formats, and ids for follow-up ATTACH_TO_CHAT / SEND_MEDIA_TO. Scope-walled: owner-private items never surface to non-owner callers.",
   descriptionCompressed:
     "semantic + facet search over the knowledge hub; returns items (scope-walled)",
   routingHint:
@@ -610,13 +610,21 @@ export const searchKnowledgeAction: Action = {
       description:
         "Optional scope facet: global | owner-private | user-private | agent-private",
       required: false,
-      schema: { type: "string" as const },
+      // Enumerated so a value the handler cannot apply is refused by argument
+      // validation instead of being dropped and the search run unfiltered.
+      schema: {
+        type: "string" as const,
+        enum: ["global", "owner-private", "user-private", "agent-private"],
+      },
     },
     {
       name: "searchMode",
       description: "Optional retrieval mode: hybrid | vector | keyword",
       required: false,
-      schema: { type: "string" as const },
+      schema: {
+        type: "string" as const,
+        enum: ["hybrid", "vector", "keyword"],
+      },
     },
   ],
 };
