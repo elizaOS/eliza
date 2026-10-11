@@ -154,3 +154,27 @@ it("binds actual draft sending to a later user turn and consumes consent once du
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+it("refuses a new outbound draft when the adapter cannot send a new message", async () => {
+  class NoSendAdapter extends BaseMessageAdapter {
+    readonly source = "telegram" as const;
+    isAvailable() {
+      return true;
+    }
+  }
+  const service = getDefaultTriageService();
+  service.register(new NoSendAdapter());
+
+  const result = await sendDraftAction.handler(
+    { agentId: randomUUID() } as never,
+    { content: { text: "Send a Telegram message to Jane" } } as Memory,
+    undefined,
+    { parameters: { source: "telegram", to: ["Jane"], body: "I am late" } },
+  );
+
+  expect(result).toMatchObject({
+    success: false,
+    text: "telegram cannot send a new message from a draft: its adapter does not support sending a new message. Use action=send for a direct connector send.",
+    data: { error: "DRAFT_SEND_UNSUPPORTED" },
+  });
+});

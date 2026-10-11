@@ -4,8 +4,8 @@
  * supplied it extracts the target platform, recipient, and body from the user's
  * request (via `outboundDraftOptionsFromMessage`, which is model-driven so it
  * works in any language) and persists a draft; when a draft id is supplied it
- * sends that draft. If the TriageService adapter cannot create a draft it falls
- * back to a locally stored draft so the confirmation flow still works.
+ * sends that draft. A source whose adapter cannot send a new message is
+ * refused before any draft or preview is created.
  *
  * Two independent gates guard every send. The user-confirmation gate refuses to
  * send without a later user confirmation bound to the preview; the
@@ -15,7 +15,6 @@
  * `outboundDraftOptionsFromMessage` is exported for the unit tests in
  * `sendDraft.test.ts`.
  */
-import crypto from "node:crypto";
 import type {
   Action,
   ActionExample,
@@ -31,11 +30,7 @@ import { logger, ModelType, parseKeyValueXml } from "@elizaos/core";
 import { draftConsentDigest, requireSendConsent } from "../send-consent.ts";
 import { getSendPolicy } from "../send-policy.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
-import {
-  type DraftRecord,
-  type DraftRequest,
-  NotYetImplementedError,
-} from "../types.ts";
+import type { DraftRecord, DraftRequest } from "../types.ts";
 import {
   bodyParameter,
   draftIdParameter,
@@ -48,7 +43,7 @@ const OUTBOUND_DRAFT_PARAMETERS: ActionParameter[] = [
   {
     name: "source",
     description:
-      "Message source for a new outbound draft, such as gmail, discord, telegram, imessage, whatsapp, or twitter.",
+      "Message source for a new outbound draft. Its connected adapter must support sending a new message (the gmail, discord and twitter adapters do).",
     required: false,
     schema: { type: "string" as const },
   },
@@ -206,39 +201,6 @@ function previewOutboundDraft(
   return `[${record.source}${record.worldId ? ` account ${record.worldId}` : ""}] To: ${recipients}\n${subject}${record.body}`;
 }
 
-function saveLocalOutboundDraft(args: {
-  service: ReturnType<typeof getDefaultTriageService>;
-  source: DraftRecord["source"];
-  to: DraftRecord["to"];
-  body: string;
-  subject?: string;
-  threadId?: string;
-  worldId?: string;
-  channelId?: string;
-}): DraftRecord {
-  const partial = {
-    source: args.source,
-    to: args.to,
-    body: args.body,
-    subject: args.subject,
-  };
-  const record: DraftRecord = {
-    draftId: `local:${crypto.randomUUID()}`,
-    source: args.source,
-    to: args.to,
-    body: args.body,
-    subject: args.subject,
-    threadId: args.threadId,
-    worldId: args.worldId,
-    channelId: args.channelId,
-    preview: previewOutboundDraft(partial),
-    createdAtMs: Date.now(),
-    sent: false,
-  };
-  args.service.getStore().saveDraft(record);
-  return record;
-}
-
 /**
  * SAFETY INVARIANT: MESSAGE must never send without an explicit
  * user confirmation on a later turn. When confirmation is missing the handler
@@ -249,9 +211,9 @@ export const sendDraftAction: Action = {
   contexts: ["messaging", "email", "contacts"],
   roleGate: { minRole: "ADMIN" },
   description:
-    "Create or send an owner-scoped outbound message draft. Use this for first-turn requests like 'send a Telegram message to Jane saying I am late', 'DM Bob on Discord', 'email Alice the notes', and 'text Sam that I am outside'. It previews the exact draft and requires a later affirmative user reply before sending.",
+    "Create or send an owner-scoped outbound message draft. Use this for first-turn requests like 'DM Bob on Discord' and 'email Alice the notes'. The source's adapter must support sending a new message. It previews the exact draft and requires a later affirmative user reply before sending.",
   descriptionCompressed:
-    "outbound draft/send Telegram|Discord|email|SMS|iMessage|WhatsApp|DM; requires a later user confirmation",
+    "outbound draft/send Discord|email|X DM; requires a later user confirmation",
   similes: [
     "DISPATCH_DRAFT",
     "CONFIRM_AND_SEND",
@@ -313,37 +275,37 @@ export const sendDraftAction: Action = {
         };
       }
 
-      let record: DraftRecord;
-      try {
-        record = await service.draftFollowup(runtime, {
-          source: draftParsed.source,
-          to: draftParsed.to,
-          subject: draftParsed.subject,
-          body: draftParsed.body,
-          threadId: draftParsed.threadId,
-          worldId: draftParsed.worldId,
-          channelId: draftParsed.channelId,
-        });
-      } catch (error) {
-        if (!(error instanceof NotYetImplementedError)) {
-          throw error;
-        }
-        // error-policy:J4 Adapters may explicitly decline remote draft creation;
-        // a `local:` draft is a visibly distinct, sendable confirmation artifact.
-        runtime.reportError("SendDraft.remoteDraftUnavailable", error, {
-          source: draftParsed.source,
-        });
-        record = saveLocalOutboundDraft({
-          service,
-          source: draftParsed.source,
-          to: draftParsed.to,
-          subject: draftParsed.subject,
-          body: draftParsed.body,
-          threadId: draftParsed.threadId,
-          worldId: draftParsed.worldId,
-          channelId: draftParsed.channelId,
-        });
+      // Refuse before the preview: a draft that no adapter can deliver would
+      // ask the user to confirm a send that then fails.
+      const adapter = service.getAdapter(draftParsed.source);
+      const unsupported = !adapter
+        ? "no adapter is connected"
+        : !adapter.isAvailable(runtime)
+          ? "its adapter is unavailable"
+          : adapter.capabilities().send.new !== true
+            ? "its adapter does not support sending a new message"
+            : undefined;
+      if (unsupported) {
+        const text = `${draftParsed.source} cannot send a new message from a draft: ${unsupported}. Use action=send for a direct connector send.`;
+        logger.warn(`[SendDraft] ${text}`);
+        return {
+          success: false,
+          text,
+          error: text,
+          continueChain: false,
+          data: { actionName: "MESSAGE", error: "DRAFT_SEND_UNSUPPORTED" },
+        };
       }
+
+      const record = await service.draftFollowup(runtime, {
+        source: draftParsed.source,
+        to: draftParsed.to,
+        subject: draftParsed.subject,
+        body: draftParsed.body,
+        threadId: draftParsed.threadId,
+        worldId: draftParsed.worldId,
+        channelId: draftParsed.channelId,
+      });
       await requireSendConsent(runtime, _message, draftConsentDigest(record));
       const recipients = record.to
         .map((recipient) =>
