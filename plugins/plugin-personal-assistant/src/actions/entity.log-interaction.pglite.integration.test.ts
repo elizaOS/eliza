@@ -22,6 +22,8 @@ let roomId: UUID;
 let bobId = "";
 let bobJonesId = "";
 let tanakaId = "";
+let sakuraId = "";
+let kimId = "";
 
 beforeAll(async () => {
   vi.stubEnv("ELIZA_DISABLE_LIFEOPS_SCHEDULER", "1");
@@ -92,9 +94,35 @@ beforeAll(async () => {
     lastContactedAt: null,
     metadata: {},
   });
+  const sakura = await service.upsertRelationship({
+    name: "さくら",
+    primaryChannel: "sms",
+    primaryHandle: "+819012345680",
+    email: null,
+    phone: null,
+    notes: "",
+    tags: [],
+    relationshipType: "contact",
+    lastContactedAt: null,
+    metadata: {},
+  });
+  const kim = await service.upsertRelationship({
+    name: "김철수",
+    primaryChannel: "sms",
+    primaryHandle: "+821012345678",
+    email: null,
+    phone: null,
+    notes: "",
+    tags: [],
+    relationshipType: "contact",
+    lastContactedAt: null,
+    metadata: {},
+  });
   bobId = bob.id;
   bobJonesId = bobJones.id;
   tanakaId = tanaka.id;
+  sakuraId = sakura.id;
+  kimId = kim.id;
 }, 120_000);
 
 afterAll(async () => {
@@ -187,5 +215,35 @@ describe("ENTITY log_interaction writes real interaction rows", () => {
     const rows = await interactionRows();
     expect(rows).toHaveLength(3);
     expect(rows[2]?.relationship_id).toBe(bobId);
+  });
+
+  it("writes a durable row for a kana name with an attached honorific", async () => {
+    const result = await logInteractionFor(
+      "さくらさんとの打ち合わせをログに残して",
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data?.interaction?.relationshipId).toBe(sakuraId);
+    const rows = await interactionRows();
+    expect(rows).toHaveLength(4);
+    expect(rows[3]?.relationship_id).toBe(sakuraId);
+  });
+
+  it("writes a durable row for a Korean name with an attached honorific", async () => {
+    const result = await logInteractionFor("김철수님과 미팅");
+
+    expect(result.success).toBe(true);
+    expect(result.data?.interaction?.relationshipId).toBe(kimId);
+    const rows = await interactionRows();
+    expect(rows).toHaveLength(5);
+    expect(rows[4]?.relationship_id).toBe(kimId);
+  });
+
+  it("writes no row for a kana name inside a longer word", async () => {
+    const result = await logInteractionFor("さくらんぼを食べた");
+
+    expect(result.data?.error).toBe("MISSING_EDGE_ID");
+    const rows = await interactionRows();
+    expect(rows).toHaveLength(5);
   });
 });

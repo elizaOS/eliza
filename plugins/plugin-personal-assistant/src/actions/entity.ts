@@ -125,11 +125,14 @@ const NAME_BOUNDARY_SOURCE =
   "(?:(?![\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}])[\\p{L}\\p{M}\\p{N}])";
 
 // Scripts written without spaces have no word boundaries, so a boundary pass
-// can still land inside a longer name ("田中" inside "山田中村"). An occurrence
-// counts only when neither side continues with a character of the same script
-// class: kana particles abutting a kanji name stay valid ("田中さんに"), while
-// a same-script neighbor means the text holds a longer name and the contact
-// is not named at all. Fail closed: such a match never authorizes a write.
+// can still land inside a longer name ("田中" inside "山田中村"). A
+// direct same-script abutment means the text holds a longer name and the
+// contact is not named at all. Particles and honorifics bridge a name to
+// the next word instead ("田中さんに", "さくらさん", "김철수님과"), so kana
+// and Hangul names followed by an affix stay resolvable. The affix list is
+// bounded; only a bridged run keeps an occurrence, a bare same-script
+// neighbor never does. Fail closed: a rejected match never authorizes a
+// write.
 function unspacedScriptClass(value: string): string | null {
   if (!value) return null;
   if (/\p{Script=Han}/u.test(value)) return "han";
@@ -137,6 +140,91 @@ function unspacedScriptClass(value: string): string | null {
   if (/\p{Script=Katakana}/u.test(value)) return "katakana";
   if (/\p{Script=Hangul}/u.test(value)) return "hangul";
   return null;
+}
+
+// Japanese and Korean particles and honorifics that may abut a name
+// without a space. Matched longest first so "에게" consumes before "에".
+const NAME_ABJOINED_AFFIXES = [
+  // Japanese honorifics.
+  "さま",
+  "さん",
+  "ちゃん",
+  "くん",
+  "どの",
+  "様",
+  // Japanese case particles.
+  "から",
+  "まで",
+  "より",
+  "は",
+  "が",
+  "を",
+  "に",
+  "で",
+  "と",
+  "や",
+  "の",
+  "も",
+  "へ",
+  // Korean honorifics and case particles (josa).
+  "에게",
+  "에서",
+  "으로",
+  "부터",
+  "까지",
+  "한테",
+  "께",
+  "님",
+  "씨",
+  "은",
+  "는",
+  "이",
+  "가",
+  "을",
+  "를",
+  "와",
+  "과",
+  "에",
+  "도",
+  "만",
+  "의",
+  "로",
+  "랑",
+].sort((a, b) => b.length - a.length);
+
+function skipNameAbuttingAffixes(text: string, index: number): number {
+  let cursor = index;
+  let bridged = true;
+  while (bridged) {
+    bridged = false;
+    for (const affix of NAME_ABJOINED_AFFIXES) {
+      if (text.startsWith(affix, cursor)) {
+        cursor += affix.length;
+        bridged = true;
+        break;
+      }
+    }
+  }
+  return cursor;
+}
+
+function skipNameAbuttingAffixesBefore(text: string, index: number): number {
+  let cursor = index;
+  let bridged = true;
+  while (bridged) {
+    bridged = false;
+    for (const affix of NAME_ABJOINED_AFFIXES) {
+      if (
+        cursor >= affix.length &&
+        text.startsWith(affix, cursor - affix.length)
+      ) {
+        cursor -= affix.length;
+        bridged = true;
+        break;
+      }
+    }
+  }
+  return cursor;
 }
 
 type NameOccurrence = { start: number; end: number };
@@ -157,15 +245,24 @@ function namedPhraseOccurrences(
     const start = match.index;
     if (start === undefined) continue;
     const end = start + match[0].length;
-    const leadScript = unspacedScriptClass(haystack[start - 1] ?? "");
-    const tailScript = unspacedScriptClass(haystack[end] ?? "");
     const firstChar = match[0][0] ?? "";
     const lastChar = match[0].at(-1) ?? "";
-    if (
-      (leadScript && leadScript === unspacedScriptClass(firstChar)) ||
-      (tailScript && tailScript === unspacedScriptClass(lastChar))
-    ) {
-      continue;
+    // Only a direct same-script neighbor rejects the occurrence; a
+    // particle/honorific bridge keeps the name standalone on either side
+    // ("今日は田中さんと", "さくらと", "김철수님과").
+    const leadBridged = skipNameAbuttingAffixesBefore(haystack, start) < start;
+    if (!leadBridged) {
+      const leadScript = unspacedScriptClass(haystack[start - 1] ?? "");
+      if (leadScript && leadScript === unspacedScriptClass(firstChar)) {
+        continue;
+      }
+    }
+    const tailBridged = skipNameAbuttingAffixes(haystack, end) > end;
+    if (!tailBridged) {
+      const tailScript = unspacedScriptClass(haystack[end] ?? "");
+      if (tailScript && tailScript === unspacedScriptClass(lastChar)) {
+        continue;
+      }
     }
     occurrences.push({ start, end });
   }

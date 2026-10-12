@@ -101,6 +101,9 @@ describe("ENTITY log_interaction resolves the named contact only", () => {
           "rel-bob": ["Bob", "bob@example.com"],
           "rel-bob-jones": ["Bob Jones", "bob.jones@example.com"],
           "rel-tanaka": ["田中", "+819012345678"],
+          "rel-sakura": ["さくら", "+819012345680"],
+          "rel-kim": ["김철수", "+821012345678"],
+          "rel-tanaka-katakana": ["タナカ", "+819012345679"],
         };
         const hit = known[id];
         return hit ? (relationship(id, hit[0], hit[1]) as never) : null;
@@ -211,5 +214,57 @@ describe("ENTITY log_interaction resolves the named contact only", () => {
     expect((result as { data?: { error?: string } }).data?.error).toBe(
       "MISSING_EDGE_ID",
     );
+  });
+
+  it("resolves a kana name with an attached honorific or particle", async () => {
+    listSpy.mockResolvedValue([
+      relationship("rel-sakura", "さくら", "+819012345680"),
+    ] as never);
+    const runtime = makeRuntime();
+    const honorific = await logInteractionFor(
+      runtime,
+      "さくらさんとの打ち合わせをログに残して",
+    );
+    expect(honorific.interactionRelationshipId).toBe("rel-sakura");
+
+    const particle = await logInteractionFor(runtime, "さくらと打ち合わせ");
+    expect(particle.interactionRelationshipId).toBe("rel-sakura");
+  });
+
+  it("does not resolve a kana name inside a longer word", async () => {
+    listSpy.mockResolvedValue([
+      relationship("rel-sakura", "さくら", "+819012345680"),
+    ] as never);
+    const runtime = makeRuntime();
+    const { result } = await logInteractionFor(runtime, "さくらんぼを食べた");
+
+    expect((result as { data?: { error?: string } }).data?.error).toBe(
+      "MISSING_EDGE_ID",
+    );
+  });
+
+  it("resolves a Korean name with an attached honorific or particle", async () => {
+    listSpy.mockResolvedValue([
+      relationship("rel-kim", "김철수", "+821012345678"),
+    ] as never);
+    const runtime = makeRuntime();
+    const honorific = await logInteractionFor(runtime, "김철수님과 미팅");
+    expect(honorific.interactionRelationshipId).toBe("rel-kim");
+
+    const particle = await logInteractionFor(runtime, "김철수에게 메일 보내줘");
+    expect(particle.interactionRelationshipId).toBe("rel-kim");
+  });
+
+  it("still resolves a katakana name through attached particles", async () => {
+    listSpy.mockResolvedValue([
+      relationship("rel-tanaka-katakana", "タナカ", "+819012345679"),
+    ] as never);
+    const runtime = makeRuntime();
+    const { interactionRelationshipId } = await logInteractionFor(
+      runtime,
+      "タナカさんに連絡",
+    );
+
+    expect(interactionRelationshipId).toBe("rel-tanaka-katakana");
   });
 });
