@@ -48,7 +48,15 @@ const BROWSER_PERMISSION_IDS = new Set<DesktopPermissionId>([
   "location",
   "notifications",
 ]);
-const SAFE_EXTERNAL_PROTOCOLS = new Set(["http:", "https:", "mailto:", "tel:"]);
+// The native Electrobun host restricts openExternal to http/https
+// ("SECURITY: restricted to http/https to prevent opening arbitrary
+// protocols"), and the shared navigation allowlist
+// (packages/ui/src/utils/navigation-url.ts) passes only http/https unless
+// a caller declares an extra scheme. The Desktop plugin interface has no
+// extra-scheme parameter, so the web fallback must not widen the boundary
+// by opening OS-handler protocols (mailto:, tel:) the other
+// implementations reject.
+const SAFE_EXTERNAL_PROTOCOLS = new Set(["http:", "https:"]);
 
 function assertSafeExternalUrl(url: unknown): string {
   if (typeof url !== "string" || url.trim().length === 0) {
