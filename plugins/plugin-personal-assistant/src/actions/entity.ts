@@ -118,6 +118,22 @@ type NamedContactResolution =
   | { kind: "ambiguous" }
   | { kind: "unmatched" };
 
+// Han/Kana/Hangul letters do not count as word characters so unspaced-script
+// names can abut particles ("田中さんに"); Latin letters and digits stay
+// boundaries so "ann" never matches inside "anna lee".
+const NAME_BOUNDARY_SOURCE =
+  "(?:(?![\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}])[\\p{L}\\p{M}\\p{N}])";
+
+function nameAppearsAsNamedPhrase(haystack: string, name: string): boolean {
+  const words = name.split(" ").filter(Boolean);
+  if (words.length === 0) return false;
+  const body = words.map((word) => escapeRegExp(word)).join("\\s+");
+  return new RegExp(
+    `(?<!${NAME_BOUNDARY_SOURCE})${body}(?!${NAME_BOUNDARY_SOURCE})`,
+    "iu",
+  ).test(haystack);
+}
+
 async function resolveNamedContact(
   service: LifeOpsService,
   rawName: string,
@@ -192,11 +208,27 @@ async function resolveRelationshipIdFromText(
   }
 
   const relationships = await service.listRelationships();
-  const fullNameMatch = relationships.find((relationship) =>
-    haystack.includes(normalizeLookup(relationship.name)),
-  );
-  if (fullNameMatch) {
-    return fullNameMatch.id;
+  // The text must name the contact in whole words: "anna lee can't make it"
+  // names "Anna Lee", not "Ann", and "annual planning" names nobody. A fully
+  // named nested name ("Bob Jones") outranks a name it contains ("Bob");
+  // equal-length different names leave the text ambiguous, like the token
+  // stage below.
+  let namedId: string | null = null;
+  let namedLength = -1;
+  let namedAmbiguous = false;
+  for (const relationship of relationships) {
+    const name = normalizeLookup(relationship.name);
+    if (!name || !nameAppearsAsNamedPhrase(haystack, name)) continue;
+    if (name.length > namedLength) {
+      namedId = relationship.id;
+      namedLength = name.length;
+      namedAmbiguous = false;
+    } else if (name.length === namedLength) {
+      namedAmbiguous = true;
+    }
+  }
+  if (namedId !== null) {
+    return namedAmbiguous ? null : namedId;
   }
 
   const candidateMatches = new Map<string, string>();
