@@ -23,11 +23,12 @@ public final class VerifiedTaskCustodyInstrumentedTest {
   };
   private static final class Fixture implements AutoCloseable {
     final String id=UUID.randomUUID().toString(), accountAlias="synthetic-account-"+id,keyAlias="synthetic-task-"+id;
-    final Path dir=InstrumentationRegistry.getInstrumentation().getTargetContext().getNoBackupFilesDir().toPath().resolve(id);
+    final Path dir;
     final CompletableFuture<VerifiedTaskCustody> ready=new CompletableFuture<>();
     final NativeRuntimeSession session;
     final VerifiedTaskCustody custody;
     Fixture() throws Exception {
+      dir=InstrumentationRegistry.getInstrumentation().getTargetContext().getNoBackupFilesDir().getCanonicalFile().toPath().resolve(id);
       Files.createDirectory(dir); android.system.Os.chmod(dir.toString(),0700);
       Path db=Files.createDirectory(dir.resolve("db")); android.system.Os.chmod(db.toString(),0700);
       session=new NativeRuntimeSession(scope->{try{ready.complete(new VerifiedTaskCustody(scope,dir.resolve("account").toFile(),accountAlias,dir.resolve("keys").toFile(),keyAlias,db.toFile()));}catch(Throwable e){ready.completeExceptionally(e);throw e;}},100,100,0);

@@ -127,7 +127,9 @@ host source input. A consumer must select it alongside native-agent runtime and
 secure-store native-only sources. No default Gradle dependency or renderer API
 is added. The host supplies its existing dedicated verified-account directory
 and Keystore alias, a separate task-key directory/alias, and an existing private
-0700 no-backup database directory. All account writes must use this composition
+0700 no-backup database directory. Resolve the trusted Android Context path with
+`getCanonicalFile()` before supplying that root; Android data-directory aliases
+are not accepted as canonical paths. All account writes must use this composition
 in the one native host process; it does not provide cross-process credential CAS.
 
 Create the adapter inside `NativeRuntimeSession`'s launcher. Its account port and
