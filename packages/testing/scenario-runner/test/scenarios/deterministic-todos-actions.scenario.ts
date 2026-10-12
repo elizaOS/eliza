@@ -173,8 +173,20 @@ function expectTodoNotFound(
     if (result.text !== expected) {
       return `expected ${JSON.stringify(expected)}, saw ${JSON.stringify(result.text)}`;
     }
-    if (result.data !== undefined) {
-      return `not_found must not expose fabricated success data: ${JSON.stringify(result.data)}`;
+    // A committed miss carries only the metadata used to advance the next
+    // mutation's idempotency ordinal; it never describes an applied effect.
+    const data = isRecord(result.data) ? result.data : null;
+    const metadataKeys = ["actionName", "action", "op", "entityId", "notFound"];
+    if (
+      data?.actionName !== "TODO" ||
+      data.action !== "update" ||
+      data.op !== "update" ||
+      data.notFound !== true ||
+      typeof data.entityId !== "string" ||
+      data.entityId.length === 0 ||
+      Object.keys(data).some((key) => !metadataKeys.includes(key))
+    ) {
+      return `not_found must expose only mutation-attempt metadata: ${JSON.stringify(result.data)}`;
     }
     const raw = isRecord(result.raw) ? result.raw : null;
     if (Array.isArray(raw?.effectReceipts) && raw.effectReceipts.length > 0) {
