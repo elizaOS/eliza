@@ -13,7 +13,7 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd plugins/plugin-native-mobile-signals build  # build
 ```
 
-Build the package before running `bun run validate:ios-screen-time`; the command uses the bundled validator shipped to consumers.
+Build the package before running `bun run --cwd plugins/plugin-native-mobile-signals validate:ios-screen-time`; the command uses the bundled validator shipped to consumers.
 
 For Android, run `node packages/app/scripts/android-native-plugins.ts --serial
 <emulator> --plugin plugin-native-mobile-signals` from the repository root. The
