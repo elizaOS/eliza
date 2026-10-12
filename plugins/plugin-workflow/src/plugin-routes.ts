@@ -125,9 +125,9 @@ const workflowRouteList: Route[] = [
   // Hosted digests. `/status` advertises `hostedDigestProtocol: 1`; these are
   // the paths handleWorkflowRoutes serves under `/hosted/`. The dispatcher
   // parses JSON bodies (default cap 1 MiB) before the handler's readBody caps
-  // run. live-calendars (2000) and sources (20000) are tighter than that
-  // default, so they restate their caps. The other hosted POSTs read with
-  // the handler's MAX_WORKFLOW_JSON_BYTES (2 MB); the 1 MiB default is
+  // run. live-calendars and dossier (2000) and sources (20000) are tighter
+  // than that default, so they restate their caps. The other hosted POSTs
+  // read with the handler's MAX_WORKFLOW_JSON_BYTES (2 MB); the 1 MiB default is
   // already stricter, and restating 2 MB would loosen them.
   {
     type: 'POST',
@@ -154,6 +154,13 @@ const workflowRouteList: Route[] = [
     type: 'POST',
     path: '/api/workflow/hosted/sources/revoke',
     rawPath: true,
+    handler: workflowHandler,
+  },
+  {
+    type: 'POST',
+    path: '/api/workflow/hosted/dossier',
+    rawPath: true,
+    maxBodyBytes: 2000,
     handler: workflowHandler,
   },
   { type: 'GET', path: '/api/workflow/hosted/loops', rawPath: true, handler: workflowHandler },

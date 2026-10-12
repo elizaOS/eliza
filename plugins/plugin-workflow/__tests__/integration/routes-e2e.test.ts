@@ -368,6 +368,7 @@ describe('plugin-workflow rawPath routes through real dispatch (#19044)', () => 
     ['GET', '/api/workflow/hosted/sources'],
     ['POST', '/api/workflow/hosted/sources'],
     ['POST', '/api/workflow/hosted/sources/revoke'],
+    ['POST', '/api/workflow/hosted/dossier'],
     ['GET', '/api/workflow/hosted/loops'],
     ['POST', '/api/workflow/hosted/loops'],
     ['GET', '/api/workflow/hosted/results'],
