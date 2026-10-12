@@ -24,9 +24,7 @@ describe("isSelfEditPathDenied", () => {
       true,
     );
     expect(
-      isSelfEditPathDenied(
-        "/repo/packages/app/scripts/lib/restart-guard.ts",
-      ),
+      isSelfEditPathDenied("/repo/packages/app/scripts/lib/restart-guard.ts"),
     ).toBe(true);
   });
 
@@ -62,9 +60,7 @@ describe("isSelfEditPathDenied", () => {
   it("returns false for empty or non-string input instead of throwing", () => {
     expect(isSelfEditPathDenied("")).toBe(false);
     expect(isSelfEditPathDenied("   ")).toBe(false);
-    expect(
-      isSelfEditPathDenied(undefined as unknown as string),
-    ).toBe(false);
+    expect(isSelfEditPathDenied(undefined as unknown as string)).toBe(false);
     expect(isSelfEditPathDenied(42 as unknown as string)).toBe(false);
   });
 });
