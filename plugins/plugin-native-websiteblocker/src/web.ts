@@ -80,9 +80,11 @@ function normalizeHostname(value: unknown): string | null {
   ) {
     return null;
   }
-  // The engine's ASCII conversion yields no host for a numeric top-level
-  // label ("example.123"), while a one-letter TLD ("example.c") is valid.
-  if (!/^[a-z]+$/.test(labels[labels.length - 1])) return null;
+  // The engine's ASCII conversion (domainToASCII) yields no host when the
+  // final label is all digits ("example.123" — the ends-in-a-number rule),
+  // but a punycode TLD ("xn--p1ai", from an IDN name such as "сайт.рф") or
+  // any other alphanumeric TLD ("example.123abc", "example.c") is valid.
+  if (/^\d+$/.test(labels[labels.length - 1])) return null;
 
   return ascii;
 }
