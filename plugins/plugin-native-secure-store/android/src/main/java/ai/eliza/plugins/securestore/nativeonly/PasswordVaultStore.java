@@ -65,6 +65,9 @@ public class PasswordVaultStore {
   public static final class DeviceLocked extends IOException { DeviceLocked() { super("Unlock the device to use saved passwords"); } }
   private void checkDevice() throws DeviceLocked { if (policy != null) policy.checkDevice(); }
   private SecretKey key(boolean existing) throws Exception {
+    synchronized (PasswordVaultStore.class) { return keyLocked(existing); }
+  }
+  private SecretKey keyLocked(boolean existing) throws Exception {
     checkDevice();
     KeyStore keys = KeyStore.getInstance("AndroidKeyStore"); keys.load(null);
     if (keys.containsAlias(alias)) {
