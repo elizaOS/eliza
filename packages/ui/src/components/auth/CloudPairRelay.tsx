@@ -306,10 +306,18 @@ function describePairFailure(error: unknown): Exclude<
 > {
   if (error instanceof CloudPairExchangeError) {
     if ([401, 403, 410].includes(error.status)) {
+      // Cloud returns one opaque rejection for all of these statuses:
+      // expired, already redeemed, unknown to this environment, origin not
+      // bound, malformed, and (on the native exchange) missing Cloud auth.
+      // The relay cannot determine which cause applies, so the copy must
+      // NOT assert a specific cause — only that the link could not be
+      // verified. See issue #18184 and the standalone relay contract in
+      // packages/agent/src/api/cloud-pair-route.ts.
       return {
         phase: "error",
-        title: "Sign-in link expired",
-        message: "Open this agent from Eliza Cloud again to continue.",
+        title: "Sign-in link could not be verified",
+        message:
+          "Eliza Cloud could not verify this pairing link. It may have already been used, or does not match this agent. Open this agent from Eliza Cloud again to continue.",
       };
     }
     if (error.status === 429) {
