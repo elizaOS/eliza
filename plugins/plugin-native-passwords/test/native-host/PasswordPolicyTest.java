@@ -66,6 +66,22 @@ public final class PasswordPolicyTest {
     rejects("Ambiguous password fields", () -> fill(APP, false, root(field("u", TEXT), field("p1", TEXT_PASSWORD), field("p2", TEXT_PASSWORD))));
     Node hidden = field("hidden", TEXT_PASSWORD); hidden.visible = false;
     check("p".equals(fill(APP, false, root(field("u", TEXT), hidden, field("p", TEXT_PASSWORD))).passwordId));
+    // Visibility belongs to the entire ancestry, not just the input itself.
+    Node hiddenContainer = root(root(field("hidden-child", TEXT_PASSWORD)));
+    hiddenContainer.visible = false;
+    rejects("No password field", () -> fill(APP, false, root(hiddenContainer)));
+    check("shown".equals(fill(APP, false, root(hiddenContainer, field("shown", TEXT_PASSWORD))).passwordId));
+    Node hiddenUser = root(field("hidden-user", TEXT_EMAIL)); hiddenUser.visible = false;
+    check(fill(APP, false, root(hiddenUser, field("shown", TEXT_PASSWORD))).usernameId == null);
+    Node hiddenWeb = web("example.com", "https", field("u", TEXT), field("p", TEXT_PASSWORD)); hiddenWeb.visible = false;
+    rejects("No password field", () -> fill(BROWSER, false, root(root(hiddenWeb))));
+    // A hidden foreign frame still makes the whole web structure untrusted.
+    Node foreignHidden = web("evil.example", "https", field("other", TEXT)); foreignHidden.visible = false;
+    rejects("Cross-origin frame", () -> fill(BROWSER, false, root(foreignHidden,
+      web("example.com", "https", field("u", TEXT), field("p", TEXT_PASSWORD)))));
+    // Traversal must not mutate local visibility: the same structure can later be shown.
+    hiddenContainer.visible = true;
+    check("hidden-child".equals(fill(APP, false, root(hiddenContainer)).passwordId));
     // Username: explicit hint wins over the nearest preceding field; otherwise nearest preceding.
     check("email".equals(fill(APP, false, root(field("email", TEXT, "emailAddress"), field("search", TEXT), field("p", TEXT_PASSWORD))).usernameId));
     check("second".equals(fill(APP, false, root(field("first", TEXT), field("second", TEXT), field("p", TEXT_PASSWORD), field("after", TEXT))).usernameId));
@@ -129,6 +145,10 @@ public final class PasswordPolicyTest {
     Node confirm = field("c", TEXT_PASSWORD); confirm.value = "synthetic-value-1";
     Target captured = PasswordFormPolicy.evaluate(BROWSER, HOST, false, web("example.com", "https", user, pass, confirm), TRUST, true);
     check("synthetic.user@example.test".equals(captured.username) && "synthetic-value-1".equals(captured.password));
+    // Framework save may carry the just-submitted form after its container becomes hidden.
+    Node submitted = web("example.com", "https", user, pass); submitted.visible = false;
+    Target savedAfterSubmit = PasswordFormPolicy.evaluate(BROWSER, HOST, false, submitted, TRUST, true);
+    check(captured.password.equals(savedAfterSubmit.password));
     Target stripped = captured.withoutValues();
     check(stripped.password == null && stripped.username == null && stripped.webOrigin.equals(captured.webOrigin));
     Node mismatch = field("c", TEXT_PASSWORD); mismatch.value = "synthetic-value-2";

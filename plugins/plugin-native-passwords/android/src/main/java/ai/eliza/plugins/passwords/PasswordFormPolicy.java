@@ -76,8 +76,8 @@ public final class PasswordFormPolicy {
   }
 
   private static final class Field {
-    final Node node; final String domain, scheme;
-    Field(Node node, String domain, String scheme) { this.node = node; this.domain = domain; this.scheme = scheme; }
+    final Node node; final String domain, scheme; final boolean visible;
+    Field(Node node, String domain, String scheme, boolean visible) { this.node = node; this.domain = domain; this.scheme = scheme; this.visible = visible; }
   }
 
   public static Target evaluate(String packageName, String hostPackage, boolean hostIsBrowser, Node root, BrowserTrust trust, boolean forSave) throws Rejected {
@@ -85,12 +85,12 @@ public final class PasswordFormPolicy {
     List<Field> fields = new ArrayList<>();
     Set<String> domains = new LinkedHashSet<>(), schemes = new LinkedHashSet<>(), topOrigins = new LinkedHashSet<>();
     int[] count = {0};
-    walk(root, null, null, 0, count, fields, domains, schemes, topOrigins);
+    walk(root, null, null, true, 0, count, fields, domains, schemes, topOrigins);
 
     List<Field> passwords = new ArrayList<>(), others = new ArrayList<>();
     for (Field field : fields) {
       if (!field.node.text || field.node.id == null) continue;
-      if (!forSave && !field.node.visible) continue;
+      if (!forSave && !field.visible) continue;
       if (isPassword(field.node)) passwords.add(field); else others.add(field);
     }
     if (passwords.isEmpty()) throw new Rejected("No password field");
@@ -152,7 +152,7 @@ public final class PasswordFormPolicy {
     return port < 0 ? origin.substring(start) : origin.substring(start, port);
   }
 
-  private static void walk(Node node, String domain, String scheme, int depth, int[] count, List<Field> fields,
+  private static void walk(Node node, String domain, String scheme, boolean ancestorsVisible, int depth, int[] count, List<Field> fields,
       Set<String> domains, Set<String> schemes, Set<String> topOrigins) throws Rejected {
     if (depth > MAX_DEPTH || ++count[0] > MAX_NODES) throw new Rejected("Form exceeds bounds");
     if (node.webDomain != null && !node.webDomain.isEmpty()) {
@@ -161,8 +161,11 @@ public final class PasswordFormPolicy {
       domains.add(domain); schemes.add(scheme);
     }
     if (node.topOrigin != null) topOrigins.add(node.topOrigin);
-    fields.add(new Field(node, domain, scheme));
-    for (Node child : node.children) walk(child, domain, scheme, depth + 1, count, fields, domains, schemes, topOrigins);
+    // Keep traversing hidden subtrees for origin and size checks. Only fill selection
+    // uses effective visibility; save may refer to a form hidden after manual submission.
+    boolean visible = ancestorsVisible && node.visible;
+    fields.add(new Field(node, domain, scheme, visible));
+    for (Node child : node.children) walk(child, domain, scheme, visible, depth + 1, count, fields, domains, schemes, topOrigins);
   }
 
   static boolean isPassword(Node node) {
