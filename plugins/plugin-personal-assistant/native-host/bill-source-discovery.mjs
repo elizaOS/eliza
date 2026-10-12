@@ -408,6 +408,12 @@ export class BillSourceDiscovery {
             parsed = undefined;
           }
           await check();
+          // null means no bill text; a parser failure can mean conflicting identity.
+          // A readable attachment cannot erase that uncertainty in its cover message.
+          if (parsed === undefined) {
+            skip(detail);
+            continue;
+          }
           const documents = await readBillAttachments({
             google: this.google,
             detail,
@@ -420,7 +426,6 @@ export class BillSourceDiscovery {
           });
           if (documents.incomplete)
             return { status: "incomplete", candidates: [] };
-          if (parsed === undefined && !documents.found.length) skip(detail);
           const extracted = [
             ...(parsed == null ? [] : [{ parsed }]),
             ...documents.found,

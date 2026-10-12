@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { parseControlledBillMessage } from "../test/fixtures/bill-host/policy.mjs";
+import { createLabelledBillExtractor } from "./bill-extraction-profile.mjs";
 import { BillSourceDiscovery } from "./bill-source-discovery.mjs";
 import { createBillSourceStore } from "./bill-source-store.mjs";
 
@@ -190,4 +191,70 @@ test("one discovery reads every authorized attachment", async () => {
   assert.equal(result.status, "candidate");
   assert.equal(result.candidates[0].sources.length, 26);
   assert.equal(f.reads(), 26);
+});
+
+test("a conflicting cover identity cannot be rescued by a matching attachment", async () => {
+  const extractor = createLabelledBillExtractor({
+    schemaVersion: 1,
+    kind: "labelled-invoice-v1",
+    currency: "USD",
+    currencyDigits: 2,
+    dateFormat: "iso",
+    fields: {
+      invoiceId: "Invoice:",
+      company: "Company:",
+      origin: "Website:",
+      accountLabel: "Account:",
+      amount: "Amount: USD ",
+      dueDate: "Due date:",
+    },
+  });
+  for (const cover of [
+    "Company: Another Utility",
+    "Account: Ending 9999",
+    "Website: https://other.example",
+    "Company: Water Test\nCompany: Another Utility",
+  ]) {
+    const f = fixture();
+    f.attachment.mimeType = "application/pdf";
+    f.attachment.filename = "bill.pdf";
+    const detail = f.google.getGmailMessageDetail;
+    f.google.getGmailMessageDetail = async () => ({
+      ...(await detail()),
+      bodyText: cover,
+    });
+    f.options.parse = extractor.parseMessage;
+    f.options.parseAttachment = () =>
+      extractor.parseDocument({
+        complete: true,
+        pageCount: 1,
+        pages: [{ pageNumber: 1, visionText: body }],
+      });
+    const result = await discover(f);
+    assert.equal(result.status, "incomplete");
+    assert.deepEqual(result.candidates, []);
+  }
+  for (const cover of [
+    "Your bill is attached.",
+    "Company: Water Test\nAccount: Ending 1234",
+  ]) {
+    const f = fixture();
+    f.attachment.mimeType = "application/pdf";
+    f.attachment.filename = "bill.pdf";
+    const detail = f.google.getGmailMessageDetail;
+    f.google.getGmailMessageDetail = async () => ({
+      ...(await detail()),
+      bodyText: cover,
+    });
+    f.options.parse = extractor.parseMessage;
+    f.options.parseAttachment = () =>
+      extractor.parseDocument({
+        complete: true,
+        pageCount: 1,
+        pages: [{ pageNumber: 1, visionText: body }],
+      });
+    const result = await discover(f);
+    assert.equal(result.status, "candidate");
+    assert.equal(result.candidates[0].facts.amountMinor, 2345);
+  }
 });
