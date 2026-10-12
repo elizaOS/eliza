@@ -780,7 +780,13 @@ export class NativeAcpClient {
     } catch (err) {
       // error-policy:J1 boundary translation — a client-request handler fault
       // is returned to the ACP peer as a structured JSON-RPC error response.
-      this.respondError(id, err, jsonRpcCodeForError(err, method));
+      // The transport may have died while the handler awaited; a failed error
+      // response must not escape as an unhandled rejection.
+      try {
+        this.respondError(id, err, jsonRpcCodeForError(err, method));
+      } catch {
+        // No peer left to answer.
+      }
     }
   }
 
