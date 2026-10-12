@@ -107,6 +107,11 @@ export interface AndroidCalendarEvent {
   end: number;
   allDay: boolean;
   recurring: boolean;
+  /**
+   * The creation id passed to `save` when this host created the event. Row ids
+   * can be reused after a deletion; this id stays with its event.
+   */
+  creationId?: string;
 }
 export interface AndroidCalendarEditorFields {
   title: string;
