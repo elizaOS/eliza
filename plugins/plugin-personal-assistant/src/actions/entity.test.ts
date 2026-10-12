@@ -104,6 +104,7 @@ describe("ENTITY log_interaction resolves the named contact only", () => {
           "rel-sakura": ["さくら", "+819012345680"],
           "rel-kim": ["김철수", "+821012345678"],
           "rel-tanaka-katakana": ["タナカ", "+819012345679"],
+          "rel-zhang-san": ["张三", "+8613800138000"],
         };
         const hit = known[id];
         return hit ? (relationship(id, hit[0], hit[1]) as never) : null;
@@ -266,5 +267,33 @@ describe("ENTITY log_interaction resolves the named contact only", () => {
     );
 
     expect(interactionRelationshipId).toBe("rel-tanaka-katakana");
+  });
+
+  it("resolves a Chinese name through attached function characters", async () => {
+    listSpy.mockResolvedValue([
+      relationship("rel-zhang-san", "张三", "+8613800138000"),
+    ] as never);
+    const runtime = makeRuntime();
+    const { interactionRelationshipId } = await logInteractionFor(
+      runtime,
+      "请记录今天和张三的午餐交流",
+    );
+
+    expect(interactionRelationshipId).toBe("rel-zhang-san");
+  });
+
+  it("does not resolve a Chinese name inside a longer name", async () => {
+    listSpy.mockResolvedValue([
+      relationship("rel-zhang-san", "张三", "+8613800138000"),
+    ] as never);
+    const runtime = makeRuntime();
+    const { result } = await logInteractionFor(
+      runtime,
+      "请记录今天和张三丰的午餐交流",
+    );
+
+    expect((result as { data?: { error?: string } }).data?.error).toBe(
+      "MISSING_EDGE_ID",
+    );
   });
 });

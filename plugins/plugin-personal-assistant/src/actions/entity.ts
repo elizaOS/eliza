@@ -127,12 +127,13 @@ const NAME_BOUNDARY_SOURCE =
 // Scripts written without spaces have no word boundaries, so a boundary pass
 // can still land inside a longer name ("田中" inside "山田中村"). A
 // direct same-script abutment means the text holds a longer name and the
-// contact is not named at all. Particles and honorifics bridge a name to
-// the next word instead ("田中さんに", "さくらさん", "김철수님과"), so kana
-// and Hangul names followed by an affix stay resolvable. The affix list is
-// bounded; only a bridged run keeps an occurrence, a bare same-script
-// neighbor never does. Fail closed: a rejected match never authorizes a
-// write.
+// contact is not named at all. Particles, honorifics, and Chinese function
+// characters bridge a name to the next word instead ("田中さんに",
+// "さくらさん", "김철수님과", "和张三的午餐"), so unspaced-script names
+// followed by an affix stay resolvable. The affix list is bounded; only a
+// bridged run keeps an occurrence, a bare same-script neighbor never does
+// ("张三丰" keeps "张三" unmatched). Fail closed: a rejected match never
+// authorizes a write.
 function unspacedScriptClass(value: string): string | null {
   if (!value) return null;
   if (/\p{Script=Han}/u.test(value)) return "han";
@@ -142,8 +143,9 @@ function unspacedScriptClass(value: string): string | null {
   return null;
 }
 
-// Japanese and Korean particles and honorifics that may abut a name
-// without a space. Matched longest first so "에게" consumes before "에".
+// Japanese, Korean, and Chinese particles and function characters that
+// may abut a name without a space. Matched longest first so "에게"
+// consumes before "에".
 const NAME_ABJOINED_AFFIXES = [
   // Japanese honorifics.
   "さま",
@@ -190,6 +192,33 @@ const NAME_ABJOINED_AFFIXES = [
   "의",
   "로",
   "랑",
+  // Chinese function characters: names abut particles, prepositions,
+  // conjunctions, and sentence-final particles with no space ("和张三的
+  // 午餐", "张三呢"). Bounded like the lists above; a bare Han neighbor
+  // that is none of these still rejects the occurrence, so a name inside
+  // a longer name ("张三丰" around "张三") stays unmatched.
+  "的",
+  "和",
+  "与",
+  "跟",
+  "同",
+  "及",
+  "或",
+  "在",
+  "是",
+  "请",
+  "给",
+  "对",
+  "向",
+  "从",
+  "了",
+  "呢",
+  "吧",
+  "吗",
+  "啊",
+  "呀",
+  "哦",
+  "嘛",
 ].sort((a, b) => b.length - a.length);
 
 function skipNameAbuttingAffixes(text: string, index: number): number {
@@ -248,8 +277,9 @@ function namedPhraseOccurrences(
     const firstChar = match[0][0] ?? "";
     const lastChar = match[0].at(-1) ?? "";
     // Only a direct same-script neighbor rejects the occurrence; a
-    // particle/honorific bridge keeps the name standalone on either side
-    // ("今日は田中さんと", "さくらと", "김철수님과").
+    // particle/honorific/function-character bridge keeps the name
+    // standalone on either side ("今日は田中さんと", "さくらと",
+    // "김철수님과", "和张三的午餐").
     const leadBridged = skipNameAbuttingAffixesBefore(haystack, start) < start;
     if (!leadBridged) {
       const leadScript = unspacedScriptClass(haystack[start - 1] ?? "");
