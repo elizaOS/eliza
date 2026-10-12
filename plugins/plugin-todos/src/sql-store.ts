@@ -1662,7 +1662,15 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
         };
       }
     }
-    if (existing) return { action: "create", todo: existing, duplicate: true };
+    if (existing) {
+      // If the user already replied non-affirmatively, do not re-ask.
+      // Return the existing todo without the duplicate flag so the
+      // confirmation question is not rendered again.
+      if (mutation.reply !== undefined && mutation.reply !== "affirmative") {
+        return { action: "create", todo: existing };
+      }
+      return { action: "create", todo: existing, duplicate: true };
+    }
     return {
       action: "create",
       todo: await this.createInTransaction(tx, {
