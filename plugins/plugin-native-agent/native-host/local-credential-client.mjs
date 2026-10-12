@@ -15,6 +15,7 @@ function createCredentialStore(
     unavailableMessage = "Local credential storage unavailable",
   },
   prefix,
+  taskKeys = false,
 ) {
   if (
     !Number.isInteger(port) ||
@@ -34,6 +35,14 @@ function createCredentialStore(
   async function request(operation, value) {
     if (operation === "write" && typeof value !== "string")
       throw new TypeError("Credential value must be a string");
+    if (
+      taskKeys &&
+      operation === "remove" &&
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+        value ?? "",
+      )
+    )
+      throw new TypeError("Invalid task key generation");
     try {
       const response = await fetch(`http://127.0.0.1:${port}/credential`, {
         method: "POST",
@@ -55,14 +64,42 @@ function createCredentialStore(
       const body = await response.json();
       if (!body || typeof body !== "object" || Array.isArray(body))
         throw new Error("Invalid broker response");
-      if (operation === "read") {
+      if (taskKeys && operation === "remove") {
+        if (Object.keys(body).length !== 1 || typeof body.removed !== "boolean")
+          throw new Error("Invalid task key acknowledgement");
+        return body.removed;
+      }
+      if (operation === "read" || (taskKeys && operation === "create")) {
         if (
           Object.keys(body).length !== 1 ||
           !Object.hasOwn(body, "value") ||
           (body.value !== null && typeof body.value !== "string")
         )
           throw new Error("Invalid broker read response");
-        return body.value;
+        if (!taskKeys) return body.value;
+        if (body.value === null && operation === "read") return null;
+        const record = JSON.parse(body.value);
+        if (
+          !record ||
+          Object.keys(record).length !== 3 ||
+          record.version !== 1 ||
+          typeof record.id !== "string" ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+            record.id,
+          ) ||
+          typeof record.key !== "string" ||
+          !/^[A-Za-z0-9+/]{43}=$/.test(record.key)
+        )
+          throw new Error("Invalid task key response");
+        const bytes = Uint8Array.from(atob(record.key), (c) => c.charCodeAt(0));
+        if (
+          bytes.length !== 32 ||
+          btoa(String.fromCharCode(...bytes)) !== record.key
+        ) {
+          bytes.fill(0);
+          throw new Error("Invalid task key bytes");
+        }
+        return { id: record.id, bytes };
       }
       if (Object.keys(body).length)
         throw new Error("Invalid broker acknowledgement");
@@ -73,6 +110,12 @@ function createCredentialStore(
       throw new LocalCredentialBrokerError(unavailableMessage);
     }
   }
+  if (taskKeys)
+    return {
+      read: () => request("read"),
+      createForNewDatabase: () => request("create"),
+      remove: (expectedKeyId) => request("remove", expectedKeyId),
+    };
   return {
     read: () => request("read"),
     write: (value) => request("write", value),
@@ -88,4 +131,9 @@ export function createLocalCredentialStore(options) {
 /** Separate pending-enrollment journal; never overwrite the active credential slot. */
 export function createLocalPendingCredentialStore(options) {
   return createCredentialStore(options, "pending-");
+}
+
+/** Native process only. Identity is fixed by the native broker; wipe returned byte arrays after use. */
+export function createLocalTaskDataKeyStore(options) {
+  return createCredentialStore(options, "task-key-", true);
 }

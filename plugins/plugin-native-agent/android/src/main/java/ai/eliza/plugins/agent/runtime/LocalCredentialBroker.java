@@ -12,6 +12,16 @@ public final class LocalCredentialBroker implements AutoCloseable {
   private final Store store;
   private final Store pending;
   private final String token;
+  private final TaskKeyCustody taskKeys;
+  private final Guard taskKeyGuard;
+  /** Bind one native-selected account/database. Never accept an identity from the wire. */
+  public interface TaskKeyCustody {
+    String read() throws Exception;
+    String createForNewDatabase() throws Exception;
+    boolean remove(String expectedKeyId) throws Exception;
+  }
+  /** Check launch/account ownership. Hosts must serialize owner transitions on this same guard object. */
+  @FunctionalInterface public interface Guard { void check() throws Exception; }
   /** Native-only storage port. Do not expose this broker or its token to a renderer. */
   public interface Store {
     String read() throws Exception;
@@ -19,6 +29,13 @@ public final class LocalCredentialBroker implements AutoCloseable {
     void clear() throws Exception;
   }
   public LocalCredentialBroker(Store store, Store pending, String token) throws IOException {
+    this(store, pending, token, null, null);
+  }
+  /** Optional native-only extension. The original constructor keeps task-key access disabled. */
+  public LocalCredentialBroker(Store store, Store pending, String token, TaskKeyCustody taskKeys, Guard taskKeyGuard) throws IOException {
+    if ((taskKeys == null) != (taskKeyGuard == null)) throw new IllegalArgumentException("Task key custody requires an owner guard");
+    this.taskKeys = taskKeys;
+    this.taskKeyGuard = taskKeyGuard;
     this.store = java.util.Objects.requireNonNull(store);
     this.pending = java.util.Objects.requireNonNull(pending);
     if (token == null || token.isEmpty()) throw new IllegalArgumentException("Broker token required");
@@ -60,7 +77,23 @@ public final class LocalCredentialBroker implements AutoCloseable {
     try {
       JSONObject body = new JSONObject(new String(bytes, StandardCharsets.UTF_8)); String operation = body.getString("operation");
       JSONObject result = new JSONObject();
-      switch (operation) {
+      if (operation.startsWith("task-key-")) {
+        if (taskKeys == null || server.isClosed()) throw new IOException("Task key custody unavailable");
+        boolean removal = operation.equals("task-key-remove");
+        if (body.length() != (removal ? 2 : 1)) throw new IOException("Invalid task key request");
+        synchronized (taskKeyGuard) {
+          if (server.isClosed()) throw new IOException("Task key custody retired");
+          taskKeyGuard.check();
+          switch (operation) {
+            case "task-key-read": String key = taskKeys.read(); result.put("value", key == null ? JSONObject.NULL : key); break;
+            case "task-key-create": result.put("value", java.util.Objects.requireNonNull(taskKeys.createForNewDatabase())); break;
+            case "task-key-remove": result.put("removed", taskKeys.remove(body.getString("value"))); break;
+            default: throw new IOException("Unsupported task key operation");
+          }
+          taskKeyGuard.check();
+          if (server.isClosed()) throw new IOException("Task key custody retired");
+        }
+      } else switch (operation) {
         case "read": String value = store.read(); result.put("value", value == null ? JSONObject.NULL : value); break;
         case "write": store.write(body.getString("value")); break;
         case "clear": store.clear(); break;

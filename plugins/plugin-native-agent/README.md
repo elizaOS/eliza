@@ -287,3 +287,25 @@ ABI-specific native directory, and rejects an ambiguous or missing loader. The
 same private extraction, restart and environment isolation paths apply to both
 architectures. A multi-ABI APK needs separately selected inventories; one shared
 inventory must not mix native hashes from different architectures.
+
+Task data-key access is an optional, native-only `LocalCredentialBroker` extension.
+The existing constructor disables it. Hosts may supply a `TaskKeyCustody` port
+bound to one native-selected account and database, plus an ownership guard. The
+wire accepts no account ID or path. The broker serializes each key operation on
+the guard and checks it before access and before returning material. Hosts must
+serialize owner changes on that same guard, bind it to the runtime launch, and
+close the broker when the launch retires. Retain the database writer lease;
+`createForNewDatabase` is only for new files or migration destinations. Missing
+keys for existing databases must fail, never trigger creation. An interrupted
+mutation may have committed even if its response is refused or lost; do not
+blindly retry destructive operations.
+
+`createLocalTaskDataKeyStore` is the private native-process client. It validates
+versioned key material and returns `{id, bytes}`; erase the byte array after use.
+It shares the existing loopback bearer transport and redacted errors. Neither the
+port nor its token or keys may enter a renderer, model, logs, or evidence. A host
+must implement the port using encrypted native custody such as `TaskDataKeyStore`;
+this extension does not select an adapter or enable encryption. The stable Cloud
+owner identity and its lifecycle mapping remain host integration work: do not
+substitute a rotating credential fingerprint. Database driver, WAL verification,
+migration, and full account deletion remain separate requirements.
