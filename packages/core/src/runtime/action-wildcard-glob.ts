@@ -6,6 +6,7 @@ export function matchActionWildcardParts(
 	name: string,
 ): boolean {
 	if (parts.length === 0) return false;
+	if (parts.length === 1) return name === (parts[0] ?? "");
 
 	const first = parts[0] ?? "";
 	const last = parts[parts.length - 1] ?? "";
