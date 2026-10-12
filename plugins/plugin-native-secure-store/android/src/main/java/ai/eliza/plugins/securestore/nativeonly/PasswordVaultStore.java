@@ -168,7 +168,7 @@ public class PasswordVaultStore {
     }
     byte[] bytes = file.readFully(); if (bytes.length < PasswordVaultFrame.MIN_FRAME_BYTES || bytes[0] != PasswordVaultFrame.VERSION) throw new IOException("Invalid password storage");
     byte[] plaintext = PasswordVaultFrame.open(key(true), aad, bytes);
-    try { return new JSONArray(new String(plaintext, StandardCharsets.UTF_8)); } finally { Arrays.fill(plaintext, (byte)0); }
+    try { JSONArray records = new JSONArray(new String(plaintext, StandardCharsets.UTF_8)); checkDevice(); return records; } finally { Arrays.fill(plaintext, (byte)0); }
   }
   private void persist(JSONArray records) throws Exception {
     checkDevice();
@@ -217,7 +217,7 @@ public class PasswordVaultStore {
   public synchronized JSONArray list() throws Exception {
     JSONArray records = load(), summaries = new JSONArray();
     for (int i = 0; i < records.length(); i++) { JSONObject item = records.getJSONObject(i); summaries.put(new JSONObject().put("id",item.getString("id")).put("origin",item.optString("origin","")).put("username",item.getString("username"))); }
-    return summaries;
+    checkDevice(); return summaries;
   }
   /** Facets of a record; legacy records are bound to their single web origin. */
   public static List<String> bindings(JSONObject item) throws Exception {
@@ -240,7 +240,7 @@ public class PasswordVaultStore {
       summaries.put(new JSONObject().put("id", item.getString("id")).put("label", label).put("username", item.getString("username"))
         .put("bindings", new JSONArray(facets)).put("updatedAt", item.optLong("updatedAt", 0)).put("createdAt", item.optLong("createdAt", item.optLong("updatedAt", 0))));
     }
-    return summaries;
+    checkDevice(); return summaries;
   }
   private static String entryLabel(JSONObject item, List<String> facets) throws Exception {
     String label = item.optString("label", "");
@@ -253,7 +253,7 @@ public class PasswordVaultStore {
       JSONObject item = records.getJSONObject(i);
       item.put("label", entryLabel(item, bindings(item)));
     }
-    return records;
+    checkDevice(); return records;
   }
   /**
    * Creates (null id) or updates an entry with one or more normalized bindings. A null password
@@ -317,7 +317,7 @@ public class PasswordVaultStore {
     return id;
   }
   public synchronized JSONObject get(String id) throws Exception {
-    JSONArray records=load(); for(int i=0;i<records.length();i++) if(records.getJSONObject(i).getString("id").equals(id)) return records.getJSONObject(i); throw new IOException("Password no longer exists");
+    JSONArray records=load(); for(int i=0;i<records.length();i++) if(records.getJSONObject(i).getString("id").equals(id)) { checkDevice(); return records.getJSONObject(i); } throw new IOException("Password no longer exists");
   }
   public synchronized String save(String id, String website, String username, String password) throws Exception {
     String normalized=origin(website);
