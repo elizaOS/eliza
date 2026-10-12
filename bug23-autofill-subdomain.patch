@@ -1,0 +1,15 @@
+diff --git a/plugins/plugin-browser/src/actions/browser-autofill-login.ts b/plugins/plugin-browser/src/actions/browser-autofill-login.ts
+index 26c16f04..6a45f1f0 100644
+--- a/plugins/plugin-browser/src/actions/browser-autofill-login.ts
++++ b/plugins/plugin-browser/src/actions/browser-autofill-login.ts
+@@ -80,7 +80,9 @@ function tabUrlMatchesDomain(tabUrl: string, domain: string): boolean {
+   } catch {
+     return false;
+   }
+-  return hostname.toLowerCase() === domain.toLowerCase();
++  const h = hostname.toLowerCase();
++  const d = domain.toLowerCase();
++  return h === d || h.endsWith(`.${d}`);
+ }
+ 
+ function buildAutofillScript(args: {
