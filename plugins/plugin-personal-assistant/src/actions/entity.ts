@@ -194,9 +194,7 @@ const NAME_ABJOINED_AFFIXES = [
   "랑",
   // Chinese function characters: names abut particles, prepositions,
   // conjunctions, and sentence-final particles with no space ("和张三的
-  // 午餐", "张三呢"). Bounded like the lists above; a bare Han neighbor
-  // that is none of these still rejects the occurrence, so a name inside
-  // a longer name ("张三丰" around "张三") stays unmatched.
+  // 午餐", "张三呢"). Bounded like the lists above.
   "的",
   "和",
   "与",
@@ -219,6 +217,59 @@ const NAME_ABJOINED_AFFIXES = [
   "呀",
   "哦",
   "嘛",
+  // Chinese predicate verbs and modal verbs: an ordinary Chinese request
+  // puts the action right after the name with no particle ("和张三吃饭",
+  // "张三说要来"). Bounded like the lists above; a character that merely
+  // continues a longer name ("丰" in "张三丰") is none of these and still
+  // rejects the occurrence, and an unlisted verb fails closed instead of
+  // logging the interaction.
+  "吃",
+  "喝",
+  "开",
+  "看",
+  "见",
+  "逛",
+  "聊",
+  "谈",
+  "陪",
+  "约",
+  "找",
+  "打",
+  "买",
+  "卖",
+  "送",
+  "拿",
+  "带",
+  "走",
+  "来",
+  "去",
+  "到",
+  "回",
+  "起",
+  "做",
+  "办",
+  "说",
+  "讲",
+  "读",
+  "写",
+  "唱",
+  "跳",
+  "睡",
+  "玩",
+  "跑",
+  "搬",
+  "洗",
+  "借",
+  "还",
+  "修",
+  "换",
+  "帮",
+  "教",
+  "学",
+  "想",
+  "要",
+  "能",
+  "会",
 ].sort((a, b) => b.length - a.length);
 
 function skipNameAbuttingAffixes(text: string, index: number): number {

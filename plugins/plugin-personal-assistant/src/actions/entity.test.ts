@@ -282,6 +282,34 @@ describe("ENTITY log_interaction resolves the named contact only", () => {
     expect(interactionRelationshipId).toBe("rel-zhang-san");
   });
 
+  it("resolves a Chinese name followed by a verb", async () => {
+    listSpy.mockResolvedValue([
+      relationship("rel-zhang-san", "张三", "+8613800138000"),
+    ] as never);
+    const runtime = makeRuntime();
+    const { interactionRelationshipId } = await logInteractionFor(
+      runtime,
+      "请记录今天和张三吃饭的交流",
+    );
+
+    expect(interactionRelationshipId).toBe("rel-zhang-san");
+  });
+
+  it("does not resolve a Chinese name before an unlisted character", async () => {
+    listSpy.mockResolvedValue([
+      relationship("rel-zhang-san", "张三", "+8613800138000"),
+    ] as never);
+    const runtime = makeRuntime();
+    const { result } = await logInteractionFor(
+      runtime,
+      "请记录今天和张三郊游的见闻",
+    );
+
+    expect((result as { data?: { error?: string } }).data?.error).toBe(
+      "MISSING_EDGE_ID",
+    );
+  });
+
   it("does not resolve a Chinese name inside a longer name", async () => {
     listSpy.mockResolvedValue([
       relationship("rel-zhang-san", "张三", "+8613800138000"),

@@ -271,11 +271,21 @@ describe("ENTITY log_interaction writes real interaction rows", () => {
     expect(rows[5]?.relationship_id).toBe(zhangSanId);
   });
 
+  it("writes a durable row for a Chinese name followed by a verb", async () => {
+    const result = await logInteractionFor("请记录今天和张三吃饭的交流");
+
+    expect(result.success).toBe(true);
+    expect(result.data?.interaction?.relationshipId).toBe(zhangSanId);
+    const rows = await interactionRows();
+    expect(rows).toHaveLength(7);
+    expect(rows[6]?.relationship_id).toBe(zhangSanId);
+  });
+
   it("writes no row for a Chinese name inside a longer name", async () => {
     const result = await logInteractionFor("请记录今天和张三丰的午餐交流");
 
     expect(result.data?.error).toBe("MISSING_EDGE_ID");
     const rows = await interactionRows();
-    expect(rows).toHaveLength(6);
+    expect(rows).toHaveLength(7);
   });
 });
