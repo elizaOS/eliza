@@ -25,6 +25,8 @@ let tanakaId = "";
 let sakuraId = "";
 let kimId = "";
 let zhangSanId = "";
+let yamadaId = "";
+let zhangSanFengId = "";
 
 beforeAll(async () => {
   vi.stubEnv("ELIZA_DISABLE_LIFEOPS_SCHEDULER", "1");
@@ -137,6 +139,32 @@ beforeAll(async () => {
   sakuraId = sakura.id;
   kimId = kim.id;
   zhangSanId = zhangSan.id;
+  const yamada = await service.upsertRelationship({
+    name: "山田中村",
+    primaryChannel: "sms",
+    primaryHandle: "+819012345681",
+    email: null,
+    phone: null,
+    notes: "",
+    tags: [],
+    relationshipType: "contact",
+    lastContactedAt: null,
+    metadata: {},
+  });
+  yamadaId = yamada.id;
+  const zhangSanFeng = await service.upsertRelationship({
+    name: "张三丰",
+    primaryChannel: "sms",
+    primaryHandle: "+8613800138001",
+    email: null,
+    phone: null,
+    notes: "",
+    tags: [],
+    relationshipType: "contact",
+    lastContactedAt: null,
+    metadata: {},
+  });
+  zhangSanFengId = zhangSanFeng.id;
 }, 120_000);
 
 afterAll(async () => {
@@ -199,15 +227,18 @@ describe("ENTITY log_interaction writes real interaction rows", () => {
     expect(rows[0]?.relationship_id).toBe(bobJonesId);
   });
 
-  it("writes no row for an unspaced-script name inside another name", async () => {
+  it("writes the longer stored contact when the text spans a shorter one", async () => {
     const result = await logInteractionFor(
       "山田中村さんとの打ち合わせをログに残して",
     );
 
-    expect(result.data?.error).toBe("MISSING_EDGE_ID");
+    // The 田中 span sits inside the named longer contact 山田中村, so the
+    // row goes to the longer contact, never to the contact it covers.
+    expect(result.success).toBe(true);
+    expect(result.data?.interaction?.relationshipId).toBe(yamadaId);
     const rows = await interactionRows();
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.relationship_id).toBe(bobJonesId);
+    expect(rows).toHaveLength(2);
+    expect(rows[1]?.relationship_id).toBe(yamadaId);
   });
 
   it("writes a durable row for an unspaced-script name with attached particles", async () => {
@@ -218,8 +249,8 @@ describe("ENTITY log_interaction writes real interaction rows", () => {
     expect(result.success).toBe(true);
     expect(result.data?.interaction?.relationshipId).toBe(tanakaId);
     const rows = await interactionRows();
-    expect(rows).toHaveLength(2);
-    expect(rows[1]?.relationship_id).toBe(tanakaId);
+    expect(rows).toHaveLength(3);
+    expect(rows[2]?.relationship_id).toBe(tanakaId);
   });
   it("writes a durable row when only the shorter contact name is given", async () => {
     const result = await logInteractionFor("had a quick call with Bob today");
@@ -227,8 +258,8 @@ describe("ENTITY log_interaction writes real interaction rows", () => {
     expect(result.success).toBe(true);
     expect(result.data?.interaction?.relationshipId).toBe(bobId);
     const rows = await interactionRows();
-    expect(rows).toHaveLength(3);
-    expect(rows[2]?.relationship_id).toBe(bobId);
+    expect(rows).toHaveLength(4);
+    expect(rows[3]?.relationship_id).toBe(bobId);
   });
 
   it("writes a durable row for a kana name with an attached honorific", async () => {
@@ -239,8 +270,8 @@ describe("ENTITY log_interaction writes real interaction rows", () => {
     expect(result.success).toBe(true);
     expect(result.data?.interaction?.relationshipId).toBe(sakuraId);
     const rows = await interactionRows();
-    expect(rows).toHaveLength(4);
-    expect(rows[3]?.relationship_id).toBe(sakuraId);
+    expect(rows).toHaveLength(5);
+    expect(rows[4]?.relationship_id).toBe(sakuraId);
   });
 
   it("writes a durable row for a Korean name with an attached honorific", async () => {
@@ -249,8 +280,8 @@ describe("ENTITY log_interaction writes real interaction rows", () => {
     expect(result.success).toBe(true);
     expect(result.data?.interaction?.relationshipId).toBe(kimId);
     const rows = await interactionRows();
-    expect(rows).toHaveLength(5);
-    expect(rows[4]?.relationship_id).toBe(kimId);
+    expect(rows).toHaveLength(6);
+    expect(rows[5]?.relationship_id).toBe(kimId);
   });
 
   it("writes no row for a kana name inside a longer word", async () => {
@@ -258,7 +289,7 @@ describe("ENTITY log_interaction writes real interaction rows", () => {
 
     expect(result.data?.error).toBe("MISSING_EDGE_ID");
     const rows = await interactionRows();
-    expect(rows).toHaveLength(5);
+    expect(rows).toHaveLength(6);
   });
 
   it("writes a durable row for a Chinese name in an ordinary sentence", async () => {
@@ -267,25 +298,29 @@ describe("ENTITY log_interaction writes real interaction rows", () => {
     expect(result.success).toBe(true);
     expect(result.data?.interaction?.relationshipId).toBe(zhangSanId);
     const rows = await interactionRows();
-    expect(rows).toHaveLength(6);
-    expect(rows[5]?.relationship_id).toBe(zhangSanId);
-  });
-
-  it("writes a durable row for a Chinese name followed by a verb", async () => {
-    const result = await logInteractionFor("请记录今天和张三吃饭的交流");
-
-    expect(result.success).toBe(true);
-    expect(result.data?.interaction?.relationshipId).toBe(zhangSanId);
-    const rows = await interactionRows();
     expect(rows).toHaveLength(7);
     expect(rows[6]?.relationship_id).toBe(zhangSanId);
   });
 
-  it("writes no row for a Chinese name inside a longer name", async () => {
+  it("writes a durable row for a Chinese name before an unlisted word", async () => {
+    const result = await logInteractionFor("请记录今天和张三郊游的见闻");
+
+    // Han has no word boundaries: a neighbor that is not a stored longer
+    // contact is ordinary text, not evidence of a different person.
+    expect(result.success).toBe(true);
+    expect(result.data?.interaction?.relationshipId).toBe(zhangSanId);
+    const rows = await interactionRows();
+    expect(rows).toHaveLength(8);
+    expect(rows[7]?.relationship_id).toBe(zhangSanId);
+  });
+
+  it("writes the longer stored Chinese contact when the text spans a shorter one", async () => {
     const result = await logInteractionFor("请记录今天和张三丰的午餐交流");
 
-    expect(result.data?.error).toBe("MISSING_EDGE_ID");
+    expect(result.success).toBe(true);
+    expect(result.data?.interaction?.relationshipId).toBe(zhangSanFengId);
     const rows = await interactionRows();
-    expect(rows).toHaveLength(7);
+    expect(rows).toHaveLength(9);
+    expect(rows[8]?.relationship_id).toBe(zhangSanFengId);
   });
 });

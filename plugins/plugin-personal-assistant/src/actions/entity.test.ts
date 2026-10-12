@@ -105,6 +105,8 @@ describe("ENTITY log_interaction resolves the named contact only", () => {
           "rel-kim": ["김철수", "+821012345678"],
           "rel-tanaka-katakana": ["タナカ", "+819012345679"],
           "rel-zhang-san": ["张三", "+8613800138000"],
+          "rel-yamada": ["山田中村", "+819012345681"],
+          "rel-zhang-san-feng": ["张三丰", "+8613800138001"],
         };
         const hit = known[id];
         return hit ? (relationship(id, hit[0], hit[1]) as never) : null;
@@ -202,19 +204,20 @@ describe("ENTITY log_interaction resolves the named contact only", () => {
     );
   });
 
-  it("does not resolve an unspaced-script name inside another name", async () => {
+  it("resolves the longer stored contact when the text spans a shorter contact", async () => {
     listSpy.mockResolvedValue([
       relationship("rel-tanaka", "田中", "+819012345678"),
+      relationship("rel-yamada", "山田中村", "+819012345681"),
     ] as never);
     const runtime = makeRuntime();
-    const { result } = await logInteractionFor(
+    const { interactionRelationshipId } = await logInteractionFor(
       runtime,
       "山田中村さんとの打ち合わせをログに残して",
     );
 
-    expect((result as { data?: { error?: string } }).data?.error).toBe(
-      "MISSING_EDGE_ID",
-    );
+    // The 田中 span sits inside the named longer contact, so the write
+    // goes to 山田中村, never to the shorter contact it covers.
+    expect(interactionRelationshipId).toBe("rel-yamada");
   });
 
   it("resolves a kana name with an attached honorific or particle", async () => {
@@ -269,7 +272,7 @@ describe("ENTITY log_interaction resolves the named contact only", () => {
     expect(interactionRelationshipId).toBe("rel-tanaka-katakana");
   });
 
-  it("resolves a Chinese name through attached function characters", async () => {
+  it("resolves a Chinese name in an ordinary sentence", async () => {
     listSpy.mockResolvedValue([
       relationship("rel-zhang-san", "张三", "+8613800138000"),
     ] as never);
@@ -295,33 +298,32 @@ describe("ENTITY log_interaction resolves the named contact only", () => {
     expect(interactionRelationshipId).toBe("rel-zhang-san");
   });
 
-  it("does not resolve a Chinese name before an unlisted character", async () => {
+  it("resolves a Chinese name before an unlisted word", async () => {
     listSpy.mockResolvedValue([
       relationship("rel-zhang-san", "张三", "+8613800138000"),
     ] as never);
     const runtime = makeRuntime();
-    const { result } = await logInteractionFor(
+    const { interactionRelationshipId } = await logInteractionFor(
       runtime,
       "请记录今天和张三郊游的见闻",
     );
 
-    expect((result as { data?: { error?: string } }).data?.error).toBe(
-      "MISSING_EDGE_ID",
-    );
+    // Han has no word boundaries: a neighbor that is not a stored longer
+    // contact is ordinary text, not evidence of a different person.
+    expect(interactionRelationshipId).toBe("rel-zhang-san");
   });
 
-  it("does not resolve a Chinese name inside a longer name", async () => {
+  it("resolves the longer stored Chinese contact when the text spans a shorter one", async () => {
     listSpy.mockResolvedValue([
       relationship("rel-zhang-san", "张三", "+8613800138000"),
+      relationship("rel-zhang-san-feng", "张三丰", "+8613800138001"),
     ] as never);
     const runtime = makeRuntime();
-    const { result } = await logInteractionFor(
+    const { interactionRelationshipId } = await logInteractionFor(
       runtime,
       "请记录今天和张三丰的午餐交流",
     );
 
-    expect((result as { data?: { error?: string } }).data?.error).toBe(
-      "MISSING_EDGE_ID",
-    );
+    expect(interactionRelationshipId).toBe("rel-zhang-san-feng");
   });
 });

@@ -124,16 +124,24 @@ type NamedContactResolution =
 const NAME_BOUNDARY_SOURCE =
   "(?:(?![\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}])[\\p{L}\\p{M}\\p{N}])";
 
-// Scripts written without spaces have no word boundaries, so a boundary pass
-// can still land inside a longer name ("田中" inside "山田中村"). A
-// direct same-script abutment means the text holds a longer name and the
-// contact is not named at all. Particles, honorifics, and Chinese function
-// characters bridge a name to the next word instead ("田中さんに",
-// "さくらさん", "김철수님과", "和张三的午餐"), so unspaced-script names
-// followed by an affix stay resolvable. The affix list is bounded; only a
-// bridged run keeps an occurrence, a bare same-script neighbor never does
-// ("张三丰" keeps "张三" unmatched). Fail closed: a rejected match never
-// authorizes a write.
+// Kana and Hangul words genuinely concatenate ("さくらんぼ" is not the name
+// "さくら"), so a direct same-script abutment there means the text holds a
+// longer word and the contact is not named at all. Particles and honorifics
+// bridge a name to the next word instead ("田中さんに", "さくらさん",
+// "김철수님과"), so a bridged name stays resolvable. The affix list is
+// bounded; only a bridged run keeps an occurrence, a bare same-script
+// neighbor never does. Fail closed: a rejected match never authorizes a
+// write.
+//
+// Han is different: Chinese sentences have no word boundaries, so a
+// same-script neighbor is not evidence that the text names a different,
+// longer person ("张三郊游" is the contact plus a verb, not a longer name).
+// A Han occurrence therefore always stands, and protection against a longer
+// name comes only from stored contacts: the coverage rule in
+// resolveRelationshipIdFromText supersedes "张三" when the text's span is
+// inside a named longer contact such as "张三丰". Without a segmenter an
+// unknown longer name is indistinguishable from ordinary text, so that case
+// resolves like the base substring behavior instead of guessing.
 function unspacedScriptClass(value: string): string | null {
   if (!value) return null;
   if (/\p{Script=Han}/u.test(value)) return "han";
@@ -143,9 +151,8 @@ function unspacedScriptClass(value: string): string | null {
   return null;
 }
 
-// Japanese, Korean, and Chinese particles and function characters that
-// may abut a name without a space. Matched longest first so "에게"
-// consumes before "에".
+// Japanese and Korean particles and honorifics that may abut a name
+// without a space. Matched longest first so "에게" consumes before "에".
 const NAME_ABJOINED_AFFIXES = [
   // Japanese honorifics.
   "さま",
@@ -192,84 +199,6 @@ const NAME_ABJOINED_AFFIXES = [
   "의",
   "로",
   "랑",
-  // Chinese function characters: names abut particles, prepositions,
-  // conjunctions, and sentence-final particles with no space ("和张三的
-  // 午餐", "张三呢"). Bounded like the lists above.
-  "的",
-  "和",
-  "与",
-  "跟",
-  "同",
-  "及",
-  "或",
-  "在",
-  "是",
-  "请",
-  "给",
-  "对",
-  "向",
-  "从",
-  "了",
-  "呢",
-  "吧",
-  "吗",
-  "啊",
-  "呀",
-  "哦",
-  "嘛",
-  // Chinese predicate verbs and modal verbs: an ordinary Chinese request
-  // puts the action right after the name with no particle ("和张三吃饭",
-  // "张三说要来"). Bounded like the lists above; a character that merely
-  // continues a longer name ("丰" in "张三丰") is none of these and still
-  // rejects the occurrence, and an unlisted verb fails closed instead of
-  // logging the interaction.
-  "吃",
-  "喝",
-  "开",
-  "看",
-  "见",
-  "逛",
-  "聊",
-  "谈",
-  "陪",
-  "约",
-  "找",
-  "打",
-  "买",
-  "卖",
-  "送",
-  "拿",
-  "带",
-  "走",
-  "来",
-  "去",
-  "到",
-  "回",
-  "起",
-  "做",
-  "办",
-  "说",
-  "讲",
-  "读",
-  "写",
-  "唱",
-  "跳",
-  "睡",
-  "玩",
-  "跑",
-  "搬",
-  "洗",
-  "借",
-  "还",
-  "修",
-  "换",
-  "帮",
-  "教",
-  "学",
-  "想",
-  "要",
-  "能",
-  "会",
 ].sort((a, b) => b.length - a.length);
 
 function skipNameAbuttingAffixes(text: string, index: number): number {
@@ -327,21 +256,32 @@ function namedPhraseOccurrences(
     const end = start + match[0].length;
     const firstChar = match[0][0] ?? "";
     const lastChar = match[0].at(-1) ?? "";
-    // Only a direct same-script neighbor rejects the occurrence; a
-    // particle/honorific/function-character bridge keeps the name
-    // standalone on either side ("今日は田中さんと", "さくらと",
-    // "김철수님과", "和张三的午餐").
+    // Only a direct same-script kana/Hangul neighbor rejects the
+    // occurrence; a particle or honorific bridge keeps the name standalone
+    // on either side ("今日は田中さんと", "さくらと", "김철수님과"). Han
+    // has no word boundaries, so a Han neighbor never rejects here; the
+    // stored-contact coverage rule owns longer Han names.
+    const nameLeadScript = unspacedScriptClass(firstChar);
+    const nameTailScript = unspacedScriptClass(lastChar);
     const leadBridged = skipNameAbuttingAffixesBefore(haystack, start) < start;
     if (!leadBridged) {
       const leadScript = unspacedScriptClass(haystack[start - 1] ?? "");
-      if (leadScript && leadScript === unspacedScriptClass(firstChar)) {
+      if (
+        leadScript &&
+        nameLeadScript !== "han" &&
+        leadScript === nameLeadScript
+      ) {
         continue;
       }
     }
     const tailBridged = skipNameAbuttingAffixes(haystack, end) > end;
     if (!tailBridged) {
       const tailScript = unspacedScriptClass(haystack[end] ?? "");
-      if (tailScript && tailScript === unspacedScriptClass(lastChar)) {
+      if (
+        tailScript &&
+        nameTailScript !== "han" &&
+        tailScript === nameTailScript
+      ) {
         continue;
       }
     }
@@ -439,9 +379,11 @@ async function resolveRelationshipIdFromText(
   }
   // A contact loses to a longer fully named contact only when every one of
   // its occurrences sits inside that longer phrase ("Bob Jones" beats the
-  // "Bob" inside it). A separate mention ("Bob and Bob Jones") keeps both
-  // contacts named, so the text is ambiguous and nothing is written, like
-  // the token stage below.
+  // "Bob" inside it, and stored "张三丰" beats the "张三" span inside it).
+  // A separate mention ("Bob and Bob Jones") keeps both contacts named, so
+  // the text is ambiguous and nothing is written, like the token stage
+  // below. This is the only longer-name rule for Han, where adjacency to
+  // ordinary text is not evidence of a longer name.
   const supersededBy = (
     candidate: (typeof namedCandidates)[number],
     other: (typeof namedCandidates)[number],
