@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
+import { createTaskGateway } from "../../../packages/host/native-host/task-runtime-gateway.mjs";
 import {
   controls,
   deriveBillDecision,
@@ -583,4 +584,108 @@ test("an emailed-code policy without a Google source or parser is refused", asyn
     createConfiguredBillHelper(f.args),
     /Incomplete Google verification configuration/,
   );
+});
+
+test("durable configured Gmail scope commits once before source use and fences account revocation", async (t) => {
+  const f = await fixture(t);
+  const bundlePath = join(f.root, "durable-runtime.mjs");
+  buildTaskRuntime(bundlePath);
+  let actor = "owner",
+    requests = 0;
+  const waiting = [];
+  f.args.durableGoogleBinding = true;
+  f.args.credentialGate = async () => actor;
+  f.args.googleReadPort = {
+    currentAccount() {
+      requests++;
+      return new Promise((resolve) => waiting.push(resolve));
+    },
+  };
+  f.args.configuration = {
+    ...f.args.configuration,
+    googleSource: { windowDays: 30 },
+    bill: {
+      company: "Example",
+      accountLabel: "1234",
+      origin: "https://biller.example",
+    },
+  };
+  f.args.hostPolicy.parseMessage = () => null;
+  const helper = await createConfiguredBillHelper(f.args);
+  t.after(() => helper.close());
+  const gateway = await createTaskGateway({
+    bundlePath,
+    databasePath: join(f.root, "durable.sqlite"),
+    initializeTaskStorage: helper.initializeTaskStorage,
+    credentialGate: f.args.credentialGate,
+    actuator: { capabilities: [] },
+  });
+  try {
+    const runtime = await gateway.forCurrentOwner();
+    const task = runtime.create({
+      id: "durable",
+      goalRef: "goal",
+      allowedCapabilities: [],
+      allowedOrigins: ["https://biller.example"],
+      authorization: {
+        state: "active",
+        decisionId: "consent",
+        policyRevision: "v1",
+        decidedAt: new Date().toISOString(),
+        revokedAt: null,
+      },
+    });
+    const scope = f.options.billDiscovery.scopeForTask;
+    const a = scope(task),
+      b = scope(task);
+    while (waiting.length < 2)
+      await new Promise((resolve) => setImmediate(resolve));
+    waiting[0]({ accountId: "original", email: "first@example.test" });
+    assert.equal((await a).accountEmail, "first@example.test");
+    waiting[1]({ accountId: "replacement", email: "second@example.test" });
+    assert.equal((await b).accountId, "original");
+    assert.equal((await scope(task)).accountId, "original");
+    assert.equal(
+      requests,
+      2,
+      "a bound task never reads a new identity to replace the original",
+    );
+    actor = "other";
+    await assert.rejects(scope(task), /Original Google account unavailable/);
+    assert.equal(requests, 2);
+  } finally {
+    await gateway.close();
+  }
+});
+
+test("durable dynamic opt-in leaves fixed Google grants unchanged without storage initialization", async (t) => {
+  const f = await fixture(t);
+  f.args.durableGoogleBinding = true;
+  f.args.configuration = {
+    ...f.args.configuration,
+    googleSource: { grantId: "fixed-grant", windowDays: 30 },
+    bill: {
+      company: "Example",
+      accountLabel: "1234",
+      origin: "https://biller.example",
+    },
+  };
+  f.args.googleReadPort = {
+    currentAccount() {
+      throw new Error("Fixed grants must not consult the connected identity");
+    },
+  };
+  f.args.hostPolicy.parseMessage = () => null;
+  const helper = await createConfiguredBillHelper(f.args);
+  t.after(() => helper.close());
+  assert.equal(helper.initializeTaskStorage, undefined);
+  const scope = await f.options.billDiscovery.scopeForTask({
+    id: "fixed",
+    epoch: 1,
+    revision: 1,
+    goalRef: "goal",
+    owner: { actorId: "owner" },
+  });
+  assert.equal(scope.accountId, "fixed-grant");
+  assert.equal(scope.accountEmail, undefined);
 });

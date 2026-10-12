@@ -14,6 +14,7 @@ export async function loadConfiguredBillHelper({
   cloudHandler,
   credentialGate,
   onUnavailable,
+  durableGoogleBinding = false,
 }) {
   if (!configurationPath) return undefined;
   let configuration;
@@ -41,6 +42,7 @@ export async function loadConfiguredBillHelper({
   }
   return createHelper({
     configuration,
+    durableGoogleBinding,
     documentRuntime,
     documentImages,
     googleReadPort: configuration.googleSource

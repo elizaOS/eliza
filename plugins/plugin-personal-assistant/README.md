@@ -173,3 +173,27 @@ after it. Closing the host cancels pending waits. Revocation cleanup, guidance
 and browser commands never enter this wait or replay a request. Product page
 policy must allow binding to reach this gate rather than rejecting a temporarily
 unregistered profile during pure policy construction.
+
+For restart-safe dynamic Gmail source identity, pass `durableGoogleBinding: true`
+to `createConfiguredBillHelper` (or `loadConfiguredBillHelper`). Pass the returned
+`initializeTaskStorage` to the shared `createTaskGateway`, normally by spreading
+the helper options. The gateway calls it before exposing any task runtime. Fixed
+`googleSource.grantId` configurations do not need this dynamic binding store.
+The Google port must provide `currentAccount()` with its grant ID and optional
+email address. These fields identify the original source; they do not authorize
+mail reads. Existing live owner and Google grant checks still apply to each read.
+
+The `bill_google_binding_v1` table belongs to the task journal. A SQLite trigger
+creates an unbound marker in the same transaction as a new task. Its first source
+lookup commits the original grant ID and address before a mail read. Concurrent
+lookups keep the first committed identity. Recovery epochs keep that identity;
+they never select a replacement account. No migration guesses an old task's
+original account. Missing or corrupt records, legacy tasks, and a restart before
+the first binding fail with `Original Google account unavailable`. The person
+must end that task and start a new one; this API has no rebind operation. Multiple
+processes opening the same journal can invalidate unbound markers and deny the
+lookup, but cannot overwrite a bound identity. Use one active host per journal.
+
+The source address is personal data. Include this table in encrypted-journal
+migration, account revoke deletion, and retention inventories. This change does
+not encrypt the journal or close a product's at-rest data protection requirement.

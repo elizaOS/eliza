@@ -158,3 +158,8 @@ Returned key JSON is confined to the private native process channel; byte-array
 copies are wiped, but immutable Java JSON/base64 strings are not fully erased.
 The instrumentation cases in `native-host/android-test` exercise real Keystore
 storage, TCP broker requests, account changes, and database recovery refusals.
+
+Native task hosts may supply an `initializeTaskStorage({db, store})`
+hook to `createTaskGateway`. The gateway awaits it after the task schema exists and before any
+runtime or route can create tasks. Domain helpers can attach atomic task-creation
+storage here. A thrown error closes the database and fails startup.

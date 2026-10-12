@@ -15,6 +15,7 @@ export async function createTaskGateway({
   actuatorFactory,
   authorizeGoal,
   extensionFactory,
+  initializeTaskStorage,
   agentId = "eliza",
   connectorSource = "native-gateway",
 }) {
@@ -47,6 +48,13 @@ export async function createTaskGateway({
     requireEncryption: requireEncryptedDatabase,
   });
   const store = new SqliteInteractiveTaskStore(db);
+  // Trusted helper storage must join task creation before any runtime is exposed.
+  try {
+    await initializeTaskStorage?.({ db, store });
+  } catch (error) {
+    db.close();
+    throw error;
+  }
   const choiceStore = new SqliteMessageInteractionSessionStore(db);
   const extension = extensionFactory?.({
     db,

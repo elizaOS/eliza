@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
+import { createBillGoogleBinding } from "./bill-google-binding.mjs";
 import { BillHostError } from "./errors.mjs";
 
 /** Configured native bill composition. Trusted host policy supplies authority and evidence schema. */
@@ -16,6 +17,7 @@ export async function createConfiguredBillHelper({
   environment = process.env,
   onUnavailable = () => {},
   googleReadPort,
+  durableGoogleBinding = false,
   documentRuntime,
   documentImages,
 }) {
@@ -30,6 +32,13 @@ export async function createConfiguredBillHelper({
   )
     throw new BillHostError("Incomplete bill reconciliation policy");
   const config = hostPolicy.validateConfiguration(configuration);
+  const durableDynamic = Boolean(
+    durableGoogleBinding && config.googleSource && !config.googleSource.grantId,
+  );
+  if (durableDynamic && typeof googleReadPort?.currentAccount !== "function")
+    throw new BillHostError(
+      "Durable Google source requires current account identity",
+    );
   // Optional emailed sign-in codes: the reviewed provider parser and
   // challenge reader come from host policy; reads use the same Google port.
   const googleCode = hostPolicy.googleCode;
@@ -94,12 +103,28 @@ export async function createConfiguredBillHelper({
     )
       throw new Error("Unconfigured bill task");
   };
-  // A configured grantId is fixed. Otherwise each task epoch reads the Google
-  // account that was connected when it first searched, and every read checks
-  // that this is still the connected account.
+  // A configured grantId is fixed. Durable dynamic bindings retain the original
+  // source across recovery epochs; legacy in-memory mode binds per epoch.
+  // The read port still checks the live grant for every mail read.
   const grants = new Map();
+  let persistentGrants;
+  const initializeTaskStorage = ({ db, store }) => {
+    if (persistentGrants)
+      throw new BillHostError("Google binding storage already initialized");
+    persistentGrants = createBillGoogleBinding({ db, store });
+  };
   const bindGrant = async (task) => {
     requireTask(task);
+    if (durableDynamic) {
+      if (!persistentGrants || (await credentialGate()) !== config.actorId)
+        throw new BillHostError("Original Google account unavailable");
+      const bound = persistentGrants.read(task);
+      if (bound) return bound;
+      const account = await googleReadPort.currentAccount();
+      if ((await credentialGate()) !== config.actorId)
+        throw new BillHostError("Configured task authorization changed");
+      return persistentGrants.bind(task, account);
+    }
     const bound = grants.get(task.id);
     if (bound?.epoch === task.epoch) return bound;
     if (
@@ -290,6 +315,7 @@ export async function createConfiguredBillHelper({
   }
   return {
     ...host,
+    ...(durableDynamic ? { initializeTaskStorage } : {}),
     async describeHelper(owner) {
       if (
         closing ||
