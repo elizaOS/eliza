@@ -189,6 +189,7 @@ test("actual SQLCipher writer lease", async (t) => {
       await assert.rejects(provider().open({ path }));
       await rm(lock);
       await writeFile(lock, "", { mode: 0o644 });
+      await chmod(lock, 0o644);
       await assert.rejects(provider().open({ path }));
       await chmod(lock, 0o600);
       (await provider().open({ path })).close();

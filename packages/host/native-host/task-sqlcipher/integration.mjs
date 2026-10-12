@@ -165,6 +165,7 @@ test("actual SQLCipher task driver", async (t) => {
     async () => {
       const exposed = join(root, "exposed.db");
       await writeFile(exposed, "untouched", { mode: 0o644 });
+      await chmod(exposed, 0o644);
       await assert.rejects(open(exposed), { code: "TASK_STORAGE_UNAVAILABLE" });
       assert.equal(await readFile(exposed, "utf8"), "untouched");
       await rm(exposed);
