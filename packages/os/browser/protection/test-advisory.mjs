@@ -19,6 +19,10 @@ import { compileThreatRules } from "./policy.mjs";
 
 const native = process.argv.includes("--native");
 let target;
+let allowInitialOwner;
+const initialOwner = new Promise((resolve) => {
+  allowInitialOwner = resolve;
+});
 const baseline = process.argv.includes("--baseline");
 const output = testOutputPath("browser-advisory");
 await mkdir(output, { recursive: true });
@@ -42,6 +46,11 @@ try {
       "../../../../plugins/plugin-browser/src/native-socket-target.ts"
     );
     target = new NativeSocketBrowserTarget(() => {});
+    target.onProfileRegistered(async (registration) => {
+      await initialOwner;
+      if (registration.isCurrent())
+        await target.setProtectionOwner("account-a");
+    });
     await target.start({ XDG_RUNTIME_DIR: temporary });
     const built = spawnSync(
       "bun",
@@ -187,7 +196,8 @@ try {
       true,
       "No account scope can be guessed by a page",
     );
-    await setOwner("account-a");
+    if (native) allowInitialOwner();
+    else await setOwner("account-a");
     await wait((state) => state && !state.disabled);
     await page
       .getByRole("textbox", { name: "Your note" })

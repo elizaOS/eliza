@@ -103,6 +103,10 @@ it("acknowledges profile-bound liveness then rejects interrupted effects without
     registrationMs: 1000,
     heartbeatMs: 400,
   });
+  const registrations: Array<{ profileId: string; isCurrent(): boolean }> = [];
+  const unsubscribe = target.onProfileRegistered((receipt) => {
+    registrations.push(receipt);
+  });
   const sockets: Socket[] = [];
   const peer = () => {
     const socket = createConnection(socketPath);
@@ -128,6 +132,9 @@ it("acknowledges profile-bound liveness then rejects interrupted effects without
         profileId: "stable-profile",
       }),
     );
+    await vi.waitFor(() => expect(registrations).toHaveLength(1));
+    expect(registrations[0].profileId).toBe("stable-profile");
+    expect(registrations[0].isCurrent()).toBe(true);
     first.send({
       type: "ping",
       nonce: "probe-nonce",
@@ -151,6 +158,7 @@ it("acknowledges profile-bound liveness then rejects interrupted effects without
     );
     await interrupted;
     expect(await target.available()).toBe(false);
+    expect(registrations[0].isCurrent()).toBe(false);
     const second = peer();
     await vi.waitFor(() => expect(second.messages[0]?.type).toBe("hello-ack"));
     expect(await target.available()).toBe(true);
@@ -158,6 +166,11 @@ it("acknowledges profile-bound liveness then rejects interrupted effects without
     expect(second.messages.some((value) => value.type === "command")).toBe(
       false,
     );
+    await vi.waitFor(() => expect(registrations).toHaveLength(2));
+    expect(registrations[0].isCurrent()).toBe(false);
+    expect(registrations[1].isCurrent()).toBe(true);
+    unsubscribe();
+    expect(registrations[1].isCurrent()).toBe(false);
     second.send({
       type: "ping",
       nonce: "other-probe",

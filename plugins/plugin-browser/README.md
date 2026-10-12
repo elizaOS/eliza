@@ -29,7 +29,11 @@ retries dispatched work. Hosts must recheck task/account authority after waiting
 
 For an advisory-enabled peer, trusted hosts can call
 `NativeSocketBrowserTarget.setProtectionOwner(opaqueOwnerOrNull)` after profile
-registration and every account transition. This is not a model browser action.
+registration and every account transition. `onProfileRegistered(listener)` notifies
+the host after each registration, including a current connection when subscribed.
+The receipt's `isCurrent()` must be checked again after asynchronous account reads;
+a disconnect, replacement, unsubscribe or stop invalidates it. Registration itself
+is not account authentication. This is not a model browser action.
 Disconnect retires the extension's account context; reconnection does not restore
 it automatically. The receipt counts updated/unavailable tabs. It grants no task
 permission and does not override blacklist rules. Missing capability rejects.

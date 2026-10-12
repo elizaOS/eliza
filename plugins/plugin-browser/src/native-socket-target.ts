@@ -189,6 +189,12 @@ export function androidNativeBrowserSocketPath(
   return path;
 }
 
+/** A registration receipt is valid only while its exact connection is current. */
+export interface NativeProfileRegistration {
+  profileId: string;
+  isCurrent(): boolean;
+}
+
 export class NativeSocketBrowserTarget implements BrowserTarget {
   readonly id = "chromium-device";
   readonly name = "This device's Chromium";
@@ -208,6 +214,9 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
   >();
   private answerListeners = new Set<
     (answer: NativeTaskGuideAnswerEvent) => void
+  >();
+  private registrationListeners = new Set<
+    (registration: NativeProfileRegistration) => void | Promise<void>
   >();
   private stopped = false;
   private reconnect: ReturnType<typeof setTimeout> | null = null;
@@ -247,6 +256,39 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
     return !this.stopped && this.socket && !this.socket.destroyed
       ? this.profileId
       : null;
+  }
+
+  /** Trusted host lifecycle hook. Recheck isCurrent after asynchronous account reads.
+   * Registration is not account authentication and grants no browser action. */
+  onProfileRegistered(
+    listener: (registration: NativeProfileRegistration) => void | Promise<void>,
+  ): () => void {
+    this.registrationListeners.add(listener);
+    this.notifyRegistration(listener);
+    return () => {
+      this.registrationListeners.delete(listener);
+    };
+  }
+
+  private notifyRegistration(
+    listener: (registration: NativeProfileRegistration) => void | Promise<void>,
+  ): void {
+    const socket = this.socket;
+    const profileId = this.getProfileId();
+    if (!socket || !profileId) return;
+    const isCurrent = () =>
+      this.registrationListeners.has(listener) &&
+      this.socket === socket &&
+      this.getProfileId() === profileId;
+    void Promise.resolve()
+      .then(() => {
+        if (isCurrent()) return listener({ profileId, isCurrent });
+      })
+      .catch((error) =>
+        this.reportConnectionError(
+          error instanceof Error ? error : new Error(String(error)),
+        ),
+      );
   }
 
   /** Wait only for registration; no browser command is queued, retried or sent. */
@@ -468,6 +510,8 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
           nonce: message.nonce,
           profileId: this.profileId,
         });
+      for (const listener of this.registrationListeners)
+        this.notifyRegistration(listener);
       return;
     }
     if (message.type === "ping") {
@@ -965,6 +1009,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
 
   async stop(): Promise<void> {
     this.stopped = true;
+    this.registrationListeners.clear();
     if (this.reconnect) clearTimeout(this.reconnect);
     this.socket?.destroy();
     if (this.server)
