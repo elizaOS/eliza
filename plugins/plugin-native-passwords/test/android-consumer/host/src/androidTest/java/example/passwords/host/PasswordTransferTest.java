@@ -215,7 +215,14 @@ public final class PasswordTransferTest {
     operation.init(javax.crypto.Cipher.ENCRYPT_MODE, keys.getKey(migratedAlias, null)); operation.doFinal(new byte[]{1});
     fail("OS Keystore admitted the device-unlocked key while locked");
    } catch (java.security.GeneralSecurityException expected) {}
-   ui.shell("input keyevent KEYCODE_WAKEUP"); ui.shell("wm dismiss-keyguard"); ui.pin(pin);
+   ui.shell("input keyevent KEYCODE_WAKEUP");
+   ui.shell("wm dismiss-keyguard");
+   // The OS bouncer is asynchronous. Do not type into a credential field
+   // belonging to an underlying Activity while the lock screen is animating.
+   ui.await(() -> ui.find(node -> node.isPassword() && node.isEditable() && node.isFocused()
+     && "com.android.systemui".contentEquals(node.getPackageName() == null ? "" : node.getPackageName())) != null,
+     "OS lock-screen PIN field owns input focus");
+   ui.shell("input text " + pin); ui.shell("input keyevent 66");
    ui.await(() -> !keyguard.isDeviceLocked(), "OS device unlock restores access");
    assertEquals("Device unlock needs no app grant", password, migrated.get(id).getString("password"));
   } finally {
