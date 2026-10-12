@@ -317,5 +317,8 @@ it("does not mirror chat writes into host-owned API config", async () => {
     ui?: { capabilities?: { browser?: boolean } };
   };
   expect(served.ui?.capabilities?.browser).toBe(true);
-  expect(loadElizaConfig().ui?.capabilities?.browser).toBe(false);
+  const saved = loadElizaConfig() as unknown as {
+    ui?: { capabilities?: { browser?: boolean } };
+  };
+  expect(saved.ui?.capabilities?.browser).toBe(false);
 });
