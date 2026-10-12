@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The on-device recognizer checks this even for supplied audio. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <application android:label="Kokoro voice qualify" />
+</manifest>

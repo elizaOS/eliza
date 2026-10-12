@@ -1,0 +1,27 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace 'ai.eliza.voicequalify'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'ai.eliza.voicequalify'
+        minSdk 26
+        targetSdk 36
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+    // Copying a compressed 160 MB GGUF out of the APK is slow; store it plain.
+    androidResources {
+        noCompress 'gguf', 'bin', 'onnx'
+    }
+}
+
+dependencies {
+    implementation project(':kokoro-voice')
+    implementation project(':local-speech')
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+}

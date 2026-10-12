@@ -1,0 +1,19 @@
+// Device qualification for on-device Kokoro speech and local transcription.
+// -PlocalSpeechModule=<dir> is a local-speech consumer module made by
+// packages/app/scripts/local-speech install-generated.
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+rootProject.name = 'kokoro-voice-qualify'
+def androidRoot = new File(settingsDir, '../../../platforms/android')
+include ':kokoro-voice'
+project(':kokoro-voice').projectDir = new File(androidRoot, 'kokoro-voice')
+def localSpeech = providers.gradleProperty('localSpeechModule').orNull
+if (localSpeech == null) throw new GradleException('Pass -PlocalSpeechModule=<local-speech consumer module>')
+include ':local-speech'
+project(':local-speech').projectDir = file(localSpeech)
+include ':app'

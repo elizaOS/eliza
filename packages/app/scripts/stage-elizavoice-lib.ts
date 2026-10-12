@@ -36,10 +36,11 @@ function die(msg) {
 }
 
 function parseArgs(argv) {
-  const out = { abi: "arm64-v8a", variant: "cpu" };
+  const out = { abi: "arm64-v8a", variant: "cpu", out: "" };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--abi") out.abi = argv[++i];
     else if (argv[i] === "--variant") out.variant = argv[++i];
+    else if (argv[i] === "--out") out.out = path.resolve(argv[++i]);
   }
   if (out.variant !== "cpu" && out.variant !== "vulkan") {
     die(`unsupported --variant ${out.variant} (cpu | vulkan)`);
@@ -149,7 +150,7 @@ function run(cmd, args, opts = {}) {
   execFileSync(cmd, args, { stdio: "inherit", ...opts });
 }
 
-const { abi, variant } = parseArgs(process.argv.slice(2));
+const { abi, variant, out: outDir } = parseArgs(process.argv.slice(2));
 const platform = ABI_TO_PLATFORM[abi];
 if (!platform) die(`unsupported abi ${abi} (arm64-v8a | x86_64)`);
 log(`variant: ${variant}`);
@@ -284,11 +285,14 @@ const builtSo = path.join(binDir, "libelizainference.so");
 if (!existsSync(builtSo)) die(`build did not produce ${builtSo}`);
 
 const strip = ndkTool(ndk, "llvm-strip");
-const jniDir = path.join(
-  repoRoot,
-  "packages/app/platforms/android/app/src/main/jniLibs",
-  abi,
-);
+// --out stages into another consumer, such as the kokoro-voice library.
+const jniDir =
+  outDir ||
+  path.join(
+    repoRoot,
+    "packages/app/platforms/android/app/src/main/jniLibs",
+    abi,
+  );
 mkdirSync(jniDir, { recursive: true });
 
 // The dynamic-Vulkan variant emits libelizainference.so plus its shared
