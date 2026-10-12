@@ -90,3 +90,8 @@ not alter library admission or the production runtime command.
 The explicit Bun qualification command allows 60 seconds for each real-engine
 suite, which includes repeated key derivation and process-death recovery. This
 does not change the worker-readiness deadlines or any production timeout.
+
+If the OS refuses hardlink fixture creation with `EACCES` or `EPERM`, that one
+subtest reports an explicit skip. It does not prove the native multi-link guard.
+Run that case on a host that permits hardlinks; the other path-admission checks
+remain mandatory on each target. Preserve skips in qualification receipts.
