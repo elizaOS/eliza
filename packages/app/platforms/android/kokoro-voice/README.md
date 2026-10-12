@@ -30,6 +30,9 @@ applies `consumer.gradle`. Optional properties: `elizaKokoroNativeDir`,
 `libelizainference.so`. The build fails if a generated file differs from
 `native/build-record.json`.
 
+The app module should store the model plain (`androidResources { noCompress 'gguf', 'bin' }`).
+A compressed 160 MB GGUF makes the first `KokoroAssets.install` slow.
+
 ## Voice preset
 
 The bundle uses the stock `af_bella` preset. The `af_sam` preset in

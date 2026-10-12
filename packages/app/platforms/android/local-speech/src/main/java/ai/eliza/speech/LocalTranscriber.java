@@ -167,6 +167,9 @@ public final class LocalTranscriber {
                 case SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE:
                 case SpeechRecognizer.ERROR_CANNOT_CHECK_SUPPORT:
                 case SpeechRecognizer.ERROR_SERVER_DISCONNECTED:
+                // Whisper reads the supplied audio and needs neither RECORD_AUDIO nor a free recognizer.
+                case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS:
+                case SpeechRecognizer.ERROR_RECOGNIZER_BUSY:
                     failure.set(new Unavailable("recognizer error " + error));
                     break;
                 default:
