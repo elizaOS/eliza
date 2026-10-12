@@ -26,6 +26,9 @@ export function matchActionWildcardParts(
 
 	if (last) {
 		if (!name.endsWith(last)) return false;
+		// A single-segment pattern is an exact match: first and last are the
+		// same segment, so the name must equal that segment exactly.
+		if (parts.length === 1) return name.length === last.length;
 		if (pos > name.length - last.length) return false;
 	}
 
