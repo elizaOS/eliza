@@ -274,4 +274,29 @@ describe("EDIT", () => {
     expect(result.success).toBe(false);
     expect(result.text).toContain("path_blocked");
   });
+
+  it("rejects self-edit protected safety-rail paths even outside blocked roots", async () => {
+    const rail = path.join(
+      env.tmpDir,
+      "checkout",
+      "packages",
+      "host",
+      "src",
+      "restart.ts",
+    );
+    await fs.mkdir(path.dirname(rail), { recursive: true });
+    await fs.writeFile(rail, "original");
+
+    const result = await editFileHandler(env.runtime, env.message, undefined, {
+      parameters: {
+        file_path: rail,
+        old_string: "original",
+        new_string: "tampered",
+      },
+    });
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("path_blocked");
+    expect(result.text).toContain("self-edit protected safety rail");
+    expect(await fs.readFile(rail, "utf8")).toBe("original");
+  });
 });

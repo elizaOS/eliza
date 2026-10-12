@@ -57,8 +57,9 @@ export function isSelfEditEnabled(
 /**
  * Repo-relative paths that the self-edit flow must NEVER modify. Removing or
  * weakening any of these would allow the agent to disable its own safety
- * rails (the dev-mode gate, the host restart infrastructure, the process
- * guards, the runner's exit-75 rate limit, or this denylist itself).
+ * rails (the dev-mode gate, the restart action and its self-edit gate, the
+ * host restart infrastructure, the process guards, the runner's exit-75 rate
+ * limit, or this denylist itself).
  *
  * Maintenance constraint: every entry must name a file that exists in the
  * repository. An entry for a deleted file matches nothing, so it protects
@@ -71,6 +72,7 @@ const DENIED_RELATIVE_SUFFIXES: readonly string[] = [
   "packages/host/src/restart.ts",
   "packages/host/src/self-edit.ts",
   "packages/host/src/process-guards.ts",
+  "packages/agent/src/actions/runtime.ts",
   "packages/app/scripts/run-node.ts",
   "packages/app/scripts/lib/restart-guard.ts",
 ];

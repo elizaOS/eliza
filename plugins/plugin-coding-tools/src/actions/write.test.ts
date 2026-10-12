@@ -266,6 +266,28 @@ describe("WRITE", () => {
     expect(result.text).toContain("path_blocked");
   });
 
+  it("rejects self-edit protected safety-rail paths even outside blocked roots", async () => {
+    const rail = path.join(
+      env.tmpDir,
+      "checkout",
+      "packages",
+      "agent",
+      "src",
+      "actions",
+      "runtime.ts",
+    );
+    await fs.mkdir(path.dirname(rail), { recursive: true });
+    await fs.writeFile(rail, "export {};");
+
+    const result = await writeFileHandler(env.runtime, env.message, undefined, {
+      parameters: { file_path: rail, content: "tampered", overwrite: true },
+    });
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("path_blocked");
+    expect(result.text).toContain("self-edit protected safety rail");
+    expect(await fs.readFile(rail, "utf8")).toBe("export {};");
+  });
+
   it("fails when content param is missing", async () => {
     const result = await writeFileHandler(env.runtime, env.message, undefined, {
       parameters: { file_path: path.join(env.tmpDir, "x.txt") },

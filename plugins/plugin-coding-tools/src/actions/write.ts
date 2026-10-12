@@ -18,6 +18,8 @@ import {
   type State,
 } from "@elizaos/core";
 
+import { isSelfEditPathDenied } from "@elizaos/host";
+
 import {
   fileEffectReceipt,
   fileMutationResult,
@@ -143,6 +145,17 @@ export async function writeFileHandler(
   const failAtPath = (
     failure: Parameters<typeof failureToActionResult>[0],
   ): ActionResult => failureToActionResult(failure, { path: resolved });
+  // The self-edit denylist is a hard rail on top of the sandbox policy: the
+  // listed files are the agent's own safety machinery (dev-mode gate, restart
+  // action, restart infrastructure, this denylist), so mutation refuses here,
+  // before any filesystem effect.
+  if (isSelfEditPathDenied(resolved)) {
+    return failAtPath({
+      reason: "path_blocked",
+      message: `Path ${inputPath.value} is a self-edit protected safety rail and must not be modified.`,
+    });
+  }
+
   const fileState = runtime.getService(FILE_STATE_SERVICE) as InstanceType<
     typeof FileStateService
   > | null;

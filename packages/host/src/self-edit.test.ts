@@ -20,6 +20,9 @@ describe("isSelfEditPathDenied", () => {
     expect(
       isSelfEditPathDenied("/repo/packages/host/src/process-guards.ts"),
     ).toBe(true);
+    expect(
+      isSelfEditPathDenied("/repo/packages/agent/src/actions/runtime.ts"),
+    ).toBe(true);
     expect(isSelfEditPathDenied("/repo/packages/app/scripts/run-node.ts")).toBe(
       true,
     );
