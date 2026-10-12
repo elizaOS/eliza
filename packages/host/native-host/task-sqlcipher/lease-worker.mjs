@@ -1,13 +1,13 @@
 // Synthetic host qualification only. No real credentials or keys in arguments.
-import { spawn } from "node:child_process";
+
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { createSqlCipherTaskProvider } from "../task-sqlcipher.mjs";
+import { spawnTestRuntime } from "./test-runtime.mjs";
 
 const [mode, buildPath, path] = process.argv.slice(2);
 if (mode === "broker") {
-  const writer = spawn(
-    process.execPath,
+  const writer = spawnTestRuntime(
     [fileURLToPath(import.meta.url), "writer", buildPath, path],
     { stdio: ["ignore", "pipe", "inherit"] },
   );
@@ -24,7 +24,7 @@ if (mode === "broker") {
   }).open({ path });
   db.exec("CREATE TABLE IF NOT EXISTS lease_test(value INTEGER)");
   if (mode === "exec-child") {
-    const child = spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"], {
+    const child = spawnTestRuntime(["-e", "setInterval(()=>{},1000)"], {
       stdio: "ignore",
     });
     console.log(`EXEC_CHILD ${child.pid}`);

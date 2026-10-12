@@ -1,6 +1,5 @@
 // Explicit actual-native qualification; missing build artifact fails, never skips.
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
 import { once } from "node:events";
 import {
   chmod,
@@ -21,6 +20,7 @@ import {
   createSqlCipherTaskProvider,
   loadTaskSqlCipher,
 } from "../task-sqlcipher.mjs";
+import { spawnTestRuntime } from "./test-runtime.mjs";
 
 const buildPath = process.env.ELIZA_TASK_SQLCIPHER_BUILD;
 if (!buildPath) throw Error("Explicit native build required");
@@ -43,7 +43,7 @@ const stop = (pid) => {
   }
 };
 async function child(mode, path) {
-  const child = spawn(process.execPath, [worker, mode, buildPath, path], {
+  const child = spawnTestRuntime([worker, mode, buildPath, path], {
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "",

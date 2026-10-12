@@ -12,7 +12,7 @@ Build on Linux with Node 24.15.0 headers, C compiler, Perl, Make and tar:
 ```
 node packages/host/native-host/task-sqlcipher/build.mjs /absolute/fresh-output /absolute/node/include/node linux-x64 /usr/bin/cc
 ELIZA_TASK_SQLCIPHER_BUILD=/absolute/fresh-output/build.json node --test packages/host/native-host/task-sqlcipher/integration.mjs
-ELIZA_TASK_SQLCIPHER_BUILD=/absolute/fresh-output/build.json bun test ./packages/host/native-host/task-sqlcipher/integration.mjs
+ELIZA_TASK_SQLCIPHER_BUILD=/absolute/fresh-output/build.json bun test --timeout 60000 ./packages/host/native-host/task-sqlcipher/integration.mjs
 ```
 
 `sources.json` pins SQLCipher Community (BSD-3-Clause) and OpenSSL (Apache-2.0)
@@ -79,3 +79,14 @@ Run `lease.integration.mjs` with the same explicit build manifest under Node and
 Bun to test competing opens, real process death, orphaned writers, exec inheritance,
 lock replacement, invalid lock links, and failure cleanup. These are host proofs;
 Android musl/SELinux qualification and product adoption remain separate.
+
+Qualification subprocesses default to `process.execPath`. When the installed
+runtime needs a loader, set `ELIZA_TASK_TEST_RUNTIME_COMMAND` to an explicit JSON
+argument array, such as `["/installed/musl-loader", "/installed/bun"]`. The test
+runner appends its worker arguments without a shell. The prefix is inherited by
+child and grandchild qualification processes. This affects tests only and does
+not alter library admission or the production runtime command.
+
+The explicit Bun qualification command allows 60 seconds for each real-engine
+suite, which includes repeated key derivation and process-death recovery. This
+does not change the worker-readiness deadlines or any production timeout.
