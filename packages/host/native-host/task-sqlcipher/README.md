@@ -41,8 +41,10 @@ SQLite tests, WAL/process-death recovery, temp/canary scanning and both target
 ABI proofs. Key custody, authorized account binding, migration, revocation and
 non-database evidence/journal encryption remain separate host responsibilities.
 
-`libraryMode: "installed-readonly"` requires a regular library owned by a different
-OS identity with no group/world write access; its privileged installer is trusted.
+`libraryMode: "installed-readonly"` requires a root-owned (UID 0) regular library,
+a non-root caller and no group/world write access. The root installer is trusted;
+a different unprivileged owner is not. Android installations with a different
+library owner are refused until a separately qualified policy is introduced.
 `libraryMode: "private-snapshot"` loads a verified copy from an unlinked private
 file for host qualification. Both use a pinned file descriptor, retained once per
 loaded library for the process lifetime to prevent `dlopen` pathname-cache reuse.

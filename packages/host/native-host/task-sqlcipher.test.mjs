@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import {
+import fs, {
   mkdtempSync,
   readdirSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -96,4 +97,52 @@ test("failed native loads close descriptors and remove private snapshots", (t) =
       }),
     { code: "TASK_STORAGE_UNAVAILABLE" },
   );
+});
+
+test("installed artifacts reject a different unprivileged owner before native loading", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "cipher-owner-"));
+  t.after(() => rmSync(root, { recursive: true }));
+  const libraryPath = join(root, "addon.so");
+  const bytes = Buffer.alloc(20);
+  bytes.set([127, 69, 76, 70, 2, 1]);
+  bytes.writeUInt16LE(62, 18);
+  writeFileSync(libraryPath, bytes, { mode: 0o444 });
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  const originalGetuid = process.getuid;
+  const originalDlopen = process.dlopen;
+  const originalFstat = fs.fstatSync;
+  let loaded = false;
+  // Model the consuming application as another unprivileged identity. The file
+  // still belongs to its untrusted non-root owner, who can rewrite its inode.
+  process.getuid = () => 1002;
+  fs.fstatSync = (...args) =>
+    Object.assign(originalFstat(...args), { uid: 1001 });
+  syncBuiltinESMExports();
+  process.dlopen = (addon) => {
+    loaded = true;
+    addon.exports = Object.fromEntries(
+      ["open", "exec", "query", "close", "verify"].map((name) => [
+        name,
+        () => {},
+      ]),
+    );
+  };
+  try {
+    assert.throws(
+      () =>
+        loadTaskSqlCipher({
+          libraryPath,
+          sha256,
+          machine: 62,
+          libraryMode: "installed-readonly",
+        }),
+      { code: "TASK_STORAGE_UNAVAILABLE" },
+    );
+    assert.equal(loaded, false);
+  } finally {
+    process.getuid = originalGetuid;
+    process.dlopen = originalDlopen;
+    fs.fstatSync = originalFstat;
+    syncBuiltinESMExports();
+  }
 });

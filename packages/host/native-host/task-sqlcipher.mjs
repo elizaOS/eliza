@@ -42,13 +42,11 @@ export function loadTaskSqlCipher({
     fd = openSync(libraryPath, constants.O_RDONLY | constants.O_NOFOLLOW);
     const metadata = fstatSync(fd);
     if (!metadata.isFile()) throw unavailable();
-    // Installed APK libraries must be owned by a different trusted OS identity.
-    // This excludes writable host build artifacts from the installed lane.
+    // Only the privileged root installer is trusted to retain these bytes.
+    // A different unprivileged owner can still chmod and rewrite its inode.
     if (
       libraryMode === "installed-readonly" &&
-      (process.getuid() === 0 ||
-        metadata.uid === process.getuid() ||
-        metadata.mode & 0o022)
+      (process.getuid() === 0 || metadata.uid !== 0 || metadata.mode & 0o022)
     )
       throw unavailable();
     const bytes = readFileSync(fd);
