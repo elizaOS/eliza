@@ -849,7 +849,7 @@ export class KaminoLiquidityService extends Service {
       if (tipAmount > 0.01) baseApy += 1;
       if (surplus > 0.1) baseApy += 1;
 
-      const variation = (Math.random() - 0.5) * 4;
+      const variation = 0; // fixed midpoint (was random ±2%)
       return Math.max(2, Math.min(25, baseApy + variation));
     } catch (_error) {
       return 8; // Default fallback

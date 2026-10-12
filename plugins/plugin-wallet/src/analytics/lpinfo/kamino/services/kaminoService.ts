@@ -483,7 +483,7 @@ export class KaminoService extends Service {
       // Borrow APY is typically lower than supply APY
       // Add some variation based on market conditions
       const baseBorrowRate = supplyApy * 0.75; // 75% of supply rate
-      const marketVariation = (Math.random() - 0.5) * 2; // ±1% variation
+      const marketVariation = 0; // fixed midpoint (was random ±1%)
       return Math.max(0.5, baseBorrowRate + marketVariation);
     } catch (_error) {
       return 5; // Default fallback
@@ -509,7 +509,7 @@ export class KaminoService extends Service {
     try {
       const totalSupply = this.estimateTotalSupply(stakingYield);
       // Borrow is typically 60-80% of supply in healthy markets
-      const borrowRatio = 0.6 + Math.random() * 0.2; // 60-80%
+      const borrowRatio = 0.7; // fixed midpoint of 60-80%
       return totalSupply * borrowRatio;
     } catch (_error) {
       return 600000; // Default fallback
@@ -560,7 +560,7 @@ export class KaminoService extends Service {
       else if (sizeUsd > 1000) baseApy += 2;
       if (tipAmount > 0.05) baseApy += 2;
 
-      const variation = (Math.random() - 0.5) * 3;
+      const variation = 0; // fixed midpoint (was random ±1.5%)
       return Math.max(3, Math.min(20, baseApy + variation));
     } catch (_error) {
       return 8; // Default fallback
@@ -573,7 +573,7 @@ export class KaminoService extends Service {
     try {
       const supplyApy = await this.calculateLimoSupplyApy(trade);
       // Borrow APY is typically 70-90% of supply APY
-      const borrowRatio = 0.7 + Math.random() * 0.2;
+      const borrowRatio = 0.8; // fixed midpoint of 70-90%
       return supplyApy * borrowRatio;
     } catch (_error) {
       return 6; // Default fallback
@@ -584,7 +584,7 @@ export class KaminoService extends Service {
     try {
       const sizeUsd = parseFloat(trade.sizeUsd || "0");
       // Borrow is typically 30-50% of trade size for Limo strategies
-      const borrowRatio = 0.3 + Math.random() * 0.2;
+      const borrowRatio = 0.4; // fixed midpoint of 30-50%
       return sizeUsd * borrowRatio;
     } catch (_error) {
       return 0; // Default fallback
