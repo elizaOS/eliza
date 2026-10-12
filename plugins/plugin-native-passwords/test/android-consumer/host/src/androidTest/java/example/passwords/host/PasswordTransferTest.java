@@ -63,6 +63,14 @@ public final class PasswordTransferTest {
  private void unlock(String pin) throws Exception {
   invoke("unlock", "ElizaPasswords", "unlock", new JSONObject()); ui.pin(pin); value("unlock", "results.unlock.value.unlocked===true");
  }
+ private void pressKeyguardControl(String id) {
+  ui.await(() -> {
+   android.view.accessibility.AccessibilityNodeInfo node = ui.find(item ->
+     ("com.android.systemui:id/" + id).equals(item.getViewIdResourceName()));
+   return node != null && node.isEnabled() && node.isClickable()
+     && node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK);
+  }, "OS lock-screen control accepts input: " + id);
+ }
  @Test public void transferUsesRealPickerFreshUnlockAndCountsOnly() throws Exception {
   assertEquals("1", InstrumentationRegistry.getArguments().getString("disposablePasswordFixture"));
   assertTrue(ui.shell("getprop ro.hardware").matches("ranchu|goldfish|cutf_cvm"));
@@ -70,7 +78,7 @@ public final class PasswordTransferTest {
   Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
   KeyguardManager keyguard = context.getSystemService(KeyguardManager.class); assertFalse(keyguard.isDeviceSecure());
   UiAutomation automation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
-  AccessibilityServiceInfo info = automation.getServiceInfo(); info.flags |= AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS; automation.setServiceInfo(info);
+  AccessibilityServiceInfo info = automation.getServiceInfo(); info.flags |= AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS | AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS; automation.setServiceInfo(info);
   String pin = "7" + (100000 + new java.security.SecureRandom().nextInt(800000));
   String token = UUID.randomUUID().toString().substring(0, 8), password = "Synthetic-transfer-" + token;
   java.io.File migratedDirectory = new java.io.File(context.getNoBackupFilesDir(), "migration-" + token);
@@ -222,7 +230,10 @@ public final class PasswordTransferTest {
    ui.await(() -> ui.find(node -> node.isPassword() && node.isEditable() && node.isFocused()
      && "com.android.systemui".contentEquals(node.getPackageName() == null ? "" : node.getPackageName())) != null,
      "OS lock-screen PIN field owns input focus");
-   ui.shell("input text " + pin); ui.shell("input keyevent 66");
+   // Drive the actual keyguard keypad; shell text injection can race the
+   // bouncer transition and send keys to the Activity behind the lock screen.
+   for (char digit : pin.toCharArray()) pressKeyguardControl("key" + digit);
+   pressKeyguardControl("key_enter");
    ui.await(() -> !keyguard.isDeviceLocked(), "OS device unlock restores access");
    assertEquals("Device unlock needs no app grant", password, migrated.get(id).getString("password"));
   } finally {
