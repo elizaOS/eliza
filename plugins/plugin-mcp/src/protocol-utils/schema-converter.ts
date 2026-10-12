@@ -80,13 +80,23 @@ function formatType(type?: string | string[]): string {
 }
 
 function isNullable(prop?: JsonSchemaProperty): boolean {
-  if (!prop) return false;
-  if (prop.nullable === true) return true;
-  if (prop.type === "null") return true;
-  if (Array.isArray(prop.type) && prop.type.includes("null")) return true;
-  if (prop.oneOf?.some((v) => isNullable(v))) return true;
-  if (prop.anyOf?.some((v) => isNullable(v))) return true;
-  return false;
+  if (!prop) return false
+  const explicitlyNullable = prop.nullable === true
+
+  if (prop.type !== undefined) {
+    if (Array.isArray(prop.type)) {
+      if (!prop.type.includes("null")) return false
+    } else if (prop.type !== "null" && !explicitlyNullable) {
+      return false
+    }
+  }
+
+  if (prop.enum && !prop.enum.some((value) => value === null)) return false
+  if (prop.const !== undefined && prop.const !== null) return false
+  if (prop.allOf && !prop.allOf.every((v) => isNullable(v))) return false
+  if (prop.oneOf && !prop.oneOf.some((v) => isNullable(v))) return false
+  if (prop.anyOf && !prop.anyOf.some((v) => isNullable(v))) return false
+  return true
 }
 
 function renderSchemaDetails(prop: JsonSchemaProperty): string {
@@ -284,6 +294,9 @@ export function validateParamsAgainstSchema(
       if (!prop) continue;
 
       if (value === null) {
+        if (!required.has(name) && !isNullable(prop)) {
+          errors.push(`Parameter '${name}' does not accept null`)
+        }
         continue;
       }
       if (value === undefined) continue;
