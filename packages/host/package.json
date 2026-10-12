@@ -11,11 +11,13 @@
     "native-host/*.mjs",
     "native-host/*.patch",
     "native-host/task-sqlcipher/driver.c",
+    "native-host/task-sqlcipher/writer-lease.h",
     "native-host/task-sqlcipher/build.mjs",
     "native-host/task-sqlcipher/sources.json",
     "native-host/task-sqlcipher/exports.map",
     "native-host/task-sqlcipher/README.md",
-    "!native-host/*.test.mjs"
+    "!native-host/*.test.mjs",
+    "native-host/android/**/*.java"
   ],
   "exports": {
     ".": {

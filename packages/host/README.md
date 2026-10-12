@@ -119,3 +119,40 @@ an explicitly admitted N-API SQLCipher artifact and host-owned key callback.
 See [its build and qualification contract](native-host/task-sqlcipher/README.md).
 It has no automatic APK staging, account authorization, migration or fallback;
 source availability alone does not qualify encrypted storage on a consumer device.
+
+### Optional Android verified task custody
+
+`native-host/android/ai/eliza/host/VerifiedTaskCustody.java` is an explicit native
+host source input. A consumer must select it alongside native-agent runtime and
+secure-store native-only sources. No default Gradle dependency or renderer API
+is added. The host supplies its existing dedicated verified-account directory
+and Keystore alias, a separate task-key directory/alias, and an existing private
+0700 no-backup database directory. All account writes must use this composition
+in the one native host process; it does not provide cross-process credential CAS.
+
+Create the adapter inside `NativeRuntimeSession`'s launcher. Its account port and
+bound database port use the same `guard()` in `LocalCredentialBroker`.
+`openBroker` registers broker closure with the launch scope; a null database
+permits verified enrollment with task-key access disabled.
+`bindDatabase` takes a native-selected logical name. The owner directory uses
+the existing gateway's authenticated authority/user/organization tuple hash;
+credential rotation preserves that directory but retires old database ports.
+Never supply decoded token claims, renderer identities, or paths from the wire.
+
+The actual SQLCipher writer must acquire its native lease before requesting a
+key. Read refuses a missing key when any database, WAL, SHM, or rollback journal
+entry exists, even an empty file or dangling symlink. Create and generation-bound
+remove require all those entries to be absent. A durable key left by an
+interrupted first open can be reused; existing data is never treated as new.
+This adapter creates no database and performs no migration or automatic cleanup.
+
+A broker cannot revoke a key already held by Bun. The host must bind the writer's
+session/credential guard and retire the supervised writer on owner change before
+admitting replacement work. `Database.check()` fences native admission against
+the exact captured encrypted account snapshot. It is not a synchronous remote
+replacement for the provider's `checkOwner`. Hosts must finish that lifecycle
+wiring and qualify the actual Android SQLCipher library before enabling storage.
+Returned key JSON is confined to the private native process channel; byte-array
+copies are wiped, but immutable Java JSON/base64 strings are not fully erased.
+The instrumentation cases in `native-host/android-test` exercise real Keystore
+storage, TCP broker requests, account changes, and database recovery refusals.
