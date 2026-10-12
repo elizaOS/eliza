@@ -41,9 +41,19 @@ public final class ConsumerBridgeFlowTest {
    SystemClock.sleep(100);
   }fail("Missing owned native control: "+label);
  }
+ /** The open review names the calendar's account; changes also say no attendees are affected. */
+ private void shows(String... texts)throws Exception {
+  for(int i=0;i<120;i++){
+   StringBuilder visible=new StringBuilder();AccessibilityNodeInfo root=InstrumentationRegistry.getInstrumentation().getUiAutomation().getRootInActiveWindow();
+   if(root!=null){java.util.ArrayDeque<AccessibilityNodeInfo> queue=new java.util.ArrayDeque<>();queue.add(root);while(!queue.isEmpty()){AccessibilityNodeInfo node=queue.removeFirst();if("example.calendar.consumer".equals(String.valueOf(node.getPackageName()))&&node.getText()!=null)visible.append(node.getText()).append('\n');for(int j=0;j<node.getChildCount();j++){AccessibilityNodeInfo child=node.getChild(j);if(child!=null)queue.add(child);}}}
+   boolean all=true;for(String text:texts)all&=visible.indexOf(text)>=0;if(all)return;
+   SystemClock.sleep(100);
+  }fail("Review does not show "+java.util.Arrays.toString(texts));
+ }
+ private static final String ACCOUNT="Account: Consumer fixture (this phone only)",NO_ATTENDEES="No attendees are invited, changed or notified.";
  private void released(){scenario.onActivity(activity->{try{Object plugin=activity.getBridge().getPlugin("ConsumerCalendar").getInstance();java.lang.reflect.Field busy=CalendarPlugin.class.getDeclaredField("deleting"),dialog=CalendarPlugin.class.getDeclaredField("deleteDialog");busy.setAccessible(true);dialog.setAccessible(true);assertFalse(((java.util.concurrent.atomic.AtomicBoolean)busy.get(plugin)).get());assertNull(dialog.get(plugin));}catch(Exception error){throw new AssertionError(error);}});}
  private void awaitReview()throws Exception {for(int i=0;i<120;i++){boolean[] shown={false};scenario.onActivity(activity->{try{Object plugin=activity.getBridge().getPlugin("ConsumerCalendar").getInstance();java.lang.reflect.Field field=CalendarPlugin.class.getDeclaredField("deleteDialog");field.setAccessible(true);android.app.AlertDialog dialog=(android.app.AlertDialog)field.get(plugin);shown[0]=dialog!=null&&dialog.isShowing();}catch(Exception error){throw new AssertionError(error);}});if(shown[0])return;SystemClock.sleep(100);}fail("No owned Calendar confirmation appeared");}
- private JSONObject operation(JSONObject operation,String button)throws Exception{start("executeAgent",new JSONObject().put("operation",operation).put("operationId",UUID.randomUUID().toString()));click(button,false);JSONObject value=result();released();return value;}
+ private JSONObject operation(JSONObject operation,String button)throws Exception{start("executeAgent",new JSONObject().put("operation",operation).put("operationId",UUID.randomUUID().toString()));if("Share with agent".equals(button))shows(ACCOUNT);else shows(ACCOUNT,NO_ATTENDEES);click(button,false);JSONObject value=result();released();return value;}
  private boolean exists(Context context,long id){try(Cursor rows=context.getContentResolver().query(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,id),new String[]{"deleted"},null,null,null)){return rows!=null&&rows.moveToFirst()&&rows.getInt(0)==0;}}
  @Test public void workflowPermissionCallback()throws Exception {
   assertEquals("1",InstrumentationRegistry.getArguments().getString("calendarWorkflowPermission"));assertTrue(Process.myUid()/100000>0);
