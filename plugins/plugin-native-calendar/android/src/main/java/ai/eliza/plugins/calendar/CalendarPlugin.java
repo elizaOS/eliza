@@ -28,7 +28,7 @@ public abstract class CalendarPlugin extends Plugin {
   Long begin=c.getLong("begin"),end=c.getLong("end");
   if(begin==null||end==null||begin<0||end<=begin||end-begin>370L*86400000){c.reject("A valid calendar range of at most 370 days is required");return;}
   try{
-   ai.eliza.plugins.calendar.read.CalendarReadAccess reader=new ai.eliza.plugins.calendar.read.CalendarReadAccess(getContext().getContentResolver());
+   ai.eliza.plugins.calendar.read.CalendarReadAccess reader=new ai.eliza.plugins.calendar.read.CalendarReadAccess(getContext().getContentResolver(),getContext().getPackageName(),configuration.creationUriPrefix);
    JSObject value=new JSObject();value.put("status","ready");value.put("calendars",reader.calendars());value.put("events",reader.events(begin,end));value.put("truncated",false);c.resolve(value);
   }catch(Exception e){c.reject("Calendar provider could not be read");}
  }
