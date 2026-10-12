@@ -24,17 +24,30 @@ import org.json.JSONTokener;
  * Slot filenames and AAD are the lower-case SHA-256 hex digest of the UTF-8 slot.
  * All instances share one process lock, including cold key creation and CAS.
  * Not a cross-process lock: hosts must keep writers in one Android process.
+ * A host that lowers a slot limit can keep a retained limit for data written under the old
+ * limit: such a slot stays readable, and a write that does not grow it is accepted, until it
+ * fits the new limit again.
  */
 public final class JsonCredentialSlots {
  public static final Object LOCK=new Object();
  public interface Limits { int maxBytes(String slot); }
+ /** A definite size refusal before any byte is written: the value does not fit its slot. */
+ public static final class CapacityException extends IllegalArgumentException {
+  private static final long serialVersionUID = 1L;
+  CapacityException(){super("Credential slot is full");}
+ }
  private final File directory;
  private final String alias;
- private final Limits limits;
- public JsonCredentialSlots(File directory,String alias,Limits limits){
+ private final Limits limits,retained;
+ public JsonCredentialSlots(File directory,String alias,Limits limits){this(directory,alias,limits,limits);}
+ /** {@code retained} bounds data already stored under an older, larger limit. It is never below
+  * {@code limits}: reads accept it, and writes above {@code limits} are accepted only up to the
+  * stored value's size. */
+ public JsonCredentialSlots(File directory,String alias,Limits limits,Limits retained){
   this.directory=java.util.Objects.requireNonNull(directory);
   this.alias=required(alias,1024);
   this.limits=java.util.Objects.requireNonNull(limits);
+  this.retained=java.util.Objects.requireNonNull(retained);
  }
  private static String required(String value, int max) {
   if (value == null || value.isEmpty() || value.length() > max) throw new IllegalArgumentException();
@@ -43,6 +56,11 @@ public final class JsonCredentialSlots {
  private int slotLimit(String slot){
   int value=limits.maxBytes(slot);
   if(value<1||value>Integer.MAX_VALUE-64)throw new IllegalArgumentException("Invalid credential slot limit");
+  return value;
+ }
+ private int retainedLimit(String slot){
+  int value=retained.maxBytes(slot);
+  if(value<slotLimit(slot)||value>Integer.MAX_VALUE-64)throw new IllegalArgumentException("Invalid credential slot limit");
   return value;
  }
  public String slotHash(String slot) throws Exception {
@@ -74,13 +92,20 @@ public final class JsonCredentialSlots {
  }
  public void write(String name, String serialized) throws Exception {
     String slot = slotHash(name);
-    int limit=slotLimit(name);
-    String value = required(serialized, limit);
+    int limit=slotLimit(name),ceiling=retainedLimit(name);
+    if (serialized == null || serialized.isEmpty()) throw new IllegalArgumentException();
+    if (serialized.length() > ceiling) throw new CapacityException();
+    String value = serialized;
     parseJson(value);
     byte[] plain = value.getBytes(StandardCharsets.UTF_8);
     try {
-    if (plain.length > limit) throw new IllegalArgumentException();
+    if (plain.length > ceiling) throw new CapacityException();
     synchronized (LOCK) {
+     if (plain.length > limit) {
+      // Above the current limit only while shrinking data written under the older limit.
+      String stored = read(name);
+      if (stored == null || stored.getBytes(StandardCharsets.UTF_8).length < plain.length) throw new CapacityException();
+     }
      Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.ENCRYPT_MODE, key());
      cipher.updateAAD(slot.getBytes(StandardCharsets.US_ASCII));
      byte[] iv = cipher.getIV(), encrypted = cipher.doFinal(plain);
@@ -90,7 +115,7 @@ public final class JsonCredentialSlots {
       out.getFD().sync(); file.finishWrite(out);
       out = null;
       try (InputStream input = file.openRead()) {
-       byte[] committed = readBounded(input, limit + 64);
+       byte[] committed = readBounded(input, ceiling + 64);
        if (committed.length != 2 + iv.length + encrypted.length || committed[0] != 1 || committed[1] != iv.length
          || !Arrays.equals(iv, Arrays.copyOfRange(committed, 2, 2 + iv.length))
          || !Arrays.equals(encrypted, Arrays.copyOfRange(committed, 2 + iv.length, committed.length))) throw new IllegalStateException();
@@ -101,7 +126,7 @@ public final class JsonCredentialSlots {
  }
  /** Native consumers share the same authenticated slot format without a JS credential round trip. */
  public String read(String name) throws Exception {
-  String slot=slotHash(name);int limit=slotLimit(name);
+  String slot=slotHash(name);int limit=retainedLimit(name);
   synchronized(LOCK) {
    AtomicFile file=slotFile(slot); byte[] stored;
    try(InputStream input=file.openRead()){stored=readBounded(input,limit+64);}

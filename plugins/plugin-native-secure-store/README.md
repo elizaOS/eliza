@@ -93,8 +93,13 @@ slot name. Preserve all deployed identities when adopting this helper. It does
 not share the single-file `RuntimeCredentialStore` frame. A process-wide lock
 covers cold key creation, reads, writes, removal and compare-and-exchange across
 instances; writers in separate Android processes need separate coordination.
+A size refusal throws `JsonCredentialSlots.CapacityException` before any byte
+is written. A host that lowers a slot limit can pass a second, retained limit for
+data that an older limit admitted. That slot stays readable, and a write that
+does not make it larger is accepted until it fits the new limit again.
 The device suite checks old-frame compatibility, backup recovery, tampering,
-byte limits, concurrent cold writes and competing admissions with synthetic JSON.
+byte limits, lowered limits, concurrent cold writes and competing admissions
+with synthetic JSON.
 
 `CredentialAccessSession.currentTicket()` binds queued work to the grant that admitted it.
 Check `authenticated(ticket)` before use. `lock(ticket)` cancels only that owner; an old
