@@ -409,28 +409,40 @@ export class KaminoLiquidityService extends Service {
         stakingYields: {
           total: stakingYields.length,
           averageApy:
-            stakingYields.reduce(
-              (sum, stakingYield) => sum + parseFloat(stakingYield.apy) * 100,
-              0,
-            ) / stakingYields.length,
-          maxApy: Math.max(
-            ...stakingYields.map(
-              (stakingYield) => parseFloat(stakingYield.apy) * 100,
-            ),
-          ),
-          minApy: Math.min(
-            ...stakingYields.map(
-              (stakingYield) => parseFloat(stakingYield.apy) * 100,
-            ),
-          ),
+            stakingYields.length > 0
+              ? stakingYields.reduce(
+                  (sum, stakingYield) =>
+                    sum + parseFloat(stakingYield.apy ?? "0") * 100,
+                  0,
+                ) / stakingYields.length
+              : 0,
+          maxApy:
+            stakingYields.length > 0
+              ? Math.max(
+                  ...stakingYields.map(
+                    (stakingYield) => parseFloat(stakingYield.apy ?? "0") * 100,
+                  ),
+                )
+              : 0,
+          minApy:
+            stakingYields.length > 0
+              ? Math.min(
+                  ...stakingYields.map(
+                    (stakingYield) => parseFloat(stakingYield.apy ?? "0") * 100,
+                  ),
+                )
+              : 0,
         },
         medianYields: {
           total: medianYields.length,
           averageApy:
-            medianYields.reduce(
-              (sum, stakingYield) => sum + parseFloat(stakingYield.apy) * 100,
-              0,
-            ) / medianYields.length,
+            medianYields.length > 0
+              ? medianYields.reduce(
+                  (sum, stakingYield) =>
+                    sum + parseFloat(stakingYield.apy ?? "0") * 100,
+                  0,
+                ) / medianYields.length
+              : 0,
         },
         limoTrades: {
           total: limoTrades.length,
@@ -439,15 +451,19 @@ export class KaminoLiquidityService extends Service {
             0,
           ),
           averageTip:
-            limoTrades.reduce(
-              (sum, trade) => sum + parseFloat(trade.tipAmountUsd || "0"),
-              0,
-            ) / limoTrades.length,
+            limoTrades.length > 0
+              ? limoTrades.reduce(
+                  (sum, trade) => sum + parseFloat(trade.tipAmountUsd || "0"),
+                  0,
+                ) / limoTrades.length
+              : 0,
           averageSurplus:
-            limoTrades.reduce(
-              (sum, trade) => sum + parseFloat(trade.surplusUsd || "0"),
-              0,
-            ) / limoTrades.length,
+            limoTrades.length > 0
+              ? limoTrades.reduce(
+                  (sum, trade) => sum + parseFloat(trade.surplusUsd || "0"),
+                  0,
+                ) / limoTrades.length
+              : 0,
         },
       };
 
