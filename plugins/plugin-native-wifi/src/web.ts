@@ -58,8 +58,33 @@ function validateConnectOptions(options: ConnectOptions): void {
   if (!ssid) {
     throw new Error("ssid is required");
   }
+  // The Android bridge enforces the 802.11 SSID limit on the trimmed SSID
+  // (WiFiConnectionRequests.suggest: 1 to 32 UTF-8 bytes). Without this check
+  // the web fallback accepted over-long SSIDs that native rejects.
+  if (new TextEncoder().encode(ssid).length > 32) {
+    throw new Error("SSID must contain 1 to 32 UTF-8 bytes");
+  }
   if (options?.password !== undefined && typeof options.password !== "string") {
     throw new Error("password must be a string");
+  }
+  // An empty password is an open network, as on native. A non-empty password
+  // is a WPA2 passphrase: the Android bridge requires 8 to 63 printable ASCII
+  // characters (codes 32 to 126) and rejects anything else before requesting
+  // a connection.
+  const password = options?.password;
+  if (password) {
+    const validPassphrase =
+      password.length >= 8 &&
+      password.length <= 63 &&
+      [...password].every((ch) => {
+        const code = ch.codePointAt(0) ?? 0;
+        return code >= 32 && code <= 126;
+      });
+    if (!validPassphrase) {
+      throw new Error(
+        "WPA2 passphrase must contain 8 to 63 printable ASCII characters",
+      );
+    }
   }
 }
 
