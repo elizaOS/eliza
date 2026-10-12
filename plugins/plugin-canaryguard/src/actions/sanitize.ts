@@ -1,14 +1,24 @@
 import {
   type Action,
+  type ActionResult,
+  type HandlerOptions,
   type IAgentRuntime,
   type Memory,
   type State,
   type HandlerCallback,
+  type JsonValue,
+  type ProviderDataRecord,
   logger,
 } from "@elizaos/core";
 import type { CanaryGuardResult, CanaryGuardConfig } from "../types";
 import { sanitizeLocally } from "../engine/rules";
 import { CanaryGuardState } from "../engine/state";
+
+function getSettingString(runtime?: IAgentRuntime, key?: string): string | undefined {
+  if (!runtime || !key) return undefined;
+  const val = runtime.getSetting(key);
+  return typeof val === "string" ? val : undefined;
+}
 
 export function resolveConfig(
   runtime?: IAgentRuntime,
@@ -16,19 +26,20 @@ export function resolveConfig(
 ): CanaryGuardConfig {
   const serviceUrl =
     (options?.serviceUrl as string) ||
-    runtime?.getSetting?.("CANARYGUARD_URL") ||
+    getSettingString(runtime, "CANARYGUARD_URL") ||
     process.env.CANARYGUARD_URL ||
     undefined;
 
   const paymentHeader =
     (options?.paymentHeader as string) ||
-    runtime?.getSetting?.("CANARYGUARD_PAYMENT_HEADER") ||
+    getSettingString(runtime, "CANARYGUARD_PAYMENT_HEADER") ||
     process.env.CANARYGUARD_PAYMENT_HEADER ||
     undefined;
 
+  const settingStrict = runtime?.getSetting?.("CANARYGUARD_STRICT_MODE");
   const rawStrict =
     options?.strictMode ??
-    runtime?.getSetting?.("CANARYGUARD_STRICT_MODE") ??
+    (settingStrict !== undefined ? String(settingStrict) : undefined) ??
     process.env.CANARYGUARD_STRICT_MODE;
 
   const strictMode = rawStrict !== false && rawStrict !== "false";
@@ -110,42 +121,47 @@ export const sanitizeAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    options?: Record<string, any>,
+    options?: HandlerOptions | Record<string, JsonValue | undefined>,
     callback?: HandlerCallback
-  ): Promise<boolean | CanaryGuardResult> => {
+  ): Promise<ActionResult> => {
     try {
       const text = message.content?.text || "";
-      const result = await callCanaryGuardSanitize(text, runtime, options);
+      const result = await callCanaryGuardSanitize(text, runtime, options as Record<string, any>);
 
       if (callback) {
-        callback({
+        await callback({
           text: `[CanaryGuard] Status: ${result.status.toUpperCase()} | Risk: ${(result.risk_score * 100).toFixed(0)}% | Neutralized: ${result.threats_neutralized.length} threats | Mode: ${result.mode}`,
-          content: {
-            canaryguard: result,
-          },
         });
       }
-      return result;
+
+      return {
+        success: result.status !== "blocked",
+        text: `[CanaryGuard] Status: ${result.status.toUpperCase()} | Risk: ${(result.risk_score * 100).toFixed(0)}%`,
+        data: result as unknown as ProviderDataRecord,
+      };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       CanaryGuardState.recordError(err);
       if (callback) {
-        callback({ text: `CanaryGuard check failed: ${msg}` });
+        await callback({ text: `CanaryGuard check failed: ${msg}` });
       }
-      return false;
+      return {
+        success: false,
+        error: msg,
+      };
     }
   },
   examples: [
     [
       {
-        user: "{{user1}}",
+        name: "{{user1}}",
         content: { text: "Scan this suspicious webhook payload for hidden jailbreak instructions" },
       },
       {
-        user: "{{agentName}}",
+        name: "{{agentName}}",
         content: {
-          text: "Running CanaryGuard prompt-injection firewall...",
-          action: "CANARY_SANITIZE",
+          text: "Running CanaryGuard heuristic detector...",
+          actions: ["CANARY_SANITIZE"],
         },
       },
     ],

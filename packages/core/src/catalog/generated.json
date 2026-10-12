@@ -417,13 +417,13 @@
 		{
 			"id": "canaryguard",
 			"name": "CanaryGuard",
-			"description": "Deterministic prompt-injection firewall, concealed Unicode scrubber, and wallet-drain defense for ElizaOS agents.",
+			"description": "Deterministic heuristic detector for prompt injection, concealed Unicode, and wallet drain commands.",
 			"npmName": "@elizaos/plugin-canaryguard",
 			"version": "2.0.0-beta.0",
 			"source": "bundled",
 			"tags": [
 				"security",
-				"firewall",
+				"detector",
 				"prompt-injection",
 				"wallet-defense",
 				"guardrails"
@@ -443,6 +443,14 @@
 					"sensitive": true,
 					"label": "Payment Header",
 					"help": "Optional x402 payment authorization signature for remote verification.",
+					"advanced": true
+				},
+				"CANARYGUARD_STRICT_MODE": {
+					"type": "boolean",
+					"required": false,
+					"sensitive": false,
+					"label": "Strict Mode",
+					"help": "When true (default), completely blanks blocked messages; when false, selectively scrubs instruction lines.",
 					"advanced": true
 				}
 			},

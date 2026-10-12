@@ -2,8 +2,8 @@ import type { CryptoAddressFinding, CanaryGuardResult } from "../types";
 
 const INVISIBLE_CHARACTERS = /[\u00ad\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/gu;
 const ROLE_DELIMITER = /\[\/?INST\]|<\|(?:im_start|im_end|system|developer|assistant|user)\|>|<<\/?SYS>>/i;
-const ROLE_PREFIX = /(?:^|[\r\n])\s*(?:system|developer|assistant)\s*:/i;
-const INSTRUCTION_OVERRIDE = /\b(?:ignore|disregard|forget|override)\s+(?:(?:all|any|the|your|our)\s+)*(?:previous|prior|earlier|above|system|developer)\s+(?:instructions?|prompts?|rules?|messages?)\b/i;
+const ROLE_PREFIX = /(?:^|[\r\n])\s*(?:system|developer|assistant)(?:\s*(?:override|prompt|message|test))*\s*:/i;
+const INSTRUCTION_OVERRIDE = /\b(?:ignore|disregard|forget|override)\s+(?:(?:all|any|the|your|our)\s+)*(?:(?:previous|prior|earlier|above|system|developer)\s+)+(?:instructions?|prompts?|rules?|messages?)\b/i;
 const WALLET_ASSET_COMMAND = /\b(?:send|transfer|wire|move|drain)\s+(?:(?:all|every|entire|the|your|my|our|any|remaining)\s+)*(?:funds?|balances?|assets?|tokens?|crypto|eth|usdc|usdt)\b/i;
 const WALLET_DESTINATION_COMMAND = /\b(?:send|transfer|wire|move)\s+(?:it\s+|them\s+|funds?\s+|tokens?\s+)?to\s+0x[\da-f]+\b/i;
 const EVM_ADDRESS = /\b0x[\da-f]{40}\b/gi;
@@ -44,7 +44,7 @@ function tidy(value: string): string {
 function scrubCommandLines(value: string): string {
   const blockedMarker = "[CANARY_REMOVED_INSTRUCTION]";
   let marked = value.normalize("NFKC");
-  const patterns = [ROLE_DELIMITER, /^[ \t]*(?:system|developer|assistant)[ \t]*:/m, INSTRUCTION_OVERRIDE, WALLET_ASSET_COMMAND, WALLET_DESTINATION_COMMAND];
+  const patterns = [ROLE_DELIMITER, /(?:^|[\r\n])\s*(?:system|developer|assistant)(?:\s*(?:override|prompt|message|test))*\s*:/gim, INSTRUCTION_OVERRIDE, WALLET_ASSET_COMMAND, WALLET_DESTINATION_COMMAND];
   for (const pattern of patterns) {
     const flags = pattern.multiline ? "gim" : "gi";
     marked = marked.replace(new RegExp(pattern.source, flags), (match) => match.split("\n").map(() => blockedMarker).join("\n"));
@@ -76,7 +76,7 @@ function extractAddresses(value: string): CryptoAddressFinding[] {
 }
 
 /**
- * Local deterministic rules-based sanitization engine.
+ * Local deterministic heuristic detector engine.
  * Executes in <0.1ms with zero network calls and zero data exfiltration.
  */
 export function sanitizeLocally(content: string, strictMode = true): CanaryGuardResult {
