@@ -108,8 +108,13 @@ function sortStable(value: unknown): unknown {
 		return value.map((entry) => sortStable(entry));
 	}
 
-	if (value instanceof Date) {
-		// Keep native Date#toJSON behavior, including null for an invalid date.
+	if (
+		value instanceof Date ||
+		value instanceof Number ||
+		value instanceof String ||
+		value instanceof Boolean
+	) {
+		// Keep native JSON coercion for dates and boxed primitive values.
 		return value;
 	}
 
