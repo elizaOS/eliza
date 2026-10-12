@@ -192,6 +192,7 @@ writeFileSync(
       compilerSha256: hash(compiler),
       flags,
       driverSha256: hash(join(here, "driver.c")),
+      writerLeaseSha256: hash(join(here, "writer-lease.h")),
       nodeHeaders: [
         "node_api.h",
         "js_native_api.h",

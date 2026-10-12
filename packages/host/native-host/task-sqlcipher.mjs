@@ -76,9 +76,15 @@ export function loadTaskSqlCipher({
     const addon = { exports: {} };
     process.dlopen(addon, `/proc/self/fd/${fd}`);
     if (
-      ["open", "exec", "query", "close", "verify"].some(
-        (name) => typeof addon.exports[name] !== "function",
-      )
+      [
+        "acquireLease",
+        "releaseLease",
+        "open",
+        "exec",
+        "query",
+        "close",
+        "verify",
+      ].some((name) => typeof addon.exports[name] !== "function")
     )
       throw unavailable();
     loadedLibraries.set(cacheKey, { exports: addon.exports, descriptor: fd });
@@ -98,7 +104,7 @@ export function loadTaskSqlCipher({
     }
   }
 }
-function admitPrivateDatabase(path) {
+function admitPrivateDirectory(path) {
   const parent = dirname(path),
     directory = statSync(parent);
   if (
@@ -108,6 +114,9 @@ function admitPrivateDatabase(path) {
     (directory.mode & 0o777) !== 0o700
   )
     throw unavailable();
+}
+function admitPrivateDatabase(path) {
+  admitPrivateDirectory(path);
   let fd;
   try {
     try {
@@ -144,8 +153,13 @@ export function createSqlCipherTaskProvider({
   machine,
   libraryMode,
   resolveKey,
+  checkOwner = () => {},
 } = {}) {
-  if (typeof resolveKey !== "function") throw unavailable();
+  if (typeof resolveKey !== "function" || typeof checkOwner !== "function")
+    throw unavailable();
+  const guard = () => {
+    if (checkOwner() !== undefined) throw unavailable();
+  };
   const native = loadTaskSqlCipher({
     libraryPath,
     sha256,
@@ -161,26 +175,37 @@ export function createSqlCipherTaskProvider({
         path !== resolve(path)
       )
         throw unavailable();
-      let key, handle;
+      let key, handle, lease;
       try {
+        guard();
+        admitPrivateDirectory(path);
+        lease = native.acquireLease(path);
+        guard();
         key = await resolveKey({ path });
+        guard();
         if (!(key instanceof Uint8Array) || key.length !== 32)
           throw unavailable();
         admitPrivateDatabase(path);
-        handle = native.open(path, key);
+        handle = native.open(path, key, lease);
+        guard();
       } catch {
+        if (handle) native.close(handle);
         throw unavailable();
       } finally {
         if (key instanceof Uint8Array) key.fill(0);
+        if (lease) native.releaseLease(lease);
       }
       let closed = false;
       const admitted = () => {
         if (closed) throw unavailable();
+        guard();
       };
       const db = Object.freeze({
         exec(sql) {
           admitted();
-          return native.exec(handle, sql);
+          const result = native.exec(handle, sql);
+          admitted();
+          return result;
         },
         prepare(sql) {
           admitted();
@@ -188,11 +213,15 @@ export function createSqlCipherTaskProvider({
           return Object.freeze({
             get(...params) {
               admitted();
-              return native.query(handle, sql, params, true);
+              const result = native.query(handle, sql, params, true);
+              admitted();
+              return result;
             },
             run(...params) {
               admitted();
-              return native.query(handle, sql, params, false);
+              const result = native.query(handle, sql, params, false);
+              admitted();
+              return result;
             },
           });
         },
@@ -210,7 +239,10 @@ export function createSqlCipherTaskProvider({
     assertEncryption({ db, path }) {
       const connection = connections.get(db);
       if (!connection || connection.path !== path) throw unavailable();
-      return native.verify(connection.handle) === true;
+      guard();
+      const verified = native.verify(connection.handle) === true;
+      guard();
+      return verified;
     },
   });
 }

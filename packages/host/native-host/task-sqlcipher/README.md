@@ -57,3 +57,25 @@ New files are created exclusively with mode 0600 before SQLite opens them with
 `SQLITE_OPEN_NOFOLLOW`. A malicious same-UID process or privileged installer is
 outside this in-process host boundary: neither callbacks nor filesystem paths
 establish account authorization. Actual tests inspect DB/WAL/SHM permissions.
+
+The actual database-writing process acquires an exclusive nonblocking `flock`
+on a persistent `.writer.lock` before resolving a key or creating a database.
+The opaque lease is bound to the exact database path and transferred once to the
+N-API connection. Close, failed open, or writer death releases it; never unlink
+the lock file. Killing a separate credential broker does not release an orphaned
+writer's lock. The descriptor uses `CLOEXEC`, so a spawned executable cannot
+retain it. A replaced lock inode fences later operations; the old connection
+can still close. This does not change the existing marker-based research lease.
+
+The host can supply a synchronous `checkOwner()` that throws when its native
+account/session binding retires. It runs before admission, after key resolution
+and native open, and around connection operations. Close remains available
+after retirement. Refusal after a write does not imply rollback. The caller must
+resolve uncertain outcomes from durable state. The host still owns the native
+custody adapter: it must refuse a missing key for any existing DB or sidecar,
+including zero-length files, and only create a key for an explicitly new DB.
+
+Run `lease.integration.mjs` with the same explicit build manifest under Node and
+Bun to test competing opens, real process death, orphaned writers, exec inheritance,
+lock replacement, invalid lock links, and failure cleanup. These are host proofs;
+Android musl/SELinux qualification and product adoption remain separate.

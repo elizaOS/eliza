@@ -1,5 +1,6 @@
 /* MIT. N-API bridge; SQLCipher and crypto symbols remain local to this addon.
  */
+#include "writer-lease.h"
 #include <limits.h>
 #include <math.h>
 #include <node_api.h>
@@ -10,6 +11,7 @@
 
 typedef struct {
   sqlite3 *db;
+  task_writer_lease *lease;
 } connection;
 static const napi_type_tag tag = {0xc62b7af032cb4897ULL, 0xa741a56d56d14282ULL};
 static napi_value fail(napi_env e) {
@@ -33,9 +35,10 @@ static void dispose(napi_env e, void *p, void *hint) {
   connection *c = p;
   if (c->db)
     sqlite3_close_v2(c->db);
+  task_writer_release(c->lease);
   free(c);
 }
-static connection *unwrap(napi_env e, napi_value v) {
+static connection *unwrap_connection(napi_env e, napi_value v) {
   bool matches = false;
   void *p = NULL;
   if (napi_check_object_type_tag(e, v, &tag, &matches) != napi_ok || !matches)
@@ -43,6 +46,10 @@ static connection *unwrap(napi_env e, napi_value v) {
   if (napi_unwrap(e, v, &p) != napi_ok || !p || !((connection *)p)->db)
     return NULL;
   return p;
+}
+static connection *unwrap(napi_env e, napi_value v) {
+  connection *c = unwrap_connection(e, v);
+  return c && task_writer_current(c->lease) ? c : NULL;
 }
 static char *string(napi_env e, napi_value v) {
   napi_valuetype t;
@@ -60,6 +67,70 @@ static char *string(napi_env e, napi_value v) {
     return NULL;
   }
   return s;
+}
+typedef struct {
+  task_writer_lease *lease;
+} lease_handle;
+static const napi_type_tag lease_tag = {0xb51ee12032bb4881ULL,
+                                        0xb852b65e45b15231ULL};
+static void dispose_lease(napi_env e, void *p, void *hint) {
+  (void)e;
+  (void)hint;
+  lease_handle *h = p;
+  task_writer_release(h->lease);
+  free(h);
+}
+static lease_handle *unwrap_lease(napi_env e, napi_value value) {
+  bool matches = false;
+  void *p = NULL;
+  if (napi_check_object_type_tag(e, value, &lease_tag, &matches) != napi_ok ||
+      !matches || napi_unwrap(e, value, &p) != napi_ok)
+    return NULL;
+  return p;
+}
+static napi_value acquire_lease(napi_env e, napi_callback_info info) {
+  size_t n = 1;
+  napi_value a[1], out;
+  OK(napi_get_cb_info(e, info, &n, a, NULL, NULL));
+  if (n != 1)
+    return fail(e);
+  char *path = string(e, a[0]);
+  if (!path)
+    return fail(e);
+  task_writer_lease *lease = task_writer_acquire(path);
+  free(path);
+  if (!lease)
+    return fail(e);
+  lease_handle *h = calloc(1, sizeof(*h));
+  if (!h) {
+    task_writer_release(lease);
+    return fail(e);
+  }
+  h->lease = lease;
+  if (napi_create_object(e, &out) != napi_ok ||
+      napi_wrap(e, out, h, dispose_lease, NULL, NULL) != napi_ok) {
+    dispose_lease(e, h, NULL);
+    return fail(e);
+  }
+  if (napi_type_tag_object(e, out, &lease_tag) != napi_ok) {
+    void *removed = NULL;
+    if (napi_remove_wrap(e, out, &removed) == napi_ok)
+      dispose_lease(e, h, NULL);
+    return fail(e);
+  }
+  return out;
+}
+static napi_value release_lease(napi_env e, napi_callback_info info) {
+  size_t n = 1;
+  napi_value a[1], out;
+  OK(napi_get_cb_info(e, info, &n, a, NULL, NULL));
+  lease_handle *h = n == 1 ? unwrap_lease(e, a[0]) : NULL;
+  if (!h)
+    return fail(e);
+  task_writer_release(h->lease);
+  h->lease = NULL;
+  OK(napi_get_undefined(e, &out));
+  return out;
 }
 static int equal(const char *a, const char *b) {
   return a && sqlite3_stricmp(a, b) == 0;
@@ -113,13 +184,17 @@ static int integrity(sqlite3 *db) {
   return ok;
 }
 static napi_value open_db(napi_env e, napi_callback_info info) {
-  size_t n = 2;
-  napi_value a[2];
+  size_t n = 3;
+  napi_value a[3];
   OK(napi_get_cb_info(e, info, &n, a, NULL, NULL));
-  if (n != 2)
+  if (n != 3)
+    return fail(e);
+  lease_handle *lease = unwrap_lease(e, a[2]);
+  if (!lease || !task_writer_current(lease->lease))
     return fail(e);
   char *path = string(e, a[0]);
-  if (!path || path[0] != '/' || strchr(path, '?')) {
+  if (!path || path[0] != '/' || strchr(path, '?') ||
+      strcmp(path, lease->lease->database_path)) {
     free(path);
     return fail(e);
   }
@@ -147,6 +222,8 @@ static napi_value open_db(napi_env e, napi_callback_info info) {
     free(path);
     return fail(e);
   }
+  c->lease = lease->lease;
+  lease->lease = NULL;
   int rc = sqlite3_open_v2(path, &c->db,
                            SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE |
                                SQLITE_OPEN_FULLMUTEX | SQLITE_OPEN_NOFOLLOW,
@@ -197,12 +274,14 @@ static napi_value close_db(napi_env e, napi_callback_info info) {
   OK(napi_get_cb_info(e, info, &n, a, NULL, NULL));
   if (n != 1)
     return fail(e);
-  connection *c = unwrap(e, a[0]);
+  connection *c = unwrap_connection(e, a[0]);
   if (!c)
     return fail(e);
   if (sqlite3_close(c->db) != SQLITE_OK)
     return fail(e);
   c->db = NULL;
+  task_writer_release(c->lease);
+  c->lease = NULL;
   OK(napi_get_undefined(e, &v));
   return v;
 }
@@ -352,12 +431,14 @@ static napi_value verify(napi_env e, napi_callback_info info) {
 }
 static napi_value init(napi_env e, napi_value exports) {
   napi_property_descriptor props[] = {
+      {"acquireLease", 0, acquire_lease, 0, 0, 0, napi_default, 0},
+      {"releaseLease", 0, release_lease, 0, 0, 0, napi_default, 0},
       {"open", 0, open_db, 0, 0, 0, napi_default, 0},
       {"exec", 0, exec_db, 0, 0, 0, napi_default, 0},
       {"query", 0, query, 0, 0, 0, napi_default, 0},
       {"close", 0, close_db, 0, 0, 0, napi_default, 0},
       {"verify", 0, verify, 0, 0, 0, napi_default, 0}};
-  OK(napi_define_properties(e, exports, 5, props));
+  OK(napi_define_properties(e, exports, 7, props));
   return exports;
 }
 NAPI_MODULE(NODE_GYP_MODULE_NAME, init)
