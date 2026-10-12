@@ -3830,7 +3830,7 @@ async function runShare(
   const taskId =
     pickString(params, _content, "taskId") ??
     pickString(params, _content, "threadId");
-  // A task id selects that task's latest session. It never falls back to the
+  // A task id selects that task's running sessions. It never falls back to the
   // newest session, which can belong to a different task.
   let target: { session?: SessionInfo };
   if (taskId && !requestedSessionId) {
@@ -3838,7 +3838,8 @@ async function runShare(
     if ("error" in owned) {
       return { success: false, error: owned.error, text: owned.text };
     }
-    target = { session: newestSession(owned.sessions) };
+    const running = owned.sessions.filter(isLiveSession);
+    target = { session: newestSession(running) };
   } else {
     target = await resolveSession(service, requestedSessionId, state);
   }
