@@ -507,8 +507,8 @@ export class KaminoLiquidityService extends Service {
             apy: apy,
             tokenA: trade.inMint,
             tokenB: trade.outMint,
-            feeTier: this.calculateLimoFeeTier(trade),
-            rebalancing: this.determineRebalancingStrategy(trade),
+            feeTier: await this.calculateLimoFeeTier(trade),
+            rebalancing: await this.determineRebalancingStrategy(trade),
             lastRebalance: trade.updatedOn,
             positions: [
               {
@@ -591,8 +591,8 @@ export class KaminoLiquidityService extends Service {
           apy: apy,
           tokenA: limoTrade.inMint,
           tokenB: limoTrade.outMint,
-          feeTier: this.calculateLimoFeeTier(limoTrade),
-          rebalancing: this.determineRebalancingStrategy(limoTrade),
+          feeTier: await this.calculateLimoFeeTier(limoTrade),
+          rebalancing: await this.determineRebalancingStrategy(limoTrade),
           lastRebalance: limoTrade.updatedOn,
           positions: [
             {
@@ -756,8 +756,8 @@ export class KaminoLiquidityService extends Service {
               apy: apy,
               tokenA: trade.inMint,
               tokenB: trade.outMint,
-              feeTier: this.calculateLimoFeeTier(trade),
-              rebalancing: this.determineRebalancingStrategy(trade),
+              feeTier: await this.calculateLimoFeeTier(trade),
+              rebalancing: await this.determineRebalancingStrategy(trade),
               lastRebalance: trade.updatedOn,
               positions: [
                 {
@@ -856,38 +856,34 @@ export class KaminoLiquidityService extends Service {
     }
   }
 
-  private calculateLimoFeeTier(trade: LimoTrade): string {
+  private async calculateLimoFeeTier(trade: LimoTrade): Promise<string> {
     try {
       const sizeUsd = parseFloat(trade.sizeUsd) || 0;
       const tipAmount = parseFloat(trade.tipAmountUsd) || 0;
 
-      // Higher-APY markets typically support higher fees; this fetch is
-      // currently unawaited so its result never affects the return below.
-      const medianYields = this.getMedianStakingYields();
+      // Higher-APY markets typically support higher fees.
+      const yields = await this.getMedianStakingYields();
+      if (yields.length > 0) {
+        const avgMedianApy =
+          yields.reduce(
+            (sum, stakingYield) => sum + parseFloat(stakingYield.apy),
+            0,
+          ) / yields.length;
 
-      medianYields.then((yields) => {
-        if (yields.length > 0) {
-          const avgMedianApy =
-            yields.reduce(
-              (sum, stakingYield) => sum + parseFloat(stakingYield.apy),
-              0,
-            ) / yields.length;
-
-          if (avgMedianApy > 0.3) {
-            // High yield market
-            if (sizeUsd > 10000) return "0.08%";
-            if (sizeUsd > 1000) return "0.15%";
-            if (tipAmount > 0.1) return "0.25%";
-            return "0.3%";
-          } else if (avgMedianApy > 0.2) {
-            // Medium yield market
-            if (sizeUsd > 10000) return "0.06%";
-            if (sizeUsd > 1000) return "0.12%";
-            if (tipAmount > 0.1) return "0.2%";
-            return "0.25%";
-          }
+        if (avgMedianApy > 0.3) {
+          // High yield market
+          if (sizeUsd > 10000) return "0.08%";
+          if (sizeUsd > 1000) return "0.15%";
+          if (tipAmount > 0.1) return "0.25%";
+          return "0.3%";
+        } else if (avgMedianApy > 0.2) {
+          // Medium yield market
+          if (sizeUsd > 10000) return "0.06%";
+          if (sizeUsd > 1000) return "0.12%";
+          if (tipAmount > 0.1) return "0.2%";
+          return "0.25%";
         }
-      });
+      }
 
       if (sizeUsd > 10000) return "0.05%"; // Large trades get lower fees
       if (sizeUsd > 1000) return "0.1%"; // Medium trades
@@ -898,7 +894,9 @@ export class KaminoLiquidityService extends Service {
     }
   }
 
-  private determineRebalancingStrategy(trade: LimoTrade): string {
+  private async determineRebalancingStrategy(
+    trade: LimoTrade,
+  ): Promise<string> {
     try {
       const sizeUsd = parseFloat(trade.sizeUsd) || 0;
       const updatedOn = new Date(trade.updatedOn);
@@ -906,39 +904,35 @@ export class KaminoLiquidityService extends Service {
       const hoursSinceUpdate =
         (now.getTime() - updatedOn.getTime()) / (1000 * 60 * 60);
 
-      // Same unawaited-promise caveat as calculateLimoFeeTier: this recent-trade
-      // frequency analysis never actually influences the return value below.
-      const recentTrades = this.getLimoTrades();
+      // Recent-trade frequency analysis.
+      const trades = await this.getLimoTrades();
+      if (trades.length > 0) {
+        const recentTradeTimes = trades
+          .slice(0, 10) // Look at last 10 trades
+          .map((t) => (t.updatedOn ? new Date(t.updatedOn).getTime() : 0))
+          .filter((time) => Number.isFinite(time) && time > 0)
+          .sort((a, b) => b - a); // Sort descending
 
-      recentTrades.then((trades) => {
-        if (trades.length > 0) {
-          const recentTradeTimes = trades
-            .slice(0, 10) // Look at last 10 trades
-            .map((t) => (t.updatedOn ? new Date(t.updatedOn).getTime() : 0))
-            .filter((time) => Number.isFinite(time) && time > 0)
-            .sort((a, b) => b - a); // Sort descending
+        if (recentTradeTimes.length > 1) {
+          const avgTimeBetweenTrades =
+            recentTradeTimes
+              .slice(0, -1)
+              .reduce(
+                (sum, time, i) => sum + (time - recentTradeTimes[i + 1]),
+                0,
+              ) /
+            (recentTradeTimes.length - 1);
 
-          if (recentTradeTimes.length > 1) {
-            const avgTimeBetweenTrades =
-              recentTradeTimes
-                .slice(0, -1)
-                .reduce(
-                  (sum, time, i) => sum + (time - recentTradeTimes[i + 1]),
-                  0,
-                ) /
-              (recentTradeTimes.length - 1);
+          const avgHoursBetweenTrades =
+            avgTimeBetweenTrades / (1000 * 60 * 60);
 
-            const avgHoursBetweenTrades =
-              avgTimeBetweenTrades / (1000 * 60 * 60);
-
-            if (avgHoursBetweenTrades < 0.5) return "Ultra High Frequency";
-            if (avgHoursBetweenTrades < 2) return "High Frequency";
-            if (avgHoursBetweenTrades < 12) return "Dynamic";
-            if (avgHoursBetweenTrades < 48) return "Daily";
-            return "Weekly";
-          }
+          if (avgHoursBetweenTrades < 0.5) return "Ultra High Frequency";
+          if (avgHoursBetweenTrades < 2) return "High Frequency";
+          if (avgHoursBetweenTrades < 12) return "Dynamic";
+          if (avgHoursBetweenTrades < 48) return "Daily";
+          return "Weekly";
         }
-      });
+      }
 
       if (sizeUsd > 10000) return "Dynamic";
       if (sizeUsd > 5000) return "High Frequency";
