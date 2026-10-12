@@ -45,6 +45,53 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@aetherguard/eliza-plugin": {
+      "git": {
+        "repo": "Ranjeet2063/aetherguard",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@aetherguard/eliza-plugin",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Mathematical invariant firewall and liquidity safety plugin for ElizaOS agents on Stellar and Soroban. Enforces spend velocity, balance reserve floors, and prompt-injection defense with zero-leak Ed25519 isolated signing.",
+      "homepage": "https://github.com/Ranjeet2063/aetherguard/tree/main/packages/eliza-plugin",
+      "topics": [
+        "stellar",
+        "soroban",
+        "security",
+        "firewall",
+        "invariants",
+        "ai-safety",
+        "web3"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "packages/eliza-plugin"
+    },
     "@agentradar/eliza-plugin": {
       "git": {
         "repo": "Bichev/agentradar-integrations",
