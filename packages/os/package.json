@@ -37,6 +37,7 @@
     "test:browser:task-guidance": "node --conditions=eliza-source browser/scripts/test-task-guidance.mjs",
     "test:ota-trust": "node --test native/ota-trust/scripts/*.test.mjs && cd native/ota-trust && go test -race ./... && go vet ./...",
     "test:browser:protection": "node --test browser/protection/*.test.mjs",
+    "test:browser:protection:advisory": "node browser/protection/test-advisory.mjs",
     "test:browser:protection:network": "node browser/protection/test-network.mjs",
     "test:ota-publisher": "node --test native/ota-publisher/test/*.test.mjs",
     "lint:check": "bunx @biomejs/biome check trust contracts && bun run --cwd linux/installer lint:check && bun run --cwd setup lint:check && bun run --cwd usb-installer lint:check && bun run lint:browser",

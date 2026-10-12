@@ -367,3 +367,27 @@ as an automated helper effect. Requests that started before the handoff remain
 reportable when they finish afterward. Synthetic page events do not end the
 interval, and a new helper action starts a new interval. This observation rule
 does not grant permission to execute payment or sign-in controls.
+
+The protection builder accepts optional `advisory: {referenceDomains, copy}`.
+It renders a nonblocking yellow in-page bar for unavailable lists and local
+lookalike signals. The default is disabled. The engine exposes
+`advisory.setOwner(opaqueOwnerOrNull)` only to trusted worker composition. An
+owner is required before an acknowledgement can be saved. Hosts must set or
+retire that context on every account transition and transport loss. This is
+not yet connected to native host account transport. Do not enable it in a
+consumer before that integration is qualified.
+
+Acknowledgements stay in worker memory, scoped to exact origin and evidence;
+owner changes, worker restart and a later blacklist warning clear them.
+Undo is available. Messages bind the extension, main frame, document and display
+nonce, and only trusted clicks submit. No exception rule or task binding is
+changed. The closed shadow tree keeps warning text out of ordinary page reads;
+it is an in-page advisory, not tamper-proof browser chrome. The existing DNR
+rules remain the request-time blacklist enforcement. Generated resources include
+licenses for the bundled domain parser and Unicode decoder.
+
+Run `test:browser:protection:advisory` for the real Chromium extension flow,
+keyboard-accessible controls, account reset, offline visits and narrow layout.
+`node browser/protection/test-advisory.mjs --baseline` captures the disabled
+baseline. These controlled pages do not establish installed native messaging,
+Android, TalkBack, or a full owned Chromium build.

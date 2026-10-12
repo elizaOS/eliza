@@ -1,5 +1,8 @@
 /** Build the product's unpacked MV3 protection module; no installation or signing. */
+
+import { spawnSync } from "node:child_process";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -7,12 +10,13 @@ import { REPUTATION_FEEDS } from "./policy.mjs";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 /** @param {string} output
- * @param {{warningDirectory?: string, feeds?: typeof REPUTATION_FEEDS, refreshAlarm?: string, exceptionAlarm?: string}} options
+ * @param {{warningDirectory?: string, feeds?: typeof REPUTATION_FEEDS, refreshAlarm?: string, exceptionAlarm?: string, advisory?: {referenceDomains?: string[], copy?: Record<string,string>}}} options
  */
 export async function buildBrowserProtection(
   output,
   {
     warningDirectory,
+    advisory,
     feeds = REPUTATION_FEEDS,
     refreshAlarm = "eliza-protection-refresh",
     exceptionAlarm = "eliza-protection-exception",
@@ -34,21 +38,34 @@ export async function buildBrowserProtection(
       ),
       join(output, file),
     );
+  const bundled = spawnSync(
+    "bun",
+    [
+      "build",
+      join(root, "advisory.mjs"),
+      "--target=browser",
+      `--outfile=${join(output, "advisory.mjs")}`,
+    ],
+    { encoding: "utf8" },
+  );
+  if (bundled.status !== 0)
+    throw Error(`Advisory build failed: ${bundled.stderr}`);
   const engine = await readFile(join(root, "extension.mjs"), "utf8");
   await writeFile(
     join(output, "background.mjs"),
     engine +
-      "\ninstallBrowserProtection({chrome:globalThis.chrome,..." +
-      JSON.stringify({ feeds, refreshAlarm, exceptionAlarm }) +
+      "\nexport const protection = installBrowserProtection({chrome:globalThis.chrome,..." +
+      JSON.stringify({ feeds, refreshAlarm, exceptionAlarm, advisory }) +
       "});\n",
   );
   const manifest = {
     manifest_version: 3,
     name: "Eliza website protection",
-    version: "1.0.0",
+    version: "1.0.1",
     description: "Local threat-domain blocking for Chromium.",
     permissions: [
       "declarativeNetRequest",
+      ...(advisory ? ["scripting"] : []),
       "storage",
       "alarms",
       "tabs",
@@ -71,6 +88,21 @@ export async function buildBrowserProtection(
       readFile(join(root, "licenses", f), "utf8"),
     ),
   );
+  for (const [name, file] of [
+    ["punycode", "LICENSE-MIT.txt"],
+    ["tldts", "LICENSE"],
+    ["tldts-core", "LICENSE"],
+  ]) {
+    const manifestPath =
+      name === "tldts-core"
+        ? createRequire(import.meta.resolve("tldts/package.json")).resolve(
+            "tldts-core/package.json",
+          )
+        : fileURLToPath(import.meta.resolve(`${name}/package.json`));
+    licenses.push(
+      `${name}\n${await readFile(join(manifestPath, "..", file), "utf8")}`,
+    );
+  }
   await writeFile(
     join(output, "licenses.html"),
     `<!doctype html><html lang="en"><meta charset="utf-8"><title>Protection sources and licenses</title><h1>Sources and licenses</h1><p><a href="https://github.com/Phishing-Database/Phishing.Database">Phishing.Database source</a> · <a href="https://github.com/hagezi/dns-blocklists">HaGeZi source</a></p>${licenses.map((s) => "<pre>" + escapeHtml(s) + "</pre>").join("")}</html>`,
@@ -109,6 +141,7 @@ export async function composeProtectionAssets(assets, options = {}) {
     const result = { ...assets };
     for (const file of [
       "policy.mjs",
+      "advisory.mjs",
       "warning.html",
       "warning.mjs",
       "warning.css",

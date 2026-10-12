@@ -41,6 +41,7 @@ export const assetNames = [
 ];
 export const protectionAssetNames = [
   "protection.mjs",
+  "advisory.mjs",
   "policy.mjs",
   "warning.html",
   "warning.mjs",
@@ -54,6 +55,7 @@ export function componentAssetNames(assets) {
 }
 const resourceIds = {
   "protection.mjs": "IDR_ELIZA_BROWSER_PROTECTION",
+  "advisory.mjs": "IDR_ELIZA_BROWSER_PROTECTION_ADVISORY",
   "policy.mjs": "IDR_ELIZA_BROWSER_PROTECTION_POLICY",
   "warning.html": "IDR_ELIZA_BROWSER_PROTECTION_WARNING",
   "warning.mjs": "IDR_ELIZA_BROWSER_PROTECTION_WARNING_SCRIPT",

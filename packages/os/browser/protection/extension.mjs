@@ -1,3 +1,4 @@
+import { createProtectionAdvisory } from "./advisory.mjs";
 import {
   downloadThreatFeed,
   exceptionRule,
@@ -9,6 +10,7 @@ import {
 export function installBrowserProtection({
   chrome: chromeApi,
   fetchImpl = globalThis.fetch,
+  advisory,
   feeds,
   warningPage = "warning.html",
   refreshAlarm = "eliza-protection-refresh",
@@ -21,6 +23,9 @@ export function installBrowserProtection({
   const chrome = chromeApi,
     fetch = fetchImpl,
     SOURCES = feeds;
+  const advice = advisory
+    ? createProtectionAdvisory(chrome, { ...advisory, warningPage })
+    : null;
   const HOUR = 3600000;
   const validTime = (time) => validFeedTime(time);
   async function source(feed) {
@@ -69,6 +74,9 @@ export function installBrowserProtection({
           .catch(() => {});
       }
     })().finally(() => {
+      void advice
+        ?.refreshAll()
+        .catch(() => console.warn("Protection advice refresh unavailable"));
       refreshing = null;
     });
     return refreshing;
@@ -140,5 +148,5 @@ export function installBrowserProtection({
   );
   void refresh();
 
-  return { refresh };
+  return { refresh, advisory: advice };
 }

@@ -470,6 +470,7 @@ test("optional protection embeds a complete reviewed inventory without broadenin
   const input = request();
   for (const name of [
     "protection.mjs",
+    "advisory.mjs",
     "policy.mjs",
     "warning.html",
     "warning.mjs",
@@ -486,7 +487,7 @@ test("optional protection embeds a complete reviewed inventory without broadenin
   const overlay = await generateComponentOverlay(input);
   assert.equal(
     Object.keys(overlay.report.resources).length,
-    assetNames.length + 6,
+    assetNames.length + protectionAssetNames.length,
   );
   assert.match(
     overlay.files[
