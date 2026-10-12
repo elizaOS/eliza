@@ -34,20 +34,77 @@ public final class SystemLauncherAppsInstrumentedTest {
             Arrays.asList(null, new ResolveInfo(), self, hidden, disabled, disabledApp, valid), "host"));
     }
 
-    @Test public void sortsLabelsAndDeduplicatesPackagesWithoutMutatingCandidates() {
-        ResolveInfo first = entry("one"), duplicate = entry("one"), second = entry("two");
+    @Test public void sortsLabelsAndKeepsOneEntryPerComponentWithoutMutatingCandidates() {
+        ResolveInfo first = entry("one"), duplicate = entry("one"), second = entry("two"), sibling = entry("two");
         first.nonLocalizedLabel = "Zulu";
         duplicate.nonLocalizedLabel = "Alpha";
         second.nonLocalizedLabel = "Beta";
-        java.util.List<ResolveInfo> candidates = Arrays.asList(first, second, duplicate);
+        sibling.activityInfo.name = "two.Second";
+        sibling.nonLocalizedLabel = "Gamma";
+        java.util.List<ResolveInfo> candidates = Arrays.asList(first, second, duplicate, sibling);
         java.util.List<SystemLauncherApps.App> apps = SystemLauncherApps.describe(
             InstrumentationRegistry.getInstrumentation().getTargetContext().getPackageManager(),
             candidates, "host");
-        assertEquals(2, apps.size());
+        assertEquals(3, apps.size());
         assertEquals("one", apps.get(0).packageName);
         assertEquals("Alpha", apps.get(0).label);
         assertEquals("two", apps.get(1).packageName);
+        assertEquals("two.MainActivity", apps.get(1).activityName);
+        assertEquals("two.Second", apps.get(2).activityName);
+        for (SystemLauncherApps.App app : apps) {
+            assertNull(app.user);
+            assertNull(app.profile);
+            assertFalse(app.locked);
+        }
+        assertNotNull(SystemLauncherApps.find(apps, "two", "two.Second", null));
+        assertNull("Another profile's entry is a different identity", SystemLauncherApps.find(apps, "two", "two.Second", "10"));
+        assertNull(SystemLauncherApps.find(apps, "two", "two.Missing", null));
         assertSame(first, candidates.get(0));
+    }
+
+    @Test public void exactResolutionRefusesStaleEntriesWithStableCodes() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        SystemLauncherApps.App own = null;
+        for (SystemLauncherApps.App app : SystemLauncherApps.list(context)) if (app.user == null) { own = app; break; }
+        assertNotNull("The consumer manifest must expose installed launcher apps", own);
+        SystemLauncherApps.Target target = SystemLauncherApps.resolve(context, own.packageName, own.activityName, null);
+        assertNull(target.user);
+        Intent intent = SystemLauncherApps.launchIntent(target.component);
+        assertEquals(own.packageName, intent.getComponent().getPackageName());
+        assertEquals(own.activityName, intent.getComponent().getClassName());
+        assertTrue((intent.getFlags() & Intent.FLAG_ACTIVITY_NEW_TASK) != 0);
+        String[][] refused = {
+            {"invalid.missing.launcher.fixture", "invalid.missing.launcher.fixture.Main", null, SystemLauncherApps.NOT_INSTALLED},
+            {own.packageName, own.activityName + "Gone", null, SystemLauncherApps.NO_LAUNCHER},
+            {own.packageName, SystemLauncherApps.APP_DETAILS_ACTIVITY, null, SystemLauncherApps.NO_LAUNCHER},
+            {own.packageName, own.activityName, "999999999", SystemLauncherApps.PROFILE_UNAVAILABLE},
+        };
+        for (String[] item : refused) {
+            try { SystemLauncherApps.resolve(context, item[0], item[1], item[2]); fail("A stale entry resolved"); }
+            catch (SystemLauncherApps.Refusal refusal) { assertEquals(item[3], refusal.code); assertFalse(refusal.getMessage().isEmpty()); }
+        }
+        for (String[] bad : new String[][]{{null, "a.B"}, {"", "a.B"}, {own.packageName, null}, {own.packageName, ""},
+            {context.getPackageName(), context.getPackageName() + ".Main"}, {own.packageName, own.activityName, "not-a-serial"}}) {
+            try { SystemLauncherApps.resolve(context, bad[0], bad[1], bad.length > 2 ? bad[2] : null); fail("Malformed request admitted"); }
+            catch (IllegalArgumentException expected) { /* Explicit refusal. */ }
+        }
+        assertFalse("The host's own copy in another profile is never listed",
+            SystemLauncherApps.listable(new android.content.ComponentName(context.getPackageName(), "x.Main"), context.getPackageName()));
+        assertFalse(SystemLauncherApps.listable(new android.content.ComponentName("a", SystemLauncherApps.APP_DETAILS_ACTIVITY), "host"));
+        assertFalse(SystemLauncherApps.listable(null, "host"));
+        assertEquals("work", SystemLauncherApps.profileKind("android.os.usertype.profile.MANAGED"));
+        assertEquals("private", SystemLauncherApps.profileKind("android.os.usertype.profile.PRIVATE"));
+        assertEquals("clone", SystemLauncherApps.profileKind("android.os.usertype.profile.CLONE"));
+        assertEquals("other", SystemLauncherApps.profileKind("android.os.usertype.full.SECONDARY"));
+    }
+
+    @Test public void watchingRegistersAndClosesWithoutReportingTheHost() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        java.util.List<String> reports = new java.util.ArrayList<>();
+        AutoCloseable watch = SystemLauncherApps.watch(context, (name, reason) -> reports.add(name + ":" + reason));
+        watch.close();
+        watch.close();
+        assertTrue(reports.isEmpty());
     }
 
     @Test public void realDiscoveryAndResolutionNeverLaunchAnActivity() {
@@ -56,7 +113,8 @@ public final class SystemLauncherAppsInstrumentedTest {
         java.util.List<SystemLauncherApps.App> installed = SystemLauncherApps.list(context);
         assertFalse("The consumer manifest must expose installed launcher apps", installed.isEmpty());
         for (SystemLauncherApps.App app : installed) {
-            assertTrue(names.add(app.packageName));
+            assertTrue(names.add(app.key()));
+            assertFalse(app.activityName.isEmpty());
             assertNotEquals(context.getPackageName(), app.packageName);
             assertNotNull(app.label);
             Intent intent = SystemLauncherApps.launchIntent(context, app.packageName);

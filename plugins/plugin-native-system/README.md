@@ -44,12 +44,19 @@ checks independent host policy against Android observations while capturing
 navigation instead of launching screens or changing roles. Real settings/provider
 journeys and physical-device behavior require separate acceptance.
 
-Android hosts can use `SystemLauncherApps.list(context)` and
-`SystemLauncherApps.launchIntent(context, packageName)` for launcher discovery
-and intent resolution. Declare an `ACTION_MAIN`/`CATEGORY_LAUNCHER` package
-visibility query in the host manifest. Discovery excludes the host, disabled
-apps and unexported activities, and deduplicates packages. Intent resolution does
-not launch an activity; the host retains its user-intent and foreground policy.
+Android hosts can use `SystemLauncherApps.list(context)` for launcher discovery.
+Declare an `ACTION_MAIN`/`CATEGORY_LAUNCHER` package visibility query in the host
+manifest. Each entry is one launcher activity, identified by package, activity
+and Android user. Work, private and clone profile entries come from
+`LauncherApps` and carry `user`, `profile` and `locked`. Discovery excludes the
+host, disabled apps, unexported activities and Android's app-details stand-in.
+`SystemLauncherApps.resolve(context, packageName, activityName, user)` checks
+the exact entry again before a launch. It refuses a removed, disabled or locked
+entry with a stable code instead of opening another activity.
+`SystemLauncherApps.watch(context, listener)` reports package and profile
+changes, and the host reads the list again. `launchIntent(context, packageName)`
+remains for package-only callers. Resolution does not launch an activity; the
+host retains its user-intent and foreground policy.
 
 `SystemAppIntents` resolves the dialer and default messaging destinations and
 opens a gallery through a host-supplied launch callback. Only a missing gallery
@@ -59,7 +66,9 @@ Hosts retain foreground/user-intent policy and presentation. Instrumentation tes
 capture dispatch without opening apps, placing calls or sending messages.
 
 The `ElizaSystem` bridge also exposes `listLauncherApps`, `launchApp`,
-`resolveDefaultApp` and `openDefaultApp`. Icons are optional PNG data URLs.
+`resolveDefaultApp` and `openDefaultApp`, and emits `launcherAppsChanged`.
+`launchApp` with `activityName` (and `user`) opens exactly the listed entry.
+Icons are optional PNG data URLs, badged for another profile.
 The default-app role is currently `dial`, with an empty dial pad. Hosts must
 also declare an `ACTION_DIAL` query with the `tel` scheme. Default handoffs use
 an explicit eligible activity or a chooser of eligible activities. The host,

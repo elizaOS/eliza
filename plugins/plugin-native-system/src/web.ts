@@ -60,7 +60,11 @@ export class SystemWeb extends WebPlugin implements SystemPlugin {
     return { apps: [] };
   }
 
-  async launchApp(options: { packageName: string }): Promise<void> {
+  async launchApp(options: {
+    packageName: string;
+    activityName?: string;
+    user?: string;
+  }): Promise<void> {
     if (typeof options?.packageName !== "string" || !options.packageName) {
       throw new Error("Choose an installed app");
     }

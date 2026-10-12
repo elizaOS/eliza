@@ -268,7 +268,28 @@ class SystemPlugin : Plugin() {
         }
     }
 
-    /** Launchable apps other than the host, sorted by label; icons are opt-in PNG data URLs. */
+    private var launcherWatch: AutoCloseable? = null
+
+    /** Installs, removals, enable/disable and profile pause/unlock happen outside the host. The
+     * renderer is told that something changed and re-reads the list itself. */
+    override fun load() {
+        super.load()
+        launcherWatch = SystemLauncherApps.watch(context) { packageName, reason ->
+            val change = JSObject()
+            change.put("reason", reason)
+            packageName?.let { change.put("packageName", it) }
+            notifyListeners("launcherAppsChanged", change)
+        }
+    }
+
+    override fun handleOnDestroy() {
+        launcherWatch?.close()
+        launcherWatch = null
+        super.handleOnDestroy()
+    }
+
+    /** One entry per launcher activity and Android user, other than the host. The current
+     * user's entries come first, sorted by label; icons are opt-in PNG data URLs. */
     @PluginMethod
     fun listLauncherApps(call: PluginCall) {
         val icons = call.getBoolean("icons", false) == true
@@ -276,8 +297,12 @@ class SystemPlugin : Plugin() {
         for (app in SystemLauncherApps.list(context)) {
             val item = JSObject()
             item.put("packageName", app.packageName)
+            item.put("activityName", app.activityName)
             item.put("label", app.label)
-            if (icons) iconDataUrl(app.packageName)?.let { item.put("icon", it) }
+            app.user?.let { item.put("user", it) }
+            app.profile?.let { item.put("profile", it) }
+            if (app.user != null) item.put("locked", app.locked)
+            if (icons) iconDataUrl(SystemLauncherApps.iconPng(context.packageManager, app, LAUNCHER_ICON_PX))?.let { item.put("icon", it) }
             apps.put(item)
         }
         val result = JSObject()
@@ -285,20 +310,52 @@ class SystemPlugin : Plugin() {
         call.resolve(result)
     }
 
-    /** Launches one listed app from an explicit host call; the host owns the user-intent check. */
+    /** Launches one listed app from an explicit host call; the host owns the user-intent check.
+     * With `activityName` (and `user` for another profile) the exact listed entry is re-resolved
+     * now; a stale entry is refused with a stable code instead of opening something else. */
     @PluginMethod
     fun launchApp(call: PluginCall) {
-        val intent = try {
-            SystemLauncherApps.launchIntent(context, call.getString("packageName"))
+        val activityName = call.getString("activityName")
+        if (activityName == null) {
+            if (call.getString("user") != null) {
+                call.reject("Choose an installed app")
+                return
+            }
+            val intent = try {
+                SystemLauncherApps.launchIntent(context, call.getString("packageName"))
+            } catch (error: IllegalArgumentException) {
+                call.reject("Choose an installed app")
+                return
+            }
+            if (intent == null) {
+                call.reject("App is unavailable", SystemLauncherApps.NOT_INSTALLED)
+                return
+            }
+            startHandoff(call, intent)
+            return
+        }
+        val target = try {
+            SystemLauncherApps.resolve(context, call.getString("packageName"), activityName, call.getString("user"))
         } catch (error: IllegalArgumentException) {
             call.reject("Choose an installed app")
             return
-        }
-        if (intent == null) {
-            call.reject("App is unavailable")
+        } catch (refusal: SystemLauncherApps.Refusal) {
+            call.reject(refusal.message, refusal.code)
             return
         }
-        startHandoff(call, intent)
+        val user = target.user
+        if (user == null) {
+            startHandoff(call, SystemLauncherApps.launchIntent(target.component))
+            return
+        }
+        try {
+            context.getSystemService(android.content.pm.LauncherApps::class.java)
+                .startMainActivity(target.component, user, null, null)
+            call.resolve()
+        } catch (error: RuntimeException) {
+            // Removed between resolve and start, or refused by Android.
+            call.reject("App could not be opened", error)
+        }
     }
 
     /** Resolves, without launching, the handler for a default role (currently "dial"). */
@@ -351,8 +408,11 @@ class SystemPlugin : Plugin() {
         }
     }
 
-    private fun iconDataUrl(packageName: String): String? {
-        val png = SystemLauncherApps.iconPng(context.packageManager, packageName, LAUNCHER_ICON_PX) ?: return null
+    private fun iconDataUrl(packageName: String): String? =
+        iconDataUrl(SystemLauncherApps.iconPng(context.packageManager, packageName, LAUNCHER_ICON_PX))
+
+    private fun iconDataUrl(png: ByteArray?): String? {
+        if (png == null) return null
         return "data:image/png;base64," + android.util.Base64.encodeToString(png, android.util.Base64.NO_WRAP)
     }
 
