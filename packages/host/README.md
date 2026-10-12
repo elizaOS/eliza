@@ -113,3 +113,9 @@ and recovery records, then durably switch an explicit manifest. Never automatica
 delete the source or overwrite a recovery copy. Test interruption at every phase,
 wrong/lost key, new-account admission and revocation before enabling that profile.
 This API does not perform migration, deletion, key export or renderer admission.
+
+The opt-in `createSqlCipherTaskProvider` candidate implements that provider using
+an explicitly admitted N-API SQLCipher artifact and host-owned key callback.
+See [its build and qualification contract](native-host/task-sqlcipher/README.md).
+It has no automatic APK staging, account authorization, migration or fallback;
+source availability alone does not qualify encrypted storage on a consumer device.
