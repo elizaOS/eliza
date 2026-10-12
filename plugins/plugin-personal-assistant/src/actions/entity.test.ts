@@ -181,4 +181,35 @@ describe("ENTITY log_interaction resolves the named contact only", () => {
 
     expect(interactionRelationshipId).toBe("rel-tanaka");
   });
+
+  it("does not pick one contact when the text names each separately", async () => {
+    listSpy.mockResolvedValue([
+      relationship("rel-bob", "Bob", "bob@example.com"),
+      relationship("rel-bob-jones", "Bob Jones", "bob.jones@example.com"),
+    ] as never);
+    const runtime = makeRuntime();
+    const { result } = await logInteractionFor(
+      runtime,
+      "Bob and Bob Jones reviewed the documents together",
+    );
+
+    expect((result as { data?: { error?: string } }).data?.error).toBe(
+      "MISSING_EDGE_ID",
+    );
+  });
+
+  it("does not resolve an unspaced-script name inside another name", async () => {
+    listSpy.mockResolvedValue([
+      relationship("rel-tanaka", "田中", "+819012345678"),
+    ] as never);
+    const runtime = makeRuntime();
+    const { result } = await logInteractionFor(
+      runtime,
+      "山田中村さんとの打ち合わせをログに残して",
+    );
+
+    expect((result as { data?: { error?: string } }).data?.error).toBe(
+      "MISSING_EDGE_ID",
+    );
+  });
 });

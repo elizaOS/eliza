@@ -124,14 +124,52 @@ type NamedContactResolution =
 const NAME_BOUNDARY_SOURCE =
   "(?:(?![\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}])[\\p{L}\\p{M}\\p{N}])";
 
-function nameAppearsAsNamedPhrase(haystack: string, name: string): boolean {
+// Scripts written without spaces have no word boundaries, so a boundary pass
+// can still land inside a longer name ("田中" inside "山田中村"). An occurrence
+// counts only when neither side continues with a character of the same script
+// class: kana particles abutting a kanji name stay valid ("田中さんに"), while
+// a same-script neighbor means the text holds a longer name and the contact
+// is not named at all. Fail closed: such a match never authorizes a write.
+function unspacedScriptClass(value: string): string | null {
+  if (!value) return null;
+  if (/\p{Script=Han}/u.test(value)) return "han";
+  if (/\p{Script=Hiragana}/u.test(value)) return "hiragana";
+  if (/\p{Script=Katakana}/u.test(value)) return "katakana";
+  if (/\p{Script=Hangul}/u.test(value)) return "hangul";
+  return null;
+}
+
+type NameOccurrence = { start: number; end: number };
+
+function namedPhraseOccurrences(
+  haystack: string,
+  name: string,
+): NameOccurrence[] {
   const words = name.split(" ").filter(Boolean);
-  if (words.length === 0) return false;
+  if (words.length === 0) return [];
   const body = words.map((word) => escapeRegExp(word)).join("\\s+");
-  return new RegExp(
+  const pattern = new RegExp(
     `(?<!${NAME_BOUNDARY_SOURCE})${body}(?!${NAME_BOUNDARY_SOURCE})`,
-    "iu",
-  ).test(haystack);
+    "giu",
+  );
+  const occurrences: NameOccurrence[] = [];
+  for (const match of haystack.matchAll(pattern)) {
+    const start = match.index;
+    if (start === undefined) continue;
+    const end = start + match[0].length;
+    const leadScript = unspacedScriptClass(haystack[start - 1] ?? "");
+    const tailScript = unspacedScriptClass(haystack[end] ?? "");
+    const firstChar = match[0][0] ?? "";
+    const lastChar = match[0].at(-1) ?? "";
+    if (
+      (leadScript && leadScript === unspacedScriptClass(firstChar)) ||
+      (tailScript && tailScript === unspacedScriptClass(lastChar))
+    ) {
+      continue;
+    }
+    occurrences.push({ start, end });
+  }
+  return occurrences;
 }
 
 async function resolveNamedContact(
@@ -208,27 +246,45 @@ async function resolveRelationshipIdFromText(
   }
 
   const relationships = await service.listRelationships();
-  // The text must name the contact in whole words: "anna lee can't make it"
-  // names "Anna Lee", not "Ann", and "annual planning" names nobody. A fully
-  // named nested name ("Bob Jones") outranks a name it contains ("Bob");
-  // equal-length different names leave the text ambiguous, like the token
-  // stage below.
-  let namedId: string | null = null;
-  let namedLength = -1;
-  let namedAmbiguous = false;
+  const namedCandidates: Array<{
+    id: string;
+    name: string;
+    occurrences: NameOccurrence[];
+  }> = [];
   for (const relationship of relationships) {
     const name = normalizeLookup(relationship.name);
-    if (!name || !nameAppearsAsNamedPhrase(haystack, name)) continue;
-    if (name.length > namedLength) {
-      namedId = relationship.id;
-      namedLength = name.length;
-      namedAmbiguous = false;
-    } else if (name.length === namedLength) {
-      namedAmbiguous = true;
+    if (!name) continue;
+    const occurrences = namedPhraseOccurrences(haystack, name);
+    if (occurrences.length > 0) {
+      namedCandidates.push({ id: relationship.id, name, occurrences });
     }
   }
-  if (namedId !== null) {
-    return namedAmbiguous ? null : namedId;
+  // A contact loses to a longer fully named contact only when every one of
+  // its occurrences sits inside that longer phrase ("Bob Jones" beats the
+  // "Bob" inside it). A separate mention ("Bob and Bob Jones") keeps both
+  // contacts named, so the text is ambiguous and nothing is written, like
+  // the token stage below.
+  const supersededBy = (
+    candidate: (typeof namedCandidates)[number],
+    other: (typeof namedCandidates)[number],
+  ): boolean =>
+    other.name.length > candidate.name.length &&
+    candidate.occurrences.every((occurrence) =>
+      other.occurrences.some(
+        (longer) =>
+          longer.start <= occurrence.start && occurrence.end <= longer.end,
+      ),
+    );
+  const survivors = namedCandidates.filter(
+    (candidate) =>
+      !namedCandidates.some((other) => supersededBy(candidate, other)),
+  );
+  const [soleSurvivor] = survivors;
+  if (survivors.length > 1) {
+    return null;
+  }
+  if (survivors.length === 1 && soleSurvivor) {
+    return soleSurvivor.id;
   }
 
   const candidateMatches = new Map<string, string>();
