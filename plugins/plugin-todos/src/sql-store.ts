@@ -1629,6 +1629,49 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
   }
 
   /**
+   * Latest open duplicate-confirmation question for the same content.
+   * Unlike openConfirmationRecord (latest-only), this scans recent open
+   * create records so an intervening unrelated create cannot wedge the
+   * confirmation gate into an infinite re-prompt loop.
+   */
+  private async openDuplicateConfirmationRecord(
+    tx: TodoTransaction<TSchema>,
+    scope: TodoScope,
+    content: string,
+  ): Promise<TodoMutationRecord | null> {
+    const rows = await tx
+      .select({
+        mutation: todoMutationsTable,
+        open: sql<boolean>`${todoMutationsTable.committedAt} > now() - make_interval(secs => ${TODO_CONFIRMATION_TTL_MS / 1000})`,
+      })
+      .from(todoMutationsTable)
+      .where(
+        and(
+          eq(todoMutationsTable.agentId, scope.agentId as UUID),
+          eq(todoMutationsTable.entityId, scope.entityId as UUID),
+          eq(todoMutationsTable.operation, "create"),
+        ),
+      )
+      .orderBy(
+        desc(todoMutationsTable.committedAt),
+        desc(todoMutationsTable.mutationId),
+      )
+      .limit(25);
+    for (const row of rows) {
+      if (!row.open) continue;
+      const record = rowToMutationRecord(row.mutation);
+      if (
+        record.result.action === "create" &&
+        record.result.duplicate === true &&
+        sameTodoContent(record.result.todo.content, content)
+      ) {
+        return record;
+      }
+    }
+    return null;
+  }
+
+  /**
    * Create with store-owned deduplication: under the scope lock an open todo
    * with the same content (and parent) blocks the insert, so concurrent
    * creates cannot both land. Only an affirmative user reply to the durable
@@ -1647,12 +1690,12 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
         sameTodoContent(todo.content, mutation.input.content),
     );
     if (existing && mutation.reply === "affirmative") {
-      const question = await this.openConfirmationRecord(tx, scope, "create");
-      if (
-        question?.result.action === "create" &&
-        question.result.duplicate === true &&
-        sameTodoContent(question.result.todo.content, mutation.input.content)
-      ) {
+      const question = await this.openDuplicateConfirmationRecord(
+        tx,
+        scope,
+        mutation.input.content,
+      );
+      if (question) {
         return {
           action: "create",
           todo: await this.createInTransaction(tx, {
