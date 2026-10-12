@@ -290,5 +290,6 @@ test("task key client preserves native-selected identity and rejects malformed m
   }
   const before = requests.length;
   await assert.rejects(client.remove("invalid"), TypeError);
+  await assert.rejects(client.remove({ toString: () => id }), TypeError);
   assert.equal(requests.length, before);
 });

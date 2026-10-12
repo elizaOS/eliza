@@ -38,9 +38,10 @@ function createCredentialStore(
     if (
       taskKeys &&
       operation === "remove" &&
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
-        value ?? "",
-      )
+      (typeof value !== "string" ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+          value,
+        ))
     )
       throw new TypeError("Invalid task key generation");
     try {
