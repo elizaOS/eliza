@@ -108,3 +108,15 @@ different policy. `saveEntry`/`entries` add named entries with up to 20 normaliz
 records read as one binding, and `list()` still reports the primary web origin. `entries()`
 never includes passwords. `PasswordVaultFrame` is the unchanged ciphertext frame, extracted so
 it can be tested on a JVM: `bun run --cwd plugins/plugin-native-secure-store test:native-passwords`.
+
+`VerifiedAccountCredentialStore` optionally stores a verified Cloud credential and
+owner in one versioned encrypted JSON slot. Supply a new no-backup directory and
+alias, plus the lock used for all native owner changes. `read(guard)` returns an
+opaque snapshot; `compareExchange(expected, next, guard)` replaces or clears the
+whole record only if that snapshot still matches. Both check ownership inside the
+lock before and after storage. A failed post-check can follow a committed write;
+reconcile using the durable enrollment/revocation receipt. This class validates
+shape, not server authenticity: only trusted host verification may supply a record.
+No legacy credential slot is read or migrated, no broker route is registered, and
+no product policy or encrypted task database is enabled. Java credential strings
+cannot be reliably erased from memory. Keep all writers in one Android process.

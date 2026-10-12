@@ -72,6 +72,7 @@ export function createNativeCloudAuth({
   messages = {},
   pendingStore,
   activate,
+  activateVerified,
   readActive = async () => null,
   clearActive = async () => {},
   beforeStart = async () => {},
@@ -91,6 +92,8 @@ export function createNativeCloudAuth({
     throw new TypeError(
       "Explicit native application configuration is required",
     );
+  if (activateVerified !== undefined && typeof activateVerified !== "function")
+    throw new TypeError("Verified activation callback must be a function");
   const redirect = new URL(binding.redirectUri);
   if (
     redirect.protocol !== "https:" ||
@@ -589,7 +592,47 @@ export function createNativeCloudAuth({
         502,
       );
     check(ticket);
-    await activate(pending.proof.secret, () => check(ticket));
+    if (activateVerified) {
+      // Resolve with the newly acknowledged credential itself, not the interactive
+      // Auth session, a decoded token subject, or any renderer-provided identity.
+      const verified = await account(pending.proof.secret, ticket);
+      check(ticket);
+      const owner = Object.freeze({
+        authority: new URL(api).origin,
+        userId: verified.id,
+        organizationId: verified.organizationId,
+      });
+      if (
+        pending.verifiedOwner !== undefined &&
+        (typeof pending.verifiedOwner !== "object" ||
+          pending.verifiedOwner === null ||
+          Object.keys(pending.verifiedOwner).length !== 3 ||
+          Object.entries(owner).some(
+            ([key, value]) => pending.verifiedOwner[key] !== value,
+          ))
+      )
+        throw fail("Saved sign-in owner changed", 409, "account_owner_changed");
+      if (pending.verifiedOwner === undefined) {
+        pending.verifiedOwner = owner;
+        const saved = JSON.stringify(pending);
+        await pendingStore.write(saved);
+        check(ticket);
+        if ((await pendingStore.read()) !== saved)
+          throw fail("Verified sign-in receipt was not stored", 503);
+        check(ticket);
+      }
+      await activateVerified(
+        Object.freeze({
+          version: 1,
+          credential: pending.proof.secret,
+          credentialId: pending.proof.credentialId,
+          owner,
+        }),
+        () => check(ticket),
+      );
+    } else {
+      await activate(pending.proof.secret, () => check(ticket));
+    }
     check(ticket);
     await pendingStore.clear();
     check(ticket);

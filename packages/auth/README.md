@@ -127,3 +127,17 @@ organization against the connected credential. Cloud billing accepts personal
 sessions too; no additional token store is introduced. Cloud-tenant authority
 cannot authorize account-method routes. JWT inspection is admission only;
 Auth and Cloud retain signature and ownership validation.
+
+Hosts may opt into `activateVerified(record, guard)` instead of legacy `activate`.
+After the exact mobile credential is acknowledged, enrollment reads `/api/v1/user`
+with that credential and binds the Cloud user ID and organization ID to the API
+origin. It saves this owner with the pending receipt before activation; retries
+re-verify the same credential and refuse a changed owner. The callback receives
+`{version:1, credential, credentialId, owner:{authority,userId,organizationId}}`.
+Keep the complete record native and commit it atomically under the host owner
+lock, with the guard checked at the commit boundary. No owner fields are returned
+to the renderer. Existing consumers keep their activation callback and receipt
+format. A renderer field, personal agent ID, decoded JWT subject or credential
+fingerprint is not a verified Cloud owner. The optional native
+`VerifiedAccountCredentialStore` provides encrypted whole-record compare-and-exchange;
+hosts still need to wire it to their private process protocol and lifecycle.
