@@ -55,11 +55,21 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+/**
+ * Strict plain-decimal numerals only. `Number()` also parses `"0x10"` (→ 16),
+ * `"1e3"` (→ 1000), and `"Infinity"`, which would silently reinterpret a
+ * model-supplied order size/price/leverage instead of rejecting it.
+ */
+const DECIMAL_NUMBER_PATTERN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/;
+
 function numberValue(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed && DECIMAL_NUMBER_PATTERN.test(trimmed)) {
+      const parsed = Number(trimmed);
+      if (Number.isFinite(parsed)) return parsed;
+    }
   }
   return undefined;
 }
