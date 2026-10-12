@@ -20,7 +20,12 @@ function coercePositiveNumber(value: unknown): number | null {
     return value;
   }
   if (typeof value === "string" && value.trim().length > 0) {
-    const parsed = Number(value);
+    const trimmed = value.trim();
+    // Canonical decimal digits only. Number("0x10") is 16 and Number("1e2")
+    // is 100, so a planner string in those forms must not become a follow-up
+    // threshold or a page limit.
+    if (!/^\d+(\.\d+)?$/.test(trimmed)) return null;
+    const parsed = Number(trimmed);
     if (Number.isFinite(parsed) && parsed > 0) return parsed;
   }
   return null;
