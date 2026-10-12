@@ -625,6 +625,16 @@ export function createMcpsTransportApp(provider: string): Hono<AppEnv> {
 
     if (!BUILTIN.has(provider)) {
       if (provider === "doordash") {
+        if (c.env.BROWSER === undefined) {
+          return c.json(
+            {
+              success: false,
+              error: "not_yet_migrated",
+              reason: `The doordash integration requires the BROWSER binding or ${envKey} to be configured.`,
+            },
+            501,
+          );
+        }
         return handleManagedDoorDashJsonRpc(c.req.raw);
       }
       return c.json(
