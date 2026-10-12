@@ -120,3 +120,23 @@ shape, not server authenticity: only trusted host verification may supply a reco
 No legacy credential slot is read or migrated, no broker route is registered, and
 no product policy or encrypted task database is enabled. Java credential strings
 cannot be reliably erased from memory. Keep all writers in one Android process.
+`TaskDataKeyStore` is a native-only building block for encrypted task storage. It
+stores random 256-bit data keys in dedicated `JsonCredentialSlots`, bound to an
+exact account ID and stable database ID with length-prefixed UTF-8 identities.
+Hosts supply a separate no-backup directory and Keystore alias. `read` returns
+null for a missing slot and never creates a data key. Use `createIfAbsent` only
+for a new database or migration destination under the database writer lease;
+never use it to recover missing custody for an existing database. Corrupt or
+unreadable custody fails without replacement. Removal compares a key-generation
+ID. Close returned keys and erase caller-owned byte copies after use. Java JSON
+and Base64 strings cannot be reliably erased from memory.
+
+This helper has no renderer bridge and is not enabled by default. It does not
+provide a database driver, active-key verification, migration, or complete account
+revocation. The host must fence owner changes, close database handles before
+removal, and coordinate all writers in one Android process. The wrapping-key
+policy is the existing `JsonCredentialSlots` policy, with no fresh-authentication
+or device-unlocked claim. A wrapped key does not prove that database files, WAL,
+backups, logs, outcomes, or evidence are encrypted. Device instrumentation covers
+real Keystore persistence, owner isolation, concurrent creation, stale deletion,
+and corruption; compile-only results are not device proof.
