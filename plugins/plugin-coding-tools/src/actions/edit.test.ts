@@ -294,13 +294,18 @@ describe("EDIT", () => {
     process.env.ELIZA_ENABLE_SELF_EDIT = "1";
     process.env.ELIZA_SELF_EDIT_ROOT = path.join(env.tmpDir, "checkout");
     try {
-      const result = await editFileHandler(env.runtime, env.message, undefined, {
-        parameters: {
-          file_path: rail,
-          old_string: "original",
-          new_string: "tampered",
+      const result = await editFileHandler(
+        env.runtime,
+        env.message,
+        undefined,
+        {
+          parameters: {
+            file_path: rail,
+            old_string: "original",
+            new_string: "tampered",
+          },
         },
-      });
+      );
       expect(result.success).toBe(false);
       expect(result.text).toContain("path_blocked");
       expect(result.text).toContain("self-edit protected safety rail");

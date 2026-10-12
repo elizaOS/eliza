@@ -454,7 +454,9 @@ describeIfPosix("shellAction", () => {
       );
       expect(result.success).toBe(false);
       expect(result.text).toContain("path_blocked");
-      expect(result.text).toContain("SHELL is disabled while self-edit is enabled");
+      expect(result.text).toContain(
+        "SHELL is disabled while self-edit is enabled",
+      );
     } finally {
       if (prevEnable === undefined) delete process.env.ELIZA_ENABLE_SELF_EDIT;
       else process.env.ELIZA_ENABLE_SELF_EDIT = prevEnable;

@@ -72,12 +72,7 @@ describe("isSelfEditPathDenied", () => {
   it("denies protected suffixes when the root is derived, not overridden", () => {
     // No ELIZA_SELF_EDIT_ROOT: the root derives from this module's own
     // location (packages/host/src → checkout root), independent of cwd.
-    const checkoutRoot = path.resolve(
-      import.meta.dirname,
-      "..",
-      "..",
-      "..",
-    );
+    const checkoutRoot = path.resolve(import.meta.dirname, "..", "..", "..");
     expect(
       isSelfEditPathDenied(
         path.join(checkoutRoot, "packages/host/src/self-edit.ts"),
@@ -89,10 +84,7 @@ describe("isSelfEditPathDenied", () => {
   it("allows the same suffix in an unrelated workspace (collision case)", () => {
     const env = boundEnv("/repo");
     expect(
-      isSelfEditPathDenied(
-        "/other-project/packages/host/src/restart.ts",
-        env,
-      ),
+      isSelfEditPathDenied("/other-project/packages/host/src/restart.ts", env),
     ).toBe(false);
     expect(
       isSelfEditPathDenied(

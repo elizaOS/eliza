@@ -286,9 +286,14 @@ describe("WRITE", () => {
     process.env.ELIZA_ENABLE_SELF_EDIT = "1";
     process.env.ELIZA_SELF_EDIT_ROOT = path.join(env.tmpDir, "checkout");
     try {
-      const result = await writeFileHandler(env.runtime, env.message, undefined, {
-        parameters: { file_path: rail, content: "tampered", overwrite: true },
-      });
+      const result = await writeFileHandler(
+        env.runtime,
+        env.message,
+        undefined,
+        {
+          parameters: { file_path: rail, content: "tampered", overwrite: true },
+        },
+      );
       expect(result.success).toBe(false);
       expect(result.text).toContain("path_blocked");
       expect(result.text).toContain("self-edit protected safety rail");
