@@ -82,6 +82,7 @@ export * from "./app-domains";
 export * from "./app-earnings";
 export * from "./app-frontend-deployments";
 export * from "./app-image-generation-idempotency";
+export * from "./app-pilot-redemptions";
 export * from "./app-reservation-settlements";
 export * from "./app-reviews";
 export * from "./app-usage-projections";

@@ -3578,6 +3578,13 @@
       "when": 1796083200158,
       "tag": "0540_embeddings_space_nonce_dim2048",
       "breakpoints": true
+    },
+    {
+      "idx": 511,
+      "version": "7",
+      "when": 1796083200159,
+      "tag": "0541_app_pilot_redemptions",
+      "breakpoints": true
     }
   ]
 }

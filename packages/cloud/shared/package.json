@@ -677,7 +677,8 @@
     "./db/repositories/personal-google-context-consent": "./src/db/repositories/personal-google-context-consent.ts",
     "./lib/auth/private-owner-credential": "./src/lib/auth/private-owner-credential.ts",
     "./lib/network/member-store": "./src/lib/network/member-store.ts",
-    "./lib/network/gateway-delivery-receipt": "./src/lib/network/gateway-delivery-receipt.ts"
+    "./lib/network/gateway-delivery-receipt": "./src/lib/network/gateway-delivery-receipt.ts",
+    "./db/repositories/app-pilot-redemptions": "./src/db/repositories/app-pilot-redemptions.ts"
   },
   "scripts": {
     "build:linked-workspaces": "bun run --cwd ../../.. build:core",

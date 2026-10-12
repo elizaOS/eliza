@@ -355,3 +355,19 @@ Network membership, invitations, availability, and consent are owned by the sign
 Network service. Cloud keeps no parallel Network membership tables or invitation
 fallback. Legacy spike schemas and separate histories remain saved on the original
 integration branch; this candidate performs no database migration or history import.
+
+Sponsored pilot admission uses the append-only campaign, invitation and redemption
+ledger in migration 0541. The internal repository locks the existing app billing
+scope, validates its current administrator, and records six UTC calendar months
+from the post-lock database time. One account principal can redeem once per app
+and environment; retries retain the original dates. Campaign terms are immutable
+and revocation is permanent. Operators must provision unguessable random codes,
+store only their digest, select a published monthly plan and invite eligible
+principals. No campaign is seeded by the migration.
+
+This ledger is not an entitlement or spendable balance. It does not create Stripe
+records, start a paid renewal or expose a public redemption endpoint. Service
+access and allowance publication must be integrated atomically before a product
+can enable redemption. Existing paid or unresolved checkout work prevents new
+admission; the later public flow must also prevent checkout while sponsored
+access is active.
