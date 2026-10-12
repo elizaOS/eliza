@@ -284,6 +284,9 @@ export function validateParamsAgainstSchema(
       if (!prop) continue;
 
       if (value === null) {
+        if (!isNullable(prop)) {
+          errors.push(`Parameter '${name}' does not accept null`);
+        }
         continue;
       }
       if (value === undefined) continue;
