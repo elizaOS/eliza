@@ -57,22 +57,22 @@ export function isSelfEditEnabled(
 /**
  * Repo-relative paths that the self-edit flow must NEVER modify. Removing or
  * weakening any of these would allow the agent to disable its own safety
- * rails (the dev-mode gate, the restart action's keyword/owner check, the
- * runner's exit-75 rate limit, or this denylist itself).
+ * rails (the dev-mode gate, the host restart infrastructure, the process
+ * guards, the runner's exit-75 rate limit, or this denylist itself).
+ *
+ * Maintenance constraint: every entry must name a file that exists in the
+ * repository. An entry for a deleted file matches nothing, so it protects
+ * no rail and hides a real gap from security review — when a protected
+ * file moves, update its entry in the same change.
  *
  * Paths are normalized to forward-slash form for cross-platform comparison.
  */
 const DENIED_RELATIVE_SUFFIXES: readonly string[] = [
-  "packages/agent/src/actions/restart.ts",
-  "packages/core/src/restart.ts",
-  "packages/core/src/self-edit.ts",
   "packages/host/src/restart.ts",
   "packages/host/src/self-edit.ts",
   "packages/host/src/process-guards.ts",
-  "scripts/run-node.ts",
-  "scripts/run-node.mjs",
   "packages/app/scripts/run-node.ts",
-  "packages/app/scripts/run-node.mjs",
+  "packages/app/scripts/lib/restart-guard.ts",
 ];
 /**
  * Predicate: is `absolutePath` denied for self-edit modification?
