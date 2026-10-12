@@ -1,0 +1,20 @@
+diff --git a/plugins/plugin-browser/src/native-wire.ts b/plugins/plugin-browser/src/native-wire.ts
+index 96b22e40..4efd06eb 100644
+--- a/plugins/plugin-browser/src/native-wire.ts
++++ b/plugins/plugin-browser/src/native-wire.ts
+@@ -1,5 +1,7 @@
+ /** Validates native commands and admits complete messages within Chromium's native-message limit. */
+ export const MAX_NATIVE_BYTES = 48 * 1024;
++/** Upper bound on declared chunk count for reassembled messages (256 x 16 KB = 4 MB ceiling). */
++export const MAX_NATIVE_CHUNKS = 256;
+ export class BridgeError extends Error {
+   readonly kind: string;
+   constructor(kind: string, message: string) {
+@@ -131,6 +133,7 @@ export class NativeMessageAssembler {
+       !Number.isSafeInteger(frame.index) ||
+       !Number.isSafeInteger(frame.count) ||
+       frame.count < 1 ||
++      frame.count > MAX_NATIVE_CHUNKS ||
+       frame.index < 0 ||
+       frame.index >= frame.count ||
+       typeof frame.data !== "string"
