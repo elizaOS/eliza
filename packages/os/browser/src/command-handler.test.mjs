@@ -322,3 +322,65 @@ test("protected fill marker requires a bound task context", async () => {
   assert.equal(f.replies[0].ok, false);
   assert.equal(f.replies[0].error.kind, "POLICY_BLOCKED");
 });
+
+test("native protection account changes bypass work queues and retire on disconnect", async () => {
+  const f = fixture();
+  const handler = createCommandHandler(f.api);
+  let owner = null;
+  const delayed = deferred();
+  handler.attachProtectionAdvisory({
+    setOwner(value) {
+      owner = value;
+      return value === "old-account"
+        ? delayed.promise
+        : Promise.resolve({ updated: 0, unavailable: 0 });
+    },
+  });
+  assert.equal(handler.hasProtectionAdvisory(), true);
+  const old = handler(
+    { type: "protection-owner", id: "old", owner: "old-account" },
+    f.sender,
+    () => true,
+  );
+  assert.equal(owner, "old-account");
+  await handler(
+    { type: "protection-owner", id: "new", owner: "new-account" },
+    f.sender,
+    () => true,
+  );
+  delayed.resolve({ updated: 1, unavailable: 0 });
+  await old;
+  assert.equal(
+    f.replies.find((reply) => reply.id === "old").error.kind,
+    "STALE_REF",
+  );
+  assert.equal(owner, "new-account");
+  await handler.disconnect();
+  assert.equal(owner, null);
+  await handler(
+    { type: "protection-owner", id: "stale", owner: "old-account" },
+    f.sender,
+    () => false,
+  );
+  assert.equal(owner, null);
+  await assert.rejects(
+    handler(
+      {
+        type: "protection-owner",
+        id: "bad",
+        owner: "new-account",
+        command: {},
+      },
+      f.sender,
+      () => true,
+    ),
+    /Invalid protection/,
+  );
+  assert.equal(owner, null);
+  await createCommandHandler(f.api)(
+    { type: "protection-owner", id: "disabled", owner: null },
+    f.sender,
+    () => true,
+  );
+  assert.equal(f.replies.at(-1).error.kind, "UNSUPPORTED");
+});

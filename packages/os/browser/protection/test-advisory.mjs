@@ -1,14 +1,24 @@
 /** Real Chromium/extension advisory flow on controlled local pages. No native transport claim. */
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright";
 import { testOutputPath } from "../../../scripts/lib/test-output.ts";
-import { buildBrowserProtection } from "./build.mjs";
+import { buildBrowserProtection, composeProtectionAssets } from "./build.mjs";
 import { compileThreatRules } from "./policy.mjs";
 
+const native = process.argv.includes("--native");
+let target;
 const baseline = process.argv.includes("--baseline");
 const output = testOutputPath("browser-advisory");
 await mkdir(output, { recursive: true });
@@ -25,16 +35,73 @@ const base = `http://allowed.example.test:${server.address().port}`;
 let context;
 try {
   const extension = join(temporary, "extension");
-  await buildBrowserProtection(extension, {
-    advisory: baseline ? undefined : { referenceDomains: ["facebook.com"] },
-  });
-  const source = await readFile(join(extension, "background.mjs"), "utf8");
+  const profile = join(temporary, "profile");
+  if (native) {
+    assert.equal(baseline, false, "Native flow is not the disabled baseline");
+    const { NativeSocketBrowserTarget } = await import(
+      "../../../../plugins/plugin-browser/src/native-socket-target.ts"
+    );
+    target = new NativeSocketBrowserTarget(() => {});
+    await target.start({ XDG_RUNTIME_DIR: temporary });
+    const built = spawnSync(
+      "bun",
+      [
+        "run",
+        "--cwd",
+        new URL("../../", import.meta.url).pathname,
+        "build:browser",
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(built.status, 0, built.stderr);
+    const directory = new URL("../dist/chrome/", import.meta.url);
+    const assets = Object.fromEntries(
+      await Promise.all(
+        (await readdir(directory)).map(async (name) => [
+          name,
+          await readFile(new URL(name, directory)),
+        ]),
+      ),
+    );
+    const composed = await composeProtectionAssets(assets, {
+      advisory: { referenceDomains: ["facebook.com"] },
+      nativeAccountTransport: true,
+    });
+    await mkdir(extension);
+    await Promise.all(
+      Object.entries(composed).map(([name, data]) =>
+        writeFile(join(extension, name), data),
+      ),
+    );
+    const installed = spawnSync(
+      process.execPath,
+      [
+        new URL("../scripts/install-native-host.mjs", import.meta.url).pathname,
+        "--host",
+        new URL("../scripts/native-host.mjs", import.meta.url).pathname,
+        "--manifest-dir",
+        join(profile, "NativeMessagingHosts"),
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(installed.status, 0, installed.stderr);
+  } else {
+    await buildBrowserProtection(extension, {
+      advisory: baseline ? undefined : { referenceDomains: ["facebook.com"] },
+    });
+  }
+  const workerPath = join(
+    extension,
+    native ? "protection.mjs" : "background.mjs",
+  );
+  const source = await readFile(workerPath, "utf8");
   await writeFile(
-    join(extension, "background.mjs"),
+    workerPath,
     `globalThis.fetch=async()=>{throw Error("Controlled offline feed");};\n${source}\nglobalThis.testProtection=protection;\n`,
   );
   context = await chromium.launchPersistentContext(join(temporary, "profile"), {
     channel: "chromium",
+    env: { ...process.env, XDG_RUNTIME_DIR: temporary },
     headless: true,
     timeout: 60000,
     recordVideo: { dir: output, size: { width: 1280, height: 800 } },
@@ -49,6 +116,22 @@ try {
   const worker =
     context.serviceWorkers()[0] ??
     (await context.waitForEvent("serviceworker"));
+  if (native) {
+    const deadline = Date.now() + 20000;
+    while (!(await target.available()) && Date.now() < deadline)
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.ok(
+      await target.available(),
+      "Actual native messaging host registered",
+    );
+  }
+  const setOwner = (owner) =>
+    native
+      ? target.setProtectionOwner(owner)
+      : worker.evaluate(
+          (owner) => testProtection.advisory.setOwner(owner),
+          owner,
+        );
   const page = await context.newPage();
   await page.goto(base);
   await page.getByRole("heading", { name: "Controlled website" }).waitFor();
@@ -104,7 +187,7 @@ try {
       true,
       "No account scope can be guessed by a page",
     );
-    await worker.evaluate(() => testProtection.advisory.setOwner("account-a"));
+    await setOwner("account-a");
     await wait((state) => state && !state.disabled);
     await page
       .getByRole("textbox", { name: "Your note" })
@@ -167,7 +250,7 @@ try {
     await click();
     await wait((state) => state?.text.includes("Marked as not suspicious"));
     await hold();
-    await worker.evaluate(() => testProtection.advisory.setOwner("account-b"));
+    await setOwner("account-b");
     await wait((state) => state?.text.includes("wasn’t scanned"));
     // A delayed old-owner metadata read cannot erase the new owner's acknowledgement.
     await worker.evaluate(async () => {
@@ -192,7 +275,7 @@ try {
       await held;
       chrome.storage.local.get = original;
     });
-    await worker.evaluate(() => testProtection.advisory.setOwner("account-c"));
+    await setOwner("account-c");
     await click();
     await wait((state) => state?.text.includes("Marked as not suspicious"));
     await worker.evaluate(async () => {
@@ -253,7 +336,9 @@ try {
           node.name?.value === "Mark as not suspicious",
       ),
     );
-    await worker.evaluate(() => testProtection.advisory.setOwner(null));
+    if (native) {
+      await target.stop();
+    } else await setOwner(null);
     await wait((state) => state?.disabled);
     // A current list removes unavailable advice, but not a lookalike signal.
     await worker.evaluate(async () => {
@@ -278,10 +363,11 @@ try {
   console.log(
     baseline
       ? "BASELINE captured default protection without optional advisory."
-      : "PASS actual Chromium: offline navigation, trusted acknowledgement/undo, reload, owner reset, forged click refusal, nonblocking lookalike, mobile geometry, accessibility and current-list clearing. Native host and Android acceptance remain separate.",
+      : `PASS actual Chromium: offline navigation, trusted acknowledgement/undo, reload, owner reset, forged click refusal, nonblocking lookalike, mobile geometry, accessibility and current-list clearing. ${native ? "Linux native messaging account transport and disconnect reset passed. Android acceptance remains separate." : "Native host and Android acceptance remain separate."}`,
   );
 } finally {
   await context?.close();
+  await target?.stop();
   server.closeAllConnections();
   await new Promise((resolve) => server.close(resolve));
   await rm(temporary, { recursive: true, force: true });

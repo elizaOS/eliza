@@ -8,6 +8,8 @@ import { BridgeError, parseCommand } from "./protocol.mjs";
 import { createTaskGuidance } from "./task-guidance.mjs";
 
 export function createCommandHandler(api) {
+  let protectionAdvisory = null;
+  let protectionRevision = 0;
   const cancelled = new Set();
   const bindings = new Map();
   const activity = createManualActivity(api, (tabId) => bindings.get(tabId));
@@ -322,6 +324,55 @@ export function createCommandHandler(api) {
   }
 
   const dispatch = (message, sender, isCurrent) => {
+    if (message?.type === "protection-owner") {
+      if (
+        !validId(message.id) ||
+        (message.owner !== null && !validId(message.owner)) ||
+        Object.keys(message).some(
+          (key) => !["type", "id", "owner"].includes(key),
+        )
+      )
+        return Promise.reject(
+          new BridgeError(
+            "INVALID_REQUEST",
+            "Invalid protection account context.",
+          ),
+        );
+      if (!isCurrent()) return Promise.resolve();
+      const revision = ++protectionRevision;
+      // SetOwner fences the previous account synchronously, before any page update.
+      const changed = protectionAdvisory
+        ? protectionAdvisory.setOwner(message.owner)
+        : Promise.reject(
+            new BridgeError("UNSUPPORTED", "Website advice is not enabled."),
+          );
+      return changed
+        .then((result) => {
+          if (!isCurrent() || revision !== protectionRevision)
+            throw new BridgeError(
+              "STALE_REF",
+              "Protection account context changed.",
+            );
+          return sender.send({
+            type: "result",
+            id: message.id,
+            ok: true,
+            result,
+          });
+        })
+        .catch((error) =>
+          sender.send({
+            type: "result",
+            id: message.id,
+            ok: false,
+            error: {
+              kind:
+                error instanceof BridgeError ? error.kind : "UNCERTAIN_OUTCOME",
+              message: "Website advice account context was not confirmed.",
+            },
+          }),
+        );
+    }
     if (message?.type === "task-guide") {
       return guidance
         .handle(message, () => isCurrent() && !cancelled.has(message.id))
@@ -381,15 +432,23 @@ export function createCommandHandler(api) {
     processing = processing.catch(() => {});
     return admitted;
   };
+  // Called only by the generated worker composition, never by a website message.
+  dispatch.attachProtectionAdvisory = (advisory) => {
+    if (protectionAdvisory) throw Error("Website advice is already attached");
+    protectionAdvisory = advisory;
+  };
+  dispatch.hasProtectionAdvisory = () => protectionAdvisory !== null;
   dispatch.recordManualActivity = (message, sender) =>
     activity.record(message, sender);
   dispatch.answerGuide = (message, sender) => guidance.answer(message, sender);
   dispatch.dismissGuide = (message, sender) =>
     guidance.dismiss(message, sender);
   dispatch.disconnect = () => {
+    protectionRevision++;
+    const retired = protectionAdvisory?.setOwner(null);
     for (const [tabId, binding] of bindings)
       bindings.set(tabId, { ...binding, revoked: true });
-    return guidance.clearAll();
+    return Promise.all([retired, guidance.clearAll()]);
   };
   dispatch.recover = async () => {
     await dispatch.disconnect();

@@ -124,9 +124,17 @@ if (
     ),
   );
 
-/** Add the complete optional protection resource set without expanding other capabilities. */
-export async function composeProtectionAssets(assets, options = {}) {
-  const manifest = JSON.parse(assets["manifest.json"]);
+/** Add the complete optional protection resource set without expanding other capabilities.
+ * @param {Record<string, Buffer>} assets
+ * @param {Parameters<typeof buildBrowserProtection>[1] & {nativeAccountTransport?: boolean}} options
+ */
+export async function composeProtectionAssets(
+  assets,
+  { nativeAccountTransport = false, ...options } = {},
+) {
+  if (nativeAccountTransport && !options.advisory)
+    throw Error("Native account transport requires website advice");
+  const manifest = JSON.parse(assets["manifest.json"].toString());
   if (
     manifest.permissions.includes("declarativeNetRequest") ||
     manifest.web_accessible_resources
@@ -154,7 +162,11 @@ export async function composeProtectionAssets(assets, options = {}) {
     );
     result["background.mjs"] = Buffer.concat([
       assets["background.mjs"],
-      Buffer.from('\nimport "./protection.mjs";\n'),
+      Buffer.from(
+        nativeAccountTransport
+          ? '\nimport { protection } from "./protection.mjs";\nhandleCommand.attachProtectionAdvisory(protection.advisory);\n'
+          : '\nimport "./protection.mjs";\n',
+      ),
     ]);
     manifest.permissions.push("declarativeNetRequest");
     manifest.web_accessible_resources = [

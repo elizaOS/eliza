@@ -374,8 +374,14 @@ lookalike signals. The default is disabled. The engine exposes
 `advisory.setOwner(opaqueOwnerOrNull)` only to trusted worker composition. An
 owner is required before an acknowledgement can be saved. Hosts must set or
 retire that context on every account transition and transport loss. This is
-not yet connected to native host account transport. Do not enable it in a
-consumer before that integration is qualified.
+connected to native host account transport only when the browser-control asset
+composition selects `nativeAccountTransport: true`. That option requires advice
+and the shared browser-control worker. It advertises `protection-owner`; older
+or disabled peers reject this capability. Trusted hosts call
+`NativeSocketBrowserTarget.setProtectionOwner(opaqueOwnerOrNull)` after profile
+registration and each account transition. Disconnect and worker recovery retire
+the context. The receipt counts updated and unavailable tabs; it is not a task
+permission. Consumer account-lifecycle and Android qualification remain required.
 
 Acknowledgements stay in worker memory, scoped to exact origin and evidence;
 owner changes, worker restart and a later blacklist warning clear them.
@@ -389,5 +395,7 @@ licenses for the bundled domain parser and Unicode decoder.
 Run `test:browser:protection:advisory` for the real Chromium extension flow,
 keyboard-accessible controls, account reset, offline visits and narrow layout.
 `node browser/protection/test-advisory.mjs --baseline` captures the disabled
-baseline. These controlled pages do not establish installed native messaging,
-Android, TalkBack, or a full owned Chromium build.
+baseline. Run `bun --conditions=eliza-source browser/protection/test-advisory.mjs --native`
+from `packages/os` to exercise the same flow through the actual Linux native host
+and socket target, including disconnect reset. These controlled pages do not
+establish Android, TalkBack, or a full owned Chromium build.

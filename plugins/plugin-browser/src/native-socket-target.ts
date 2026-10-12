@@ -606,6 +606,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
     signal?: AbortSignal,
     binding?: NativeTaskBinding,
     guidance?: NativeTaskGuidance,
+    protection?: { owner: string | null },
   ): Promise<unknown> {
     const socket = this.socket;
     const sender = this.sender;
@@ -700,7 +701,9 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
             ? { type: "task-bind", id, binding }
             : guidance
               ? { type: "task-guide", id, guidance }
-              : { type: "command", id, command },
+              : protection
+                ? { type: "protection-owner", id, owner: protection.owner }
+                : { type: "command", id, command },
         )
         .catch((cause) => {
           const pending = this.pending.get(id);
@@ -717,6 +720,51 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
           socket.destroy();
         });
     });
+  }
+
+  /** Trusted host account context, independent of any task. Never a model subaction.
+   * Call after each registration and account transition; disconnect retires it.
+   * The receipt counts page updates, not navigation or task permissions. */
+  async setProtectionOwner(
+    owner: string | null,
+  ): Promise<{ updated: number; unavailable: number }> {
+    if (
+      owner !== null &&
+      (typeof owner !== "string" || !/^[A-Za-z0-9_.:@-]{1,256}$/.test(owner))
+    )
+      throw new TypeError("Invalid protection account context");
+    if (!this.advertised.has("protection-owner"))
+      throw new BrowserDispatchFailure(
+        "UNSUPPORTED",
+        "This browser does not support account-scoped website advice.",
+        { targetId: this.id },
+      );
+    const receipt = await this.request(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { owner },
+    );
+    if (
+      !receipt ||
+      typeof receipt !== "object" ||
+      !("updated" in receipt) ||
+      !("unavailable" in receipt) ||
+      !Number.isSafeInteger(receipt.updated) ||
+      !Number.isSafeInteger(receipt.unavailable) ||
+      Number(receipt.updated) < 0 ||
+      Number(receipt.unavailable) < 0
+    )
+      throw new BrowserDispatchFailure(
+        "UNCERTAIN_OUTCOME",
+        "Invalid website advice receipt.",
+        { targetId: this.id },
+      );
+    return {
+      updated: Number(receipt.updated),
+      unavailable: Number(receipt.unavailable),
+    };
   }
 
   /** Trusted host only: not exposed as a model browser subaction. */

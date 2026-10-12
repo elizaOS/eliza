@@ -47,6 +47,7 @@ const connection = new NativeConnection({
       extensionId: chrome.runtime.id,
       profileId,
       capabilities: [
+        ...(handleCommand.hasProtectionAdvisory() ? ["protection-owner"] : []),
         "list",
         "open",
         "navigate",
