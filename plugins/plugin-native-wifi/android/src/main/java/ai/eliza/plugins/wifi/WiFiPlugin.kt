@@ -238,6 +238,20 @@ class WiFiPlugin : Plugin() {
         password: String?,
         hidden: Boolean,
     ): Boolean {
+        // Apply the same option guard as the API 29+ suggestion path
+        // (WiFiConnectionRequests.suggest) so both native paths reject the
+        // same SSIDs and passphrases before a connection is requested; the
+        // IllegalArgumentException is mapped to INVALID_ARGUMENT by the
+        // caller's catch, exactly as on the suggestion path. Without this
+        // guard the legacy path passed an over-long SSID or a short
+        // passphrase to WifiConfiguration, where it only failed later as a
+        // generic connection failure.
+        require(ssid.toByteArray(Charsets.UTF_8).size in 1..32) { "SSID must contain 1 to 32 UTF-8 bytes" }
+        if (!password.isNullOrEmpty()) {
+            require(password.length in 8..63 && password.all { it.code in 32..126 }) {
+                "WPA2 passphrase must contain 8 to 63 printable ASCII characters"
+            }
+        }
         val config = WifiConfiguration()
         config.SSID = "\"$ssid\""
         config.hiddenSSID = hidden
