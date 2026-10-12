@@ -278,11 +278,16 @@ async function handleManagedPairAtEdge(
       expectedOrigin: url.origin,
     });
     if (claim.status === "invalid") {
+      // The claim returns one opaque "invalid" status for every rejection
+      // cause: expired, already-redeemed, unknown, wrong agent, wrong
+      // origin. The rendered copy must not assert a specific cause — only
+      // that the link could not be verified. See issue #18184 and the
+      // standalone agent relay in packages/agent/src/api/cloud-pair-route.ts.
       return managedPairErrorResponse(
         url,
         403,
-        "Sign-in link expired",
-        "Pairing links are single-use and valid for one minute. Open your agent again from Eliza Cloud.",
+        "Sign-in link could not be verified",
+        "Eliza Cloud could not verify this pairing link. It may have already been used, or does not match this agent. Open your agent again from Eliza Cloud to get a fresh link.",
       );
     }
     if (claim.status === "sandbox-credential-unavailable") {
