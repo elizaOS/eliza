@@ -205,6 +205,9 @@ test("actual SQLCipher writer lease", async (t) => {
         await link(original, lock);
       } catch (error) {
         if (error.code !== "EACCES" && error.code !== "EPERM") throw error;
+        console.info(
+          `QUALIFICATION_SKIP native-hardlink-guard: OS refused fixture (${error.code})`,
+        );
         t.skip(
           `OS refused hardlink fixture (${error.code}); native hardlink guard not exercised`,
         );
