@@ -476,11 +476,12 @@ export async function streamElizaConversation(
       if (chunk.done) break;
       buffered += decoder.decode(chunk.value, { stream: true });
 
-      let newlineIndex: number;
       // SSE events are separated by blank lines; a single event may carry
       // multiple `data:` lines. We process line-by-line and only act on
       // `data:` payloads, which is what the OpenAI-shaped stream emits.
-      while ((newlineIndex = buffered.indexOf("\n")) !== -1) {
+      for (;;) {
+        const newlineIndex = buffered.indexOf("\n");
+        if (newlineIndex === -1) break;
         if (request.signal.aborted) return { completed: false, aborted: true };
         const line = buffered.slice(0, newlineIndex).trimEnd();
         buffered = buffered.slice(newlineIndex + 1);
