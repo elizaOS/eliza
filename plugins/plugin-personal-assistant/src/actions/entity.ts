@@ -112,6 +112,27 @@ function normalizeLookup(value: string): string {
   return value.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+/** Whether `needle` appears in `haystack` as a run of whole words. */
+function includesWholePhrase(haystack: string, needle: string): boolean {
+  const haystackWords = haystack.split(" ").filter(Boolean);
+  const needleWords = needle.split(" ").filter(Boolean);
+  if (needleWords.length === 0) return false;
+  for (
+    let start = 0;
+    start + needleWords.length <= haystackWords.length;
+    start++
+  ) {
+    if (
+      needleWords.every(
+        (word, offset) => haystackWords[start + offset] === word,
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 async function resolveRelationshipIdByName(
   service: LifeOpsService,
   rawName: string,
@@ -122,17 +143,36 @@ async function resolveRelationshipIdByName(
   }
 
   const relationships = await service.listRelationships();
-  const exactMatch =
-    relationships.find(
-      (relationship) => normalizeLookup(relationship.name) === needle,
-    ) ??
-    relationships.find(
-      (relationship) =>
-        normalizeLookup(relationship.primaryHandle).includes(needle) ||
-        normalizeLookup(relationship.email ?? "").includes(needle),
-    );
+  const exactMatch = relationships.find(
+    (relationship) => normalizeLookup(relationship.name) === needle,
+  );
   if (exactMatch) {
     return exactMatch.id;
+  }
+
+  // A whole-word name match beats every substring match: "Ann" is a whole
+  // word of "Zoe Ann" but only a substring of "Bethann Cole" (and of the
+  // email "bethann@example.com"), so the substring tiers below would bind
+  // the interaction to the wrong person. This mirrors the whole-word
+  // contract merged for notes (#35741) and voice-call recipients (#35729).
+  // Several whole-word matches stay ambiguous instead of guessing.
+  const wholeWordMatches = relationships.filter((relationship) =>
+    includesWholePhrase(normalizeLookup(relationship.name), needle),
+  );
+  if (wholeWordMatches.length === 1) {
+    return wholeWordMatches[0]?.id ?? null;
+  }
+  if (wholeWordMatches.length > 1) {
+    return null;
+  }
+
+  const handleMatch = relationships.find(
+    (relationship) =>
+      normalizeLookup(relationship.primaryHandle).includes(needle) ||
+      normalizeLookup(relationship.email ?? "").includes(needle),
+  );
+  if (handleMatch) {
+    return handleMatch.id;
   }
 
   return (
