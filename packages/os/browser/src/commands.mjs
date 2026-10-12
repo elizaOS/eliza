@@ -328,31 +328,39 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     // handler, a tab stop or a pointer cursor, often with no name at all.
     // The commit guard treats the same signals as a control. Only the
     // outermost such element that holds no native control is listed.
-    const custom = [
-      ...(document.body ?? document.documentElement).querySelectorAll("*"),
-    ].filter(
-      (node) =>
-        !node.matches(NATIVE) &&
-        !node.closest(NATIVE) &&
-        !node.querySelector(NATIVE) &&
-        (node.matches('[onclick],[tabindex]:not([tabindex="-1"])') ||
+    // One pass in document order. The cheap attribute test runs before the
+    // style and subtree tests, and an element inside a listed custom control
+    // is skipped by its ancestor, so a large page stays linear.
+    const custom = new Set();
+    const candidates = [];
+    for (const node of (
+      document.body ?? document.documentElement
+    ).querySelectorAll("*")) {
+      if (node.matches(NATIVE)) {
+        candidates.push(node);
+        continue;
+      }
+      if (
+        !(
+          node.matches('[onclick],[tabindex]:not([tabindex="-1"])') ||
           (getComputedStyle(node).cursor === "pointer" &&
-            getComputedStyle(node.parentElement ?? node).cursor !== "pointer")),
-    );
-    const candidates = [...document.querySelectorAll(NATIVE), ...custom]
-      .filter(
-        (node) =>
-          !custom.includes(node) ||
-          !custom.some((other) => other !== node && other.contains(node)),
+            getComputedStyle(node.parentElement ?? node).cursor !== "pointer")
+        ) ||
+        node.closest(NATIVE) ||
+        node.querySelector(NATIVE)
       )
-      .sort((left, right) =>
-        left === right
-          ? 0
-          : left.compareDocumentPosition(right) &
-              Node.DOCUMENT_POSITION_FOLLOWING
-            ? -1
-            : 1,
-      );
+        continue;
+      let inside = false;
+      for (
+        let item = node.parentElement;
+        item && !inside;
+        item = item.parentElement
+      )
+        inside = custom.has(item);
+      if (inside) continue;
+      custom.add(node);
+      candidates.push(node);
+    }
     // The last visible line of text before a control, looked for among its
     // earlier siblings and then its ancestors' earlier siblings. It names a
     // control that has no label ("Search" beside an empty input) and tells
@@ -389,6 +397,19 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
           null
         : null;
     const forms = [...document.forms];
+    // Position of an element among its siblings with the same tag, counted
+    // once per parent.
+    const typeIndexes = new Map();
+    const typeIndex = (item) => {
+      if (!typeIndexes.has(item)) {
+        const counts = {};
+        for (const sibling of item.parentElement?.children ?? [item]) {
+          counts[sibling.tagName] = (counts[sibling.tagName] ?? 0) + 1;
+          typeIndexes.set(sibling, counts[sibling.tagName]);
+        }
+      }
+      return typeIndexes.get(item);
+    };
     // A CSS selector that matches only this node now. A host may grant one
     // task action on it after the person agrees; the page guard checks the
     // match again at the moment of the action.
@@ -410,6 +431,10 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       const named =
         name && `${node.tagName.toLowerCase()}[name="${CSS.escape(name)}"]`;
       if (named && unique(named)) return named;
+      // A child-combinator path of :nth-of-type steps from a unique id or
+      // from the root names one element. It is not searched for again here:
+      // the page guard checks that it matches only this node at the moment
+      // of a granted action.
       const path = [];
       for (
         let item = node;
@@ -420,14 +445,18 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
           path.unshift(`#${CSS.escape(item.id)}`);
           break;
         }
-        const index =
-          [...(item.parentElement?.children ?? [])]
-            .filter((sibling) => sibling.tagName === item.tagName)
-            .indexOf(item) + 1;
-        path.unshift(`${item.tagName.toLowerCase()}:nth-of-type(${index})`);
+        path.unshift(
+          `${item.tagName.toLowerCase()}:nth-of-type(${typeIndex(item)})`,
+        );
       }
       const selector = path.join(" > ");
-      return unique(selector) ? selector : null;
+      try {
+        return selector.length <= 256 && node.matches(selector)
+          ? selector
+          : null;
+      } catch {
+        return null;
+      }
     };
     for (const node of candidates) {
       if (!node.checkVisibility({ checkVisibilityCSS: true })) continue;
@@ -482,7 +511,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
             node instanceof HTMLInputElement) &&
           node.form !== null &&
           ["submit", "image"].includes(node.type),
-        pressable: custom.includes(node)
+        pressable: custom.has(node)
           ? node.matches("[onclick]")
             ? "click-handler"
             : node.matches("[tabindex]")
