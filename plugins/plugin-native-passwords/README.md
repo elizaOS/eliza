@@ -132,3 +132,14 @@ Passkeys are not implemented.
   The runner creates and removes a disposable user. These tests do not establish trusted-browser,
   biometric, physical-device or user acceptance. Layout artifacts render only the fixture
   views with synthetic data; Android screen-capture protection remains enabled.
+
+Hosts may explicitly set `eliza_passwords_device_unlocked_custody` to `true` on
+Android 15+ to migrate native custody. The default remains `false`. On the next
+operation admitted by an existing fresh UI grant, native access copies and verifies
+the old vault, then durably selects a separate device-unlocked key and directory.
+Interrupted migration resumes on the next admitted operation. Reads, writes and
+unrecoverable reset use the selected owner; pending migration refuses reset.
+Disabling the resource after migration refuses access instead of exposing the
+retained old snapshot. Existing UI prompts, request tickets and lifecycle fences
+remain in force. This option does not enable password access from the renderer or
+select a product's policy. Device/reboot qualification is required before adoption.

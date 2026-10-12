@@ -127,9 +127,21 @@ default and legacy policies are unchanged.
 `oldStore.migrateToDeviceUnlocked(newStore)` copies one authenticated snapshot,
 including IDs/timestamps, through native memory into the new encrypted vault.
 It verifies readback and retains the original file/key. Retry accepts an identical
-snapshot; a different or corrupt target is refused, never overwritten. The host
-must serialize its writer and durably select the new custody version only after
-success. This API does not select a host version, remove the old vault, or alter
-UI/fill grants. An absent source is an empty snapshot and needs no secret
-authentication. Host migration recovery, process death/reboot and physical device
-qualification remain separate requirements.
+snapshot; a different or corrupt target is refused, never overwritten. The low-level copy API does not select a host version, remove the old vault,
+or alter UI/fill grants. Use the owner below to serialize writers and select a
+version after success. An absent source is an empty snapshot and needs no secret
+authentication. Keystore creation interruptions and physical device/reboot qualification remain
+separate requirements.
+
+`PasswordVaultCustody` adds native durable selection to this copy operation. Its
+`PasswordCustodySelection` journal records pending migration before copying, then
+atomically selects device custody only after verified readback. Interrupted copies
+must resume; ordinary access and writes are refused while pending. All host reads,
+writes and reset operations must use this owner. Its file lock serializes separate
+instances and Android processes; callbacks must not retain stores or reenter it.
+The journal binds both vault paths, aliases, AAD and policies within trusted native
+storage. It is not a new cryptographic trust boundary. Missing journals beside a
+new key/vault, corrupt journals and disabled opt-in after selection are refused.
+The original file/key remain intact. Linux JVM tests cover real filesystem restart,
+interruption and competing writes; Android filesystem durability and reboot still
+require device qualification.

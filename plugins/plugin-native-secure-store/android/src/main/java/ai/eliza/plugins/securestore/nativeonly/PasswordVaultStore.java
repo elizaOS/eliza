@@ -153,6 +153,29 @@ public class PasswordVaultStore {
     if (devicePolicyFile != null) devicePolicyFile.delete();
   }
 
+  byte[] custodyIdentity() throws Exception {
+    java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+    try (java.io.DataOutputStream out = new java.io.DataOutputStream(bytes)) {
+      out.writeUTF(file.getBaseFile().getCanonicalPath()); out.writeUTF(alias);
+      out.writeInt(aad.length); out.write(aad);
+      out.writeBoolean(authenticationRequired);
+      out.writeInt(policy == null ? -1 : policy.validitySeconds);
+      out.writeBoolean(policy != null && policy.biometric);
+      out.writeBoolean(policy != null && policy.requiresDeviceUnlockOnly());
+    }
+    return bytes.toByteArray();
+  }
+  boolean custodyExists() throws Exception {
+    for (AtomicFile slot : new AtomicFile[]{file, devicePolicyFile}) {
+      if (slot == null) continue;
+      for (String suffix : new String[]{"", ".bak", ".new"})
+        if (java.nio.file.Files.exists(new File(slot.getBaseFile().getPath() + suffix).toPath(),
+            java.nio.file.LinkOption.NOFOLLOW_LINKS)) return true;
+    }
+    KeyStore keys = KeyStore.getInstance("AndroidKeyStore"); keys.load(null);
+    return keys.containsAlias(alias);
+  }
+
   public android.security.keystore.KeyInfo keyProtection() throws Exception {
     SecretKey key=key(false);
     return (android.security.keystore.KeyInfo)SecretKeyFactory.getInstance(key.getAlgorithm(),"AndroidKeyStore").getKeySpec(key,android.security.keystore.KeyInfo.class);
@@ -190,10 +213,13 @@ public class PasswordVaultStore {
    * snapshots require explicit recovery. No host selection or source deletion occurs here.
    * An absent source contains no secret and may produce an empty snapshot without a challenge.
    */
-  public synchronized int migrateToDeviceUnlocked(PasswordVaultStore target) throws Exception {
+  void validateMigrationTarget(PasswordVaultStore target) throws Exception {
     if (!authenticationRequired || target == null || target.policy == null || !target.policy.requiresDeviceUnlockOnly()
         || alias.equals(target.alias) || file.getBaseFile().getCanonicalFile().equals(target.file.getBaseFile().getCanonicalFile()))
       throw new IOException("Use a separate device-unlocked password vault");
+  }
+  public synchronized int migrateToDeviceUnlocked(PasswordVaultStore target) throws Exception {
+    validateMigrationTarget(target);
     JSONArray snapshot = load(); // The old Keystore key still enforces its original authentication.
     synchronized (target) {
       target.checkDevice();

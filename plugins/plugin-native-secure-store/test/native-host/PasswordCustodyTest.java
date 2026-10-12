@@ -76,6 +76,7 @@ public final class PasswordCustodyTest {
     rejects(() -> PasswordFacets.android("com.example.app", "zz".repeat(32)));
     rejects(() -> PasswordFacets.normalize("android://" + "ab".repeat(32) + "@com.example.app/../x"));
     rejects(() -> PasswordFacets.normalize(null));
+    checks += PasswordSelectionTest.run();
     System.out.println(checks + " assertions passed");
   }
 }
