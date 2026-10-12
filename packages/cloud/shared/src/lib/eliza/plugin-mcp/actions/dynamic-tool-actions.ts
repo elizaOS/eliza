@@ -147,10 +147,7 @@ export function createMcpToolAction(
       );
       if (missing.length > 0 || rejected.length > 0) {
         const blockingErrors = [...missing, ...rejected];
-        logger.error(
-          { errors: blockingErrors, params },
-          `[MCP] Invalid params for ${actionName}`,
-        );
+        logger.error({ errors: blockingErrors, params }, `[MCP] Invalid params for ${actionName}`);
         return {
           success: false,
           error: blockingErrors.join(", "),
