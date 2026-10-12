@@ -54,6 +54,7 @@ export function tailWellFormed(text: string, maxLength: number): string {
 	if (!Number.isFinite(maxLength) || maxLength <= 0) {
 		return "";
 	}
+	maxLength = Math.floor(maxLength);
 	if (text.length <= maxLength) {
 		return text;
 	}
