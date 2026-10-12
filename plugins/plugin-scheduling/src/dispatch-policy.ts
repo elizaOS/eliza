@@ -110,16 +110,11 @@ export function decideDispatchPolicy(
   const message = failure.message;
   const isLastStep = context.currentStepIndex >= context.totalSteps - 1;
 
-  // Provider acceptance is the safety boundary. Once a non-idempotent send
-  // may have reached the provider, retrying the same step or advancing the
-  // ladder can duplicate the user-visible delivery. Keep the task unfired and
-  // terminal so recovery requires an explicit reconciliation decision.
-  if (failure.acceptance === "unknown") {
-    return { kind: "fail", reason, message };
-  }
-
   // Retry-with-backoff dominates: rate-limited or any failure that explicitly
   // sets retryAfterMinutes is treated as a transient failure on the same step.
+  // This check comes before the acceptance check because an in-flight
+  // duplicate dispatch sets retryAfterMinutes with the documented intent
+  // "retry the same step, do not escalate".
   if (
     typeof failure.retryAfterMinutes === "number" &&
     failure.retryAfterMinutes > 0
@@ -129,6 +124,14 @@ export function decideDispatchPolicy(
       retryAfterMinutes: failure.retryAfterMinutes,
       reason,
     };
+  }
+
+  // Provider acceptance is the safety boundary. Once a non-idempotent send
+  // may have reached the provider, retrying the same step or advancing the
+  // ladder can duplicate the user-visible delivery. Keep the task unfired and
+  // terminal so recovery requires an explicit reconciliation decision.
+  if (failure.acceptance === "unknown") {
+    return { kind: "fail", reason, message };
   }
   if (reason === "rate_limited") {
     return {
