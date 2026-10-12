@@ -16,19 +16,25 @@ import { readJsonBody, sendJson, sendJsonError } from "@elizaos/host";
 import type { ElizaConfig } from "@elizaos/host/protocol";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { settingsAction } from "../src/actions/settings-actions.ts";
-import { setLiveElizaConfigSource } from "../src/api/config-state.ts";
+import {
+  mirrorSavedConfigToLive,
+  setLiveElizaConfigSource,
+} from "../src/api/config-state.ts";
 import { handleDatabaseRoute } from "../src/api/database.ts";
 import {
   handleMiscRoutes,
   type MiscRouteContext,
 } from "../src/api/misc-routes.ts";
+import { startApiServer } from "../src/api/server.ts";
 import { loadElizaConfig, saveElizaConfig } from "../src/config/config.ts";
 import { ElizaCharacterPersistenceService } from "../src/services/character-persistence.ts";
 
 let dir: string;
 let server: http.Server;
+let apiServer: Awaited<ReturnType<typeof startApiServer>> | undefined;
 let baseUrl: string;
 let state: { config: ElizaConfig };
+const apiToken = "config-live-state-test-token";
 
 function storedAction(
   overrides: Partial<CustomActionDef> = {},
@@ -104,9 +110,16 @@ beforeEach(async () => {
   vi.stubEnv("ELIZA_STATE_DIR", dir);
   vi.stubEnv("ELIZA_CONFIG_PATH", configPath);
   vi.stubEnv("ELIZA_PERSIST_CONFIG_PATH", configPath);
+  vi.stubEnv("ELIZA_API_BIND_HOST", "127.0.0.1");
+  vi.stubEnv("ELIZA_API_TOKEN", apiToken);
+  vi.stubEnv("ELIZA_REQUIRE_LOCAL_AUTH", "1");
 });
 
 afterEach(async () => {
+  if (apiServer) {
+    await apiServer.close();
+    apiServer = undefined;
+  }
   if (server)
     await new Promise<void>((resolve) => server.close(() => resolve()));
   vi.unstubAllEnvs();
@@ -245,4 +258,67 @@ it("keeps chat setting changes and character edits after a full save of the live
   } finally {
     release();
   }
+});
+
+it("restores the previous live config source after a nested server closes", () => {
+  const first = {
+    ui: { ownerName: "first" },
+  } as ElizaConfig & { ui: { ownerName: string } };
+  const second = {
+    ui: { ownerName: "second" },
+  } as ElizaConfig & { ui: { ownerName: string } };
+  const releaseFirst = setLiveElizaConfigSource(() => first);
+  const releaseSecond = setLiveElizaConfigSource(() => second);
+  try {
+    releaseSecond();
+    mirrorSavedConfigToLive({
+      ui: { ownerName: "saved" },
+    } as ElizaConfig);
+
+    expect(first.ui.ownerName).toBe("saved");
+    expect(second.ui.ownerName).toBe("second");
+  } finally {
+    releaseFirst();
+  }
+});
+
+it("does not mirror chat writes into host-owned API config", async () => {
+  const hostConfig = {
+    ui: { capabilities: { browser: true } },
+  } as ElizaConfig;
+  saveElizaConfig(hostConfig);
+  apiServer = await startApiServer({
+    port: 0,
+    hostConfig,
+    skipDeferredStartupWork: true,
+  });
+
+  const result = await settingsAction.handler?.(
+    {} as never,
+    { entityId: randomUUID() } as never,
+    undefined,
+    {
+      parameters: {
+        action: "toggle_capability",
+        capability: "browser",
+        enabled: false,
+      },
+    } as never,
+    undefined,
+  );
+  expect(result?.success).toBe(true);
+
+  const response = await fetch(
+    `http://127.0.0.1:${apiServer.port}/api/config`,
+    { headers: { Authorization: `Bearer ${apiToken}` } },
+  );
+  expect(response.status).toBe(200);
+  const served = (await response.json()) as {
+    ui?: { capabilities?: { browser?: boolean } };
+  };
+  expect(served.ui?.capabilities?.browser).toBe(true);
+  const saved = loadElizaConfig() as unknown as {
+    ui?: { capabilities?: { browser?: boolean } };
+  };
+  expect(saved.ui?.capabilities?.browser).toBe(false);
 });
