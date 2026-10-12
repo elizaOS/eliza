@@ -314,10 +314,11 @@ it("round-trips explicit user text format through real HTTP and disk SQLite with
     };
     const shown = history.messages.filter((row) => row.role === "user");
     expect(shown).toHaveLength(cases.length);
-    for (const item of cases) {
+    for (const [index, item] of cases.entries()) {
       const row = shown.find((row) => row.text === item.text);
       expect(row).toBeDefined();
       expect(row?.userTextFormat).toBe(item.expected);
+      expect(row?.clientMessageId).toBe(`format-request-${index}`);
       expect(row).not.toHaveProperty("metadata");
       expect(JSON.stringify(row)).not.toContain("not-public");
       expect(row?.id).toBe(
