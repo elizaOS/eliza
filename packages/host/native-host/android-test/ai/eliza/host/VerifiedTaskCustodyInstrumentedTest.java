@@ -31,7 +31,7 @@ public final class VerifiedTaskCustodyInstrumentedTest {
       dir=InstrumentationRegistry.getInstrumentation().getTargetContext().getNoBackupFilesDir().getCanonicalFile().toPath().resolve(id);
       Files.createDirectory(dir); android.system.Os.chmod(dir.toString(),0700);
       Path db=Files.createDirectory(dir.resolve("db")); android.system.Os.chmod(db.toString(),0700);
-      session=new NativeRuntimeSession(scope->{try{ready.complete(new VerifiedTaskCustody(scope,dir.resolve("account").toFile(),accountAlias,dir.resolve("keys").toFile(),keyAlias,db.toFile()));}catch(Throwable e){ready.completeExceptionally(e);throw e;}},100,100,0);
+      session=new NativeRuntimeSession(scope->{try{scope.startReady("synthetic-child",new ProcessBuilder("/system/bin/sleep","120"),new NativeProcessLog(dir.resolve("child.log"),4096,256),Collections.emptyList(),()->true,3000,20);ready.complete(new VerifiedTaskCustody(scope,dir.resolve("account").toFile(),accountAlias,dir.resolve("keys").toFile(),keyAlias,db.toFile()));}catch(Throwable e){ready.completeExceptionally(e);throw e;}},100,100,0);
       session.start(); custody=ready.get(10,TimeUnit.SECONDS);
     }
     public void close() throws Exception {
