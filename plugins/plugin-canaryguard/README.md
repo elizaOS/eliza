@@ -1,13 +1,13 @@
 # @elizaos/plugin-canaryguard
 
-Deterministic prompt-injection firewall, concealed Unicode scrubber, and malicious wallet-drain defense for ElizaOS agents on Base mainnet via the x402 protocol.
+Deterministic prompt-injection firewall, concealed Unicode scrubber, and malicious wallet-drain defense for ElizaOS agents.
 
-## Features
+## Architecture
 
-- **Deterministic <5ms Latency**: Zero LLM-in-the-loop overhead or hallucination risks.
+- **Local-First & Offline Engine (Default)**: Runs 100% in-process via compiled deterministic rules. Takes <0.1ms per scan, requires zero external services, and preserves full privacy by never transmitting message text over the network.
 - **Prompt Injection Defense**: Scrubs system prompt overrides, delimiter breaks, role-play exploits, and canary honeypot triggers.
-- **Malicious Wallet Transfer Defense**: Detects and flags unauthorized address extractions and drain attempts.
-- **x402 Protocol Native**: Integrates with the Coinbase CDP x402 Bazaar on Base mainnet (\$0.003 USDC per call).
+- **Wallet Transfer Defense**: Detects and flags unauthorized token transfer commands, address extractions, and drain attempts.
+- **Optional Remote Oracle**: Operators can optionally configure an external verification endpoint or x402 gateway via `CANARYGUARD_URL`.
 
 ## Installation
 
@@ -15,22 +15,24 @@ Deterministic prompt-injection firewall, concealed Unicode scrubber, and malicio
 elizaos plugins add canaryguard
 ```
 
-Or install the standalone package:
-
-```bash
-npm install @kurox_real/plugin-canaryguard
-```
-
 ## Configuration
 
-Add the following optional variables to your `.env` or agent character configuration:
+Optional parameters configurable via runtime settings or environment variables:
 
-```env
-CANARYGUARD_URL=https://canaryguard-402.onrender.com
-CANARYGUARD_PAYMENT_HEADER=optional_x402_signature_header
-```
+| Setting | Type | Description | Default |
+| --- | --- | --- | --- |
+| `CANARYGUARD_URL` | string | Optional remote service URL. When unset, runs 100% offline locally. | `undefined` (Offline) |
+| `CANARYGUARD_PAYMENT_HEADER` | string | Optional x402 payment signature for authenticated remote queries. | `undefined` |
+| `CANARYGUARD_STRICT_MODE` | boolean | When true, completely blanks blocked messages; when false, strips commands. | `true` |
 
 ## Actions
 
-### `CANARY_SANITIZE`
-Explicitly inspects and sanitizes untrusted text (scraped HTML, user messages, third-party tool outputs) before context ingestion or tool execution.
+- **`CANARY_SANITIZE`**: Scans and sanitizes untrusted text (scraped HTML, tool inputs, user messages) before context ingestion or execution.
+
+## Evaluators
+
+- **`PROMPT_INJECTION_EVALUATOR`**: In-memory inspection of user turns to flag instruction overrides before memory persistence.
+
+## Providers
+
+- **`canaryGuardProvider`**: Injects active firewall status and telemetry into the agent context.

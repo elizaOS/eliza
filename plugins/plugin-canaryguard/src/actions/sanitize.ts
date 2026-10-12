@@ -1,54 +1,113 @@
-import { type Action, type IAgentRuntime, type Memory, type State, type HandlerCallback, logger } from "@elizaos/core";
+import {
+  type Action,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+  type HandlerCallback,
+  logger,
+} from "@elizaos/core";
 import type { CanaryGuardResult, CanaryGuardConfig } from "../types";
+import { sanitizeLocally } from "../engine/rules";
+import { CanaryGuardState } from "../engine/state";
 
-export const CANARYGUARD_DEFAULT_URL = "https://canaryguard-402.onrender.com";
+export function resolveConfig(
+  runtime?: IAgentRuntime,
+  options?: Record<string, any>
+): CanaryGuardConfig {
+  const serviceUrl =
+    (options?.serviceUrl as string) ||
+    runtime?.getSetting?.("CANARYGUARD_URL") ||
+    process.env.CANARYGUARD_URL ||
+    undefined;
+
+  const paymentHeader =
+    (options?.paymentHeader as string) ||
+    runtime?.getSetting?.("CANARYGUARD_PAYMENT_HEADER") ||
+    process.env.CANARYGUARD_PAYMENT_HEADER ||
+    undefined;
+
+  const rawStrict =
+    options?.strictMode ??
+    runtime?.getSetting?.("CANARYGUARD_STRICT_MODE") ??
+    process.env.CANARYGUARD_STRICT_MODE;
+
+  const strictMode = rawStrict !== false && rawStrict !== "false";
+
+  return { serviceUrl, paymentHeader, strictMode };
+}
 
 export async function callCanaryGuardSanitize(
   content: string,
-  config: CanaryGuardConfig = {}
+  runtime?: IAgentRuntime,
+  options?: Record<string, any>
 ): Promise<CanaryGuardResult> {
-  const host = (
-    config.serviceUrl ||
-    process.env.CANARYGUARD_URL ||
-    CANARYGUARD_DEFAULT_URL
-  ).replace(/\/$/, "");
+  const config = resolveConfig(runtime, options);
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-
-  const payment = config.paymentHeader || process.env.CANARYGUARD_PAYMENT_HEADER;
-  if (payment) {
-    headers["PAYMENT-SIGNATURE"] = payment;
-    headers["X-PAYMENT"] = payment;
+  // Default: Execute 100% locally with zero network calls and zero data exfiltration
+  if (!config.serviceUrl) {
+    const localResult = sanitizeLocally(content, config.strictMode);
+    CanaryGuardState.recordScan(localResult);
+    return localResult;
   }
 
-  const res = await fetch(`${host}/v1/sanitize`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      content,
-      strict_mode: config.strictMode !== false,
-    }),
-  });
+  // Opt-in remote endpoint: Enforce AbortSignal timeout to prevent hanging pipeline
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-  if (!res.ok) {
-    const errorBody = await res.text();
-    throw new Error(`CanaryGuard HTTP ${res.status}: ${errorBody}`);
+  try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
+    if (config.paymentHeader) {
+      headers["PAYMENT-SIGNATURE"] = config.paymentHeader;
+      headers["X-PAYMENT"] = config.paymentHeader;
+    }
+
+    const host = config.serviceUrl.replace(/\/$/, "");
+    const res = await fetch(`${host}/v1/sanitize`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        content,
+        strict_mode: config.strictMode,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`Remote CanaryGuard HTTP ${res.status}: ${errorText}`);
+    }
+
+    const data = (await res.json()) as CanaryGuardResult;
+    data.mode = "remote";
+    CanaryGuardState.recordScan(data);
+    return data;
+  } catch (err: unknown) {
+    clearTimeout(timeoutId);
+    CanaryGuardState.recordError(err);
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn(`CanaryGuard remote unreachable, falling back to local engine: ${msg}`);
+
+    // Graceful offline fallback
+    const fallback = sanitizeLocally(content, config.strictMode);
+    fallback.mode = "local-fallback";
+    fallback.remote_error = msg;
+    return fallback;
   }
-
-  return (await res.json()) as CanaryGuardResult;
 }
 
 export const sanitizeAction: Action = {
   name: "CANARY_SANITIZE",
   similes: ["SANITIZE_TEXT", "CHECK_INJECTION", "FIREWALL_CHECK", "VERIFY_INPUT_SAFETY"],
-  description: "Runs untrusted text, user messages, or tool outputs through CanaryGuard 402 on Base mainnet to scrub prompt injection, concealed Unicode, and wallet drain commands.",
+  description: "Scans and sanitizes untrusted text locally for prompt injection, concealed Unicode, and wallet drain commands.",
   validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
-    return Boolean(message?.content?.text);
+    return Boolean(message?.content?.text && message.content.text.trim().length > 0);
   },
   handler: async (
-    _runtime: IAgentRuntime,
+    runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
     options?: Record<string, any>,
@@ -56,11 +115,11 @@ export const sanitizeAction: Action = {
   ): Promise<boolean | CanaryGuardResult> => {
     try {
       const text = message.content?.text || "";
-      const result = await callCanaryGuardSanitize(text, options);
+      const result = await callCanaryGuardSanitize(text, runtime, options);
 
       if (callback) {
         callback({
-          text: `[CanaryGuard 402] Status: ${result.status.toUpperCase()} | Risk: ${(result.risk_score * 100).toFixed(0)}% | Neutralized: ${result.threats_neutralized.length} threats`,
+          text: `[CanaryGuard] Status: ${result.status.toUpperCase()} | Risk: ${(result.risk_score * 100).toFixed(0)}% | Neutralized: ${result.threats_neutralized.length} threats | Mode: ${result.mode}`,
           content: {
             canaryguard: result,
           },
@@ -69,7 +128,7 @@ export const sanitizeAction: Action = {
       return result;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      logger.error(`CanaryGuard sanitization error: ${msg}`);
+      CanaryGuardState.recordError(err);
       if (callback) {
         callback({ text: `CanaryGuard check failed: ${msg}` });
       }
@@ -85,7 +144,7 @@ export const sanitizeAction: Action = {
       {
         user: "{{agentName}}",
         content: {
-          text: "Running CanaryGuard 402 prompt-injection firewall...",
+          text: "Running CanaryGuard prompt-injection firewall...",
           action: "CANARY_SANITIZE",
         },
       },

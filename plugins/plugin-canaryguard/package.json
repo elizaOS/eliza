@@ -1,16 +1,9 @@
 {
   "name": "@elizaos/plugin-canaryguard",
-  "version": "2.0.0-beta.0",
-  "description": "Deterministic prompt-injection firewall, concealed Unicode scrubber, and wallet-drain defense for ElizaOS agents on Base mainnet via x402",
+  "version": "2.0.3-beta.7",
   "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "sideEffects": false,
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/elizaos/eliza.git"
-  },
+  "description": "Deterministic prompt-injection firewall, concealed Unicode scrubber, and wallet-drain defense for ElizaOS agents.",
+  "main": "./dist/index.js",
   "exports": {
     "./package.json": "./package.json",
     ".": {
@@ -18,57 +11,61 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./*": {
+      "eliza-source": "./src/*.ts",
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
     }
-  },
-  "files": [
-    "registry-entry.json",
-    "dist"
-  ],
-  "keywords": [
-    "security",
-    "firewall",
-    "prompt-injection",
-    "x402",
-    "base",
-    "wallet-shield",
-    "elizaos"
-  ],
-  "author": "elizaOS",
-  "license": "MIT",
-  "scripts": {
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*"
-  },
-  "devDependencies": {
-    "@elizaos/testing": "workspace:*",
-    "@types/node": "^25.0.3",
-    "typescript": "^6.0.3",
-    "vitest": "^5.0.3"
-  },
-  "peerDependencies": {
-    "@elizaos/core": "workspace:*"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {
       "CANARYGUARD_URL": {
         "type": "string",
-        "description": "CanaryGuard 402 HTTP service endpoint (defaults to https://canaryguard-402.onrender.com)",
+        "description": "Optional remote CanaryGuard service URL. Defaults to offline local engine when unset.",
         "required": false,
         "sensitive": false
       },
       "CANARYGUARD_PAYMENT_HEADER": {
         "type": "string",
-        "description": "Optional x402 payment header signature for authenticated calls",
+        "description": "Optional x402 payment signature for remote verification.",
         "required": false,
         "sensitive": true
       }
-    }
+    },
+    "description": "Deterministic prompt-injection firewall and wallet protection."
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "bun run build:js && bun run build:types",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:types": "tsc6 --noCheck -p tsconfig.build.json",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
+  },
+  "files": [
+    "registry-entry.json",
+    "dist"
+  ],
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "tsup": "^8.5.1",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.3",
+    "@elizaos/testing": "workspace:*"
   }
 }

@@ -4,6 +4,7 @@
 	"app-browser": "@elizaos/plugin-browser",
 	"appBrowser": "@elizaos/plugin-browser",
 	"browser": "@elizaos/plugin-browser",
+	"canaryguard": "@elizaos/plugin-canaryguard",
 	"coding-agent": "@elizaos/plugin-coding-tools",
 	"coding-tools": "@elizaos/plugin-coding-tools",
 	"codingAgent": "@elizaos/plugin-coding-tools",

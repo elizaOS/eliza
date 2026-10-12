@@ -23,7 +23,10 @@
 				"icon": "Target",
 				"group": "agents",
 				"groupOrder": 7,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://github.com/elizaos/eliza#readme",
@@ -42,7 +45,12 @@
 			"npmName": "@elizaos/plugin-anthropic",
 			"version": "2.0.0-beta.0",
 			"source": "bundled",
-			"tags": ["ai-provider", "llm", "anthropic", "chat"],
+			"tags": [
+				"ai-provider",
+				"llm",
+				"anthropic",
+				"chat"
+			],
 			"config": {
 				"ANTHROPIC_API_KEY": {
 					"type": "secret",
@@ -90,7 +98,10 @@
 				"icon": "Brain",
 				"group": "ai-provider",
 				"groupOrder": 0,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://github.com/elizaos-plugins/plugin-anthropic#readme",
@@ -296,7 +307,10 @@
 				"icon": "TrendingDown",
 				"group": "blockchain",
 				"groupOrder": 4,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://github.com/elizaos/eliza#readme",
@@ -379,7 +393,10 @@
 				"icon": "Globe",
 				"group": "devtools",
 				"groupOrder": 5,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://elizaos.ai",
@@ -398,13 +415,74 @@
 			"subtype": "devtools"
 		},
 		{
+			"id": "canaryguard",
+			"name": "CanaryGuard",
+			"description": "Deterministic prompt-injection firewall, concealed Unicode scrubber, and wallet-drain defense for ElizaOS agents.",
+			"npmName": "@elizaos/plugin-canaryguard",
+			"version": "2.0.0-beta.0",
+			"source": "bundled",
+			"tags": [
+				"security",
+				"firewall",
+				"prompt-injection",
+				"wallet-defense",
+				"guardrails"
+			],
+			"config": {
+				"CANARYGUARD_URL": {
+					"type": "string",
+					"required": false,
+					"sensitive": false,
+					"label": "Service URL",
+					"help": "Optional remote CanaryGuard service URL. Defaults to offline local engine when unset.",
+					"advanced": true
+				},
+				"CANARYGUARD_PAYMENT_HEADER": {
+					"type": "string",
+					"required": false,
+					"sensitive": true,
+					"label": "Payment Header",
+					"help": "Optional x402 payment authorization signature for remote verification.",
+					"advanced": true
+				}
+			},
+			"render": {
+				"visible": true,
+				"pinTo": [],
+				"style": "card",
+				"icon": "ShieldCheck",
+				"group": "security",
+				"groupOrder": 2,
+				"actions": [
+					"enable",
+					"configure"
+				]
+			},
+			"resources": {
+				"homepage": "https://github.com/elizaos/eliza#readme",
+				"repository": "https://github.com/elizaos/eliza"
+			},
+			"dependsOn": [],
+			"channels": [],
+			"shortIds": [
+				"canaryguard"
+			],
+			"kind": "plugin",
+			"subtype": "security"
+		},
+		{
 			"id": "clipboard",
 			"name": "Clipboard",
 			"description": "File-based memory storage plugin for ElizaOS - persistent notes and clipboard",
 			"npmName": "@elizaos/plugin-clipboard",
 			"version": "2.0.0-beta.0",
 			"source": "store",
-			"tags": ["clipboard", "memory", "notes", "storage"],
+			"tags": [
+				"clipboard",
+				"memory",
+				"notes",
+				"storage"
+			],
 			"config": {
 				"CLIPBOARD_BASE_PATH": {
 					"type": "file-path",
@@ -431,7 +509,10 @@
 				"icon": "StickyNote",
 				"group": "documents",
 				"groupOrder": 6,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://github.com/elizaos-plugins/plugin-clipboard#readme",
@@ -450,7 +531,14 @@
 			"npmName": "@elizaos/plugin-coding-tools",
 			"version": "0.1.0",
 			"source": "bundled",
-			"tags": ["coding", "filesystem", "shell", "git", "code", "claude-code"],
+			"tags": [
+				"coding",
+				"filesystem",
+				"shell",
+				"git",
+				"code",
+				"claude-code"
+			],
 			"config": {
 				"CODING_TOOLS_WORKSPACE_ROOTS": {
 					"type": "string",
@@ -497,7 +585,10 @@
 				"icon": "Puzzle",
 				"group": "devtools",
 				"groupOrder": 5,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://github.com/elizaos/eliza#readme",
@@ -521,7 +612,13 @@
 			"npmName": "@elizaos/plugin-computeruse",
 			"version": "2.0.0-beta.0",
 			"source": "bundled",
-			"tags": ["computeruse", "automation", "desktop", "gui", "mcp"],
+			"tags": [
+				"computeruse",
+				"automation",
+				"desktop",
+				"gui",
+				"mcp"
+			],
 			"config": {
 				"COMPUTER_USE_ENABLED": {
 					"type": "boolean",
@@ -578,7 +675,10 @@
 				"icon": "MousePointer2",
 				"group": "devtools",
 				"groupOrder": 5,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://elizaos.ai",
@@ -586,7 +686,9 @@
 			},
 			"dependsOn": [],
 			"channels": [],
-			"shortIds": ["computeruse"],
+			"shortIds": [
+				"computeruse"
+			],
 			"kind": "plugin",
 			"subtype": "devtools"
 		},
@@ -597,15 +699,22 @@
 			"npmName": "@elizaos/plugin-native-contacts",
 			"version": "2.0.3-beta.2",
 			"source": "bundled",
-			"tags": ["device", "contacts"],
+			"tags": [
+				"device",
+				"contacts"
+			],
 			"config": {},
 			"render": {
 				"visible": false,
-				"pinTo": ["os-shell"],
+				"pinTo": [
+					"os-shell"
+				],
 				"style": "card",
 				"icon": "Contact",
 				"group": "system",
-				"actions": ["enable"]
+				"actions": [
+					"enable"
+				]
 			},
 			"resources": {
 				"homepage": "https://elizaos.ai",
@@ -629,7 +738,11 @@
 			"npmName": "@elizaos/plugin-copilot-proxy",
 			"version": "2.0.0-beta.0",
 			"source": "store",
-			"tags": ["copilot-proxy", "copilot", "proxy"],
+			"tags": [
+				"copilot-proxy",
+				"copilot",
+				"proxy"
+			],
 			"config": {
 				"COPILOT_PROXY_MODEL": {
 					"type": "string",
@@ -708,7 +821,10 @@
 				"icon": "Handshake",
 				"group": "agents",
 				"groupOrder": 7,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {},
 			"dependsOn": [],
@@ -723,7 +839,11 @@
 			"description": "Inspect tables, media, vectors, and ad-hoc SQL.",
 			"npmName": "@elizaos/app-database-viewer",
 			"source": "bundled",
-			"tags": ["database", "sql", "viewer"],
+			"tags": [
+				"database",
+				"sql",
+				"viewer"
+			],
 			"config": {},
 			"render": {
 				"visible": true,
@@ -732,7 +852,9 @@
 				"icon": "Server",
 				"group": "Apps",
 				"groupOrder": 7,
-				"actions": ["launch"]
+				"actions": [
+					"launch"
+				]
 			},
 			"resources": {},
 			"dependsOn": [],
@@ -743,7 +865,11 @@
 			"launch": {
 				"type": "internal-tab",
 				"target": "database",
-				"capabilities": ["database", "sql", "viewer"]
+				"capabilities": [
+					"database",
+					"sql",
+					"viewer"
+				]
 			}
 		},
 		{
@@ -753,7 +879,9 @@
 			"npmName": "@elizaos/plugin-directives",
 			"version": "2.0.0-beta.0",
 			"source": "store",
-			"tags": ["directives"],
+			"tags": [
+				"directives"
+			],
 			"config": {
 				"ALLOW_EXEC": {
 					"type": "boolean",
@@ -799,7 +927,10 @@
 				"icon": "ClipboardList",
 				"group": "agents",
 				"groupOrder": 7,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://github.com/elizaos/eliza#readme",
@@ -818,7 +949,13 @@
 			"npmName": "@elizaos/plugin-discord",
 			"version": "2.0.0-beta.0",
 			"source": "bundled",
-			"tags": ["connector", "social", "social-chat", "messaging", "discord"],
+			"tags": [
+				"connector",
+				"social",
+				"social-chat",
+				"messaging",
+				"discord"
+			],
 			"config": {
 				"DISCORD_API_TOKEN": {
 					"type": "secret",
@@ -932,7 +1069,11 @@
 				"icon": "MessageCircle",
 				"group": "connector",
 				"groupOrder": 1,
-				"actions": ["enable", "configure", "setup-guide"]
+				"actions": [
+					"enable",
+					"configure",
+					"setup-guide"
+				]
 			},
 			"resources": {
 				"homepage": "https://github.com/elizaos-plugins/plugin-discord#readme",
@@ -940,26 +1081,38 @@
 				"setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#discord"
 			},
 			"dependsOn": [],
-			"channels": ["discord", "discordLocal"],
-			"shortIds": ["discordLocal"],
+			"channels": [
+				"discord",
+				"discordLocal"
+			],
+			"shortIds": [
+				"discordLocal"
+			],
 			"kind": "connector",
 			"subtype": "messaging",
 			"auth": {
 				"kind": "oauth",
-				"credentialKeys": ["DISCORD_API_TOKEN"]
+				"credentialKeys": [
+					"DISCORD_API_TOKEN"
+				]
 			},
 			"accounts": {
 				"owner": {
 					"supported": true,
 					"authKind": "local-app",
 					"credentialKeys": [],
-					"osSupport": ["darwin", "win32"],
+					"osSupport": [
+						"darwin",
+						"win32"
+					],
 					"notes": "The user's own Discord identity, driven via Discord Desktop's Chrome DevTools Protocol port. Eliza relaunches the local Discord client with --remote-debugging-port and reads/writes through the user's logged-in session — useful for DMs the agent's bot has no access to. macOS uses osascript/open -a; Windows uses taskkill/Discord.exe from %LOCALAPPDATA%\\Discord\\app-*. Linux is not supported yet."
 				},
 				"agent": {
 					"supported": true,
 					"authKind": "api-key",
-					"credentialKeys": ["DISCORD_API_TOKEN"],
+					"credentialKeys": [
+						"DISCORD_API_TOKEN"
+					],
 					"notes": "The agent's own Discord bot identity. Paste a bot token from the Discord Developer Portal; posts, mentions, replies, slash commands, and voice all run through the bot user."
 				}
 			}
@@ -970,7 +1123,10 @@
 			"description": "Character Knowledge documents, fragments, and search routes for the agent.",
 			"npmName": "@elizaos/plugin-knowledge",
 			"source": "bundled",
-			"tags": ["knowledge", "documents"],
+			"tags": [
+				"knowledge",
+				"documents"
+			],
 			"config": {},
 			"render": {
 				"visible": false,
@@ -989,7 +1145,9 @@
 			"subtype": "tool",
 			"launch": {
 				"type": "server-launch",
-				"capabilities": ["documents"],
+				"capabilities": [
+					"documents"
+				],
 				"routePlugin": {
 					"specifier": "@elizaos/plugin-knowledge",
 					"exportName": "knowledgePlugin"
@@ -1003,7 +1161,9 @@
 			"npmName": "@elizaos/plugin-elizacloud",
 			"version": "2.0.0-beta.0",
 			"source": "bundled",
-			"tags": ["elizacloud"],
+			"tags": [
+				"elizacloud"
+			],
 			"config": {
 				"ELIZAOS_CLOUD_API_KEY": {
 					"type": "secret",
@@ -1170,7 +1330,10 @@
 				"icon": "Cloud",
 				"group": "feature-other",
 				"groupOrder": 12,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://github.com/eliza-ai/eliza/tree/develop/packages/plugin-elizacloud#readme",
@@ -1178,7 +1341,9 @@
 			},
 			"dependsOn": [],
 			"channels": [],
-			"shortIds": ["elizacloud"],
+			"shortIds": [
+				"elizacloud"
+			],
 			"kind": "plugin",
 			"subtype": "other"
 		},
@@ -1189,7 +1354,12 @@
 			"npmName": "@elizaos/plugin-embeddings",
 			"version": "2.0.0-beta.0",
 			"source": "bundled",
-			"tags": ["ai-provider", "llm", "embedding", "embeddings"],
+			"tags": [
+				"ai-provider",
+				"llm",
+				"embedding",
+				"embeddings"
+			],
 			"config": {
 				"EMBEDDING_BASE_URL": {
 					"type": "url",
@@ -1261,7 +1431,10 @@
 				"icon": "Boxes",
 				"group": "ai-provider",
 				"groupOrder": 0,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://github.com/elizaOS/eliza/tree/HEAD/plugins/plugin-embeddings",
@@ -1281,7 +1454,10 @@
 			"npmName": "@elizaos/plugin-wallet",
 			"version": "2.0.0-beta.0",
 			"source": "bundled",
-			"tags": ["crypto", "evm"],
+			"tags": [
+				"crypto",
+				"evm"
+			],
 			"config": {
 				"EVM_PRIVATE_KEY": {
 					"type": "secret",
@@ -1398,7 +1574,10 @@
 				"icon": "Link",
 				"group": "blockchain",
 				"groupOrder": 4,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://github.com/elizaOS/eliza/tree/develop/plugins/plugin-wallet#readme",
@@ -1406,7 +1585,13 @@
 			},
 			"dependsOn": [],
 			"channels": [],
-			"shortIds": ["evm", "solana", "wallet", "agent_wallet", "agent-wallet"],
+			"shortIds": [
+				"evm",
+				"solana",
+				"wallet",
+				"agent_wallet",
+				"agent-wallet"
+			],
 			"kind": "plugin",
 			"subtype": "blockchain"
 		},
@@ -1416,7 +1601,11 @@
 			"description": "Built-in advanced capability for recording and recalling transferable agent learnings, surfaced in the Character Experience workspace alongside trajectory inspection tooling.",
 			"version": "2.0.0-beta.0",
 			"source": "bundled",
-			"tags": ["experience", "learning", "memory"],
+			"tags": [
+				"experience",
+				"learning",
+				"memory"
+			],
 			"config": {
 				"AUTO_RECORD_THRESHOLD": {
 					"type": "number",
@@ -1434,7 +1623,10 @@
 				"icon": "Star",
 				"group": "storage",
 				"groupOrder": 10,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://elizaos.ai",
@@ -1453,7 +1645,11 @@
 			"npmName": "@elizaos/plugin-form",
 			"version": "2.0.0-beta.0",
 			"source": "bundled",
-			"tags": ["form", "conversational", "data-collection"],
+			"tags": [
+				"form",
+				"conversational",
+				"data-collection"
+			],
 			"config": {},
 			"render": {
 				"visible": true,
@@ -1462,7 +1658,10 @@
 				"icon": "ClipboardList",
 				"group": "media",
 				"groupOrder": 8,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://elizaos.ai",
@@ -1470,7 +1669,9 @@
 			},
 			"dependsOn": [],
 			"channels": [],
-			"shortIds": ["form"],
+			"shortIds": [
+				"form"
+			],
 			"kind": "plugin",
 			"subtype": "media"
 		},
@@ -1481,7 +1682,9 @@
 			"npmName": "@elizaos/plugin-github",
 			"version": "2.0.0-beta.0",
 			"source": "bundled",
-			"tags": ["github"],
+			"tags": [
+				"github"
+			],
 			"config": {
 				"GITHUB_USER_PAT": {
 					"type": "secret",
@@ -1507,7 +1710,10 @@
 				"icon": "GitBranch",
 				"group": "devtools",
 				"groupOrder": 5,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://github.com/elizaos-plugins/plugin-github#readme",
@@ -1527,7 +1733,11 @@
 			"npmName": "@elizaos/plugin-gmail-watch",
 			"version": "2.0.0-beta.0",
 			"source": "store",
-			"tags": ["gmail-watch", "gmail", "watch"],
+			"tags": [
+				"gmail-watch",
+				"gmail",
+				"watch"
+			],
 			"config": {},
 			"render": {
 				"visible": true,
@@ -1536,7 +1746,10 @@
 				"icon": "Mail",
 				"group": "media",
 				"groupOrder": 8,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#gmail-watch"
@@ -1554,7 +1767,11 @@
 			"npmName": "@elizaos/plugin-goals",
 			"version": "2.0.0-beta.0",
 			"source": "bundled",
-			"tags": ["goals", "objectives", "task-management"],
+			"tags": [
+				"goals",
+				"objectives",
+				"task-management"
+			],
 			"config": {
 				"GOAL_BATCH_SIZE": {
 					"type": "number",
@@ -1614,7 +1831,10 @@
 				"icon": "Target",
 				"group": "agents",
 				"groupOrder": 7,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://elizaos.ai",
@@ -1677,7 +1897,11 @@
 				"icon": "Mail",
 				"group": "connector",
 				"groupOrder": 1,
-				"actions": ["enable", "configure", "setup-guide"]
+				"actions": [
+					"enable",
+					"configure",
+					"setup-guide"
+				]
 			},
 			"resources": {
 				"homepage": "https://github.com/elizaos-plugins/plugin-google-workspace#readme",
@@ -1685,7 +1909,9 @@
 				"setupGuideUrl": "https://github.com/elizaos-plugins/plugin-google-workspace#readme"
 			},
 			"dependsOn": [],
-			"channels": ["googlechat"],
+			"channels": [
+				"googlechat"
+			],
 			"shortIds": [],
 			"kind": "connector",
 			"subtype": "email",
@@ -1718,7 +1944,11 @@
 			"description": "ElizaOS plugin for Hedera blockchain",
 			"npmName": "@elizaos/plugin-hedera",
 			"source": "store",
-			"tags": ["hedera", "hedera-agent-kit", "llm"],
+			"tags": [
+				"hedera",
+				"hedera-agent-kit",
+				"llm"
+			],
 			"config": {
 				"HEDERA_NETWORK": {
 					"type": "string",
@@ -1753,7 +1983,10 @@
 				"style": "card",
 				"group": "feature-other",
 				"groupOrder": 12,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {},
 			"dependsOn": [],
@@ -1904,13 +2137,20 @@
 				"icon": "MessageSquare",
 				"group": "connector",
 				"groupOrder": 1,
-				"actions": ["enable", "configure", "setup-guide"]
+				"actions": [
+					"enable",
+					"configure",
+					"setup-guide"
+				]
 			},
 			"resources": {
 				"setupGuideUrl": "https://docs.eliza.ai/tracks/agent/connect-channels#imessage-native-or-blooio"
 			},
 			"dependsOn": [],
-			"channels": ["imessage", "blooio"],
+			"channels": [
+				"imessage",
+				"blooio"
+			],
 			"shortIds": [],
 			"kind": "connector",
 			"subtype": "messaging",
@@ -2075,7 +2315,10 @@
 				"icon": "Monitor",
 				"group": "ai-provider",
 				"groupOrder": 0,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://github.com/elizaOS/eliza/tree/main/plugins/plugin-local-inference#readme",
@@ -2102,7 +2345,11 @@
 			"description": "Search runtime and service logs.",
 			"npmName": "@elizaos/app-log-viewer",
 			"source": "bundled",
-			"tags": ["logs", "debug", "viewer"],
+			"tags": [
+				"logs",
+				"debug",
+				"viewer"
+			],
 			"config": {},
 			"render": {
 				"visible": true,
@@ -2111,7 +2358,9 @@
 				"icon": "FileText",
 				"group": "Apps",
 				"groupOrder": 8,
-				"actions": ["launch"]
+				"actions": [
+					"launch"
+				]
 			},
 			"resources": {},
 			"dependsOn": [],
@@ -2122,7 +2371,11 @@
 			"launch": {
 				"type": "internal-tab",
 				"target": "logs",
-				"capabilities": ["logs", "debug", "viewer"]
+				"capabilities": [
+					"logs",
+					"debug",
+					"viewer"
+				]
 			}
 		},
 		{
@@ -2132,7 +2385,13 @@
 			"npmName": "@elizaos/plugin-mattermost",
 			"version": "2.0.0-beta.0",
 			"source": "store",
-			"tags": ["connector", "social", "social-chat", "messaging", "mattermost"],
+			"tags": [
+				"connector",
+				"social",
+				"social-chat",
+				"messaging",
+				"mattermost"
+			],
 			"config": {
 				"MATTERMOST_ENABLED": {
 					"type": "boolean",
@@ -2222,19 +2481,27 @@
 				"icon": "Diamond",
 				"group": "connector",
 				"groupOrder": 1,
-				"actions": ["enable", "configure", "setup-guide"]
+				"actions": [
+					"enable",
+					"configure",
+					"setup-guide"
+				]
 			},
 			"resources": {
 				"setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#mattermost"
 			},
 			"dependsOn": [],
-			"channels": ["mattermost"],
+			"channels": [
+				"mattermost"
+			],
 			"shortIds": [],
 			"kind": "connector",
 			"subtype": "messaging",
 			"auth": {
 				"kind": "token",
-				"credentialKeys": ["MATTERMOST_BOT_TOKEN"]
+				"credentialKeys": [
+					"MATTERMOST_BOT_TOKEN"
+				]
 			}
 		},
 		{
@@ -2244,7 +2511,9 @@
 			"npmName": "@elizaos/plugin-mcp",
 			"version": "2.0.0-beta.0",
 			"source": "bundled",
-			"tags": ["mcp"],
+			"tags": [
+				"mcp"
+			],
 			"config": {
 				"mcp": {
 					"type": "json",
@@ -2270,7 +2539,10 @@
 				"icon": "Puzzle",
 				"group": "devtools",
 				"groupOrder": 5,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://github.com/elizaos-plugins/plugin-mcp#readme",
@@ -2290,7 +2562,10 @@
 			"npmName": "@elizaos/plugin-memory",
 			"version": "2.0.1",
 			"source": "store",
-			"tags": ["memory", "summarization"],
+			"tags": [
+				"memory",
+				"summarization"
+			],
 			"config": {
 				"MEMORY_ENABLE_BM25": {
 					"type": "boolean",
@@ -2400,7 +2675,10 @@
 				"icon": "Dna",
 				"group": "documents",
 				"groupOrder": 6,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {},
 			"dependsOn": [],
@@ -2415,7 +2693,11 @@
 			"description": "Browse memory, fact, and extraction activity.",
 			"npmName": "@elizaos/app-memory-viewer",
 			"source": "bundled",
-			"tags": ["memory", "facts", "viewer"],
+			"tags": [
+				"memory",
+				"facts",
+				"viewer"
+			],
 			"config": {},
 			"render": {
 				"visible": true,
@@ -2424,7 +2706,9 @@
 				"icon": "Dna",
 				"group": "Apps",
 				"groupOrder": 5,
-				"actions": ["launch"]
+				"actions": [
+					"launch"
+				]
 			},
 			"resources": {},
 			"dependsOn": [],
@@ -2435,7 +2719,11 @@
 			"launch": {
 				"type": "internal-tab",
 				"target": "memories",
-				"capabilities": ["memory", "facts", "viewer"]
+				"capabilities": [
+					"memory",
+					"facts",
+					"viewer"
+				]
 			}
 		},
 		{
@@ -2445,7 +2733,13 @@
 			"npmName": "@elizaos/plugin-moltbook",
 			"version": "2.0.0-beta.0",
 			"source": "store",
-			"tags": ["moltbook", "social", "reddit", "agents", "autonomous"],
+			"tags": [
+				"moltbook",
+				"social",
+				"reddit",
+				"agents",
+				"autonomous"
+			],
 			"config": {
 				"MOLTBOOK_MODEL": {
 					"type": "string",
@@ -2514,7 +2808,10 @@
 				"icon": "ScrollText",
 				"group": "gaming",
 				"groupOrder": 11,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {},
 			"dependsOn": [],
@@ -2530,7 +2827,13 @@
 			"npmName": "@elizaos/plugin-msteams",
 			"version": "2.0.0-beta.0",
 			"source": "store",
-			"tags": ["connector", "social", "social-chat", "messaging", "msteams"],
+			"tags": [
+				"connector",
+				"social",
+				"social-chat",
+				"messaging",
+				"msteams"
+			],
 			"config": {
 				"MSTEAMS_APP_ID": {
 					"type": "string",
@@ -2614,13 +2917,19 @@
 				"icon": "Square",
 				"group": "connector",
 				"groupOrder": 1,
-				"actions": ["enable", "configure", "setup-guide"]
+				"actions": [
+					"enable",
+					"configure",
+					"setup-guide"
+				]
 			},
 			"resources": {
 				"setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#microsoft-teams"
 			},
 			"dependsOn": [],
-			"channels": ["msteams"],
+			"channels": [
+				"msteams"
+			],
 			"shortIds": [],
 			"kind": "connector",
 			"subtype": "messaging",
@@ -2636,7 +2945,14 @@
 			"npmName": "@elizaos/plugin-nearai",
 			"version": "2.0.3",
 			"source": "store",
-			"tags": ["ai-provider", "llm", "nearai", "near-ai", "tee", "chat"],
+			"tags": [
+				"ai-provider",
+				"llm",
+				"nearai",
+				"near-ai",
+				"tee",
+				"chat"
+			],
 			"config": {
 				"NEARAI_API_KEY": {
 					"type": "secret",
@@ -2693,7 +3009,10 @@
 				"icon": "ShieldCheck",
 				"group": "ai-provider",
 				"groupOrder": 0,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://near.ai",
@@ -2797,7 +3116,11 @@
 				"icon": "Cloud",
 				"group": "connector",
 				"groupOrder": 1,
-				"actions": ["enable", "configure", "setup-guide"]
+				"actions": [
+					"enable",
+					"configure",
+					"setup-guide"
+				]
 			},
 			"resources": {
 				"setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#nextcloud-talk"
@@ -2819,7 +3142,11 @@
 			"npmName": "@elizaos/plugin-openai",
 			"version": "2.0.0-beta.0",
 			"source": "bundled",
-			"tags": ["ai-provider", "llm", "openai"],
+			"tags": [
+				"ai-provider",
+				"llm",
+				"openai"
+			],
 			"config": {
 				"OPENAI_API_KEY": {
 					"type": "secret",
@@ -2975,7 +3302,10 @@
 				"icon": "CircleDashed",
 				"group": "ai-provider",
 				"groupOrder": 0,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://github.com/elizaos-plugins/plugin-openai#readme",
@@ -2995,7 +3325,9 @@
 			"npmName": "@elizaos/plugin-pdf",
 			"version": "2.0.0-beta.0",
 			"source": "bundled",
-			"tags": ["pdf"],
+			"tags": [
+				"pdf"
+			],
 			"config": {},
 			"render": {
 				"visible": true,
@@ -3004,7 +3336,10 @@
 				"icon": "FileText",
 				"group": "documents",
 				"groupOrder": 6,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://github.com/elizaos-plugins/plugin-pdf#readme",
@@ -3023,7 +3358,12 @@
 			"npmName": "@elizaos/plugin-personal-assistant",
 			"version": "2.0.3-beta.7",
 			"source": "bundled",
-			"tags": ["personal-assistant", "lifeops", "goals", "todos"],
+			"tags": [
+				"personal-assistant",
+				"lifeops",
+				"goals",
+				"todos"
+			],
 			"config": {},
 			"render": {
 				"visible": false,
@@ -3037,12 +3377,18 @@
 			"resources": {},
 			"dependsOn": [],
 			"channels": [],
-			"shortIds": ["selfcontrol"],
+			"shortIds": [
+				"selfcontrol"
+			],
 			"kind": "app",
 			"subtype": "tool",
 			"launch": {
 				"type": "server-launch",
-				"capabilities": ["lifeops", "goals", "todos"],
+				"capabilities": [
+					"lifeops",
+					"goals",
+					"todos"
+				],
 				"routePlugin": {
 					"specifier": "@elizaos/plugin-personal-assistant/routes/plugin",
 					"exportName": "personalAssistantRoutesPlugin"
@@ -3056,15 +3402,22 @@
 			"npmName": "@elizaos/plugin-native-phone",
 			"version": "2.0.3-beta.2",
 			"source": "bundled",
-			"tags": ["device", "phone"],
+			"tags": [
+				"device",
+				"phone"
+			],
 			"config": {},
 			"render": {
 				"visible": false,
-				"pinTo": ["os-shell"],
+				"pinTo": [
+					"os-shell"
+				],
 				"style": "card",
 				"icon": "Phone",
 				"group": "system",
-				"actions": ["enable"]
+				"actions": [
+					"enable"
+				]
 			},
 			"resources": {
 				"homepage": "https://elizaos.ai",
@@ -3088,7 +3441,13 @@
 			"npmName": "@elizaos/plugin-plugin-manager",
 			"version": "2.0.0-beta.0",
 			"source": "store",
-			"tags": ["plugins", "registry", "install", "create", "agents"],
+			"tags": [
+				"plugins",
+				"registry",
+				"install",
+				"create",
+				"agents"
+			],
 			"config": {},
 			"render": {
 				"visible": true,
@@ -3097,7 +3456,10 @@
 				"icon": "Package",
 				"group": "agents",
 				"groupOrder": 7,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {},
 			"dependsOn": [],
@@ -3112,7 +3474,11 @@
 			"description": "Inspect installed plugins, connectors, and runtime feature flags.",
 			"npmName": "@elizaos/app-plugin-viewer",
 			"source": "bundled",
-			"tags": ["plugins", "connectors", "viewer"],
+			"tags": [
+				"plugins",
+				"connectors",
+				"viewer"
+			],
 			"config": {},
 			"render": {
 				"visible": true,
@@ -3121,7 +3487,9 @@
 				"icon": "Package",
 				"group": "Apps",
 				"groupOrder": 1,
-				"actions": ["launch"]
+				"actions": [
+					"launch"
+				]
 			},
 			"resources": {},
 			"dependsOn": [],
@@ -3132,7 +3500,11 @@
 			"launch": {
 				"type": "internal-tab",
 				"target": "plugins",
-				"capabilities": ["plugins", "connectors", "viewer"]
+				"capabilities": [
+					"plugins",
+					"connectors",
+					"viewer"
+				]
 			}
 		},
 		{
@@ -3142,7 +3514,14 @@
 			"npmName": "@elizaos/plugin-prose",
 			"version": "2.0.0-beta.0",
 			"source": "store",
-			"tags": ["openprose", "prose", "llm", "vm", "workflow", "orchestration"],
+			"tags": [
+				"openprose",
+				"prose",
+				"llm",
+				"vm",
+				"workflow",
+				"orchestration"
+			],
 			"config": {
 				"PROSE_SKILLS_DIR": {
 					"type": "file-path",
@@ -3176,7 +3555,10 @@
 				"icon": "PenTool",
 				"group": "media",
 				"groupOrder": 8,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {},
 			"dependsOn": [],
@@ -3191,7 +3573,11 @@
 			"description": "Explore cross-channel people, identities, and relationship graphs.",
 			"npmName": "@elizaos/app-relationship-viewer",
 			"source": "bundled",
-			"tags": ["relationships", "graph", "viewer"],
+			"tags": [
+				"relationships",
+				"graph",
+				"viewer"
+			],
 			"config": {},
 			"render": {
 				"visible": true,
@@ -3200,7 +3586,9 @@
 				"icon": "Link",
 				"group": "Apps",
 				"groupOrder": 4,
-				"actions": ["launch"]
+				"actions": [
+					"launch"
+				]
 			},
 			"resources": {},
 			"dependsOn": [],
@@ -3211,7 +3599,11 @@
 			"launch": {
 				"type": "internal-tab",
 				"target": "relationships",
-				"capabilities": ["relationships", "graph", "viewer"]
+				"capabilities": [
+					"relationships",
+					"graph",
+					"viewer"
+				]
 			}
 		},
 		{
@@ -3221,7 +3613,13 @@
 			"npmName": "@elizaos/plugin-rss",
 			"version": "2.0.0-beta.0",
 			"source": "store",
-			"tags": ["rss", "atom", "feed", "news", "syndication"],
+			"tags": [
+				"rss",
+				"atom",
+				"feed",
+				"news",
+				"syndication"
+			],
 			"config": {
 				"RSS_FEEDS": {
 					"type": "json",
@@ -3268,7 +3666,10 @@
 				"icon": "Rss",
 				"group": "media",
 				"groupOrder": 8,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://elizaos.ai",
@@ -3286,7 +3687,11 @@
 			"description": "Inspect runtime objects, plugin order, providers, and services.",
 			"npmName": "@elizaos/app-runtime-debugger",
 			"source": "bundled",
-			"tags": ["runtime", "debug", "viewer"],
+			"tags": [
+				"runtime",
+				"debug",
+				"viewer"
+			],
 			"config": {},
 			"render": {
 				"visible": true,
@@ -3295,7 +3700,9 @@
 				"icon": "Settings",
 				"group": "Apps",
 				"groupOrder": 6,
-				"actions": ["launch"]
+				"actions": [
+					"launch"
+				]
 			},
 			"resources": {},
 			"dependsOn": [],
@@ -3306,7 +3713,11 @@
 			"launch": {
 				"type": "internal-tab",
 				"target": "runtime",
-				"capabilities": ["runtime", "debug", "viewer"]
+				"capabilities": [
+					"runtime",
+					"debug",
+					"viewer"
+				]
 			}
 		},
 		{
@@ -3316,7 +3727,12 @@
 			"npmName": "@elizaos/plugin-s3-storage",
 			"version": "2.0.0-beta.0",
 			"source": "store",
-			"tags": ["storage", "files", "s3", "s3-storage"],
+			"tags": [
+				"storage",
+				"files",
+				"s3",
+				"s3-storage"
+			],
 			"config": {
 				"AWS_REGION": {
 					"type": "string",
@@ -3390,7 +3806,10 @@
 				"icon": "Server",
 				"group": "storage",
 				"groupOrder": 10,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://github.com/elizaos-plugins/plugin-storage-s3#readme",
@@ -3409,7 +3828,10 @@
 			"npmName": "@elizaos/plugin-scheduling",
 			"version": "2.0.0-beta.0",
 			"source": "bundled",
-			"tags": ["scheduling", "calendar"],
+			"tags": [
+				"scheduling",
+				"calendar"
+			],
 			"config": {
 				"DEFAULT_TIMEZONE": {
 					"type": "string",
@@ -3427,7 +3849,10 @@
 				"icon": "Calendar",
 				"group": "automation",
 				"groupOrder": 9,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://github.com/elizaos/eliza#readme",
@@ -3445,7 +3870,10 @@
 			"description": "Create, enable, review, and install custom agent skills.",
 			"npmName": "@elizaos/app-skills-viewer",
 			"source": "bundled",
-			"tags": ["skills", "viewer"],
+			"tags": [
+				"skills",
+				"viewer"
+			],
 			"config": {},
 			"render": {
 				"visible": true,
@@ -3454,7 +3882,9 @@
 				"icon": "Wrench",
 				"group": "Apps",
 				"groupOrder": 2,
-				"actions": ["launch"]
+				"actions": [
+					"launch"
+				]
 			},
 			"resources": {},
 			"dependsOn": [],
@@ -3465,7 +3895,10 @@
 			"launch": {
 				"type": "internal-tab",
 				"target": "skills",
-				"capabilities": ["skills", "viewer"]
+				"capabilities": [
+					"skills",
+					"viewer"
+				]
 			}
 		},
 		{
@@ -3548,7 +3981,11 @@
 				"icon": "Briefcase",
 				"group": "connector",
 				"groupOrder": 1,
-				"actions": ["enable", "configure", "setup-guide"]
+				"actions": [
+					"enable",
+					"configure",
+					"setup-guide"
+				]
 			},
 			"resources": {
 				"homepage": "https://github.com/elizaos-plugins/plugin-slack#readme",
@@ -3556,13 +3993,17 @@
 				"setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#slack"
 			},
 			"dependsOn": [],
-			"channels": ["slack"],
+			"channels": [
+				"slack"
+			],
 			"shortIds": [],
 			"kind": "connector",
 			"subtype": "messaging",
 			"auth": {
 				"kind": "oauth",
-				"credentialKeys": ["SLACK_APP_TOKEN"]
+				"credentialKeys": [
+					"SLACK_APP_TOKEN"
+				]
 			},
 			"accounts": {
 				"owner": {
@@ -3586,7 +4027,11 @@
 			"npmName": "@elizaos/plugin-sqlite",
 			"version": "2.0.3-beta.7",
 			"source": "bundled",
-			"tags": ["database", "storage", "sqlite"],
+			"tags": [
+				"database",
+				"storage",
+				"sqlite"
+			],
 			"config": {
 				"SQLITE_DATABASE_PATH": {
 					"type": "string",
@@ -3600,7 +4045,10 @@
 				"style": "card",
 				"group": "feature-other",
 				"groupOrder": 12,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"repository": "https://github.com/elizaOS/eliza/tree/develop/plugins/plugin-sqlite"
@@ -3667,7 +4115,11 @@
 				"icon": "Send",
 				"group": "connector",
 				"groupOrder": 1,
-				"actions": ["enable", "configure", "setup-guide"]
+				"actions": [
+					"enable",
+					"configure",
+					"setup-guide"
+				]
 			},
 			"resources": {
 				"homepage": "https://github.com/elizaos-plugins/plugin-telegram#readme",
@@ -3675,13 +4127,17 @@
 				"setupGuideUrl": "https://docs.eliza.ai/guides/tutorial-telegram-bot"
 			},
 			"dependsOn": [],
-			"channels": ["telegram"],
+			"channels": [
+				"telegram"
+			],
 			"shortIds": [],
 			"kind": "connector",
 			"subtype": "messaging",
 			"auth": {
 				"kind": "token",
-				"credentialKeys": ["TELEGRAM_BOT_TOKEN"]
+				"credentialKeys": [
+					"TELEGRAM_BOT_TOKEN"
+				]
 			}
 		},
 		{
@@ -3765,7 +4221,11 @@
 				"icon": "Tornado",
 				"group": "connector",
 				"groupOrder": 1,
-				"actions": ["enable", "configure", "setup-guide"]
+				"actions": [
+					"enable",
+					"configure",
+					"setup-guide"
+				]
 			},
 			"resources": {
 				"setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#tlon-urbit"
@@ -3787,7 +4247,13 @@
 			"npmName": "@elizaos/plugin-todos",
 			"version": "0.2.0",
 			"source": "bundled",
-			"tags": ["todos", "tasks", "agent", "claude-code", "crud"],
+			"tags": [
+				"todos",
+				"tasks",
+				"agent",
+				"claude-code",
+				"crud"
+			],
 			"config": {},
 			"render": {
 				"visible": true,
@@ -3796,13 +4262,18 @@
 				"icon": "ListChecks",
 				"group": "devtools",
 				"groupOrder": 6,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://github.com/elizaos/eliza#readme",
 				"repository": "https://github.com/elizaos/eliza"
 			},
-			"dependsOn": ["sql"],
+			"dependsOn": [
+				"sql"
+			],
 			"channels": [],
 			"shortIds": [],
 			"kind": "plugin",
@@ -3831,7 +4302,10 @@
 				"icon": "TrendingDown",
 				"group": "storage",
 				"groupOrder": 10,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://elizaos.ai",
@@ -3854,7 +4328,11 @@
 			"description": "Inspect LLM call history, prompts, and execution traces.",
 			"npmName": "@elizaos/app-trajectory-viewer",
 			"source": "bundled",
-			"tags": ["trajectories", "debug", "viewer"],
+			"tags": [
+				"trajectories",
+				"debug",
+				"viewer"
+			],
 			"config": {},
 			"render": {
 				"visible": true,
@@ -3863,7 +4341,9 @@
 				"icon": "TrendingDown",
 				"group": "Apps",
 				"groupOrder": 3,
-				"actions": ["launch"]
+				"actions": [
+					"launch"
+				]
 			},
 			"resources": {},
 			"dependsOn": [],
@@ -3874,7 +4354,11 @@
 			"launch": {
 				"type": "internal-tab",
 				"target": "trajectories",
-				"capabilities": ["trajectories", "debug", "viewer"]
+				"capabilities": [
+					"trajectories",
+					"debug",
+					"viewer"
+				]
 			}
 		},
 		{
@@ -3883,7 +4367,12 @@
 			"description": "Trust scoring, security signals, and permission helpers built into the elizaOS runtime (enable via enableTrust).",
 			"version": "2.0.0-beta.0",
 			"source": "bundled",
-			"tags": ["trust", "permissions", "security", "rbac"],
+			"tags": [
+				"trust",
+				"permissions",
+				"security",
+				"rbac"
+			],
 			"config": {
 				"OWNER_ENTITY_ID": {
 					"type": "string",
@@ -3909,7 +4398,10 @@
 				"icon": "Handshake",
 				"group": "blockchain",
 				"groupOrder": 4,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {},
 			"dependsOn": [],
@@ -3925,7 +4417,10 @@
 			"npmName": "@elizaos/plugin-tts",
 			"version": "2.0.0-beta.0",
 			"source": "store",
-			"tags": ["llm", "text-to-speech"],
+			"tags": [
+				"llm",
+				"text-to-speech"
+			],
 			"config": {
 				"TTS_AUTO_MODE": {
 					"type": "string",
@@ -3979,7 +4474,10 @@
 				"icon": "Volume2",
 				"group": "voice",
 				"groupOrder": 3,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://github.com/elizaos/eliza#readme",
@@ -3998,7 +4496,12 @@
 			"npmName": "@elizaos/plugin-twilio",
 			"version": "2.0.0-beta.0",
 			"source": "store",
-			"tags": ["llm", "twilio", "sms", "voice"],
+			"tags": [
+				"llm",
+				"twilio",
+				"sms",
+				"voice"
+			],
 			"config": {
 				"TWILIO_AUTH_TOKEN": {
 					"type": "secret",
@@ -4148,7 +4651,10 @@
 				"icon": "Phone",
 				"group": "feature-other",
 				"groupOrder": 12,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://github.com/elizaos/eliza#readme",
@@ -4168,7 +4674,12 @@
 			"npmName": "@elizaos/plugin-video",
 			"version": "0.1.9-alpha.1",
 			"source": "bundled",
-			"tags": ["video", "youtube", "transcription", "media"],
+			"tags": [
+				"video",
+				"youtube",
+				"transcription",
+				"media"
+			],
 			"config": {},
 			"render": {
 				"visible": true,
@@ -4177,7 +4688,10 @@
 				"icon": "Video",
 				"group": "media",
 				"groupOrder": 5,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {},
 			"dependsOn": [],
@@ -4193,7 +4707,11 @@
 			"npmName": "@elizaos/plugin-vision",
 			"version": "2.0.0-beta.0",
 			"source": "bundled",
-			"tags": ["vision", "camera", "ai-vision"],
+			"tags": [
+				"vision",
+				"camera",
+				"ai-vision"
+			],
 			"config": {
 				"CAMERA_NAME": {
 					"type": "string",
@@ -4219,7 +4737,10 @@
 				"icon": "Eye",
 				"group": "media",
 				"groupOrder": 8,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://elizaos.ai",
@@ -4227,7 +4748,9 @@
 			},
 			"dependsOn": [],
 			"channels": [],
-			"shortIds": ["vision"],
+			"shortIds": [
+				"vision"
+			],
 			"kind": "plugin",
 			"subtype": "media"
 		},
@@ -4238,7 +4761,9 @@
 			"npmName": "@elizaos/plugin-webhooks",
 			"version": "2.0.0-beta.0",
 			"source": "store",
-			"tags": ["webhooks"],
+			"tags": [
+				"webhooks"
+			],
 			"config": {},
 			"render": {
 				"visible": true,
@@ -4247,7 +4772,10 @@
 				"icon": "Webhook",
 				"group": "devtools",
 				"groupOrder": 5,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {},
 			"dependsOn": [],
@@ -4263,15 +4791,22 @@
 			"npmName": "@elizaos/plugin-native-wifi",
 			"version": "2.0.3-beta.2",
 			"source": "bundled",
-			"tags": ["device", "wifi"],
+			"tags": [
+				"device",
+				"wifi"
+			],
 			"config": {},
 			"render": {
 				"visible": false,
-				"pinTo": ["os-shell"],
+				"pinTo": [
+					"os-shell"
+				],
 				"style": "card",
 				"icon": "Wifi",
 				"group": "system",
-				"actions": ["enable"]
+				"actions": [
+					"enable"
+				]
 			},
 			"resources": {
 				"homepage": "https://elizaos.ai",
@@ -4295,7 +4830,10 @@
 			"npmName": "@elizaos/plugin-workflow",
 			"version": "1.2.10",
 			"source": "bundled",
-			"tags": ["workflow", "automation"],
+			"tags": [
+				"workflow",
+				"automation"
+			],
 			"config": {},
 			"render": {
 				"visible": true,
@@ -4303,7 +4841,10 @@
 				"style": "card",
 				"group": "feature-other",
 				"groupOrder": 12,
-				"actions": ["enable", "configure"]
+				"actions": [
+					"enable",
+					"configure"
+				]
 			},
 			"resources": {
 				"homepage": "https://elizaos.ai",
@@ -4322,7 +4863,14 @@
 			"npmName": "@elizaos/plugin-x",
 			"version": "2.0.0-beta.0",
 			"source": "bundled",
-			"tags": ["connector", "social", "social-chat", "twitter", "x", "dm"],
+			"tags": [
+				"connector",
+				"social",
+				"social-chat",
+				"twitter",
+				"x",
+				"dm"
+			],
 			"config": {
 				"TWITTER_AUTH_MODE": {
 					"type": "select",
@@ -4562,7 +5110,11 @@
 				"icon": "Twitter",
 				"group": "connector",
 				"groupOrder": 1,
-				"actions": ["enable", "configure", "setup-guide"]
+				"actions": [
+					"enable",
+					"configure",
+					"setup-guide"
+				]
 			},
 			"resources": {
 				"homepage": "https://github.com/elizaos-plugins/plugin-x#readme",
@@ -4570,7 +5122,10 @@
 				"setupGuideUrl": "https://github.com/elizaos-plugins/plugin-x#readme"
 			},
 			"dependsOn": [],
-			"channels": ["x", "twitter"],
+			"channels": [
+				"x",
+				"twitter"
+			],
 			"shortIds": [],
 			"kind": "connector",
 			"subtype": "social",
@@ -4590,13 +5145,19 @@
 				"owner": {
 					"supported": true,
 					"authKind": "oauth-cloud",
-					"credentialKeys": ["TWITTER_BROKER_URL", "TWITTER_BROKER_TOKEN"],
+					"credentialKeys": [
+						"TWITTER_BROKER_URL",
+						"TWITTER_BROKER_TOKEN"
+					],
 					"notes": "The user's own X account, connected via Eliza Cloud OAuth so the agent can post / reply / DM on the user's behalf."
 				},
 				"agent": {
 					"supported": true,
 					"authKind": "oauth-cloud",
-					"credentialKeys": ["TWITTER_BROKER_URL", "TWITTER_BROKER_TOKEN"],
+					"credentialKeys": [
+						"TWITTER_BROKER_URL",
+						"TWITTER_BROKER_TOKEN"
+					],
 					"notes": "A separate X account that represents the agent's own identity. Same OAuth flow, different X account at the OAuth screen."
 				}
 			}
@@ -4707,7 +5268,11 @@
 				"icon": "Circle",
 				"group": "connector",
 				"groupOrder": 1,
-				"actions": ["enable", "configure", "setup-guide"]
+				"actions": [
+					"enable",
+					"configure",
+					"setup-guide"
+				]
 			},
 			"resources": {
 				"setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#zalo-vietnam-messaging"
@@ -4719,7 +5284,9 @@
 			"subtype": "messaging",
 			"auth": {
 				"kind": "token",
-				"credentialKeys": ["ZALO_ACCESS_TOKEN"]
+				"credentialKeys": [
+					"ZALO_ACCESS_TOKEN"
+				]
 			}
 		},
 		{
@@ -4829,7 +5396,11 @@
 				"icon": "Circle",
 				"group": "connector",
 				"groupOrder": 1,
-				"actions": ["enable", "configure", "setup-guide"]
+				"actions": [
+					"enable",
+					"configure",
+					"setup-guide"
+				]
 			},
 			"resources": {
 				"homepage": "https://github.com/elizaos/eliza#readme",
