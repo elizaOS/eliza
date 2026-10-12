@@ -176,24 +176,38 @@ async function resolveRelationshipIdByName(
   }
 
   const relationships = await service.listRelationships();
-  const exactMatch =
-    relationships.find(
-      (relationship) => normalizeLookup(relationship.name) === needle,
-    ) ??
-    relationships.find(
-      (relationship) =>
-        normalizeLookup(relationship.primaryHandle).includes(needle) ||
-        normalizeLookup(relationship.email ?? "").includes(needle),
-    );
-  if (exactMatch) {
-    return exactMatch.id;
+  // Every stage below feeds a durable write (log_interaction,
+  // set_relationship), so ambiguity fails closed like the text stage:
+  // several contacts legitimately share a fragment ("ann" in "Ann" and
+  // "Annette", "bob" in "bob@" and "bobby@"), and first-match list order
+  // would point the write at an arbitrary contact. Resolve only a single
+  // match; otherwise return null so the handler asks for a precise identity.
+  const exactMatches = relationships.filter(
+    (relationship) => normalizeLookup(relationship.name) === needle,
+  );
+  if (exactMatches.length === 1 && exactMatches[0]) {
+    return exactMatches[0].id;
+  }
+  if (exactMatches.length > 1) {
+    return null;
   }
 
-  return (
-    relationships.find((relationship) =>
-      normalizeLookup(relationship.name).includes(needle),
-    )?.id ?? null
+  const handleMatches = relationships.filter(
+    (relationship) =>
+      normalizeLookup(relationship.primaryHandle).includes(needle) ||
+      normalizeLookup(relationship.email ?? "").includes(needle),
   );
+  if (handleMatches.length === 1 && handleMatches[0]) {
+    return handleMatches[0].id;
+  }
+  if (handleMatches.length > 1) {
+    return null;
+  }
+
+  const nameMatches = relationships.filter((relationship) =>
+    normalizeLookup(relationship.name).includes(needle),
+  );
+  return nameMatches.length === 1 && nameMatches[0] ? nameMatches[0].id : null;
 }
 
 async function resolveRelationshipIdFromText(
