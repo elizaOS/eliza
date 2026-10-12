@@ -168,7 +168,7 @@ end-to-end tests. Set only the variables that the tests you run need.
 | `CEREBRAS_API_KEY` | Model key for the live lane. `packages/scripts/test-env.ts` stops without it. | Yes, for the live lane | <https://inference.cerebras.ai> |
 | `ELIZA_LIVE_TEST=1` | Turns on `*.live` tests. | Yes, for live tests | Set by hand |
 | `ELIZA_RUN_LIVE_TESTS=1` | Turns on core and orchestrator live tests. | For those tests | Set by hand |
-| `OPENAI_API_KEY` | OpenAI provider, or an alternative key for some live tests. | Optional | <https://platform.openai.com> |
+| `OPENAI_API_KEY` | OpenAI provider for individual tests. The live lane replaces this key with `CEREBRAS_API_KEY` and sets `OPENAI_BASE_URL` to Cerebras. | Optional for individual tests | <https://platform.openai.com> |
 | `ANTHROPIC_API_KEY` | Anthropic provider and Anthropic-only live tests. | For those tests | <https://console.anthropic.com> |
 | `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `XAI_API_KEY` | Other model providers. | Optional | Each provider's console |
 | `POSTGRES_URL` | PostgreSQL `*.real` tests. | For those tests | A local or scratch database |
