@@ -109,8 +109,14 @@ function asString(value: unknown): string | undefined {
 function asNumber(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
+    // `Number(...)` coerces "" to 0 and accepts hex ("0x10") and exponents
+    // ("1e3") for file size / created-at metadata. Require a canonical
+    // decimal spelling instead of silently coercing.
+    const trimmed = value.trim();
+    if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
+      const parsed = Number(trimmed);
+      if (Number.isFinite(parsed)) return parsed;
+    }
   }
   return undefined;
 }
