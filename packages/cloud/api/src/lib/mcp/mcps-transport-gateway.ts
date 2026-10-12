@@ -501,8 +501,20 @@ async function handleBuiltinJsonRpc(
     if (!name) {
       return jsonRpcError(id, -32602, "Missing tool name");
     }
-    const result = await callBuiltinTool(provider, name, args);
-    return jsonRpcResult(id, result);
+    try {
+      const result = await callBuiltinTool(provider, name, args);
+      return jsonRpcResult(id, result);
+    } catch (error) {
+      // error-policy:J1 upstream fetch failures become tool errors, never an HTTP 500.
+      return jsonRpcResult(
+        id,
+        errorResult({
+          success: false,
+          error:
+            error instanceof Error ? error.message : 'Builtin MCP tool failed',
+        }),
+      );
+    }
   }
 
   if (body.method.startsWith("notifications/")) {
