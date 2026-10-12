@@ -309,3 +309,21 @@ this extension does not select an adapter or enable encryption. The stable Cloud
 owner identity and its lifecycle mapping remain host integration work: do not
 substitute a rotating credential fingerprint. Database driver, WAL verification,
 migration, and full account deletion remain separate requirements.
+
+The optional `VerifiedAccountStore` broker port and
+`createLocalVerifiedAccountStore` client transfer opaque whole-record snapshots
+between trusted native processes. Bind an adapter to the encrypted
+`VerifiedAccountCredentialStore` and one native launch/account guard. Serialize
+owner transitions on that guard; the adapter must use the same owner mutex and
+check its guard at the actual encrypted storage operation. Old constructors keep
+this port disabled. In verified mode legacy primary `read` projects the credential;
+legacy `write` and `clear` refuse. Use whole-record compare-and-exchange for changes.
+No renderer receives this port or its token. An uncertain acknowledgement requires
+an explicit snapshot read; the client never retries a mutation.
+
+A host can pass a native `readVerifiedAccount` reader to `createCredentialGate`.
+The reader returns the authenticated record, never a renderer-selected owner.
+The gate retains the credential fingerprint session fence and derives its stable
+owner from the JSON tuple `[authority, userId, organizationId]`. This option changes
+storage ownership semantics: enable only with an explicit migration and database
+writer lease. These ports do not implement either one or enable product encryption.

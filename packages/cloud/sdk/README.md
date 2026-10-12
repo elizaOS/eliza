@@ -190,3 +190,13 @@ returned strings as text; never inject them as HTML. Remote images and HTML are
 not projected, and no mailbox cache or write operations are provided. Consumers
 must separately authorize and implement their native/renderer read bridge; this
 factory does not enable an HTTP route or change task-read authority.
+
+`createCloudRoutes({ verifiedAccountStore, pendingCredentialStore })` optionally
+uses one native-owned credential/owner snapshot with `read()` and
+`compareExchange(expected, next)`. It requires the verified enrollment callback
+from `createNativeCloudAuth`. Do not also pass `credentialStore` or an initial
+key. The old CLI sign-in path refuses with `VERIFIED_ACCOUNT_REQUIRED` before
+clearing the current account; it cannot establish a verified owner. Logout and
+pending revocation remove the whole record with compare-and-exchange. Native
+adapters must validate records and serialize owner changes with their guard.
+The option does not select encrypted task storage or migrate existing accounts.

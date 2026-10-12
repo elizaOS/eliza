@@ -250,3 +250,11 @@ histories within explicit task/event limits to a synchronous, read-only host
 projection. It reuses page validation and rejects revision, cross-connection,
 same-connection or schema changes instead of publishing a partial report. It
 adds no effect authority and must not be called inside an existing transaction.
+
+Native hosts may opt into `createCredentialGate({ readVerifiedAccount })` after
+providing an authenticated whole credential/owner record. The stable identity
+hashes the JSON tuple `[authority, userId, organizationId]`; credential rotation
+still must satisfy the existing per-process fingerprint fence. The default
+credential-hash owner remains unchanged. This option requires a host-owned
+writer lease and an explicit migration before adoption; neither is supplied by
+the gate. Never use renderer values for this reader.

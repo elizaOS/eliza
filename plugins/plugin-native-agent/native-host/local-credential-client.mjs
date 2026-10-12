@@ -16,6 +16,7 @@ function createCredentialStore(
   },
   prefix,
   taskKeys = false,
+  verifiedAccount = false,
 ) {
   if (
     !Number.isInteger(port) ||
@@ -32,7 +33,13 @@ function createCredentialStore(
   )
     throw new TypeError("Invalid local credential broker configuration");
 
-  async function request(operation, value) {
+  async function request(operation, value, expected) {
+    if (
+      verifiedAccount &&
+      operation === "exchange" &&
+      [value, expected].some((v) => v !== null && typeof v !== "string")
+    )
+      throw new TypeError("Verified account snapshots must be strings or null");
     if (operation === "write" && typeof value !== "string")
       throw new TypeError("Credential value must be a string");
     if (
@@ -56,6 +63,7 @@ function createCredentialStore(
         body: JSON.stringify({
           operation: `${prefix}${operation}`,
           ...(value === undefined ? {} : { value }),
+          ...(expected === undefined ? {} : { expected }),
         }),
       });
       if (!response.ok) {
@@ -65,6 +73,14 @@ function createCredentialStore(
       const body = await response.json();
       if (!body || typeof body !== "object" || Array.isArray(body))
         throw new Error("Invalid broker response");
+      if (verifiedAccount && operation === "exchange") {
+        if (
+          Object.keys(body).length !== 1 ||
+          typeof body.exchanged !== "boolean"
+        )
+          throw new Error("Invalid verified account acknowledgement");
+        return body.exchanged;
+      }
       if (taskKeys && operation === "remove") {
         if (Object.keys(body).length !== 1 || typeof body.removed !== "boolean")
           throw new Error("Invalid task key acknowledgement");
@@ -111,6 +127,11 @@ function createCredentialStore(
       throw new LocalCredentialBrokerError(unavailableMessage);
     }
   }
+  if (verifiedAccount)
+    return {
+      read: () => request("read"),
+      compareExchange: (expected, next) => request("exchange", next, expected),
+    };
   if (taskKeys)
     return {
       read: () => request("read"),
@@ -137,4 +158,9 @@ export function createLocalPendingCredentialStore(options) {
 /** Native process only. Identity is fixed by the native broker; wipe returned byte arrays after use. */
 export function createLocalTaskDataKeyStore(options) {
   return createCredentialStore(options, "task-key-", true);
+}
+
+/** Trusted host only: opaque atomic credential/owner snapshots. No renderer registration. */
+export function createLocalVerifiedAccountStore(options) {
+  return createCredentialStore(options, "verified-account-", false, true);
 }

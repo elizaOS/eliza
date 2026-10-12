@@ -293,3 +293,71 @@ test("task key client preserves native-selected identity and rejects malformed m
   await assert.rejects(client.remove({ toString: () => id }), TypeError);
   assert.equal(requests.length, before);
 });
+
+test("verified account client preserves opaque CAS snapshots over loopback without retries", async (t) => {
+  const { createLocalVerifiedAccountStore } = await import(
+    "../../native-host/local-credential-client.mjs"
+  );
+  let raw = null,
+    calls = 0;
+  const port = await server(t, async (req, res) => {
+    calls++;
+    let body = "";
+    for await (const c of req) body += c;
+    body = JSON.parse(body);
+    if (body.operation === "verified-account-read")
+      return res.end(JSON.stringify({ value: raw }));
+    assert.deepEqual(Object.keys(body).sort(), [
+      "expected",
+      "operation",
+      "value",
+    ]);
+    const exchanged = body.expected === raw;
+    if (exchanged) raw = body.value;
+    res.end(JSON.stringify({ exchanged }));
+  });
+  const client = createLocalVerifiedAccountStore({
+    port,
+    token,
+    timeoutMs: 2000,
+  });
+  assert.equal(await client.read(), null);
+  assert.equal(await client.compareExchange(null, "record-one"), true);
+  assert.equal(await client.compareExchange(null, "stale"), false);
+  assert.equal(await client.read(), "record-one");
+  assert.equal(await client.compareExchange("record-one", null), true);
+  const before = calls;
+  await assert.rejects(client.compareExchange(undefined, "bad"), TypeError);
+  assert.equal(calls, before);
+});
+
+for (const responseBody of [
+  {},
+  { exchanged: "true" },
+  { exchanged: true, value: "private-canary" },
+  { error: "private-canary" },
+]) {
+  test("verified exchange rejects malformed acknowledgement without leaking or retrying", async (t) => {
+    const { createLocalVerifiedAccountStore } = await import(
+      "../../native-host/local-credential-client.mjs"
+    );
+    let calls = 0;
+    const port = await server(t, (req, res) => {
+      calls++;
+      req.resume();
+      res.end(JSON.stringify(responseBody));
+    });
+    const client = createLocalVerifiedAccountStore({
+      port,
+      token,
+      timeoutMs: 2000,
+    });
+    await assert.rejects(
+      client.compareExchange(null, "synthetic"),
+      (e) =>
+        e.code === "CREDENTIAL_BROKER_UNAVAILABLE" &&
+        !e.message.includes("canary"),
+    );
+    assert.equal(calls, 1);
+  });
+}

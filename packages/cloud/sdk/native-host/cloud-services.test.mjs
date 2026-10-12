@@ -1144,3 +1144,244 @@ test("mailbox projection rejects another grant and revoked connection before con
     { code: "account_changed" },
   );
 });
+
+test("optional verified native port uses whole-record CAS and refuses legacy activation", async (t) => {
+  let raw = null,
+    callbacks,
+    failExchange = false,
+    writes = 0;
+  const record = {
+    version: 1,
+    credential: "synthetic-secret-only-for-tests",
+    credentialId: "credential-1",
+    owner: {
+      authority: "https://api.example.test",
+      userId: "user-1",
+      organizationId: "org-1",
+    },
+  };
+  const port = {
+    read: async () => raw,
+    compareExchange: async (expected, next) => {
+      writes++;
+      if (failExchange || expected !== raw) return false;
+      raw = next;
+      return true;
+    },
+  };
+  const routes = createCloudRoutes({
+    hostPolicy: {
+      ...policy,
+      providerDefaultVoice: true,
+      createNativeCloudAuth: (options) => {
+        callbacks = options;
+        return {
+          cancel: async () => {
+            await options.clearActive();
+          },
+          handle: async () => ({ status: "pending" }),
+        };
+      },
+    },
+    verifiedAccountStore: port,
+    pendingCredentialStore: { read: async () => null },
+    fetchImpl: async () => {
+      throw Error("Legacy provider must not be called");
+    },
+  });
+  const server = http.createServer((req, res) =>
+    routes(req, res, new URL(req.url, "http://localhost")),
+  );
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const post = (path) =>
+    fetch(base + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+  await callbacks.activateVerified(record, () => {});
+  assert.equal(await callbacks.readActive(), record.credential);
+  let response = await post("/cloud/login");
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).code, "VERIFIED_ACCOUNT_REQUIRED");
+  assert.equal(raw, JSON.stringify(record));
+  await assert.rejects(
+    callbacks.activate("unverified", () => {}),
+    (e) => e.code === "VERIFIED_ACCOUNT_REQUIRED",
+  );
+  assert.equal(raw, JSON.stringify(record));
+  response = await fetch(base + "/cloud/status");
+  const status = await response.json();
+  assert.equal(status.connected, true);
+  assert.equal(status.credentialPersistence, "host-managed");
+  assert.ok(!JSON.stringify(status).includes(record.credential));
+  failExchange = true;
+  await assert.rejects(
+    callbacks.activateVerified(
+      { ...record, credential: "replacement" },
+      () => {},
+    ),
+    (e) => e.code === "VERIFIED_ACCOUNT_REQUIRED",
+  );
+  assert.equal(raw, JSON.stringify(record));
+  failExchange = false;
+  response = await post("/cloud/logout");
+  assert.equal(response.status, 200);
+  assert.equal(raw, null);
+  const count = writes;
+  await assert.rejects(
+    callbacks.activateVerified(record, () => {
+      throw Error("retired");
+    }),
+  );
+  assert.equal(writes, count);
+  for (const options of [
+    { initialApiKey: "key" },
+    { credentialStore: {} },
+    { pendingCredentialStore: undefined },
+  ])
+    assert.throws(
+      () =>
+        createCloudRoutes({
+          hostPolicy: { ...policy, providerDefaultVoice: true },
+          verifiedAccountStore: port,
+          pendingCredentialStore: { read: async () => null },
+          ...options,
+        }),
+      /exclusive native/,
+    );
+});
+
+test("verified pending revocation clears whole record; malformed native snapshot refuses", async () => {
+  let raw = JSON.stringify({
+    version: 1,
+    credential: "synthetic-secret-only-for-tests",
+    credentialId: "id",
+    owner: {
+      authority: "https://api.example.test",
+      userId: "u",
+      organizationId: "o",
+    },
+  });
+  const port = {
+    read: async () => raw,
+    compareExchange: async (expected, next) => {
+      assert.equal(expected, raw);
+      raw = next;
+      return true;
+    },
+  };
+  const routes = createCloudRoutes({
+    hostPolicy: { ...policy, providerDefaultVoice: true },
+    verifiedAccountStore: port,
+    pendingCredentialStore: {
+      read: async () => JSON.stringify({ kind: "revocation" }),
+    },
+  });
+  await routes.ready;
+  assert.equal(raw, null);
+  raw = "corrupt";
+  const broken = createCloudRoutes({
+    hostPolicy: { ...policy, providerDefaultVoice: true },
+    verifiedAccountStore: port,
+    pendingCredentialStore: {
+      read: async () => JSON.stringify({ kind: "revocation" }),
+    },
+  });
+  await assert.rejects(
+    broken.ready,
+    (e) => e.code === "VERIFIED_ACCOUNT_REQUIRED",
+  );
+  assert.equal(raw, "corrupt");
+});
+
+test("verified CAS preserves replacement on stale clear and refuses retired admission", async () => {
+  const record = {
+    version: 1,
+    credential: "synthetic-secret-only-for-tests",
+    credentialId: "id",
+    owner: {
+      authority: "https://api.example.test",
+      userId: "u",
+      organizationId: "o",
+    },
+  };
+  let raw = JSON.stringify(record),
+    callbacks,
+    readHook = () => {},
+    exchangeHook = () => {},
+    exchanges = 0;
+  const replacement = JSON.stringify({ ...record, credentialId: "new" });
+  createCloudRoutes({
+    hostPolicy: {
+      ...policy,
+      providerDefaultVoice: true,
+      createNativeCloudAuth: (options) => {
+        callbacks = options;
+        return {};
+      },
+    },
+    pendingCredentialStore: { read: async () => null },
+    verifiedAccountStore: {
+      read: async () => {
+        const before = raw;
+        readHook();
+        return before;
+      },
+      compareExchange: async (expected, next) => {
+        exchanges++;
+        exchangeHook();
+        if (expected !== raw) return false;
+        raw = next;
+        return true;
+      },
+    },
+  });
+  readHook = () => {
+    raw = replacement;
+  };
+  await assert.rejects(
+    callbacks.clearActive(),
+    (e) => e.code === "VERIFIED_ACCOUNT_REQUIRED",
+  );
+  assert.equal(raw, replacement);
+  let retired = false;
+  const guard = () => {
+    if (retired) throw Error("retired");
+  };
+  readHook = () => {
+    retired = true;
+  };
+  const before = exchanges;
+  await assert.rejects(callbacks.activateVerified(record, guard), /retired/);
+  assert.equal(exchanges, before);
+  assert.equal(raw, replacement);
+  retired = false;
+  readHook = () => {};
+  exchangeHook = () => {
+    retired = true;
+  };
+  await assert.rejects(callbacks.activateVerified(record, guard), /retired/);
+  // A lost/retired acknowledgement does not imply rollback. Native guard owns mutation fencing.
+  assert.equal(raw, JSON.stringify(record));
+  for (const malformed of [
+    { ...record, extra: true },
+    { ...record, owner: { ...record.owner, extra: true } },
+    {
+      ...record,
+      owner: { ...record.owner, authority: "https://api.example.test/path" },
+    },
+  ]) {
+    raw = JSON.stringify(malformed);
+    await assert.rejects(
+      callbacks.readActive(),
+      (e) => e.code === "VERIFIED_ACCOUNT_REQUIRED",
+    );
+  }
+});

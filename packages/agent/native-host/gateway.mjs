@@ -439,6 +439,7 @@ export function createLocalAgentGateway({
 export function createCredentialGate({
   readBinding,
   readCredential,
+  readVerifiedAccount,
   verifyProcess = true,
   localMode,
   localOwner,
@@ -452,12 +453,70 @@ export function createCredentialGate({
     !localOwner
   )
     throw new TypeError("Explicit local runtime identity is required");
+  if (
+    readVerifiedAccount !== undefined &&
+    typeof readVerifiedAccount !== "function"
+  )
+    throw new TypeError(
+      "Verified account reader must be a native host function",
+    );
   return async () => {
     const binding = await readBinding();
     const key = await readCredential();
-    const owner = key
+    let owner = key
       ? `cloud:${createHash("sha256").update(key).digest("hex")}`
       : localOwner;
+    if (readVerifiedAccount) {
+      try {
+        const record = await readVerifiedAccount();
+        if (key === null || key === undefined) {
+          if (record !== null) throw Error();
+        } else {
+          if (
+            record?.version !== 1 ||
+            Object.keys(record).length !== 4 ||
+            typeof record.credentialId !== "string" ||
+            !record.credentialId ||
+            record.credential !== key ||
+            !record.owner ||
+            Object.keys(record.owner).length !== 3
+          )
+            throw Error();
+          const tuple = [
+            record.owner.authority,
+            record.owner.userId,
+            record.owner.organizationId,
+          ];
+          if (
+            tuple.some(
+              (v) =>
+                typeof v !== "string" ||
+                !v ||
+                Array.from(v).some(
+                  (c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127,
+                ) ||
+                !v.isWellFormed(),
+            )
+          )
+            throw Error();
+          const authority = new URL(tuple[0]);
+          if (
+            authority.origin !== tuple[0] ||
+            !(
+              authority.protocol === "https:" ||
+              (authority.protocol === "http:" &&
+                ["127.0.0.1", "localhost", "[::1]"].includes(
+                  authority.hostname,
+                ))
+            )
+          )
+            throw Error();
+          owner = `cloud-owner-v1:${createHash("sha256").update(JSON.stringify(tuple)).digest("hex")}`;
+        }
+      } catch {
+        throw Object.assign(new Error(staleMessage), { status: 409 });
+      }
+    }
     if (binding?.mode === localMode) {
       const fingerprint = key
         ? createHash("sha256").update(key).digest("hex")

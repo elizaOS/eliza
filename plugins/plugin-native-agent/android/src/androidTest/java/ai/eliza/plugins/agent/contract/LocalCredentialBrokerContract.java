@@ -18,6 +18,7 @@ public final class LocalCredentialBrokerContract {
   }
   public static void main(String[] args) throws Exception { run(); System.out.println("Credential broker socket contract passed"); }
   public static void run() throws Exception {
+    verifiedAccountContract();
     taskKeyContract();
     taskKeyRetirementContract();
     MemoryStore primary = new MemoryStore(), pending = new MemoryStore();
@@ -49,6 +50,52 @@ public final class LocalCredentialBrokerContract {
       primary.fail = false;
       check(operation(broker, "clear", null), 200);
       require(operation(broker, "read", null).getJSONObject("body").isNull("value"), "Clear failed");
+    }
+  }
+  private static void verifiedAccountContract() throws Exception {
+    final String[] raw = {null}; final int[] calls = {0};
+    final boolean[] retired = {false};
+    LocalCredentialBroker.Guard guard = () -> { if (retired[0]) throw new IOException("private-owner-canary"); };
+    LocalCredentialBroker.VerifiedAccountStore verified = new LocalCredentialBroker.VerifiedAccountStore() {
+      public String read() { calls[0]++; return raw[0]; }
+      public boolean compareExchange(String expected, String next) {
+        calls[0]++; if (!java.util.Objects.equals(expected, raw[0])) return false; raw[0]=next; return true;
+      }
+    };
+    MemoryStore legacy = new MemoryStore();
+    try (LocalCredentialBroker broker = new LocalCredentialBroker(legacy, new MemoryStore(), "contract-token", null, null, verified, guard)) {
+      check(operation(broker,"write","unverified"),503);
+      check(operation(broker,"clear",null),503);
+      require(legacy.calls==0 && calls[0]==0,"Legacy bypass reached verified storage");
+      String record = new JSONObject().put("credential","synthetic-private-key").toString();
+      JSONObject request = new JSONObject().put("operation","verified-account-exchange").put("expected",JSONObject.NULL).put("value",record);
+      JSONObject first = exchange(broker.port(),"",request.toString(),"contract-token","POST /credential HTTP/1.1",null);
+      require(first.getJSONObject("body").getBoolean("exchanged"),"Initial exchange failed");
+      require(!exchange(broker.port(),"",request.toString(),"contract-token","POST /credential HTTP/1.1",null).getJSONObject("body").getBoolean("exchanged"),"Stale snapshot replaced record");
+      require(operation(broker,"read",null).getJSONObject("body").getString("value").equals("synthetic-private-key"),"Legacy read projection failed");
+      require(operation(broker,"verified-account-read",null).getJSONObject("body").getString("value").equals(record),"Snapshot changed");
+      int before = calls[0];
+      request.put("accountId","injected");check(exchange(broker.port(),"",request.toString(),"contract-token","POST /credential HTTP/1.1",null),503);
+      require(calls[0]==before,"Wire identity accessed store");
+      final JSONObject[] response={null};
+      Thread queued = new Thread(() -> {try {response[0]=operation(broker,"verified-account-read",null);}catch(Exception e){throw new RuntimeException(e);}});
+      synchronized(guard) { queued.start(); Thread.sleep(100); retired[0]=true; }
+      queued.join(5000);require(!queued.isAlive(),"Queued request hung");check(response[0],503);
+      require(calls[0]==before && !response[0].toString().contains("canary"),"Retired queued read reached store or leaked");
+    }
+    retired[0]=false;
+    LocalCredentialBroker.VerifiedAccountStore retiresDuringWrite = new LocalCredentialBroker.VerifiedAccountStore() {
+      public String read() { retired[0]=true; return "private-record-canary"; }
+      public boolean compareExchange(String expected,String next) { retired[0]=true; return true; }
+    };
+    for (String operation : new String[]{"verified-account-read","verified-account-exchange"}) {
+      retired[0]=false;
+      try(LocalCredentialBroker broker=new LocalCredentialBroker(new MemoryStore(),new MemoryStore(),"contract-token",null,null,retiresDuringWrite,guard)) {
+        JSONObject body=new JSONObject().put("operation",operation);
+        if(operation.endsWith("exchange"))body.put("expected",JSONObject.NULL).put("value",JSONObject.NULL);
+        JSONObject result=exchange(broker.port(),"",body.toString(),"contract-token","POST /credential HTTP/1.1",null);
+        check(result,503);require(!result.toString().contains("canary"),"Retired result leaked");
+      }
     }
   }
   private static void taskKeyContract() throws Exception {
