@@ -440,6 +440,27 @@ function confirmationChallenge(result: ActionResult): string {
 }
 
 describeIfPosix("shellAction", () => {
+  it("refuses every shell operation while the self-edit gate is open", async () => {
+    // Composition boundary: with self-edit enabled, SHELL is excluded whole —
+    // before any subaction parses, any service resolves, or anything spawns.
+    const prevEnable = process.env.ELIZA_ENABLE_SELF_EDIT;
+    process.env.ELIZA_ENABLE_SELF_EDIT = "1";
+    try {
+      const { runtime } = await makeRuntime();
+      const result = requireActionResult(
+        await shellAction.handler?.(runtime, makeMessage(), undefined, {
+          command: "echo hi",
+        }),
+      );
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("path_blocked");
+      expect(result.text).toContain("SHELL is disabled while self-edit is enabled");
+    } finally {
+      if (prevEnable === undefined) delete process.env.ELIZA_ENABLE_SELF_EDIT;
+      else process.env.ELIZA_ENABLE_SELF_EDIT = prevEnable;
+    }
+  });
+
   it("reports source loss for an unattested local-safe sandbox result", async () => {
     const exec = vi.fn(async () => ({
       exitCode: 0,

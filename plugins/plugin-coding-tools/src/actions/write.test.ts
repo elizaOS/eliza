@@ -266,7 +266,7 @@ describe("WRITE", () => {
     expect(result.text).toContain("path_blocked");
   });
 
-  it("rejects self-edit protected safety-rail paths even outside blocked roots", async () => {
+  it("rejects a protected self-edit rail inside the bound self-edit checkout", async () => {
     const rail = path.join(
       env.tmpDir,
       "checkout",
@@ -279,13 +279,50 @@ describe("WRITE", () => {
     await fs.mkdir(path.dirname(rail), { recursive: true });
     await fs.writeFile(rail, "export {};");
 
+    // Bind the self-edit checkout to this test's temp checkout so the rail
+    // applies without depending on the host's own location.
+    const prevEnable = process.env.ELIZA_ENABLE_SELF_EDIT;
+    const prevRoot = process.env.ELIZA_SELF_EDIT_ROOT;
+    process.env.ELIZA_ENABLE_SELF_EDIT = "1";
+    process.env.ELIZA_SELF_EDIT_ROOT = path.join(env.tmpDir, "checkout");
+    try {
+      const result = await writeFileHandler(env.runtime, env.message, undefined, {
+        parameters: { file_path: rail, content: "tampered", overwrite: true },
+      });
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("path_blocked");
+      expect(result.text).toContain("self-edit protected safety rail");
+      expect(await fs.readFile(rail, "utf8")).toBe("export {};");
+    } finally {
+      if (prevEnable === undefined) delete process.env.ELIZA_ENABLE_SELF_EDIT;
+      else process.env.ELIZA_ENABLE_SELF_EDIT = prevEnable;
+      if (prevRoot === undefined) delete process.env.ELIZA_SELF_EDIT_ROOT;
+      else process.env.ELIZA_SELF_EDIT_ROOT = prevRoot;
+    }
+  });
+
+  it("allows the same rail-shaped suffix in an unrelated workspace", async () => {
+    // No self-edit gate, no bound root: the identical relative shape in an
+    // ordinary workspace is a file the user may edit. This is the collision
+    // negative for the suffix denylist.
+    const rail = path.join(
+      env.tmpDir,
+      "checkout",
+      "packages",
+      "agent",
+      "src",
+      "actions",
+      "runtime.ts",
+    );
+    await fs.mkdir(path.dirname(rail), { recursive: true });
+    await fs.writeFile(rail, "export {};");
+    env.fileState.recordRead("test-room", rail);
+
     const result = await writeFileHandler(env.runtime, env.message, undefined, {
-      parameters: { file_path: rail, content: "tampered", overwrite: true },
+      parameters: { file_path: rail, content: "rewritten", overwrite: true },
     });
-    expect(result.success).toBe(false);
-    expect(result.text).toContain("path_blocked");
-    expect(result.text).toContain("self-edit protected safety rail");
-    expect(await fs.readFile(rail, "utf8")).toBe("export {};");
+    expect(result.success).toBe(true);
+    expect(await fs.readFile(rail, "utf8")).toBe("rewritten");
   });
 
   it("fails when content param is missing", async () => {

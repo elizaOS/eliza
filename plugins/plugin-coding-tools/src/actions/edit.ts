@@ -135,10 +135,12 @@ export async function editFileHandler(
   const failAtPath = (
     failure: Parameters<typeof failureToActionResult>[0],
   ): ActionResult => failureToActionResult(failure, { path: resolved });
-  // The self-edit denylist is a hard rail on top of the sandbox policy: the
-  // listed files are the agent's own safety machinery (dev-mode gate, restart
-  // action, restart infrastructure, this denylist), so mutation refuses here,
-  // before any filesystem effect.
+  // The self-edit denylist is a scoped rail on top of the sandbox policy: while
+  // the self-edit gate is open, the listed files — the agent's own safety
+  // machinery (dev-mode gate, restart action, restart infrastructure, this
+  // denylist) — refuse mutation inside the bound self-edit checkout, before
+  // any filesystem effect. The same relative shape in any other workspace is
+  // an ordinary file and passes through.
   if (isSelfEditPathDenied(resolved)) {
     return failAtPath({
       reason: "path_blocked",

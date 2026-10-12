@@ -14,13 +14,19 @@
  *   - {@link isSelfEditPathDenied} — refuses to let the self-edit flow modify
  *     the gate itself, the restart machinery, or anything inside `.git/`.
  *     Defense in depth so a buggy or adversarial sub-agent cannot remove its
- *     own safety rails and ship a build that self-edits in production.
+ *     own safety rails and ship a build that self-edits in production. The
+ *     suffix rails bind to the agent's own checkout ({@link resolveSelfEditRoot})
+ *     while the flow is live; the identical relative shape in any other
+ *     workspace stays editable, and `.git` metadata is refused everywhere.
  *
  * Callers may supply an environment snapshot; otherwise the gate reads the
  * host process environment.
  *
  * @module self-edit
  */
+import { realpathSync } from "node:fs";
+import * as path from "node:path";
+
 import { isTruthyEnvValue } from "@elizaos/core/protocol";
 /**
  * Env var the operator sets to opt in to self-edit. Defaults off.
@@ -77,27 +83,70 @@ const DENIED_RELATIVE_SUFFIXES: readonly string[] = [
   "packages/app/scripts/lib/restart-guard.ts",
 ];
 /**
+ * Env var the operator sets to bind the self-edit denylist to a specific
+ * checkout root (absolute path). Unset, the root is derived from this
+ * module's own location, which is the checkout the running host serves its
+ * source from in both source mode (`packages/host/src/`) and compiled mode
+ * (`packages/host/dist/`). Set it only when an unusual bundle layout makes
+ * that derivation inert; a wrong or absent binding leaves the suffix rules
+ * inert rather than over-broad.
+ */
+export const SELF_EDIT_ROOT_ENV = "ELIZA_SELF_EDIT_ROOT";
+/**
  * Predicate: is `absolutePath` denied for self-edit modification?
  *
  * Refuses any path that:
  *   - contains a `.git` directory segment (any operation under any git
- *     metadata directory), or
- *   - ends with one of the {@link DENIED_RELATIVE_SUFFIXES} (the self-edit
- *     gate, restart machinery, or runner script).
+ *     metadata directory, in any workspace), or
+ *   - ends with one of the {@link DENIED_RELATIVE_SUFFIXES} **while the
+ *     self-edit flow is live** (`isSelfEditEnabled`) and the path sits inside
+ *     the bound self-edit checkout ({@link resolveSelfEditRoot}). The same
+ *     relative shape in any other workspace is an ordinary file the user may
+ *     edit, so it is allowed.
  *
  * Returns `false` for empty / non-string input rather than throwing — callers
  * decide how to handle malformed input.
  */
-export function isSelfEditPathDenied(absolutePath: string): boolean {
+export function isSelfEditPathDenied(
+  absolutePath: string,
+  env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env,
+): boolean {
   if (typeof absolutePath !== "string") return false;
   const trimmed = absolutePath.trim();
   if (!trimmed) return false;
   const normalized = normalizePathSeparators(trimmed);
   if (containsGitDirSegment(normalized)) return true;
+  if (!isSelfEditEnabled(env)) return false;
+  const root = resolveSelfEditRoot(env);
+  if (!isWithinRoot(trimmed, root)) return false;
   for (const suffix of DENIED_RELATIVE_SUFFIXES) {
     if (pathEndsWithSegment(normalized, suffix)) return true;
   }
   return false;
+}
+/**
+ * The checkout root the self-edit denylist binds to: the
+ * `ELIZA_SELF_EDIT_ROOT` override when set to an absolute path, otherwise the
+ * checkout containing this module's own source. The root is realpathed so
+ * symlinked locations (macOS `/var` ↔ `/private/var`) match the
+ * realpath-resolved paths the coding-tools sandbox hands its callers; a
+ * missing root falls back to its lexical form so tests can bind pure paths.
+ */
+export function resolveSelfEditRoot(
+  env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env,
+): string {
+  const override = env[SELF_EDIT_ROOT_ENV]?.trim();
+  const candidate =
+    override && path.isAbsolute(override)
+      ? override
+      : path.resolve(import.meta.dirname, "..", "..", "..");
+  try {
+    return realpathSync(candidate);
+  } catch {
+    // error-policy:J3 an unresolvable root keeps its lexical form instead of
+    // silently binding to a directory that was never intended.
+    return candidate;
+  }
 }
 /**
  * The denied repo-relative suffixes, exposed for tests and tooling that
@@ -109,6 +158,13 @@ export function getSelfEditDeniedSuffixes(): readonly string[] {
 function normalizePathSeparators(p: string): string {
   // Convert Windows-style separators to POSIX for uniform suffix matching.
   return p.replace(/\\/g, "/");
+}
+function isWithinRoot(p: string, root: string): boolean {
+  // Both sides resolve to native form so forward- and back-slash inputs and
+  // macOS/Linux symlinked roots compare equal; a different Windows drive
+  // yields an absolute relative path and correctly reads as outside.
+  const rel = path.relative(path.resolve(root), path.resolve(p));
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 }
 function containsGitDirSegment(normalized: string): boolean {
   // Match `.git` as a path segment: leading/trailing slash, or end-of-string.

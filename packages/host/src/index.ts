@@ -55,7 +55,9 @@ export {
   getSelfEditDeniedSuffixes,
   isSelfEditEnabled,
   isSelfEditPathDenied,
+  resolveSelfEditRoot,
   SELF_EDIT_ENABLE_ENV,
+  SELF_EDIT_ROOT_ENV,
 } from "./self-edit.js";
 export { resolveElizaPackageRootSync } from "./utils/eliza-root.js";
 export type {

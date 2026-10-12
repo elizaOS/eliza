@@ -24,6 +24,7 @@ import {
   type State,
   type WorkspaceDeltaReceipt,
 } from "@elizaos/core";
+import { isSelfEditEnabled } from "@elizaos/host";
 import { resolveRuntimeExecutionMode } from "@elizaos/host/protocol";
 import {
   consumeDestructiveChallenge,
@@ -1452,6 +1453,22 @@ export const shellAction: Action = {
     options?: unknown,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
+    // Self-edit composition boundary: while the self-edit gate is open, the
+    // agent's mutation transport for its own checkout is the denylist-carrying
+    // WRITE/EDIT handlers only. A shell command renames, redirects, or rewrites
+    // any file without passing those rails, and sound per-command path policy
+    // would require parsing arbitrary shell syntax. The whole action is
+    // therefore excluded while the gate is open instead of being mislabeled a
+    // hard rail beside a live bypass.
+    if (isSelfEditEnabled()) {
+      return failureToActionResult({
+        reason: "path_blocked",
+        message:
+          "SHELL is disabled while self-edit is enabled (ELIZA_ENABLE_SELF_EDIT): " +
+          "shell commands bypass the self-edit denylist enforced by WRITE/EDIT. " +
+          "Close the self-edit gate to run shell commands.",
+      });
+    }
     const explicitSubaction = readParam(options, "action");
     // History operations mutate or disclose session state, so only the
     // validated structured action may select them. Message prose and path
