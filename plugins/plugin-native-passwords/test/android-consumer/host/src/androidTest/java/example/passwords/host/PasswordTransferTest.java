@@ -73,6 +73,10 @@ public final class PasswordTransferTest {
   AccessibilityServiceInfo info = automation.getServiceInfo(); info.flags |= AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS; automation.setServiceInfo(info);
   String pin = "7" + (100000 + new java.security.SecureRandom().nextInt(800000));
   String token = UUID.randomUUID().toString().substring(0, 8), password = "Synthetic-transfer-" + token;
+  java.io.File migratedDirectory = new java.io.File(context.getNoBackupFilesDir(), "migration-" + token);
+  String migratedAlias = "example.passwords.migration." + token;
+  java.io.File unrelatedDirectory = new java.io.File(context.getNoBackupFilesDir(), "unrelated-" + token);
+  String unrelatedAlias = migratedAlias + ".unrelated";
   boolean ownPin = false;
   try {
    ui.shell("locksettings set-pin --user " + user + " " + pin); ownPin = true;
@@ -84,6 +88,53 @@ public final class PasswordTransferTest {
      .put("websites", new org.json.JSONArray().put("https://transfer.example")).put("password", password));
    value("save", "true");
    String id = new org.json.JSONTokener(js("results.save.value.id")).nextValue().toString();
+
+   // The source retains its authentication-bound key and byte-for-byte frame.
+   ai.eliza.plugins.securestore.nativeonly.PasswordVaultStore migrated = new ai.eliza.plugins.securestore.nativeonly.PasswordVaultStore(
+     migratedDirectory, migratedAlias, ("migration-v1-" + token).getBytes(java.nio.charset.StandardCharsets.UTF_8),
+     ai.eliza.plugins.securestore.nativeonly.PasswordVaultStore.KeyPolicy.deviceUnlocked(context));
+   PasswordVaultAccess original = PasswordVaultAccess.get(context);
+   java.io.File originalFrame = new java.io.File(original.config.directory, "vault.enc");
+   byte[] originalBytes = java.nio.file.Files.readAllBytes(originalFrame.toPath());
+   assertEquals(1, (int) original.use(store -> store.migrateToDeviceUnlocked(migrated)));
+   assertEquals("Interrupted host selection can retry the same snapshot", 1, (int) original.use(store -> store.migrateToDeviceUnlocked(migrated)));
+   assertArrayEquals(originalBytes, java.nio.file.Files.readAllBytes(originalFrame.toPath()));
+   assertFalse("New key has no app authentication window", migrated.keyProtection().isUserAuthenticationRequired());
+   assertEquals(password, migrated.get(id).getString("password"));
+   assertEquals(id, migrated.entries().getJSONObject(0).getString("id"));
+   java.io.File markerFile = new java.io.File(migratedDirectory, "vault.device-unlocked-v1");
+   byte[] markerBytes = java.nio.file.Files.readAllBytes(markerFile.toPath());
+   java.nio.file.Files.delete(markerFile.toPath());
+   try { migrated.keyProtection(); fail("A pre-existing key without provenance was admitted"); }
+   catch (java.io.IOException expected) {}
+   java.nio.file.Files.write(markerFile.toPath(), markerBytes);
+   byte[] corruptMarker = markerBytes.clone(); corruptMarker[corruptMarker.length - 1] ^= 1;
+   java.nio.file.Files.write(markerFile.toPath(), corruptMarker);
+   try { migrated.keyProtection(); fail("Corrupt provenance was admitted"); }
+   catch (java.security.GeneralSecurityException expected) {}
+   java.nio.file.Files.write(markerFile.toPath(), markerBytes);
+   javax.crypto.KeyGenerator unrelatedGenerator = javax.crypto.KeyGenerator.getInstance("AES", "AndroidKeyStore");
+   unrelatedGenerator.init(new android.security.keystore.KeyGenParameterSpec.Builder(unrelatedAlias,
+     android.security.keystore.KeyProperties.PURPOSE_ENCRYPT | android.security.keystore.KeyProperties.PURPOSE_DECRYPT)
+     .setKeySize(256).setBlockModes("GCM").setEncryptionPaddings("NoPadding").build());
+   unrelatedGenerator.generateKey(); // Intentionally lacks unlockedDeviceRequired.
+   ai.eliza.plugins.securestore.nativeonly.PasswordVaultStore unrelated = new ai.eliza.plugins.securestore.nativeonly.PasswordVaultStore(
+     unrelatedDirectory, unrelatedAlias, ("migration-v1-" + token).getBytes(java.nio.charset.StandardCharsets.UTF_8),
+     ai.eliza.plugins.securestore.nativeonly.PasswordVaultStore.KeyPolicy.deviceUnlocked(context));
+   try { unrelated.keyProtection(); fail("An unrelated non-authentication key was admitted"); }
+   catch (java.io.IOException expected) {}
+   java.nio.file.Files.write(new java.io.File(unrelatedDirectory, "vault.device-unlocked-v1").toPath(), markerBytes);
+   try { unrelated.keyProtection(); fail("Copied key provenance was admitted"); }
+   catch (java.security.GeneralSecurityException expected) {}
+
+   original.lock();
+   assertEquals("App grant expiry does not lock device-only custody", password, migrated.get(id).getString("password"));
+   unlock(pin);
+   migrated.saveEntry(null, "Target-only fixture", "fixture", java.util.Collections.singletonList("https://target.example"), "Synthetic-target");
+   try { original.use(store -> store.migrateToDeviceUnlocked(migrated)); fail("Different target snapshot was replaced"); }
+   catch (java.io.IOException expected) { assertTrue(expected.getMessage().contains("different records")); }
+   assertEquals(2, migrated.entries().length());
+   assertArrayEquals(originalBytes, java.nio.file.Files.readAllBytes(originalFrame.toPath()));
 
    // A real native editor creates a second encrypted entry without carrying its
    // draft through Capacitor. Only the saved id returns to the WebView.
@@ -152,8 +203,31 @@ public final class PasswordTransferTest {
       if (activity instanceof TransferActivity && !activity.isFinishing()) activity.finish();
    });
    ui.await(() -> !access.pending() && !access.unlocked(), "Destroyed transfer owner cancels its authentication");
+   ui.shell("settings --user " + user + " put secure lock_screen_lock_after_timeout 0");
+   ui.shell("settings --user " + user + " put secure lockscreen.power_button_instantly_locks 1");
+   ui.shell("input keyevent KEYCODE_SLEEP");
+   ui.await(keyguard::isDeviceLocked, "Real OS device lock is active");
+   try { migrated.entries(); fail("Locked device allowed vault access"); }
+   catch (ai.eliza.plugins.securestore.nativeonly.PasswordVaultStore.DeviceLocked expected) {}
+   java.security.KeyStore keys = java.security.KeyStore.getInstance("AndroidKeyStore"); keys.load(null);
+   try {
+    javax.crypto.Cipher operation = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+    operation.init(javax.crypto.Cipher.ENCRYPT_MODE, keys.getKey(migratedAlias, null)); operation.doFinal(new byte[]{1});
+    fail("OS Keystore admitted the device-unlocked key while locked");
+   } catch (java.security.GeneralSecurityException expected) {}
+   ui.shell("input keyevent KEYCODE_WAKEUP"); ui.shell("wm dismiss-keyguard"); ui.pin(pin);
+   ui.await(() -> !keyguard.isDeviceLocked(), "OS device unlock restores access");
+   assertEquals("Device unlock needs no app grant", password, migrated.get(id).getString("password"));
   } finally {
    if (scenario != null) scenario.close();
+   java.security.KeyStore migrationKeys = java.security.KeyStore.getInstance("AndroidKeyStore"); migrationKeys.load(null);
+   for (String alias : new String[]{migratedAlias, unrelatedAlias}) if (migrationKeys.containsAlias(alias)) migrationKeys.deleteEntry(alias);
+   for (java.io.File directory : new java.io.File[]{migratedDirectory, unrelatedDirectory}) {
+    for (String file : new String[]{"vault.enc", "vault.enc.bak", "vault.enc.new", "vault.device-unlocked-v1", "vault.device-unlocked-v1.bak", "vault.device-unlocked-v1.new"}) {
+     java.io.File owned = new java.io.File(directory, file); assertTrue(!owned.exists() || owned.delete());
+    }
+    assertTrue(!directory.exists() || directory.delete());
+   }
    if (ownPin) { PasswordConsumerTest.clearSyntheticVault(context); ui.shell("locksettings clear --user " + user + " --old " + pin); }
   }
  }
