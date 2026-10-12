@@ -67,9 +67,13 @@ public final class PasswordTransferTest {
   ui.await(() -> {
    android.view.accessibility.AccessibilityNodeInfo node = ui.find(item ->
      ("com.android.systemui:id/" + id).equals(item.getViewIdResourceName()));
-   return node != null && node.isEnabled() && node.isClickable()
-     && node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK);
-  }, "OS lock-screen control accepts input: " + id);
+   return node != null && node.isEnabled() && node.isClickable();
+  }, "OS lock-screen control is ready: " + id);
+  android.view.accessibility.AccessibilityNodeInfo node = ui.find(item ->
+    ("com.android.systemui:id/" + id).equals(item.getViewIdResourceName()));
+  assertNotNull("OS lock-screen control remains available: " + id, node);
+  assertTrue("OS lock-screen control accepts one input: " + id,
+    node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK));
  }
  @Test public void transferUsesRealPickerFreshUnlockAndCountsOnly() throws Exception {
   assertEquals("1", InstrumentationRegistry.getArguments().getString("disposablePasswordFixture"));
