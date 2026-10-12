@@ -214,10 +214,19 @@ export function projectPlanChangeQuote(
       fail();
     detail = { effectiveAt: v.effectiveAt, amountDueNowCents: 0 };
   }
+  // Older quotes have no captured terms. Never substitute a fresh catalog or host policy.
+  const terms = v.targetAllowanceTerms;
+  const targetAllowanceTerms =
+    terms?.fundingClass === "allowance_eligible" &&
+    terms.rollover === false &&
+    terms.expiresAt === "billing_period_end"
+      ? pick(terms, ["fundingClass", "rollover", "expiresAt"])
+      : undefined;
   return {
     quoteId: value.quoteId,
     review: {
       ...pick(v, fields),
+      ...(targetAllowanceTerms ? { targetAllowanceTerms } : {}),
       ...detail,
       recurringEstimate: invoice(v.recurringEstimate),
     },

@@ -31,7 +31,9 @@ Shared exports are explicit. Leaf entries preserve lazy loading and schema owner
 do not add wildcard exports or consumer aliases that bypass the export map.
 
 Organization plan-change admission atomically consumes the original actor-owned
-quote and retains one command across retry keys. Downgrade admission is internal:
+quote and retains one command across retry keys. New upgrade/downgrade quotes
+capture allowance funding, rollover and expiry terms from their exact catalog
+version in the immutable review digest. Historical quotes are not backfilled. Downgrade admission is internal:
 it does not dispatch a provider effect or publish a scheduled plan. Expiry can
 retire only provably unstarted intents without a live lease; uncertain effects
 remain pending until the original outcome is reconciled.

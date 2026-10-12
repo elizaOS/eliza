@@ -70,6 +70,8 @@ export interface OrganizationSubscriptionUpgradeReviewDto {
   currentPeriodEnd: string;
   targetBaseAmountCents: number;
   targetAllowanceUsd: string;
+  /** Terms captured with this quote; absent on historical reviews, never inferred. */
+  targetAllowanceTerms?: Omit<SubscriptionAllowanceDto, "amountUsd">;
   additionalAllowanceUsd: string;
   dueNow: OrganizationSubscriptionUpgradeInvoiceDto;
   recurringEstimate: OrganizationSubscriptionUpgradeInvoiceDto;
@@ -111,6 +113,8 @@ export interface OrganizationSubscriptionDowngradeReviewDto {
   amountDueNowCents: 0;
   targetBaseAmountCents: number;
   targetAllowanceUsd: string;
+  /** Terms captured with this quote; absent on historical reviews, never inferred. */
+  targetAllowanceTerms?: Omit<SubscriptionAllowanceDto, "amountUsd">;
   recurringEstimate: OrganizationSubscriptionUpgradeInvoiceDto;
   observedAt: string;
   expiresAt: string;

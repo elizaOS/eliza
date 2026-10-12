@@ -51,6 +51,12 @@ function quote(action = "upgrade", now = Date.now()) {
       currentPeriodEnd: end,
       targetBaseAmountCents: 1000,
       targetAllowanceUsd: "10.000000",
+      targetAllowanceTerms: {
+        fundingClass: "allowance_eligible",
+        rollover: false,
+        expiresAt: "billing_period_end",
+        providerSecret: "hidden",
+      },
       recurringEstimate: invoice(),
       observedAt: new Date(now).toISOString(),
       expiresAt: new Date(now + 60000).toISOString(),
@@ -137,6 +143,33 @@ for (const action of ["upgrade", "downgrade"])
     assert.equal(result.review.targetPlanKey, v.review.targetPlanKey);
     assert.equal(result.review.recurringEstimate.discountCents, 100);
     assert.ok(!JSON.stringify(result).includes("hidden"));
+    assert.deepEqual(result.review.targetAllowanceTerms, {
+      fundingClass: "allowance_eligible",
+      rollover: false,
+      expiresAt: "billing_period_end",
+    });
+    for (const terms of [
+      undefined,
+      null,
+      {},
+      { fundingClass: "cash", rollover: true, expiresAt: "never" },
+      { fundingClass: "allowance_eligible", rollover: false },
+    ]) {
+      const historical = projectPlanChangeQuote(
+        { ...v, review: { ...v.review, targetAllowanceTerms: terms } },
+        action,
+        policy,
+        now,
+      );
+      assert.equal(
+        Object.hasOwn(historical.review, "targetAllowanceTerms"),
+        false,
+      );
+      assert.equal(
+        historical.review.targetAllowanceUsd,
+        v.review.targetAllowanceUsd,
+      );
+    }
     for (const change of [
       { subscriptionId: "bad" },
       { targetPlanKey: "plus_monthly" },
@@ -427,6 +460,11 @@ test("real native broker uses private sessions, stable intents and read-only res
     });
     assert.equal(result.status, 200);
     assert.equal(result.cache, "no-store");
+    assert.deepEqual(result.data.review.targetAllowanceTerms, {
+      fundingClass: "allowance_eligible",
+      rollover: false,
+      expiresAt: "billing_period_end",
+    });
     assert.ok(!JSON.stringify(result).includes("hidden"));
   }
   badEnvelope = true;

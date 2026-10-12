@@ -101,6 +101,10 @@ export async function saveOrganizationPlanChangeQuote(input: {
         : target.amountCents >= previous.amountCents) ||
       review.targetBaseAmountCents !== target.amountCents ||
       review.targetAllowanceUsd !== target.allowance.amountUsd ||
+      (review.targetAllowanceTerms !== undefined &&
+        (review.targetAllowanceTerms.fundingClass !== target.allowance.fundingClass ||
+          review.targetAllowanceTerms.rollover !== target.allowance.rollover ||
+          review.targetAllowanceTerms.expiresAt !== target.allowance.expiresAt)) ||
       Date.parse(review.expiresAt) <= now.getTime() ||
       Date.parse(review.observedAt) > now.getTime()
     )

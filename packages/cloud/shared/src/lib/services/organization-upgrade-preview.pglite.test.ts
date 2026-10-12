@@ -166,6 +166,11 @@ test("pins provider proration, separates recurring estimate and persists complet
   expect(quote.review.dueNow.amountDueCents).toBe(3500);
   expect(quote.review.recurringEstimate.amountDueCents).toBe(10000);
   expect(quote.review.targetAllowanceUsd).toBe("90.000000");
+  expect(quote.review.targetAllowanceTerms).toEqual({
+    fundingClass: "allowance_eligible",
+    rollover: false,
+    expiresAt: "billing_period_end",
+  });
   expect(session).toHaveBeenCalledTimes(2);
   expect(preview).toHaveBeenCalledTimes(2);
   expect(mutation).not.toHaveBeenCalled();
@@ -175,6 +180,13 @@ test("pins provider proration, separates recurring estimate and persists complet
   expect(preview.mock.calls[1]![0].subscription_details.proration_date).toBeUndefined();
   expect(preview.mock.calls[0]![1]).toEqual({ apiVersion: "2024-11-20.acacia" });
   expect(await quoteCount()).toBe(1);
+  const persisted = await client
+    .getPgliteClientForTests()
+    .query<{ review: { targetAllowanceTerms?: unknown } }>(
+      "SELECT review FROM organization_plan_change_quotes WHERE id=$1",
+      [quote.id],
+    );
+  expect(persisted.rows[0]!.review.targetAllowanceTerms).toEqual(quote.review.targetAllowanceTerms);
 });
 test("revocation committed during provider preview prevents quote persistence", async () => {
   const input = await setup();

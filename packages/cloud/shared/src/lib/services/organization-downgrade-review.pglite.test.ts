@@ -73,6 +73,11 @@ test("lower-plan review retains the exact current period and makes no immediate 
   expect(r.effectiveAt).toBe(f.source.current_period_end!.toISOString());
   expect(r.amountDueNowCents).toBe(0);
   expect(r.targetAllowanceUsd).toBe("25.000000");
+  expect(r.targetAllowanceTerms).toEqual({
+    fundingClass: "allowance_eligible",
+    rollover: false,
+    expiresAt: "billing_period_end",
+  });
   expect(r.recurringEstimate.amountDueCents).toBe(3000);
   expect(Date.parse(r.expiresAt) - Date.parse(r.observedAt)).toBe(60_000);
   expect(f).toEqual(before);

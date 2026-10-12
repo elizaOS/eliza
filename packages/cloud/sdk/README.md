@@ -104,6 +104,10 @@ are unavailable to service-only hosts. They do not manage Gmail consent.
 `createOrganizationSubscriptionUpgradeQuote` sends a current manager's catalog
 intent to the organization upgrade review endpoint. The returned quote separates
 due-now terms from a recurring estimate and expires after at most 60 seconds.
+Upgrade and downgrade reviews capture `targetAllowanceTerms` from their own
+catalog version. The native projection retains only recognized funding, rollover
+and expiry terms. Historical reviews without them remain absent; consumers must
+not infer terms from a current catalog or fixed UI copy.
 It does not authorize or execute a charge; the internal provider identities and
 persistence digests are not part of the public DTO.
 

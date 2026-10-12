@@ -4,6 +4,13 @@ import { z } from "zod";
 
 const cents = z.number().int().safe();
 const amount = z.string().regex(/^(0|[1-9]\d*)\.\d{6}$/);
+export const organizationAllowanceReviewTermsSchema = z
+  .object({
+    fundingClass: z.literal("allowance_eligible"),
+    rollover: z.literal(false),
+    expiresAt: z.literal("billing_period_end"),
+  })
+  .strict();
 const invoice = z
   .object({
     amountDueCents: cents.nonnegative(),
@@ -30,6 +37,7 @@ export const organizationUpgradeReviewSchema: z.ZodType<OrganizationSubscription
       currentPeriodEnd: z.iso.datetime(),
       targetBaseAmountCents: cents.positive(),
       targetAllowanceUsd: amount,
+      targetAllowanceTerms: organizationAllowanceReviewTermsSchema.optional(),
       additionalAllowanceUsd: amount,
       dueNow: invoice,
       recurringEstimate: invoice,
