@@ -289,9 +289,14 @@ export function getAttachmentFileName(media: Media): string {
 const DEFAULT_OUTBOUND_ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
 const DEFAULT_OUTBOUND_ATTACHMENT_TIMEOUT_MS = 120_000;
 
-function positiveIntEnv(name: string, fallback: number): number {
-	const parsed = Number(process.env[name]);
-	return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+export function positiveIntEnv(name: string, fallback: number): number {
+	// `Number(...)` accepts hex ("0x10"), exponents ("1e3"), and fractions
+	// ("12.9", silently floored to 12). A mis-typed byte/timeout setting must
+	// fall back to the default instead of being coerced, so require the whole
+	// trimmed env value to be a canonical positive decimal integer.
+	const text = String(process.env[name] ?? "").trim();
+	const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
+	return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 /** DNS + transport injection for the guarded fetch — the deterministic-test
