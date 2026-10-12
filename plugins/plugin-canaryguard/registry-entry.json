@@ -1,0 +1,54 @@
+{
+  "id": "canaryguard",
+  "name": "CanaryGuard",
+  "description": "Deterministic prompt-injection firewall, concealed Unicode scrubber, and wallet-drain defense for ElizaOS agents on Base mainnet via x402",
+  "npmName": "@elizaos/plugin-canaryguard",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": [
+    "security",
+    "firewall",
+    "prompt-injection",
+    "x402",
+    "base",
+    "wallet-defense"
+  ],
+  "config": {
+    "CANARYGUARD_URL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Service URL",
+      "help": "CanaryGuard 402 service endpoint (defaults to https://canaryguard-402.onrender.com).",
+      "advanced": false
+    },
+    "CANARYGUARD_PAYMENT_HEADER": {
+      "type": "string",
+      "required": false,
+      "sensitive": true,
+      "label": "Payment Header",
+      "help": "Optional x402 payment authorization header for mainnet settlement.",
+      "advanced": true
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "ShieldCheck",
+    "group": "security",
+    "groupOrder": 2,
+    "actions": [
+      "enable",
+      "configure"
+    ]
+  },
+  "resources": {
+    "homepage": "https://canaryguard-402.onrender.com",
+    "repository": "https://github.com/elizaos/eliza",
+    "setupGuideUrl": "https://canaryguard-402.onrender.com/llms.txt"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "security"
+}

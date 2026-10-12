@@ -1,0 +1,74 @@
+{
+  "name": "@elizaos/plugin-canaryguard",
+  "version": "2.0.0-beta.0",
+  "description": "Deterministic prompt-injection firewall, concealed Unicode scrubber, and wallet-drain defense for ElizaOS agents on Base mainnet via x402",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos/eliza.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "eliza-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "registry-entry.json",
+    "dist"
+  ],
+  "keywords": [
+    "security",
+    "firewall",
+    "prompt-injection",
+    "x402",
+    "base",
+    "wallet-shield",
+    "elizaos"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@elizaos/testing": "workspace:*",
+    "@types/node": "^25.0.3",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.3"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "CANARYGUARD_URL": {
+        "type": "string",
+        "description": "CanaryGuard 402 HTTP service endpoint (defaults to https://canaryguard-402.onrender.com)",
+        "required": false,
+        "sensitive": false
+      },
+      "CANARYGUARD_PAYMENT_HEADER": {
+        "type": "string",
+        "description": "Optional x402 payment header signature for authenticated calls",
+        "required": false,
+        "sensitive": true
+      }
+    }
+  }
+}
