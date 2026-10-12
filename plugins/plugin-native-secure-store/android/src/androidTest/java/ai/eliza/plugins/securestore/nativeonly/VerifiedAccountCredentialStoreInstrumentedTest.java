@@ -42,7 +42,9 @@ public final class VerifiedAccountCredentialStoreInstrumentedTest {
   @Test public void malformedOrCorruptRecordIsNeverSilentlyReplaced()throws Exception{
     try(Fixture f=new Fixture()){
       String a=record("owner-a","synthetic-credential-owner-a");assertTrue(f.store().compareExchange(null,a,LIVE));
-      for(String invalid:new String[]{"{}",a.replace("owner-a",""),a.replace("https://api.example.test","https://api.example.test/untrusted/path")}){
+      JSONObject emptyOwner=new JSONObject(a);emptyOwner.getJSONObject("owner").put("userId", "");
+      JSONObject pathAuthority=new JSONObject(a);pathAuthority.getJSONObject("owner").put("authority", "https://api.example.test/untrusted/path");
+      for(String invalid:new String[]{"{}",emptyOwner.toString(),pathAuthority.toString()}){
         try{f.store().compareExchange(a,invalid,LIVE);fail("Invalid owner accepted");}catch(Exception expected){}
         assertEquals(a,f.store().read(LIVE));
       }
