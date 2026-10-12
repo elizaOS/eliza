@@ -49,6 +49,26 @@ visible parts). `googleSource.windowDays` searches that number of days up to the
 present time, with `after` as an optional earliest time; without it the fixed
 `after`/`before` range applies.
 
+`native-host/guided-website-workflow.mjs` guides a person through any website,
+one step at a time. `pageControls(snapshot)` lists every control of a complete
+browser observation with a stable ref made from its locating facts (role,
+name, placeholder, title, field name, image text, nearby text, row text, group
+and form), so controls with no usable name can still be found. Password, code,
+card, bank and ID-number fields are kept apart: `pageView` gives a model only
+their category and whether they are filled, and the workflow points at them
+for the person without asking a model. The host's `planStep` reads `pageView`
+and returns one step with a ref; `checkStep` can stop and ask before a step.
+The workflow points at the control; the person presses every control. Its only
+effect is `fill(offerKey)`: one held value into one empty ordinary field after
+the person agrees. It compares every page fact with the offered page first,
+starts a new task epoch for the new browser target (`fillTargets(task)` gives
+the host policy that target), and reads the page again after the fill. Hosts
+compose `verifyGuidedFill` as the actuator's verification for these fills.
+A browser-stopped submit or page change pauses the task; a form the person sent
+while the website was hers is a `person-check` stop. `BillWorkflow` is the bill
+configuration of this workflow. Run the real Chromium and model lane with
+`ELIZA_BROWSER_EXECUTABLE=... CEREBRAS_API_KEY=... bun run --cwd plugins/plugin-personal-assistant test:guided-website`.
+
 Hosts must supply reviewed `deriveBillDecision` and exact `controls` policy.
 Neither may come from renderer input, page instructions or a model response.
 The policy can return a decision or a promise. An asynchronous policy receives

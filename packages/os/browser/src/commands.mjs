@@ -170,22 +170,73 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       return node.getAttribute("placeholder") || node.title || "";
     return readVisibleText(node) || node.title || "";
   };
-  if (command.subaction === "snapshot") {
-    // Marks fields whose value is a secret. The value itself is never read.
-    const sensitivity = (node) => {
-      const autocomplete = (node.getAttribute("autocomplete") || "")
-        .toLowerCase()
-        .split(/\s+/);
-      if (
-        (node instanceof HTMLInputElement && node.type === "password") ||
-        autocomplete.some((token) => token.endsWith("password"))
+  // Marks fields whose value is a secret. The value itself is never read.
+  // The field's type and autocomplete tokens decide first. A field that the
+  // page does not mark is classified by its name, its id, its placeholder and
+  // its accessible name, for example "Social Security number" or
+  // "routingNumber". A task never fills such a field and a host never shows
+  // it to a model.
+  const sensitivity = (node) => {
+    if (
+      !(
+        node instanceof HTMLInputElement ||
+        node instanceof HTMLTextAreaElement ||
+        node instanceof HTMLSelectElement ||
+        node.isContentEditable
       )
-        return "password";
-      if (autocomplete.includes("one-time-code")) return "one-time-code";
-      if (autocomplete.some((token) => token.startsWith("cc-")))
-        return "payment-card";
+    )
       return null;
-    };
+    const autocomplete = (node.getAttribute("autocomplete") || "")
+      .toLowerCase()
+      .split(/\s+/);
+    if (
+      (node instanceof HTMLInputElement && node.type === "password") ||
+      autocomplete.some((token) => token.endsWith("password"))
+    )
+      return "password";
+    if (autocomplete.includes("one-time-code")) return "one-time-code";
+    if (autocomplete.some((token) => token.startsWith("cc-")))
+      return "payment-card";
+    const words = [
+      node.getAttribute("name"),
+      node.id,
+      node.getAttribute("placeholder"),
+      accessibleName(node),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      // "routingNumber" and "card_cvv" become separate words.
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/[_.-]+/g, " ");
+    if (/\b(?:pass\s*(?:word|phrase)|pwd|pin|security\s+answer)\b/i.test(words))
+      return "password";
+    if (
+      /\b(?:one\s*time\s*(?:pass)?code|verification\s+code|otp|2fa|mfa|passcode|authentication\s+code)\b/i.test(
+        words,
+      )
+    )
+      return "one-time-code";
+    if (
+      /\b(?:card\s*(?:number|no)|credit\s+card|debit\s+card|cvv2?|cvc|csc|security\s+code|expir(?:y|ation)\s*(?:date)?|cc\s*(?:num|number|exp))\b/i.test(
+        words,
+      )
+    )
+      return "payment-card";
+    if (
+      /\b(?:routing(?:\s+number)?|iban|swift|bic|sort\s+code|bank\s+account|checking\s+account|savings\s+account)\b/i.test(
+        words,
+      )
+    )
+      return "bank-account";
+    if (
+      /\b(?:ssn|social\s+security|social\s+insurance|tax\s+id(?:entification)?|itin|passport|driver'?s?\s+licen[cs]e|national\s+id|medicare\s+(?:number|id))\b/i.test(
+        words,
+      )
+    )
+      return "government-id";
+    return null;
+  };
+  if (command.subaction === "snapshot") {
     const controlState = (node) => {
       const flag = (name) => node.getAttribute(name) === "true";
       return {
@@ -270,9 +321,114 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         : value;
     const nodes = new Map();
     const elements = [];
-    const candidates = document.querySelectorAll(
-      "a,button,input,textarea,select,[role=button],[role=textbox],[contenteditable=true],summary",
+    // Native controls and widget roles, as assistive technology lists them.
+    const NATIVE =
+      "a,button,input,textarea,select,summary,[contenteditable=true],[role=button],[role=link],[role=textbox],[role=searchbox],[role=combobox],[role=checkbox],[role=radio],[role=switch],[role=tab],[role=menuitem],[role=menuitemcheckbox],[role=menuitemradio],[role=option],[role=spinbutton],[role=slider]";
+    // A page can also make a plain element pressable with an inline click
+    // handler, a tab stop or a pointer cursor, often with no name at all.
+    // The commit guard treats the same signals as a control. Only the
+    // outermost such element that holds no native control is listed.
+    const custom = [
+      ...(document.body ?? document.documentElement).querySelectorAll("*"),
+    ].filter(
+      (node) =>
+        !node.matches(NATIVE) &&
+        !node.closest(NATIVE) &&
+        !node.querySelector(NATIVE) &&
+        (node.matches('[onclick],[tabindex]:not([tabindex="-1"])') ||
+          (getComputedStyle(node).cursor === "pointer" &&
+            getComputedStyle(node.parentElement ?? node).cursor !== "pointer")),
     );
+    const candidates = [...document.querySelectorAll(NATIVE), ...custom]
+      .filter(
+        (node) =>
+          !custom.includes(node) ||
+          !custom.some((other) => other !== node && other.contains(node)),
+      )
+      .sort((left, right) =>
+        left === right
+          ? 0
+          : left.compareDocumentPosition(right) &
+              Node.DOCUMENT_POSITION_FOLLOWING
+            ? -1
+            : 1,
+      );
+    // The last visible line of text before a control, looked for among its
+    // earlier siblings and then its ancestors' earlier siblings. It names a
+    // control that has no label ("Search" beside an empty input) and tells
+    // repeated labels apart (the row text before each "Pay").
+    const nearbyText = (node) => {
+      for (
+        let item = node, depth = 0;
+        item && item !== document.body && depth < 4;
+        item = item.parentElement, depth++
+      )
+        for (
+          let sibling = item.previousSibling;
+          sibling;
+          sibling = sibling.previousSibling
+        ) {
+          const text =
+            sibling.nodeType === Node.TEXT_NODE
+              ? sibling.textContent.trim()
+              : sibling instanceof Element
+                ? readVisibleText(sibling)
+                : "";
+          if (text) return text.split("\n").filter(Boolean).at(-1).trim();
+        }
+      return null;
+    };
+    // The form or field group the control belongs to, by its own name.
+    const groupName = (group) =>
+      group
+        ? idText(group.getAttribute("aria-labelledby")) ||
+          group.getAttribute("aria-label")?.trim() ||
+          (group.querySelector("legend,h1,h2,h3,h4,h5,h6")
+            ? readVisibleText(group.querySelector("legend,h1,h2,h3,h4,h5,h6"))
+            : "") ||
+          null
+        : null;
+    const forms = [...document.forms];
+    // A CSS selector that matches only this node now. A host may grant one
+    // task action on it after the person agrees; the page guard checks the
+    // match again at the moment of the action.
+    const uniqueSelector = (node) => {
+      const unique = (selector) => {
+        try {
+          return (
+            selector.length <= 256 &&
+            document.querySelectorAll(selector).length === 1 &&
+            document.querySelector(selector) === node
+          );
+        } catch {
+          return false;
+        }
+      };
+      if (node.id && unique(`#${CSS.escape(node.id)}`))
+        return `#${CSS.escape(node.id)}`;
+      const name = node.getAttribute("name");
+      const named =
+        name && `${node.tagName.toLowerCase()}[name="${CSS.escape(name)}"]`;
+      if (named && unique(named)) return named;
+      const path = [];
+      for (
+        let item = node;
+        item && item !== document.documentElement;
+        item = item.parentElement
+      ) {
+        if (item !== node && item.id && unique(`#${CSS.escape(item.id)}`)) {
+          path.unshift(`#${CSS.escape(item.id)}`);
+          break;
+        }
+        const index =
+          [...(item.parentElement?.children ?? [])]
+            .filter((sibling) => sibling.tagName === item.tagName)
+            .indexOf(item) + 1;
+        path.unshift(`${item.tagName.toLowerCase()}:nth-of-type(${index})`);
+      }
+      const selector = path.join(" > ");
+      return unique(selector) ? selector : null;
+    };
     for (const node of candidates) {
       if (!node.checkVisibility({ checkVisibilityCSS: true })) continue;
       const id = String(nodes.size);
@@ -284,6 +440,8 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         value: typeof node.value === "string" ? node.value : null,
       });
       const state = controlState(node);
+      const form = node.form ?? node.closest("form");
+      const hint = (value) => withoutSecrets(value?.trim() || null);
       elements.push({
         bounds: geometry,
         id,
@@ -293,6 +451,52 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         type: node.getAttribute("type"),
         ...state,
         description: withoutSecrets(state.description),
+        // Words that locate a control when its name is empty or repeated.
+        // None of them is a field value.
+        placeholder: hint(node.getAttribute("placeholder")),
+        title: hint(node.getAttribute("title")),
+        fieldName: hint(node.getAttribute("name")),
+        imageText: hint(
+          [...node.querySelectorAll("img[alt],svg title")]
+            .map((item) => item.getAttribute("alt") ?? item.textContent)
+            .join(" "),
+        ),
+        nearbyText: hint(nearbyText(node)),
+        // The whole row or list item a control sits in, cell by cell, such
+        // as "The Overstory | Due October 20" beside an unnamed Renew icon.
+        rowText: hint(
+          (() => {
+            const row = node.closest("tr,[role=row],li,[role=listitem]");
+            return row
+              ? readVisibleText(row).split("\n").filter(Boolean).join(" | ")
+              : null;
+          })(),
+        ),
+        form: form
+          ? { index: forms.indexOf(form), name: hint(groupName(form)) }
+          : null,
+        group: hint(groupName(node.closest("fieldset,[role=group]"))),
+        // A button that sends its form when pressed.
+        submits:
+          (node instanceof HTMLButtonElement ||
+            node instanceof HTMLInputElement) &&
+          node.form !== null &&
+          ["submit", "image"].includes(node.type),
+        pressable: custom.includes(node)
+          ? node.matches("[onclick]")
+            ? "click-handler"
+            : node.matches("[tabindex]")
+              ? "tab-stop"
+              : "pointer-cursor"
+          : null,
+        inViewport:
+          geometry.width > 0 &&
+          geometry.height > 0 &&
+          geometry.x < innerWidth &&
+          geometry.y < innerHeight &&
+          geometry.x + geometry.width > 0 &&
+          geometry.y + geometry.height > 0,
+        targetSelector: uniqueSelector(node),
         heading: node.querySelector("h1,h2,h3,h4,h5,h6")
           ? withoutSecrets(
               readVisibleText(node.querySelector("h1,h2,h3,h4,h5,h6")),
@@ -436,7 +640,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
           ? !(node instanceof HTMLInputElement) ||
             node.autocomplete !== "one-time-code" ||
             !/^[A-Za-z0-9]{4,12}$/.test(command.text)
-          : /(?:password|one-time-code|cc-)/i.test(node.autocomplete || "")))
+          : sensitivity(node) !== null))
     )
       return denied();
   }

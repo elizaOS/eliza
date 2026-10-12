@@ -358,6 +358,93 @@ try {
   cases.push(
     "snapshots name fields from labels and report focus, state, field help and secret-field markers without values",
   );
+  // Controls with no usable name are still listed and located from the DOM:
+  // nearby text, placeholder, title, image text, field name, form, group and
+  // position. Unmarked secret fields are classified by their words.
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      '<form id="contact" aria-label="Contact details"><fieldset><legend>Where we reach you</legend><span>Phone</span><input id="phone" name="phone"><input name="zip" placeholder="ZIP code"></fieldset><input name="ssn"><input id="routingNumber"><label>Social Security number <input id="ss2"></label><button>Save</button></form><table><tr><td>Water bill</td><td><button type="button" class="row-pay">Open</button></td></tr><tr><td>Gas bill</td><td><button type="button" class="row-pay">Open</button></td></tr></table><div id="icon" style="cursor:pointer;width:20px;height:20px" onclick="document.querySelector(\'#count\').textContent=\'icon\'"><svg width="10" height="10"><title>Help</title></svg></div><span id="tip" title="Search the site" tabindex="0" style="display:inline-block;width:10px;height:10px"></span>',
+    );
+  });
+  state = await snapshot();
+  const by = (selector) =>
+    state.value.elements.find((element) => element.targetSelector === selector);
+  assert.equal(by("#phone").label, "");
+  assert.equal(by("#phone").nearbyText, "Phone");
+  assert.deepEqual(by("#phone").form, {
+    index: 0,
+    name: "Contact details",
+  });
+  assert.equal(by("#phone").group, "Where we reach you");
+  assert.equal(by('input[name="zip"]').placeholder, "ZIP code");
+  assert.equal(by('input[name="zip"]').fieldName, "zip");
+  assert.equal(by('input[name="ssn"]').sensitive, "government-id");
+  assert.equal(by("#routingNumber").sensitive, "bank-account");
+  assert.equal(by("#ss2").sensitive, "government-id");
+  assert.equal(by("#phone").sensitive, null);
+  const save = state.value.elements.find((element) => element.label === "Save");
+  assert.equal(save.submits, true);
+  assert.equal(by("#go").submits, false);
+  const rows = state.value.elements.filter(
+    (element) => element.label === "Open",
+  );
+  assert.deepEqual(
+    rows.map((element) => element.nearbyText),
+    ["Water bill", "Gas bill"],
+  );
+  assert.equal(new Set(rows.map((element) => element.targetSelector)).size, 2);
+  for (const row of rows)
+    assert.equal(
+      await page.$$eval(row.targetSelector, (nodes) => nodes.length),
+      1,
+    );
+  assert.equal(by("#icon").pressable, "click-handler");
+  assert.equal(by("#icon").imageText, "Help");
+  assert.equal(by("#tip").pressable, "tab-stop");
+  assert.equal(by("#tip").title, "Search the site");
+  // The page is 3000 pixels tall: the first button is on screen, the new
+  // controls at its end are below it.
+  assert.equal(by("#go").inViewport, true);
+  assert.equal(by("#icon").inViewport, false);
+  assert.ok(by("#icon").bounds.width > 0);
+  cases.push(
+    "unlabeled controls are listed with nearby text, placeholder, title, image text, field name, form, group, position and a unique selector; unmarked SSN and bank fields are secret",
+  );
+  // An unmarked secret field is never filled by a task, even when granted.
+  const grant = {
+    origin: new URL(page.url()).origin,
+    expiresAt: Date.now() + 60000,
+    targets: [
+      { selector: 'input[name="ssn"]', action: "fill" },
+      { selector: "#routingNumber", action: "fill" },
+      { selector: "#phone", action: "fill" },
+    ],
+  };
+  const fillAt = async (selector, text) => {
+    state = await snapshot();
+    return run({
+      subaction: "fill",
+      snapshotId: state.id,
+      nodeId: by(selector).id,
+      text,
+      taskPolicy: grant,
+    });
+  };
+  assert.equal(
+    (await fillAt('input[name="ssn"]', "123-45-6789")).error.kind,
+    "POLICY_BLOCKED",
+  );
+  assert.equal(
+    (await fillAt("#routingNumber", "021000021")).error.kind,
+    "POLICY_BLOCKED",
+  );
+  assert.equal(await page.$eval('input[name="ssn"]', (node) => node.value), "");
+  assert.equal((await fillAt("#phone", "5550100")).dispatched, true);
+  assert.equal(await page.$eval("#phone", (node) => node.value), "5550100");
+  cases.push(
+    "a granted fill reaches an ordinary unlabeled field by its unique selector and never an unmarked SSN or routing field",
+  );
   const out = testOutputPath("browser-page-freshness");
   await mkdir(out, { recursive: true });
   await writeFile(

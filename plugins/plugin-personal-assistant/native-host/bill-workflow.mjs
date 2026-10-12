@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { matchBillControl, validateBillControls } from "./bill-controls.mjs";
 import { BillHostError } from "./errors.mjs";
+import { GuidedWebsiteWorkflow } from "./guided-website-workflow.mjs";
 
 const blocked = (reason) => ({ kind: "blocked", reason });
 const personGuidance = (kind) =>
@@ -10,37 +11,12 @@ const personGuidance = (kind) =>
     "human-verification",
     "human-submit",
   ].includes(kind);
-// Observation selectors are fresh opaque references on each read. Compare the
-// facts behind them, then use the new references when guidance is restored.
-const policySnapshotKey = (snapshot) =>
-  JSON.stringify({
-    url: snapshot.url,
-    documentId: snapshot.documentId,
-    inputRevision: snapshot.inputRevision,
-    effectViolation: snapshot.effectViolation,
-    text: snapshot.text,
-    elements: snapshot.elements.map(
-      ({ selector: _selector, ...facts }) => facts,
-    ),
-  });
-
-async function awaitPolicy(pending, signal) {
-  let abort;
-  try {
-    return await Promise.race([
-      pending,
-      new Promise((_resolve, reject) => {
-        abort = () => reject(new BillHostError("Task authorization changed"));
-        if (signal.aborted) abort();
-        else signal.addEventListener("abort", abort, { once: true });
-      }),
-    ]);
-  } finally {
-    signal.removeEventListener("abort", abort);
-  }
-}
-/** Reviewed host policy over shared task/runtime primitives. No agent submit operation exists. */
-export class BillWorkflow {
+/**
+ * The bill configuration of the guided website workflow: reviewed host policy
+ * decides each step, and payment reviews, submissions and outcomes are kept
+ * as durable evidence. No agent submit operation exists.
+ */
+export class BillWorkflow extends GuidedWebsiteWorkflow {
   constructor({
     deriveBillDecision,
     runtime,
@@ -67,17 +43,13 @@ export class BillWorkflow {
         selectionGuidance.unavailableMessage.length > 600)
     )
       throw new BillHostError("Invalid required selection guidance policy");
+    super({ runtime, actuator, taskId, stillAuthorized, signal });
     Object.assign(this, {
       selectionGuidance: structuredClone(selectionGuidance),
       deriveBillDecision,
-      runtime,
-      actuator,
       bill: structuredClone(bill),
-      taskId,
       outcomes,
       codeCoordinator,
-      stillAuthorized,
-      signal,
       receipts,
       controls: validateBillControls(controls),
     });
@@ -123,12 +95,6 @@ export class BillWorkflow {
       }
     return check?.found ? { ...outcome, receiptInEmail: true } : outcome;
   }
-  async clearGuidance() {
-    await this.actuator.quiesce?.({
-      owner: this.runtime.owner,
-      taskId: this.taskId,
-    });
-  }
   hasPaymentHistory() {
     return Boolean(
       this.outcomes?.loadAttempt?.() ||
@@ -152,15 +118,6 @@ export class BillWorkflow {
     const instruction =
       decision.message ||
       "Review the existing payment method on the website before choosing it in Eliza.";
-    const guidance = { instruction, available: false };
-    const unavailable = () =>
-      this.selectionGuidance && decision.kind === "choose-existing-method"
-        ? {
-            kind: "human-review",
-            message: this.selectionGuidance.unavailableMessage,
-            guidance,
-          }
-        : { ...decision, guidance };
     const matches = discovered
       ? snapshot.elements.filter(
           (element) => element.selector === decision.guidanceTarget,
@@ -171,54 +128,19 @@ export class BillWorkflow {
         ? matches[0]
         : null
       : matchBillControl(snapshot, control);
-    if (!target || !this.actuator.showGuidance) {
-      await this.clearGuidance();
-      return unavailable();
-    }
-    if (!(await this.stillAuthorized()) || this.signal.aborted) {
-      await this.clearGuidance();
-      throw new BillHostError("Task authorization changed");
-    }
-    try {
-      const shown = await this.actuator.showGuidance(
-        this.taskId,
-        this.runtime.owner,
-        {
-          stepId: `bill:${decision.kind}`,
-          targetRef: target.selector,
-          text: instruction,
-          restore,
-        },
-        this.signal,
-      );
-      if (!(await this.stillAuthorized()))
-        throw new BillHostError("Task authorization changed");
-      return {
-        ...decision,
-        guidance: {
-          instruction,
-          available: true,
-          // The renderer checks the website again before the guide expires.
-          ...(Number.isSafeInteger(shown?.expiresAt)
-            ? { expiresAt: shown.expiresAt }
-            : {}),
-        },
-      };
-    } catch {
-      // Preserve the instruction; failed removal still fails the whole request.
-      await this.clearGuidance();
-      if (!(await this.stillAuthorized()) || this.signal.aborted)
-        throw new BillHostError("Task authorization changed");
-      return unavailable();
-    }
-  }
-  async refresh(options = {}) {
-    try {
-      return await this.refreshObserved(options);
-    } catch (error) {
-      await this.clearGuidance();
-      throw error;
-    }
+    return this.pointAt(decision, target, {
+      stepId: `bill:${decision.kind}`,
+      instruction,
+      restore,
+      unavailable: (guidance) =>
+        this.selectionGuidance && decision.kind === "choose-existing-method"
+          ? {
+              kind: "human-review",
+              message: this.selectionGuidance.unavailableMessage,
+              guidance,
+            }
+          : { ...decision, guidance },
+    });
   }
   /** The kept record of a payment the website showed before this task paid. */
   priorOutcome(record) {
@@ -250,25 +172,9 @@ export class BillWorkflow {
       await this.clearGuidance();
       return this.priorOutcome(prior);
     }
-    const task = this.runtime.get(this.taskId);
-    if (task.status === "paused") {
-      await this.clearGuidance();
-      return { kind: "paused", taskId: this.taskId };
-    }
-    if (task.operations.some((operation) => operation.status === "unknown")) {
-      await this.clearGuidance();
-      return {
-        kind: "unknown-outcome",
-        message: "Check the previous action before continuing.",
-      };
-    }
-    if (task.status !== "active") {
-      await this.clearGuidance();
-      return {
-        kind: "unavailable",
-        message: "This task cannot currently observe the website.",
-      };
-    }
+    const gate = await this.taskGate();
+    if (gate.result) return gate.result;
+    const { task } = gate;
     try {
       await this.runtime.observe(
         task.id,
@@ -287,115 +193,22 @@ export class BillWorkflow {
         };
       throw error;
     }
-    let { observation, snapshot } = this.actuator.readObservation(
-      task.id,
-      this.runtime.owner,
-    );
-    // The browser stopped a submit or page change that a task action set
-    // off. Stop here; the person checks the website before going on.
-    if (snapshot.effectViolation !== undefined) {
-      await this.clearGuidance();
-      if (!(await this.stillAuthorized()) || this.signal.aborted)
-        throw new BillHostError("Task authorization changed");
-      const current = this.runtime.get(task.id);
-      if (["active", "waiting"].includes(current.status)) {
-        this.runtime.control(current.id, current.revision, "pause");
-        await this.runtime.settle?.(current.id);
-      }
-      return {
-        kind: "paused",
-        taskId: this.taskId,
-        message:
-          "The website tried to submit or leave the page after my last step. I paused the task. Check the website to confirm what happened before resuming.",
-      };
-    }
-    const { epoch: policyEpoch, revision: policyRevision } = this.runtime.get(
-      this.taskId,
-    );
-    const snapshotKey = policySnapshotKey(snapshot);
-    let decision = this.deriveBillDecision(this.bill, snapshot, {
-      signal: this.signal,
-      taskId: this.taskId,
-      epoch: policyEpoch,
-    });
-    if (decision && typeof decision.then === "function") {
-      decision = await awaitPolicy(decision, this.signal);
-      if (!(await this.stillAuthorized()) || this.signal.aborted)
-        throw new BillHostError("Task authorization changed");
-      const current = this.runtime.get(this.taskId);
-      if (
-        current.status !== "active" ||
-        current.epoch !== policyEpoch ||
-        current.revision !== policyRevision
-      ) {
-        await this.clearGuidance();
-        return blocked(
+    const read = this.actuator.readObservation(task.id, this.runtime.owner);
+    if (read.snapshot.effectViolation !== undefined)
+      return this.pauseForEffectViolation();
+    const decided = await this.decideOnFreshPage(
+      read,
+      (snapshot, context) =>
+        this.deriveBillDecision(this.bill, snapshot, context),
+      {
+        taskChanged:
           "The task changed while the bill was being checked. Check it again.",
-        );
-      }
-      await this.runtime.observe(
-        current.id,
-        current.revision,
-        false,
-        this.stillAuthorized,
-      );
-      const fresh = this.actuator.readObservation(
-        this.taskId,
-        this.runtime.owner,
-      );
-      if (!(await this.stillAuthorized()) || this.signal.aborted)
-        throw new BillHostError("Task authorization changed");
-      const observedTask = this.runtime.get(this.taskId);
-      if (
-        observedTask.status !== "active" ||
-        observedTask.epoch !== policyEpoch
-      ) {
-        await this.clearGuidance();
-        return blocked(
-          "The task changed while the bill was being checked. Check it again.",
-        );
-      }
-      // The browser stopped a submit or page change that a task action set
-      // off. Stop here; the person checks the website before going on.
-      if (fresh.snapshot.effectViolation !== undefined) {
-        await this.clearGuidance();
-        if (!(await this.stillAuthorized()) || this.signal.aborted)
-          throw new BillHostError("Task authorization changed");
-        const current = this.runtime.get(task.id);
-        if (["active", "waiting"].includes(current.status)) {
-          this.runtime.control(current.id, current.revision, "pause");
-          await this.runtime.settle?.(current.id);
-        }
-        return {
-          kind: "paused",
-          taskId: this.taskId,
-          message:
-            "The website tried to submit or leave the page after my last step. I paused the task. Check the website to confirm what happened before resuming.",
-        };
-      }
-      if (snapshotKey !== policySnapshotKey(fresh.snapshot)) {
-        await this.clearGuidance();
-        return blocked(
+        pageChanged:
           "The website changed while the bill was being checked. Check it again.",
-        );
-      }
-      // Policy may point at an observed control for the person. Rebind that
-      // reference only after all page facts match, never as an execution target.
-      if (
-        personGuidance(decision?.kind) &&
-        decision.guidanceTarget !== undefined
-      ) {
-        const index = snapshot.elements.findIndex(
-          (element) => element.selector === decision.guidanceTarget,
-        );
-        decision = {
-          ...decision,
-          guidanceTarget:
-            index < 0 ? null : fresh.snapshot.elements[index].selector,
-        };
-      }
-      ({ observation, snapshot } = fresh);
-    }
+      },
+    );
+    if (decided.result) return decided.result;
+    const { decision, observation, snapshot } = decided;
     if (
       !decision ||
       typeof decision !== "object" ||
@@ -503,27 +316,7 @@ export class BillWorkflow {
         "The saved payment review belongs to a different bill. Check the original task before continuing.",
       );
     }
-    const activity = snapshot.manualActivity;
-    if (
-      activity &&
-      (!Array.isArray(activity.events) ||
-        activity.events.length > 256 ||
-        activity.events.some(
-          (event) =>
-            !event ||
-            event.kind !== "form-submit" ||
-            typeof event.origin !== "string" ||
-            typeof event.documentId !== "string" ||
-            !Number.isSafeInteger(event.epoch) ||
-            !Number.isSafeInteger(event.observedAt) ||
-            (event.credential !== undefined && event.credential !== true),
-        ) ||
-        typeof activity.overflow !== "boolean" ||
-        typeof activity.captureGap !== "boolean")
-    ) {
-      await this.clearGuidance();
-      throw new BillHostError("Invalid manual activity evidence");
-    }
+    const activity = await this.manualActivity(snapshot);
     // No payment was reviewed, but the website was hers for a while (the
     // task was paused or restarted since). A form she sent on the biller's
     // website then, other than a sign-in or code form, may be a payment.

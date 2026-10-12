@@ -32,6 +32,16 @@ was observed in this document. These flags do not prove a value is correct or
 that a person caused the event. The value comparison stays inside
 the isolated page realm. These freshness checks do not classify a button as safe
 for a particular task or replace the host's action policy.
+Snapshots list native controls, widget roles and plain elements made
+pressable by a click handler, a tab stop or a pointer cursor. Each element
+carries facts that locate it when its name is empty or repeated: placeholder,
+title, field name, image text, nearby text, row text, form and group names,
+whether it submits its form, whether it is in the viewport, and
+`targetSelector`, a CSS selector that matches only that node at read time.
+A field is secret (`sensitive`) by its type and autocomplete tokens, or by
+words in its name, id, placeholder or label: password and PIN, one-time code,
+card, bank account and government ID numbers. Task fills never reach a secret
+field, even when a host grants it.
 Large native messages use ordered lossless chunks below the Android Binder limit.
 Incomplete or out-of-order messages never execute. Repeated
 request IDs fail closed; interrupted effects are never replayed automatically.

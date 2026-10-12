@@ -71,7 +71,8 @@
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "test:bill-host": "node --test native-host/*.test.mjs"
+    "test:bill-host": "node --test native-host/*.test.mjs",
+    "test:guided-website": "node --conditions=eliza-source scripts/test-guided-website-chromium.mjs"
   },
   "dependencies": {
     "@capacitor/core": "8.4.0",
