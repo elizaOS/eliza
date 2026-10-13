@@ -136,12 +136,13 @@ const NAME_BOUNDARY_SOURCE =
 // Han is different: Chinese sentences have no word boundaries, so a
 // same-script neighbor is not evidence that the text names a different,
 // longer person ("张三郊游" is the contact plus a verb, not a longer name).
-// A Han occurrence therefore always stands, and protection against a longer
-// name comes only from stored contacts: the coverage rule in
-// resolveRelationshipIdFromText supersedes "张三" when the text's span is
-// inside a named longer contact such as "张三丰". Without a segmenter an
-// unknown longer name is indistinguishable from ordinary text, so that case
-// resolves like the base substring behavior instead of guessing.
+// A Han occurrence stands unless the directly abutting Han run around it
+// is longer than the name and an honorific or particle terminates that
+// run ("田中" inside "山田中村さん"): the terminator proves the longer run is
+// a complete name, so the contact is not the person named. Protection
+// against a stored longer name still comes from the coverage rule in
+// resolveRelationshipIdFromText, which supersedes "张三" when the text's
+// span is inside a named longer contact such as "张三丰".
 function unspacedScriptClass(value: string): string | null {
   if (!value) return null;
   if (/\p{Script=Han}/u.test(value)) return "han";
@@ -236,6 +237,35 @@ function skipNameAbuttingAffixesBefore(text: string, index: number): number {
   return cursor;
 }
 
+// True when the maximal directly abutting Han run around [start, end) is
+// longer than the occurrence and an honorific or particle terminates that
+// run. The terminator proves the longer run is a complete name ("山田中村",
+// closed by "さん"), so a contact whose name is only part of the run ("田中")
+// is not the person the text named. An unterminated run is ordinary
+// unsegmented Chinese text and stays out of this rule.
+function hanOccurrenceEmbeddedInTerminatedRun(
+  haystack: string,
+  start: number,
+  end: number,
+): boolean {
+  let runStart = start;
+  let runEnd = end;
+  while (
+    runStart > 0 &&
+    unspacedScriptClass(haystack[runStart - 1] ?? "") === "han"
+  ) {
+    runStart -= 1;
+  }
+  while (
+    runEnd < haystack.length &&
+    unspacedScriptClass(haystack[runEnd] ?? "") === "han"
+  ) {
+    runEnd += 1;
+  }
+  if (runStart === start && runEnd === end) return false;
+  return skipNameAbuttingAffixes(haystack, runEnd) > runEnd;
+}
+
 type NameOccurrence = { start: number; end: number };
 
 function namedPhraseOccurrences(
@@ -258,9 +288,10 @@ function namedPhraseOccurrences(
     const lastChar = match[0].at(-1) ?? "";
     // Only a direct same-script kana/Hangul neighbor rejects the
     // occurrence; a particle or honorific bridge keeps the name standalone
-    // on either side ("今日は田中さんと", "さくらと", "김철수님과"). Han
-    // has no word boundaries, so a Han neighbor never rejects here; the
-    // stored-contact coverage rule owns longer Han names.
+    // on either side ("今日は田中さんと", "さくらと", "김철수님과"). A Han
+    // neighbor never rejects by itself, but a Han occurrence inside a
+    // longer honorific-terminated Han run does ("田中" in "山田中村さん");
+    // the stored-contact coverage rule owns the stored longer-name case.
     const nameLeadScript = unspacedScriptClass(firstChar);
     const nameTailScript = unspacedScriptClass(lastChar);
     const leadBridged = skipNameAbuttingAffixesBefore(haystack, start) < start;
@@ -284,6 +315,12 @@ function namedPhraseOccurrences(
       ) {
         continue;
       }
+    }
+    if (
+      nameLeadScript === "han" &&
+      hanOccurrenceEmbeddedInTerminatedRun(haystack, start, end)
+    ) {
+      continue;
     }
     occurrences.push({ start, end });
   }

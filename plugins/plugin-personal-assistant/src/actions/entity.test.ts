@@ -220,6 +220,24 @@ describe("ENTITY log_interaction resolves the named contact only", () => {
     expect(interactionRelationshipId).toBe("rel-yamada");
   });
 
+  it("does not resolve a Han name inside a longer honorific-terminated name", async () => {
+    listSpy.mockResolvedValue([
+      relationship("rel-tanaka", "田中", "+819012345678"),
+    ] as never);
+    const runtime = makeRuntime();
+    const { result } = await logInteractionFor(
+      runtime,
+      "山田中村さんとの打ち合わせをログに残して",
+    );
+
+    // 山田中村 ends in the honorific さん, so the longer Han run is a
+    // complete name the directory does not store; the 田中 span inside it
+    // names nobody and must not authorize the write.
+    expect((result as { data?: { error?: string } }).data?.error).toBe(
+      "MISSING_EDGE_ID",
+    );
+  });
+
   it("resolves a kana name with an attached honorific or particle", async () => {
     listSpy.mockResolvedValue([
       relationship("rel-sakura", "さくら", "+819012345680"),

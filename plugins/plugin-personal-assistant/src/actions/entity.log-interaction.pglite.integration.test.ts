@@ -323,4 +323,17 @@ describe("ENTITY log_interaction writes real interaction rows", () => {
     expect(rows).toHaveLength(9);
     expect(rows[8]?.relationship_id).toBe(zhangSanFengId);
   });
+
+  it("writes no row for a Han name inside a longer honorific-terminated name", async () => {
+    const result = await logInteractionFor(
+      "田中村さんとの打ち合わせをログに残して",
+    );
+
+    // 田中村 closes with the honorific さん, so the longer Han run is a
+    // complete name and the 田中 span inside it names nobody; no durable
+    // row is written.
+    expect(result.data?.error).toBe("MISSING_EDGE_ID");
+    const rows = await interactionRows();
+    expect(rows).toHaveLength(9);
+  });
 });
