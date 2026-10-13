@@ -418,8 +418,7 @@ export class TelegramOwnerPairingServiceImpl
     const message =
       `Click to log in to Eliza: ${link}
 
-` +
-      "_This link expires in 5 minutes. Do not share it._";
+` + "_This link expires in 5 minutes. Do not share it._";
 
     try {
       await telegrafBot.telegram.sendMessage(chatId, message, {
