@@ -211,6 +211,7 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
 app.post("/", async (c) => {
   const id = c.req.param("id");
   const executionCtx = getGenerativeExecutionContext(c);
+  let isNotification = false
   try {
     const caller = await requireGenerativeRouteCaller(c, {
       compatibility: "hono",
@@ -303,11 +304,9 @@ app.post("/", async (c) => {
     }
 
     const { method, params, id: rpcId } = validation.data;
-    // JSON-RPC notifications have no id and require no response.
-    if (rpcId === undefined) {
-      return new Response(null, { status: 202 });
-    }
-    switch (method) {
+    isNotification = rpcId === undefined
+    const response = await (async () => {
+      switch (method) {
       case "initialize":
         return c.json({
           jsonrpc: "2.0",
@@ -316,7 +315,7 @@ app.post("/", async (c) => {
             serverInfo: { name: character.name, version: "1.0.0" },
             capabilities: { tools: {} },
           },
-          id: rpcId,
+          id: rpcId ?? null,
         });
 
       case "tools/list":
@@ -343,13 +342,13 @@ app.post("/", async (c) => {
               },
             ],
           },
-          id: rpcId,
+          id: rpcId ?? null,
         });
 
       case "tools/call":
         // The handler must settle its admission handoff before the using scope
         // checks a terminal exit, so this intentionally awaits before return.
-        return await handleToolCall(c, character, params ?? {}, rpcId, {
+        return await handleToolCall(c, character, params ?? {}, rpcId ?? null, {
           id: caller.user.id,
           organization_id: caller.user.organization_id,
           apiKeyId: caller.apiKeyId,
@@ -360,20 +359,23 @@ app.post("/", async (c) => {
         });
 
       case "ping":
-        return c.json({ jsonrpc: "2.0", result: {}, id: rpcId });
+        return c.json({ jsonrpc: "2.0", result: {}, id: rpcId ?? null });
 
       default:
         return c.json(
           {
             jsonrpc: "2.0",
             error: { code: -32601, message: "Method not found" },
-            id: rpcId,
+            id: rpcId ?? null,
           },
           400,
         );
-    }
+      }
+    })()
+    return isNotification ? new Response(null, { status: 202 }) : response
   } catch (error) {
-    return mcpAuthError(c, error, null);
+    const response = mcpAuthError(c, error, null)
+    return isNotification ? new Response(null, { status: 202 }) : response
   }
 });
 
@@ -391,7 +393,7 @@ export async function handleToolCall(
     settings: Record<string, unknown>;
   },
   params: Record<string, unknown>,
-  rpcId: string | number,
+  rpcId: string | number | null,
   authUser: {
     id: string;
     organization_id: string;
