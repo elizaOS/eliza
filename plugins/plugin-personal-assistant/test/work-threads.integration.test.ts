@@ -1496,6 +1496,8 @@ describe("work thread follow-up lifecycle", () => {
       ],
     );
     const taskId = operationResults(chased)[0].taskId as string;
+    // Reproduce a durable follow-up created before work_thread_active existed.
+    await runner.apply(taskId, "edit", { shouldFire: undefined });
     const remove = vi
       .spyOn(runner, "remove")
       .mockRejectedValue(new Error("task store offline"));

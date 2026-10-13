@@ -53,6 +53,10 @@ import {
   resolveOwnerFactStore,
 } from "../owner/fact-store.js";
 import { LifeOpsRepository } from "../repository.js";
+import {
+  needsWorkThreadActiveGate,
+  withWorkThreadActiveGate,
+} from "../work-threads/followup-gate.js";
 import { readScheduledTaskChatDeliveryBinding } from "./delivery-binding.js";
 import {
   applyReminderIntensityToNoReplyPolicy,
@@ -580,6 +584,7 @@ export async function processDueScheduledTasks(
     if (result.fires.length >= limit) break;
     if (!isRecoverableBoundDispatch(task, request.now)) continue;
     try {
+      await backfillWorkThreadActiveGate(task, runner);
       // A single CAS claims the exact fired occurrence observed by this tick.
       // There is deliberately no reopen write: reopen-then-claim lets two
       // workers claim one another's reopen and double-dispatch.
@@ -705,6 +710,7 @@ export async function processDueScheduledTasks(
     const decision = await isScheduledTaskDue(task, dueContext);
     if (!decision.due) continue;
     try {
+      await backfillWorkThreadActiveGate(task, runner);
       const fireResult = await runner.fireWithResult(task.taskId, {
         cause: "automatic",
         allowTerminalRefire: isRecurringTrigger(task.trigger),
@@ -728,6 +734,19 @@ export async function processDueScheduledTasks(
   }
 
   return result;
+}
+
+async function backfillWorkThreadActiveGate(
+  task: ScheduledTask,
+  runner: ReturnType<typeof getScheduledTaskRunner>,
+): Promise<void> {
+  if (!needsWorkThreadActiveGate(task)) return;
+  await runner.apply(
+    task.taskId,
+    "edit",
+    { shouldFire: withWorkThreadActiveGate(task) },
+    { expectedTask: task },
+  );
 }
 
 async function handleCompletionTimeout(args: {
