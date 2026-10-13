@@ -352,6 +352,17 @@ app.post("/", async (c) => {
     return c.json(jsonRpcError(null, -32700, "Invalid JSON"), 400);
   }
 
+  // JSON-RPC notifications have no id and require no response.
+  if (
+    !Array.isArray(body) &&
+    body &&
+    typeof body === "object" &&
+    typeof (body as { method?: unknown }).method === "string" &&
+    !("id" in body)
+  ) {
+    return new Response(null, { status: 202 });
+  }
+
   const messages = Array.isArray(body) ? body : [body];
   const results = await Promise.all(
     messages.map((message) => handleJsonRpc(c, message)),
