@@ -133,16 +133,19 @@ const NAME_BOUNDARY_SOURCE =
 // neighbor never does. Fail closed: a rejected match never authorizes a
 // write.
 //
-// Han is different: Chinese sentences have no word boundaries, so a
-// same-script neighbor is not evidence that the text names a different,
-// longer person ("张三郊游" is the contact plus a verb, not a longer name).
-// A Han occurrence stands unless the directly abutting Han run around it
-// is longer than the name and an honorific or particle terminates that
-// run ("田中" inside "山田中村さん"): the terminator proves the longer run is
-// a complete name, so the contact is not the person named. Protection
-// against a stored longer name still comes from the coverage rule in
-// resolveRelationshipIdFromText, which supersedes "张三" when the text's
-// span is inside a named longer contact such as "张三丰".
+// Han is different: Chinese and Japanese sentences have no word
+// boundaries, so a same-script neighbor is not evidence that the text
+// names a different, longer person ("张三郊游" is the contact plus a
+// verb, not a longer name; "昨日田中さん" is a time word plus the
+// contact). A Han occurrence stands unless Han text sits between it and
+// the run's terminator ("田中" inside "山田中村さん"): an honorific or
+// particle attaches directly to the complete name, so Han between the
+// occurrence and that terminator extends the name past the contact, and
+// the contact is not the person named. Han before the occurrence is
+// ordinary unsegmented sentence text that the terminator says nothing
+// about. Protection against a stored longer name still comes from the
+// coverage rule in resolveRelationshipIdFromText, which supersedes "张三"
+// when the text's span is inside a named longer contact such as "张三丰".
 function unspacedScriptClass(value: string): string | null {
   if (!value) return null;
   if (/\p{Script=Han}/u.test(value)) return "han";
@@ -237,32 +240,28 @@ function skipNameAbuttingAffixesBefore(text: string, index: number): number {
   return cursor;
 }
 
-// True when the maximal directly abutting Han run around [start, end) is
-// longer than the occurrence and an honorific or particle terminates that
-// run. The terminator proves the longer run is a complete name ("山田中村",
-// closed by "さん"), so a contact whose name is only part of the run ("田中")
-// is not the person the text named. An unterminated run is ordinary
-// unsegmented Chinese text and stays out of this rule.
+// True when Han text sits between the occurrence and the end of its
+// maximal abutting Han run and an honorific or particle terminates that
+// run. The terminator attaches directly to the complete name ("山田中村",
+// closed by "さん"), so Han between the occurrence and the terminator
+// proves the name continues past it ("田中" in "山田中村さん" and
+// "田中村さん"), and the occurrence names nobody. Han only before the
+// occurrence ("昨日田中さん") does not: the terminator marks where the
+// name ends, not where the preceding sentence text began. An
+// unterminated run is ordinary unsegmented text and stays out of this
+// rule.
 function hanOccurrenceEmbeddedInTerminatedRun(
   haystack: string,
-  start: number,
   end: number,
 ): boolean {
-  let runStart = start;
   let runEnd = end;
-  while (
-    runStart > 0 &&
-    unspacedScriptClass(haystack[runStart - 1] ?? "") === "han"
-  ) {
-    runStart -= 1;
-  }
   while (
     runEnd < haystack.length &&
     unspacedScriptClass(haystack[runEnd] ?? "") === "han"
   ) {
     runEnd += 1;
   }
-  if (runStart === start && runEnd === end) return false;
+  if (runEnd === end) return false;
   return skipNameAbuttingAffixes(haystack, runEnd) > runEnd;
 }
 
@@ -318,7 +317,7 @@ function namedPhraseOccurrences(
     }
     if (
       nameLeadScript === "han" &&
-      hanOccurrenceEmbeddedInTerminatedRun(haystack, start, end)
+      hanOccurrenceEmbeddedInTerminatedRun(haystack, end)
     ) {
       continue;
     }

@@ -336,4 +336,18 @@ describe("ENTITY log_interaction writes real interaction rows", () => {
     const rows = await interactionRows();
     expect(rows).toHaveLength(9);
   });
+
+  it("writes a durable row for a Han name preceded by unsegmented Han text", async () => {
+    const result = await logInteractionFor(
+      "昨日田中さんと話したことをログに残して",
+    );
+
+    // The honorific closes the name at 田中; the preceding time word is
+    // ordinary sentence text, so the valid contact writes the durable row.
+    expect(result.success).toBe(true);
+    expect(result.data?.interaction?.relationshipId).toBe(tanakaId);
+    const rows = await interactionRows();
+    expect(rows).toHaveLength(10);
+    expect(rows[9]?.relationship_id).toBe(tanakaId);
+  });
 });

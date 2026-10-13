@@ -238,6 +238,38 @@ describe("ENTITY log_interaction resolves the named contact only", () => {
     );
   });
 
+  it("resolves a Han name preceded by unsegmented Han sentence text", async () => {
+    listSpy.mockResolvedValue([
+      relationship("rel-tanaka", "田中", "+819012345678"),
+    ] as never);
+    const runtime = makeRuntime();
+    const { interactionRelationshipId } = await logInteractionFor(
+      runtime,
+      "昨日田中さんと話したことをログに残して",
+    );
+
+    // The honorific closes the name at 田中; the preceding time word 昨日
+    // is ordinary unsegmented sentence text, not part of the person name.
+    expect(interactionRelationshipId).toBe("rel-tanaka");
+  });
+
+  it("does not resolve a Han name with Han text before the honorific", async () => {
+    listSpy.mockResolvedValue([
+      relationship("rel-tanaka", "田中", "+819012345678"),
+    ] as never);
+    const runtime = makeRuntime();
+    const { result } = await logInteractionFor(
+      runtime,
+      "田中村さんとの打ち合わせをログに残して",
+    );
+
+    // 村 sits between the contact name and the honorific, so the run
+    // names a longer person the directory does not store.
+    expect((result as { data?: { error?: string } }).data?.error).toBe(
+      "MISSING_EDGE_ID",
+    );
+  });
+
   it("resolves a kana name with an attached honorific or particle", async () => {
     listSpy.mockResolvedValue([
       relationship("rel-sakura", "さくら", "+819012345680"),
