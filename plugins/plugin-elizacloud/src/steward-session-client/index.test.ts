@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   readStoredStewardToken,
+  registerStewardTokenRemoval,
   registerStewardTokenPersistence,
   replaceStoredStewardTokenIfCurrent,
   STEWARD_TOKEN_KEY,
