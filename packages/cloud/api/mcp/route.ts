@@ -239,7 +239,7 @@ async function forwardConfiguredMcpRequest(
       jsonRpcError(
         null,
         -32600,
-        "Configured MCP transport only accepts GET or POST",
+        "Configured MCP transport only accepts GET, HEAD, or POST",
       ),
       405,
     );
