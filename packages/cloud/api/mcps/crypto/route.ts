@@ -14,7 +14,7 @@ app.get("/", (c) =>
     version: "2.0.0",
     description:
       "Real-time cryptocurrency prices, market data, and trending coins powered by CoinGecko API. Free to use.",
-    transport: ["http", "sse"],
+    transport: ["http"],
     endpoint: "/api/mcps/crypto/mcp",
     tools: [
       {
