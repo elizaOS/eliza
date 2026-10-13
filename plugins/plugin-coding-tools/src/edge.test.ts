@@ -386,20 +386,22 @@ test("trusted API oversized body fails promptly even when cancellation never set
 test("Wttr JSON API rejects ambiguous names and invalid coordinate bounds before HTTP", async () => {
   const fetch = vi.spyOn(globalThis, "fetch");
   try {
-    for (const path of [
-      "Tokyo",
-      "Tokyo,Japan",
-      "91,139",
-      "35,181",
-      "NaN,139",
-      "35.6",
-      "35.6,139.7/extra",
-    ]) {
-      const out = await call(createWebFetchEdgeAction(), {
-        url: `https://wttr.in/${path}?format=j1`,
-      });
-      expect(out?.success).toBe(false);
-      expect(out?.text).toContain("coordinates");
+    for (const format of ["j1", "j2"]) {
+      for (const path of [
+        "Tokyo",
+        "Tokyo,Japan",
+        "91,139",
+        "35,181",
+        "NaN,139",
+        "35.6",
+        "35.6,139.7/extra",
+      ]) {
+        const out = await call(createWebFetchEdgeAction(), {
+          url: `https://wttr.in/${path}?format=${format}`,
+        });
+        expect(out?.success).toBe(false);
+        expect(out?.text).toContain("coordinates");
+      }
     }
     expect(fetch).not.toHaveBeenCalled();
   } finally {

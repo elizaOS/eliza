@@ -276,7 +276,7 @@ export function createWebFetchAction(
         const parsedUrl = new URL(url);
         if (
           parsedUrl.hostname.toLowerCase() === "wttr.in" &&
-          parsedUrl.searchParams.get("format") === "j1"
+          ["j1", "j2"].includes(parsedUrl.searchParams.get("format") ?? "")
         ) {
           const location = parsedUrl.pathname.slice(1);
           const match = location.match(
