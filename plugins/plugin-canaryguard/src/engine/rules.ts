@@ -4,9 +4,10 @@ const INVISIBLE_CHARACTERS = /[\u00ad\u180e\u200b-\u200f\u202a-\u202e\u2060-\u20
 const ROLE_DELIMITER = /\[\/?INST\]|<\|(?:im_start|im_end|system|developer|assistant|user)\|>|<<\/?SYS>>/i;
 const ROLE_PREFIX = /(?:^|[\r\n])\s*(?:system|developer|assistant)(?:\s*(?:override|prompt|message|test))*\s*:/i;
 const INSTRUCTION_OVERRIDE = /\b(?:ignore|disregard|forget|override)\s+(?:(?:all|any|the|your|our)\s+)*(?:(?:previous|prior|earlier|above|system|developer)\s+)+(?:instructions?|prompts?|rules?|messages?)\b/i;
-const WALLET_ASSET_COMMAND = /\b(?:send|transfer|wire|move|drain)\s+(?:(?:all|every|entire|the|your|my|our|any|remaining)\s+)*(?:funds?|balances?|assets?|tokens?|crypto|eth|usdc|usdt)\b/i;
-const WALLET_DESTINATION_COMMAND = /\b(?:send|transfer|wire|move)\s+(?:it\s+|them\s+|funds?\s+|tokens?\s+)?to\s+0x[\da-f]+\b/i;
+const WALLET_ASSET_COMMAND = /\b(?:send|transfer|wire|move|drain)\s+(?:(?:all|every|entire|the|your|my|our|any|remaining)\s+)*(?:funds?|balances?|assets?|tokens?|crypto|eth|sol|usdc|usdt)\b/i;
+const WALLET_DESTINATION_COMMAND = /\b(?:send|transfer|wire|move)\s+(?:it\s+|them\s+|funds?\s+|tokens?\s+)?to\s+(?:0x[\da-f]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})\b/i;
 const EVM_ADDRESS = /\b0x[\da-f]{40}\b/gi;
+const SOLANA_ADDRESS = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g;
 
 function stripHtml(content: string, findings: Set<string>): string {
   let cleaned = content;
@@ -16,6 +17,13 @@ function stripHtml(content: string, findings: Set<string>): string {
   }
   if (/on\w+\s*=\s*["'][^"']*["']/gi.test(cleaned) || /javascript:/gi.test(cleaned)) {
     findings.add("unsafe_html_attributes_removed");
+  }
+  if (
+    /\bstyle\s*=\s*["'][^"']*(?:display\s*:\s*none|visibility\s*:\s*(?:hidden|collapse)|opacity\s*:\s*0)[^"']*["']/i.test(cleaned) ||
+    /\b(?:hidden|aria-hidden\s*=\s*["']true["'])\b/i.test(cleaned) ||
+    /<input[^>]+type\s*=\s*["']hidden["']/i.test(cleaned)
+  ) {
+    findings.add("html_hidden_content_removed");
   }
   if (/<[^>]+>/g.test(cleaned)) {
     findings.add("html_markup_removed");
@@ -55,11 +63,13 @@ function scrubCommandLines(value: string): string {
 function extractAddresses(value: string): CryptoAddressFinding[] {
   const normalized = value.normalize("NFKC");
   const addresses = new Map<string, CryptoAddressFinding>();
+
+  // 1. EVM addresses (0x...)
   for (const match of normalized.matchAll(EVM_ADDRESS)) {
     const address = match[0];
     const key = address.toLowerCase();
     const context = normalized.slice(Math.max(0, match.index - 160), match.index + address.length + 40);
-    const reasons = ["unverified_address"];
+    const reasons = ["unverified_evm_address"];
     let riskScore = 0.1;
     if (/^0x(?:0{40}|0{36}dead)$/i.test(address)) {
       reasons.push("burn_destination");
@@ -70,8 +80,26 @@ function extractAddresses(value: string): CryptoAddressFinding[] {
       riskScore = 0.98;
     }
     const existing = addresses.get(key);
-    if (!existing || existing.risk_score < riskScore) addresses.set(key, { address, risk_score: riskScore, reasons });
+    if (!existing || existing.risk_score < riskScore) addresses.set(key, { address, risk_score: riskScore, reasons, chain: "evm" });
   }
+
+  // 2. Solana Base58 addresses (32-44 base58 characters near wallet context)
+  for (const match of normalized.matchAll(SOLANA_ADDRESS)) {
+    const address = match[0];
+    const key = address;
+    const context = normalized.slice(Math.max(0, match.index - 160), match.index + address.length + 40);
+    if (matchesWalletCommand(context) || /\b(?:sol|solana|wallet|transfer|send)\b/i.test(context)) {
+      const reasons = ["unverified_solana_address"];
+      let riskScore = 0.2;
+      if (matchesWalletCommand(context)) {
+        reasons.push("wallet_transfer_command_nearby");
+        riskScore = 0.98;
+      }
+      const existing = addresses.get(key);
+      if (!existing || existing.risk_score < riskScore) addresses.set(key, { address, risk_score: riskScore, reasons, chain: "solana" });
+    }
+  }
+
   return [...addresses.values()];
 }
 

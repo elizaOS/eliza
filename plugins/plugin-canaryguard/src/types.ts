@@ -2,6 +2,7 @@ export interface CryptoAddressFinding {
   address: string;
   risk_score: number;
   reasons: string[];
+  chain?: "evm" | "solana";
 }
 
 export interface CanaryGuardResult {

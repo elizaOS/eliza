@@ -135,7 +135,8 @@ export const sanitizeAction: Action = {
       }
 
       return {
-        success: result.status !== "blocked",
+        // A successfully performed scan verdict (clean, sanitized, or blocked) is a successful action completion
+        success: true,
         text: `[CanaryGuard] Status: ${result.status.toUpperCase()} | Risk: ${(result.risk_score * 100).toFixed(0)}%`,
         data: result as unknown as ProviderDataRecord,
       };

@@ -6,7 +6,7 @@ Deterministic heuristic detector for prompt injection, concealed Unicode, and ma
 
 - **Local-First & Offline Engine (Default)**: Runs 100% in-process via compiled deterministic rules. Takes <0.1ms per scan, requires zero external services, and preserves full user privacy by never transmitting message text over the network.
 - **Instruction Override Defense**: Detects and scrubs system prompt overrides, stacked modifier attacks, role-play exploits, and delimiter breaks.
-- **Wallet Transfer Defense**: Detects and flags unauthorized token transfer commands, address extractions, and drain attempts.
+- **Wallet Transfer Defense**: Detects and flags unauthorized EVM and Solana token transfer commands, address extractions, and drain attempts.
 - **Optional Remote Oracle**: Operators can optionally configure an external verification endpoint or x402 gateway via `CANARYGUARD_URL`.
 
 ## Installation
