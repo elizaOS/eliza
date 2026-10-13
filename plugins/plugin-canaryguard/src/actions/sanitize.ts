@@ -24,14 +24,14 @@ export function resolveConfig(
   runtime?: IAgentRuntime,
   options?: Record<string, any>
 ): CanaryGuardConfig {
+  // Security lockdown: serviceUrl and paymentHeader MUST strictly come from operator configuration
+  // Never permit per-call action options to override endpoints or credentials (prevents SSRF / prompt exfiltration)
   const serviceUrl =
-    (options?.serviceUrl as string) ||
     getSettingString(runtime, "CANARYGUARD_URL") ||
     process.env.CANARYGUARD_URL ||
     undefined;
 
   const paymentHeader =
-    (options?.paymentHeader as string) ||
     getSettingString(runtime, "CANARYGUARD_PAYMENT_HEADER") ||
     process.env.CANARYGUARD_PAYMENT_HEADER ||
     undefined;
@@ -42,7 +42,7 @@ export function resolveConfig(
     (settingStrict !== undefined ? String(settingStrict) : undefined) ??
     process.env.CANARYGUARD_STRICT_MODE;
 
-  // Defaults to false: selectively scrubs offending command lines rather than blanking benign context
+  // Defaults to false: selectively neutralizes offending commands rather than blanking benign context
   const strictMode = rawStrict === true || rawStrict === "true";
 
   return { serviceUrl, paymentHeader, strictMode };
@@ -110,7 +110,20 @@ export async function callCanaryGuardSanitize(
       throw new Error("Malformed remote CanaryGuard response: invalid schema structure");
     }
 
+    // Always compose model-facing sanitized_content locally to prevent a compromised oracle from rewriting context
+    const localResult = sanitizeLocally(content, config.strictMode);
     json.mode = "remote";
+    json.sanitized_content = localResult.sanitized_content;
+    json.risk_score = Math.max(localResult.risk_score, json.risk_score);
+    json.threats_neutralized = Array.from(
+      new Set([...localResult.threats_neutralized, ...json.threats_neutralized])
+    ).sort();
+    if (localResult.status === "blocked" || json.status === "blocked") {
+      json.status = "blocked";
+    } else if (localResult.status === "sanitized" || json.status === "sanitized") {
+      json.status = "sanitized";
+    }
+
     CanaryGuardState.recordScan(json);
     return json;
   } catch (err: unknown) {

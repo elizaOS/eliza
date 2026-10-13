@@ -36,9 +36,12 @@ function stripHtml(content: string, findings: Set<string>): string {
   ) {
     findings.add("html_hidden_content_removed");
   }
-  if (/<[^>]+>/g.test(cleaned)) {
+  // Strict HTML tag pattern matching valid elements or comments without mangling plain mathematical comparisons (e.g. 5 < 6 and 7 > 4)
+  const htmlTagPattern = /<\/?(?:[a-zA-Z][a-zA-Z0-9:-]*)(?:\s+[^<>]*)?\/?>|<!--[\s\S]*?-->/gi;
+  const withoutTags = cleaned.replace(htmlTagPattern, " ");
+  if (withoutTags !== cleaned) {
     findings.add("html_markup_removed");
-    cleaned = cleaned.replace(/<[^>]+>/g, " ");
+    cleaned = withoutTags;
   }
   return cleaned;
 }
@@ -60,15 +63,25 @@ function tidy(value: string): string {
   return value.replace(/\r\n?/g, "\n").replace(/[\t ]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-function scrubCommandLines(value: string): string {
-  const blockedMarker = "[CANARY_REMOVED_INSTRUCTION]";
+/**
+ * In-place command neutralization.
+ * Neutralizes malicious injection commands and wallet drain phrases in-place with semantic tokens,
+ * preserving surrounding conversational questions and context without silent line dropping or truncation.
+ */
+function neutralizeCommandsInPlace(value: string): string {
   let marked = value.normalize("NFKC");
-  const patterns = [ROLE_DELIMITER, ROLE_HIJACK, INSTRUCTION_OVERRIDE, WALLET_ASSET_COMMAND, WALLET_DESTINATION_COMMAND];
-  for (const pattern of patterns) {
-    const flags = pattern.multiline ? "gim" : "gi";
-    marked = marked.replace(new RegExp(pattern.source, flags), (match) => match.split("\n").map(() => blockedMarker).join("\n"));
+  const patterns: [RegExp, string][] = [
+    [ROLE_DELIMITER, ""],
+    [ROLE_HIJACK, "[role_override_neutralized]"],
+    [INSTRUCTION_OVERRIDE, "[instruction_override_neutralized]"],
+    [WALLET_ASSET_COMMAND, "[wallet_asset_command_neutralized]"],
+    [WALLET_DESTINATION_COMMAND, "[wallet_transfer_command_neutralized]"],
+  ];
+  for (const [pattern, replacement] of patterns) {
+    const flags = pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g";
+    marked = marked.replace(new RegExp(pattern.source, flags), replacement);
   }
-  return tidy(marked.split("\n").filter((line) => !line.includes(blockedMarker)).join("\n"));
+  return tidy(marked);
 }
 
 function extractAddresses(value: string): CryptoAddressFinding[] {
@@ -131,7 +144,7 @@ export function sanitizeLocally(content: string, strictMode = false): CanaryGuar
   const addresses = extractAddresses(normalizedContent);
   let sanitizedContent = tidy(strippedText);
   if (injectionDetected) {
-    sanitizedContent = strictMode ? "" : scrubCommandLines(sanitizedContent);
+    sanitizedContent = strictMode ? "" : neutralizeCommandsInPlace(sanitizedContent);
   }
   sanitizedContent = sanitizedContent.replace(/\[\/?INST\]|<\|(?:im_start|im_end|system|developer|assistant|user)\|>|<<\/?SYS>>/gi, "");
   sanitizedContent = tidy(sanitizedContent);
@@ -151,7 +164,7 @@ export function sanitizeLocally(content: string, strictMode = false): CanaryGuar
     injection_detected: injectionDetected,
     threats_neutralized: [...findings].sort(),
     sanitized_content: sanitizedContent,
-    safety_receipt: "canary-v1-verified",
+    safety_receipt: "local-heuristic-rule-execution",
     crypto_addresses: addresses,
     mode: "local",
     inspection: {

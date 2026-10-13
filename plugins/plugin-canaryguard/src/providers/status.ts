@@ -1,10 +1,11 @@
-import type {
-  IAgentRuntime,
-  Memory,
-  State,
-  Provider,
-  ProviderResult,
-  ProviderExecutionContext,
+import {
+  type IAgentRuntime,
+  type Memory,
+  type State,
+  type Provider,
+  type ProviderResult,
+  type ProviderExecutionContext,
+  logger,
 } from "@elizaos/core";
 import { CanaryGuardState } from "../engine/state";
 import { resolveConfig } from "../actions/sanitize";
@@ -19,18 +20,15 @@ export const canaryGuardProvider: Provider = {
     _context?: ProviderExecutionContext
   ): Promise<ProviderResult> => {
     const config = resolveConfig(runtime);
-    let statusText: string;
+    const mode = config.serviceUrl ? "remote" : "local";
+    const statusText = `CanaryGuard status: ${CanaryGuardState.lastStatus} | mode: ${mode} | scans: ${CanaryGuardState.scansCount}`;
 
-    if (CanaryGuardState.lastStatus === "error") {
-      statusText = `CanaryGuard heuristic detector is DEGRADED (remote unreachable: ${CanaryGuardState.lastError}, active in local fallback mode).`;
-    } else if (config.serviceUrl) {
-      statusText = `CanaryGuard heuristic detector is ACTIVE (Remote Oracle Mode: ${config.serviceUrl}, Scans: ${CanaryGuardState.scansCount}).`;
-    } else {
-      statusText = `CanaryGuard heuristic detector is ACTIVE (Local Deterministic Engine: offline, zero latency, Scans: ${CanaryGuardState.scansCount}).`;
-    }
+    // Report status via structured logger rather than injecting telemetry noise into the model prompt context
+    logger.debug("[CanaryGuard]", statusText);
 
     return {
-      text: statusText,
+      // Intentionally empty text to keep model prompt clean and avoid exposing defenses to prompt injectors
+      text: "",
       data: {
         mode: CanaryGuardState.mode,
         scansCount: CanaryGuardState.scansCount,
