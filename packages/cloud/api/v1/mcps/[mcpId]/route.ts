@@ -155,7 +155,12 @@ async function __hono_PUT(
   const authResult = await requireAuthOrApiKeyWithOrg(request);
   const { mcpId } = await ctx.params;
 
-  const body = await request.json();
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const validation = updateMcpSchema.safeParse(body);
 
   if (!validation.success) {
