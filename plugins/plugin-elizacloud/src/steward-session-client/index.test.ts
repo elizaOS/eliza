@@ -90,6 +90,46 @@ describe("owned phone session publication", () => {
     }
   });
 
+  it("removes a cancelled token when no previous owner existed", async () => {
+    let release!: () => void;
+    let started!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const persist = vi.fn(async (token: string) => {
+      started();
+      await held;
+      window.localStorage.setItem(STEWARD_TOKEN_KEY, token);
+    });
+    const remove = vi.fn(async () => {
+      window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+    });
+    const unregisterPersistence = registerStewardTokenPersistence(persist);
+    const unregisterRemoval = registerStewardTokenRemoval(remove);
+    try {
+      const controller = new AbortController();
+      const candidate = replaceStoredStewardTokenIfCurrent(
+        null,
+        "cancelled-token",
+        { signal: controller.signal },
+      );
+      await entered;
+      controller.abort();
+      release();
+
+      expect(await candidate).toBe(false);
+      expect(remove).toHaveBeenCalledOnce();
+      expect(readStoredStewardToken()).toBeNull();
+    } finally {
+      release();
+      unregisterRemoval();
+      unregisterPersistence();
+    }
+  });
+
   it("compares a nullable initial owner inside the queue after a newer sign-in", async () => {
     const newer = writeStoredStewardToken("newer-token");
     const candidate = replaceStoredStewardTokenIfCurrent(
