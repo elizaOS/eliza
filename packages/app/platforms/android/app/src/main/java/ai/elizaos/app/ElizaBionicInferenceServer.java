@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -468,8 +469,7 @@ final class ElizaBionicInferenceServer {
                 try {
                     String r = generateResident(
                         bundleDir, drafterPath, prompt, maxTokens, stopSequences);
-                    Log.i(TAG, "GENERATE result (resident): "
-                        + (r.length() > 200 ? r.substring(0, 200) + "…" : r));
+                    Log.i(TAG, "GENERATE result (resident): " + generateLogSummary(r));
                     return r;
                 } catch (Throwable t) {
                     Log.w(TAG, "resident generate failed; falling back to reload-per-call", t);
@@ -478,8 +478,7 @@ final class ElizaBionicInferenceServer {
             }
             String result = ElizaVoiceNative.nativeLlmSelfTest(bundleDir, prompt, maxTokens);
             result = trimGenerateResponseAtStops(result, stopSequences);
-            Log.i(TAG, "GENERATE result: "
-                + (result.length() > 200 ? result.substring(0, 200) + "…" : result));
+            Log.i(TAG, "GENERATE result: " + generateLogSummary(result));
             return result;
         } catch (Throwable t) {
             return errorJson(t.getMessage() == null ? t.toString() : t.getMessage());
@@ -631,6 +630,30 @@ final class ElizaBionicInferenceServer {
     }
 
     /** The reload-per-call fallback cannot stop eval early, but must not leak markers. */
+    /**
+     * Logcat is readable by bug reports and other diagnostics, so a generate
+     * result is logged without its text: the reply is replaced by its length
+     * and SHA-256, which the Cuttlefish smoke check compares with the chat reply.
+     */
+    static String generateLogSummary(String responseJson) {
+        try {
+            final JSONObject response = new JSONObject(responseJson);
+            final Object text = response.remove("text");
+            if (text instanceof String) {
+                final String trimmed = ((String) text).trim();
+                final byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(trimmed.getBytes(StandardCharsets.UTF_8));
+                final StringBuilder hex = new StringBuilder(digest.length * 2);
+                for (byte b : digest) hex.append(String.format("%02x", b));
+                response.put("textChars", trimmed.length());
+                response.put("textSha256", hex.toString());
+            }
+            return response.toString();
+        } catch (Exception ignored) {
+            return responseJson.length() + " chars (unparsed)";
+        }
+    }
+
     static String trimGenerateResponseAtStops(String responseJson, List<String> stopSequences) {
         if (stopSequences == null || stopSequences.isEmpty()) return responseJson;
         try {
@@ -950,8 +973,8 @@ final class ElizaBionicInferenceServer {
             final long ctx = ensureResidentCtx(bundleDir);
             try {
                 String text = ElizaVoiceNative.nativeAsrTranscribe(ctx, pcm, sr);
-                Log.i(TAG, "ASR from agent: " + n + " samples @ " + sr + " Hz -> \""
-                    + (text.length() > 200 ? text.substring(0, 200) + "…" : text) + "\"");
+                Log.i(TAG, "ASR from agent: " + n + " samples @ " + sr + " Hz -> "
+                    + text.length() + " chars");
                 return new JSONObject()
                     .put("ok", true)
                     .put("text", text)
@@ -994,8 +1017,8 @@ final class ElizaBionicInferenceServer {
             final long ctx = ensureResidentCtx(bundleDir);
             try {
                 String desc = ElizaVoiceNative.nativeDescribeImage(ctx, img, mmproj, prompt);
-                Log.i(TAG, "IMAGE from agent: " + img.length + " bytes (mmproj " + mmproj + ") -> \""
-                    + (desc.length() > 200 ? desc.substring(0, 200) + "…" : desc) + "\"");
+                Log.i(TAG, "IMAGE from agent: " + img.length + " bytes (mmproj " + mmproj + ") -> "
+                    + desc.length() + " chars");
                 return new JSONObject()
                     .put("ok", true)
                     .put("text", desc)
