@@ -323,6 +323,16 @@ async function handleJsonRpc(c: AppContext, message: unknown) {
   }
 }
 
+function isJsonRpcNotification(message: unknown): boolean {
+  return (
+    message !== null &&
+    typeof message === "object" &&
+    !Array.isArray(message) &&
+    typeof (message as { method?: unknown }).method === "string" &&
+    !("id" in message)
+  );
+}
+
 app.get("/", async (c) => {
   const upstream = getPlatformUpstream(c);
   if (upstream) {
@@ -352,11 +362,22 @@ app.post("/", async (c) => {
     return c.json(jsonRpcError(null, -32700, "Invalid JSON"), 400);
   }
 
+  if (!Array.isArray(body) && isJsonRpcNotification(body)) {
+    return new Response(null, { status: 202 });
+  }
+
+  const isBatch = Array.isArray(body);
   const messages = Array.isArray(body) ? body : [body];
   const results = await Promise.all(
-    messages.map((message) => handleJsonRpc(c, message)),
+    messages.map((message) =>
+      isJsonRpcNotification(message) ? null : handleJsonRpc(c, message),
+    ),
   );
-  return c.json(Array.isArray(body) ? results : results[0]);
+  const responses = results.filter(
+    (result): result is NonNullable<typeof result> => result !== null,
+  );
+  if (responses.length === 0) return new Response(null, { status: 202 });
+  return c.json(isBatch ? responses : responses[0]);
 });
 
 app.all("*", async (c) => {
