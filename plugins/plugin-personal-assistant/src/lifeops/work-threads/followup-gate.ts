@@ -22,9 +22,7 @@ export function withWorkThreadActiveGate(
   task: ScheduledTask,
 ): NonNullable<ScheduledTask["shouldFire"]> {
   return {
-    ...(task.shouldFire?.compose
-      ? { compose: task.shouldFire.compose }
-      : {}),
+    ...(task.shouldFire?.compose ? { compose: task.shouldFire.compose } : {}),
     gates: [
       ...(task.shouldFire?.gates ?? []),
       { kind: WORK_THREAD_ACTIVE_GATE },

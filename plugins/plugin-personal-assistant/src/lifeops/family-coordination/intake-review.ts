@@ -375,7 +375,7 @@ export class FamilyIntakeReviewStore {
     const reviewer = parseInput(familyIntakeIdSchema, args.reviewerEntityId);
     parseInput(z.number().int().positive(), args.expectedRevision);
     const current = await this.read(args.id);
-    if (!current || current.status !== "reviewed") this.conflict(args.id);
+    if (current?.status !== "reviewed") this.conflict(args.id);
     if (current.selectedByEntityId !== reviewer)
       throw new ElizaError(
         "Only the selecting owner can resolve this request",
