@@ -9,6 +9,17 @@ const WALLET_DESTINATION_COMMAND = /\b(?:send|transfer|wire|move|drain)\s+(?:(?:
 const EVM_ADDRESS = /\b0x[a-f0-9]{40}\b/gi;
 const SOLANA_ADDRESS = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g;
 
+/**
+ * Unwraps untrusted user messages enclosed by core's external-content envelope.
+ * Core wraps messages with <<<EXTERNAL_UNTRUSTED_CONTENT ... >>> which must be
+ * unwrapped so angle brackets are not mistaken for raw HTML markup.
+ */
+export function unwrapUserMessageTextForDetection(text: string): string {
+  if (!text) return "";
+  const match = text.match(/<<<EXTERNAL_UNTRUSTED_CONTENT\s*([\s\S]*?)\s*>>>/i);
+  return match ? match[1].trim() : text;
+}
+
 function stripHtml(content: string, findings: Set<string>): string {
   let cleaned = content;
   if (/<(script|style|iframe|object|embed|svg|template)[^>]*>[\s\S]*?<\/\1>/gi.test(cleaned)) {
@@ -106,9 +117,10 @@ function extractAddresses(value: string): CryptoAddressFinding[] {
  * Executes in <0.1ms with zero network calls and zero data exfiltration.
  */
 export function sanitizeLocally(content: string, strictMode = false): CanaryGuardResult {
+  const unwrappedContent = unwrapUserMessageTextForDetection(content);
   const findings = new Set<string>();
-  const normalizedContent = content.replace(INVISIBLE_CHARACTERS, "");
-  if (normalizedContent !== content) findings.add("concealed_unicode_removed");
+  const normalizedContent = unwrappedContent.replace(INVISIBLE_CHARACTERS, "");
+  if (normalizedContent !== unwrappedContent) findings.add("concealed_unicode_removed");
   const strippedText = stripHtml(normalizedContent, findings);
   const detectedCommands = new Set([
     ...commandThreats(normalizedContent),

@@ -3,7 +3,7 @@
 	"name": "CanaryGuard",
 	"description": "Deterministic heuristic detector for prompt injection, concealed Unicode, and wallet drain commands.",
 	"npmName": "@elizaos/plugin-canaryguard",
-	"version": "2.0.0-beta.0",
+	"version": "2.0.3-beta.7",
 	"source": "bundled",
 	"tags": [
 		"security",
@@ -22,7 +22,7 @@
 			"advanced": true
 		},
 		"CANARYGUARD_PAYMENT_HEADER": {
-			"type": "string",
+			"type": "secret",
 			"required": false,
 			"sensitive": true,
 			"label": "Payment Header",
@@ -53,7 +53,7 @@
 	"resources": {
 		"homepage": "https://github.com/elizaos/eliza#readme",
 		"repository": "https://github.com/elizaos/eliza"
-	},
+		},
 	"dependsOn": [],
 	"channels": [],
 	"shortIds": [

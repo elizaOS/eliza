@@ -1709,6 +1709,21 @@
         "react-dom": "*",
       },
     },
+    "plugins/plugin-canaryguard": {
+      "name": "@elizaos/plugin-canaryguard",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@elizaos/testing": "workspace:*",
+        "@types/node": "^25.0.3",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
+        "vitest": "^5.0.3",
+      },
+    },
     "plugins/plugin-coding-tools": {
       "name": "@elizaos/plugin-coding-tools",
       "version": "2.0.3-beta.7",

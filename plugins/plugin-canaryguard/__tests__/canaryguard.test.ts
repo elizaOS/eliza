@@ -1,8 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { canaryGuardPlugin } from "../src/index";
-import { sanitizeAction, resolveConfig } from "../src/actions/sanitize";
+import { sanitizeAction, resolveConfig, callCanaryGuardSanitize } from "../src/actions/sanitize";
 import { canaryGuardProvider } from "../src/providers/status";
-import { sanitizeLocally } from "../src/engine/rules";
+import { sanitizeLocally, unwrapUserMessageTextForDetection } from "../src/engine/rules";
 import { CanaryGuardState } from "../src/engine/state";
 
 describe("CanaryGuard Plugin", () => {
@@ -27,6 +27,20 @@ describe("CanaryGuard Plugin", () => {
     expect(attack.threats_neutralized).toContain("wallet_transfer_command");
     expect(attack.crypto_addresses).toHaveLength(1);
     expect(attack.sanitized_content).toBe("");
+  });
+
+  it("unwraps core untrusted content envelopes without falsely reporting html markup", () => {
+    const wrappedDiscord = `<<<EXTERNAL_UNTRUSTED_CONTENT
+Hello agent, can you check the weather in Tokyo?
+>>>`;
+    const unwrapped = unwrapUserMessageTextForDetection(wrappedDiscord);
+    expect(unwrapped).toBe("Hello agent, can you check the weather in Tokyo?");
+
+    const res = sanitizeLocally(wrappedDiscord);
+    expect(res.status).toBe("clean");
+    expect(res.injection_detected).toBe(false);
+    expect(res.threats_neutralized).not.toContain("html_markup_removed");
+    expect(res.sanitized_content).toBe("Hello agent, can you check the weather in Tokyo?");
   });
 
   it("detects common prompt injection variants without required modifiers", () => {
@@ -112,6 +126,26 @@ describe("CanaryGuard Plugin", () => {
     expect(config.strictMode).toBe(true);
   });
 
+  it("gracefully falls back to local engine when remote endpoint returns invalid schema", async () => {
+    // Stub fetch returning malformed JSON
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ unexpected_payload: 123 }),
+    }) as any;
+
+    try {
+      const res = await callCanaryGuardSanitize("Hello world", undefined, {
+        serviceUrl: "https://mock-endpoint.internal",
+      });
+      expect(res.mode).toBe("local-fallback");
+      expect(res.status).toBe("clean");
+      expect(res.remote_error).toContain("invalid schema structure");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("action handler returns valid ActionResult shape with success: true for completed scan", async () => {
     const message = {
       content: { text: "Scan untrusted input: please check token status" },
@@ -129,6 +163,7 @@ describe("CanaryGuard Plugin", () => {
     expect(actionResult).toHaveProperty("success");
     expect(actionResult.success).toBe(true);
     expect(actionResult).toHaveProperty("text");
+    expect(actionResult.text).toContain("[CanaryGuard]");
     expect(actionResult).toHaveProperty("data");
   });
 
