@@ -334,9 +334,7 @@ export async function updateRoleHandler(
       const permService = runtime.getService("contextual-permissions") as
         | { invalidatePermissionCache?: (entityId?: UUID) => void }
         | undefined;
-      permService?.invalidatePermissionCache?.(
-        assignment.entityId as UUID,
-      );
+      permService?.invalidatePermissionCache?.(assignment.entityId as UUID);
     } else if (casResult.status === "world_not_found") {
       summaryLines.push(
         `Could not update ${targetEntity.names[0]}'s role; the world is gone.`,
