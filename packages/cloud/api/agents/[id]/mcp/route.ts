@@ -211,7 +211,7 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
 app.post("/", async (c) => {
   const id = c.req.param("id");
   const executionCtx = getGenerativeExecutionContext(c);
-  let isNotification = false
+  let isNotification = false;
   try {
     const caller = await requireGenerativeRouteCaller(c, {
       compatibility: "hono",
@@ -304,78 +304,84 @@ app.post("/", async (c) => {
     }
 
     const { method, params, id: rpcId } = validation.data;
-    isNotification = rpcId === undefined
+    isNotification = rpcId === undefined;
     const response = await (async () => {
       switch (method) {
-      case "initialize":
-        return c.json({
-          jsonrpc: "2.0",
-          result: {
-            protocolVersion: "2024-11-05",
-            serverInfo: { name: character.name, version: "1.0.0" },
-            capabilities: { tools: {} },
-          },
-          id: rpcId ?? null,
-        });
-
-      case "tools/list":
-        return c.json({
-          jsonrpc: "2.0",
-          result: {
-            tools: [
-              {
-                name: "chat",
-                description: `Send a message to ${character.name}`,
-                inputSchema: {
-                  type: "object",
-                  properties: {
-                    message: { type: "string" },
-                    model: { type: "string" },
-                  },
-                  required: ["message"],
-                },
-              },
-              {
-                name: "get_info",
-                description: `Get information about ${character.name}`,
-                inputSchema: { type: "object", properties: {} },
-              },
-            ],
-          },
-          id: rpcId ?? null,
-        });
-
-      case "tools/call":
-        // The handler must settle its admission handoff before the using scope
-        // checks a terminal exit, so this intentionally awaits before return.
-        return await handleToolCall(c, character, params ?? {}, rpcId ?? null, {
-          id: caller.user.id,
-          organization_id: caller.user.organization_id,
-          apiKeyId: caller.apiKeyId,
-          admissionSnapshot: caller.admissionSnapshot,
-          credentialForAdmission: () =>
-            credentialGuard.credentialForAdmission(),
-          executionCtx,
-        });
-
-      case "ping":
-        return c.json({ jsonrpc: "2.0", result: {}, id: rpcId ?? null });
-
-      default:
-        return c.json(
-          {
+        case "initialize":
+          return c.json({
             jsonrpc: "2.0",
-            error: { code: -32601, message: "Method not found" },
+            result: {
+              protocolVersion: "2024-11-05",
+              serverInfo: { name: character.name, version: "1.0.0" },
+              capabilities: { tools: {} },
+            },
             id: rpcId ?? null,
-          },
-          400,
-        );
+          });
+
+        case "tools/list":
+          return c.json({
+            jsonrpc: "2.0",
+            result: {
+              tools: [
+                {
+                  name: "chat",
+                  description: `Send a message to ${character.name}`,
+                  inputSchema: {
+                    type: "object",
+                    properties: {
+                      message: { type: "string" },
+                      model: { type: "string" },
+                    },
+                    required: ["message"],
+                  },
+                },
+                {
+                  name: "get_info",
+                  description: `Get information about ${character.name}`,
+                  inputSchema: { type: "object", properties: {} },
+                },
+              ],
+            },
+            id: rpcId ?? null,
+          });
+
+        case "tools/call":
+          // The handler must settle its admission handoff before the using scope
+          // checks a terminal exit, so this intentionally awaits before return.
+          return await handleToolCall(
+            c,
+            character,
+            params ?? {},
+            rpcId ?? null,
+            {
+              id: caller.user.id,
+              organization_id: caller.user.organization_id,
+              apiKeyId: caller.apiKeyId,
+              admissionSnapshot: caller.admissionSnapshot,
+              credentialForAdmission: () =>
+                credentialGuard.credentialForAdmission(),
+              executionCtx,
+            },
+          );
+
+        case "ping":
+          return c.json({ jsonrpc: "2.0", result: {}, id: rpcId ?? null });
+
+        default:
+          return c.json(
+            {
+              jsonrpc: "2.0",
+              error: { code: -32601, message: "Method not found" },
+              id: rpcId ?? null,
+            },
+            400,
+          );
       }
-    })()
-    return isNotification ? new Response(null, { status: 202 }) : response
+    })();
+    return isNotification ? new Response(null, { status: 202 }) : response;
   } catch (error) {
-    const response = mcpAuthError(c, error, null)
-    return isNotification ? new Response(null, { status: 202 }) : response
+    const response = mcpAuthError(c, error, null);
+    return isNotification ? new Response(null, { status: 202 }) : response;
   }
 });
 
