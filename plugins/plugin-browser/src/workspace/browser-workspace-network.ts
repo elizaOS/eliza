@@ -10,6 +10,9 @@ import type {
   BrowserWorkspaceRuntimeState,
 } from "./browser-workspace-types.js";
 
+/** Max chars of a tracked non-document response body kept in memory. */
+const MAX_TRACKED_RESPONSE_BODY_CHARS = 64 * 1024;
+
 export function browserWorkspacePatternMatches(
   pattern: string,
   value: string,
@@ -169,7 +172,11 @@ export async function fetchBrowserWorkspaceTrackedResponse(
   if (resourceType !== "document") {
     const clone = response.clone();
     try {
-      responseBody = await clone.text();
+      const text = await clone.text();
+      responseBody =
+        text.length > MAX_TRACKED_RESPONSE_BODY_CHARS
+          ? text.slice(0, MAX_TRACKED_RESPONSE_BODY_CHARS)
+          : text;
     } catch {
       responseBody = null;
     }
