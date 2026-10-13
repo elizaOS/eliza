@@ -27,7 +27,7 @@ type UpstreamRejectionFn = (
   body: WalletExportRequestBody,
 ) => WalletExportRejection | null;
 
-// ── Rate limiter state ───────────────────────────────────────────────────────
+// ââ Rate limiter state âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 interface RateLimitEntry {
   lastExportAt: number;
@@ -53,11 +53,11 @@ if (typeof sweepTimer === "object" && "unref" in sweepTimer) {
   sweepTimer.unref();
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ââ Helpers ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 /**
  * Get client IP from the socket directly. X-Forwarded-For is not trusted
- * because this is a local server — trusting XFF would let attackers spoof
+ * because this is a local server â trusting XFF would let attackers spoof
  * IPs to bypass rate limits and nonce IP binding.
  */
 function getClientIp(req: http.IncomingMessage): string | null {
@@ -68,7 +68,7 @@ function getUserAgent(req: http.IncomingMessage): string {
   return (req.headers["user-agent"] as string) ?? "unknown";
 }
 
-// ── Audit log ────────────────────────────────────────────────────────────────
+// ââ Audit log ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 export interface WalletExportAuditEntry {
   timestamp: string;
@@ -105,7 +105,7 @@ export function _resetForTesting(): void {
   auditLog.length = 0;
 }
 
-// ── Confirmation delay ───────────────────────────────────────────────────────
+// ââ Confirmation delay âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 const EXPORT_DELAY_MS = 10_000; // 10 seconds
 const MAX_PENDING_NONCES_PER_IP = 3;
@@ -159,6 +159,10 @@ function validateExportNonce(
   }
 
   const elapsed = Date.now() - entry.issuedAt;
+  if (elapsed > NONCE_TTL_MS) {
+    pendingExportNonces.delete(nonce);
+    return { valid: false, reason: "Export nonce expired." };
+  }
   if (elapsed < EXPORT_DELAY_MS) {
     const remaining = Math.ceil((EXPORT_DELAY_MS - elapsed) / 1000);
     return {
@@ -167,12 +171,12 @@ function validateExportNonce(
     };
   }
 
-  // Nonce consumed — delete it
+  // Nonce consumed â delete it
   pendingExportNonces.delete(nonce);
   return { valid: true };
 }
 
-// ── Extended request body (adds nonce field) ─────────────────────────────────
+// ââ Extended request body (adds nonce field) âââââââââââââââââââââââââââââââââ
 
 interface HardenedExportRequestBody extends WalletExportRequestBody {
   exportNonce?: string;
@@ -180,7 +184,7 @@ interface HardenedExportRequestBody extends WalletExportRequestBody {
   requestNonce?: boolean;
 }
 
-// ── Main guard ───────────────────────────────────────────────────────────────
+// ââ Main guard âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 /**
  * Create a hardened wallet export rejection function that wraps the upstream
@@ -188,9 +192,9 @@ interface HardenedExportRequestBody extends WalletExportRequestBody {
  *
  * Two-phase export flow:
  *   1. POST /api/wallet/export  { confirm: true, exportToken: "...", requestNonce: true }
- *      → 403 with { nonce, delaySeconds } — client must wait
+ *      â 403 with { nonce, delaySeconds } â client must wait
  *   2. POST /api/wallet/export  { confirm: true, exportToken: "...", exportNonce: "wxn_..." }
- *      → 200 with keys (if delay elapsed and rate limit not hit)
+ *      â 200 with keys (if delay elapsed and rate limit not hit)
  */
 export function createHardenedExportGuard(
   upstream: UpstreamRejectionFn,
@@ -205,7 +209,7 @@ export function createHardenedExportGuard(
     const ip = getClientIp(req);
     const ua = getUserAgent(req);
 
-    // Reject requests with no identifiable client IP — without an IP,
+    // Reject requests with no identifiable client IP â without an IP,
     // rate-limit and nonce-binding keys collapse, letting unrelated
     // requests share a single bucket.
     if (!ip) {
@@ -235,7 +239,7 @@ export function createHardenedExportGuard(
       return upstreamRejection;
     }
 
-    // 2. Nonce/delay flow — nonce requests are always allowed (no rate limit)
+    // 2. Nonce/delay flow â nonce requests are always allowed (no rate limit)
     if (body.requestNonce) {
       const nonce = issueExportNonce(ip);
       if (!nonce) {
@@ -316,7 +320,7 @@ export function createHardenedExportGuard(
       }
     }
 
-    // 4. All checks passed — record rate limit + audit
+    // 4. All checks passed â record rate limit + audit
     rateLimitMap.set(ip, { lastExportAt: Date.now() });
     recordAudit({
       timestamp: new Date().toISOString(),
