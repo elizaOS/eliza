@@ -62,7 +62,7 @@ const MCPRequestSchema = z.object({
   jsonrpc: z.literal("2.0"),
   method: z.string(),
   params: z.record(z.string(), z.unknown()).optional(),
-  id: z.union([z.string(), z.number(), z.null()]).optional(),
+  id: z.union([z.string(), z.number()]).optional(),
 });
 
 const ProviderUsageSchema = z.object({
