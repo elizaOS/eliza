@@ -105,6 +105,19 @@ export class PaymentRouter {
   }
 
   /**
+   * Check if a rail is live and the amount is within its min/max bounds.
+   */
+  private railAcceptsAmount(
+    rail: RailConfig | undefined,
+    amount: number,
+  ): boolean {
+    if (!rail || rail.status !== "live") return false;
+    if (rail.minAmount !== undefined && amount < rail.minAmount) return false;
+    if (rail.maxAmount !== undefined && amount > rail.maxAmount) return false;
+    return true;
+  }
+
+  /**
    * Select the optimal payment rail for a given context.
    */
   route(context: PaymentContext): RoutingDecision {
@@ -118,7 +131,10 @@ export class PaymentRouter {
 
     // Google AP2 only routes after configuration explicitly marks it live.
     const googleRail = this.getRail("google-ap2");
-    if (googleRail?.status === "live" && preferredChain === "base") {
+    if (
+      this.railAcceptsAmount(googleRail, amount) &&
+      preferredChain === "base"
+    ) {
       // Google AP2 routes through Base for on-chain settlement
       // When live, AP2 provides Google-managed identity + payment in a single flow
       return {
@@ -132,7 +148,7 @@ export class PaymentRouter {
     // If Solana is explicitly preferred and x402-solana is available
     if (preferredChain === "solana") {
       const solanaRail = this.getRail("x402-solana");
-      if (solanaRail?.status === "live") {
+      if (this.railAcceptsAmount(solanaRail, amount)) {
         return {
           rail: "x402-solana",
           reason: "Preferred chain: Solana x402",
@@ -149,7 +165,7 @@ export class PaymentRouter {
       (sessionTxCount ?? 0) >= this.highFrequencyThreshold
     ) {
       const mppRail = this.getRail("mpp");
-      if (mppRail?.status === "live") {
+      if (this.railAcceptsAmount(mppRail, amount)) {
         return {
           rail: "mpp",
           reason: `High-frequency session (${sessionTxCount} txns) — MPP batching is more efficient`,
@@ -162,7 +178,7 @@ export class PaymentRouter {
     // Rule 2: Micropayments + autonomous → x402 (lower overhead, no session needed)
     if (amount < this.microPaymentThreshold && autonomous !== false) {
       const x402Rail = this.getRail("x402");
-      if (x402Rail?.status === "live") {
+      if (this.railAcceptsAmount(x402Rail, amount)) {
         return {
           rail: "x402",
           reason: `Micropayment ($${(amount / 1_000_000).toFixed(2)}) + autonomous — x402 optimal`,
@@ -174,7 +190,7 @@ export class PaymentRouter {
 
     // Rule 3: Larger amounts or supervised → MPP (better dispute resolution, fiat rails)
     const mppRail = this.getRail("mpp");
-    if (mppRail?.status === "live" && amount >= (mppRail.minAmount ?? 0)) {
+    if (this.railAcceptsAmount(mppRail, amount)) {
       return {
         rail: "mpp",
         reason: `Amount $${(amount / 1_000_000).toFixed(2)} — MPP provides fiat rails and dispute resolution`,
@@ -183,12 +199,29 @@ export class PaymentRouter {
       };
     }
 
-    // Default: x402 on Base
+    // Default: x402 on Base when the amount fits its bounds
+    const x402Rail = this.getRail("x402");
+    if (this.railAcceptsAmount(x402Rail, amount)) {
+      return {
+        rail: "x402",
+        reason: "Default rail — Base x402",
+        estimatedOverheadBps: 0,
+        isLive: true,
+      };
+    }
+    if (this.railAcceptsAmount(mppRail, amount)) {
+      return {
+        rail: "mpp",
+        reason: `Amount outside x402 bounds — MPP fallback`,
+        estimatedOverheadBps: 290,
+        isLive: true,
+      };
+    }
     return {
       rail: "x402",
-      reason: "Default rail — Base x402",
+      reason: `Amount $${(amount / 1_000_000).toFixed(2)} is outside all live rail bounds`,
       estimatedOverheadBps: 0,
-      isLive: this.getRail("x402")?.status === "live",
+      isLive: x402Rail?.status === "live",
     };
   }
 
