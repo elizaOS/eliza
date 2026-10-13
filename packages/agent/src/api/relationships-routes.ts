@@ -168,20 +168,11 @@ async function listActivityFacts(runtime: IAgentRuntime): Promise<Memory[]> {
   const facts: Memory[] = [];
   let cursor: { createdAt: number; id: UUID } | undefined;
   for (;;) {
+    // Read one row past the remaining budget: a page that overflows it proves
+    // the table is larger than the budget, while a table of exactly the
+    // budget size is read in full.
     const remaining = ACTIVITY_FACT_MAX_SCAN_ROWS - facts.length;
-    if (remaining <= 0) {
-      throw new ElizaError(
-        "Relationships activity exceeded its bounded fact scan before completing the timeline",
-        {
-          code: "RELATIONSHIPS_ACTIVITY_SCAN_LIMIT",
-          context: {
-            scannedRows: facts.length,
-            maxScannedRows: ACTIVITY_FACT_MAX_SCAN_ROWS,
-          },
-        },
-      );
-    }
-    const queryLimit = Math.min(ACTIVITY_FACT_PAGE_ROWS, remaining);
+    const queryLimit = Math.min(ACTIVITY_FACT_PAGE_ROWS, remaining + 1);
     const page = await runtime.getMemories({
       agentId: runtime.agentId,
       tableName: "facts",
@@ -189,6 +180,18 @@ async function listActivityFacts(runtime: IAgentRuntime): Promise<Memory[]> {
       cursor,
       includeEmbedding: false,
     });
+    if (page.length > remaining) {
+      throw new ElizaError(
+        "Relationships activity exceeded its bounded fact scan before completing the timeline",
+        {
+          code: "RELATIONSHIPS_ACTIVITY_SCAN_LIMIT",
+          context: {
+            scannedRows: facts.length + page.length,
+            maxScannedRows: ACTIVITY_FACT_MAX_SCAN_ROWS,
+          },
+        },
+      );
+    }
     for (const fact of page) {
       if (!fact.id) {
         throw new ElizaError(

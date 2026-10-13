@@ -114,27 +114,40 @@ async function get(runtime: AgentRuntime, target: string): Promise<RouteReply> {
   return reply;
 }
 
-it("lists every stored fact in the activity timeline with an honest total", async () => {
-  const runtime = await createRuntime();
+async function storeFacts(runtime: AgentRuntime, count: number): Promise<void> {
   const roomId = stringToUuid(`${AGENT_NAME}-room`) as UUID;
   const entityId = randomUUID() as UUID;
-  await runtime.createMemories(
-    Array.from({ length: FACT_COUNT }, (_u, index) => ({
-      tableName: "facts",
-      memory: {
-        id: randomUUID() as UUID,
-        roomId,
-        entityId,
-        agentId: runtime.agentId,
-        createdAt: 1_700_000_000_000 + index * 1000,
-        content: {
-          text:
-            index === 0 ? "oldest fact: allergic to peanuts" : `fact ${index}`,
-        },
-        metadata: { type: "custom", confidence: 0.9 },
-      },
-    })),
-  );
+  // Batches keep each insert statement small for the SQLite test adapter.
+  for (let start = 0; start < count; start += 500) {
+    const size = Math.min(500, count - start);
+    await runtime.createMemories(
+      Array.from({ length: size }, (_u, offset) => {
+        const index = start + offset;
+        return {
+          tableName: "facts",
+          memory: {
+            id: randomUUID() as UUID,
+            roomId,
+            entityId,
+            agentId: runtime.agentId,
+            createdAt: 1_700_000_000_000 + index * 1000,
+            content: {
+              text:
+                index === 0
+                  ? "oldest fact: allergic to peanuts"
+                  : `fact ${index}`,
+            },
+            metadata: { type: "custom", confidence: 0.9 },
+          },
+        };
+      }),
+    );
+  }
+}
+
+it("lists every stored fact in the activity timeline with an honest total", async () => {
+  const runtime = await createRuntime();
+  await storeFacts(runtime, FACT_COUNT);
   const first = await get(
     runtime,
     "/api/relationships/activity?limit=100&offset=0",
@@ -163,3 +176,29 @@ it("lists every stored fact in the activity timeline with an honest total", asyn
   expect(all).toHaveLength(FACT_COUNT);
   expect(all.at(-1)?.detail).toContain("oldest fact");
 });
+
+it("reads a facts table of exactly the scan budget in full", async () => {
+  const runtime = await createRuntime();
+  await storeFacts(runtime, 5000);
+  const reply = await get(
+    runtime,
+    "/api/relationships/activity?limit=1&offset=4999",
+  );
+  expect(reply.status).toBe(200);
+  const body = reply.body as {
+    total: number;
+    hasMore: boolean;
+    activity: Array<{ detail: string }>;
+  };
+  expect(body.total).toBe(5000);
+  expect(body.hasMore).toBe(false);
+  expect(body.activity[0]?.detail).toContain("oldest fact");
+}, 120_000);
+
+it("refuses a facts table larger than the scan budget instead of trimming it", async () => {
+  const runtime = await createRuntime();
+  await storeFacts(runtime, 5001);
+  await expect(
+    get(runtime, "/api/relationships/activity?limit=1&offset=0"),
+  ).rejects.toMatchObject({ code: "RELATIONSHIPS_ACTIVITY_SCAN_LIMIT" });
+}, 120_000);
