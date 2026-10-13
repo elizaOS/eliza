@@ -416,6 +416,32 @@ async function persistStoredStewardToken(
   }
 }
 
+/** Restores the authority that existed before a cancelled replacement write. */
+async function restoreStoredStewardToken(
+  token: string | null,
+  requiredScope: string | null,
+  previousScope: string | null,
+): Promise<void> {
+  try {
+    if (token !== null) {
+      await persistStoredStewardToken(token, requiredScope);
+      return;
+    }
+    if (stewardTokenRemoval) {
+      await stewardTokenRemoval();
+    } else {
+      window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+    }
+    if (previousScope === null) {
+      window.localStorage.removeItem(STEWARD_TOKEN_SCOPE_KEY);
+    } else {
+      window.localStorage.setItem(STEWARD_TOKEN_SCOPE_KEY, previousScope);
+    }
+  } catch (error) {
+    throw new StewardTokenPersistenceError(error);
+  }
+}
+
 /**
  * Persists the canonical token and publishes authority only after the durable
  * host boundary succeeds. A protected-store rejection never becomes a
@@ -447,10 +473,15 @@ export async function replaceStoredStewardTokenIfCurrent(
 ): Promise<boolean> {
   if (typeof window === "undefined") return false;
   return serializeStewardTokenMutation(async () => {
+    const previousScope = window.localStorage.getItem(STEWARD_TOKEN_SCOPE_KEY);
     const current = readStoredStewardToken();
     if (options?.signal?.aborted || current !== expectedToken) return false;
-    await persistStoredStewardToken(token, configuredLoopbackStewardScope());
-    if (options?.signal?.aborted) return false;
+    const requiredScope = configuredLoopbackStewardScope();
+    await persistStoredStewardToken(token, requiredScope);
+    if (options?.signal?.aborted) {
+      await restoreStoredStewardToken(current, requiredScope, previousScope);
+      return false;
+    }
     options?.beforePublish?.();
     if (current !== token) dispatchStewardSessionChange("present");
     return true;

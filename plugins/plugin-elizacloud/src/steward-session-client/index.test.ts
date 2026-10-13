@@ -49,6 +49,47 @@ describe("owned phone session publication", () => {
     }
   });
 
+  it("restores the previous owner when cancelled during durable persistence", async () => {
+    await writeStoredStewardToken("owner-token");
+    let release!: () => void;
+    let started!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const persist = vi.fn(async (token: string) => {
+      if (token === "cancelled-token") {
+        started();
+        await held;
+      }
+      window.localStorage.setItem(STEWARD_TOKEN_KEY, token);
+    });
+    const unregister = registerStewardTokenPersistence(persist);
+    try {
+      const controller = new AbortController();
+      const beforePublish = vi.fn();
+      const candidate = replaceStoredStewardTokenIfCurrent(
+        "owner-token",
+        "cancelled-token",
+        { signal: controller.signal, beforePublish },
+      );
+      await entered;
+      controller.abort();
+      release();
+
+      expect(await candidate).toBe(false);
+      expect(persist).toHaveBeenNthCalledWith(1, "cancelled-token");
+      expect(persist).toHaveBeenNthCalledWith(2, "owner-token");
+      expect(readStoredStewardToken()).toBe("owner-token");
+      expect(beforePublish).not.toHaveBeenCalled();
+    } finally {
+      release();
+      unregister();
+    }
+  });
+
   it("compares a nullable initial owner inside the queue after a newer sign-in", async () => {
     const newer = writeStoredStewardToken("newer-token");
     const candidate = replaceStoredStewardTokenIfCurrent(
