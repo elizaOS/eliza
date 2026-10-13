@@ -53,6 +53,9 @@ export function registerWorkThreadActiveGate(
       if (thread.status === "stopped" || thread.status === "completed") {
         return { kind: "deny", reason: `work thread is ${thread.status}` };
       }
+      if (thread.currentScheduledTaskId !== task.taskId) {
+        return { kind: "deny", reason: "follow-up is no longer current" };
+      }
       return { kind: "allow" };
     },
   });

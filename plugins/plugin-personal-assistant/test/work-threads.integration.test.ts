@@ -1601,6 +1601,22 @@ describe("work thread follow-up lifecycle", () => {
 
   it("names a replaced follow-up that cannot be removed for reconciliation", async () => {
     const runtime = await createRuntime();
+    const notifications: unknown[] = [];
+    const sink = {
+      serviceType: "notification",
+      capabilityDescription: "Synthetic test notification sink",
+      async notify(input: unknown) {
+        notifications.push(input);
+        return { id: `test-followup-${notifications.length}` };
+      },
+      async stop() {},
+    };
+    runtime.services.set("notification", [sink as unknown as Service]);
+    runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      async () => "Which visa document is next?",
+      "test-followup-render",
+    );
     const store = createWorkThreadStore(runtime);
     const runner = getScheduledTaskRunner(runtime, {
       agentId: runtime.agentId,
@@ -1642,5 +1658,32 @@ describe("work thread follow-up lifecycle", () => {
     );
     expect(scheduled).toContain(firstTaskId);
     expect(scheduled).toContain(linked?.currentScheduledTaskId);
+
+    const oldProcessed = await processDueScheduledTasks({
+      runtime,
+      agentId: runtime.agentId,
+      now: new Date("2026-05-11T18:01:00.000Z"),
+      limit: 5,
+    });
+    expect(oldProcessed.errors).toEqual([]);
+    expect(oldProcessed.fires).toEqual([
+      expect.objectContaining({ taskId: firstTaskId, status: "skipped" }),
+    ]);
+    expect(notifications).toHaveLength(0);
+
+    const currentProcessed = await processDueScheduledTasks({
+      runtime,
+      agentId: runtime.agentId,
+      now: new Date("2026-05-12T18:01:00.000Z"),
+      limit: 5,
+    });
+    expect(currentProcessed.errors).toEqual([]);
+    expect(currentProcessed.fires).toEqual([
+      expect.objectContaining({
+        taskId: linked?.currentScheduledTaskId,
+        status: "fired",
+      }),
+    ]);
+    expect(notifications).toHaveLength(1);
   });
 });
