@@ -401,6 +401,8 @@ export function createWebSearchEdgePlugin(
     runner: WebSearchEdgeRunner = runWebSearchEdge,
     options: { fallbackEnabled?: boolean } = {}
 ): Plugin {
+    if (options.fallbackEnabled === true && runner === runWebSearchEdge)
+        throw new Error("fallbackEnabled requires a host-authorized runner.");
     return {
         name: "web-search-edge",
         description: "Credential-free, public, read-only web search for edge runtimes.",
