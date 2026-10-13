@@ -141,6 +141,8 @@ export class PromptBatcher {
           pending.deferred.reject(error);
           this.pendingResults.delete(normalized.id);
         }
+        this.sections.delete(normalized.id);
+        this.lastRunAt.delete(normalized.id);
         this.runtime.logger.error(
           {
             src: "prompt-batcher",
