@@ -62,7 +62,7 @@ const MCPRequestSchema = z.object({
   jsonrpc: z.literal("2.0"),
   method: z.string(),
   params: z.record(z.string(), z.unknown()).optional(),
-  id: z.union([z.string(), z.number()]),
+  id: z.union([z.string(), z.number(), z.null()]).optional(),
 });
 
 const ProviderUsageSchema = z.object({
@@ -303,6 +303,10 @@ app.post("/", async (c) => {
     }
 
     const { method, params, id: rpcId } = validation.data;
+    // JSON-RPC notifications have no id and require no response.
+    if (rpcId === undefined) {
+      return new Response(null, { status: 202 });
+    }
     switch (method) {
       case "initialize":
         return c.json({
