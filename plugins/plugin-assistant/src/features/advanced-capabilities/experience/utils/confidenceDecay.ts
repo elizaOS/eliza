@@ -127,11 +127,12 @@ export class ConfidenceDecayManager {
   ): Array<{ timestamp: number; confidence: number }> {
     const trend: Array<{ timestamp: number; confidence: number }> = [];
     const now = Date.now();
+    const safePoints = Math.max(2, Math.floor(points));
     const totalTime = now - experience.createdAt;
-    const interval = totalTime / (points - 1);
+    const interval = totalTime / (safePoints - 1);
     const specificConfig = this.getDomainSpecificDecay(experience);
 
-    for (let i = 0; i < points; i++) {
+    for (let i = 0; i < safePoints; i++) {
       const timestamp = experience.createdAt + interval * i;
       const age = timestamp - experience.createdAt;
 
