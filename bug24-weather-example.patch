@@ -1,0 +1,13 @@
+diff --git a/packages/cloud/api/mcps/weather/route.ts b/packages/cloud/api/mcps/weather/route.ts
+index 6527a34e..cbf321b9 100644
+--- a/packages/cloud/api/mcps/weather/route.ts
++++ b/packages/cloud/api/mcps/weather/route.ts
+@@ -25,7 +25,7 @@ app.get("/", (c) =>
+         name: "get_current_weather",
+         description: "Get current weather conditions for any city",
+         price: MCP_FREE_COST_LABEL,
+-        example: { city: "New York", units: "fahrenheit" },
++        example: { location: "New York" },
+       },
+       {
+         name: "get_weather_forecast",
