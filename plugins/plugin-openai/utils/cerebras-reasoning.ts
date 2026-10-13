@@ -108,6 +108,10 @@ export function applyCerebrasReasoningReplay(
         "Cerebras reasoning replay assistant identity changed during serialization"
       );
     }
-    if (expected.reasoning !== undefined) message.reasoning = expected.reasoning;
+    if (expected.reasoning === undefined) continue;
+    message.reasoning = expected.reasoning;
+    // @ai-sdk/openai >= 3.0.77 sends "" for an empty assistant text without
+    // tool calls; keep the null content of the validated reasoning-only turn.
+    if (message.content === "" && !calls.length) message.content = null;
   }
 }

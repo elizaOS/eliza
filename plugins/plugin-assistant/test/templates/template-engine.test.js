@@ -259,6 +259,17 @@ describe("interpreted template rendering", () => {
       );
     }
     compare("{{lookup person key}}", { person: context, key: "name" });
+    for (const template of [
+      "{{proto.constructor}}",
+      "{{lookup proto 'constructor'}}",
+      "{{#with proto.constructor}}reached{{/with}}",
+    ]) {
+      compare(template, { proto: Function.prototype });
+      assert.equal(
+        compileTemplate(template)({ proto: Function.prototype }),
+        "",
+      );
+    }
   });
 
   it("rejects invalid syntax, missing helpers and partials and non-string AST input", () => {

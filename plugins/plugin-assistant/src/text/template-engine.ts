@@ -61,7 +61,17 @@ function own(value: unknown, key: string): unknown {
 function lookup(value: unknown, key: string, options: Options): unknown {
   if (value == null) return undefined;
   const result: unknown = Reflect.get(Object(value), key);
-  if (Object.hasOwn(Object(value), key)) return result;
+  // A prototype's own "constructor" (Function.prototype.constructor is
+  // Function) must still pass the deny list, as in Handlebars 4.7.10.
+  if (
+    Object.hasOwn(Object(value), key) &&
+    !(
+      key === "constructor" &&
+      typeof result === "function" &&
+      result.prototype === value
+    )
+  )
+    return result;
   const method = typeof result === "function";
   const allow = method
     ? options.allowedProtoMethods
