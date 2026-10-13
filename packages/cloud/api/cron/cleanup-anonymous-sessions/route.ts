@@ -16,7 +16,7 @@ import { userIdentities } from "@elizaos/cloud-shared/db/schemas/user-identities
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
-import { and, eq, lt } from "drizzle-orm";
+import { and, eq, exists, gt, inArray, lt, notExists } from "drizzle-orm";
 import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
@@ -50,9 +50,9 @@ app.get("/", async (c) => {
     if (expiredUsers.length > 0) {
       const userIds = expiredUsers.map((u) => u.id);
       const conversationsToDelete = await dbRead
-        .select()
+        .select({ id: conversations.id })
         .from(conversations)
-        .where(eq(conversations.user_id, userIds[0]));
+        .where(inArray(conversations.user_id, userIds));
 
       deletedConversations = conversationsToDelete.length;
 
@@ -67,48 +67,59 @@ app.get("/", async (c) => {
       });
     }
 
-    const expiredSessions = await dbWrite
-      .delete(anonymousSessions)
-      .where(lt(anonymousSessions.expires_at, now))
-      .returning();
-    deletedSessions = expiredSessions.length;
-
-    logger.info("cleanup-cron", `Deleted ${deletedSessions} expired sessions`);
-
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const inactiveUsersWithSessions = await dbRead
-      .select({
-        userId: users.id,
-        messageCount: anonymousSessions.message_count,
-        createdAt: users.created_at,
-      })
-      .from(users)
-      .leftJoin(anonymousSessions, eq(anonymousSessions.user_id, users.id))
+    const deletedInactiveUsers = await dbWrite
+      .delete(users)
       .where(
         and(
-          eq(userIdentities.is_anonymous, true),
           lt(users.created_at, sevenDaysAgo),
+          exists(
+            dbWrite
+              .select({ userId: userIdentities.user_id })
+              .from(userIdentities)
+              .where(
+                and(
+                  eq(userIdentities.user_id, users.id),
+                  eq(userIdentities.is_anonymous, true),
+                ),
+              ),
+          ),
+          notExists(
+            dbWrite
+              .select({ sessionId: anonymousSessions.id })
+              .from(anonymousSessions)
+              .where(
+                and(
+                  eq(anonymousSessions.user_id, users.id),
+                  gt(anonymousSessions.message_count, 0),
+                ),
+              ),
+          ),
         ),
-      );
-
-    let deletedInactiveUsers = 0;
-    for (const record of inactiveUsersWithSessions) {
-      if (record.messageCount === 0) {
-        await dbWrite.delete(users).where(eq(users.id, record.userId));
-        deletedInactiveUsers++;
-      }
-    }
+      )
+      .returning({ id: users.id });
 
     logger.info(
       "cleanup-cron",
-      `Deleted ${deletedInactiveUsers} inactive anonymous users`,
+      `Deleted ${deletedInactiveUsers.length} inactive anonymous users`,
     );
+
+    // Preserve message-count evidence until after the inactive-user delete.
+    // Otherwise an expired session can make a user who sent messages appear
+    // to have no history and qualify for deletion above.
+    const expiredSessions = await dbWrite
+      .delete(anonymousSessions)
+      .where(lt(anonymousSessions.expires_at, now))
+      .returning({ id: anonymousSessions.id });
+    deletedSessions = expiredSessions.length;
+
+    logger.info("cleanup-cron", `Deleted ${deletedSessions} expired sessions`);
 
     return c.json({
       success: true,
       message: "Cleanup completed successfully",
       stats: {
-        deletedUsers: deletedUsers + deletedInactiveUsers,
+        deletedUsers: deletedUsers + deletedInactiveUsers.length,
         deletedSessions,
         deletedConversations,
         timestamp: now.toISOString(),
