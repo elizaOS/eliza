@@ -53,14 +53,14 @@ export class UnionFind<T> {
 	find(value: T): T {
 		this.add(value);
 		let root = value;
-		let next = this.parent.get(root) ?? root;
+		let next = this.parent.get(root) as T;
 		while (next !== root) {
 			root = next;
-			next = this.parent.get(root) ?? root;
+			next = this.parent.get(root) as T;
 		}
 		let node = value;
 		while (node !== root) {
-			const parent = this.parent.get(node) ?? root;
+			const parent = this.parent.get(node) as T;
 			this.parent.set(node, root);
 			node = parent;
 		}
