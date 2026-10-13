@@ -281,4 +281,8 @@ export class ContextualPermissionSystemServiceWrapper extends Service {
   ): Promise<boolean> {
     return this.permissionSystem.hasPermission(entityId, permission, context);
   }
+
+  invalidatePermissionCache(entityId?: UUID): void {
+    this.permissionSystem.invalidatePermissionCache(entityId);
+  }
 }

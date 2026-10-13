@@ -402,6 +402,27 @@ export class ContextualPermissionSystem {
     return false;
   }
 
+  /**
+   * Invalidate cached permission decisions, optionally scoped to one entity.
+   * Call after role changes so demotions take effect immediately.
+   */
+  invalidatePermissionCache(entityId?: UUID): void {
+    if (!entityId) {
+      this.permissionCache.clear();
+      return;
+    }
+    for (const key of this.permissionCache.keys()) {
+      try {
+        const request = JSON.parse(key) as { entityId?: unknown };
+        if (request.entityId === entityId) {
+          this.permissionCache.delete(key);
+        }
+      } catch {
+        this.permissionCache.delete(key);
+      }
+    }
+  }
+
   private createDecision(
     request: AccessRequest,
     partialDecision: Partial<AccessDecision>,
