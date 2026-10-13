@@ -42,7 +42,8 @@ export function resolveConfig(
     (settingStrict !== undefined ? String(settingStrict) : undefined) ??
     process.env.CANARYGUARD_STRICT_MODE;
 
-  const strictMode = rawStrict !== false && rawStrict !== "false";
+  // Defaults to false: selectively scrubs offending command lines rather than blanking benign context
+  const strictMode = rawStrict === true || rawStrict === "true";
 
   return { serviceUrl, paymentHeader, strictMode };
 }

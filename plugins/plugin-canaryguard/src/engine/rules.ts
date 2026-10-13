@@ -2,11 +2,11 @@ import type { CryptoAddressFinding, CanaryGuardResult } from "../types";
 
 const INVISIBLE_CHARACTERS = /[\u00ad\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/gu;
 const ROLE_DELIMITER = /\[\/?INST\]|<\|(?:im_start|im_end|system|developer|assistant|user)\|>|<<\/?SYS>>/i;
-const ROLE_PREFIX = /(?:^|[\r\n])\s*(?:system|developer|assistant)(?:\s*(?:override|prompt|message|test))*\s*:/i;
-const INSTRUCTION_OVERRIDE = /\b(?:ignore|disregard|forget|override)\s+(?:(?:all|any|the|your|our)\s+)*(?:(?:previous|prior|earlier|above|system|developer)\s+)+(?:instructions?|prompts?|rules?|messages?)\b/i;
-const WALLET_ASSET_COMMAND = /\b(?:send|transfer|wire|move|drain)\s+(?:(?:all|every|entire|the|your|my|our|any|remaining)\s+)*(?:funds?|balances?|assets?|tokens?|crypto|eth|sol|usdc|usdt)\b/i;
-const WALLET_DESTINATION_COMMAND = /\b(?:send|transfer|wire|move)\s+(?:it\s+|them\s+|funds?\s+|tokens?\s+)?to\s+(?:0x[\da-f]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})\b/i;
-const EVM_ADDRESS = /\b0x[\da-f]{40}\b/gi;
+const ROLE_HIJACK = /(?:^|[\r\n])\s*(?:system|developer)(?:\s*(?:override|prompt|message|mode|instruction))*\s*:\s*(?:you are|ignore|disregard|forget|override|act as|now|from now on|new instructions?)/i;
+const INSTRUCTION_OVERRIDE = /\b(?:ignore|disregard|forget|override)\s+(?:(?:all|any|the|your|our|previous|prior|earlier|above|system|developer)\s+)*(?:instructions?|prompts?|rules?|messages?)\b/i;
+const WALLET_ASSET_COMMAND = /\b(?:drain|sweep)\s+(?:(?:all|every|entire|the|your|my|our|any|remaining)\s+)*(?:funds?|balances?|assets?|tokens?|crypto|eth|sol|usdc|usdt|wallet)\b/i;
+const WALLET_DESTINATION_COMMAND = /\b(?:send|transfer|wire|move|drain)\s+(?:(?:all|every|entire|the|your|my|our|any|remaining|it|them)\s+)*(?:funds?|balances?|assets?|tokens?|crypto|eth|sol|usdc|usdt)?\s*(?:it\s+|them\s+)?to\s+(?:0x[a-f0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})\b/i;
+const EVM_ADDRESS = /\b0x[a-f0-9]{40}\b/gi;
 const SOLANA_ADDRESS = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g;
 
 function stripHtml(content: string, findings: Set<string>): string {
@@ -39,7 +39,7 @@ function matchesWalletCommand(value: string): boolean {
 function commandThreats(value: string): string[] {
   const normalized = value.normalize("NFKC");
   const found: string[] = [];
-  if (ROLE_DELIMITER.test(normalized) || ROLE_PREFIX.test(normalized)) found.push("role_delimiter_override");
+  if (ROLE_DELIMITER.test(normalized) || ROLE_HIJACK.test(normalized)) found.push("role_delimiter_override");
   if (INSTRUCTION_OVERRIDE.test(normalized)) found.push("instruction_override");
   if (matchesWalletCommand(normalized)) found.push("wallet_transfer_command");
   return found;
@@ -52,7 +52,7 @@ function tidy(value: string): string {
 function scrubCommandLines(value: string): string {
   const blockedMarker = "[CANARY_REMOVED_INSTRUCTION]";
   let marked = value.normalize("NFKC");
-  const patterns = [ROLE_DELIMITER, /(?:^|[\r\n])\s*(?:system|developer|assistant)(?:\s*(?:override|prompt|message|test))*\s*:/gim, INSTRUCTION_OVERRIDE, WALLET_ASSET_COMMAND, WALLET_DESTINATION_COMMAND];
+  const patterns = [ROLE_DELIMITER, ROLE_HIJACK, INSTRUCTION_OVERRIDE, WALLET_ASSET_COMMAND, WALLET_DESTINATION_COMMAND];
   for (const pattern of patterns) {
     const flags = pattern.multiline ? "gim" : "gi";
     marked = marked.replace(new RegExp(pattern.source, flags), (match) => match.split("\n").map(() => blockedMarker).join("\n"));
@@ -64,7 +64,6 @@ function extractAddresses(value: string): CryptoAddressFinding[] {
   const normalized = value.normalize("NFKC");
   const addresses = new Map<string, CryptoAddressFinding>();
 
-  // 1. EVM addresses (0x...)
   for (const match of normalized.matchAll(EVM_ADDRESS)) {
     const address = match[0];
     const key = address.toLowerCase();
@@ -83,7 +82,6 @@ function extractAddresses(value: string): CryptoAddressFinding[] {
     if (!existing || existing.risk_score < riskScore) addresses.set(key, { address, risk_score: riskScore, reasons, chain: "evm" });
   }
 
-  // 2. Solana Base58 addresses (32-44 base58 characters near wallet context)
   for (const match of normalized.matchAll(SOLANA_ADDRESS)) {
     const address = match[0];
     const key = address;
@@ -107,7 +105,7 @@ function extractAddresses(value: string): CryptoAddressFinding[] {
  * Local deterministic heuristic detector engine.
  * Executes in <0.1ms with zero network calls and zero data exfiltration.
  */
-export function sanitizeLocally(content: string, strictMode = true): CanaryGuardResult {
+export function sanitizeLocally(content: string, strictMode = false): CanaryGuardResult {
   const findings = new Set<string>();
   const normalizedContent = content.replace(INVISIBLE_CHARACTERS, "");
   if (normalizedContent !== content) findings.add("concealed_unicode_removed");
@@ -136,7 +134,7 @@ export function sanitizeLocally(content: string, strictMode = true): CanaryGuard
   for (const address of addresses) riskScore = Math.max(riskScore, address.risk_score);
 
   return {
-    status: injectionDetected && strictMode ? "blocked" : findings.size ? "sanitized" : "clean",
+    status: injectionDetected ? (strictMode ? "blocked" : "sanitized") : findings.size ? "sanitized" : "clean",
     risk_score: riskScore,
     injection_detected: injectionDetected,
     threats_neutralized: [...findings].sort(),

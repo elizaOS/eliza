@@ -39,7 +39,7 @@
       },
       "CANARYGUARD_STRICT_MODE": {
         "type": "boolean",
-        "description": "When true (default), completely blanks blocked messages; when false, strips offending command lines.",
+        "description": "When true, completely blanks blocked messages; when false (default), selectively scrubs instruction lines.",
         "required": false,
         "sensitive": false
       }

@@ -450,7 +450,7 @@
 					"required": false,
 					"sensitive": false,
 					"label": "Strict Mode",
-					"help": "When true (default), completely blanks blocked messages; when false, selectively scrubs instruction lines.",
+					"help": "When true, completely blanks blocked messages; when false (default), selectively scrubs instruction lines.",
 					"advanced": true
 				}
 			},
