@@ -3176,6 +3176,30 @@ export function hasDistinctSlugIdentity(a: string, b: string): boolean {
 }
 
 /**
+ * Words the user typed into this request that also made it into the composed
+ * goal. A status follow-up ("so is my site done?") shares few such words, but
+ * a new request names its own deliverable ("the auth module").
+ */
+function userNamedGoalTokens(
+  userText: string,
+  candidateText: string,
+): string[] {
+  const candidate = goalTokenSet(candidateText);
+  return [...goalTokenSet(userText)].filter((token) => candidate.has(token));
+}
+
+/**
+ * Different requests often share most of their phrasing ("fix the failing
+ * tests in the auth module" vs "... billing module"), so containment crosses
+ * the threshold on boilerplate alone. When the user's own words name something
+ * the in-flight work never mentions, it is a different deliverable.
+ */
+function namesNewSubject(userNamed: string[], existingText: string): boolean {
+  const existing = goalTokenSet(existingText);
+  return userNamed.some((token) => !existing.has(token));
+}
+
+/**
  * Cross-request near-duplicate guard for create/spawn. The per-origin spawn cap
  * only anchors ONE user request; a status-shaped follow-up ("so is my site
  * done?? where can i see it") arrives as a NEW message, the planner re-composes
@@ -3186,7 +3210,7 @@ export function hasDistinctSlugIdentity(a: string, b: string): boolean {
  * goal exists, report it instead of spawning; explicit "again/fresh/retry"
  * phrasing bypasses the guard.
  */
-async function findNearDuplicateInFlightWork(args: {
+export async function findNearDuplicateInFlightWork(args: {
   runtime: IAgentRuntime;
   taskService: OrchestratorTaskService | null | undefined;
   candidateText: string;
@@ -3195,6 +3219,7 @@ async function findNearDuplicateInFlightWork(args: {
   const { runtime, taskService, candidateText, userText } = args;
   if (!candidateText.trim()) return undefined;
   if (DUPLICATE_SPAWN_FORCE_RE.test(userText)) return undefined;
+  const userNamed = userNamedGoalTokens(userText, candidateText);
   try {
     if (taskService && typeof taskService.listTasks === "function") {
       const tasks = await taskService.listTasks({});
@@ -3202,6 +3227,7 @@ async function findNearDuplicateInFlightWork(args: {
         if (!IN_FLIGHT_TASK_STATUSES.has(task.status)) continue;
         const existingText = `${task.title} ${task.originalRequest ?? ""}`;
         if (hasDistinctSlugIdentity(candidateText, existingText)) continue;
+        if (namesNewSubject(userNamed, existingText)) continue;
         if (
           goalSimilarity(candidateText, existingText) >=
           DUPLICATE_SPAWN_SIMILARITY_THRESHOLD
@@ -3226,6 +3252,7 @@ async function findNearDuplicateInFlightWork(args: {
             : "";
         const existingText = `${label ?? ""} ${initialTask}`;
         if (hasDistinctSlugIdentity(candidateText, existingText)) continue;
+        if (namesNewSubject(userNamed, existingText)) continue;
         if (
           goalSimilarity(candidateText, existingText) >=
           DUPLICATE_SPAWN_SIMILARITY_THRESHOLD
