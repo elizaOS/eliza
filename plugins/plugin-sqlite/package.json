@@ -31,7 +31,7 @@
   ],
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "devalue": "6.0.1",
+    "devalue": "6.0.2",
     "sql.js": "1.14.2"
   },
   "devDependencies": {
