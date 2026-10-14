@@ -1441,13 +1441,6 @@ public class ElizaAgentService extends Service {
         copyAssetIfPresent(assets, "agent/pglite.wasm", new File(stagingRoot, "pglite.wasm"));
         copyAssetIfPresent(assets, "agent/initdb.wasm", new File(stagingRoot, "initdb.wasm"));
         copyAssetIfPresent(assets, "agent/pglite.data", new File(stagingRoot, "pglite.data"));
-        // Legacy ONNX Runtime Web sidecars used by the removed Android Kokoro
-        // TTS path. Current AOSP TTS uses fused OmniVoice, so fresh bundles do
-        // not ship these files; keep extraction best-effort for older APKs.
-        copyAssetIfPresent(assets, "agent/ort-wasm-simd-threaded.mjs",
-            new File(stagingRoot, "ort-wasm-simd-threaded.mjs"));
-        copyAssetIfPresent(assets, "agent/ort-wasm-simd-threaded.wasm",
-            new File(stagingRoot, "ort-wasm-simd-threaded.wasm"));
         copyAssetIfPresent(assets, "agent/plugins-manifest.json",
             new File(stagingRoot, "plugins-manifest.json"));
 

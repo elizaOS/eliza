@@ -22,12 +22,6 @@
       "import": "./dist/turn.js",
       "default": "./dist/turn.js"
     },
-    "./browser-speech": {
-      "eliza-source": "./src/browser-speech/index.ts",
-      "types": "./dist/browser-speech/index.d.ts",
-      "import": "./dist/browser-speech/index.js",
-      "default": "./dist/browser-speech/index.js"
-    },
     "./browser-capture": {
       "eliza-source": "./src/browser-capture/index.ts",
       "types": "./dist/browser-capture/index.d.ts",

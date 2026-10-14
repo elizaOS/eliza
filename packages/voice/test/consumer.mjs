@@ -5,75 +5,25 @@ import { chromium } from "playwright";
 import { createServer } from "vite";
 import { testOutputPath } from "../../scripts/lib/test-output.ts";
 
-const [assetsArg, runtimeArg, wavArg, expected] = process.argv.slice(2);
-if (!assetsArg || !runtimeArg || !wavArg || !expected)
-  throw Error(
-    "Usage: node packages/voice/test/consumer.mjs ASSET_DIRECTORY ONNX_WASM_MODULE SPEECH_WAV EXPECTED_TRANSCRIPT",
-  );
-const assets = path.resolve(assetsArg),
-  runtime = path.resolve(runtimeArg),
-  wavFile = path.resolve(wavArg);
+// Qualifies @elizaos/voice/browser-capture in headless Chromium: MediaRecorder session
+// ownership, WAV decoding to mono 16 kHz samples, PCM16 WAV encoding and cancellation.
+// The package has no recognizer; hosts send the WAV to their own speech service.
+if (process.argv.length > 2)
+  throw Error("Usage: node packages/voice/test/consumer.mjs (no arguments)");
 const voice = path.resolve(import.meta.dirname, "../dist"),
   repository = path.resolve(import.meta.dirname, "../../..");
-const manifest = JSON.parse(
-  fs.readFileSync(path.join(assets, "manifest.json")),
-);
-const output = testOutputPath("browser-speech-consumer");
+const output = testOutputPath("browser-capture-consumer");
 const host = path.join(output, "host");
 fs.mkdirSync(host, { recursive: true });
 fs.writeFileSync(
   path.join(host, "index.html"),
   "<!doctype html><title>Voice consumer</title><button>Start</button>",
 );
-fs.writeFileSync(
-  path.join(host, "worker.ts"),
-  `import * as ort from '/@fs${runtime}';import {installSpeechWorker} from '/@fs${voice}/browser-speech/speech-worker.js';installSpeechWorker(self,ort);`,
-);
 const requests = [];
 const server = await createServer({
   root: host,
   configFile: false,
-  server: {
-    host: "127.0.0.1",
-    port: 0,
-    fs: { allow: [repository, path.dirname(runtime)] },
-  },
-  plugins: [
-    {
-      name: "owned-speech-assets",
-      configureServer(server) {
-        server.middlewares.use((req, res, next) => {
-          const url = new URL(req.url, "http://localhost");
-          if (url.pathname === "/speech/manifest.json") {
-            const m = structuredClone(manifest);
-            if (url.searchParams.has("tamper"))
-              m.files.glue.path = "corrupt-glue.mjs";
-            res.setHeader("Content-Type", "application/json");
-            res.end(JSON.stringify(m));
-            return;
-          }
-          if (url.pathname === "/speech/corrupt-glue.mjs") {
-            res.setHeader("Content-Type", "text/javascript");
-            res.end("invalid glue");
-            return;
-          }
-          for (const file of Object.values(manifest.files)) {
-            if (url.pathname === "/speech/" + file.path) {
-              res.setHeader(
-                "Content-Type",
-                file.path.endsWith(".mjs")
-                  ? "text/javascript"
-                  : "application/octet-stream",
-              );
-              fs.createReadStream(path.join(assets, file.path)).pipe(res);
-              return;
-            }
-          }
-          next();
-        });
-      },
-    },
-  ],
+  server: { host: "127.0.0.1", port: 0, fs: { allow: [repository] } },
 });
 await server.listen();
 const origin = `http://127.0.0.1:${server.httpServer.address().port}`;
@@ -95,7 +45,7 @@ try {
   });
   await page.goto(origin);
   const capture = await page.evaluate(async (source) => {
-    const { BrowserAudioCapture } = await import("/@fs" + source);
+    const { BrowserAudioCapture } = await import(`/@fs${source}`);
     const pending = [],
       ended = [],
       contexts = [];
@@ -147,72 +97,79 @@ try {
       contexts.map((c) => (c.state === "closed" ? undefined : c.close())),
     );
     return result;
-  }, voice + "/browser-capture/audio-capture.js");
+  }, `${voice}/browser-capture/audio-capture.js`);
   console.log(JSON.stringify({ capture }));
   assert.equal(capture.retired, "AbortError");
   assert.equal(capture.ended, 0);
   assert.equal(capture.saved, true);
   assert.ok(capture.bytes > 0);
-  const wav = fs.readFileSync(wavFile).toString("base64");
-  const result = await page.evaluate(
-    async ({ source, wav }) => {
-      const { BrowserSpeechRecognizer } = await import(
-        "/@fs" + source + "/browser-speech/speech-recognizer.js"
-      );
-      const { decodeRecordingPcm } = await import(
-        "/@fs" + source + "/browser-capture/recording-pcm.js"
-      );
-      const signal = new AbortController().signal;
-      const bytes = Uint8Array.from(atob(wav), (c) => c.charCodeAt(0));
-      const samples = await decodeRecordingPcm(
-        new Blob([bytes], { type: "audio/wav" }),
-        signal,
-      );
-      const recognizer = new BrowserSpeechRecognizer({
-        manifestUrl: () => location.origin + "/speech/manifest.json",
-        createWorker: () => new Worker("/worker.ts", { type: "module" }),
-      });
-      try {
-        return await recognizer.transcribe(samples, signal);
-      } finally {
-        recognizer.cancel();
-      }
-    },
-    { source: voice, wav },
-  );
-  assert.equal(result.noSpeech, false);
-  const normalized = (text) =>
-    text
-      .toLowerCase()
-      .replace(/[^a-z0-9 ]/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-  assert.equal(normalized(result.text), normalized(expected));
-  const corruption = await page.evaluate(async (source) => {
-    const { BrowserSpeechRecognizer } = await import(
-      "/@fs" + source + "/browser-speech/speech-recognizer.js"
-    );
-    const engine = new BrowserSpeechRecognizer({
-      manifestUrl: () => location.origin + "/speech/manifest.json?tamper=1",
-      createWorker: () => new Worker("/worker.ts", { type: "module" }),
+  const pcm = await page.evaluate(async (source) => {
+    const { decodeRecordingPcm, encodePcm16Wav, recordingPcmWav } =
+      await import(`/@fs${source}/browser-capture/recording-pcm.js`);
+    // One second of a 440 Hz tone at 0.5 amplitude, encoded at 48 kHz so decoding
+    // must resample it to 16 kHz.
+    const tone = new Float32Array(48000);
+    for (let i = 0; i < tone.length; i++)
+      tone[i] = 0.5 * Math.sin((2 * Math.PI * 440 * i) / 48000);
+    const source48k = new Blob([encodePcm16Wav(tone, 48000)], {
+      type: "audio/wav",
     });
+    const samples = await decodeRecordingPcm(
+      source48k,
+      new AbortController().signal,
+    );
+    let sum = 0;
+    for (const value of samples) sum += value * value;
+    const wav = await recordingPcmWav(source48k, new AbortController().signal);
+    const view = new DataView(wav.buffer, wav.byteOffset, wav.byteLength);
+    const aborted = new AbortController();
+    aborted.abort();
+    let abortError;
     try {
-      await engine.transcribe(
-        new Float32Array(16000),
-        new AbortController().signal,
-      );
-      return "incorrect success";
+      await decodeRecordingPcm(source48k, aborted.signal);
     } catch (e) {
-      return e.code;
-    } finally {
-      engine.cancel();
+      abortError = e.name;
     }
+    let rateError;
+    try {
+      encodePcm16Wav(new Float32Array(1), 4000);
+    } catch (e) {
+      rateError = e.message;
+    }
+    const clipped = encodePcm16Wav(Float32Array.of(-2, 2, Number.NaN), 16000);
+    const clippedView = new DataView(clipped.buffer);
+    return {
+      length: samples.length,
+      rms: Math.sqrt(sum / samples.length),
+      wavBytes: wav.byteLength,
+      riff: String.fromCharCode(...wav.subarray(0, 4)),
+      wave: String.fromCharCode(...wav.subarray(8, 12)),
+      channels: view.getUint16(22, true),
+      sampleRate: view.getUint32(24, true),
+      bitsPerSample: view.getUint16(34, true),
+      dataBytes: view.getUint32(40, true),
+      abortError,
+      rateError,
+      clipped: [0, 1, 2].map((i) => clippedView.getInt16(44 + i * 2, true)),
+    };
   }, voice);
-  assert.equal(corruption, "model-load-failed");
+  console.log(JSON.stringify({ pcm }));
+  assert.equal(pcm.length, 16000);
+  // A 0.5-amplitude sine has RMS 0.5 / sqrt(2).
+  assert.ok(Math.abs(pcm.rms - 0.5 / Math.SQRT2) < 0.02, `rms ${pcm.rms}`);
+  assert.equal(pcm.riff, "RIFF");
+  assert.equal(pcm.wave, "WAVE");
+  assert.equal(pcm.channels, 1);
+  assert.equal(pcm.sampleRate, 16000);
+  assert.equal(pcm.bitsPerSample, 16);
+  assert.equal(pcm.dataBytes, 32000);
+  assert.equal(pcm.wavBytes, 44 + 32000);
+  assert.equal(pcm.abortError, "AbortError");
+  assert.equal(pcm.rateError, "Unsupported sample rate.");
+  assert.deepEqual(pcm.clipped, [-32768, 32767, 0]);
   const summary = {
     capture,
-    transcript: result,
-    corruption,
+    pcm,
     foreignRequests: requests.filter(
       (u) =>
         !u.startsWith(origin) &&

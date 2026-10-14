@@ -259,8 +259,7 @@ companion APKs. Linked-library compilation and companion asset isolation are che
 Reports go to root `test-results/android-consumer-host`. This is build/manifest
 qualification, not installed service, HOME-role, AOSP or device acceptance.
 
-Shared local speech sources and reproducible runtime/model tooling are documented
-in [local speech](scripts/local-speech/README.md). The source-export resolver in
+The source-export resolver in
 `scripts/lib/consumer-source-resolver.mjs` composes declared Eliza source exports
 for independent Bun hosts; consumers retain their source pin, credentials and policy. `scripts/lib/immutable-workspace-source.mjs`
 authenticates prepared workspace files against an exact commit, including ignored
