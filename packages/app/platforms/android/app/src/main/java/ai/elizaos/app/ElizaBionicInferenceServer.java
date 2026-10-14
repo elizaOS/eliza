@@ -347,23 +347,28 @@ final class ElizaBionicInferenceServer {
     }
 
     /**
-     * The onTrimMemory lever, off the main thread: free the TTS and ASR weights
-     * with {@code mmap_evict} and keep the context, so the next voice call
-     * reloads only those weights. The idle timer and the availMem pressure
-     * probe still free the whole resident state.
+     * {@link #releaseResident} off-thread, for main-thread callers
+     * (onTrimMemory). The trim levels that reach here
+     * ({@link InferenceMemoryPolicy#shouldReleaseOnTrim}) are real memory
+     * pressure, where the multi-GB text model and KV cache are what lmkd
+     * weighs, so the whole resident state is freed, not only the voice weights.
      */
     void releaseResidentAsync(String reason) {
         ScheduledExecutorService exec = memoryPolicyExecutor;
         if (exec != null) {
-            exec.execute(() -> evictVoiceRegions(reason));
+            exec.execute(() -> releaseResident(reason));
             return;
         }
-        Thread t = new Thread(() -> evictVoiceRegions(reason), "eliza-bionic-infer-release");
+        Thread t = new Thread(() -> releaseResident(reason), "eliza-bionic-infer-release");
         t.setDaemon(true);
         t.start();
     }
 
-    /** Free the "tts" and "asr" regions of the resident context. Blocks behind a running op. */
+    /**
+     * Free the "tts" and "asr" regions of the resident context and keep the
+     * text model, so the next voice call reloads only those weights. Blocks
+     * behind a running op.
+     */
     void evictVoiceRegions(String reason) {
         synchronized (residentLock) {
             if (residentCtx == 0L) {
@@ -973,6 +978,11 @@ final class ElizaBionicInferenceServer {
                 float[] pcm = usePhonemes
                     ? ElizaVoiceNative.nativeParadeeSynthesizePhonemes(ctx, utf8, speed)
                     : ElizaVoiceNative.nativeParadeeSynthesize(ctx, utf8, speed);
+                if (pcm.length == 0) {
+                    // Punctuation or symbols only: nothing to speak, and the
+                    // context is fine, so keep the resident state.
+                    return errorJson("tts: input has nothing to speak");
+                }
                 int sampleRate = ElizaVoiceNative.nativeParadeeSampleRate(ctx);
                 if (sampleRate <= 0) {
                     throw new IllegalStateException("paradee sample rate unavailable: " + sampleRate);
@@ -993,6 +1003,11 @@ final class ElizaBionicInferenceServer {
             } catch (CancellationException cancelled) {
                 Log.i(TAG, "TTS cancelled after " + utf8.length + " input bytes");
                 return cancelledJson("tts");
+            } catch (IllegalArgumentException rejected) {
+                // The library rejected the input (for example a phoneme
+                // outside the vocabulary); the context is still usable.
+                Log.w(TAG, "TTS input rejected after " + utf8.length + " input bytes");
+                return errorJson(rejected.getMessage() == null ? "tts: input rejected" : rejected.getMessage());
             } catch (Throwable t) {
                 // A failed synth may leave the shared ctx in an unknown state;
                 // drop it so the next generate/embed/tts rebuilds cleanly.
@@ -1063,6 +1078,9 @@ final class ElizaBionicInferenceServer {
             } catch (CancellationException cancelled) {
                 Log.i(TAG, "ASR cancelled after " + n + " samples");
                 return cancelledJson("asr");
+            } catch (IllegalArgumentException rejected) {
+                Log.w(TAG, "ASR input rejected after " + n + " samples");
+                return errorJson(rejected.getMessage() == null ? "asr: input rejected" : rejected.getMessage());
             } catch (Throwable t) {
                 // A failed transcribe may leave the shared ctx in an unknown state;
                 // drop it so the next generate/embed/tts/asr rebuilds cleanly.

@@ -143,7 +143,10 @@ jstring utf8_to_jstring(JNIEnv* env, const char* data, size_t size) {
 
 // Throw for a failed voice call. ELIZA_ERR_CANCELLED becomes a typed
 // java.util.concurrent.CancellationException so callers can tell a requested
-// stop from a failure. The log carries the stage and status code only: native
+// stop from a failure, and ELIZA_ERR_INVALID_ARG becomes
+// IllegalArgumentException (a rejected input that leaves the context usable,
+// so a host need not drop its resident state). Everything else is a
+// RuntimeException. The log carries the stage and status code only: native
 // diagnostics can quote the input text, so they go to the exception message.
 void throw_voice(JNIEnv* env, const char* stage, int rc, char* outError) {
     std::string msg = std::string("[elizavoice-jni] ") + stage + " rc=" + std::to_string(rc);
@@ -155,7 +158,9 @@ void throw_voice(JNIEnv* env, const char* stage, int rc, char* outError) {
     LOGE("%s failed rc=%d", stage, rc);
     jclass cls = env->FindClass(rc == ELIZA_ERR_CANCELLED
                                     ? "java/util/concurrent/CancellationException"
-                                    : "java/lang/RuntimeException");
+                                    : rc == ELIZA_ERR_INVALID_ARG
+                                        ? "java/lang/IllegalArgumentException"
+                                        : "java/lang/RuntimeException");
     if (cls) env->ThrowNew(cls, msg.c_str());
 }
 
@@ -165,9 +170,15 @@ EliInferenceContext* voice_context(JNIEnv* env, jlong handle, const char* stage)
     return ctx;
 }
 
-// Hand a library-owned PCM buffer to Java and release it.
+// Hand a library-owned PCM buffer to Java and release it. A successful call
+// with no speakable input (punctuation or symbols only) yields zero samples
+// and a null buffer; that is an empty array, not a failure.
 jfloatArray take_pcm(JNIEnv* env, const char* stage, float* pcm, size_t samples) {
-    if (!pcm || samples == 0 || samples > static_cast<size_t>(INT32_MAX)) {
+    if (samples == 0) {
+        eliza_inference_free_pcm(pcm);
+        return env->NewFloatArray(0);
+    }
+    if (!pcm || samples > static_cast<size_t>(INT32_MAX)) {
         eliza_inference_free_pcm(pcm);
         throw_voice(env, stage, ELIZA_ERR_FFI_FAULT, nullptr);
         return nullptr;
