@@ -175,6 +175,8 @@ export interface VoiceModelVersion {
 export type MobileVoiceFileRole =
   | "tts"
   | "g2p-lexicon"
+  /** One file of the eSpeak NG English data misaki uses for words outside its lexicon. */
+  | "g2p-espeak-data"
   | "asr-parakeet"
   | "asr-text"
   | "asr-mmproj"
@@ -214,13 +216,15 @@ export function mobileAsrRoles(
 
 /**
  * One pinned file of the Android/AOSP voice bundle. `path` is relative to the
- * bundle root the agent stages into (`tts/paradee/`, `asr/`, `vad/`).
+ * bundle root the agent stages into (`tts/paradee/`,
+ * `tts/paradee/espeak-ng-data/`, `asr/`, `vad/`).
  *
  * A `published` row has a resolvable `url`, `revision`, `sha256` and `bytes`.
  * An `unpublished` row has no `url` or `revision`: the file is built locally
  * from the pinned `source` (see `localFrom`) and must be supplied by path
  * until the owner publishes it. Downloaders never fetch an unpublished row.
- * When the build is byte-reproducible (Phonon-2) the row still carries the
+ * When the build is byte-reproducible (Paradee GGUF, misaki lexicon, eSpeak NG
+ * data, Phonon-2) the row still carries the
  * expected `sha256` and `bytes`, and a local copy must match them; otherwise
  * they are null and the pins come with the local source.
  */

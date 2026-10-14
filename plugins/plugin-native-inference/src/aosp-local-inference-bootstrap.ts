@@ -91,6 +91,7 @@ import {
 } from "./aosp-model-paths.js";
 import { createAospNetworkAdmissionCheck } from "./aosp-network-admission.js";
 import {
+  aospEspeakDataParent,
   aospParadeePaths,
   aospVoiceGroupNeedsStaging,
   aospVoiceGroups,
@@ -377,6 +378,11 @@ interface AospParadeeConfig {
   bundleRoot: string;
   paradeeGgufPath: string;
   lexiconPath: string;
+  /**
+   * Directory that contains the staged `espeak-ng-data/` (eSpeak NG English
+   * data for words outside the misaki lexicon), or null when it is not staged.
+   */
+  espeakDataDir: string | null;
 }
 type TranscriptionHandler = (
   runtime: IAgentRuntime,
@@ -2234,7 +2240,7 @@ export function makeAospParadeeTextToSpeechHandler(): TextToSpeechHandler {
             eliza_inference_destroy: { args: [T.ptr], returns: T.void },
             eliza_inference_paradee_supported: { args: [], returns: T.i32 },
             eliza_inference_paradee_load: {
-              // ctx, gguf_path, lexicon_path, espeak_data_dir (NULL), out_error
+              // ctx, gguf_path, lexicon_path, espeak_data_dir (or NULL), out_error
               args: [T.ptr, T.ptr, T.ptr, T.ptr, T.ptr],
               returns: T.i32,
             },
@@ -2244,6 +2250,10 @@ export function makeAospParadeeTextToSpeechHandler(): TextToSpeechHandler {
               returns: T.i32,
             },
             eliza_inference_paradee_sample_rate: {
+              args: [T.ptr],
+              returns: T.i32,
+            },
+            eliza_inference_paradee_g2p_kind: {
               args: [T.ptr],
               returns: T.i32,
             },
@@ -2292,19 +2302,30 @@ export function makeAospParadeeTextToSpeechHandler(): TextToSpeechHandler {
             `[aosp-local-inference] fused Paradee create failed: ${message}`,
           );
         }
-        const errLoad = Buffer.alloc(8);
         const loadStarted = Date.now();
         const ggufArg = cString(config.paradeeGgufPath);
         const lexiconArg = cString(config.lexiconPath);
-        const loadRc = symbols.eliza_inference_paradee_load(
-          ctx,
-          ffi.ptr(ggufArg),
-          ffi.ptr(lexiconArg),
-          null,
-          ffi.ptr(errLoad),
-        ) as number;
+        const load = (espeakDataDir: string | null) => {
+          const errLoad = Buffer.alloc(8);
+          const espeakArg = espeakDataDir ? cString(espeakDataDir) : null;
+          const rc = symbols.eliza_inference_paradee_load(
+            ctx,
+            ffi.ptr(ggufArg),
+            ffi.ptr(lexiconArg),
+            espeakArg ? ffi.ptr(espeakArg) : null,
+            ffi.ptr(errLoad),
+          ) as number;
+          return {
+            rc,
+            message: rc < 0 ? readFfiStringAndFree(ffi, symbols, errLoad) : "",
+          };
+        };
+        const { rc: loadRc, message: loadMessage } =
+          loadAospParadeeWithEspeakFallback(load, config.espeakDataDir, (m) =>
+            logger.warn(m),
+          );
         if (loadRc < 0) {
-          const message = readFfiStringAndFree(ffi, symbols, errLoad);
+          const message = loadMessage;
           try {
             symbols.eliza_inference_destroy(ctx);
           } catch {
@@ -2330,7 +2351,7 @@ export function makeAospParadeeTextToSpeechHandler(): TextToSpeechHandler {
           );
         }
         logger.info(
-          `[aosp-local-inference] fused Paradee TEXT_TO_SPEECH backend ready in ${Date.now() - loadStarted}ms (lib=${config.libPath}, bundle=${path.basename(config.bundleRoot)}, sampleRate=${sampleRate})`,
+          `[aosp-local-inference] fused Paradee TEXT_TO_SPEECH backend ready in ${Date.now() - loadStarted}ms (lib=${config.libPath}, bundle=${path.basename(config.bundleRoot)}, sampleRate=${sampleRate}, g2pKind=${describeParadeeG2pKind(symbols, ctx)})`,
         );
         return {
           ffi,
@@ -2491,6 +2512,38 @@ async function loadAospVoiceFfi(): Promise<BunFfiModule> {
   }
   return ffi;
 }
+/**
+ * Load Paradee with the staged eSpeak NG data; when that load fails, load the
+ * lexicon alone. error-policy:J4 explicit degrade: the data could not be used
+ * (for example a library whose libespeak-ng keeps a short N_PATH_HOME
+ * buffer), and speech that spells out unknown words beats no speech. The
+ * fallback is logged through `warn`. Without eSpeak data it is one load.
+ */
+export function loadAospParadeeWithEspeakFallback(
+  load: (espeakDataDir: string | null) => { rc: number; message: string },
+  espeakDataDir: string | null,
+  warn: (message: string) => void,
+): { rc: number; message: string; espeakDataDir: string | null } {
+  const first = load(espeakDataDir);
+  if (first.rc >= 0 || !espeakDataDir) return { ...first, espeakDataDir };
+  warn(
+    `[aosp-local-inference] fused Paradee load with eSpeak NG data failed (rc=${first.rc}: ${first.message}); retrying without it, so words outside the misaki lexicon will be spelled out`,
+  );
+  return { ...load(null), espeakDataDir: null };
+}
+/** ELIZA_PARADEE_G2P_* in eliza-inference-ffi.h, as a log label. */
+function describeParadeeG2pKind(
+  symbols: Record<string, (...args: unknown[]) => unknown>,
+  ctx: unknown,
+): string {
+  const kind = symbols.eliza_inference_paradee_g2p_kind?.(ctx) as
+    | number
+    | undefined;
+  if (kind === 2) return "espeak";
+  if (kind === 1) return "rules";
+  if (kind === 0) return "lexicon-only";
+  return `unknown(${String(kind)})`;
+}
 function cString(value: string): Buffer {
   return Buffer.from(`${value}\0`, "utf8");
 }
@@ -2513,11 +2566,18 @@ function resolveAospParadeeConfig(): AospParadeeConfig | null {
   ensureAospVoiceAssetsInBackground(bundleRoot);
   const paths = aospParadeePaths(bundleRoot);
   if (!existsSync(paths.gguf) || !existsSync(paths.lexicon)) return null;
+  const espeakDataDir = aospEspeakDataParent(bundleRoot);
+  if (!espeakDataDir) {
+    logger.warn(
+      "[aosp-local-inference] eSpeak NG data (tts/paradee/espeak-ng-data) is not staged; Paradee will spell out words outside the misaki lexicon until it is",
+    );
+  }
   return {
     libPath,
     bundleRoot,
     paradeeGgufPath: paths.gguf,
     lexiconPath: paths.lexicon,
+    espeakDataDir,
   };
 }
 /**

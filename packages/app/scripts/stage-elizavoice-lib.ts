@@ -173,9 +173,23 @@ function sha256File(file) {
   return createHash("sha256").update(readFileSync(file)).digest("hex");
 }
 
+/**
+ * Size of libespeak-ng's data-path buffer (`path_home`, N_PATH_HOME). The
+ * upstream POSIX default is 160 bytes, which limits the eSpeak NG data
+ * directory to about 135 bytes once libespeak-ng appends `/espeak-ng-data`;
+ * on-device bundle paths can be longer. Every eSpeak buffer that holds a data
+ * path is sized from it, so raising it is safe. The fused library rejects a
+ * path that does not fit instead of truncating it (elizaOS/llama.cpp
+ * tools/espeak-shared).
+ */
+const ESPEAK_PATH_HOME = 1024;
+
 function espeakCmakeFlags() {
   // Only the phonemizer is used: no audio output, sonic, MBROLA or synthesizers.
   return [
+    // -DCMAKE_C_FLAGS keeps the NDK toolchain's own flags; a CFLAGS
+    // environment variable is ignored under the NDK toolchain.
+    `-DCMAKE_C_FLAGS=-DN_PATH_HOME=${ESPEAK_PATH_HOME}`,
     "-G",
     "Ninja",
     "-DCMAKE_BUILD_TYPE=Release",
@@ -209,7 +223,10 @@ async function ensureEspeakNg({ dir, abi, ndk, forkSrc }) {
     die("fork tools/misaki-g2p/pins.json has no espeak_ng pin");
   }
   const stamp = path.join(dir, abi, "pin.sha256");
-  if (existsSync(stamp) && readFileSync(stamp, "utf8").trim() === pin.sha256) {
+  // The stamp names the build options too, so an older build (160-byte
+  // N_PATH_HOME) is rebuilt.
+  const stampValue = `${pin.sha256} N_PATH_HOME=${ESPEAK_PATH_HOME}`;
+  if (existsSync(stamp) && readFileSync(stamp, "utf8").trim() === stampValue) {
     log(`eSpeak NG ${pin.version} for ${abi}: reusing ${path.join(dir, abi)}`);
     return path.join(dir, abi);
   }
@@ -301,7 +318,19 @@ async function ensureEspeakNg({ dir, abi, ndk, forkSrc }) {
   ]);
   run(ar, ["qL", archiveOut, path.join(build, "src/ucd-tools/libucd.a")]);
   run(ar, ["s", archiveOut]);
-  writeFileSync(stamp, `${pin.sha256}\n`);
+  // path_home is a BSS array of N_PATH_HOME bytes: check the define reached
+  // the library build.
+  const pathHome = /^[0-9a-f]+ ([0-9a-f]+) [BbCc] path_home$/m.exec(
+    execFileSync(ndkTool(ndk, "llvm-nm"), ["--print-size", archiveOut], {
+      encoding: "utf8",
+    }),
+  );
+  if (!pathHome || Number.parseInt(pathHome[1], 16) !== ESPEAK_PATH_HOME) {
+    die(
+      `${archiveOut}: libespeak-ng path_home is ${pathHome ? Number.parseInt(pathHome[1], 16) : "missing"} bytes; expected N_PATH_HOME=${ESPEAK_PATH_HOME}`,
+    );
+  }
+  writeFileSync(stamp, `${stampValue}\n`);
   return prefix;
 }
 

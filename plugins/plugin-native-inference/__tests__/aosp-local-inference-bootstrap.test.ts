@@ -22,6 +22,7 @@ import {
   ensureAospLocalInferenceHandlers,
   flattenGenerateTextParamsForAospPrompt,
   isAospLocalEmbeddingEnabled,
+  loadAospParadeeWithEspeakFallback,
   makeAospTextToSpeechHandler,
   parseMemAvailableMb,
   readAssignedBundledModels,
@@ -1118,5 +1119,69 @@ describe("shouldEvictChatForAvailMb (memory-gated chat eviction)", () => {
 
   it("evicts on unknown memory (safe default = original always-evict)", () => {
     expect(shouldEvictChatForAvailMb(null)).toBe(true);
+  });
+});
+
+describe("AOSP Paradee eSpeak NG data", () => {
+  it("passes the staged eSpeak data directory to the load", () => {
+    const calls: Array<string | null> = [];
+    const warnings: string[] = [];
+    const result = loadAospParadeeWithEspeakFallback(
+      (dir) => {
+        calls.push(dir);
+        return { rc: 0, message: "" };
+      },
+      "/bundle/tts/paradee",
+      (m) => warnings.push(m),
+    );
+    expect(calls).toEqual(["/bundle/tts/paradee"]);
+    expect(result).toEqual({
+      rc: 0,
+      message: "",
+      espeakDataDir: "/bundle/tts/paradee",
+    });
+    expect(warnings).toEqual([]);
+  });
+
+  it("retries without eSpeak data, loudly, when the load with it fails", () => {
+    const calls: Array<string | null> = [];
+    const warnings: string[] = [];
+    const result = loadAospParadeeWithEspeakFallback(
+      (dir) => {
+        calls.push(dir);
+        return dir
+          ? { rc: -3, message: "eSpeak NG data path is too long (N_PATH_HOME)" }
+          : { rc: 0, message: "" };
+      },
+      "/bundle/tts/paradee",
+      (m) => warnings.push(m),
+    );
+    expect(calls).toEqual(["/bundle/tts/paradee", null]);
+    expect(result).toEqual({ rc: 0, message: "", espeakDataDir: null });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("N_PATH_HOME");
+    expect(warnings[0]).toContain("spelled out");
+  });
+
+  it("does not retry when there is no eSpeak data, and reports both failures", () => {
+    const calls: Array<string | null> = [];
+    const none = loadAospParadeeWithEspeakFallback(
+      (dir) => {
+        calls.push(dir);
+        return { rc: -2, message: "bad gguf" };
+      },
+      null,
+      () => {
+        throw new Error("no warning expected");
+      },
+    );
+    expect(calls).toEqual([null]);
+    expect(none.rc).toBe(-2);
+    const both = loadAospParadeeWithEspeakFallback(
+      () => ({ rc: -2, message: "bad gguf" }),
+      "/bundle/tts/paradee",
+      () => {},
+    );
+    expect(both).toEqual({ rc: -2, message: "bad gguf", espeakDataDir: null });
   });
 });

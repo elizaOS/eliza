@@ -9,7 +9,10 @@
  * directory also holds the pinned eSpeak NG 1.52.0 English data in
  * `espeak-ng-data/`, misaki uses it for words outside the lexicon, as the
  * Android bundle does. Without it those words are spelled out letter by letter.
- * libespeak-ng accepts a data path of about 135 bytes at most.
+ * A host libespeak-ng keeps its data path in a 160-byte buffer unless it was
+ * built with a larger N_PATH_HOME (the Android build uses 1024), so keep this
+ * directory under about 140 bytes on the host; the fused library reports a
+ * path that does not fit instead of loading other data.
  *
  * Requests: `{id, op:"synthesize", text}` returns `{id, audio}` (base64 mono
  * PCM16 WAV at 24 kHz) or `{id, error}`. `{op:"cancel", id}` calls
