@@ -86,20 +86,28 @@ describe("findNearDuplicateInFlightWork", () => {
   });
 
   it("still reports a follow-up about the in-flight work as a duplicate", async () => {
-    await expect(
-      findNearDuplicateInFlightWork({
-        runtime,
-        taskService: inFlight(
-          "Nubs mechanical keyboard site",
-          "build me a site for my Nubs mechanical keyboard shop",
-        ),
-        candidateText:
-          "Nubs keyboard site Build the Nubs mechanical keyboard site",
-        userText: "so is my site done?? where can i see it",
-      }),
-    ).resolves.toEqual({
-      name: '"Nubs mechanical keyboard site"',
-      status: "active",
-    });
+    for (const userText of [
+      "so is my site done?? where can i see it",
+      "is the site done?",
+      "can you check the site?",
+      "is the build for my shop done?",
+    ]) {
+      await expect(
+        findNearDuplicateInFlightWork({
+          runtime,
+          taskService: inFlight(
+            "Nubs mechanical keyboard site",
+            "build me a site for my Nubs mechanical keyboard shop",
+          ),
+          candidateText:
+            "Nubs keyboard site Build the Nubs mechanical keyboard site",
+          userText,
+        }),
+        userText,
+      ).resolves.toEqual({
+        name: '"Nubs mechanical keyboard site"',
+        status: "active",
+      });
+    }
   });
 });

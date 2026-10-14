@@ -3175,6 +3175,18 @@ export function hasDistinctSlugIdentity(a: string, b: string): boolean {
   return aOnly && bOnly;
 }
 
+/** English function and status words name no deliverable ("is the site done?"). */
+const FUNCTION_WORDS: ReadonlySet<string> = new Set(
+  (
+    "the and but for nor yet you your yours our ours his her hers its they them " +
+    "their this that these those who whom whose what which when where why how " +
+    "can could would should will shall may might must are was were been being " +
+    "has have had does did not any all some each with from into onto out off " +
+    "about over under then than also just still now please thanks there here " +
+    "too very let lets get got make made going done"
+  ).split(" "),
+);
+
 /**
  * Words the user typed into this request that also made it into the composed
  * goal. A status follow-up ("so is my site done?") shares few such words, but
@@ -3185,7 +3197,9 @@ function userNamedGoalTokens(
   candidateText: string,
 ): string[] {
   const candidate = goalTokenSet(candidateText);
-  return [...goalTokenSet(userText)].filter((token) => candidate.has(token));
+  return [...goalTokenSet(userText)].filter(
+    (token) => candidate.has(token) && !FUNCTION_WORDS.has(token),
+  );
 }
 
 /**
