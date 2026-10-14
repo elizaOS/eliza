@@ -137,6 +137,8 @@ function ensureWin32DllSearchDir(dir: string): void {
  *     Paradee. The family is bound by its own dlopen, so a v16 library is
  *     accepted only when every v17 symbol is absent; the Paradee and ASR
  *     probes then report false.
+ * v18: adds `eliza_inference_llm_context_capacity` only. This binding does
+ *     not bind it, so a v18 library is accepted with the full v17 surface.
  */
 export const ELIZA_INFERENCE_ABI_VERSION = 17 as const;
 
@@ -2285,6 +2287,9 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	// tokenizer), accepted only when those are absent too.
 	const abiOk =
 		(reported === String(ELIZA_INFERENCE_ABI_VERSION) && v17SymbolsAvailable) ||
+		// ABI v18 only adds `eliza_inference_llm_context_capacity`, which this
+		// binding does not call; every v17 symbol and signature is unchanged.
+		(reported === "18" && v17SymbolsAvailable) ||
 		(reported === "16" && !v17SymbolsAvailable) ||
 		(reported === "15" && !embeddingOptionsSymbolsAvailable) ||
 		// ABI v15 only adds optional exact-size Kokoro PCM allocation symbols.
