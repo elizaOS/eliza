@@ -21,6 +21,7 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -49,9 +50,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * already returns, so the GPU decode loop runs entirely server-side and the
  * musl agent never round-trips per token.
  *
- * <p>This is the buffered first slice. Server-push per-step streaming, embed,
- * and cancel are layered on later (the framing already supports an {@code op}
- * discriminator).
+ * <p>Other ops share the frame and the resident context: {@code generateStream},
+ * {@code embed}, {@code tts} ({@code {text | phonemes, language:"en-US", speed}}
+ * spoken by Paradee-8M with native misaki G2P), {@code asr}, {@code image},
+ * {@code tts_cancel} and {@code asr_cancel}. Speech logs carry sizes only,
+ * never text or transcripts.
  */
 final class ElizaBionicInferenceServer {
 
@@ -106,6 +109,19 @@ final class ElizaBionicInferenceServer {
      *  a reset/reopen). */
     private int[] residentPrevTokens = null;
     private final Object residentLock = new Object();
+    /**
+     * Guards every write of {@link #residentCtx} and the context destroy, so a
+     * tts_cancel / asr_cancel request on another connection never signals a
+     * context that is being freed. It never waits on a decode or a synthesis.
+     */
+    private final Object cancelLock = new Object();
+
+    /** Paradee bundle layout under {@code <bundleDir>/tts/paradee/}. */
+    static final String PARADEE_DIR = "tts/paradee";
+    static final String PARADEE_MODEL = "paradee-8m-v1_0.gguf";
+    static final String MISAKI_LEXICON = "misaki-en-us.lex";
+    /** Optional eSpeak NG data for words outside the misaki lexicon. */
+    static final String ESPEAK_DATA = "espeak-ng-data";
     /** Complete native context boundary for this device RAM class. */
     private int residentStreamGenerationBoundary() {
         return InferenceMemoryPolicy.llmContextTokens(ramClass);
@@ -330,16 +346,40 @@ final class ElizaBionicInferenceServer {
             + "buffers reclaimed (reason=" + reason + "). Next request reloads on demand.");
     }
 
-    /** {@link #releaseResident} off-thread — for main-thread callers (onTrimMemory). */
+    /**
+     * The onTrimMemory lever, off the main thread: free the TTS and ASR weights
+     * with {@code mmap_evict} and keep the context, so the next voice call
+     * reloads only those weights. The idle timer and the availMem pressure
+     * probe still free the whole resident state.
+     */
     void releaseResidentAsync(String reason) {
         ScheduledExecutorService exec = memoryPolicyExecutor;
         if (exec != null) {
-            exec.execute(() -> releaseResident(reason));
+            exec.execute(() -> evictVoiceRegions(reason));
             return;
         }
-        Thread t = new Thread(() -> releaseResident(reason), "eliza-bionic-infer-release");
+        Thread t = new Thread(() -> evictVoiceRegions(reason), "eliza-bionic-infer-release");
         t.setDaemon(true);
         t.start();
+    }
+
+    /** Free the "tts" and "asr" regions of the resident context. Blocks behind a running op. */
+    void evictVoiceRegions(String reason) {
+        synchronized (residentLock) {
+            if (residentCtx == 0L) {
+                return;
+            }
+            try {
+                ElizaVoiceNative.nativeMmapEvict(residentCtx, "tts");
+                ElizaVoiceNative.nativeMmapEvict(residentCtx, "asr");
+                Log.i(TAG, "evicted TTS and ASR weights (reason=" + reason + "); context kept");
+            } catch (Throwable t) {
+                // An evict failure leaves the regions in an unknown state; free
+                // everything so the next request starts clean.
+                Log.w(TAG, "voice region evict failed (reason=" + reason + "); releasing resident state", t);
+                resetResident();
+            }
+        }
     }
 
     private void acceptLoop() {
@@ -429,13 +469,16 @@ final class ElizaBionicInferenceServer {
             if (bundleDir.isEmpty()) {
                 bundleDir = defaultBundleDir;
             }
+            if ("tts_cancel".equals(op) || "asr_cancel".equals(op)) {
+                return cancelVoice("tts_cancel".equals(op));
+            }
             if ("embed".equals(op)) {
                 return embed(req.getString("bundleDir"), req.getString("text"),
                     req.optJSONArray("expectedTokenIds"), req.optString("embeddingSpace", ""));
             }
             if ("tts".equals(op)) {
-                return tts(bundleDir, req.optString("ipa", ""), req.optString("language", ""),
-                    (float) req.optDouble("speed", 1.0));
+                return tts(bundleDir, req.optString("text", ""), req.optString("phonemes", ""),
+                    req.optString("language", ""), (float) req.optDouble("speed", 1.0));
             }
             if ("asr".equals(op)) {
                 return asr(bundleDir, req.optString("pcmBase64", ""),
@@ -760,9 +803,12 @@ final class ElizaBionicInferenceServer {
         lastInferenceAtMs = android.os.SystemClock.elapsedRealtime();
         if (residentCtx == 0L || !bundleDir.equals(residentBundle)) {
             resetResident();
-            residentCtx = ElizaVoiceNative.nativeContextCreate(bundleDir);
-            if (residentCtx == 0L) {
+            final long created = ElizaVoiceNative.nativeContextCreate(bundleDir);
+            if (created == 0L) {
                 throw new IllegalStateException("resident contextCreate failed: " + bundleDir);
+            }
+            synchronized (cancelLock) {
+                residentCtx = created;
             }
             residentBundle = bundleDir;
             residentActive = true;
@@ -781,9 +827,11 @@ final class ElizaBionicInferenceServer {
                 try { ElizaVoiceNative.nativeLlmStreamClose(residentStream); } catch (Throwable ignored) {}
                 residentStream = 0L;
             }
-            if (residentCtx != 0L) {
-                try { ElizaVoiceNative.nativeContextDestroy(residentCtx); } catch (Throwable ignored) {}
-                residentCtx = 0L;
+            synchronized (cancelLock) {
+                if (residentCtx != 0L) {
+                    try { ElizaVoiceNative.nativeContextDestroy(residentCtx); } catch (Throwable ignored) {}
+                    residentCtx = 0L;
+                }
             }
             if (includeEmbedding) embeddings.close();
             residentBundle = null;
@@ -886,56 +934,65 @@ final class ElizaBionicInferenceServer {
     }
 
     /**
-     * Synthesize precomputed {@code ipa} with the fused Kokoro-82M head and return base64
-     * fp32 PCM at the model's native rate. This is the on-device voice the
-     * Android app speaks with: TalkMode delegates here instead of falling back to
-     * the platform TextToSpeech (the HTTP /api/tts/local-inference path can't
-     * reach the fused lib from the musl agent, so it 502'd and the app spoke with
-     * the system voice). Resolves the Kokoro GGUF + voice preset from the bundle's
-     * {@code tts/kokoro/} dir.
+     * Speak English with Paradee-8M in the fused library and return base64
+     * little-endian fp32 PCM at the model rate (24 kHz). {@code text} goes
+     * through native misaki G2P; {@code phonemes} (misaki spelling) skips it.
+     * The model and lexicon load once per context from
+     * {@code <bundleDir>/tts/paradee/}; eSpeak NG data there is optional and
+     * only covers words outside the lexicon. A {@code tts_cancel} on another
+     * connection stops the pass and this returns {@code code:"CANCELLED"}.
      */
-    private String tts(String bundleDir, String ipa, String language, float speed) throws org.json.JSONException {
-        if (!"en-US".equals(language) || ipa.trim().isEmpty()) {
-            return errorJson("tts: requires en-US IPA from the bundled phonemizer");
+    private String tts(String bundleDir, String text, String phonemes, String language, float speed)
+            throws org.json.JSONException {
+        if (!"en-US".equals(language)) {
+            return errorJson("tts: Paradee speaks en-US only");
         }
-        // Reserve both pads within the pinned graph's 510-token input.
-        if (ipa.codePointCount(0, ipa.length()) > 508) {
-            return errorJson("tts: IPA exceeds Kokoro's 508-symbol phrase boundary");
+        final boolean usePhonemes = !phonemes.isEmpty();
+        final String input = usePhonemes ? phonemes : text;
+        if (input.trim().isEmpty()) {
+            return errorJson("tts: text or phonemes required");
         }
         if (!Float.isFinite(speed) || speed <= 0f) {
             return errorJson("tts: speed must be finite and positive");
         }
-        File kokoroDir = new File(bundleDir, "tts/kokoro");
-        String gguf = firstMatch(kokoroDir, ".gguf");
-        String voiceBin = firstMatch(kokoroDir, ".bin");
-        if (gguf == null || voiceBin == null) {
-            return errorJson("tts: Kokoro GGUF + voice .bin not found under " + kokoroDir);
+        File paradeeDir = new File(bundleDir, PARADEE_DIR);
+        File model = new File(paradeeDir, PARADEE_MODEL);
+        File lexicon = new File(paradeeDir, MISAKI_LEXICON);
+        if (!model.isFile() || !lexicon.isFile()) {
+            return errorJson("tts: " + PARADEE_MODEL + " and " + MISAKI_LEXICON + " not found under " + paradeeDir);
         }
-        // Reuse the ONE resident context (the 1.27 GB model is already loaded for
-        // generation/embeddings) instead of contextCreate/Destroy per call — a
-        // fresh context reloaded the whole model every utterance. Kokoro itself
-        // is loaded once and cached on the ctx (idempotent kokoro_load), so a
-        // multi-clause reply synthesizes each clause without any reload.
+        final String espeakDir = new File(paradeeDir, ESPEAK_DATA).isDirectory()
+            ? paradeeDir.getAbsolutePath() : null;
+        final byte[] utf8 = input.getBytes(StandardCharsets.UTF_8);
+        // One resident context serves generation, embeddings and speech.
         synchronized (residentLock) {
             final long ctx = ensureResidentCtx(bundleDir);
             try {
-                float[] pcm = ElizaVoiceNative.nativeKokoroSynthesizeIpa(
-                    ctx, gguf, voiceBin, ipa, speed);
-                int sampleRate = ElizaVoiceNative.nativeKokoroSampleRate(ctx);
-                // Pack fp32 PCM little-endian and base64 it for the JSON frame.
+                ElizaVoiceNative.nativeParadeeLoad(
+                    ctx, model.getAbsolutePath(), lexicon.getAbsolutePath(), espeakDir);
+                float[] pcm = usePhonemes
+                    ? ElizaVoiceNative.nativeParadeeSynthesizePhonemes(ctx, utf8, speed)
+                    : ElizaVoiceNative.nativeParadeeSynthesize(ctx, utf8, speed);
+                int sampleRate = ElizaVoiceNative.nativeParadeeSampleRate(ctx);
+                if (sampleRate <= 0) {
+                    throw new IllegalStateException("paradee sample rate unavailable: " + sampleRate);
+                }
                 ByteBuffer buf = ByteBuffer.allocate(pcm.length * 4).order(ByteOrder.LITTLE_ENDIAN);
                 for (float v : pcm) {
                     buf.putFloat(v);
                 }
                 String b64 = Base64.encodeToString(buf.array(), Base64.NO_WRAP);
-                Log.i(TAG, "TTS (kokoro IPA) from agent: " + ipa.length() + " chars -> "
-                    + pcm.length + " samples @ " + sampleRate + " Hz");
+                Log.i(TAG, "TTS (paradee, " + (usePhonemes ? "phonemes" : "text") + "): "
+                    + utf8.length + " bytes -> " + pcm.length + " samples @ " + sampleRate + " Hz");
                 return new JSONObject()
                     .put("ok", true)
                     .put("sampleRate", sampleRate)
                     .put("samples", pcm.length)
                     .put("pcmBase64", b64)
                     .toString();
+            } catch (CancellationException cancelled) {
+                Log.i(TAG, "TTS cancelled after " + utf8.length + " input bytes");
+                return cancelledJson("tts");
             } catch (Throwable t) {
                 // A failed synth may leave the shared ctx in an unknown state;
                 // drop it so the next generate/embed/tts rebuilds cleanly.
@@ -943,6 +1000,30 @@ final class ElizaBionicInferenceServer {
                 throw t;
             }
         }
+    }
+
+    /**
+     * Signal the running TTS or ASR pass on the resident context to stop. It
+     * does not wait for residentLock (the pass holds it), so it answers at
+     * once; the pass itself returns {@code code:"CANCELLED"}.
+     */
+    private String cancelVoice(boolean tts) throws org.json.JSONException {
+        synchronized (cancelLock) {
+            if (residentCtx == 0L) {
+                return new JSONObject().put("ok", true).put("signalled", false).toString();
+            }
+            if (tts) {
+                ElizaVoiceNative.nativeCancelTts(residentCtx);
+            } else {
+                ElizaVoiceNative.nativeAsrCancel(residentCtx);
+            }
+            return new JSONObject().put("ok", true).put("signalled", true).toString();
+        }
+    }
+
+    private static String cancelledJson(String op) throws org.json.JSONException {
+        return new JSONObject().put("ok", false).put("code", "CANCELLED")
+            .put("error", op + " cancelled").toString();
     }
 
     /**
@@ -979,6 +1060,9 @@ final class ElizaBionicInferenceServer {
                     .put("ok", true)
                     .put("text", text)
                     .toString();
+            } catch (CancellationException cancelled) {
+                Log.i(TAG, "ASR cancelled after " + n + " samples");
+                return cancelledJson("asr");
             } catch (Throwable t) {
                 // A failed transcribe may leave the shared ctx in an unknown state;
                 // drop it so the next generate/embed/tts/asr rebuilds cleanly.

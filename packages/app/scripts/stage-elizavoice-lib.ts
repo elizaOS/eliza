@@ -1,26 +1,44 @@
 #!/usr/bin/env node
 /**
- * Cross-builds the fused voice inference library for Android arm64-v8a and x86_64 with
- * the NDK and stages it into the app's jniLibs. The CPU variant statically
- * links ggml/llama/mtmd; the Vulkan variant stages their shared backends and
- * requires host shader tooling supplied by the documented ELIZA_* overrides.
+ * Cross-builds the fused inference library for Android arm64-v8a and x86_64
+ * with NDK 28.2 and stages it into the app's jniLibs (or --out). Speech is
+ * Paradee-8M TTS with native misaki G2P (eSpeak NG 1.52.0 as the
+ * out-of-lexicon fallback), ASR and VAD; no Kokoro voice ships. The
+ * CPU variant statically links ggml/llama/mtmd; the Vulkan variant stages
+ * their shared backends and requires host shader tooling supplied by the
+ * documented ELIZA_* overrides. Every library is 16 KiB page aligned.
+ *
+ *   node packages/app/scripts/stage-elizavoice-lib.ts --abi arm64-v8a|x86_64 \
+ *     [--variant cpu|vulkan] [--out <dir>] [--espeak-dir <dir>]
+ *
+ * --espeak-dir holds the eSpeak NG build (reused when it matches the pin in
+ * the fork's tools/misaki-g2p/pins.json): <abi>/include, <abi>/lib and the
+ * compiled English data in data/espeak-ng-data.
  */
 
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   closeSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   openSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
-  statSync,
+  writeFileSync,
 } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { androidArm64SimdCmakeFlags } from "./build-helpers/arm64-simd.ts";
-import { assertVulkanMaliMitigation } from "./build-helpers/verify-fused-symbols.ts";
+import {
+  assertAndroidVoiceLibrary,
+  assertVulkanMaliMitigation,
+} from "./build-helpers/verify-fused-symbols.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // scripts/ -> app -> packages -> eliza repo root
@@ -36,11 +54,14 @@ function die(msg) {
 }
 
 function parseArgs(argv) {
-  const out = { abi: "arm64-v8a", variant: "cpu", out: "" };
+  const out = { abi: "arm64-v8a", variant: "cpu", out: "", espeakDir: "" };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--abi") out.abi = argv[++i];
     else if (argv[i] === "--variant") out.variant = argv[++i];
     else if (argv[i] === "--out") out.out = path.resolve(argv[++i]);
+    else if (argv[i] === "--espeak-dir")
+      out.espeakDir = path.resolve(argv[++i]);
+    else die(`unknown argument ${argv[i]}`);
   }
   if (out.variant !== "cpu" && out.variant !== "vulkan") {
     die(`unsupported --variant ${out.variant} (cpu | vulkan)`);
@@ -117,22 +138,19 @@ function resolveSdk() {
   return sdk;
 }
 
+// The app and the paradee-voice library build their JNI bridge with this NDK
+// (build.gradle ndkVersion); the staged libc++_shared.so must come from it too.
+const DEFAULT_NDK_VERSION = "28.2.13676358";
+
 function resolveNdk(sdk) {
-  if (process.env.ELIZA_NDK_VERSION) {
-    const p = path.join(sdk, "ndk", process.env.ELIZA_NDK_VERSION);
-    if (!existsSync(p))
-      die(
-        `ELIZA_NDK_VERSION ${process.env.ELIZA_NDK_VERSION} not found under ${path.join(sdk, "ndk")}`,
-      );
-    return p;
+  const version = process.env.ELIZA_NDK_VERSION || DEFAULT_NDK_VERSION;
+  const p = path.join(sdk, "ndk", version);
+  if (!existsSync(p)) {
+    die(
+      `NDK ${version} not found under ${path.join(sdk, "ndk")} (set ELIZA_NDK_VERSION to override)`,
+    );
   }
-  const ndkRoot = path.join(sdk, "ndk");
-  if (!existsSync(ndkRoot)) die(`No NDK under ${ndkRoot}`);
-  const versions = readdirSync(ndkRoot)
-    .filter((d) => statSync(path.join(ndkRoot, d)).isDirectory())
-    .sort();
-  if (versions.length === 0) die(`No NDK versions under ${ndkRoot}`);
-  return path.join(ndkRoot, versions[versions.length - 1]);
+  return p;
 }
 
 function ndkTool(ndk, name) {
@@ -150,7 +168,148 @@ function run(cmd, args, opts = {}) {
   execFileSync(cmd, args, { stdio: "inherit", ...opts });
 }
 
-const { abi, variant, out: outDir } = parseArgs(process.argv.slice(2));
+function sha256File(file) {
+  return createHash("sha256").update(readFileSync(file)).digest("hex");
+}
+
+function espeakCmakeFlags() {
+  // Only the phonemizer is used: no audio output, sonic, MBROLA or synthesizers.
+  return [
+    "-G",
+    "Ninja",
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DBUILD_SHARED_LIBS=OFF",
+    "-DBUILD_TESTING=OFF",
+    "-DUSE_ASYNC=OFF",
+    "-DUSE_MBROLA=OFF",
+    "-DUSE_LIBPCAUDIO=OFF",
+    "-DPCAUDIO_LIB=PCAUDIO_LIB-NOTFOUND",
+    // Setting the sonic paths stops deps.cmake from cloning sonic at configure time.
+    "-DUSE_LIBSONIC=OFF",
+    "-DSONIC_LIB=UNUSED",
+    "-DSONIC_INC=UNUSED",
+  ];
+}
+
+/**
+ * Builds eSpeak NG at the fork's pinned version (tools/misaki-g2p/pins.json)
+ * into `dir`: the static phonemizer for `abi` under <abi>/{include,lib}
+ * (libespeak-ng.a with libucd folded in), the
+ * compiled English data under data/espeak-ng-data and the GPL notice as
+ * COPYING. misaki G2P uses it only for words outside its lexicon. A build
+ * that matches the pin is reused.
+ */
+async function ensureEspeakNg({ dir, abi, ndk, forkSrc }) {
+  const pins = JSON.parse(
+    readFileSync(path.join(forkSrc, "tools/misaki-g2p/pins.json"), "utf8"),
+  );
+  const pin = pins.espeak_ng;
+  if (!pin?.sha256 || !pin.url || !Array.isArray(pin.data)) {
+    die("fork tools/misaki-g2p/pins.json has no espeak_ng pin");
+  }
+  const stamp = path.join(dir, abi, "pin.sha256");
+  if (existsSync(stamp) && readFileSync(stamp, "utf8").trim() === pin.sha256) {
+    log(`eSpeak NG ${pin.version} for ${abi}: reusing ${path.join(dir, abi)}`);
+    return path.join(dir, abi);
+  }
+  const archive = path.join(
+    dir,
+    "downloads",
+    `espeak-ng-${pin.version}.tar.gz`,
+  );
+  if (!existsSync(archive) || sha256File(archive) !== pin.sha256) {
+    mkdirSync(path.dirname(archive), { recursive: true });
+    log(`fetch ${pin.url}`);
+    const response = await fetch(pin.url, { redirect: "follow" });
+    if (!response.ok) die(`${pin.url} returned HTTP ${response.status}`);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    if (bytes.length !== pin.bytes || digest !== pin.sha256) {
+      die(
+        `${pin.url} is ${bytes.length} bytes sha256 ${digest}; expected ${pin.bytes} ${pin.sha256}`,
+      );
+    }
+    writeFileSync(`${archive}.partial`, bytes);
+    renameSync(`${archive}.partial`, archive);
+  }
+  const source = path.join(dir, `espeak-ng-${pin.version}`);
+  if (!existsSync(path.join(source, "CMakeLists.txt"))) {
+    run("tar", ["-xzf", archive, "-C", dir]);
+  }
+
+  // The data compiler runs on the build host; the compiled data is ABI independent.
+  const dataOut = path.join(dir, "data", "espeak-ng-data");
+  if (!pin.data.every((relative) => existsSync(path.join(dataOut, relative)))) {
+    // The phoneme compiler truncates paths at 180 bytes, so build in a short
+    // temporary directory.
+    const hostBuild = mkdtempSync(path.join(os.tmpdir(), "espeak-host-"));
+    run("cmake", ["-S", source, "-B", hostBuild, ...espeakCmakeFlags()]);
+    run("ninja", [
+      "-C",
+      hostBuild,
+      "espeak-ng-data/intonations",
+      "espeak-ng-data/phondata",
+      "espeak-ng-data/en_dict",
+    ]);
+    for (const relative of pin.data) {
+      mkdirSync(path.dirname(path.join(dataOut, relative)), {
+        recursive: true,
+      });
+      copyFileSync(
+        path.join(hostBuild, "espeak-ng-data", relative),
+        path.join(dataOut, relative),
+      );
+    }
+    rmSync(hostBuild, { recursive: true, force: true });
+  }
+  copyFileSync(path.join(source, "COPYING"), path.join(dir, "COPYING"));
+
+  const build = path.join(dir, `build-${abi}`);
+  run("cmake", [
+    "-S",
+    source,
+    "-B",
+    build,
+    ...espeakCmakeFlags(),
+    `-DCMAKE_TOOLCHAIN_FILE=${path.join(ndk, "build/cmake/android.toolchain.cmake")}`,
+    `-DANDROID_ABI=${abi}`,
+    "-DANDROID_PLATFORM=android-26",
+    "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
+    "-DUSE_KLATT=OFF",
+    "-DUSE_SPEECHPLAYER=OFF",
+  ]);
+  run("ninja", ["-C", build, "espeak-ng"]);
+  const prefix = path.join(dir, abi);
+  mkdirSync(path.join(prefix, "include/espeak-ng"), { recursive: true });
+  mkdirSync(path.join(prefix, "lib"), { recursive: true });
+  for (const header of ["speak_lib.h", "espeak_ng.h", "encoding.h"]) {
+    copyFileSync(
+      path.join(source, "src/include/espeak-ng", header),
+      path.join(prefix, "include/espeak-ng", header),
+    );
+  }
+  // The static libespeak-ng.a needs libucd.a. Fold ucd into one archive so a
+  // consumer that links `espeak-ng` alone (find_library) resolves it.
+  const archiveOut = path.join(prefix, "lib/libespeak-ng.a");
+  rmSync(archiveOut, { force: true });
+  const ar = ndkTool(ndk, "llvm-ar");
+  run(ar, [
+    "qcL",
+    archiveOut,
+    path.join(build, "src/libespeak-ng/libespeak-ng.a"),
+  ]);
+  run(ar, ["qL", archiveOut, path.join(build, "src/ucd-tools/libucd.a")]);
+  run(ar, ["s", archiveOut]);
+  writeFileSync(stamp, `${pin.sha256}\n`);
+  return prefix;
+}
+
+const {
+  abi,
+  variant,
+  out: outDir,
+  espeakDir: espeakArg,
+} = parseArgs(process.argv.slice(2));
 const platform = ABI_TO_PLATFORM[abi];
 if (!platform) die(`unsupported abi ${abi} (arm64-v8a | x86_64)`);
 log(`variant: ${variant}`);
@@ -196,15 +355,25 @@ if (arm64SimdFlags.length > 0) {
 // before tools/omnivoice configures (the fork's top-level CMakeLists orders
 // the mtmd embed hook before omnivoice so `if(TARGET mtmd)` is satisfied).
 //
-// LLAMA_BUILD_KOKORO=ON folds kokoro_lib (Kokoro-82M TTS, ABI v10) into the
-// fused libelizainference.so. With LLAMA_BUILD_TOOLS=OFF the fork's root
-// CMakeLists embed-as-library hook (`LLAMA_BUILD_KOKORO AND NOT (COMMON AND
-// TOOLS)`) adds tools/kokoro BEFORE tools/omnivoice, so the `if(TARGET
-// kokoro_lib)` fold in tools/omnivoice/CMakeLists.txt resolves and
-// elizainference exports the eliza_inference_kokoro_* surface. This is the
-// device-proven path: on a real Pixel (arm64/bionic) the staged .so reports
-// eliza_inference_abi_version()=="10", kokoro_supported()==1, and synthesizes
-// PCM on-device with only libc/libm/libdl NEEDED.
+// Android speech is Paradee-8M (ABI v17): LLAMA_BUILD_PARADEE=ON and
+// LLAMA_BUILD_MISAKI_G2P=ON add paradee_lib and misaki_g2p before
+// tools/omnivoice, which folds both into elizainference (ELIZA_ENABLE_PARADEE).
+// Paradee runs on the tools/kokoro layers, so kokoro_lib is still compiled;
+// Android ships no Kokoro model, its JNI exposes no Kokoro natives, and
+// Kokoro's own eSpeak link is off. misaki links the pinned eSpeak NG
+// phonemizer (GPL-3.0-or-later) as its out-of-lexicon fallback; the
+// MISAKI_ESPEAK_* cache entries name it directly because the NDK toolchain
+// confines find_library to the sysroot. assertAndroidVoiceLibrary below reads
+// paradee_supported() and asr_supported() from the built code and requires
+// both to return 1.
+const espeakPrefix = await ensureEspeakNg({
+  dir:
+    espeakArg ||
+    path.join(repoRoot, ".cache", "elizavoice-android", "espeak-ng"),
+  abi,
+  ndk,
+  forkSrc,
+});
 const baseConfigure = [
   "-S",
   forkSrc,
@@ -221,8 +390,16 @@ const baseConfigure = [
   "-DGGML_NATIVE=OFF",
   "-DGGML_OPENMP=OFF",
   ...arm64SimdFlags,
+  // 16 KiB page alignment for Android 15+ devices.
+  "-DCMAKE_SHARED_LINKER_FLAGS=-Wl,-z,max-page-size=16384",
   "-DLLAMA_BUILD_OMNIVOICE=ON",
   "-DLLAMA_BUILD_KOKORO=ON",
+  "-DKOKORO_ENABLE_ESPEAK=OFF",
+  "-DLLAMA_BUILD_PARADEE=ON",
+  "-DLLAMA_BUILD_MISAKI_G2P=ON",
+  "-DMISAKI_G2P_ESPEAK=ON",
+  `-DMISAKI_ESPEAK_INCLUDE_DIR=${path.join(espeakPrefix, "include")}`,
+  `-DMISAKI_ESPEAK_LIBRARY=${path.join(espeakPrefix, "lib", "libespeak-ng.a")}`,
   "-DLLAMA_BUILD_COMMON=ON",
   "-DLLAMA_BUILD_EXAMPLES=OFF",
   "-DLLAMA_BUILD_TESTS=OFF",
@@ -265,12 +442,7 @@ if (variant === "cpu") {
   ]);
 }
 
-let jobs = 4;
-try {
-  jobs = parseInt(execFileSync("nproc", { encoding: "utf8" }).trim(), 10) || 4;
-} catch {
-  jobs = 4;
-}
+const jobs = os.availableParallelism();
 run("cmake", [
   "--build",
   buildDir,
@@ -285,7 +457,31 @@ const builtSo = path.join(binDir, "libelizainference.so");
 if (!existsSync(builtSo)) die(`build did not produce ${builtSo}`);
 
 const strip = ndkTool(ndk, "llvm-strip");
-// --out stages into another consumer, such as the kokoro-voice library.
+// Gate the built library before staging: ABI >= 17, Paradee and ASR probes
+// return 1, 16 KiB LOAD alignment. It cannot run on this host, so the probe
+// values are read from its machine code.
+const voiceReport = assertAndroidVoiceLibrary({
+  lib: builtSo,
+  objdump: ndkTool(ndk, "llvm-objdump"),
+  nm: ndkTool(ndk, "llvm-nm"),
+});
+// The eSpeak fallback is static and hidden; the unstripped symbol table shows
+// whether misaki linked it.
+const builtSymbols = execFileSync(ndkTool(ndk, "llvm-nm"), [builtSo], {
+  encoding: "utf8",
+  maxBuffer: 256 * 1024 * 1024,
+});
+if (!/\bespeak_TextToPhonemes\b/.test(builtSymbols)) {
+  die(
+    `${builtSo} does not link eSpeak NG; misaki would spell out words outside its lexicon`,
+  );
+}
+log(
+  `voice ABI ${voiceReport.abiVersion}: ${Object.entries(voiceReport.probes)
+    .map(([probe, value]) => `${probe}()=${value}`)
+    .join(", ")}, LOAD align ${voiceReport.loadAlignment}`,
+);
+// --out stages into another consumer, such as the paradee-voice library.
 const jniDir =
   outDir ||
   path.join(

@@ -1,6 +1,7 @@
 package ai.elizaos.app;
 
 import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
@@ -47,6 +48,35 @@ public class ElizaVoicePcmInstrumentedTest {
             assertTrue(error.getMessage().contains("complete 1280-sample frames"));
         }
     }
+    @Test
+    public void bridgeRegistersParadeeAndAsrOnAbi17() {
+        assertTrue(ElizaVoiceNative.ensureLoaded());
+        assertTrue(Integer.parseInt(ElizaVoiceNative.nativeVoiceAbiVersion()) >= 17);
+        assertEquals(1, ElizaVoiceNative.nativeParadeeSupported());
+        assertEquals(1, ElizaVoiceNative.nativeAsrSupported());
+    }
+
+    @Test
+    public void voiceNativesRejectAMissingContextBeforeNativeWork() {
+        assertTrue(ElizaVoiceNative.ensureLoaded());
+        byte[] text = "Hello.".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        java.util.List<org.junit.function.ThrowingRunnable> calls = java.util.List.of(
+            () -> ElizaVoiceNative.nativeParadeeLoad(0, "a.gguf", "b.lex", null),
+            () -> ElizaVoiceNative.nativeParadeePhonemize(0, text),
+            () -> ElizaVoiceNative.nativeParadeeSynthesize(0, text, 1f),
+            () -> ElizaVoiceNative.nativeParadeeSynthesizePhonemes(0, text, 1f),
+            () -> ElizaVoiceNative.nativeCancelTts(0),
+            () -> ElizaVoiceNative.nativeAsrTranscribe(0, new float[16000], 16000),
+            () -> ElizaVoiceNative.nativeAsrCancel(0),
+            () -> ElizaVoiceNative.nativeMmapEvict(0, "tts"));
+        for (org.junit.function.ThrowingRunnable call : calls) {
+            RuntimeException error = assertThrows(RuntimeException.class, call);
+            assertTrue(error.getMessage(), error.getMessage().contains("rc=-2"));
+        }
+        assertTrue(ElizaVoiceNative.nativeParadeeSampleRate(0) < 0);
+        assertTrue(ElizaVoiceNative.nativeParadeeG2pKind(0) < 0);
+    }
+
     @Test
     public void wakewordDiagnosticsRejectEmptyOrIncompleteClipsBeforeLoadingModels() {
         assertTrue(ElizaVoiceNative.ensureLoaded());
