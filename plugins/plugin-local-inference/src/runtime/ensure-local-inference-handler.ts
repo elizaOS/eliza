@@ -32,6 +32,7 @@ import {
 	type GenerateTextParams,
 	getInferencePriorityGate,
 	getInferenceTimer,
+	getTrajectoryContext,
 	type IAgentRuntime,
 	type ImageDescriptionParams,
 	type ImageDescriptionResult,
@@ -95,6 +96,11 @@ import {
 	encodeMonoPcm16Wav,
 	type TranscriptionAudio,
 } from "../services/voice";
+import { transcribeViaBionicHost } from "../services/voice/bionic-transcription";
+import {
+	hasLiveVoiceTurnAwaitingToken,
+	noteLlmFirstToken,
+} from "../services/voice/live-voice-latency";
 import { extractRequestedKokoroVoiceId } from "../services/voice/requested-voice.js";
 import {
 	createVerifiedBgeContext,
@@ -536,6 +542,31 @@ function engineGenerateArgsFromParams(
 	};
 }
 
+/**
+ * End-of-turn latency (live voice): when a live voice turn waits for its
+ * reply, the first streamed chunk of the next interactive generation marks
+ * `llm-first-token` on it (`live-voice-latency.ts`). Only the instant is
+ * recorded; the chunk text is not read.
+ */
+function instrumentVoiceFirstToken(
+	engineArgs: { onTextChunk?: (chunk: string) => void | Promise<void> },
+	priority: GenerateTextParams["priority"],
+): void {
+	const inner = engineArgs.onTextChunk;
+	if (!inner || priority === "background" || !hasLiveVoiceTurnAwaitingToken()) {
+		return;
+	}
+	const roomId = getTrajectoryContext()?.roomId ?? null;
+	let seen = false;
+	engineArgs.onTextChunk = (chunk: string) => {
+		if (!seen && chunk.length > 0) {
+			seen = true;
+			noteLlmFirstToken(roomId);
+		}
+		return inner(chunk);
+	};
+}
+
 function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
 	return async (runtime, params) => {
 		const loader = getLoader(runtime);
@@ -557,6 +588,7 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
 			extractPromptCacheKey(providerOptions) ??
 			undefined;
 		const engineArgs = engineGenerateArgsFromParams(params, cacheKey);
+		instrumentVoiceFirstToken(engineArgs, params.priority);
 
 		// Prefer a runtime-registered loader that implements `generate` — that's
 		// the mobile / device-bridge path (bionic host / AOSP adapter / device
@@ -1430,6 +1462,36 @@ function makeBionicTranscriptionHandler(): TranscriptionHandler {
 		}
 		const audio = extractTranscriptionAudio(params);
 		throwIfAborted(signal);
+		// Stream on the host's Phonon-2 decoder when it reports one; batch
+		// op="asr" only when it answers that its backend cannot stream.
+		if (
+			typeof loader.asrStreamSupported === "function" &&
+			typeof loader.createStreamingTranscriber === "function"
+		) {
+			const streamSink =
+				params && typeof params === "object"
+					? (
+							params as {
+								onStreamChunk?: (chunk: string) => void | Promise<void>;
+							}
+						).onStreamChunk
+					: undefined;
+			const { text } = await transcribeViaBionicHost(loader, {
+				pcm: audio.pcm,
+				sampleRate: audio.sampleRate,
+				signal,
+				toBase64: float32ToBase64LE,
+				...(typeof streamSink === "function"
+					? {
+							onPartial: (delta: string) => {
+								void streamSink(delta);
+							},
+						}
+					: {}),
+			});
+			throwIfAborted(signal);
+			return text;
+		}
 		const transcript = await loader.transcribe({
 			pcmBase64: float32ToBase64LE(audio.pcm),
 			sampleRate: audio.sampleRate,

@@ -23,6 +23,7 @@ import {
 	readCompatJsonBody,
 	sendJson,
 } from "./compat-helpers";
+import { handleLiveAsrRoute, LIVE_ASR_PATH } from "./local-inference-asr-live";
 import { transcribeWavWithWords } from "./local-inference-asr-transcribe";
 
 const MAX_LOCAL_ASR_AUDIO_BYTES = 16 * 1024 * 1024;
@@ -105,6 +106,9 @@ export async function handleLocalInferenceAsrRoute(
 ): Promise<boolean> {
 	const method = req.method?.toUpperCase() ?? "GET";
 	const url = new URL(req.url ?? "/", "http://localhost");
+	if (url.pathname.startsWith(LIVE_ASR_PATH)) {
+		return handleLiveAsrRoute(req, res, state);
+	}
 	if (method === "GET" && url.pathname === "/api/asr/local-inference/status") {
 		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		// Transcription runs through the registered TRANSCRIPTION model handler,

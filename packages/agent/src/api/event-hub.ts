@@ -39,6 +39,36 @@ export interface ApiEventHub {
   sendToConversation(conversationId: string, payload: unknown): number;
 }
 
+/**
+ * Agent-event streams that are delivered live and never buffered: they skip
+ * the replay buffer (and so diagnostics and reconnect replay) and are not
+ * routed into conversations. `voice-transcript` carries interim ASR text
+ * (`@elizaos/plugin-local-inference` live-transcript-events), which must not
+ * outlive the moment.
+ */
+export const EPHEMERAL_AGENT_EVENT_STREAMS: ReadonlySet<string> = new Set([
+  "voice-transcript",
+]);
+
+let ephemeralEventCounter = 0;
+
+/**
+ * Envelope for an ephemeral agent event. Same shape as a buffered
+ * `agent_event`, with `ephemeral: true` and an `eph-<n>` id that is not a
+ * replay cursor (no `bufferSeq`).
+ */
+export function buildEphemeralAgentEventEnvelope(
+  event: Omit<StreamEventEnvelope, "eventId" | "version" | "bufferSeq">,
+): StreamEventEnvelope & { ephemeral: true } {
+  ephemeralEventCounter += 1;
+  return {
+    ...event,
+    eventId: `eph-${ephemeralEventCounter}`,
+    version: 1,
+    ephemeral: true,
+  };
+}
+
 /** Queued bytes above which a peer's grace period starts counting down. */
 export const EVENT_SOCKET_BACKPRESSURE_SOFT_LIMIT_BYTES = 4 * 1024 * 1024;
 /** Queued bytes above which a peer is terminated on sight. */

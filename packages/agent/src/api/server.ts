@@ -178,9 +178,11 @@ import {
 } from "./device-action-routes.ts";
 import { flushEarlyLogs, listenForUiLogs } from "./early-logs.ts";
 import {
+  buildEphemeralAgentEventEnvelope,
   createApiEventHub,
   createEventSocketBackpressureGuard,
   createEventSocketLivenessSweep,
+  EPHEMERAL_AGENT_EVENT_STREAMS,
 } from "./event-hub.ts";
 import {
   type ApiStatusComposer,
@@ -3929,6 +3931,24 @@ export async function startApiServer(opts?: {
       return;
     }
     const unsubAgentEvents = svc.subscribe((event) => {
+      if (EPHEMERAL_AGENT_EVENT_STREAMS.has(event.stream)) {
+        // Live-only (e.g. interim voice transcripts): no replay buffer, no
+        // conversation routing.
+        broadcastWs(
+          buildEphemeralAgentEventEnvelope({
+            type: "agent_event",
+            ts: event.ts,
+            runId: event.runId,
+            seq: event.seq,
+            stream: event.stream,
+            sessionKey: event.sessionKey,
+            agentId: event.agentId,
+            roomId: event.roomId,
+            payload: event.data,
+          }),
+        );
+        return;
+      }
       pushEvent({
         type: "agent_event",
         ts: event.ts,
