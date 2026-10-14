@@ -355,7 +355,7 @@
   ],
   "dependencies": {
     "@electric-sql/pglite": "^0.4.5",
-    "@electric-sql/pglite-socket": "0.1.6",
+    "@electric-sql/pglite-socket": "0.2.11",
     "@openai/codex": "^0.133.0",
     "@radix-ui/react-checkbox": "^1.3.3",
     "@radix-ui/react-dialog": "^1.1.15",
