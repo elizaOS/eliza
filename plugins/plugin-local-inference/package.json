@@ -48,6 +48,18 @@
 			"import": "./dist/services/index.js",
 			"default": "./dist/services/index.js"
 		},
+		"./host-asr-worker": {
+			"eliza-source": "./src/host-asr-worker.ts",
+			"types": "./src/host-asr-worker.ts",
+			"import": "./dist/host-asr-worker.js",
+			"default": "./dist/host-asr-worker.js"
+		},
+		"./host-tts-worker": {
+			"eliza-source": "./src/host-tts-worker.ts",
+			"types": "./src/host-tts-worker.ts",
+			"import": "./dist/host-tts-worker.js",
+			"default": "./dist/host-tts-worker.js"
+		},
 		"./voice-workbench": {
 			"eliza-source": "./src/voice-workbench.ts",
 			"types": "./src/voice-workbench.ts",

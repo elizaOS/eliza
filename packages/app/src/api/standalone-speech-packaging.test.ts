@@ -1,7 +1,6 @@
 /**
- * The standalone Kokoro host loads two modules from
- * @elizaos/plugin-local-inference at runtime: the speech worker it spawns and
- * the TTS route module it imports. A packaged build has only the plugin's
+ * The standalone speech host loads modules from @elizaos/plugin-local-inference
+ * at runtime: the speech workers it spawns and the TTS route module it imports. A packaged build has only the plugin's
  * `dist`, so each subpath it uses must be an explicit package export or one of
  * the plugin's build entrypoints; a source-only path breaks speech there.
  */
@@ -30,19 +29,20 @@ function usedSubpaths(file: string): string[] {
   ].map((match) => match[1]);
 }
 
-describe("standalone Kokoro packaging", () => {
-  it.each(["./standalone-kokoro-service.ts", "./standalone-kokoro-routes.ts"])(
-    "%s loads only subpaths a packaged plugin ships",
-    (file) => {
-      const subpaths = usedSubpaths(file);
-      expect(subpaths.length).toBeGreaterThan(0);
-      const unshipped = subpaths.filter(
-        (subpath) =>
-          !(`./${subpath}` in exportsMap) &&
-          !buildEntrypoints.has(subpath) &&
-          !buildEntrypoints.has(`${subpath}/index`),
-      );
-      expect(unshipped).toEqual([]);
-    },
-  );
+describe("standalone speech packaging", () => {
+  it.each([
+    "./standalone-speech-service.ts",
+    "./standalone-asr-service.ts",
+    "./standalone-speech-routes.ts",
+  ])("%s loads only subpaths a packaged plugin ships", (file) => {
+    const subpaths = usedSubpaths(file);
+    expect(subpaths.length).toBeGreaterThan(0);
+    const unshipped = subpaths.filter(
+      (subpath) =>
+        !(`./${subpath}` in exportsMap) &&
+        !buildEntrypoints.has(subpath) &&
+        !buildEntrypoints.has(`${subpath}/index`),
+    );
+    expect(unshipped).toEqual([]);
+  });
 });

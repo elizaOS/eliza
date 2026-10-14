@@ -481,7 +481,7 @@ export class StewardSidecar {
     // instead of requiring built `dist` files. A packaged build resolves the
     // bundled `.js` entry, which must resolve its external dependencies from
     // their built `dist` files, so the condition is not passed there.
-    // (Matches packages/app/src/api/standalone-kokoro-service.ts.)
+    // (Matches packages/app/src/api/standalone-speech-service.ts.)
     const sourceConditions = entryPoint.endsWith(".ts")
       ? ["--conditions=eliza-source"]
       : [];

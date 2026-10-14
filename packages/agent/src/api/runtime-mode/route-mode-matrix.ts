@@ -191,18 +191,32 @@ export const ROUTE_MODE_MATRIX: ReadonlyArray<RouteModeRule> = [
   },
 
   {
-    path: "/api/tts/kokoro",
+    path: "/api/tts/paradee",
     method: "POST",
     modes: ["local", "local-only"],
     owner: null,
     reason: "explicit standalone host speech output",
   },
   {
-    path: "/api/tts/kokoro/status",
+    path: "/api/tts/paradee/status",
     method: "GET",
     modes: ["local", "local-only"],
     owner: null,
     reason: "explicit standalone host speech readiness",
+  },
+  {
+    path: "/api/asr/libelizainference",
+    method: "POST",
+    modes: ["local", "local-only"],
+    owner: null,
+    reason: "explicit standalone host speech input",
+  },
+  {
+    path: "/api/asr/libelizainference/status",
+    method: "GET",
+    modes: ["local", "local-only"],
+    owner: null,
+    reason: "explicit standalone host speech input readiness",
   },
   {
     path: "/api/asr/whisper",

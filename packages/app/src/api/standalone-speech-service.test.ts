@@ -16,9 +16,10 @@ import {
 import { testOutputPath } from "../../../scripts/lib/test-output";
 import { resolveBunExecutable } from "../../../scripts/lib/vitest-batches";
 import {
-  StandaloneKokoroService,
+  SPEECH_CANCEL_GRACE_MS,
+  StandaloneTtsService,
   speechWorkerArgs,
-} from "./standalone-kokoro-service";
+} from "./standalone-speech-service";
 
 class Worker extends EventEmitter {
   stdin = new PassThrough();
@@ -38,12 +39,12 @@ vi.mock("node:child_process", () => ({
   },
 }));
 
-describe("standalone Kokoro cold initialization", () => {
-  let service: StandaloneKokoroService;
+describe("standalone speech cold initialization", () => {
+  let service: StandaloneTtsService;
   beforeEach(() => {
     vi.useFakeTimers();
     workers.length = 0;
-    service = new StandaloneKokoroService();
+    service = new StandaloneTtsService();
   });
   afterEach(() => {
     service.stop();
@@ -129,7 +130,7 @@ describe("standalone Kokoro cold initialization", () => {
   });
 });
 
-describe("standalone Kokoro worker command", () => {
+describe("standalone speech worker command", () => {
   it("passes the source condition only to a source worker", () => {
     expect(speechWorkerArgs("/repo/plugins/x/src/host-tts-worker.ts")).toEqual([
       "--no-install",
@@ -159,8 +160,8 @@ else if (mode === 'slow') {
  await new Promise(resolve => setTimeout(resolve, 61000));
  writeSync(3, '{"ready":true}\\n');
  for await (const line of createInterface({input:process.stdin})) {
-  const {id, text} = JSON.parse(line);
-  if (text !== 'Complete reviewed speech') throw Error('Speech source changed');
+  const {id, op, text} = JSON.parse(line);
+  if (op !== 'synthesize' || text !== 'Complete reviewed speech') throw Error('Speech source changed');
   const audio = Buffer.alloc(52);
   audio.write('RIFF'); audio.writeUInt32LE(44, 4); audio.write('WAVE', 8);
   audio.write('fmt ', 12); audio.writeUInt32LE(16, 16);
@@ -172,6 +173,21 @@ else if (mode === 'slow') {
   writeSync(3, JSON.stringify({id, audio:audio.toString('base64')})+'\\n');
  }
 }
+else if (mode === 'cancel-native' || mode === 'cancel-ignored') {
+ // Ready at once, then hold the synthesis until a native cancel arrives.
+ writeSync(3, '{"ready":true}\\n');
+ let inflight;
+ for await (const line of createInterface({input:process.stdin})) {
+  const {id, op, text} = JSON.parse(line);
+  if (op === 'cancel') {
+   if (id !== inflight) throw Error('Cancel for another request');
+   if (mode === 'cancel-native') writeSync(3, JSON.stringify({id, error:'cancelled'})+'\\n');
+   continue;
+  }
+  if (op !== 'synthesize' || text !== 'Complete reviewed speech') throw Error('Speech source changed');
+  inflight = id;
+ }
+}
 setInterval(() => {}, 1000);
 `;
 
@@ -179,10 +195,10 @@ const harness = `
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { once } from 'node:events';
-import { StandaloneKokoroService } from './service.ts';
+import { StandaloneTtsService } from './service.ts';
 const mode = process.argv[2];
 process.env.LANG = mode;
-const service = new StandaloneKokoroService();
+const service = new StandaloneTtsService();
 let child;
 process.once('SIGTERM', async () => {
  const owned = service.child;
@@ -216,6 +232,32 @@ try {
   assert.equal(await outcome, true);
   await closed;
   await new Promise(resolve => server.close(resolve));
+ } else if (mode === 'cancel-native' || mode === 'cancel-ignored') {
+  await service.initialize();
+  child = service.child;
+  const closed = once(child, 'close');
+  const controller = new AbortController();
+  const synthesis = service.synthesize('00000000-0000-4000-8000-000000000001', 'Complete reviewed speech', controller.signal);
+  await new Promise(resolve => setTimeout(resolve, 100));
+  const start = Date.now();
+  controller.abort();
+  // The caller is released at once in both cases.
+  await assert.rejects(synthesis, {message:'Speech cancelled'});
+  assert.ok(Date.now()-start < 1000);
+  if (mode === 'cancel-native') {
+   // The worker answered the native cancel: it stays loaded and idle.
+   while (service.busy) await new Promise(resolve => setTimeout(resolve, 10));
+   assert.equal(service.initialized, true);
+   assert.equal(child.exitCode, null);
+   assert.equal(child.signalCode, null);
+   service.stop();
+  } else {
+   // The worker ignored the cancel: it is killed after the grace period.
+   assert.equal(service.busy, true);
+   await closed;
+   assert.ok(Date.now()-start >= ${SPEECH_CANCEL_GRACE_MS});
+  }
+  await closed;
  } else {
   const start = Date.now();
   const boot = service.initialize();
@@ -241,9 +283,16 @@ try {
 } finally { service.stop(); }
 `;
 
-for (const mode of ["slow", "pipe-end", "malformed", "cancel-http"]) {
+for (const mode of [
+  "slow",
+  "pipe-end",
+  "malformed",
+  "cancel-http",
+  "cancel-native",
+  "cancel-ignored",
+]) {
   test(`controlled worker process: ${mode}`, async () => {
-    const output = testOutputPath("standalone-kokoro-lifecycle", "fixtures");
+    const output = testOutputPath("standalone-speech-lifecycle", "fixtures");
     await mkdir(output, { recursive: true });
     const root = await mkdtemp(path.join(output, "worker-"));
     try {
@@ -265,7 +314,7 @@ for (const mode of ["slow", "pipe-end", "malformed", "cancel-http"]) {
         path.join(root, "service.ts"),
         await readFile(
           fileURLToPath(
-            new URL("./standalone-kokoro-service.ts", import.meta.url),
+            new URL("./standalone-speech-service.ts", import.meta.url),
           ),
         ),
       );

@@ -100,11 +100,11 @@ import { enforceCompatRouteAuthPolicy } from "./route-auth-policy";
 import { handleRuntimeModeRoute } from "./runtime-mode-routes";
 import { createSelfHostedVoice } from "./self-hosted-voice";
 import {
-  closeStandaloneKokoro,
-  handleStandaloneKokoroRoute,
-  stopStandaloneKokoro,
-  warmStandaloneKokoro,
-} from "./standalone-kokoro-routes";
+  closeStandaloneSpeech,
+  handleStandaloneSpeechRoute,
+  stopStandaloneSpeech,
+  warmStandaloneSpeech,
+} from "./standalone-speech-routes";
 import { handleStandaloneWhisperRoute } from "./standalone-whisper-routes";
 
 export {
@@ -689,9 +689,9 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
     // (app must not statically import plugin packages). This replaces the
     // former inline hardwired block that enumerated the four plugin handlers
     // directly in the dispatcher body (#12089 item 5).
-    id: "standalone-kokoro",
+    id: "standalone-speech",
     handler: ({ req, res, state }) =>
-      handleStandaloneKokoroRoute(req, res, state),
+      handleStandaloneSpeechRoute(req, res, state),
   },
   {
     id: "standalone-whisper",
@@ -1072,12 +1072,12 @@ export async function startApiServer(
       ),
     onRuntimeActivated: async (previousRuntime, activeRuntime) => {
       if (compatState.current !== activeRuntime) {
-        stopStandaloneKokoro(compatState);
+        stopStandaloneSpeech(compatState);
         voiceHost.reset();
       }
       compatState.current = activeRuntime;
       compatState.stoppedAuthRuntime = null;
-      if (speechHostStarted) warmStandaloneKokoro(compatState);
+      if (speechHostStarted) warmStandaloneSpeech(compatState);
       clearCompatRuntimeRestart(compatState);
       await callerOptions?.onRuntimeActivated?.(previousRuntime, activeRuntime);
     },
@@ -1085,7 +1085,7 @@ export async function startApiServer(
       ? {
           onStop: async (runtime: AgentRuntime) => {
             if (compatState.current === runtime) {
-              stopStandaloneKokoro(compatState);
+              stopStandaloneSpeech(compatState);
               voiceHost.reset();
               compatState.current = null;
             }
@@ -1093,7 +1093,7 @@ export async function startApiServer(
               await callerStop(runtime);
             } finally {
               if (compatState.current === runtime) {
-                stopStandaloneKokoro(compatState);
+                stopStandaloneSpeech(compatState);
                 voiceHost.reset();
                 compatState.current = null;
               }
@@ -1250,7 +1250,7 @@ export async function startApiServer(
   compatState.reloadConfigFromDisk = server.reloadConfigFromDisk;
 
   speechHostStarted = true;
-  warmStandaloneKokoro(compatState);
+  warmStandaloneSpeech(compatState);
 
   const originalUpdateRuntime = server.updateRuntime as (
     runtime: AgentRuntime,
@@ -1258,7 +1258,7 @@ export async function startApiServer(
 
   server.updateRuntime = (runtime: AgentRuntime) => {
     if (compatState.current !== runtime) {
-      stopStandaloneKokoro(compatState);
+      stopStandaloneSpeech(compatState);
       voiceHost.reset();
     }
     compatState.current = runtime;
@@ -1266,7 +1266,7 @@ export async function startApiServer(
     // Make the runtime immediately visible to upstream routes so hot swaps do
     // not briefly return 503s while compat setup finishes in the background.
     originalUpdateRuntime(runtime);
-    warmStandaloneKokoro(compatState);
+    warmStandaloneSpeech(compatState);
 
     // Continue repairing SQL compatibility asynchronously without blocking
     // the runtime from becoming available to unrelated routes.
@@ -1291,7 +1291,7 @@ export async function startApiServer(
   const originalClose = server.close.bind(server);
   server.close = async () => {
     compatState.stoppedAuthRuntime = null;
-    closeStandaloneKokoro(compatState);
+    closeStandaloneSpeech(compatState);
     voiceHost.close();
     await originalClose();
   };

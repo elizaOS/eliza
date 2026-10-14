@@ -205,7 +205,7 @@
     "test:host": "node ../scripts/run-vitest.ts run --config vitest.host.config.ts && bun run test:script-suites",
     "typecheck:renderer": "tsc --noEmit -p tsconfig.typecheck.json",
     "typecheck:host": "tsc --noEmit -p tsconfig.host.json",
-    "test:tts:standalone": "bun --no-install --conditions=eliza-source scripts/qualify-standalone-kokoro.ts",
+    "test:speech:standalone": "bun --no-install --conditions=eliza-source scripts/qualify-standalone-speech.ts",
     "build:consumer-tasks": "node scripts/build-consumer-task-runtime.mjs",
     "typecheck:consumer-build": "tsc --noEmit -p scripts/tsconfig.consumer-build.json",
     "test:consumer-host": "node --test test/native-host/*.test.mjs scripts/mobile/android/build-consumer.test.mjs"
