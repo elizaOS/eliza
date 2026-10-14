@@ -928,11 +928,13 @@ export async function executeTriggerTask(
     workflowGone &&
     triggerToPersist.kind === "workflow" &&
     triggerToPersist.workflowId === dispatchedWorkflowId;
+  // "Run now" on a one-time trigger is an extra run: the scheduled one stays.
   const shouldDeleteTask =
     workflowStillGone ||
-    updatedTrigger.triggerType === "once" ||
+    (updatedTrigger.triggerType === "once" && options.source !== "manual") ||
     (typeof updatedTrigger.maxRuns === "number" &&
       updatedTrigger.maxRuns > 0 &&
+      options.source !== "manual" &&
       updatedTrigger.runCount >= updatedTrigger.maxRuns);
 
   const existingMetadata = taskMetadata(taskToPersist);
