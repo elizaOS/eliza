@@ -13,6 +13,7 @@ import {
   isRemoteCommandAction,
   isRemoteControllerPublicIdentity,
   isSignedRemoteCommand,
+  REMOTE_COMMAND_CLOCK_SKEW_MS,
   REMOTE_COMMAND_MAX_TTL_MS,
   REMOTE_CONTROL_PROTOCOL_VERSION,
   type RemoteCommandBody,
@@ -490,7 +491,16 @@ export async function desktopCreateRemoteCommand(
         canonicalizeRemoteControlValue({ action: record.action, payload }),
       )
       .digest("base64url");
-    if (previous?.bindingDigest === bindingDigest && previous.pending) {
+    // Only recover a pending command that the remote can still execute.
+    // An expired pending is in a protocol-defined terminal state: the remote
+    // rejects it ("expired"), so it can never run and the session would be
+    // bricked by returning it again. Fall through to issue a fresh command.
+    // Unexpired pendings keep the idempotent recovery behavior (no reissue).
+    if (
+      previous?.bindingDigest === bindingDigest &&
+      previous.pending &&
+      previous.pending.expiresAt >= Date.now() - REMOTE_COMMAND_CLOCK_SKEW_MS
+    ) {
       return {
         commandId: previous.pending.commandId,
         expiresAt: previous.pending.expiresAt,
