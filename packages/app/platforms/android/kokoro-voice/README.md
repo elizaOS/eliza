@@ -9,8 +9,8 @@ KokoroVoice voice = KokoroAssets.install(context).open(); // worker thread
 KokoroVoice.Audio audio = voice.synthesize("Hello.", 1.0f);
 ```
 
-For transcription, `ai.eliza.speech.LocalTranscriber` in `../local-speech` uses
-the Android on-device recognizer when one is available, else Whisper tiny.en.
+This module has no transcriber. The ONNX `local-speech` module (Whisper tiny.en)
+was removed; on-device ASR runs on `libelizainference`.
 
 ## Build
 
@@ -43,9 +43,10 @@ Kokoro makes near-silent audio (Whisper word error rate 1.03 on device).
 ## Qualify on a device
 
 `packages/app/scripts/kokoro-voice/qualify` speaks 25 sentences, transcribes
-them with Whisper tiny.en on the device, and reports word error rate and
-real-time factor. `localSpeechModule` is a local-speech consumer module made
-with `packages/app/scripts/local-speech` (`install-generated --module`).
+them on the device, and reports word error rate and real-time factor. It still
+takes `-PlocalSpeechModule`, a Whisper tiny.en ONNX module that this repository
+no longer builds (`packages/app/scripts/local-speech` was removed), so it only
+runs with an out-of-tree copy of that module until it moves to the native ASR.
 
 ```sh
 packages/app/platforms/android/gradlew -p packages/app/scripts/kokoro-voice/qualify \
