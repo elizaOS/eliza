@@ -47,6 +47,8 @@ and applies `consumer.gradle`. Optional properties: `elizaParadeeNativeDir`,
 `native/build-record.json`.
 
 Store the model uncompressed in the APK (`androidResources { noCompress 'gguf', 'lex' }`).
+A host made by `scripts/mobile/android/consumer-host.mjs` sets this in its profile:
+`"androidResources": { "noCompress": ["gguf", "lex"] }`.
 
 ## Licenses
 

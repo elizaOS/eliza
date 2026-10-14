@@ -286,6 +286,14 @@ export function generateAndroidConsumerHost({
       "Android dependency requires a fixed coordinate",
     );
   }
+  // Asset extensions the APK stores without compression, for example models
+  // that the app copies or maps from the APK (paradee-voice: gguf and lex).
+  const noCompress = profile.androidResources?.noCompress ?? [];
+  requireValue(
+    Array.isArray(noCompress) &&
+      noCompress.every((extension) => /^[a-z0-9]+$/.test(extension)),
+    "Uncompressed asset extensions must be plain names",
+  );
   const manifestPlaceholders = profile.manifestPlaceholders ?? {};
   requireValue(
     Object.entries(manifestPlaceholders).every(
@@ -317,6 +325,7 @@ export function generateAndroidConsumerHost({
     sourceSets,
     dependencies: profile.dependencies,
     manifestPlaceholders,
+    noCompress,
     buildConfigFields: fields(profile.buildConfigFields),
     runtimeMain,
   };

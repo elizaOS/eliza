@@ -16,6 +16,7 @@ android {
   profile.buildConfigFields.each { field -> buildConfigField field.type, field.name, field.value }
  }
  buildFeatures { buildConfig true }
+ androidResources { noCompress.addAll(profile.noCompress) }
  flavorDimensions += 'distribution'
  productFlavors {
   profile.flavors.each { flavor ->

@@ -140,6 +140,7 @@ test("invalid module, variant, SDK, coordinate and Java field declarations fail 
       (p.buildConfigFields = [
         { name: "COUNT", type: "int", value: 2147483648 },
       ]),
+    (p) => (p.androidResources = { noCompress: ["../gguf"] }),
   ]) {
     const { options, generate } = setup(t);
     mutate(options.profile);
@@ -149,6 +150,7 @@ test("invalid module, variant, SDK, coordinate and Java field declarations fail 
 });
 test("toolchain is hash pinned and optional runtime preserves exact native bytes", (t) => {
   const { options, generate } = setup(t);
+  options.profile.androidResources = { noCompress: ["gguf", "lex"] };
   const main = path.join(options.consumerRoot, "runtime/android/app/src/main");
   fs.mkdirSync(path.join(main, "assets/agent"), { recursive: true });
   fs.writeFileSync(path.join(main, "assets/agent/agent-bundle.js"), "fixture");
@@ -173,6 +175,7 @@ test("toolchain is hash pinned and optional runtime preserves exact native bytes
     fs.readFileSync(path.join(options.output, ".eliza-consumer-profile.json")),
   );
   assert.equal(normalized.identity.appId, "example.consumer");
+  assert.deepEqual(normalized.noCompress, ["gguf", "lex"]);
   assert.equal(
     normalized.buildConfigFields[0].value,
     JSON.stringify('host "literal" $value'),
