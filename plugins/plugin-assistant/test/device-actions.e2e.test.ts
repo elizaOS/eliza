@@ -1057,6 +1057,10 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         { ...operation, recipients: ["+15555550123", "+15555550123"] },
         { ...operation, subscriptionId: -1 },
         { ...operation, body: "x".repeat(1601) },
+        // More parts than a receipt can carry for one recipient: 11 GSM-7
+        // parts, and 11 UCS-2 parts from 700 Cyrillic letters.
+        { ...operation, body: "x".repeat(1531) },
+        { ...operation, body: "\u0416".repeat(700) },
       ])
         await expect(
           service.propose(c, bad, "sms-invalid", "fixture"),

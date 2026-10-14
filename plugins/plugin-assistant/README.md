@@ -190,5 +190,7 @@ The receipt binds that ID, SIM and SHA-256 of `smsBindingText(operation)`.
 `submitted` proves only that the send API returned. `sent` requires all matching
 sent callbacks. `delivered` requires all matching delivery reports. The shared
 effect receipt proves submission only. Unknown and partial failures require
-reconciliation; they do not permit automatic retry. This contract does not
+reconciliation; they do not permit automatic retry. A body must fit in the 10
+parts per recipient that a receipt records (1530 GSM-7 characters, else 670
+UTF-16 units); a longer body is refused before review. This contract does not
 implement MMS, native transport, SIM qualification or device delivery evidence.

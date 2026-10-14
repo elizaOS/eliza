@@ -46,6 +46,36 @@ export function isSmsSend(value: {
 }): value is SmsSendOperation {
   return value.type === "sms_send";
 }
+const SMS_MAX_PARTS_PER_RECIPIENT = 10;
+// GSM 03.38 default alphabet and its extension table (two septets each).
+const GSM7_BASIC =
+  "@\u00a3$\u00a5\u00e8\u00e9\u00f9\u00ec\u00f2\u00c7\n\u00d8\u00f8\r\u00c5\u00e5\u0394_\u03a6\u0393\u039b\u03a9\u03a0\u03a8\u03a3\u0398\u039e\u00c6\u00e6\u00df\u00c9 !\"#\u00a4%&'()*+,-./0123456789:;<=>?\u00a1ABCDEFGHIJKLMNOPQRSTUVWXYZ\u00c4\u00d6\u00d1\u00dc\u00a7\u00bfabcdefghijklmnopqrstuvwxyz\u00e4\u00f6\u00f1\u00fc\u00e0";
+const GSM7_EXTENSION = "\f^{}\\[~]|\u20ac";
+/**
+ * Parts a phone splits the body into (Android `divideMessage`): GSM-7 at 160
+ * septets alone or 153 per part, else UCS-2 at 70 units alone or 67 per part.
+ * One less per part when an escape pair or surrogate pair cannot be split.
+ */
+function smsPartCount(body: string): number {
+  let septets = 0;
+  let gsm = true;
+  for (const ch of body) {
+    if (GSM7_BASIC.includes(ch)) septets += 1;
+    else if (GSM7_EXTENSION.includes(ch)) septets += 2;
+    else {
+      gsm = false;
+      break;
+    }
+  }
+  if (gsm) {
+    if (septets <= 160) return 1;
+    const perPart = septets > [...body].length ? 152 : 153;
+    return Math.ceil(septets / perPart);
+  }
+  if (body.length <= 70) return 1;
+  const perPart = /[\uD800-\uDBFF]/.test(body) ? 66 : 67;
+  return Math.ceil(body.length / perPart);
+}
 export function validateSmsSend(value: unknown): SmsSendOperation {
   const v = obj(value);
   exact(v, ["type", "recipients", "body", "subscriptionId"]);
@@ -70,6 +100,12 @@ export function validateSmsSend(value: unknown): SmsSendOperation {
     (v.subscriptionId as number) > 2147483647
   )
     throw Error("Invalid reviewed SMS");
+  // The receipt carries at most SMS_MAX_PARTS_PER_RECIPIENT parts per
+  // recipient; a longer body would be sent but could never be confirmed.
+  if (smsPartCount(v.body) > SMS_MAX_PARTS_PER_RECIPIENT)
+    throw Error(
+      `SMS body needs more than ${SMS_MAX_PARTS_PER_RECIPIENT} parts; shorten it`,
+    );
   return {
     type: "sms_send",
     recipients: [...v.recipients] as string[],
@@ -139,7 +175,7 @@ export function validateSmsResult(
       recipient >= counts.length ||
       (index === 0 && recipient !== 0) ||
       p.partIndex !== counts[recipient] ||
-      counts[recipient] >= 10 ||
+      counts[recipient] >= SMS_MAX_PARTS_PER_RECIPIENT ||
       !["unknown", "success", "failed"].includes(p.sent as string) ||
       !["unknown", "success", "failed"].includes(p.delivery as string) ||
       (p.delivery === "success" && p.sent !== "success")
