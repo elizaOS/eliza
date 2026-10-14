@@ -1,5 +1,5 @@
 /*
- * libelizainference FFI ABI v17.
+ * libelizainference FFI ABI v18.
  *
  * (Banner tracks ELIZA_INFERENCE_ABI_VERSION below; the per-version history is
  * at the end of this header preamble, newest first.)
@@ -134,6 +134,16 @@ extern "C" {
  * load and refuses to bind if they disagree.
  *
  * Changelog:
+ *   v18: text-model context capacity resolved before stream admission.
+ *         - `eliza_inference_llm_context_capacity(ctx, requested_context,
+ *           n_gpu_layers, &out_capacity, &err)` loads the resident text model
+ *           (if needed) and returns the context size `llm_stream_open` would
+ *           use: `requested_context`, else ELIZA_LLM_N_CTX, else 8192, clamped
+ *           to the GGUF training context. No decode context is allocated.
+ *         - `llm_stream_open` now shares that resolution and rejects a
+ *           non-positive capacity instead of creating a zero-sized context.
+ *       Additive symbol; no existing signature changes. A v17 library lacks
+ *       the symbol, so loaders must treat it as absent.
  *   v17: Paradee-8M TTS with native misaki G2P, plus cancellation and
  *       eviction for every TTS head and for ASR. All additions are new
  *       symbols; no existing signature changes.
@@ -254,9 +264,9 @@ extern "C" {
  *   v7: real Silero VAD (same symbol surface as v6).
  *   v6: fused wake-word, speaker, diarizer.
  */
-#define ELIZA_INFERENCE_ABI_VERSION 17
+#define ELIZA_INFERENCE_ABI_VERSION 18
 
-/* Returns a static, NUL-terminated string of the form "17" matching
+/* Returns a static, NUL-terminated string of the form "18" matching
  * ELIZA_INFERENCE_ABI_VERSION at the time the library was built. The
  * pointer is owned by the library — do NOT free. */
 const char * eliza_inference_abi_version(void);
@@ -617,7 +627,8 @@ int eliza_inference_paradee_phonemize(
 /* Text -> PCM. Native misaki G2P, then the phoneme string is split into
  * <= 510-id chunks (sentence ends, then clause punctuation, then spaces),
  * each chunk is padded and synthesized, and the PCM is concatenated. `speed`
- * scales the speaking rate (1.0 = native; <= 0 or non-finite means 1.0).
+ * scales the speaking rate (1.0 = native; <= 0 or non-finite means 1.0;
+ * other values are clamped to [0.25, 4]).
  * On success `*out_pcm` is a malloc-owned buffer of `*out_samples` floats at
  * `paradee_sample_rate` (NULL only when `*out_samples == 0`); release it with
  * `eliza_inference_free_pcm`. Returns ELIZA_OK, ELIZA_ERR_CANCELLED after
@@ -1151,6 +1162,19 @@ typedef struct {
 
 /* Opaque streaming-LLM session. One per active generation. */
 typedef struct EliLlmStream EliLlmStream;
+
+/* Resolve the streaming context capacity against the resident text model
+ * before token admission (ABI v18). Loads the model with n_gpu_layers when
+ * necessary. requested_context <=0 uses ELIZA_LLM_N_CTX or 8192; the result
+ * is clamped to the GGUF training context exactly as stream_open does.
+ * On success, pass *out_capacity explicitly to stream_open to preserve this
+ * decision even if the environment changes. No decode context is allocated. */
+int eliza_inference_llm_context_capacity(
+    EliInferenceContext * ctx,
+    int32_t requested_context,
+    int32_t n_gpu_layers,
+    int32_t * out_capacity,
+    char ** out_error);
 
 /* Open a session anchored to `ctx`. Loads the bundle's text GGUF on first
  * open and reuses it across sessions. Returns NULL on failure with
