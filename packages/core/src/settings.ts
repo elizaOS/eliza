@@ -65,7 +65,16 @@ function isEncryptedV1(value: string): boolean {
 	if (parts.length !== 2) return false;
 	try {
 		const iv = BufferUtils.fromHex(parts[0]);
-		return iv.length === 16;
+		if (iv.length !== 16) return false;
+		// Validate the ciphertext half too. v1 used AES-256-CBC, so the
+		// ciphertext is hex-encoded and a multiple of the 16-byte block size.
+		// Without this, a plaintext shaped like "<32 hex>:<text>" is
+		// misclassified as already-encrypted: stored unencrypted on write,
+		// then fatal SETTING_DECRYPTION_FAILED on read.
+		const ciphertext = parts[1];
+		if (!/^[0-9a-fA-F]+$/.test(ciphertext)) return false;
+		if (ciphertext.length < 32 || ciphertext.length % 32 !== 0) return false;
+		return true;
 	} catch {
 		// error-policy:J3 settings are persisted input; malformed hexadecimal
 		// content makes this an invalid v1 ciphertext.
