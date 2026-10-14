@@ -57,8 +57,18 @@ import {
 	bundleHasAsrModelFiles,
 	readBundleAsrProvenanceBlockers,
 } from "./asr-provenance";
+import {
+	type BionicAsrStream,
+	bionicAsrOneShot,
+	bionicSocketPath,
+	openBionicAsrStream,
+} from "./bionic-asr-stream";
 import { mergeElizaTurnStopSequences } from "./eliza-turn-stops";
 import { elizaModelsDir } from "./paths";
+import {
+	BionicStreamingTranscriber,
+	type BionicStreamingTranscriberOptions,
+} from "./voice/bionic-streaming-transcriber";
 
 /** Connect + full round-trip budget. A cold GPU decode of a long reply fits. */
 const REQUEST_TIMEOUT_MS = 120000;
@@ -386,8 +396,9 @@ export class BionicHostLoader implements LocalInferenceLoader {
 	}
 	/**
 	 * On-device STT: transcribe mono fp32 PCM via the bionic host's fused
-	 * libelizainference ASR (op="asr") over the bundle's `asr/` pair (the
-	 * pinned mobile voice bundle stages Qwen3-ASR-0.6B there). The musl agent
+	 * libelizainference ASR (op="asr") over the bundle's `asr/` model
+	 * (Phonon-2 by default, or the Qwen3-ASR pair). Live voice should prefer
+	 * `openAsrStream()`; this batch call is the fallback when it returns null. The musl agent
 	 * can't load the fused lib, so the TRANSCRIPTION delegate routes the audio
 	 * here over the UDS and gets the transcript back. `pcm` is little-endian
 	 * fp32 already base64-encoded. Aborting `signal` sends op="asr_cancel",
@@ -398,17 +409,7 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		sampleRate: number;
 		signal?: AbortSignal;
 	}): Promise<string> {
-		if (!this.bundleDir || !bundleHasAsrModelFiles(this.bundleDir)) {
-			throw new Error(
-				"[BionicHostLoader] host asr requires an active bundle with an asr/ text + mmproj pair; refusing to use the bionic host default bundle",
-			);
-		}
-		const blockers = readBundleAsrProvenanceBlockers(this.bundleDir);
-		if (blockers.length > 0) {
-			throw new Error(
-				`[BionicHostLoader] host asr refused non-Gemma ASR provenance: ${blockers.join("; ")}`,
-			);
-		}
+		this.assertAsrBundle();
 		const res = await this.cancellableRoundTrip<BionicTextResponse>(
 			{
 				op: "asr",
@@ -425,6 +426,63 @@ export class BionicHostLoader implements LocalInferenceLoader {
 			);
 		}
 		return res.text ?? "";
+	}
+	/** Refuse ASR on a missing or non-pinned bundle (shared by batch and streaming). */
+	private assertAsrBundle(): void {
+		if (!this.bundleDir || !bundleHasAsrModelFiles(this.bundleDir)) {
+			throw new Error(
+				"[BionicHostLoader] host asr requires an active bundle with an asr/ model (Phonon-2 GGUF, or a Qwen3-ASR text + mmproj pair); refusing to use the bionic host default bundle",
+			);
+		}
+		const blockers = readBundleAsrProvenanceBlockers(this.bundleDir);
+		if (blockers.length > 0) {
+			throw new Error(
+				`[BionicHostLoader] host asr refused non-Gemma ASR provenance: ${blockers.join("; ")}`,
+			);
+		}
+	}
+	/**
+	 * Whether the host's ASR backend streams (op="asr_stream_supported"). The
+	 * host acquires the bundle's asr/ region first, so this is accurate on a
+	 * cold context: true for Phonon-2 (parakeet), false for Qwen3-ASR.
+	 */
+	async asrStreamSupported(): Promise<boolean> {
+		this.assertAsrBundle();
+		const res = await bionicAsrOneShot(bionicSocketPath(this.socketName), {
+			op: "asr_stream_supported",
+			bundleDir: this.bundleDir,
+		});
+		if (!res.ok) {
+			throw new Error(
+				`[BionicHostLoader] host asr_stream_supported failed: ${res.error ?? "unknown error"}`,
+			);
+		}
+		return res.supported === true;
+	}
+	/**
+	 * Open a streaming ASR session on the host (op="asr_stream_open") for
+	 * mono fp32 PCM at `sampleRate`. Resolves null only when the host's
+	 * backend reports it cannot stream; callers then use `transcribe()`.
+	 */
+	async openAsrStream(args: {
+		sampleRate: number;
+	}): Promise<BionicAsrStream | null> {
+		this.assertAsrBundle();
+		return openBionicAsrStream({
+			socketPath: bionicSocketPath(this.socketName),
+			bundleDir: this.bundleDir,
+			sampleRate: args.sampleRate,
+		});
+	}
+	/**
+	 * Live transcription through the host: a `StreamingTranscriber` that emits
+	 * partials from `asr_stream_*` and uses batch op="asr" only when the
+	 * host's ASR backend cannot stream. Caller owns `dispose()`.
+	 */
+	createStreamingTranscriber(
+		opts: Omit<BionicStreamingTranscriberOptions, "host"> = {},
+	): BionicStreamingTranscriber {
+		return new BionicStreamingTranscriber({ ...opts, host: this });
 	}
 	/**
 	 * On-device TTS: send the text to the bionic host (op="tts"), which runs
@@ -589,7 +647,7 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		payload.copy(frame, 4);
 		return new Promise<T>((resolve, reject) => {
 			// Abstract-namespace socket: a leading NUL byte in the path.
-			const sock = net.connect({ path: `\0${this.socketName}` });
+			const sock = net.connect({ path: bionicSocketPath(this.socketName) });
 			let settled = false;
 			let chunks: Buffer = Buffer.alloc(0);
 			let expected = -1;
@@ -663,7 +721,7 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		frame.writeUInt32BE(payload.length, 0);
 		payload.copy(frame, 4);
 		return new Promise<BionicGenerateResponse>((resolve, reject) => {
-			const sock = net.connect({ path: `\0${this.socketName}` });
+			const sock = net.connect({ path: bionicSocketPath(this.socketName) });
 			let settled = false;
 			let chunks: Buffer = Buffer.alloc(0);
 			// Serialize (possibly async) chunk callbacks so consumers see the

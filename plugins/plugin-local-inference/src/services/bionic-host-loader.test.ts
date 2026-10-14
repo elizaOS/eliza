@@ -141,9 +141,7 @@ describe("deriveBundleDir", () => {
 
 		await expect(
 			loader.transcribe({ pcmBase64: "AAAA", sampleRate: 16000 }),
-		).rejects.toThrow(
-			/requires an active bundle with an asr\/ text \+ mmproj pair/,
-		);
+		).rejects.toThrow(/requires an active bundle with an asr\/ model/);
 	});
 });
 

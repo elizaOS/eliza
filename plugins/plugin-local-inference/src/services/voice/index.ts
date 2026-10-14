@@ -21,6 +21,14 @@ export {
 	type CancelSignal,
 } from "./barge-in";
 export {
+	type BionicAsrHost,
+	type BionicAsrStreamHandle,
+	BionicStreamingTranscriber,
+	type BionicStreamingTranscriberOptions,
+	createBionicStreamingTranscriber,
+	DEFAULT_BIONIC_PARTIAL_INTERVAL_MS,
+} from "./bionic-streaming-transcriber";
+export {
 	type CoordinatorRuntime,
 	VoiceCancellationCoordinator,
 	type VoiceCancellationCoordinatorOptions,

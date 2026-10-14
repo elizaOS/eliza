@@ -219,6 +219,17 @@ Fermion's NOTICE. The NOTICE lists CHiME-6 (CC-BY-SA-4.0) and SPGISpeech
 (Kensho terms) training audio, which is flagged for review and does not block
 a build.
 
+The agent reaches streaming ASR over the bionic UDS: `ElizaBionicInferenceServer`
+serves `asr_stream_supported / open / feed / partial / finish / close / cancel`
+(`BionicAsrStreams`: one stream per connection, at most 5 s per feed, 120 s per
+stream and 4 streams; disconnecting cancels and frees the stream; logs carry
+lengths, never text). On the agent side `BionicHostLoader.openAsrStream()` and
+`createStreamingTranscriber()` emit partials and use batch `op:"asr"` only when
+the host reports `STREAM_UNSUPPORTED` (the Qwen3-ASR pair). Before loading the
+library, `ElizaVoiceNative` exports `ELIZA_ASR_BACKEND` (default `auto`) and
+`ELIZA_ASR_THREADS` (default: one per big core) into the app process; a process
+value wins over the build-time `BuildConfig` value.
+
 ```sh
 bun packages/app/scripts/voice-quality/host-wer-gate.ts --librispeech /data/LibriSpeech
 # device inputs, then build the qualify app with them:

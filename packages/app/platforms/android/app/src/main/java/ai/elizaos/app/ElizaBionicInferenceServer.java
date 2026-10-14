@@ -55,6 +55,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * spoken by Paradee-8M with native misaki G2P), {@code asr}, {@code image},
  * {@code tts_cancel} and {@code asr_cancel}. Speech logs carry sizes only,
  * never text or transcripts.
+ *
+ * <p>Streaming ASR ({@code asr_stream_supported / open / feed / partial /
+ * finish / close / cancel}) keeps one connection open per stream; see
+ * {@link BionicAsrStreams} for the protocol and bounds.
  */
 final class ElizaBionicInferenceServer {
 
@@ -115,6 +119,49 @@ final class ElizaBionicInferenceServer {
      * context that is being freed. It never waits on a decode or a synthesis.
      */
     private final Object cancelLock = new Object();
+
+    /** Streaming ASR sessions on the resident context, one per connection. */
+    private final BionicAsrStreams asrStreams = new BionicAsrStreams(
+        new BionicAsrStreams.Native() {
+            @Override
+            public int supported(long ctx) {
+                // stream_supported is 0 until some context has loaded the
+                // parakeet backend, so acquire "asr" first (idempotent).
+                ElizaVoiceNative.nativeMmapAcquire(ctx, "asr");
+                return ElizaVoiceNative.nativeAsrStreamSupported();
+            }
+
+            @Override
+            public long open(long ctx, int sampleRate) {
+                return ElizaVoiceNative.nativeAsrStreamOpen(ctx, sampleRate);
+            }
+
+            @Override
+            public int feed(long stream, float[] pcm) {
+                return ElizaVoiceNative.nativeAsrStreamFeed(stream, pcm);
+            }
+
+            @Override
+            public String partial(long stream) {
+                return ElizaVoiceNative.nativeAsrStreamPartial(stream);
+            }
+
+            @Override
+            public String finish(long stream) {
+                return ElizaVoiceNative.nativeAsrStreamFinish(stream);
+            }
+
+            @Override
+            public void cancel(long stream) {
+                ElizaVoiceNative.nativeAsrStreamCancel(stream);
+            }
+
+            @Override
+            public void close(long stream) {
+                ElizaVoiceNative.nativeAsrStreamClose(stream);
+            }
+        },
+        message -> Log.i(TAG, message));
 
     /** Paradee bundle layout under {@code <bundleDir>/tts/paradee/}. */
     static final String PARADEE_DIR = "tts/paradee";
@@ -375,6 +422,7 @@ final class ElizaBionicInferenceServer {
                 return;
             }
             try {
+                asrStreams.closeAll("voice regions evicted");
                 ElizaVoiceNative.nativeMmapEvict(residentCtx, "tts");
                 ElizaVoiceNative.nativeMmapEvict(residentCtx, "asr");
                 Log.i(TAG, "evicted TTS and ASR weights (reason=" + reason + "); context kept");
@@ -411,6 +459,7 @@ final class ElizaBionicInferenceServer {
     }
 
     private void handleConnection(LocalSocket client) {
+        final BionicAsrStreams.Client asrClient = new BionicAsrStreams.Client();
         try (LocalSocket sock = client;
              DataInputStream in = new DataInputStream(sock.getInputStream());
              DataOutputStream out = new DataOutputStream(sock.getOutputStream())) {
@@ -436,7 +485,10 @@ final class ElizaBionicInferenceServer {
                     continue;
                 }
                 String responseJson;
-                if ("nativeSourceRead".equals(opOf(requestJson))) {
+                final String op = opOf(requestJson);
+                if (BionicAsrStreams.isStreamOp(op)) {
+                    responseJson = handleAsrStream(asrClient, op, requestJson);
+                } else if ("nativeSourceRead".equals(op)) {
                     try {
                         JSONObject request = new JSONObject(requestJson);
                         responseJson = new JSONObject().put("ok", true).put("result",
@@ -458,6 +510,41 @@ final class ElizaBionicInferenceServer {
             Log.w(TAG, "connection error", e);
         } catch (RuntimeException e) {
             Log.e(TAG, "unexpected handler failure", e);
+        } finally {
+            // A client that disconnects with a stream open cancels it.
+            if (asrClient.session != null) {
+                synchronized (residentLock) {
+                    asrStreams.closeClient(asrClient);
+                }
+                Log.i(TAG, "ASR stream closed on client disconnect");
+            }
+        }
+    }
+
+    /**
+     * Streaming ASR ops. cancel answers without the resident lock (the decode
+     * it stops holds it); every other op runs under the lock on the resident
+     * context.
+     */
+    private String handleAsrStream(BionicAsrStreams.Client client, String op, String requestJson) {
+        try {
+            final JSONObject req = new JSONObject(requestJson);
+            if ("asr_stream_cancel".equals(op)) {
+                return asrStreams.cancel(req.optString("streamId", ""));
+            }
+            String bundleDir = req.optString("bundleDir", "");
+            final String bundle = bundleDir.isEmpty() ? defaultBundleDir : bundleDir;
+            synchronized (residentLock) {
+                try {
+                    return asrStreams.handle(client, op, req, () -> ensureResidentCtx(bundle));
+                } catch (RuntimeException fault) {
+                    // A native fault may leave the shared ctx in an unknown state.
+                    resetResident();
+                    throw fault;
+                }
+            }
+        } catch (Throwable t) {
+            return errorJson(t.getMessage() == null ? t.toString() : t.getMessage());
         }
     }
 
@@ -828,6 +915,8 @@ final class ElizaBionicInferenceServer {
 
     private void resetResident(boolean includeEmbedding) {
         synchronized (residentLock) {
+            // Streams are anchored to the context: free them before it goes.
+            asrStreams.closeAll("resident context reset");
             if (residentStream != 0L) {
                 try { ElizaVoiceNative.nativeLlmStreamClose(residentStream); } catch (Throwable ignored) {}
                 residentStream = 0L;
