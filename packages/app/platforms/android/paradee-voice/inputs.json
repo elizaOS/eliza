@@ -3,7 +3,7 @@
     "path": "tts/paradee/paradee-8m-v1_0.gguf",
     "source": "llama.cpp tools/paradee/convert_paradee_pt_to_gguf.py --outtype f32 from the sahilmahendrakar/Paradee-8M-v1.0 files pinned in tools/paradee/pins.json",
     "bytes": 32072768,
-    "sha256": "9a18ae710211fab04129e00bc0cde04484c0cf8d80bb19e51df7e331ae83a254",
+    "sha256": "357477651abb53b3fb1911a6e932026f3f1697fd772668326152e3ca04c9be27",
     "license": "Apache-2.0"
   },
   "lexicon": {
