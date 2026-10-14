@@ -4,8 +4,9 @@
  *
  * Environment: ELIZA_INFERENCE_LIBRARY + ELIZA_INFERENCE_LIBRARY_SHA256, and an
  * absolute ELIZA_ASR_MODEL_DIR holding the pinned Qwen3-ASR-0.6B Q8_0 pair as
- * `asr/eliza-1-asr.gguf` and `asr/eliza-1-asr-mmproj.gguf`. The worker loads
- * only the ASR region; it never loads a text model, downloads or falls back.
+ * `asr/eliza-1-asr.gguf`, `asr/eliza-1-asr-mmproj.gguf`, and
+ * `vad/silero-vad-v5.gguf`. The worker loads
+ * the ASR region and pinned Silero VAD; it never loads a text model, downloads or falls back.
  *
  * Requests: `{id, op:"transcribe", pcm, encoding:"s16"|"f32", sampleRate}`
  * (`pcm` is base64 little-endian mono samples) returns `{id, text}` or
@@ -13,6 +14,8 @@
  * request in flight. After two idle minutes the worker calls
  * `mmap_evict("asr")`; the next request loads the region again.
  */
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import { isMainThread } from "node:worker_threads";
 import {
 	type PinnedSpeechAsset,
@@ -21,7 +24,11 @@ import {
 	verifiedInferenceLibrary,
 	verifyPinnedAssets,
 } from "./host-speech-runtime";
-import { loadElizaInferenceFfi } from "./services/voice/ffi-bindings";
+import {
+	loadElizaInferenceFfi,
+	type NativeVadHandle,
+} from "./services/voice/ffi-bindings";
+import { resampleLinear } from "./services/voice/transcriber";
 
 /**
  * Qwen3-ASR-0.6B Q8_0 text GGUF + audio mmproj, the pair the fused ASR path
@@ -41,6 +48,11 @@ export const ASR_ASSETS: readonly PinnedSpeechAsset[] = [
 		bytes: 214_392_480,
 	},
 ];
+const VAD_ASSET: PinnedSpeechAsset = {
+	path: "vad/silero-vad-v5.gguf",
+	sha256: "d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995",
+	bytes: 620736,
+};
 const MAX_SECONDS = 60;
 
 interface TranscriptionRequest {
@@ -76,13 +88,26 @@ const library = isMainThread
 const root = process.env.ELIZA_ASR_MODEL_DIR || "";
 
 if (isMainThread) {
-	verifyPinnedAssets(root, ASR_ASSETS);
+	verifyPinnedAssets(root, [...ASR_ASSETS, VAD_ASSET]);
+	// The native VAD loader selects the first GGUF recursively. Ensure it can
+	// select only the model whose bytes were verified above.
+	const candidates = readdirSync(join(root, "vad"), {
+		recursive: true,
+		encoding: "utf8",
+	}).filter((file) => file.endsWith(".gguf"));
+	if (candidates.length !== 1 || candidates[0] !== "silero-vad-v5.gguf")
+		throw Error("Ambiguous speech VAD model");
 	const ffi = loadElizaInferenceFfi(library);
 	try {
 		if (
 			Number(ffi.libraryAbiVersion) < 17 ||
 			!ffi.asrSupported?.() ||
-			!ffi.asrCancel
+			!ffi.asrCancel ||
+			!ffi.vadSupported?.() ||
+			!ffi.vadOpen ||
+			!ffi.vadProcess ||
+			!ffi.vadReset ||
+			!ffi.vadClose
 		)
 			throw Error("Unsupported speech ABI");
 		const cancel = ffi.asrCancel;
@@ -117,11 +142,18 @@ if (isMainThread) {
 } else {
 	serveSpeechEngine<TranscriptionRequest>(() => {
 		const ffi = loadElizaInferenceFfi(library);
+		const { vadOpen, vadProcess, vadReset, vadClose } = ffi;
+		if (!vadOpen || !vadProcess || !vadReset || !vadClose) {
+			ffi.close();
+			throw Error("Unsupported speech VAD ABI");
+		}
 		const ctx = ffi.create(root);
 		let acquired = false;
+		let vad: NativeVadHandle | undefined;
 		const acquire = () => {
 			if (acquired) return;
 			ffi.mmapAcquire(ctx, "asr");
+			vad = vadOpen({ ctx, sampleRateHz: 16000 });
 			acquired = true;
 		};
 		try {
@@ -136,6 +168,27 @@ if (isMainThread) {
 			run(request) {
 				const pcm = samples(request);
 				acquire();
+				if (vad === undefined) throw Error("Speech VAD is not initialized");
+				vadReset(vad);
+				const vadPcm = resampleLinear(pcm, request.sampleRate, 16000);
+				let speech = false;
+				for (let offset = 0; offset < vadPcm.length; offset += 512) {
+					const window = new Float32Array(512);
+					window.set(vadPcm.subarray(offset, offset + 512));
+					const probability = vadProcess({ vad, pcm: window });
+					if (
+						!Number.isFinite(probability) ||
+						probability < 0 ||
+						probability > 1
+					)
+						throw Error("Invalid speech VAD result");
+					if (probability >= 0.5) {
+						speech = true;
+						break;
+					}
+				}
+				// VAD decides admission only; ASR receives the entire original audio.
+				if (!speech) return { text: "" };
 				const text = ffi.asrTranscribe({
 					ctx,
 					pcm,
@@ -146,9 +199,12 @@ if (isMainThread) {
 			release() {
 				if (!acquired) return;
 				acquired = false;
+				if (vad !== undefined) vadClose(vad);
+				vad = undefined;
 				ffi.mmapEvict(ctx, "asr");
 			},
 			dispose() {
+				if (vad !== undefined) vadClose(vad);
 				ffi.destroy(ctx);
 				ffi.close();
 			},
