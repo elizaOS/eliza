@@ -6,6 +6,7 @@
  */
 import {
   ChannelType,
+  deterministicOwnerEntityId,
   type Entity,
   type Memory,
   type Room,
@@ -29,6 +30,10 @@ it("keeps world roles, reply threads and user relationships through a transfer",
     const friend = stringToUuid("transfer-friend");
     const outsider = stringToUuid("transfer-outsider");
     const contact = stringToUuid("transfer-contact");
+    // Connector role ids with no entity row: a Discord guild owner who never
+    // spoke, and the synthetic owner before the first chat.
+    const guildOwner = stringToUuid("transfer-guild-owner-never-spoke");
+    const syntheticOwner = deterministicOwnerEntityId(agentId);
     const worldId = stringToUuid("transfer-world");
     const roomId = stringToUuid("transfer-room");
     await adapter.createEntities([
@@ -45,7 +50,13 @@ it("keeps world roles, reply threads and user relationships through a transfer",
         serverId: worldId,
         metadata: {
           ownership: { ownerId: owner },
-          roles: { [owner]: "OWNER", [friend]: "USER", [outsider]: "ADMIN" },
+          roles: {
+            [owner]: "OWNER",
+            [friend]: "USER",
+            [outsider]: "ADMIN",
+            [guildOwner]: "ADMIN",
+            [syntheticOwner]: "OWNER",
+          },
         },
       } as World,
     ]);
@@ -143,10 +154,14 @@ it("keeps world roles, reply threads and user relationships through a transfer",
 
       // Ownership and roles name the imported entities, not the source ids.
       expect(world.metadata?.ownership?.ownerId).toBe(newOwner);
+      // An id with no exported entity is kept; the synthetic owner follows
+      // the new agent id.
       expect(world.metadata?.roles).toEqual({
         [newOwner]: "OWNER",
         [newFriend]: "USER",
         [newOutsider]: "ADMIN",
+        [guildOwner]: "ADMIN",
+        [deterministicOwnerEntityId(newAgentId)]: "OWNER",
       });
       expect(entities.some((entity) => entity.names.includes("Outsider"))).toBe(
         false,

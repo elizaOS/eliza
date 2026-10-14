@@ -36,6 +36,7 @@ import {
   type CharacterSettings,
   type Component,
   canonicalJsonString,
+  deterministicOwnerEntityId,
   ElizaError,
   type ElizaErrorOptions,
   type Entity,
@@ -882,8 +883,9 @@ async function extractAgentData(
 
   // World metadata can reference entities that never joined one of the
   // exported rooms. Include those entities before collecting their components
-  // and relationships, and fail explicitly if the reference is stale instead
-  // of importing a world with a dangling owner or role id.
+  // and relationships. A connector names ids that may have no entity row yet
+  // (a Discord guild owner who never spoke, the synthetic owner before the
+  // first chat); those ids are carried as they are, not a reason to refuse.
   const metadataEntityIds = new Set<string>();
   for (const world of agentWorlds) {
     const ownerId = world.metadata?.ownership?.ownerId;
@@ -898,14 +900,6 @@ async function extractAgentData(
     ] as UUID[]);
     for (const entity of metadataEntities) {
       if (entity.id) entityMap.set(entity.id, entity);
-    }
-    const missingEntityIds = [...metadataEntityIds].filter(
-      (entityId) => !entityMap.has(entityId),
-    );
-    if (missingEntityIds.length > 0) {
-      throw new AgentExportError(
-        `World metadata references entities that cannot be exported: ${missingEntityIds.join(", ")}`,
-      );
     }
   }
 
@@ -1090,10 +1084,25 @@ function createIdRemapper(
 }
 
 /** World metadata with its owner and role entity ids remapped to the imported entities. */
+/**
+ * Ownership and roles follow the exported entities to their new ids. The
+ * synthetic owner follows the new agent id; any other id has no entity in the
+ * bundle and is kept as it is rather than minted into a random id.
+ */
 function remapWorldMetadata(
   metadata: NonNullable<World["metadata"]>,
-  remap: (oldId: string) => string,
+  remapEntity: (oldId: string) => string,
+  exportedEntityIds: ReadonlySet<string>,
+  sourceAgentId: string,
+  newAgentId: string,
 ): NonNullable<World["metadata"]> {
+  const sourceOwnerId = deterministicOwnerEntityId(sourceAgentId);
+  const remap = (oldId: string) =>
+    exportedEntityIds.has(oldId)
+      ? remapEntity(oldId)
+      : oldId === sourceOwnerId
+        ? deterministicOwnerEntityId(newAgentId)
+        : oldId;
   return {
     ...metadata,
     ...(metadata.ownership
@@ -1280,6 +1289,9 @@ async function restoreAgentDataInScope(
 
   // 2. Create worlds. Ownership and roles name entities by id, so they follow
   // the entities' new ids; otherwise the owner's role reads as GUEST.
+  const exportedEntityIds = new Set(
+    payload.entities.flatMap((entity) => (entity.id ? [entity.id] : [])),
+  );
   let worldsImported = 0;
   for (const world of worlds) {
     const newWorld: World = {
@@ -1287,7 +1299,15 @@ async function restoreAgentDataInScope(
       id: remap(world.id) as UUID,
       agentId: newAgentId as UUID,
       ...(world.metadata
-        ? { metadata: remapWorldMetadata(world.metadata, remap) }
+        ? {
+            metadata: remapWorldMetadata(
+              world.metadata,
+              remap,
+              exportedEntityIds,
+              payload.sourceAgentId,
+              newAgentId,
+            ),
+          }
         : {}),
     };
     await db.createWorlds([newWorld]);
