@@ -1,0 +1,66 @@
+apply plugin: 'com.android.library'
+
+// Consumers set ext.elizaParadeeSourceDir to this directory and apply this file.
+def paradeeSource = project.hasProperty('elizaParadeeSourceDir') ? file(project.elizaParadeeSourceDir) : project.projectDir
+// Output of packages/app/scripts/paradee-voice/build-native.ts. Generated, never source.
+def paradeeNative = project.hasProperty('elizaParadeeNativeDir') ? file(project.elizaParadeeNativeDir) : new File(paradeeSource, 'native')
+// An app that already packages libelizainference.so links against its own
+// staged copy and sets elizaParadeePackageInference=false.
+def packageInference = !project.hasProperty('elizaParadeePackageInference') || project.elizaParadeePackageInference.toString() != 'false'
+def inferenceLibDir = project.hasProperty('elizaParadeeInferenceLibDir') ? file(project.elizaParadeeInferenceLibDir) : new File(paradeeNative, 'jniLibs')
+def ffiInclude = project.hasProperty('elizaParadeeFfiIncludeDir') ? file(project.elizaParadeeFfiIncludeDir) :
+    new File(paradeeSource, '../../../../../plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/include')
+// The JNI bridge source is shared with the app module; this library builds it
+// for ai.eliza.voice.VoiceNative with the voice natives only.
+def jniSource = new File(paradeeSource, '../app/src/main/elizavoice-jni')
+def paradeeAbis = ['arm64-v8a', 'x86_64']
+
+android {
+    namespace 'ai.eliza.voice'
+    compileSdk 36
+    ndkVersion '28.2.13676358'
+    defaultConfig {
+        minSdk 26
+        externalNativeBuild {
+            cmake {
+                abiFilters(*paradeeAbis)
+                arguments "-DELIZAVOICE_FFI_INCLUDE_DIR=${ffiInclude.canonicalPath}",
+                    "-DELIZAVOICE_INFERENCE_LIB_DIR=${inferenceLibDir.canonicalPath}",
+                    "-DELIZA_VOICE_JNI_SOURCE_DIR=${jniSource.canonicalPath}",
+                    '-DANDROID_STL=c++_shared'
+            }
+        }
+    }
+    externalNativeBuild {
+        cmake {
+            path new File(paradeeSource, 'src/main/cpp/CMakeLists.txt')
+            version '3.22.1'
+        }
+    }
+    sourceSets.main {
+        java.srcDirs = [new File(paradeeSource, 'src/main/java')]
+        manifest.srcFile new File(paradeeSource, 'src/main/AndroidManifest.xml')
+        assets.srcDirs = [new File(paradeeNative, 'assets')]
+        jniLibs.srcDirs = packageInference ? [new File(paradeeNative, 'jniLibs')] : []
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+}
+
+// Refuse to build from native outputs or a model bundle that differ from the
+// hash-pinned build record (build-native.ts writes it).
+preBuild.doFirst {
+    def record = new File(paradeeNative, 'build-record.json')
+    if (!record.isFile()) throw new GradleException("[paradee-voice] ${record} missing; run packages/app/scripts/paradee-voice/build-native.ts")
+    def approved = new groovy.json.JsonSlurper().parse(record)
+    approved.files.each { entry ->
+        if (!packageInference && entry.path.startsWith('jniLibs/')) return
+        def target = new File(paradeeNative, entry.path)
+        def digest = java.security.MessageDigest.getInstance('SHA-256')
+        if (!target.isFile()) throw new GradleException("[paradee-voice] missing ${target}")
+        target.withInputStream { stream -> byte[] buffer = new byte[1 << 16]; int count; while ((count = stream.read(buffer)) > 0) digest.update(buffer, 0, count) }
+        if (digest.digest().encodeHex().toString() != entry.sha256) throw new GradleException("[paradee-voice] ${target} differs from build-record.json")
+    }
+}

@@ -1,0 +1,32 @@
+{
+  "paradee": {
+    "path": "tts/paradee/paradee-8m-v1_0.gguf",
+    "source": "llama.cpp tools/paradee/convert_paradee_pt_to_gguf.py --outtype f32 from the sahilmahendrakar/Paradee-8M-v1.0 files pinned in tools/paradee/pins.json",
+    "bytes": 32072768,
+    "sha256": "9a18ae710211fab04129e00bc0cde04484c0cf8d80bb19e51df7e331ae83a254",
+    "license": "Apache-2.0"
+  },
+  "lexicon": {
+    "path": "tts/paradee/misaki-en-us.lex",
+    "source": "llama.cpp tools/misaki-g2p/convert_misaki_lexicon.py from the hexgrad/misaki data pinned in tools/misaki-g2p/pins.json",
+    "bytes": 12947790,
+    "sha256": "fbf09090cff0a41f3f579bf03ab9fc42710b04d7284767b10467a5f182c23925",
+    "license": "Apache-2.0"
+  },
+  "espeak": {
+    "version": "1.52.0",
+    "url": "https://github.com/espeak-ng/espeak-ng/archive/refs/tags/1.52.0.tar.gz",
+    "bytes": 17739803,
+    "sha256": "bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23",
+    "license": "GPL-3.0-or-later",
+    "data": [
+      "phontab",
+      "phonindex",
+      "phondata",
+      "intonations",
+      "en_dict",
+      "lang/gmw/en",
+      "lang/gmw/en-US"
+    ]
+  }
+}
