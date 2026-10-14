@@ -3834,6 +3834,8 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			}
 			if (owned === 0n) return "";
 			try {
+				// Empty phoneme string: nothing to copy, but the buffer is still freed.
+				if (rc === 0) return "";
 				return Buffer.from(ffi.toArrayBuffer(owned, 0, rc)).toString("utf8");
 			} finally {
 				loadedLib.symbols.eliza_inference_free_string(owned);
