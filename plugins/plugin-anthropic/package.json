@@ -44,7 +44,7 @@
   },
   "sideEffects": false,
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.9",
+    "@ai-sdk/anthropic": "^4.0.78",
     "ai": "^6.0.23",
     "@elizaos/contracts": "workspace:*",
     "@elizaos/host": "workspace:*"
