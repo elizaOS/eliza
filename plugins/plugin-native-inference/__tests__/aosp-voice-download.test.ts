@@ -14,9 +14,9 @@ import {
   AOSP_ESPEAK_GROUP,
   AOSP_VOICE_GROUPS,
   AOSP_VOICE_RECORD,
+  aospAsrModelPath,
   aospEspeakDataParent,
   aospParadeePaths,
-  aospAsrModelPath,
   aospVoiceFiles,
   aospVoiceGroupFiles,
   aospVoiceGroupNeedsStaging,
@@ -285,12 +285,10 @@ describe("pinned mobile voice bundle", () => {
       read(
         "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaBionicInferenceServer.java",
       ),
-    ).toContain(
-      `PARADEE_MODEL = "${path.posix.basename(tts?.path ?? "")}"`,
-    );
-    expect(read("plugins/plugin-local-inference/src/host-tts-worker.ts")).toContain(
-      `path: "${path.posix.basename(tts?.path ?? "")}"`,
-    );
+    ).toContain(`PARADEE_MODEL = "${path.posix.basename(tts?.path ?? "")}"`);
+    expect(
+      read("plugins/plugin-local-inference/src/host-tts-worker.ts"),
+    ).toContain(`path: "${path.posix.basename(tts?.path ?? "")}"`);
     const catalog = read(
       "plugins/plugin-native-inference/src/model-catalog/voice-model-versions.json",
     );
@@ -306,7 +304,9 @@ describe("pinned mobile voice bundle", () => {
         .map((rel) => `tts/paradee/espeak-ng-data/${rel}`)
         .sort(),
     );
-    const worker = read("plugins/plugin-local-inference/src/host-tts-worker.ts");
+    const worker = read(
+      "plugins/plugin-local-inference/src/host-tts-worker.ts",
+    );
     for (const row of espeak) {
       expect(row.status).toBe("unpublished");
       expect(row.license).toBe("GPL-3.0-or-later");
@@ -365,7 +365,15 @@ describe("pinned mobile voice bundle", () => {
     expect(staged.status).toBe("staged");
     expect(
       readFileSync(
-        path.join(root, "tts", "paradee", "espeak-ng-data", "lang", "gmw", "en"),
+        path.join(
+          root,
+          "tts",
+          "paradee",
+          "espeak-ng-data",
+          "lang",
+          "gmw",
+          "en",
+        ),
       ),
     ).toEqual(data["lang/gmw/en"]);
     expect(

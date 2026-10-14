@@ -278,7 +278,8 @@ function readAospVoiceGroupRecordRows(
       return null;
     }
     const rows = record.files.map((row: unknown) => {
-      const r = row && typeof row === "object" ? (row as Record<string, unknown>) : {};
+      const r =
+        row && typeof row === "object" ? (row as Record<string, unknown>) : {};
       return {
         id: r.id,
         path: typeof r.path === "string" ? r.path : undefined,
