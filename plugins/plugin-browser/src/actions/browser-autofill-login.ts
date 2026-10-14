@@ -82,6 +82,10 @@ function tabUrlMatchesDomain(tabUrl: string, domain: string): boolean {
   }
   const host = hostname.toLowerCase();
   const wanted = domain.toLowerCase();
+  // A configured domain must name a real host, not a bare suffix: without a
+  // dot, "io" would suffix-match every *.io tab and autofill would fire on
+  // unrelated sites. Fail closed, like the parse-failure catch above.
+  if (!wanted.includes(".")) return false;
   return host === wanted || host.endsWith(`.${wanted}`);
 }
 
