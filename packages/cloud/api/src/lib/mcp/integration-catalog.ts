@@ -256,8 +256,11 @@ export function isKillSwitched(
   if (state.all) return true;
   if (state.ids.has(catalogId.toLowerCase())) return true;
   if (providerSlug === null) return false;
-  if (state.ids.has(providerSlug)) return true;
-  const aliases = PROVIDER_SLUG_ALIASES[providerSlug] ?? [];
+  // Match the catalogId handling above: parseKillSwitch lowercases every
+  // token, so a mixed-case slug must be lowercased to match.
+  const slug = providerSlug.toLowerCase();
+  if (state.ids.has(slug)) return true;
+  const aliases = PROVIDER_SLUG_ALIASES[slug] ?? [];
   return aliases.some((alias) => state.ids.has(alias));
 }
 
