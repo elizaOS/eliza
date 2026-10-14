@@ -80,7 +80,9 @@ function tabUrlMatchesDomain(tabUrl: string, domain: string): boolean {
   } catch {
     return false;
   }
-  return hostname.toLowerCase() === domain.toLowerCase();
+  const host = hostname.toLowerCase();
+  const wanted = domain.toLowerCase();
+  return host === wanted || host.endsWith(`.${wanted}`);
 }
 
 function buildAutofillScript(args: {
