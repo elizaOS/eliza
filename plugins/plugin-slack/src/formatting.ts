@@ -248,12 +248,28 @@ function guardLinkToken(token: string): string {
 }
 
 function convertLinks(text: string, codeSink: string[]): string {
+  // Inline code spans are literal per CommonMark, so [text](url) inside
+  // backticks must not be linkified. convertInlineCode runs later in the
+  // pipeline, so skip matches fully contained in a span here instead of
+  // reordering (reordering leaks sentinels when link labels contain
+  // backticks).
+  const codeSpans: Array<[number, number]> = [];
+  const codeRe = /`[^`\n]+`/g;
+  let cm: RegExpExecArray | null;
+  while ((cm = codeRe.exec(text)) !== null) {
+    codeSpans.push([cm.index, cm.index + cm[0].length]);
+  }
+  const inCodeSpan = (start: number, end: number): boolean =>
+    codeSpans.some(([s, e]) => start >= s && end <= e);
   // The URL group tolerates one level of balanced parentheses, as the
   // Telegram converter does: a plain [^)]+ capture cuts a Wikipedia-style
   // URL at its inner closing paren and leaves a malformed link token.
   return text.replace(
     /\[([^\]]+)\]\(((?:[^()]|\([^()]*\))+)\)/g,
-    (_, linkText, url) => {
+    (match, linkText, url, offset) => {
+      if (inCodeSpan(offset, offset + match.length)) {
+        return match;
+      }
       const trimmedUrl = url.trim();
       const trimmedText = linkText.trim();
       // If link text matches URL, just use URL
