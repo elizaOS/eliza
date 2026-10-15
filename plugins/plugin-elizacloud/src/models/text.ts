@@ -739,7 +739,7 @@ function parseNativeToolCallInput(value: unknown): Record<string, JsonValue> {
   let parsed = value;
   if (typeof value === "string") {
     if (value.trim() === "") {
-      throw invalidNativeToolCall("tool-call arguments are empty");
+      return {};
     }
     try {
       parsed = JSON.parse(value) as unknown;
