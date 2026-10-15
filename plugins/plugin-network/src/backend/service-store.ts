@@ -136,16 +136,9 @@ export function parseServiceTurn(v: unknown): ServiceTurn | undefined {
     typeof c.singlePlayer !== "boolean"
   )
     return undefined;
-  if (
-    !Array.isArray(c.facets) ||
-    c.facets.length > 50 ||
-    !c.facets.every((f) => str(f, 300))
-  )
+  if (!Array.isArray(c.facets) || !c.facets.every((f) => str(f, 300)))
     return undefined;
-  if (
-    c.activeItems !== null &&
-    (!Array.isArray(c.activeItems) || c.activeItems.length > 20)
-  )
+  if (c.activeItems !== null && !Array.isArray(c.activeItems))
     return undefined;
   const items = c.activeItems as Array<Record<string, unknown>> | null;
   if (
