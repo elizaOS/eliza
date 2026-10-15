@@ -21,8 +21,17 @@ import { sendJson } from "./response";
 
 const MAX_BYTES = 2 * 1024 * 1024;
 const PROVIDER = "standalone-whisper.cpp";
-const MODEL_SHA =
-  "4baf807ea95de42a7f9df96e24a36fe835ac8fb5b6ca20d7539ef521c42e6a2b";
+const MODEL_SIZES = new Map([
+  [
+    "4baf807ea95de42a7f9df96e24a36fe835ac8fb5b6ca20d7539ef521c42e6a2b",
+    77704698,
+  ],
+  // ggerganov/whisper.cpp at 5359861c739e955e79d9a303bcbc70fb988958b1.
+  [
+    "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f",
+    77704715,
+  ],
+]);
 let active = false;
 let decoding = false;
 const seen = new Map<string, number>();
@@ -55,7 +64,7 @@ async function configuration() {
       !bs.isFile() ||
       !ms.isFile() ||
       bs.size > 32 * 1024 * 1024 ||
-      ms.size !== 77704698
+      ![...MODEL_SIZES.values()].includes(ms.size)
     )
       return null;
     await access(binary, constants.X_OK);
@@ -63,12 +72,13 @@ async function configuration() {
       readFile(binary),
       readFile(model),
     ]);
+    const modelSha = createHash("sha256").update(modelData).digest("hex");
     if (
       createHash("sha256").update(binaryData).digest("hex") !== binarySha ||
-      createHash("sha256").update(modelData).digest("hex") !== MODEL_SHA
+      MODEL_SIZES.get(modelSha) !== ms.size
     )
       return null;
-    return { binary, model, binarySha, modelSha: MODEL_SHA, backend };
+    return { binary, model, binarySha, modelSha, backend };
   } catch {
     return null;
   }
@@ -286,7 +296,6 @@ export async function handleStandaloneWhisperRoute(
     sendJson(res, 415, { error: "pcm_wav_required" });
     return true;
   }
-  seen.set(key, now + 600000);
   active = true;
   const controller = new AbortController();
   const abort = () => controller.abort();
@@ -302,6 +311,7 @@ export async function handleStandaloneWhisperRoute(
   try {
     const bytes = await bytesFrom(req, controller.signal),
       durationSeconds = validateWav(bytes);
+    seen.set(key, now + 600000);
     const text = await decode(config, bytes, controller.signal);
     if (!controller.signal.aborted && !res.destroyed)
       sendJson(res, 200, {

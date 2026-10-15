@@ -71,6 +71,11 @@ describe("Todo root package export", () => {
       join(temporaryDirectory, "node_modules", "drizzle-orm"),
       "dir",
     );
+    symlinkSync(
+      join(pluginRoot, "node_modules", "@elizaos", "core"),
+      join(temporaryDirectory, "node_modules", "@elizaos", "core"),
+      "dir",
+    );
     run(
       "tar",
       [

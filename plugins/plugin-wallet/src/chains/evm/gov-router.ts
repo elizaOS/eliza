@@ -71,7 +71,9 @@ function asAddressArray(values: readonly string[], key: string): Address[] {
 
 function asHexArray(values: readonly string[], key: string): Hex[] {
   return values.map((value) => {
-    if (!/^0x[0-9a-fA-F]*$/.test(value)) {
+    // Whole bytes only: viem right-pads an odd digit count instead of
+    // refusing it, so the signed calldata would differ from the confirmed text.
+    if (!/^0x(?:[0-9a-fA-F]{2})*$/.test(value)) {
       throw new Error(`${key} must contain only hex calldata values.`);
     }
     return value as Hex;

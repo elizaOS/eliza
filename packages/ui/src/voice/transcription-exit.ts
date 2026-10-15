@@ -63,6 +63,23 @@ const START_PHRASES: readonly string[] = [
  *  long sentences that merely contain a keyword). */
 export const MAX_STANDALONE_TOKENS = 4;
 
+/**
+ * Precompiled patterns matching each explicit exit phrase with any normalized
+ * separator between words. `isTranscriptionExitPhrase` detects phrases on the
+ * normalized text (punctuation-insensitive); these patterns find the same
+ * phrases in the original text so `stripExitPhrase` can slice original offsets.
+ */
+const EXIT_PHRASE_PATTERNS: readonly RegExp[] = EXIT_PHRASES.map(
+  (phrase) =>
+    new RegExp(
+      phrase
+        .split(" ")
+        .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join("[\\s.,!?;:'\"]+"),
+      "i",
+    ),
+);
+
 function normalize(text: string): string {
   return text
     .toLowerCase()
@@ -111,10 +128,9 @@ export function isTranscriptionStartPhrase(
 export function stripExitPhrase(text: string | null | undefined): string {
   const raw = text ?? "";
   if (!raw.trim()) return "";
-  const lower = raw.toLowerCase();
   let cut = -1;
-  for (const phrase of EXIT_PHRASES) {
-    const at = lower.indexOf(phrase);
+  for (const pattern of EXIT_PHRASE_PATTERNS) {
+    const at = raw.search(pattern);
     if (at >= 0 && (cut === -1 || at < cut)) cut = at;
   }
   if (cut >= 0) return raw.slice(0, cut).trim();

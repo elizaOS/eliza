@@ -115,7 +115,7 @@ export const searchMessagesAction: Action = {
 
   handler: async (
     runtime: IAgentRuntime,
-    _message: Memory,
+    message: Memory,
     _state?: State,
     options?: HandlerOptions,
     _callback?: HandlerCallback,
@@ -126,10 +126,10 @@ export const searchMessagesAction: Action = {
       return { success: false, text: filters.error, error: filters.error };
     }
     const service = getDefaultTriageService();
-    const { refs: hits, receipt } = await service.searchWithReceipt(
-      runtime,
-      filters,
-    );
+    const { refs: hits, receipt } = await service.searchWithReceipt(runtime, {
+      ...filters,
+      requester: message,
+    });
 
     const sourcesHit = new Set(hits.map((m) => m.source));
     const gaps = [

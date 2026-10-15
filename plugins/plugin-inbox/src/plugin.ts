@@ -9,12 +9,15 @@
  */
 
 import {
+  ElizaError,
   OWNER_EXCLUSIVE_DISCLOSURE_GATE,
   promoteSubactionsToActions,
 } from "@elizaos/core";
 import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
+import { getDefaultTriageService } from "@elizaos/plugin-assistant";
 import { inboxAction } from "./actions/inbox.ts";
 import { inboxDbSchema } from "./db/schema.ts";
+import { ManagedGmailAdapter } from "./inbox/managed-gmail-adapter.ts";
 import { InboxMigrationService } from "./inbox/migration.ts";
 import { crossChannelContextProvider } from "./providers/cross-channel-context.ts";
 import { inboxTriageProvider } from "./providers/inbox-triage.ts";
@@ -26,6 +29,21 @@ export const inboxPlugin: Plugin = {
   dependencies: ["@elizaos/plugin-sql"],
   schema: inboxDbSchema,
   services: [InboxMigrationService],
+  // The adapter verifies the live owner action for every read. It supports
+  // both standard MESSAGE reads and the existing INBOX fan-out, without writes.
+  init: async () => {
+    const gmail = new ManagedGmailAdapter();
+    if (gmail.isAvailable()) {
+      const registry = getDefaultTriageService();
+      const existing = registry.getAdapter("gmail");
+      if (existing && !(existing instanceof ManagedGmailAdapter))
+        throw new ElizaError(
+          "A Gmail source is already registered. Select one owner transport before starting the agent.",
+          { code: "MANAGED_GMAIL_SOURCE_CONFLICT" },
+        );
+      registry.register(gmail);
+    }
+  },
   // Promote the INBOX_* subaction virtuals here so they exist wherever the
   // plugin loads (including standalone, without plugin-personal-assistant).
   // The `triage` override sharpens the planner signal so a genuine triage

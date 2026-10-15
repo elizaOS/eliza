@@ -1,6 +1,5 @@
 /** Optional advice for loaded pages. This never grants a navigation or task exception. */
 import { detectDomainLookalike } from "./domain-lookalike.mjs";
-import { validFeedTime } from "./policy.mjs";
 
 /** Runs only in the isolated main-frame realm. No account identity enters the page. */
 export function renderProtectionAdvisory(state) {
@@ -125,10 +124,8 @@ export function createProtectionAdvisory(
     } catch {
       /* Missing is not a clean scan. */
     }
-    const current =
-      protection?.status === "current" &&
-      validFeedTime(protection.updatedAt) &&
-      validFeedTime(protection.publishedAt);
+    // "current" means the threat rules are loaded. Their age does not matter.
+    const current = protection?.status === "current";
     const similar = detectDomainLookalike(url.href, referenceDomains);
     const evidence = similar
       ? `lookalike:${similar.suggested}`

@@ -11,6 +11,7 @@
 import { createHash } from "node:crypto";
 import type { Context, MiddlewareHandler } from "hono";
 import type { AppContext, AppEnv, Bindings } from "../../types/cloud-worker-env";
+import { readStewardAccessCookieFromHeader } from "../auth/steward-cookies";
 import { buildRedisClient, type CompatibleRedis } from "../cache/redis-factory";
 import { isHotPathCachesEnabled } from "../services/inference-hot-path-caches";
 import { logger } from "../utils/logger";
@@ -121,19 +122,29 @@ function hashRateLimitIdentifier(value: string): string {
 }
 
 function getDefaultKey(c: AppContext): string {
+  const bearer = c.req.header("authorization")?.startsWith("Bearer ")
+    ? c.req.header("authorization")!.slice(7)
+    : null;
   const apiKey =
     c.req.header("x-api-key") ||
     c.req.header("X-API-Key") ||
-    (() => {
-      const auth = c.req.header("authorization");
-      if (!auth?.startsWith("Bearer ")) return null;
-      const token = auth.slice(7);
-      return token.startsWith("eliza_") ? token : null;
-    })();
-  if (apiKey) return `apikey:${hashRateLimitIdentifier(apiKey)}`;
+    (bearer?.startsWith("eliza_") ? bearer : null);
+  // A request that also carries a session may reach a session-only handler,
+  // which never looks at its API-key header. Bucketing on that header let
+  // a signed-in caller send a new random X-API-Key per request and get a fresh
+  // window each time; such a request is counted by IP instead. A request with
+  // only an API key keeps its per-key window (random-key spray is bounded by the
+  // global per-IP limiter, so clients behind one NAT keep separate windows).
+  const sessionCredential =
+    Boolean(
+      readStewardAccessCookieFromHeader(c.req.header("cookie") ?? null, c.env?.ENVIRONMENT),
+    ) || Boolean(bearer && !bearer.startsWith("eliza_"));
+  if (apiKey && !sessionCredential) return `apikey:${hashRateLimitIdentifier(apiKey)}`;
 
   const userId = c.get("user")?.id;
   if (userId) return `user:${userId}`;
+
+  if (apiKey) return getIpKey(c);
 
   const anon =
     c.req.header("x-anonymous-session") ||

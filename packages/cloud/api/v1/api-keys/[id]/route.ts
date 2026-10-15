@@ -18,6 +18,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { assertOrgMembership } from "@/api-app/middleware/org-membership";
 import { createTransactionalAudit } from "@/api-app/services/audit-transactional";
+import { assertCanManageApiKey } from "../_lib/key-access";
 
 import { updateApiKeySchema } from "../schemas";
 
@@ -42,6 +43,7 @@ app.delete("/", async (c) => {
       resourceId: id,
       c,
     });
+    assertCanManageApiKey(user, existingKey, "revoke");
 
     const audit = createTransactionalAudit();
     await apiKeysService.delete(id, async (tx) => {
@@ -76,6 +78,7 @@ app.patch("/", async (c) => {
       resourceId: id,
       c,
     });
+    assertCanManageApiKey(user, existingKey, "revoke");
 
     const decodedBody = await decodeRequestJson(c.req);
     if (!decodedBody.ok) {

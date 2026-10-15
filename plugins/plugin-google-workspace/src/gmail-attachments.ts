@@ -14,9 +14,12 @@ export function attachmentUnavailable(): ElizaError {
 export function gmailAttachmentParts(payload: GmailMimePartLike | undefined) {
   const result: { descriptor: GoogleGmailAttachment; inlineData: string | null }[] = [];
   const seen = new Set<string>();
+  let isRoot = true;
   walkGmailMimeParts(payload, (part) => {
+    const partId = part.partId ?? (isRoot ? "" : undefined);
+    isRoot = false;
     if (!part.filename && !part.body?.attachmentId) return;
-    const { partId, filename, mimeType } = part;
+    const { filename, mimeType } = part;
     const size = part.body?.size;
     const attachmentId = part.body?.attachmentId ?? null;
     if (

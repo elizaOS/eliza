@@ -360,6 +360,8 @@ export const REQUIRED_ELIZA_INFERENCE_SYMBOLS = Object.freeze([
   "eliza_inference_paradee_phonemize",
   "eliza_inference_paradee_synthesize_alloc",
   "eliza_inference_paradee_synthesize_phonemes_alloc",
+  "eliza_inference_paradee_stream_supported",
+  "eliza_inference_paradee_synthesize_stream",
   "eliza_inference_asr_supported",
   "eliza_inference_asr_cancel",
   "eliza_inference_free_pcm",
@@ -374,12 +376,13 @@ export const REQUIRED_ELIZA_INFERENCE_SYMBOLS = Object.freeze([
   "eliza_inference_asr_stream_close",
 ]);
 
-/** Oldest libelizainference ABI the Android voice bridge binds (Paradee, ASR cancel). */
-export const MIN_ANDROID_VOICE_ABI = 17;
+/** Oldest ABI bound by the Android bridge, including Paradee streaming. */
+export const MIN_ANDROID_VOICE_ABI = 19;
 
 /** Probes that must return 1 in a library staged for Android voice. */
 export const ANDROID_VOICE_PROBES = Object.freeze([
   "eliza_inference_paradee_supported",
+  "eliza_inference_paradee_stream_supported",
   "eliza_inference_asr_supported",
 ]);
 

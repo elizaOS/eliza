@@ -1,7 +1,6 @@
 package ai.elizaos.app;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.util.HashMap;
@@ -25,18 +24,6 @@ public final class ElizaAsrNativeEnvTest {
     }
 
     @Test
-    public void backendResolution() {
-        assertEquals("parakeet", ElizaAsrNativeEnv.normalizeBackend(" Parakeet "));
-        assertEquals("qwen3", ElizaAsrNativeEnv.normalizeBackend("mtmd"));
-        assertEquals("auto", ElizaAsrNativeEnv.normalizeBackend(""));
-        assertNull(ElizaAsrNativeEnv.normalizeBackend("whisper"));
-        assertEquals("qwen3", ElizaAsrNativeEnv.resolveBackend("qwen3", "parakeet"));
-        assertEquals("parakeet", ElizaAsrNativeEnv.resolveBackend(null, "parakeet"));
-        assertEquals("parakeet", ElizaAsrNativeEnv.resolveBackend("bogus", "parakeet"));
-        assertEquals("auto", ElizaAsrNativeEnv.resolveBackend(null, null));
-    }
-
-    @Test
     public void threadResolution() {
         assertEquals(3, ElizaAsrNativeEnv.resolveThreads("3", "6", 4));
         assertEquals(6, ElizaAsrNativeEnv.resolveThreads(null, "6", 4));
@@ -48,14 +35,18 @@ public final class ElizaAsrNativeEnvTest {
     @Test
     public void applyWritesBothVariables() {
         final Map<String, String> env = new HashMap<>();
-        final String summary = ElizaAsrNativeEnv.apply("parakeet", "2", env::put);
-        final String processBackend = System.getenv("ELIZA_ASR_BACKEND");
-        if (processBackend == null) {
-            assertEquals("parakeet", env.get("ELIZA_ASR_BACKEND"));
-        }
+        final String summary = ElizaAsrNativeEnv.apply("2", env::put);
+        // Phonon-2 is the only ASR, whatever the process environment says.
+        assertEquals("ggml", env.get("ELIZA_ASR_BACKEND"));
         if (System.getenv("ELIZA_ASR_THREADS") == null) {
             assertEquals("2", env.get("ELIZA_ASR_THREADS"));
         }
-        assertTrue(summary.contains("/"));
+        assertTrue(summary.startsWith("ggml/"));
+    }
+    @Test(expected = IllegalStateException.class)
+    public void backendWriteFailurePreventsLoadingWithAStaleBackend() {
+        ElizaAsrNativeEnv.apply("2", (key, value) -> {
+            throw new java.io.IOException("environment write refused");
+        });
     }
 }

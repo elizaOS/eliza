@@ -1979,7 +1979,7 @@ export class DocumentService extends Service {
         }
         extractedText = await extractTextFromDocument(
           fileBuffer,
-          normalizedContentType,
+          "application/pdf",
           originalFilename,
         );
         documentContentToStore = content;

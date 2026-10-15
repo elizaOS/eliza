@@ -194,6 +194,27 @@ it("rejects stale presented credentials instead of promoting loopback access", a
   }
 });
 
+it("lists an automation conversation from the world of an earlier name", async () => {
+  const draftId = randomUUID();
+  const created = await request("canonical", "/api/conversations", "POST", {
+    title: "Draft before the rename",
+    metadata: { scope: "automation-draft", draftId },
+  });
+  expect(created.status).toBe(200);
+  const characterName = fixture.runtime.character.name;
+  fixture.runtime.character.name = "PromptOwnerHttp Renamed";
+  try {
+    const feed = await request("canonical", "/api/automations");
+    expect(feed.status).toBe(200);
+    const body = (await feed.json()) as {
+      automations: Array<{ draftId?: string }>;
+    };
+    expect(body.automations.map((row) => row.draftId)).toContain(draftId);
+  } finally {
+    fixture.runtime.character.name = characterName;
+  }
+});
+
 it("renders persisted owner work and admitted automations without promoting maintenance queues into tasks", async () => {
   const prefix = `provider-${randomUUID()}`;
   const taskIds = [];

@@ -79,9 +79,16 @@ function parseContentDispositionFileName(
 	if (!header) {
 		return undefined;
 	}
-	const starMatch = /filename\*\s*=\s*([^;]+)/i.exec(header);
-	if (starMatch?.[1]) {
-		const cleaned = stripQuotes(starMatch[1].trim());
+	const parameters = Array.from(
+		header.matchAll(
+			/(?:^|;)\s*([^=;\s]+)\s*=\s*(?:"((?:\\.|[^"\\])*)"|([^;]*))/g,
+		),
+	);
+	const starMatch = parameters.find(
+		(parameter) => parameter[1].toLowerCase() === "filename*",
+	);
+	if (starMatch) {
+		const cleaned = stripQuotes((starMatch[2] ?? starMatch[3]).trim());
 		// RFC 5987 ext-value is `charset'language'value` where the language
 		// tag is optional but both single quotes are mandatory, e.g.
 		// `UTF-8''na%C3%AFve.txt` or `UTF-8'en'na%C3%AFve.txt`. Strip the
@@ -104,12 +111,14 @@ function parseContentDispositionFileName(
 			return getBasename(encoded);
 		}
 	}
-	const match = /filename\s*=\s*(?:"((?:\\.|[^"\\])*)"|([^;]+))/i.exec(header);
+	const match = parameters.find(
+		(parameter) => parameter[1].toLowerCase() === "filename",
+	);
 	if (match) {
 		const value =
-			match[1] === undefined
-				? stripQuotes(match[2].trim())
-				: match[1].replace(/\\(.)/g, "$1");
+			match[2] === undefined
+				? stripQuotes(match[3].trim())
+				: match[2].replace(/\\(.)/g, "$1");
 		return getBasename(value);
 	}
 	return undefined;

@@ -8,7 +8,7 @@
  * Also exposes target-user matching and randomized loop-interval helpers.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import * as z from "zod";
 import { getSetting } from "./utils/settings";
 
@@ -97,6 +97,30 @@ function safeParseInt(value: string | undefined, defaultValue: number): number {
   if (!value) return defaultValue;
   const parsed = Number.parseInt(value, 10);
   return Number.isNaN(parsed) || parsed < 0 ? defaultValue : parsed;
+}
+
+/** Counts preserve an explicit zero; malformed settings cannot enable actions. */
+export function parseTwitterCount(
+  value: unknown,
+  defaultValue: number,
+): number {
+  if (value == null || (typeof value === "string" && !value.trim()))
+    return defaultValue;
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && /^[0-9]+$/.test(value.trim())
+        ? Number(value.trim())
+        : Number.NaN;
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new ElizaError(
+      "X count settings must be non-negative safe integers",
+      {
+        code: "X_INVALID_COUNT_SETTING",
+      },
+    );
+  }
+  return parsed;
 }
 
 /** Parse an interval magnitude without accepting zero or partial integers. */
@@ -337,7 +361,7 @@ export async function validateTwitterConfig(
         ),
       ),
       TWITTER_MAX_ENGAGEMENTS_PER_RUN: String(
-        safeParseInt(
+        parseTwitterCount(
           config.TWITTER_MAX_ENGAGEMENTS_PER_RUN ??
             getSetting(runtime, "TWITTER_MAX_ENGAGEMENTS_PER_RUN"),
           5,

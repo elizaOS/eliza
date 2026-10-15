@@ -38,7 +38,7 @@ import { join } from "node:path";
 import {
   downloadThreatFeed,
   parseThreatDomains,
-  validFeedTime,
+  plausibleTime,
 } from "./policy.mjs";
 
 const HOUR = 3600000,
@@ -72,17 +72,18 @@ export function createWebsiteReputation({
   }));
   let timer = null,
     stopped = false;
-  const validTime = (time) => validFeedTime(time, now());
-  const usable = (s) =>
-    s && validTime(s.publishedAt) && validTime(s.downloadedAt);
-  const fresh = (s) => usable(s) && now() - s.downloadedAt < 6 * HOUR;
+  // A loaded snapshot is usable at any age. Age only schedules a refresh.
+  const usable = (s) => Boolean(s);
+  const fresh = (s) =>
+    usable(s) &&
+    plausibleTime(s.downloadedAt, now()) &&
+    now() - s.downloadedAt < 6 * HOUR;
   function parse(body, publishedAt, downloadedAt) {
     if (
       Buffer.byteLength(body) > MAX_BYTES ||
-      !validTime(publishedAt) ||
-      !validTime(downloadedAt)
+      !plausibleTime(downloadedAt, now())
     )
-      throw Error("expired or oversized feed");
+      throw Error("oversized feed or invalid download time");
     const domains = parseThreatDomains(body, minEntries);
     return { domains, publishedAt, downloadedAt };
   }
@@ -103,7 +104,7 @@ export function createWebsiteReputation({
           throw Error("invalid cache");
         state.snapshot = parse(data.body, data.publishedAt, data.downloadedAt);
       } catch {
-        /* Missing/corrupt/expired data is never a clean result. */
+        /* Missing or corrupt data is never a clean result. */
       }
     }),
   );
@@ -182,7 +183,7 @@ export function createWebsiteReputation({
         }
       }),
     );
-    // A match from either current feed blocks even when the other is unavailable.
+    // A match from any loaded feed blocks even when another is unavailable.
     for (const { snapshot, feed } of states) {
       if (!usable(snapshot)) continue;
       let candidate = host;
@@ -197,11 +198,12 @@ export function createWebsiteReputation({
         candidate = candidate.slice(candidate.indexOf(".") + 1);
       }
     }
-    if (states.some((state) => !usable(state.snapshot)))
-      return unavailable("feed-unavailable");
+    // One loaded feed is enough for "no known threat"; none is unavailable.
+    const ready = states.filter((state) => usable(state.snapshot));
+    if (!ready.length) return unavailable("feed-unavailable");
     return {
       status: "no-known-threat",
-      source: states.map((s) => s.feed.source).join(" + "),
+      source: ready.map((s) => s.feed.source).join(" + "),
       scope: "domain",
     };
   };

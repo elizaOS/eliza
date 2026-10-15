@@ -91,6 +91,10 @@ export class CameraWeb extends WebPlugin {
   private recordingAudioStream: MediaStream | null = null;
   private recordingStartTime = 0;
   private recordingStateInterval: ReturnType<typeof setInterval> | null = null;
+  // Set while stopRecording() is awaiting onstop. The recorder.onerror path
+  // aborts the session without firing onstop, so it rejects through this
+  // instead of leaving the caller's promise pending forever.
+  private pendingStopReject: ((e: unknown) => void) | null = null;
   private isRecording = false;
   // Guards the async window between entering startRecording() and start()
   // succeeding. Set synchronously before the first await so a concurrent
@@ -426,6 +430,10 @@ export class CameraWeb extends WebPlugin {
         // onstop; run the shared finalizer so the interval, recorder, and
         // separately-acquired mic are released, then surface a distinct error
         // event to listeners.
+        this.pendingStopReject?.(
+          new Error("Recording aborted by recorder error"),
+        );
+        this.pendingStopReject = null;
         this.finalizeRecordingTeardown();
         this.notifyListeners("error", {
           code: "RECORDING_ERROR",
@@ -510,6 +518,7 @@ export class CameraWeb extends WebPlugin {
       const duration = (Date.now() - this.recordingStartTime) / 1000;
 
       recorder.onstop = () => {
+        this.pendingStopReject = null;
         const mimeType = recorder.mimeType || "video/webm";
         this.finalizeRecordingTeardown();
 
@@ -549,12 +558,14 @@ export class CameraWeb extends WebPlugin {
       };
 
       try {
+        this.pendingStopReject = reject;
         recorder.stop();
       } catch (err) {
         // error-policy:J2 stop() threw before onstop could fire; force the
         // shared teardown so the interval, recorder, and mic are released,
         // then reject so the caller sees the failure instead of a wedged
         // recording state.
+        this.pendingStopReject = null;
         this.finalizeRecordingTeardown();
         reject(err);
       }

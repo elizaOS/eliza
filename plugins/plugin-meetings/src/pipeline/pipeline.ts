@@ -253,6 +253,11 @@ class MeetingPipeline implements MeetingTranscriptionPipeline {
     if (!this.finalized) {
       this.finalized = true;
 
+      // Let current submissions populate their buffers before flushing them.
+      while (this.outstanding.size > 0) {
+        await Promise.allSettled(Array.from(this.outstanding));
+      }
+
       // Final flush: speakers with a forming transcript emit it; speakers
       // with audio but no transcript yet get one last ASR submission.
       for (const speakerKey of this.manager.getActiveSpeakers()) {

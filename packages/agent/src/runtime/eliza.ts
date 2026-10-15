@@ -1725,6 +1725,27 @@ export async function shutdownRuntime(
     throw firstError;
   }
 }
+/**
+ * Stop a runtime that a hot reload replaced. plugin-sql reuses one database
+ * manager per data dir and agent, so the replacement can sit on the same
+ * connection as the old runtime; closing the old adapter would close it under
+ * the replacement. The replacement's own shutdown closes it later.
+ */
+export async function disposeReplacedRuntime(
+  previousRuntime: AgentRuntime,
+  activeRuntime: AgentRuntime,
+): Promise<void> {
+  const connection = (runtime: AgentRuntime) =>
+    (
+      runtime.adapter as { getRawConnection?: () => unknown } | undefined
+    )?.getRawConnection?.();
+  const shared = connection(previousRuntime);
+  await shutdownRuntime(previousRuntime, "hot-reload cleanup", {
+    fast: true,
+    keepAdapterOpen:
+      shared !== undefined && shared === connection(activeRuntime),
+  });
+}
 interface TrajectoryLoggerControl {
   isEnabled?: () => boolean;
   setEnabled?: (enabled: boolean) => void;
@@ -6197,9 +6218,7 @@ export async function startEliza(
           return;
         }
         try {
-          await shutdownRuntime(previousRuntime, "hot-reload cleanup", {
-            fast: true,
-          });
+          await disposeReplacedRuntime(previousRuntime, activeRuntime);
         } catch (err) {
           // error-policy:J6 the replacement is already active; failed old-runtime
           // teardown is observable but must not roll back the healthy swap.

@@ -151,7 +151,8 @@ test("clock rollback refreshes rules and failed navigation revokes its exception
       requests > 0,
       "future download timestamp cannot suppress refresh",
     );
-    assert.equal(written.protection.status, "unavailable");
+    // The refresh failed, but the saved rules are still installed: they count.
+    assert.equal(written.protection.status, "current");
     const reply = await new Promise((resolve) =>
       listener(
         { type: "open-temporarily" },
