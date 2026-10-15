@@ -2771,7 +2771,9 @@ export class CalendarService extends Service {
           schedules.map((schedule) => [schedule.scheduleId, schedule]),
         );
         for (const grant of group) {
-          const availability = schedulesById.get(grant.calendarId);
+          const availability = schedulesById.get(
+            grant.calendarId.trim().toLowerCase(),
+          );
           if (!availability || availability.error) {
             resolved.set(grant.grantId, unavailableSourceFor(grant, "error"));
             continue;
