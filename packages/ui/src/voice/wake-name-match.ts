@@ -237,6 +237,7 @@ function commandInTranscript(transcript: string, sourceOffset: number): string {
   return (
     transcript
       .slice(sourceOffset)
+      .replace(/^(?:['’]s\b|['’])\s*/iu, "")
       // Remove speech separators, preserving command symbols such as a minus,
       // currency sign, quotation mark, hashtag, or emoji.
       .replace(/^[\s,.:;!?、，。：；！？—–]+/u, "")

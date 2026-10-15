@@ -456,7 +456,9 @@ async function sendToRuntime(
 ): Promise<string | undefined> {
   const roomUuid = message.roomId as UUID;
   const entityUuid = message.entityId as UUID;
-  const worldId = stringToUuid("discord-world") as UUID;
+  // Agent-scoped: world ids are a global key and world reads are
+  // agent-scoped, so one shared id would collide across agents.
+  const worldId = createUniqueUuid(runtime, "discord-world");
   const serverId = stringToUuid("discord-server") as UUID;
   // Ensure world exists
   try {

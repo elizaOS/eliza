@@ -120,10 +120,6 @@ function defaultTitleForInput(input: AddTaskClipboardItemInput): string {
   return "Clipboard Item";
 }
 
-function normalizeContent(content: string): string {
-  return content.replace(/\r\n/g, "\n").trim();
-}
-
 /** Serializes complete read-modify-write cycles for one clipboard file. */
 const storeMutations = new Map<string, Promise<void>>();
 
@@ -271,8 +267,8 @@ export class TaskClipboardService {
     replaced: boolean;
     snapshot: TaskClipboardSnapshot;
   }> {
-    const content = normalizeContent(input.content);
-    if (!content) {
+    const content = input.content;
+    if (!content.trim()) {
       throw new Error("Clipboard items require non-empty content.");
     }
     const store = await this.readStore(entityId);

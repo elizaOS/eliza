@@ -203,7 +203,10 @@ export function cleanUrl(url: string): string {
 }
 
 export function extractUrls(text: string, runtime?: IAgentRuntime): string[] {
-	const urlRegex = /(https?:\/\/[^\s]+)/g;
+	// Exclude closing quotes, angle brackets and backticks: they are prose
+	// punctuation around a link, not part of it. Apostrophes stay allowed
+	// (e.g. Schindler's_List) and %22 stays intact.
+	const urlRegex = /(https?:\/\/[^\s"<>`]+)/g;
 	const rawUrls = text.match(urlRegex) || [];
 
 	return rawUrls

@@ -39,6 +39,28 @@ function isPastOnceSchedule(
   const scheduledAt = draft.scheduledAtIso ? Date.parse(draft.scheduledAtIso) : Number.NaN;
   return Number.isFinite(scheduledAt) && scheduledAt <= nowMs;
 }
+
+/**
+ * Canonicalize an IANA timezone identifier for schedule-equivalence
+ * comparison. The cron runtime resolves the raw stored string through
+ * `Intl.DateTimeFormat` (see buildTzFormatter in @elizaos/core), which
+ * accepts and normalizes equivalent spellings: `utc` and `Etc/UTC` both
+ * resolve to `UTC`, and `US/Eastern` resolves to `America/New_York`. A raw
+ * string comparison would therefore miss duplicate schedules whose
+ * timezones are spelled differently, so compare the resolved canonical
+ * names instead.
+ */
+function canonicalizeTimezoneForComparison(timezone?: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone: timezone ?? 'UTC' }).resolvedOptions()
+      .timeZone;
+  } catch {
+    // Draft validation already rejects invalid identifiers. On any
+    // construction failure fall back to the raw string (fail closed:
+    // a missed duplicate is safer than blocking a legitimate trigger).
+    return timezone ?? 'UTC';
+  }
+}
 export type TriggerRouteHelpers = RouteHelpers;
 export interface TriggerTaskMetadata {
   updatedAt?: number;
@@ -400,13 +422,22 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     }
     const triggerId = stringToUuid(crypto.randomUUID());
     const trigger = buildTriggerConfig({ draft: normalized.draft, triggerId });
+    // An omitted cron timezone is documented to mean UTC
+    // (packages/agent/src/triggers/scheduling.ts), and the route stores it as
+    // undefined, so canonicalize before comparing to avoid treating legacy
+    // timezone-less triggers as different from explicit-UTC ones, and to
+    // avoid missing duplicates whose timezones are spelled differently
+    // (e.g. `utc` vs `UTC`, `US/Eastern` vs `America/New_York`).
     const duplicate = existingTasks.find((task) => {
       if (isAgentOwnedHeartbeat(task, runtime.agentId)) return false;
       const existingTrigger = readTriggerConfig(task);
       return (
         existingTrigger?.enabled &&
         existingTrigger.dedupeKey &&
-        existingTrigger.dedupeKey === trigger.dedupeKey
+        existingTrigger.dedupeKey === trigger.dedupeKey &&
+        (trigger.triggerType !== 'cron' ||
+          canonicalizeTimezoneForComparison(existingTrigger.timezone) ===
+            canonicalizeTimezoneForComparison(trigger.timezone))
       );
     });
     if (duplicate?.id) {

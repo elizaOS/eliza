@@ -36,3 +36,32 @@ describe("markdownToSlackMrkdwn bare URLs", () => {
     );
   });
 });
+
+describe("markdown links in inline code", () => {
+  it("keeps examples literal while converting links outside code", () => {
+    expect(
+      markdownToSlackMrkdwn(
+        "Read `[docs](https://example.com)` then [visit](https://example.org)",
+      ),
+    ).toBe(
+      "Read `[docs](https://example.com)` then <https://example.org|visit>",
+    );
+    expect(
+      markdownToSlackMrkdwn(
+        "`[one](https://one.test)` and `[two](https://two.test)`",
+      ),
+    ).toBe("`[one](https://one.test)` and `[two](https://two.test)`");
+  });
+
+  it("keeps emphasis markers in a code link example literal", () => {
+    expect(markdownToSlackMrkdwn("`[a*b*c](https://example.com/x)`")).toBe(
+      "`[a*b*c](https://example.com/x)`",
+    );
+  });
+
+  it("still converts a link whose label is inline code", () => {
+    expect(markdownToSlackMrkdwn("[`y`](https://e.com)")).toBe(
+      "<https://e.com|`y`>",
+    );
+  });
+});

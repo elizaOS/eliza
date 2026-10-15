@@ -3462,15 +3462,14 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async deleteCaches(keys: string[]): Promise<boolean> {
-    let removed = false;
+    // Storage failures throw, so reaching the end means every delete
+    // succeeded — including no-ops that matched no rows. Report success to
+    // match the pg adapter, whose deleteCache returns true on any successful
+    // DELETE regardless of row count.
     for (const key of keys) {
-      const ok = await this.storage.delete(
-        COLLECTIONS.CACHE,
-        this.cacheStorageKey(key),
-      );
-      if (ok) removed = true;
+      await this.storage.delete(COLLECTIONS.CACHE, this.cacheStorageKey(key));
     }
-    return removed;
+    return true;
   }
 
   // ── Task CRUD ─────────────────────────────────────────────────────────

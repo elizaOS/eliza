@@ -223,7 +223,7 @@ function deviceOperationIsRead(type: DeviceOperation["type"]): boolean {
       return false;
     default: {
       const unreachable: never = type;
-      throw new Error("Unclassified device operation: " + unreachable);
+      throw new Error(`Unclassified device operation: ${unreachable}`);
     }
   }
 }

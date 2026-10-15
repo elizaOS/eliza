@@ -22,6 +22,7 @@ import {
 import { createV5ReplyStrategyResult } from "./reply-policy";
 import {
   createSourceReplySnapshot,
+  resolveLiteralSourceReply,
   resolveSourceReply,
   type SourceReplyRendering,
 } from "./source-reply";
@@ -144,10 +145,45 @@ function fixture() {
     references,
     rendering,
     contextFor,
+    context,
+    snapshot,
   };
 }
 
 describe("stored source-backed reply references", () => {
+  it("rejects the captured array-as-string at the native parts boundary and preserves typed literal prose", () => {
+    const f = fixture();
+    // Preserved tj-f40b258a422066: HANDLE_RESPONSE advertised an array but stored this malformed string.
+    const captured = '[{"kind": "text", "value": "Hey, I\'m here."}';
+    const raw = { replyText: captured };
+    expect(() =>
+      resolveLiteralSourceReply(f.context, f.snapshot, raw),
+    ).toThrowError(
+      expect.objectContaining({ code: "STAGE1_INVALID_SOURCE_REPLY" }),
+    );
+    expect(raw.replyText).toBe(captured);
+    const valid = { replyText: [{ kind: "text", value: "Hey, I'm here." }] };
+    expect(
+      resolveLiteralSourceReply(f.context, f.snapshot, valid)?.replyText,
+    ).toBe("Hey, I'm here.");
+    // The same bytes deliberately supplied as a text part are prose, never parsed or stripped.
+    expect(
+      resolveLiteralSourceReply(f.context, f.snapshot, {
+        replyText: [{ kind: "text", value: captured }],
+      })?.replyText,
+    ).toBe(captured);
+    expect(resolveSourceReply(f.context, f.snapshot, raw)).toBe(raw);
+  });
+  it("keeps omitted, empty, and ordinary string replyText on the existing path", () => {
+    const f = fixture();
+    for (const raw of [
+      { shouldRespond: "IGNORE" },
+      { shouldRespond: "STOP", replyText: "" },
+      { shouldRespond: "RESPOND", replyText: "Hey, I'm here." },
+      { shouldRespond: "RESPOND", replyText: "[draft] see the {notes}" },
+    ])
+      expect(resolveLiteralSourceReply(f.context, f.snapshot, raw)).toBe(raw);
+  });
   it("supplies a recent quote's deferred original before the first decision", () => {
     const f = fixture();
     f.reply.createdAt = 20;

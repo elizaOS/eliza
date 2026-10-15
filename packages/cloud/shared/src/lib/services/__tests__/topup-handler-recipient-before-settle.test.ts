@@ -10,6 +10,7 @@ const { cache } = await import("../../cache/client");
 const { creditsService } = await import("../credits");
 const { referralsService } = await import("../referrals");
 const { usersService } = await import("../users");
+const walletSignup = await import("../wallet-signup");
 
 type Settlement = Awaited<ReturnType<typeof x402FacilitatorService.settle>>;
 
@@ -324,4 +325,86 @@ test("an account lookup failure after settlement is reported as 503", async () =
     settleCalls: 1,
     addCreditsCalls: 0,
   });
+});
+
+function stubCredit(walletUser: { id: string; organization_id: string }) {
+  spyOn(creditsService, "addCredits").mockResolvedValue({
+    transaction: { id: "credit-tx-ref" },
+    newBalance: 10,
+  } as never);
+  spyOn(referralsService, "calculateRevenueSplits").mockResolvedValue({
+    splits: [],
+  } as never);
+  return walletUser;
+}
+
+test("an unsigned request does not apply a referral to the wallet it names", async () => {
+  stubSettlement();
+  const walletUser = stubCredit({
+    id: "30000000-0000-4000-8000-000000000005",
+    organization_id: "30000000-0000-4000-8000-000000000006",
+  });
+  spyOn(walletSignup, "findOrCreateUserByWalletAddress").mockResolvedValue({
+    user: walletUser,
+  } as never);
+  const applyReferral = spyOn(referralsService, "applyReferralCode").mockResolvedValue({
+    success: true,
+    message: "applied",
+  } as never);
+
+  const response = await topup(
+    new Request("https://cloud.test/api/v1/topup/10?appOwnerId=attacker-user", {
+      method: "POST",
+      headers: { "X-PAYMENT": paymentHeader },
+      body: JSON.stringify({ walletAddress: account.address, ref: "ATTACKER" }),
+    }),
+  );
+
+  expect(response.status).toBe(200);
+  expect(applyReferral.mock.calls.length).toBe(0);
+});
+
+test("a signed request applies the referral without an app owner from the request", async () => {
+  stubSettlement();
+  const organizationId = "30000000-0000-4000-8000-000000000007";
+  const walletUser = {
+    id: "30000000-0000-4000-8000-000000000008",
+    organization_id: organizationId,
+    wallet_address: account.address,
+    is_active: true,
+    organization: { id: organizationId, is_active: true },
+  };
+  stubCredit(walletUser);
+  spyOn(cache, "isAvailable").mockReturnValue(true);
+  spyOn(cache, "setIfNotExists").mockResolvedValue(true);
+  spyOn(cache, "get").mockResolvedValue(walletUser as never);
+  const applyReferral = spyOn(referralsService, "applyReferralCode").mockResolvedValue({
+    success: true,
+    message: "applied",
+  } as never);
+  const rawBody = JSON.stringify({ ref: "FRIEND", appOwnerId: "attacker-user" });
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`\n${rawBody}`));
+  const payloadHash = Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  const timestamp = Date.now();
+  const signature = await account.signMessage({
+    message: `Eliza Cloud Authentication\nTimestamp: ${timestamp}\nMethod: POST\nPath: /api/v1/topup/10\nPayload-SHA256: ${payloadHash}`,
+  });
+
+  const response = await topup(
+    new Request("https://cloud.test/api/v1/topup/10", {
+      method: "POST",
+      headers: {
+        "X-PAYMENT": paymentHeader,
+        "X-Wallet-Address": account.address,
+        "X-Timestamp": String(timestamp),
+        "X-Wallet-Signature": signature,
+      },
+      body: rawBody,
+    }),
+  );
+
+  expect(response.status).toBe(200);
+  expect(applyReferral.mock.calls).toEqual([[walletUser.id, organizationId, "FRIEND"]]);
 });

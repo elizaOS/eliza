@@ -213,7 +213,7 @@ it("restores an evicted conversation so it stays readable and deletable", async 
   }
 }, 120_000);
 
-it("does not restore a conversation from a room outside the web-chat world", async () => {
+it("does not restore a conversation from a room that is not a web chat", async () => {
   const { adapter, dataDir, runtime, state } = await createFixture();
   try {
     const convId = "not-a-web-chat";
@@ -237,6 +237,33 @@ it("does not restore a conversation from a room outside the web-chat world", asy
 
     expect(messages.status).toBe(404);
     expect(state.conversations.size).toBe(0);
+  } finally {
+    await adapter.close();
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+}, 120_000);
+
+it("restores a conversation of the same agent id from the world of an earlier name", async () => {
+  const { adapter, dataDir, runtime, state } = await createFixture();
+  try {
+    const created = await call(state, "POST", "/api/conversations", {
+      title: "Chat before the rename",
+    });
+    const { conversation } = created.payload as {
+      conversation: { id: string; roomId: UUID };
+    };
+    runtime.character.name = "Renamed Agent";
+    state.conversations.clear();
+
+    expect(await restoreConversationsFromDb(runtime, state)).toBe(1);
+    expect(state.conversations.get(conversation.id)?.roomId).toBe(
+      conversation.roomId,
+    );
+    state.conversations.clear();
+    expect(
+      (await restoreConversationFromDb(runtime, state, conversation.id))
+        ?.roomId,
+    ).toBe(conversation.roomId);
   } finally {
     await adapter.close();
     fs.rmSync(dataDir, { recursive: true, force: true });

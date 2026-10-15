@@ -225,9 +225,8 @@ export function getNonceBackend(): import("../../auth/index.ts").StoreBackend {
   // Lazily fall back to a fresh in-memory backend if initAuthStores() hasn't
   // been called yet (e.g. tests or Workers cold-boot before middleware runs).
   // initAuthStores() will replace this with a Redis or Postgres-backed one.
-  // Imported via require to avoid a circular dep with @stwd/auth at module init.
-  const { MemoryBackend } =
-    require("../../auth/index.ts") as typeof import("../../auth/index.ts");
+  // `MemoryBackend` is imported at the top of this ESM module; a bare `require`
+  // is not defined under Node, so the fallback threw before it could build one.
   _nonceBackend = new MemoryBackend();
   return _nonceBackend;
 }
@@ -406,16 +405,12 @@ function getTokenStore(): TokenStore {
 
 export function getMfaBackend(): StoreBackend {
   if (_mfaBackend) return _mfaBackend;
-  const { MemoryBackend } =
-    require("../../auth/index.ts") as typeof import("../../auth/index.ts");
   _mfaBackend = new MemoryBackend();
   return _mfaBackend;
 }
 
 export function getImportSessionBackend(): StoreBackend {
   if (_importSessionBackend) return _importSessionBackend;
-  const { MemoryBackend } =
-    require("../../auth/index.ts") as typeof import("../../auth/index.ts");
   _importSessionBackend = new MemoryBackend();
   return _importSessionBackend;
 }

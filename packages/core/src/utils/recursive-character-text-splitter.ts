@@ -148,7 +148,9 @@ export class RecursiveCharacterTextSplitter {
 			} else {
 				if (goodSplits.length) {
 					const mergedText = await this.mergeSplits(goodSplits, sepForMerge);
-					finalChunks.push(...mergedText);
+					for (const chunk of mergedText) {
+						finalChunks.push(chunk);
+					}
 					goodSplits.length = 0;
 				}
 				if (!newSeparators) {
@@ -160,13 +162,17 @@ export class RecursiveCharacterTextSplitter {
 					finalChunks.push(s);
 				} else {
 					const otherInfo = await this._splitText(s, newSeparators);
-					finalChunks.push(...otherInfo);
+					for (const chunk of otherInfo) {
+						finalChunks.push(chunk);
+					}
 				}
 			}
 		}
 		if (goodSplits.length) {
 			const mergedText = await this.mergeSplits(goodSplits, sepForMerge);
-			finalChunks.push(...mergedText);
+			for (const chunk of mergedText) {
+				finalChunks.push(chunk);
+			}
 		}
 		return finalChunks;
 	}

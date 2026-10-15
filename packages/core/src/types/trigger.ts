@@ -35,6 +35,12 @@ interface TriggerConfigBase {
 	timezone?: string;
 	intervalMs?: number;
 	scheduledAtIso?: string;
+	/**
+	 * Original relative delay for a delay-derived once trigger (set at create
+	 * only). Kept so the dedupe key can reuse the same relative scheme across
+	 * create/update instead of flipping to the absolute timestamp.
+	 */
+	delayMs?: number;
 	cronExpression?: string;
 	eventKind?: string;
 	/** Deep-subset payload match for event triggers. */

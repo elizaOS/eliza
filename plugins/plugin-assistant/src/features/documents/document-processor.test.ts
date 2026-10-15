@@ -7,9 +7,10 @@ import { Buffer } from "node:buffer";
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { ElizaError, MemoryType, ModelType } from "@elizaos/core";
 import { createMockRuntime, MOCK_AGENT_ID } from "@elizaos/testing";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createDocumentMemory,
+  createRateLimiter,
   extractTextFromDocument,
   hasDocumentEmbeddingModel,
   preparePreChunkedFragmentMemories,
@@ -579,5 +580,130 @@ describe("preparePreChunkedFragmentMemories", () => {
       ]),
     );
     expect(memories[0]?.embedding).toEqual([0.2, 0.8]);
+  });
+});
+
+describe("createRateLimiter", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("keeps one request per minute when calls wait for the window", async () => {
+    const limiter = createRateLimiter(1);
+    const sentAt: number[] = [];
+
+    // First call at t=0 is admitted immediately.
+    vi.setSystemTime(0);
+    const first = limiter(1000).then(() => sentAt.push(Date.now()));
+    await first;
+
+    // Second call arrives 30s later and must wait 30s for the first window.
+    vi.setSystemTime(30_000);
+    const second = limiter(1000).then(() => sentAt.push(Date.now()));
+    await vi.advanceTimersByTimeAsync(30_000);
+    await second;
+
+    // Third call arrives right after the second was sent. It may be sent no
+    // earlier than 60s after the second (t=120_000). A limiter that stamps a
+    // waited call at its arrival time admits it at t=90_000 instead.
+    vi.setSystemTime(60_001);
+    let thirdSettled = false;
+    const third = limiter(1000).then(() => {
+      thirdSettled = true;
+      sentAt.push(Date.now());
+    });
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(thirdSettled).toBe(false);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await third;
+
+    expect(sentAt).toEqual([0, 60_000, 120_000]);
+  });
+
+  it("enforces the per-minute token budget across waited calls", async () => {
+    const limiter = createRateLimiter(Number.MAX_SAFE_INTEGER, 1000);
+    const sentAt: number[] = [];
+
+    vi.setSystemTime(0);
+    const first = limiter(600).then(() => sentAt.push(Date.now()));
+    await first;
+
+    // Second call needs 600 more tokens; the 1000-token window opens at
+    // t=60_000, so the call sent at t=20_000 must wait 40s.
+    vi.setSystemTime(20_000);
+    const second = limiter(600).then(() => sentAt.push(Date.now()));
+    await vi.advanceTimersByTimeAsync(40_000);
+    await second;
+
+    // Third call arrives at t=60_001. It may not be sent until t=120_000;
+    // stamping the second call at its arrival time admits it at t=80_000.
+    vi.setSystemTime(60_001);
+    let thirdSettled = false;
+    const third = limiter(600).then(() => {
+      thirdSettled = true;
+      sentAt.push(Date.now());
+    });
+    await vi.advanceTimersByTimeAsync(19_999);
+    expect(thirdSettled).toBe(false);
+    await vi.advanceTimersByTimeAsync(40_001);
+    await third;
+
+    expect(sentAt).toEqual([0, 60_000, 120_000]);
+  });
+
+  it("admits one oversized request and lets a later call wait for it", async () => {
+    const limiter = createRateLimiter(Number.MAX_SAFE_INTEGER, 1000);
+    const sentAt: number[] = [];
+
+    vi.setSystemTime(0);
+    await limiter(1001).then(() => sentAt.push(Date.now()));
+
+    vi.setSystemTime(1);
+    let laterSettled = false;
+    const later = limiter(100).then(() => {
+      laterSettled = true;
+      sentAt.push(Date.now());
+    });
+
+    await vi.advanceTimersByTimeAsync(59_998);
+    expect(Date.now()).toBe(59_999);
+    expect(laterSettled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await later;
+
+    expect(sentAt).toEqual([0, 60_000]);
+  });
+
+  it("serializes concurrent calls waiting for the same window", async () => {
+    const limiter = createRateLimiter(1);
+    const sentAt: number[] = [];
+
+    vi.setSystemTime(0);
+    await limiter(1000).then(() => sentAt.push(Date.now()));
+
+    vi.setSystemTime(1);
+    let thirdSettled = false;
+    const second = limiter(1000).then(() => sentAt.push(Date.now()));
+    const third = limiter(1000).then(() => {
+      thirdSettled = true;
+      sentAt.push(Date.now());
+    });
+
+    await vi.advanceTimersByTimeAsync(59_998);
+    expect(sentAt).toEqual([0]);
+    await vi.advanceTimersByTimeAsync(1);
+    await second;
+    expect(sentAt).toEqual([0, 60_000]);
+
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(thirdSettled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await third;
+
+    expect(sentAt).toEqual([0, 60_000, 120_000]);
   });
 });

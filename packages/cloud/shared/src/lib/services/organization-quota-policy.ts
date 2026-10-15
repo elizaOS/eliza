@@ -419,9 +419,8 @@ export async function readOrganizationQuotaPolicyInTransaction(
     const projection = inputs.grantProjection;
     if (
       projection?.source_grant_id &&
-      projection.effective_until !== null &&
       projection.effective_from <= now &&
-      now < projection.effective_until
+      (projection.effective_until === null || now < projection.effective_until)
     ) {
       const [grant] = await tx
         .select()
@@ -435,7 +434,7 @@ export async function readOrganizationQuotaPolicyInTransaction(
       if (
         !grant ||
         grant.starts_at.getTime() !== projection.effective_from.getTime() ||
-        grant.ends_at.getTime() !== projection.effective_until.getTime()
+        (grant.ends_at?.getTime() ?? null) !== (projection.effective_until?.getTime() ?? null)
       )
         return unavailable(organizationId, "grant_projection_conflict");
       // A revoked grant stops serving at once, even before its projection is rewritten.
@@ -456,7 +455,7 @@ export async function readOrganizationQuotaPolicyInTransaction(
             catalogVersion: grant.catalog_version,
             sourceGrantId: grant.id,
             effectiveFrom: grant.starts_at.toISOString(),
-            effectiveUntil: grant.ends_at.toISOString(),
+            effectiveUntil: grant.ends_at?.toISOString() ?? null,
           },
           now,
         });
@@ -591,7 +590,7 @@ export async function readOrganizationQuotaPolicyInTransaction(
           ? promo.starts_at
           : grantedFrom
         ).toISOString(),
-        effectiveUntil: promo.ends_at.toISOString(),
+        effectiveUntil: promo.ends_at?.toISOString() ?? null,
       },
       now,
     });

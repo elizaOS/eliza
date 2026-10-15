@@ -2,6 +2,7 @@
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import type { HostedSearchResult } from "../../services/google-search";
 import { executeKeylessMcpSearch } from "./keyless-search";
+import { annotateSearchReputation } from "./reputation";
 import type { IWebSearchService, SearchOptions, SearchResponse } from "./types";
 
 function getGoogleSearchApiKey(runtime: IAgentRuntime): string | null {
@@ -104,14 +105,14 @@ export class WebSearchService extends Service implements IWebSearchService {
     if (!getGoogleSearchApiKey(this.runtime)) {
       const started = Date.now();
       const keyless = await executeKeylessMcpSearch(query);
-      return {
+      return annotateSearchReputation({
         answer: keyless.answer,
         query,
         responseTime: (Date.now() - started) / 1000,
         images: [],
         results: [],
         provider: keyless.provider,
-      };
+      });
     }
     try {
       // Lazy import: the Google-grounded path drags the cloud services/db
@@ -133,7 +134,7 @@ export class WebSearchService extends Service implements IWebSearchService {
         operationContext,
       );
 
-      return toSearchResponse(result);
+      return annotateSearchReputation(toSearchResponse(result));
     } catch (error) {
       logger.error(
         {

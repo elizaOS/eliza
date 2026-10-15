@@ -15,6 +15,7 @@ import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { assertOrgMembership } from "@/api-app/middleware/org-membership";
 import { createTransactionalAudit } from "@/api-app/services/audit-transactional";
+import { assertCanManageApiKey } from "../../_lib/key-access";
 
 const app = new Hono<AppEnv>();
 
@@ -33,6 +34,7 @@ app.post("/", async (c) => {
       resourceId: id,
       c,
     });
+    assertCanManageApiKey(user, existingKey, "regenerate");
 
     const audit = createTransactionalAudit();
     const { apiKey: updatedKey, plainKey } = await apiKeysService.regenerate(

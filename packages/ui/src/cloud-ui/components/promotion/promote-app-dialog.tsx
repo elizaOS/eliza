@@ -804,15 +804,21 @@ export function PromoteAppDialog({
                           </Label>
                           <Select
                             value={config.advertising?.bidStrategy || "cpm"}
-                            onValueChange={(value: CampaignBidStrategy) =>
+                            onValueChange={(value) => {
+                              if (
+                                value !== "cpm" &&
+                                value !== "cpc" &&
+                                value !== "cpa"
+                              )
+                                return;
                               setConfig((prev) => ({
                                 ...prev,
                                 advertising: {
                                   ...getAdvertisingConfig(prev),
                                   bidStrategy: value,
                                 },
-                              }))
-                            }
+                              }));
+                            }}
                           >
                             <SelectTrigger className="mt-1.5 bg-bg-elevated border-border text-txt rounded-sm">
                               <SelectValue />
@@ -839,15 +845,21 @@ export function PromoteAppDialog({
                             value={
                               config.advertising?.optimizationGoal || "reach"
                             }
-                            onValueChange={(value: CampaignOptimizationGoal) =>
+                            onValueChange={(value) => {
+                              if (
+                                value !== "reach" &&
+                                value !== "clicks" &&
+                                value !== "conversions"
+                              )
+                                return;
                               setConfig((prev) => ({
                                 ...prev,
                                 advertising: {
                                   ...getAdvertisingConfig(prev),
                                   optimizationGoal: value,
                                 },
-                              }))
-                            }
+                              }));
+                            }}
                           >
                             <SelectTrigger className="mt-1.5 bg-bg-elevated border-border text-txt rounded-sm">
                               <SelectValue />
@@ -892,15 +904,16 @@ export function PromoteAppDialog({
                       <Label className="text-txt text-sm">Budget Type</Label>
                       <Select
                         value={config.advertising?.budgetType || "daily"}
-                        onValueChange={(value: "daily" | "lifetime") =>
+                        onValueChange={(value) => {
+                          if (value !== "daily" && value !== "lifetime") return;
                           setConfig((prev) => ({
                             ...prev,
                             advertising: {
                               ...getAdvertisingConfig(prev),
                               budgetType: value,
                             },
-                          }))
-                        }
+                          }));
+                        }}
                       >
                         <SelectTrigger className="mt-1.5 bg-bg-elevated border-border text-txt rounded-sm">
                           <SelectValue />

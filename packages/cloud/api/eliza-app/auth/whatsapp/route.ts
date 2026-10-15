@@ -1,166 +1,36 @@
 /**
  * Eliza App - WhatsApp Authentication Endpoint
  *
- * Links a WhatsApp identity to an existing Eliza App session.
- * Direct sign-in via `whatsapp_id` alone is intentionally disabled because
- * a WhatsApp ID is a phone-number-derived identifier and not secure proof
- * that the caller controls the account.
- *
  * POST /api/eliza-app/auth/whatsapp
+ *
+ * Retired. It linked the `whatsapp_id` from the request body to the caller's
+ * session, but a WhatsApp ID is a phone-number-derived identifier the caller
+ * can type for anyone: the linked id then routed that person's WhatsApp
+ * messages to the caller's agent and blocked their own link. WhatsApp is
+ * linked with a code the user sends from WhatsApp itself
+ * (`POST /api/eliza-app/identity-link/start` with `platform: "whatsapp"`).
  */
 
-import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
-import {
-  RateLimitPresets,
-  rateLimit,
-} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
-import {
-  elizaAppSessionService,
-  elizaAppUserService,
-  type ValidatedSession,
-} from "@elizaos/cloud-shared/lib/services/eliza-app";
-import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { z } from "zod";
 
-const whatsappAuthSchema = z.object({
-  whatsapp_id: z
-    .string()
-    .min(7, "WhatsApp ID must be at least 7 digits")
-    .max(15, "WhatsApp ID must be at most 15 digits")
-    .regex(/^\d+$/, "WhatsApp ID must contain only digits"),
-});
-
-async function handleWhatsAppAuth(request: Request): Promise<Response> {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return Response.json(
-      { success: false, error: "Invalid JSON body", code: "INVALID_JSON" },
-      { status: 400 },
-    );
-  }
-
-  const parseResult = whatsappAuthSchema.safeParse(body);
-  if (!parseResult.success) {
-    return Response.json(
-      {
-        success: false,
-        error: "Invalid request body",
-        code: "INVALID_REQUEST",
-      },
-      { status: 400 },
-    );
-  }
-
-  const { whatsapp_id: whatsappId } = parseResult.data;
-  const authHeader = request.headers.get("authorization");
-  let existingSession: ValidatedSession | null = null;
-  if (authHeader) {
-    existingSession =
-      await elizaAppSessionService.validateAuthHeader(authHeader);
-  }
-
-  if (!existingSession) {
-    return Response.json(
-      {
-        success: false,
-        error: "WhatsApp linking requires an existing authenticated session",
-        code: "AUTH_PROOF_REQUIRED",
-      },
-      { status: 403 },
-    );
-  }
-
-  logger.info("[ElizaApp WhatsAppAuth] Session-based linking detected", {
-    existingUserId: existingSession.userId,
-  });
-
-  const linkResult = await elizaAppUserService.linkWhatsAppToUser(
-    existingSession.userId,
-    {
-      whatsappId,
-    },
-  );
-
-  if (!linkResult.success) {
-    return Response.json(
-      {
-        success: false,
-        error:
-          linkResult.error ||
-          "This WhatsApp account is already linked to another account",
-        code: "WHATSAPP_ALREADY_LINKED",
-      },
-      { status: 409 },
-    );
-  }
-
-  const updatedUser = await elizaAppUserService.getById(existingSession.userId);
-  if (!updatedUser?.organization) {
-    return Response.json(
-      {
-        success: false,
-        error: "User not found after linking",
-        code: "INTERNAL_ERROR",
-      },
-      { status: 500 },
-    );
-  }
-
-  const session = await elizaAppSessionService.createSession(
-    updatedUser.id,
-    updatedUser.organization.id,
-    {
-      whatsappId,
-      phoneNumber: updatedUser.phone_number || undefined,
-      ...(updatedUser.telegram_id && { telegramId: updatedUser.telegram_id }),
-      ...(updatedUser.discord_id && { discordId: updatedUser.discord_id }),
-    },
-  );
-
-  logger.info(
-    "[ElizaApp WhatsAppAuth] Session-based WhatsApp linking successful",
-    {
-      userId: updatedUser.id,
-      whatsappId,
-    },
-  );
-
-  return Response.json({
-    success: true,
-    user: {
-      id: updatedUser.id,
-      whatsapp_id: updatedUser.whatsapp_id!,
-      whatsapp_name: updatedUser.whatsapp_name,
-      phone_number: updatedUser.phone_number,
-      name: updatedUser.name,
-      organization_id: updatedUser.organization.id,
-    },
-    session: {
-      token: session.token,
-      expires_at: session.expiresAt.toISOString(),
-    },
-  });
-}
-
-async function __next_GET(): Promise<Response> {
-  return Response.json({
+const honoRouter = new Hono<AppEnv>();
+honoRouter.get("/", () =>
+  Response.json({
     status: "ok",
     service: "eliza-app-whatsapp-auth",
     timestamp: new Date().toISOString(),
-  });
-}
-
-const honoRouter = new Hono<AppEnv>();
-honoRouter.get("/", async () => __next_GET());
-honoRouter.post("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
-  try {
-    return await handleWhatsAppAuth(c.req.raw);
-  } catch (error) {
-    return failureResponse(c, error);
-  }
-});
+  }),
+);
+honoRouter.post("/", () =>
+  Response.json(
+    {
+      success: false,
+      error:
+        'Link WhatsApp with a code sent from WhatsApp: POST /api/eliza-app/identity-link/start with platform "whatsapp"',
+      code: "WHATSAPP_LINK_REQUIRES_CODE",
+    },
+    { status: 410 },
+  ),
+);
 export default honoRouter;

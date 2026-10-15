@@ -1,6 +1,414 @@
 [
   {
     "id": "mobile-voice",
+    "version": "1.2.0",
+    "publishedToHfAt": "2026-10-14T00:00:00Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "pending",
+    "preferredBackend": "ffi",
+    "ggufAssets": [],
+    "missingAssets": [
+      {
+        "filename": "voice/paradee/paradee-8m-v1_0.gguf",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/paradee/misaki-en-us.lex",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/paradee/espeak-ng-data/phontab",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/paradee/espeak-ng-data/phonindex",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/paradee/espeak-ng-data/phondata",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/paradee/espeak-ng-data/intonations",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/paradee/espeak-ng-data/en_dict",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/paradee/espeak-ng-data/lang/gmw/en",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/paradee/espeak-ng-data/lang/gmw/en-US",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/asr/phonon-2-fv5.gguf",
+        "quant": "fv5-pair16-v1",
+        "reason": "missing-from-hf-repo"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": false
+    },
+    "changelogEntry": "1.2.0 - Qwen3-ASR-0.6B is removed as a speech-recognition option: the text GGUF and mmproj rows are gone and ELIZA_ASR_BACKEND=qwen3 no longer stages them. Phonon-2 (Parakeet-TDT 0.6B, five-value) is the only local ASR: asr/phonon-2-fv5.gguf on libelizainference's parakeet backend (batch + streaming). A device that staged asr/ with the Qwen3-ASR pair re-stages it with Phonon-2. Phonon-2 weights are CC-BY-4.0: ship the attribution and NOTICE. The GGUF is unpublished; build it with packages/app/scripts/voice/build-phonon2-gguf.ts, which converts the pinned FermionResearch/Phonon-2 revision and checks every sha256. Paradee-8M stays the TTS; the Paradee, misaki and eSpeak NG rows are unchanged from 1.1.0.",
+    "minBundleVersion": "0.0.0",
+    "files": [
+      {
+        "id": "paradee-8m-v1.0",
+        "role": "tts",
+        "path": "tts/paradee/paradee-8m-v1_0.gguf",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/paradee-8m-v1_0.gguf",
+        "url": null,
+        "revision": null,
+        "sha256": "357477651abb53b3fb1911a6e932026f3f1697fd772668326152e3ca04c9be27",
+        "bytes": 32072768,
+        "license": "Apache-2.0",
+        "status": "unpublished",
+        "localFrom": "elizaOS/llama.cpp tools/paradee/pins.json (gguf output of convert_paradee_pt_to_gguf.py)",
+        "source": {
+          "repo": "sahilmahendrakar/Paradee-8M-v1.0",
+          "revision": "c7f83f86c04e84d0ae94cbe1aad7618e0544f80a",
+          "files": [
+            {
+              "path": "pytorch/text_side.pt",
+              "sha256": "0995bee746043e4f06f72be68fb8634530b95d6467b4a141759e721122648062",
+              "bytes": 16998347
+            },
+            {
+              "path": "pytorch/decoder.pt",
+              "sha256": "f231b9765ffdddd30df798530af0c557c06cb9cf029a475b8bfdca7b051b9d6c",
+              "bytes": 15564135
+            },
+            {
+              "path": "config.json",
+              "sha256": "f24046974a3a8c747affefb45c7c504263a99d5081787908b16abe8f5ac94fcd",
+              "bytes": 1774
+            },
+            {
+              "path": "tokenizer.json",
+              "sha256": "77a02c8e164413299b4b4c403b14f8e0e1c1b727db4d46a09d6327b861060a34",
+              "bytes": 3497
+            }
+          ],
+          "converter": "elizaOS/llama.cpp tools/paradee/convert_paradee_pt_to_gguf.py"
+        }
+      },
+      {
+        "id": "misaki-en-us-lexicon",
+        "role": "g2p-lexicon",
+        "path": "tts/paradee/misaki-en-us.lex",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/misaki-en-us.lex",
+        "url": null,
+        "revision": null,
+        "sha256": "fbf09090cff0a41f3f579bf03ab9fc42710b04d7284767b10467a5f182c23925",
+        "bytes": 12947790,
+        "license": "Apache-2.0",
+        "status": "unpublished",
+        "localFrom": "elizaOS/llama.cpp tools/misaki-g2p/pins.json (output of convert_misaki_lexicon.py)",
+        "source": {
+          "repo": "github.com/hexgrad/misaki",
+          "revision": "fba1236595f2d2bf21d414ba6e57d25256afada3",
+          "files": [
+            {
+              "path": "misaki/data/us_gold.json",
+              "sha256": "dc414872a49a28ae6c141463d502fd945f3b2fde040484fdc47d00cc4612686f"
+            },
+            {
+              "path": "misaki/data/us_silver.json",
+              "sha256": "de8f67be911bb6c659187b4a65fd966b6a30e56350e0f790d763210b053ac475"
+            }
+          ],
+          "converter": "elizaOS/llama.cpp tools/misaki-g2p/convert_misaki_lexicon.py"
+        }
+      },
+      {
+        "id": "espeak-ng-1.52.0-phontab",
+        "role": "g2p-espeak-data",
+        "path": "tts/paradee/espeak-ng-data/phontab",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/espeak-ng-data/phontab",
+        "url": null,
+        "revision": null,
+        "sha256": "1b40690667e1e9aa1ba5e5234773c799e7e72ea751426e5150423d53c3f24fa2",
+        "bytes": 58652,
+        "license": "GPL-3.0-or-later",
+        "status": "unpublished",
+        "localFrom": "eSpeak NG data compiled from the source pinned in elizaOS/llama.cpp tools/misaki-g2p/pins.json (espeak_ng.data); packages/app/scripts/stage-elizavoice-lib.ts builds it",
+        "licenseFlags": [
+          "GPL-3.0-or-later data, flagged for review (not blocking); ship eSpeak NG's COPYING with it"
+        ],
+        "source": {
+          "repo": "github.com/espeak-ng/espeak-ng",
+          "revision": "1.52.0",
+          "files": [
+            {
+              "path": "espeak-ng-1.52.0.tar.gz",
+              "sha256": "bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23",
+              "bytes": 17739803
+            }
+          ],
+          "converter": "espeak-ng's own data build (ninja espeak-ng-data/phondata espeak-ng-data/en_dict espeak-ng-data/intonations)"
+        }
+      },
+      {
+        "id": "espeak-ng-1.52.0-phonindex",
+        "role": "g2p-espeak-data",
+        "path": "tts/paradee/espeak-ng-data/phonindex",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/espeak-ng-data/phonindex",
+        "url": null,
+        "revision": null,
+        "sha256": "384e5fa6f714ba5356c58008249b78699c31c1ad044b243068d263fb806b7d73",
+        "bytes": 43316,
+        "license": "GPL-3.0-or-later",
+        "status": "unpublished",
+        "localFrom": "eSpeak NG data compiled from the source pinned in elizaOS/llama.cpp tools/misaki-g2p/pins.json (espeak_ng.data); packages/app/scripts/stage-elizavoice-lib.ts builds it",
+        "licenseFlags": [
+          "GPL-3.0-or-later data, flagged for review (not blocking); ship eSpeak NG's COPYING with it"
+        ],
+        "source": {
+          "repo": "github.com/espeak-ng/espeak-ng",
+          "revision": "1.52.0",
+          "files": [
+            {
+              "path": "espeak-ng-1.52.0.tar.gz",
+              "sha256": "bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23",
+              "bytes": 17739803
+            }
+          ],
+          "converter": "espeak-ng's own data build (ninja espeak-ng-data/phondata espeak-ng-data/en_dict espeak-ng-data/intonations)"
+        }
+      },
+      {
+        "id": "espeak-ng-1.52.0-phondata",
+        "role": "g2p-espeak-data",
+        "path": "tts/paradee/espeak-ng-data/phondata",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/espeak-ng-data/phondata",
+        "url": null,
+        "revision": null,
+        "sha256": "a0b643b155cb6b12628d9e7865b57d9fca0d35844614f2594a5e009c80c80bb4",
+        "bytes": 554740,
+        "license": "GPL-3.0-or-later",
+        "status": "unpublished",
+        "localFrom": "eSpeak NG data compiled from the source pinned in elizaOS/llama.cpp tools/misaki-g2p/pins.json (espeak_ng.data); packages/app/scripts/stage-elizavoice-lib.ts builds it",
+        "licenseFlags": [
+          "GPL-3.0-or-later data, flagged for review (not blocking); ship eSpeak NG's COPYING with it"
+        ],
+        "source": {
+          "repo": "github.com/espeak-ng/espeak-ng",
+          "revision": "1.52.0",
+          "files": [
+            {
+              "path": "espeak-ng-1.52.0.tar.gz",
+              "sha256": "bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23",
+              "bytes": 17739803
+            }
+          ],
+          "converter": "espeak-ng's own data build (ninja espeak-ng-data/phondata espeak-ng-data/en_dict espeak-ng-data/intonations)"
+        }
+      },
+      {
+        "id": "espeak-ng-1.52.0-intonations",
+        "role": "g2p-espeak-data",
+        "path": "tts/paradee/espeak-ng-data/intonations",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/espeak-ng-data/intonations",
+        "url": null,
+        "revision": null,
+        "sha256": "031a105bf6bb2ebcd73a2c579ccfb42469b27266db0078af65ae298fd3588b21",
+        "bytes": 2312,
+        "license": "GPL-3.0-or-later",
+        "status": "unpublished",
+        "localFrom": "eSpeak NG data compiled from the source pinned in elizaOS/llama.cpp tools/misaki-g2p/pins.json (espeak_ng.data); packages/app/scripts/stage-elizavoice-lib.ts builds it",
+        "licenseFlags": [
+          "GPL-3.0-or-later data, flagged for review (not blocking); ship eSpeak NG's COPYING with it"
+        ],
+        "source": {
+          "repo": "github.com/espeak-ng/espeak-ng",
+          "revision": "1.52.0",
+          "files": [
+            {
+              "path": "espeak-ng-1.52.0.tar.gz",
+              "sha256": "bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23",
+              "bytes": 17739803
+            }
+          ],
+          "converter": "espeak-ng's own data build (ninja espeak-ng-data/phondata espeak-ng-data/en_dict espeak-ng-data/intonations)"
+        }
+      },
+      {
+        "id": "espeak-ng-1.52.0-en_dict",
+        "role": "g2p-espeak-data",
+        "path": "tts/paradee/espeak-ng-data/en_dict",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/espeak-ng-data/en_dict",
+        "url": null,
+        "revision": null,
+        "sha256": "1053f74a34af38abb6fbd64b7838dacbc655a687c48ce1bb663d364a127b05de",
+        "bytes": 168204,
+        "license": "GPL-3.0-or-later",
+        "status": "unpublished",
+        "localFrom": "eSpeak NG data compiled from the source pinned in elizaOS/llama.cpp tools/misaki-g2p/pins.json (espeak_ng.data); packages/app/scripts/stage-elizavoice-lib.ts builds it",
+        "licenseFlags": [
+          "GPL-3.0-or-later data, flagged for review (not blocking); ship eSpeak NG's COPYING with it"
+        ],
+        "source": {
+          "repo": "github.com/espeak-ng/espeak-ng",
+          "revision": "1.52.0",
+          "files": [
+            {
+              "path": "espeak-ng-1.52.0.tar.gz",
+              "sha256": "bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23",
+              "bytes": 17739803
+            }
+          ],
+          "converter": "espeak-ng's own data build (ninja espeak-ng-data/phondata espeak-ng-data/en_dict espeak-ng-data/intonations)"
+        }
+      },
+      {
+        "id": "espeak-ng-1.52.0-lang-gmw-en",
+        "role": "g2p-espeak-data",
+        "path": "tts/paradee/espeak-ng-data/lang/gmw/en",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/espeak-ng-data/lang/gmw/en",
+        "url": null,
+        "revision": null,
+        "sha256": "4605d5330801de3641c6e366d15f129ea1f5ffbce8722642aba01ace07ab9c83",
+        "bytes": 140,
+        "license": "GPL-3.0-or-later",
+        "status": "unpublished",
+        "localFrom": "eSpeak NG data compiled from the source pinned in elizaOS/llama.cpp tools/misaki-g2p/pins.json (espeak_ng.data); packages/app/scripts/stage-elizavoice-lib.ts builds it",
+        "licenseFlags": [
+          "GPL-3.0-or-later data, flagged for review (not blocking); ship eSpeak NG's COPYING with it"
+        ],
+        "source": {
+          "repo": "github.com/espeak-ng/espeak-ng",
+          "revision": "1.52.0",
+          "files": [
+            {
+              "path": "espeak-ng-1.52.0.tar.gz",
+              "sha256": "bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23",
+              "bytes": 17739803
+            }
+          ],
+          "converter": "espeak-ng's own data build (ninja espeak-ng-data/phondata espeak-ng-data/en_dict espeak-ng-data/intonations)"
+        }
+      },
+      {
+        "id": "espeak-ng-1.52.0-lang-gmw-en-US",
+        "role": "g2p-espeak-data",
+        "path": "tts/paradee/espeak-ng-data/lang/gmw/en-US",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/espeak-ng-data/lang/gmw/en-US",
+        "url": null,
+        "revision": null,
+        "sha256": "41534c2a22df5dd4f1052ff9e1a33a3ea7bff5a26b5c02bdad5ba8ddb7524704",
+        "bytes": 257,
+        "license": "GPL-3.0-or-later",
+        "status": "unpublished",
+        "localFrom": "eSpeak NG data compiled from the source pinned in elizaOS/llama.cpp tools/misaki-g2p/pins.json (espeak_ng.data); packages/app/scripts/stage-elizavoice-lib.ts builds it",
+        "licenseFlags": [
+          "GPL-3.0-or-later data, flagged for review (not blocking); ship eSpeak NG's COPYING with it"
+        ],
+        "source": {
+          "repo": "github.com/espeak-ng/espeak-ng",
+          "revision": "1.52.0",
+          "files": [
+            {
+              "path": "espeak-ng-1.52.0.tar.gz",
+              "sha256": "bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23",
+              "bytes": 17739803
+            }
+          ],
+          "converter": "espeak-ng's own data build (ninja espeak-ng-data/phondata espeak-ng-data/en_dict espeak-ng-data/intonations)"
+        }
+      },
+      {
+        "id": "phonon-2-fv5",
+        "role": "asr-parakeet",
+        "asrBackend": "parakeet",
+        "path": "asr/phonon-2-fv5.gguf",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/asr/phonon-2-fv5.gguf",
+        "url": null,
+        "revision": null,
+        "sha256": "dc552eb786486167dde3ac80bbe49a6088c8ef39c03c257d5a090fc57b2c47b3",
+        "bytes": 330632256,
+        "license": "CC-BY-4.0",
+        "status": "unpublished",
+        "localFrom": "elizaOS/llama.cpp tools/parakeet/pins.json (gguf output of convert_phonon2_to_gguf.py --archive, byte-reproducible)",
+        "attribution": "Phonon-2 by Fermion Research, CC-BY-4.0, derived from NVIDIA parakeet-tdt-0.6b-v3 (CC-BY-4.0). The NOTICE below must ship with the app; the GGUF also carries it as parakeet.notice.",
+        "notice": {
+          "path": "NOTICE",
+          "sha256": "00624a5043e7ce74029317b024132ca5286116d6fbf3191d226374bc8273789f",
+          "bytes": 2741,
+          "ggufKey": "parakeet.notice"
+        },
+        "licenseFlags": [
+          "Training audio listed in the NOTICE includes CHiME-6 (CC-BY-SA-4.0) and SPGISpeech (Kensho terms). Flagged for review, not a build blocker."
+        ],
+        "source": {
+          "repo": "FermionResearch/Phonon-2",
+          "revision": "7e153e4054c0a10db6d47d6fff5c062d4c77c154",
+          "files": [
+            {
+              "path": "phonon-2.bps.tar.zst",
+              "sha256": "98125795b6dda72f5c6eee9ba33d19815df65dcb18b50a357bf9f73c9935309e",
+              "bytes": 163515201
+            },
+            {
+              "path": "NOTICE",
+              "sha256": "00624a5043e7ce74029317b024132ca5286116d6fbf3191d226374bc8273789f",
+              "bytes": 2741
+            },
+            {
+              "path": "LICENSE-WEIGHTS-CC-BY-4.0.txt",
+              "sha256": "9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411",
+              "bytes": 18657
+            }
+          ],
+          "converter": "elizaOS/llama.cpp@533d0d898ac2672e203b9b5cf08706422f154ee6 tools/parakeet/convert_phonon2_to_gguf.py",
+          "converterCommand": "python tools/parakeet/convert_phonon2_to_gguf.py --archive phonon-2.bps.tar.zst --output phonon-2-fv5.gguf --verify"
+        }
+      },
+      {
+        "id": "silero-vad-v5",
+        "role": "vad",
+        "path": "vad/silero-vad-v5.gguf",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "bundles/e2b/vad/silero-vad-v5.gguf",
+        "url": "https://huggingface.co/elizaos/eliza-1/resolve/1e4c73713e11f7ff42bc2a686cc5b178c8cac14f/bundles/e2b/vad/silero-vad-v5.gguf",
+        "revision": "1e4c73713e11f7ff42bc2a686cc5b178c8cac14f",
+        "sha256": "d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995",
+        "bytes": 620736,
+        "license": "MIT",
+        "status": "published",
+        "source": {
+          "repo": "github.com/snakers4/silero-vad",
+          "revision": "v5",
+          "converter": "elizaOS silero-vad GGUF converter"
+        }
+      }
+    ],
+    "parentVersion": "1.1.0"
+  },
+  {
+    "id": "mobile-voice",
     "version": "1.1.0",
     "publishedToHfAt": "2026-10-14T00:00:00Z",
     "hfRepo": "elizaos/eliza-1",

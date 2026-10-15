@@ -1,0 +1,67 @@
+# STAGING-ONLY steady state after the admission namespace transfer is accepted.
+# Preserve the adopted namespace and the private recovery service binding.
+name = "eliza-cloud-admission-staging"
+main = "src/index.ts"
+account_id = "23cf6feaeaa541f6a0675053c33da768"
+compatibility_date = "2026-04-01"
+compatibility_flags = ["nodejs_compat", "enable_request_signal"]
+workers_dev = false
+preview_urls = false
+
+# Match the canonical staging API build substitutions and Worker adapters.
+[define]
+__dirname = "\"/\""
+__filename = "\"/worker.js\""
+
+[alias]
+"@elizaos/cloud-shared/lib/services/inference-admission-recovery" = "./src/recovery-service.ts"
+"@elizaos/plugin-elevenlabs" = "../api/src/stubs/elizaos-plugin-elevenlabs.ts"
+"@elizaos/cloud-sdk" = "../sdk/src/index.ts"
+"@elizaos/cloud-shared" = "../shared/src/index.ts"
+"@elizaos/core/contracts/cloud-coding-containers" = "../../core/src/contracts/cloud-coding-containers.ts"
+"@elizaos/plugin-native-inference/model-catalog/voice-models" = "../../../plugins/plugin-native-inference/src/model-catalog/voice-models.ts"
+"@brighter/storage-adapter-s3" = "../api/src/stubs/brighter-storage-adapter-s3.ts"
+"ssh2" = "../api/src/stubs/ssh2.ts"
+"undici" = "../api/src/stubs/undici.ts"
+"unpdf" = "../api/src/stubs/unpdf.ts"
+"mammoth" = "../api/src/stubs/mammoth.ts"
+"@electric-sql/pglite" = "../api/src/stubs/pglite.ts"
+"@electric-sql/pglite/vector" = "../api/src/stubs/pglite.ts"
+"@electric-sql/pglite/contrib/btree_gist" = "../api/src/stubs/pglite.ts"
+
+[observability]
+enabled = true
+
+# The namespace is already adopted; do not reintroduce a transfer declaration.
+[exports.InferenceAdmissionGate]
+type = "durable-object"
+storage = "sqlite"
+
+[[durable_objects.bindings]]
+name = "INFERENCE_ADMISSION_GATES"
+class_name = "InferenceAdmissionGate"
+
+[vars]
+NODE_ENV = "production"
+ENVIRONMENT = "staging"
+CACHE_BACKEND = "auto"
+CACHE_ENABLED = "true"
+NEXT_PUBLIC_APP_URL = "https://cloud-staging.eliza.app"
+INFERENCE_OPTIMISTIC_BILLING = "true"
+SAFE_BALANCE_THRESHOLD = "5.00"
+INFERENCE_BILLING_LEDGER = "db"
+INFERENCE_DEFERRED_ADMISSION = "true"
+INFERENCE_HOT_PATH_CACHES = "true"
+INFERENCE_AUTH_CACHE_ENABLED = "true"
+INFERENCE_STRONG_REVOCATION_ENABLED = "true"
+INFERENCE_SNAPSHOT_ADMISSION_ENABLED = "true"
+INFERENCE_PASSTHROUGH_STREAMING = "true"
+INFERENCE_PASSTHROUGH_EMBEDDINGS = "true"
+# Source leaves funded admission unset; target preserves its disabled default.
+# Never enable it or invent a seal while preparing this split.
+
+# All accounting and its credential/configuration ownership remain on the API.
+[[services]]
+binding = "INFERENCE_RECOVERY_SERVICE"
+service = "eliza-cloud-api-staging"
+entrypoint = "InferenceRecoveryService"

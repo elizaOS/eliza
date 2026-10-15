@@ -31,7 +31,7 @@ import { ValidationError } from "../api/cloud-worker-errors";
 import { cache } from "../cache/client";
 import { InMemoryLRUCache } from "../cache/in-memory-lru-cache";
 import { CacheKeys, CacheTTL } from "../cache/keys";
-import { type CloudCharacterLimitSource } from "../constants/cloud-character-quota";
+import type { CloudCharacterLimitSource } from "../constants/cloud-character-quota";
 import type { ElizaCharacter } from "../types/eliza-character";
 import {
   generateUniqueUsername,
@@ -172,7 +172,9 @@ function mirroredAgent(character: UserCharacter): Partial<Agent> {
 async function withCharacterCreationTransaction<T>(
   operation: (tx: DbTransaction) => Promise<T>,
 ): Promise<T> {
-  return await dbWrite.transaction(operation, { isolationLevel: "read committed" });
+  return await dbWrite.transaction(operation, {
+    isolationLevel: "read committed",
+  });
 }
 
 /**
@@ -199,6 +201,12 @@ async function lockUsernameClaimAuthority(tx: DbTransaction): Promise<void> {
 /**
  * Service for character CRUD operations.
  */
+/** The authenticated caller a user-owned character lookup is scoped to. */
+export interface CharacterOwner {
+  id: string;
+  organization_id?: string | null;
+}
+
 export class CharactersService {
   /**
    * Get character by ID with caching.
@@ -243,7 +251,9 @@ export class CharactersService {
    */
   async getByIdCacheOnly(
     id: string,
-    options: { executionCtx?: { waitUntil(promise: Promise<unknown>): void } } = {},
+    options: {
+      executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+    } = {},
   ): Promise<InferenceCharacterCacheResolution> {
     const inMemoryHit = inMemoryCharCache.get(id);
     if (inMemoryHit) {
@@ -312,26 +322,43 @@ export class CharactersService {
   }
 
   /**
-   * Whether a caller may see or link a character: the caller owns it, the
-   * caller's organization owns it, or it is public. One rule for the app
-   * link writes, the app character read and backup restore, so a character
-   * that leaves the public catalog also leaves every app that linked it.
+   * Whether a caller may see or link a character. A public character always
+   * qualifies. A link write (`userId` given) needs the caller's own character
+   * in the caller's current organization: a member removed from an
+   * organization keeps their user id, so the creator match alone would still
+   * accept the old organization's private characters. The app character read
+   * (organization only) accepts the app organization's characters. One rule
+   * for the app link writes, the app character read and backup restore, so a
+   * character that leaves the public catalog also leaves every app that
+   * linked it.
    */
   isLinkedCharacterVisible(
     character: Pick<UserCharacter, "user_id" | "organization_id" | "is_public">,
-    caller: { userId?: string; organizationId?: string },
+    caller: { userId?: string; organizationId: string },
   ): boolean {
-    return (
-      character.is_public === true ||
-      (caller.userId !== undefined && character.user_id === caller.userId) ||
-      (caller.organizationId !== undefined && character.organization_id === caller.organizationId)
-    );
+    if (character.is_public === true) return true;
+    if (caller.userId !== undefined) {
+      return (
+        character.user_id === caller.userId && character.organization_id === caller.organizationId
+      );
+    }
+    return character.organization_id === caller.organizationId;
   }
 
-  async getByIdForUser(characterId: string, userId: string): Promise<UserCharacter | null> {
+  /**
+   * The caller's own character in the caller's current organization. A member
+   * removed from an organization keeps their user id, so the creator match
+   * alone would still hand them the old organization's characters.
+   */
+  async getByIdForUser(characterId: string, owner: CharacterOwner): Promise<UserCharacter | null> {
     const character = await userCharactersRepository.findById(characterId);
 
-    if (!character || character.user_id !== userId) {
+    if (
+      !character ||
+      character.user_id !== owner.id ||
+      !owner.organization_id ||
+      character.organization_id !== owner.organization_id
+    ) {
       return null;
     }
 
@@ -592,8 +619,10 @@ export class CharactersService {
             code: "RESOURCE_POLICY_UNAVAILABLE",
           });
         }
-        const resolution: { limit: number; source: CharacterCreationQuotaReceipt["limitSource"] } =
-          { limit, source: observation.source };
+        const resolution: {
+          limit: number;
+          source: CharacterCreationQuotaReceipt["limitSource"];
+        } = { limit, source: observation.source };
         if (current >= resolution.limit) {
           throw new CloudCharacterQuotaExceededError({
             organizationId: data.organization_id,
@@ -679,11 +708,11 @@ export class CharactersService {
 
   async updateForUser(
     characterId: string,
-    userId: string,
+    owner: CharacterOwner,
     updates: Partial<NewUserCharacter>,
   ): Promise<UserCharacter | null> {
     // Verify ownership
-    const character = await this.getByIdForUser(characterId, userId);
+    const character = await this.getByIdForUser(characterId, owner);
     if (!character) {
       return null;
     }
@@ -741,9 +770,9 @@ export class CharactersService {
     }
   }
 
-  async deleteForUser(characterId: string, userId: string): Promise<boolean> {
+  async deleteForUser(characterId: string, owner: CharacterOwner): Promise<boolean> {
     // Verify ownership
-    const character = await this.getByIdForUser(characterId, userId);
+    const character = await this.getByIdForUser(characterId, owner);
     if (!character) {
       return false;
     }

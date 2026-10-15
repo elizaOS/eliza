@@ -283,22 +283,39 @@ function pickMostRecent(
  * which the EvaluatorService runs in parallel — without memoization that's
  * 4 trajectory-store round-trips per turn for the same data.
  *
- * Keyed by message id with FIFO trim. The cache is single-tick scoped: once
- * a new message lands, the old entry is no longer hit and gets evicted as
- * newer messages arrive.
+ * Keyed by runtime and message id with FIFO trim. The runtime scope prevents
+ * one agent from receiving another agent's trajectory when message ids match.
+ * Once a new message lands, the old entry is no longer hit and gets evicted
+ * as newer messages arrive.
  */
 const TRAJECTORY_CACHE_MAX = 32;
-const trajectoryCache = new Map<
-  string,
-  Promise<{ service: SkillTrajectoryService; trajectory: Trajectory } | null>
+type LatestTrajectory = {
+  service: SkillTrajectoryService;
+  trajectory: Trajectory;
+};
+const trajectoryCaches = new WeakMap<
+  IAgentRuntime,
+  Map<string, Promise<LatestTrajectory | null>>
 >();
+
+function trajectoryCacheFor(
+  runtime: IAgentRuntime,
+): Map<string, Promise<LatestTrajectory | null>> {
+  let cache = trajectoryCaches.get(runtime);
+  if (!cache) {
+    cache = new Map();
+    trajectoryCaches.set(runtime, cache);
+  }
+  return cache;
+}
 
 async function getLatestTrajectory(
   runtime: IAgentRuntime,
   messageId?: string,
-): Promise<{ service: SkillTrajectoryService; trajectory: Trajectory } | null> {
-  if (messageId && trajectoryCache.has(messageId)) {
-    return trajectoryCache.get(messageId) ?? null;
+): Promise<LatestTrajectory | null> {
+  const cache = messageId ? trajectoryCacheFor(runtime) : null;
+  if (messageId && cache?.has(messageId)) {
+    return cache.get(messageId) ?? null;
   }
   const promise = (async () => {
     const service = getTrajectoryService(runtime);
@@ -309,11 +326,11 @@ async function getLatestTrajectory(
     const trajectory = await service.getTrajectoryDetail(latest.id);
     return trajectory ? { service, trajectory } : null;
   })();
-  if (messageId) {
-    trajectoryCache.set(messageId, promise);
-    if (trajectoryCache.size > TRAJECTORY_CACHE_MAX) {
-      const oldest = trajectoryCache.keys().next().value;
-      if (oldest !== undefined) trajectoryCache.delete(oldest);
+  if (messageId && cache) {
+    cache.set(messageId, promise);
+    if (cache.size > TRAJECTORY_CACHE_MAX) {
+      const oldest = cache.keys().next().value;
+      if (oldest !== undefined) cache.delete(oldest);
     }
   }
   return promise;

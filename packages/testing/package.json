@@ -89,7 +89,7 @@
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "@types/bun": "1.4.2",
-    "@playwright/test": "^1.63.0",
+    "@playwright/test": "^1.64.0",
     "bun-types": "1.4.2",
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "0.45.3",
