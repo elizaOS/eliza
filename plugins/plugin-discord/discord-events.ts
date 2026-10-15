@@ -617,7 +617,15 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 		if (clientUser && user.id === clientUser.id) {
 			return;
 		}
+		// DMs are exempt from CHANNEL_IDS, mirroring messageCreate: the allowlist
+		// scopes guild surfaces; DM access is governed by the DM policy.
+		const reactionChannelType = reaction.message.channel
+			?.type as DiscordChannelType | undefined;
+		const reactionIsDm =
+			reactionChannelType === DiscordChannelType.DM ||
+			reactionChannelType === DiscordChannelType.GroupDM;
 		if (
+			!reactionIsDm &&
 			service.allowedChannelIds &&
 			reaction.message.channel &&
 			!service.isChannelAllowed(reaction.message.channel.id)
@@ -644,7 +652,15 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 		if (clientUser && user.id === clientUser.id) {
 			return;
 		}
+		// DMs are exempt from CHANNEL_IDS, mirroring messageCreate: the allowlist
+		// scopes guild surfaces; DM access is governed by the DM policy.
+		const reactionChannelType = reaction.message.channel
+			?.type as DiscordChannelType | undefined;
+		const reactionIsDm =
+			reactionChannelType === DiscordChannelType.DM ||
+			reactionChannelType === DiscordChannelType.GroupDM;
 		if (
+			!reactionIsDm &&
 			service.allowedChannelIds &&
 			reaction.message.channel &&
 			!service.isChannelAllowed(reaction.message.channel.id)
