@@ -21,7 +21,8 @@ export function sanitize(text: string): string {
   return text
     .replace(/[\u{E0000}-\u{E007F}]/gu, "")
     .replace(/[​-‏‪-‮⁠-⁤﻿]/g, "")
-    .normalize("NFKC");
+    .normalize("NFKC")
+    .replace(/[‘’]/g, "'");
 }
 
 const norm = (text: string) =>
