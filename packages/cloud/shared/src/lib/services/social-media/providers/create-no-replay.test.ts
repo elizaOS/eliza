@@ -573,3 +573,65 @@ for (const errors of ["malformed", [null], [["REJECTED", "not permitted", "field
     expect(result.creditDisposition).toBe(explicitRejection ? undefined : "hold");
   });
 }
+/** Answers the Reddit token request and returns `submit` for /api/submit. */
+function stubReddit(submit: () => Response): { submits: number } {
+  const seen = { submits: 0 };
+  spies.push(
+    spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.includes("/api/v1/access_token")) {
+        return json({ access_token: "token", expires_in: 3600 });
+      }
+      if (url.includes("/api/submit") && init?.method === "POST") {
+        seen.submits += 1;
+        return submit();
+      }
+      throw new Error(`unexpected request ${url}`);
+    }),
+  );
+  return seen;
+}
+
+function redditSubmit() {
+  return redditProvider.createPost(
+    { apiKey: "id", apiSecret: "secret", username: "u", password: "p" },
+    { text: "Launch day" },
+    { reddit: { subreddit: "elizaos", title: "Launch day" } },
+  );
+}
+
+for (const payload of [
+  {},
+  { json: { errors: [], data: null } },
+  { json: { errors: [], data: { url: "/r/x/1" } } },
+]) {
+  test(`reddit keeps a malformed acknowledgement unknown: ${JSON.stringify(payload)}`, async () => {
+    const seen = stubReddit(() => json(payload));
+    const result = await redditSubmit();
+    expect(seen.submits).toBe(1);
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe("POST_OUTCOME_UNKNOWN");
+    expect(result.creditDisposition).toBe("hold");
+  });
+}
+
+test("an explicit Reddit refusal in a successful HTTP response remains refundable", async () => {
+  const seen = stubReddit(() =>
+    json({ json: { errors: [["NO_TEXT", "we need something here"]] } }),
+  );
+  const result = await redditSubmit();
+  expect(seen.submits).toBe(1);
+  expect(result.success).toBe(false);
+  expect(result.creditDisposition).toBeUndefined();
+});
+
+test("reddit retains a confirmed publication receipt", async () => {
+  const seen = stubReddit(() =>
+    json({ json: { errors: [], data: { id: "abc", name: "t3_abc", url: "/r/elizaos/abc" } } }),
+  );
+  const result = await redditSubmit();
+  expect(seen.submits).toBe(1);
+  expect(result.success).toBe(true);
+  expect(result.postId).toBe("abc");
+  expect(result.creditDisposition).toBeUndefined();
+});
