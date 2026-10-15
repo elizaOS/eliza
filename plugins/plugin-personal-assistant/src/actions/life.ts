@@ -3064,11 +3064,13 @@ export function buildCadenceFromUpdateFields(args: {
             ? currentCadence.visibilityLagMinutes
             : undefined,
       },
-      windowPolicy: currentWindowPolicy.windows.some((window) =>
-        (requestedWindows.length > 0
-          ? requestedWindows
-          : ["morning" as const]
-        ).includes(
+      windowPolicy:
+        (requestedWindows.length === 0 && currentCadence.kind === "weekly") ||
+        currentWindowPolicy.windows.some((window) =>
+          (requestedWindows.length > 0
+            ? requestedWindows
+            : ["morning" as const]
+          ).includes(
           window.name as "morning" | "afternoon" | "evening" | "night",
         ),
       )
