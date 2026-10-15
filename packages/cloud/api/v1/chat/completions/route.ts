@@ -55,6 +55,8 @@ import {
 } from "@elizaos/cloud-shared/lib/providers/anthropic-thinking";
 import {
   ANTHROPIC_WEB_SEARCH_INPUT_TOKEN_BUFFER,
+  ANTHROPIC_WEB_SEARCH_TOOL_NAME,
+  anthropicWebSearchFeeInputTokens,
   buildProviderNativeWebSearchTools,
   isAnthropicWebSearchEnabled,
 } from "@elizaos/cloud-shared/lib/providers/anthropic-web-search";
@@ -1950,11 +1952,35 @@ export async function handleChatCompletionsPOST(
       useAppCredits && appId && monetizedApp,
     );
     try {
+      // Provider-run web searches are billed per use on top of tokens, so the
+      // token estimate alone under-sizes the hold. Add the input-token
+      // equivalent of the worst case (maxUses searches) so settlement can
+      // collect the full fee; the exact fee is charged from the reported count.
+      const reservationInputTokens = async (): Promise<number> => {
+        if (!webSearchActive) return estimatedInputTokens;
+        const { inputCost } = await calculateCost(
+          normalizedModel,
+          provider,
+          estimatedInputTokens,
+          0,
+          billingSource,
+          options.executionCtx
+            ? { cacheOnly: true, executionCtx: options.executionCtx }
+            : undefined,
+        );
+        return (
+          estimatedInputTokens +
+          anthropicWebSearchFeeInputTokens(
+            request.webSearchMaxUses,
+            inputCost / estimatedInputTokens,
+          )
+        );
+      };
       if (options.appFundingActor) {
         const { totalCost } = await calculateCost(
           normalizedModel,
           provider,
-          estimatedInputTokens,
+          await reservationInputTokens(),
           estimatedOutputTokens,
           billingSource,
         );
@@ -2009,7 +2035,7 @@ export async function handleChatCompletionsPOST(
         const { totalCost } = await calculateCost(
           normalizedModel,
           provider,
-          estimatedInputTokens,
+          await reservationInputTokens(),
           estimatedOutputTokens,
           billingSource,
           options.executionCtx
@@ -2075,7 +2101,7 @@ export async function handleChatCompletionsPOST(
             affiliateCode,
             requestId,
           },
-          estimatedInputTokens,
+          estimatedInputTokens: await reservationInputTokens(),
           estimatedOutputTokens,
           maximumInputTokens,
           maximumOutputTokens,
@@ -2583,6 +2609,8 @@ async function settleStreamingAbortReservation(params: {
   billingSource: PricingBillingSource;
   estimatedInputTokens: number;
   deliveredText: string;
+  /** Provider-run web searches the model had issued before the abort. */
+  issuedWebSearchRequests?: number;
   steps: readonly StepResult<ToolSet>[];
   settleReservation: (
     actualCost: number,
@@ -2591,6 +2619,13 @@ async function settleStreamingAbortReservation(params: {
   billingReservation?: CreditReservation;
 }): Promise<CreditReconciliationResult | null> {
   const finishedStepUsage = summarizeFinishedStepUsage(params.steps);
+  // An aborted stream never receives the provider's final usage, which is the
+  // only place the per-search fee is reported. Bill the searches the stream
+  // showed (the issued calls include those of finished steps).
+  const webSearchRequests = Math.max(
+    finishedStepUsage?.webSearchRequests ?? 0,
+    params.issuedWebSearchRequests ?? 0,
+  );
   const deliveredOutputTokens = estimateTokens(params.deliveredText);
   const inputTokens = Math.max(
     params.estimatedInputTokens,
@@ -2625,6 +2660,7 @@ async function settleStreamingAbortReservation(params: {
         totalTokens,
         cacheReadInputTokens: finishedStepUsage?.cacheReadInputTokens,
         cacheWriteInputTokens: finishedStepUsage?.cacheWriteInputTokens,
+        webSearchRequests,
       },
       params.billingReservation,
     );
@@ -3291,6 +3327,8 @@ async function handleStreamingRequest(
     pooledCredential && !useMonetizedAppBilling ? null : affiliateCode;
   let deliveredText = "";
   let deliveredProviderOutput = false;
+  // Ids of the provider-run web searches the model has issued so far.
+  const issuedWebSearchCallIds = new Set<string>();
   let streamingSettlementPromise: Promise<CreditReconciliationResult | null> | null =
     null;
 
@@ -3334,6 +3372,7 @@ async function handleStreamingRequest(
           billingSource,
           estimatedInputTokens,
           deliveredText,
+          issuedWebSearchRequests: issuedWebSearchCallIds.size,
           steps,
           settleReservation,
           settleUnknown,
@@ -3655,6 +3694,14 @@ async function handleStreamingRequest(
               ),
             );
             continue;
+          }
+
+          if (
+            part.type === "tool-call" &&
+            part.providerExecuted === true &&
+            part.toolName === ANTHROPIC_WEB_SEARCH_TOOL_NAME
+          ) {
+            issuedWebSearchCallIds.add(part.toolCallId);
           }
 
           if (part.type === "tool-call") {
