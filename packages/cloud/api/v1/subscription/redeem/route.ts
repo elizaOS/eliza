@@ -21,6 +21,7 @@ import {
   SUBSCRIPTION_GRANT_ALREADY_GRANTED,
   SUBSCRIPTION_GRANT_CODE_INVALID,
   SUBSCRIPTION_GRANT_IDEMPOTENCY_CONFLICT,
+  SUBSCRIPTION_GRANT_PAID_PLAN_ACTIVE,
   subscriptionGrantsRepository,
 } from "@elizaos/cloud-shared/db/repositories/subscription-grants";
 import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
@@ -209,7 +210,7 @@ export function createSubscriptionRedeemRoute(
             id: result.grant.id,
             planKey: result.grant.plan_key,
             startsAt: result.grant.starts_at.toISOString(),
-            endsAt: result.grant.ends_at.toISOString(),
+            endsAt: result.grant.ends_at?.toISOString() ?? null,
             revoked: result.grant.revoked_at !== null,
             // An effective paid plan keeps precedence; the grant serves only
             // inside its window after the paid plan stops serving.
@@ -235,6 +236,17 @@ export function createSubscriptionRedeemRoute(
               error:
                 "This account has already received this subscription grant.",
               code: "subscription_grant_already_redeemed",
+            },
+            409,
+            NO_STORE,
+          );
+        if (error.code === SUBSCRIPTION_GRANT_PAID_PLAN_ACTIVE)
+          return c.json(
+            {
+              success: false,
+              error:
+                "This account already has a paid plan. This subscription code cannot be added to it.",
+              code: "subscription_grant_paid_plan_active",
             },
             409,
             NO_STORE,

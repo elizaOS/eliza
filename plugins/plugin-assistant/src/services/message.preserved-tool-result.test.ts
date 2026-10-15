@@ -1349,8 +1349,21 @@ describe("planner-loop death after a completed tool", () => {
     let handlerCalls = 0;
     h.runtime.registerModel(
       ModelType.RESPONSE_HANDLER,
-      async () => {
-        if (handlerCalls++ === 0) return stageOneToolTurn();
+      async (_runtime, params) => {
+        if (handlerCalls++ === 0) {
+          const response = stageOneToolTurn();
+          expect(
+            params.tools?.find((tool) => tool.name === "HANDLE_RESPONSE")
+              ?.parameters?.properties?.replyText?.type,
+          ).toBe("array");
+          return {
+            ...response,
+            toolCalls: response.toolCalls.map((call) => ({
+              ...call,
+              arguments: { ...call.arguments, replyText: [] },
+            })),
+          };
+        }
         return JSON.stringify({
           thought: "The read succeeded; answer the compound request.",
           success: true,

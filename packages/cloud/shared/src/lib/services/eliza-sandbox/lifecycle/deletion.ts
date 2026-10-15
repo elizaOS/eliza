@@ -10,7 +10,6 @@ import {
   agentSandboxesRepository,
   PRE_DELETE_BACKUP_RETENTION_MS,
 } from "../../../../db/repositories/agent-sandboxes";
-import { userCharactersRepository } from "../../../../db/repositories/characters";
 import { sharedRuntimeHistoryRepository } from "../../../../db/repositories/shared-runtime-history";
 import { agentComputeFunding } from "../../../../db/schemas/agent-compute-funding";
 import {
@@ -29,6 +28,7 @@ import {
   stopFundedAgentInTransaction,
 } from "../../agent-compute-stop";
 import { apiKeysService } from "../../api-keys";
+import { charactersService } from "../../characters";
 import { creditsService } from "../../credits";
 import { holdsCountedNodeSlot, isDeletionContinuation } from "../../docker-node-workload-queries";
 import { reusesExistingElizaCharacter } from "../../eliza-agent-config";
@@ -1236,7 +1236,7 @@ export class SandboxDeletion {
       !reusesExistingElizaCharacter(result.deletedSandbox.agent_config)
     ) {
       try {
-        await userCharactersRepository.delete(characterId);
+        await charactersService.delete(characterId);
         logger.info("[agent-sandbox] Cleaned up linked character after delete", {
           agentId,
           characterId,

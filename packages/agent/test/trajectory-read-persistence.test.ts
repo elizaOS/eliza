@@ -2,7 +2,14 @@
 import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { actionToTool } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  actionToTool,
+  ModelType,
+  runWithTrajectoryContext,
+  withEvaluatorStep,
+  withProviderStep,
+} from "@elizaos/core";
 import { parseTrajectorySemanticStage } from "@elizaos/core/protocol";
 import {
   TrajectoriesService,
@@ -10,10 +17,11 @@ import {
   tryHandleTrajectoryReadRoutes,
 } from "@elizaos/plugin-assistant";
 import { createTestRuntime } from "@elizaos/testing/runtime";
-import { afterAll, beforeAll, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, expect, it, onTestFinished, vi } from "vitest";
 import { proposeDeviceAction } from "../../../plugins/plugin-assistant/src/services/device-actions/action.ts";
 import { handleTrajectoryManagementRoutes } from "../src/api/trajectory-management-routes.ts";
 import { runtimeTrajectoriesEnabled } from "../src/runtime/native-runtime-features.ts";
+import { installPromptOptimizations } from "../src/runtime/prompt-optimization.ts";
 import {
   createBaseTrajectory,
   ensureStep,
@@ -707,6 +715,150 @@ it("validates deep semantic JSON without stack limits while retaining type, prot
   expect(safe.payload.model).toBe(ownProto);
   expect(Object.getPrototypeOf(ownProto)).toBe(Object.prototype);
   expect(Object.hasOwn(ownProto, "__proto__")).toBe(true);
+});
+
+it("records every planner, evaluator and concurrent provider model call with its own usage and prompt telemetry", async () => {
+  const { useModel } = fixture.runtime;
+  installPromptOptimizations(fixture.runtime as AgentRuntime);
+  // The later tests of this file use the runtime without the wrapper.
+  onTestFinished(() => {
+    fixture.runtime.useModel = useModel;
+  });
+  const usage = { promptTokens: 11, completionTokens: 5, totalTokens: 16 };
+  for (const modelType of [
+    ModelType.ACTION_PLANNER,
+    ModelType.TEXT_SMALL,
+    ModelType.TEXT_TOKENIZER_ENCODE,
+  ]) {
+    fixture.runtime.registerModel(
+      modelType,
+      async () => ({ text: "fixture reply", usage }),
+      "ledger-fixture",
+    );
+  }
+  const trajectoryId = await direct.startTrajectory(fixture.runtime.agentId, {
+    source: "model-call-ledger",
+    roomId: randomUUID(),
+  });
+  const stepId = direct.startStep(trajectoryId, { kind: "llm" });
+  await direct.flushWriteQueue(trajectoryId);
+  const prompts = [
+    "first planner request",
+    "second planner request, a little longer",
+    "evaluate the finished turn",
+    "summarize inside a provider",
+    "summarize again inside the same provider",
+    "summarize inside another provider",
+    "tokenize inside a third provider",
+  ];
+  await runWithTrajectoryContext(
+    { trajectoryId, trajectoryStepId: stepId },
+    async () => {
+      for (const prompt of prompts.slice(0, 2)) {
+        // As in a real turn, a queued provider capture delays the call's write.
+        direct.logProviderAccess({
+          stepId,
+          providerName: "LEDGER_PROVIDER",
+          purpose: "compose",
+          data: { text: "provider output" },
+        });
+        await fixture.runtime.useModel(ModelType.ACTION_PLANNER, { prompt });
+      }
+      await withEvaluatorStep(fixture.runtime, "LEDGER_EVALUATOR", () =>
+        fixture.runtime.useModel(ModelType.TEXT_SMALL, { prompt: prompts[2] }),
+      );
+      // Three providers run at once. One makes two concurrent calls on its own
+      // step, and the first call of another is not a text generation call.
+      await Promise.all([
+        withProviderStep(fixture.runtime, "LEDGER_PROVIDER", () =>
+          Promise.all(
+            prompts
+              .slice(3, 5)
+              .map((prompt) =>
+                fixture.runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
+              ),
+          ),
+        ),
+        withProviderStep(fixture.runtime, "OTHER_PROVIDER", () =>
+          fixture.runtime.useModel(ModelType.TEXT_SMALL, {
+            prompt: prompts[5],
+          }),
+        ),
+        withProviderStep(fixture.runtime, "TOKENIZER_PROVIDER", () =>
+          fixture.runtime.useModel(ModelType.TEXT_TOKENIZER_ENCODE, {
+            prompt: prompts[6],
+            modelType: ModelType.TEXT_SMALL,
+          }),
+        ),
+      ]);
+    },
+  );
+  await direct.flushWriteQueue(trajectoryId);
+  const calls = (
+    await direct.getTrajectoryDetail(trajectoryId)
+  )?.steps?.flatMap((step) => step.llmCalls ?? []);
+  expect(
+    calls?.map((call) => [
+      call.userPrompt,
+      call.promptTokens,
+      call.completionTokens,
+      (
+        call.providerMetadata as
+          | { promptOptimization?: { originalPromptChars?: number } }
+          | undefined
+      )?.promptOptimization?.originalPromptChars,
+    ]),
+  ).toEqual(prompts.map((prompt) => [prompt, 11, 5, prompt.length]));
+  for (const call of calls ?? []) {
+    expect(call.providerMetadata).toMatchObject({
+      promptOptimization: {
+        originalPromptTokens: expect.any(Number),
+        finalPromptTokens: expect.any(Number),
+      },
+    });
+  }
+  await direct.endTrajectory(trajectoryId, "completed");
+});
+
+it("redacts the text that a model-call update fills in as it redacts a call record", async () => {
+  const trajectoryId = await direct.startTrajectory(fixture.runtime.agentId, {
+    source: "model-call-update-redaction",
+    roomId: randomUUID(),
+  });
+  const stepId = direct.startStep(trajectoryId, { kind: "llm" });
+  const callId = randomUUID();
+  const privateText = "write to ada@example.com, card 4111111111111111";
+  direct.logLlmCall({
+    stepId,
+    callId,
+    model: "fixture",
+    purpose: "action",
+    actionType: "runtime.useModel",
+    systemPrompt: privateText,
+    userPrompt: "",
+    response: "",
+  });
+  direct.updateLlmCall(stepId, callId, {
+    userPrompt: privateText,
+    response: privateText,
+    providerMetadata: {
+      promptOptimization: { budgetTokens: 1000, outputReserveTokens: 100 },
+      accessToken: "fixture-private-credential",
+    },
+  });
+  await direct.flushWriteQueue(trajectoryId);
+  const [call] =
+    (await direct.getTrajectoryDetail(trajectoryId))?.steps?.flatMap(
+      (step) => step.llmCalls ?? [],
+    ) ?? [];
+  expect([call?.systemPrompt, call?.userPrompt, call?.response]).toEqual(
+    Array(3).fill("write to <EMAIL>, card <CARD>"),
+  );
+  expect(call?.providerMetadata).toMatchObject({
+    promptOptimization: { budgetTokens: 1000, outputReserveTokens: 100 },
+    accessToken: "[REDACTED]",
+  });
+  await direct.endTrajectory(trajectoryId, "completed");
 });
 
 it("serves the viewer's config, export and delete requests from the registered service", async () => {

@@ -398,7 +398,7 @@ class AgentMonetizationService {
    */
   async updateSettings(
     agentId: string,
-    ownerId: string,
+    owner: { id: string; organization_id?: string | null },
     settings: {
       monetizationEnabled?: boolean;
       markupPercentage?: number;
@@ -422,7 +422,7 @@ class AgentMonetizationService {
       return { success: false, error: "Agent not found" };
     }
 
-    if (agent.user_id !== ownerId) {
+    if (agent.user_id !== owner.id || agent.organization_id !== owner.organization_id) {
       return { success: false, error: "Not authorized to update this agent" };
     }
 
@@ -459,7 +459,7 @@ class AgentMonetizationService {
 
     logger.info("[AgentMonetization] Settings updated", {
       agentId,
-      ownerId: ownerId.slice(0, 8) + "...",
+      ownerId: owner.id.slice(0, 8) + "...",
       settings,
     });
 

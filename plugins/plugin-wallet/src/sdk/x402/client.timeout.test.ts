@@ -5,6 +5,7 @@
 import http from "node:http";
 import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_X402_FETCH_TIMEOUT_MS, X402Client } from "./client";
+import { createX402Fetch, wrapWithX402 } from "./middleware";
 
 function createWallet() {
   return {
@@ -43,6 +44,65 @@ const PAYMENT_REQUIRED = {
 };
 
 describe("X402Client fetch timeout (real server)", () => {
+  it("preserves Request overrides, body and cancellation through both wrappers", async () => {
+    const received: Array<{ method?: string; header?: string; body: string }> =
+      [];
+    let challenge = false;
+    const server = http.createServer(async (req, res) => {
+      let body = "";
+      for await (const chunk of req) body += chunk.toString();
+      received.push({
+        method: req.method,
+        header: req.headers["x-test"] as string,
+        body,
+      });
+      if (challenge) {
+        challenge = false;
+        res.writeHead(402, {
+          "payment-required": btoa(JSON.stringify(PAYMENT_REQUIRED)),
+        });
+      } else res.writeHead(200);
+      res.end();
+    });
+    const addr = await listen(server);
+    const url = `http://127.0.0.1:${addr.port}/data`;
+    const config = {
+      autoPay: false,
+      supportedAssets: { "base:8453": [PAYMENT_OPTION.asset] },
+    };
+    try {
+      for (const wrapped of [false, true]) {
+        const fetcher = wrapped
+          ? wrapWithX402(globalThis.fetch, createWallet(), config)
+          : createX402Fetch(createWallet(), config);
+        challenge = wrapped;
+        const response = await fetcher(
+          new Request(url, {
+            method: "POST",
+            headers: { "x-test": "original" },
+            body: "original",
+          }),
+          { method: "PUT", headers: { "x-test": "override" }, body: "payload" },
+        );
+        expect(response.status).toBe(200);
+        const controller = new AbortController();
+        controller.abort();
+        await expect(
+          fetcher(new Request(url, { signal: controller.signal })),
+        ).rejects.toMatchObject({ name: "AbortError" });
+      }
+      expect(received).toEqual(
+        Array.from({ length: 3 }, () => ({
+          method: "PUT",
+          header: "override",
+          body: "payload",
+        })),
+      );
+    } finally {
+      await close(server);
+    }
+  });
+
   it("exposes the documented 10s budget", () => {
     expect(DEFAULT_X402_FETCH_TIMEOUT_MS).toBe(10_000);
   });
@@ -153,8 +213,12 @@ describe("X402Client fetch timeout (real server)", () => {
 
   it("keeps a fresh deadline active through the paid retry body", async () => {
     let requestCount = 0;
+    const requestBodies: string[] = [];
     let retryPaymentHeader: string | undefined;
-    const server = http.createServer((req, res) => {
+    const server = http.createServer(async (req, res) => {
+      let body = "";
+      for await (const chunk of req) body += chunk.toString();
+      requestBodies.push(body);
       requestCount += 1;
       if (requestCount === 1) {
         res.writeHead(402, {
@@ -194,8 +258,14 @@ describe("X402Client fetch timeout (real server)", () => {
       });
 
     try {
-      const response = await client.fetch(`http://127.0.0.1:${addr.port}/data`);
+      const response = await client.fetch(
+        new Request(`http://127.0.0.1:${addr.port}/data`, {
+          method: "POST",
+          body: "paid request body",
+        }),
+      );
       expect(requestCount).toBe(2);
+      expect(requestBodies).toEqual(["paid request body", "paid request body"]);
       expect(retryPaymentHeader).toBeTruthy();
       expect(deadlines).toHaveLength(2);
       const retry = deadlines[1];

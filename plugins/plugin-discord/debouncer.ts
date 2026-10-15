@@ -216,7 +216,7 @@ export function createChannelDebouncer(
 			rememberRecent(message);
 		}
 
-		if (debounceMs <= 0) {
+		if (debounceMs <= 0 || (coalesceEnabled && maxBatch === 1)) {
 			runSafely(() => onFlush([message]));
 			return;
 		}

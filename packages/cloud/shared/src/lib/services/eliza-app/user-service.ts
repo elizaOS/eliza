@@ -420,72 +420,20 @@ class ElizaAppUserService {
       };
     }
 
-    // Scenario 2: Check if user exists by phone_number (iMessage-first user linking Telegram)
+    // Scenario 2: the phone already belongs to an account (iMessage/SMS/voice
+    // first). The phone number here is typed by the client and the Telegram
+    // signature does not cover it, so linking would hand that account to anyone
+    // who knows its number. The account owner links Telegram from their own
+    // signed-in session instead (session-based linking in the auth route).
     const existingPhoneUser =
       await usersRepository.findByPhoneNumberWithOrganization(normalizedPhone);
-
-    if (existingPhoneUser?.organization) {
-      // Re-check telegram_id to prevent race condition (TOCTOU)
-      // Another request may have linked a different Telegram account between auth check and now
-      if (existingPhoneUser.telegram_id && existingPhoneUser.telegram_id !== telegramId) {
-        logger.warn(
-          "[ElizaAppUserService] Phone user already linked to different Telegram (race)",
-          {
-            phoneUserId: existingPhoneUser.id,
-            existingTelegramId: existingPhoneUser.telegram_id,
-            newTelegramId: telegramId,
-          },
-        );
-        throw new Error("PHONE_ALREADY_LINKED");
-      }
-
-      try {
-        const linked = await usersRepository.linkTelegramAndPhoneIdentity(existingPhoneUser.id, {
-          telegram_id: telegramId,
-          telegram_username: telegramData.username,
-          telegram_first_name: telegramData.first_name,
-          telegram_photo_url: telegramData.photo_url,
-          phone_number: normalizedPhone,
-        });
-        if (linked.status !== "linked") throw new Error("PHONE_ALREADY_LINKED");
-        if (existingPhoneUser.name?.startsWith("User ***")) {
-          await usersRepository.update(existingPhoneUser.id, {
-            name: telegramData.last_name
-              ? `${telegramData.first_name} ${telegramData.last_name}`
-              : telegramData.first_name,
-          });
-        }
-      } catch (error) {
-        // Handle race condition: unique constraint violation on telegram_id
-        if (isUniqueConstraintError(error)) {
-          logger.warn("[ElizaAppUserService] Race condition on telegram link", {
-            telegramId,
-            phoneUserId: existingPhoneUser.id,
-          });
-          throw new Error("PHONE_ALREADY_LINKED");
-        }
-        throw error;
-      }
-
-      logger.info("[ElizaAppUserService] Linked Telegram to existing phone user (iMessage-first)", {
-        userId: existingPhoneUser.id,
+    if (existingPhoneUser) {
+      logger.warn("[ElizaAppUserService] Refused Telegram login onto an existing phone account", {
+        phoneUserId: existingPhoneUser.id,
         telegramId,
-        username: telegramData.username,
         phone: `***${normalizedPhone.slice(-4)}`,
       });
-
-      await Promise.all([
-        invalidateBoundPersonalDeliveryProjection("telegram", telegramId),
-        invalidateBoundPersonalDeliveryProjection("phone", normalizedPhone),
-      ]);
-
-      // Refetch to get updated data
-      const updatedUser = await usersRepository.findByPhoneNumberWithOrganization(normalizedPhone);
-      return {
-        user: updatedUser!,
-        organization: updatedUser!.organization!,
-        isNew: false,
-      };
+      throw new Error("PHONE_ALREADY_LINKED");
     }
 
     // Scenario 3: Neither exists - create new user with both Telegram and phone
@@ -824,66 +772,20 @@ class ElizaAppUserService {
       };
     }
 
-    // Scenario 2: Check if user exists by phone_number (Telegram/iMessage-first user linking Discord)
+    // Scenario 2: the phone already belongs to an account. The phone number
+    // is typed by the client and Discord OAuth does not prove it, so linking
+    // would hand that account to anyone who knows its number. The owner links
+    // Discord from their own signed-in session instead.
     if (normalizedPhone) {
       const existingPhoneUser =
         await usersRepository.findByPhoneNumberWithOrganization(normalizedPhone);
-
-      if (existingPhoneUser?.organization) {
-        // Re-check discord_id to prevent race condition (TOCTOU)
-        if (existingPhoneUser.discord_id && existingPhoneUser.discord_id !== discordId) {
-          logger.warn(
-            "[ElizaAppUserService] Phone user already linked to different Discord (race)",
-            {
-              phoneUserId: existingPhoneUser.id,
-              existingDiscordId: existingPhoneUser.discord_id,
-              newDiscordId: discordId,
-            },
-          );
-          throw new Error("DISCORD_ALREADY_LINKED");
-        }
-
-        // Link Discord to the existing phone-based user
-        try {
-          await usersRepository.update(existingPhoneUser.id, {
-            discord_id: discordId,
-            discord_username: discordData.username,
-            discord_global_name: discordData.globalName || undefined,
-            discord_avatar_url: discordData.avatarUrl || undefined,
-            updated_at: new Date(),
-          });
-        } catch (error) {
-          if (isUniqueConstraintError(error)) {
-            logger.warn("[ElizaAppUserService] Race condition on discord link", {
-              discordId,
-              phoneUserId: existingPhoneUser.id,
-            });
-            throw new Error("DISCORD_ALREADY_LINKED");
-          }
-          throw error;
-        }
-
-        // Project the canonical link into user_identities for Discord routing.
-        await usersRepository.refreshDiscordProjectionForWrite(existingPhoneUser.id);
-
-        logger.info(
-          "[ElizaAppUserService] Linked Discord to existing phone user (cross-platform)",
-          {
-            userId: existingPhoneUser.id,
-            discordId,
-            username: discordData.username,
-            phone: `***${normalizedPhone.slice(-4)}`,
-          },
-        );
-
-        // Refetch to get updated data
-        const updatedUser =
-          await usersRepository.findByPhoneNumberWithOrganization(normalizedPhone);
-        return {
-          user: updatedUser!,
-          organization: updatedUser!.organization!,
-          isNew: false,
-        };
+      if (existingPhoneUser) {
+        logger.warn("[ElizaAppUserService] Refused Discord login onto an existing phone account", {
+          phoneUserId: existingPhoneUser.id,
+          discordId,
+          phone: `***${normalizedPhone.slice(-4)}`,
+        });
+        throw new Error("PHONE_ALREADY_LINKED");
       }
     }
 
@@ -1441,68 +1343,6 @@ class ElizaAppUserService {
 
   async getByWhatsAppId(whatsappId: string): Promise<UserWithOrganization | undefined> {
     return usersRepository.findByWhatsAppIdWithOrganization(whatsappId);
-  }
-
-  /**
-   * Link a WhatsApp account to an existing user.
-   * Used for session-based linking.
-   */
-  async linkWhatsAppToUser(
-    userId: string,
-    whatsappData: {
-      whatsappId: string;
-      name?: string;
-    },
-  ): Promise<{ success: boolean; error?: string }> {
-    const { whatsappId, name } = whatsappData;
-
-    // Check if this WhatsApp ID is already linked to a different user
-    const existingWhatsAppUser = await usersRepository.findByWhatsAppIdWithOrganization(whatsappId);
-
-    if (existingWhatsAppUser && existingWhatsAppUser.id !== userId) {
-      logger.warn("[ElizaAppUserService] WhatsApp already linked to another user", {
-        userId,
-        existingUserId: existingWhatsAppUser.id,
-        whatsappId,
-      });
-      return {
-        success: false,
-        error: "This WhatsApp account is already linked to another account",
-      };
-    }
-
-    // If already linked to the same user, treat as idempotent success
-    if (existingWhatsAppUser && existingWhatsAppUser.id === userId) {
-      return { success: true };
-    }
-
-    try {
-      await usersRepository.update(userId, {
-        whatsapp_id: whatsappId,
-        whatsapp_name: name,
-        updated_at: new Date(),
-      });
-    } catch (error) {
-      // Handle race condition: another request linked this WhatsApp account first
-      if (isUniqueConstraintError(error)) {
-        logger.warn("[ElizaAppUserService] WhatsApp linking race condition", {
-          userId,
-          whatsappId,
-        });
-        return {
-          success: false,
-          error: "This WhatsApp account is already linked to another account",
-        };
-      }
-      throw error;
-    }
-
-    logger.info("[ElizaAppUserService] Linked WhatsApp to user", {
-      userId,
-      whatsappId,
-    });
-
-    return { success: true };
   }
 }
 

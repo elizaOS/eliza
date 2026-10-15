@@ -92,6 +92,15 @@ export function splitXDirectMessageContent(text: string): string[] {
 }
 
 /** Send complete text through a caller-owned first/reply transport. */
+/** Errors on which every thread caller aborts its cycle to refresh credentials. */
+function isXAuthAbortError(error: unknown): boolean {
+  return (
+    error instanceof ElizaError &&
+    (error.code === "X_AUTH_NOT_INITIALIZED" ||
+      error.code === "X_AUTH_SESSION_ROTATED")
+  );
+}
+
 export async function sendTextAsTweetThread(
   text: string,
   sendChunk: (
@@ -103,7 +112,20 @@ export async function sendTextAsTweetThread(
 ): Promise<TweetThreadReceipt[]> {
   const receipts: TweetThreadReceipt[] = [];
   for (const [index, chunk] of splitTweetContent(text, maxLength).entries()) {
-    const receipt = await sendChunk(chunk, receipts[index - 1]?.id, index);
+    let receipt: SentTweet;
+    try {
+      receipt = await sendChunk(chunk, receipts[index - 1]?.id, index);
+    } catch (error) {
+      // error-policy:J2 once a chunk is public, a later failure must not look
+      // like a plain refusal: the caller would send the whole thread again.
+      // Auth errors pass through unchanged: callers abort the cycle on them.
+      if (receipts.length === 0 || isXAuthAbortError(error)) throw error;
+      throw new ElizaError("X thread was only partly posted", {
+        code: "X_THREAD_PARTIALLY_POSTED",
+        cause: error,
+        context: { acceptedTweetIds: receipts.map((r) => r.id) },
+      });
+    }
     receipts.push({ id: receipt.id, text: chunk });
   }
   return receipts;
@@ -295,6 +317,14 @@ export async function sendChunkedTweet(
   roomId: UUID,
   _twitterUsername: string,
   inReplyTo?: string,
+  options: {
+    /**
+     * Called synchronously right before each chunk's post request is issued.
+     * Callers use it to tell "nothing reached X" (auth, media fetch or upload
+     * failures) from an outcome X may have accepted.
+     */
+    onPostRequest?: (index: number) => void;
+  } = {},
 ): Promise<Memory[]> {
   return client.withAuthenticatedSession(async (session) => {
     const mediaData =
@@ -323,6 +353,7 @@ export async function sendChunkedTweet(
             code: "X_AUTH_SESSION_ROTATED",
           });
         }
+        options.onPostRequest?.(index);
         try {
           return await sendTweet(
             client,

@@ -9,6 +9,30 @@ import {
 } from "./authz.js";
 
 describe("Network own-word boundary", () => {
+  it("recognizes curly contractions without accepting negated or quoted signals", () => {
+    for (const apostrophe of ["‘", "’"]) {
+      assert.deepEqual(detectNetworkSignals(`I${apostrophe}m in Lisbon`), [
+        { kind: "travel", evidence: "I'm in Lisbon" },
+      ]);
+      assert.deepEqual(
+        detectNetworkSignals(`Don${apostrophe}t stop texting me`),
+        [],
+      );
+    }
+    assert.deepEqual(
+      detectNetworkSignals(
+        "She said ‘stop texting me’ but I still want updates",
+      ),
+      [],
+    );
+    assert.deepEqual(
+      detectNetworkSignals(
+        "He said stop texting me and I said don’t stop texting",
+      ),
+      [],
+    );
+  });
+
   it("keeps third-party text out without masking the member's words", () => {
     const quotedOptOut =
       'My friend said "stop\u200b texting me" but I still want updates';
@@ -23,6 +47,28 @@ describe("Network own-word boundary", () => {
     assert.deepEqual(detectNetworkSignals(repeatedQuotedOptOut), []);
     assert.deepEqual(detectNetworkSignals(reportedThenOwnedOptOut), [
       { kind: "opt_out", evidence: "stop texting" },
+    ]);
+    const reportedThenOwnedNoComma =
+      "He said stop texting me and I said stop texting too";
+    assert.deepEqual(quotedSpans(reportedThenOwnedNoComma), [
+      "stop texting me",
+    ]);
+    assert.deepEqual(detectNetworkSignals(reportedThenOwnedNoComma), [
+      { kind: "opt_out", evidence: "stop texting" },
+    ]);
+    assert.equal(
+      resolveBusyVsPaused(
+        "paused",
+        "She said she is swamped and I said pause my intros",
+      ),
+      "paused",
+    );
+    // "and I" without a reporting verb stays inside the third party's words.
+    assert.deepEqual(quotedSpans("She said pause my intros and I agree"), [
+      "pause my intros and I agree",
+    ]);
+    assert.deepEqual(quotedSpans("She said pause and I am fine"), [
+      "pause and I am fine",
     ]);
     assert.deepEqual(detectNetworkSignals("I said stop texting"), [
       { kind: "opt_out", evidence: "stop texting" },

@@ -26,7 +26,11 @@ import {
   enforceOrgRateLimit,
   OrgRateLimitCacheNotReadyError,
 } from "@elizaos/cloud-shared/lib/middleware/rate-limit";
-import { recordCloudStreamMilestones } from "@elizaos/cloud-shared/lib/observability/cloud-backend-observability";
+import {
+  beginSdkStreamTiming,
+  bindSdkStreamTiming,
+  recordCloudStreamMilestones,
+} from "@elizaos/cloud-shared/lib/observability/cloud-backend-observability";
 import {
   bindGatewayHandoffTelemetry,
   type GatewayHandoffTelemetry,
@@ -3339,12 +3343,26 @@ async function handleStreamingRequest(
   );
 
   const languageModel = getLanguageModel(model, pooledCredential ?? undefined);
+  await markProviderDispatched?.();
+  const sdkTiming = provider.startsWith("cerebras")
+    ? beginSdkStreamTiming(traceId ?? requestId, model)
+    : undefined;
   const invokeStreamText = bindGatewayHandoffTelemetry(
     gatewayHandoffTelemetry,
-    (options: Parameters<typeof streamText>[0]) => streamText(options),
+    bindSdkStreamTiming(
+      sdkTiming,
+      (options: Parameters<typeof streamText>[0]) => {
+        try {
+          return streamText(options);
+        } catch (error) {
+          sdkTiming?.finish(true);
+          throw error;
+        }
+      },
+    ),
   );
-  await markProviderDispatched?.();
   const result = invokeStreamText({
+    ...(sdkTiming ? { includeRawChunks: true } : {}),
     model: languageModel,
     system: systemPrompt,
     messages,
@@ -3506,8 +3524,12 @@ async function handleStreamingRequest(
   const includeUsage = request.stream_options?.include_usage === true;
   const usageFieldOnChunks = includeUsage ? { usage: null } : {};
 
-  const openAIStream = new ReadableStream({
-    async start(controller) {
+  const streamSource = {
+    async start(controller: ReadableStreamDefaultController<Uint8Array>) {
+      const enqueue = (bytes: Uint8Array) => {
+        controller.enqueue(bytes);
+        sdkTiming?.enqueue();
+      };
       const responseId = `chatcmpl-${Date.now()}`;
       const toolCallIndexes = new Map<string, number>();
       // Argument chars already delivered per tool call id via
@@ -3521,8 +3543,10 @@ async function handleStreamingRequest(
       let finishReason = "stop";
       let finishUsage: unknown;
 
+      let streamCompleted = false;
       try {
         for await (const part of result.fullStream) {
+          sdkTiming?.part(part);
           if (part.type === "text-delta") {
             deliveredProviderOutput ||= part.text.length > 0;
             const chunk = {
@@ -3539,9 +3563,7 @@ async function handleStreamingRequest(
                 },
               ],
             };
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`),
-            );
+            enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
             deliveredText += part.text;
             continue;
           }
@@ -3551,7 +3573,7 @@ async function handleStreamingRequest(
             const index = nextToolCallIndex++;
             toolCallIndexes.set(part.id, index);
             toolCallArgsDelivered.set(part.id, 0);
-            controller.enqueue(
+            enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({
                   id: responseId,
@@ -3588,7 +3610,7 @@ async function handleStreamingRequest(
               part.id,
               (toolCallArgsDelivered.get(part.id) ?? 0) + part.delta.length,
             );
-            controller.enqueue(
+            enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({
                   id: responseId,
@@ -3631,7 +3653,7 @@ async function handleStreamingRequest(
               finishReason = "tool_calls";
               continue;
             }
-            controller.enqueue(
+            enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({
                   id: responseId,
@@ -3707,15 +3729,13 @@ async function handleStreamingRequest(
             },
           ],
         };
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify(finalChunk)}\n\n`),
-        );
+        enqueue(encoder.encode(`data: ${JSON.stringify(finalChunk)}\n\n`));
         // Terminal usage-only chunk (empty choices) per stream_options
         // .include_usage. Only ever built from the SDK's reported usage — if
         // the finish part never arrived there is nothing honest to report, so
         // the frame is omitted rather than fabricated as zeros.
         if (includeUsage && hasReportedUsageTokens(finishUsage)) {
-          controller.enqueue(
+          enqueue(
             encoder.encode(
               `data: ${JSON.stringify({
                 id: responseId,
@@ -3731,8 +3751,9 @@ async function handleStreamingRequest(
             ),
           );
         }
-        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
+        streamCompleted = true;
       } catch (error) {
         // Finding #11: a provider error mid-stream (e.g. the cerebras 429/5xx
         // surfaced as a `fullStream` error part) would otherwise leave the
@@ -3801,10 +3822,8 @@ async function handleStreamingRequest(
               code: status,
             },
           };
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify(errorChunk)}\n\n`),
-          );
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          enqueue(encoder.encode(`data: ${JSON.stringify(errorChunk)}\n\n`));
+          enqueue(encoder.encode("data: [DONE]\n\n"));
           controller.close();
         } catch (enqueueError) {
           // The stream was already torn down (client disconnected / controller
@@ -3820,8 +3839,13 @@ async function handleStreamingRequest(
           );
           controller.error(error);
         }
+      } finally {
+        sdkTiming?.finish(!streamCompleted);
       }
     },
+  };
+  const openAIStream = new ReadableStream({
+    start: bindSdkStreamTiming(sdkTiming, streamSource.start),
   });
 
   return addCorsHeaders(

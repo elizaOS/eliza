@@ -2311,6 +2311,9 @@ export class EmbeddedWorkflowService extends Service {
       );
       if (!canonical || canonical.status !== decision || canonical.requestDigest !== requestDigest)
         throw new WorkflowApiError('Approval outcome unknown; refresh its receipt', 503);
+      const pendingEntry = (execution.approvals ?? []).find(
+        (item) => item.nodeId === nodeId && item.iteration === iteration
+      );
       execution.approvals = [
         ...(execution.approvals ?? []).filter(
           (item) => item.nodeId !== nodeId || item.iteration !== iteration
@@ -2321,7 +2324,7 @@ export class EmbeddedWorkflowService extends Service {
           nodeId,
           iteration,
           status: decision,
-          requestedAt: receipt.decidedAt ?? nowIso(),
+          requestedAt: pendingEntry?.requestedAt ?? nowIso(),
           decidedAt: canonical.decidedAt,
           decidedBy: ownerId,
           prompt: receipt.summary,

@@ -208,4 +208,33 @@ describe("LOCAL_INFERENCE action twins", () => {
 		);
 		expect(pins.pinned).toEqual(["asr"]);
 	}, 15_000);
+	it("persists quiet hours and refuses malformed replacements without changing preferences", async () => {
+		const call = (quietHours: unknown) =>
+			localInferenceManagementAction.handler(
+				{} as IAgentRuntime,
+				{} as Memory,
+				undefined,
+				{ parameters: { action: "set_voice_model_preferences", quietHours } },
+			);
+		const quietHours = [{ start: "22:00", end: "07:00" }];
+		expect((await call(quietHours))?.success).toBe(true);
+		const file = path.join(
+			stateDir,
+			"local-inference",
+			"voice-update-prefs.json",
+		);
+		const before = readFileSync(file, "utf8");
+		expect(JSON.parse(before).quietHours).toEqual(quietHours);
+		for (const invalid of [
+			[{ start: "23:00" }],
+			[{ start: "25:00", end: "07:00" }],
+			"22:00-07:00",
+			[null],
+		]) {
+			expect((await call(invalid))?.success).toBe(false);
+			expect(readFileSync(file, "utf8")).toBe(before);
+		}
+		expect((await call([]))?.success).toBe(true);
+		expect(JSON.parse(readFileSync(file, "utf8")).quietHours).toEqual([]);
+	}, 15_000);
 });
