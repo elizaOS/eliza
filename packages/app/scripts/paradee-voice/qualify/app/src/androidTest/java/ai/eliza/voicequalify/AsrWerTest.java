@@ -16,7 +16,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 /**
- * Native Qwen3-ASR of the :paradee-voice bundle on pinned human speech: the
+ * Native Phonon-2 ASR of the :paradee-voice bundle on pinned human speech: the
  * 100 LibriSpeech test-clean utterances and speech-fixture 0.wav that
  * `host-wer-gate.ts --export-device-fixtures <dir>` writes (pass the dir as
  * -PasrFixturesDir). Pass: corpus WER <= 0.06 and an empty transcript for

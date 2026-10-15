@@ -23,6 +23,27 @@ balance. Other operations retain primary admission and can reclaim idle funds.
 Funds backing active requests remain reserved. Drain and reconcile all grants,
 then use `disableInferenceBudgetAdmission` before turning off the mode.
 
+Account deletion must also withdraw delegated policy before resource cleanup.
+If an organization still has enabled authority after the global mode is turned
+off, restore the mode and complete the ordinary reclaim/rollback first; deletion
+fails closed until that acknowledgement succeeds. Already disabled authority
+still requires confirmed API-key cache withdrawal. Completed nonfinancial policy
+rows can then be removed with the mode on or off. Pending policy mutations and
+any retained funding grants or receipts block final erasure. Financial-history
+erasure requires its retained-audit owner and is not implemented by this cleanup.
+
+The native metadata regression is opt-in. CI does not currently provision its
+`INFERENCE_POLICY_TEST_POSTGRES_URL`; a green general pipeline is not proof that
+it ran. Use an isolated loopback PostgreSQL QA role whose name starts with `qa_`,
+set that variable, and run from the root:
+
+```bash
+bun --no-install --conditions=eliza-source test packages/cloud/shared/src/lib/services/inference-policy-account-deletion.postgres.integration.test.ts
+```
+
+The suite creates and removes a unique schema and loads migrations 0544–0545.
+It must not point to a production database.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:
@@ -158,6 +179,28 @@ a grant redeemed during a paid plan runs at the same time and serves only after
 the paid plan stops serving (lapse, cancellation or expiry) inside the grant
 window. The redeem response says so with `grant.paidPlanTakesPrecedence`.
 
+A code can instead carry a calendar-month term (`duration_months`, for example
+a six-month pilot): the window ends on the same UTC date and time that many
+months after redemption, clamped to a shorter month's last day. A code marked
+`requires_no_paid_plan` is refused with 409
+`subscription_grant_paid_plan_active` while the organization has an open
+(pending, incomplete, active, grace, past due or unpaid) organization
+subscription, or when its subscription authority is unknown, so an existing
+payer is never billed for a window the grant also covers. Redemption never
+creates a payment method, invoice or renewal.
+
+`GET /api/v1/billing/limits` reports the active grant in the additive v2
+`grant` observation: `grantId`, `planKey`, `startsAt`, `endsAt` (the
+free-through instant, null for lifetime), `paidPlanTakesPrecedence` and the
+current month's `allowance` (`granted`, `unreserved`, USD). It is
+`not_applicable` (`no_active_subscription_grant`) after expiry or revocation.
+Clouds without this field are unknown, not "no grant".
+
+An administrator can mint a lifetime code with `--lifetime`. Its grant has
+`endsAt: null` and remains active until revoked. The plan's monthly allowance
+still resets each month without rollover. The billing reconciliation cron keeps
+the current and next two monthly periods funded; missed months do not accumulate.
+
 - `POST /api/v1/subscription/redeem` with `{code, idempotencyKey}`, using an API
   key or a session. Replays return the original grant. Unknown, expired,
   disabled and used-up codes return one generic 400. Limited per credential
@@ -202,10 +245,13 @@ window. The redeem response says so with `grant.paidPlanTakesPrecedence`.
   `bun --conditions=eliza-source packages/cloud/scripts/plan-request-limit-latency.ts`.
 
 Scripts (same `DATABASE_URL` and pepper as the target environment; apply
-migration `0542_subscription_grant_codes` first):
+migrations through `0547_subscription_grant_calendar_terms` first):
 
 - Mint: `bun --conditions=eliza-source packages/cloud/scripts/admin/mint-subscription-grant-codes.ts --count N`.
   Codes print once; only HMACs are stored.
+  Add `--lifetime` for no expiry, `--duration-days N` or `--duration-months N`
+  (UTC calendar months) for a bounded grant, and `--requires-no-paid-plan` to
+  refuse paying organizations. The staging mint workflow still passes days only.
 - Revoke: `bun --conditions=eliza-source packages/cloud/scripts/admin/revoke-subscription-grants.ts --reason "..." --code XXXX-XXXX-XXXX-XXXX`
   (or `--grant-id`). Service stops at once; `--code` also disables the code.
 - Staging: mint with the `Cloud staging mint grant codes` workflow, which seals
@@ -357,3 +403,34 @@ must provision, for each environment:
 
 Ops also own the update schedule (dataset freshness), monitoring, capacity and
 ODbL obligations. Transit, traffic and map tiles are not served.
+
+Maps uses a separate organization request allowance (Alpha P-56, issue #410).
+It never reserves or debits inference funds. Operators must set
+`ELIZA_CLOUD_MAPS_REQUEST_ALLOWANCES` to a selected JSON policy with
+`{selected:true,plans:{<planKey>:{requests:<integer>,windowSeconds:<integer>}}}`.
+No numeric defaults are provided. Zero requests is a valid closed allowance.
+Windows start at UTC epoch multiples of the selected duration. Policy changes
+retain use in the current window; a changed duration refuses until that window
+ends. Selected `ELIZA_CLOUD_PLAN_RATE_LIMITS` with usable burst and sustained limits
+is also required; its explicit default plan fallback is preserved. Both dimensions are enforced in
+shared durable storage and carry across allowance window resets.
+
+POST Maps requests require `Idempotency-Key`. Admission consumes one request;
+repeating the same credential/request ID never grants another provider call.
+Cancellation before admission consumes nothing. Accepted requests, lost
+acknowledgements, and cancellation after admission stay consumed. Outcome
+updates are idempotent and do not refund or charge. Provider timeouts and lost
+outcome updates remain unknown. Durable replay records retain only credential
+identity, operation, admission time/window and outcome, with no query,
+coordinates, payload hash or provider response. These records are not expired
+because expiry would permit replay; account-erasure policy must cover them.
+Storage grows by one small metadata record per admitted request. Operators must
+monitor Durable Object storage; full/unavailable storage refuses admission. A
+future compaction policy must preserve replay refusal, not silently expire IDs.
+
+Strong credential revocation and the organization DO binding are required.
+The route holds the primary policy read lock through admission. Identity cache
+reuse does not establish cache-only entitlement admission: ordinary policy
+writers do not synchronously fence every cached generation. Shared allowance
+correctness is implemented; deployed latency/audio and numeric policy selection
+remain separate acceptance work. Coverage metadata does not consume allowance.

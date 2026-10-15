@@ -1,6 +1,16 @@
 /** Defines Cloud-native subscription grant codes and the per-organization grants they publish. */
 import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
-import { check, index, integer, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  check,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 import { users } from "./users";
 
@@ -16,7 +26,11 @@ export const subscriptionGrantCodes = pgTable(
       .notNull()
       .default("plus_monthly"),
     catalog_version: text("catalog_version").notNull().default("v1"),
-    duration_days: integer("duration_days").notNull().default(183),
+    duration_days: integer("duration_days").default(183),
+    /** UTC calendar months (month-end clamped); exclusive with duration_days. Both null is lifetime. */
+    duration_months: integer("duration_months"),
+    /** Refuse redemption while the organization has an open paid subscription. */
+    requires_no_paid_plan: boolean("requires_no_paid_plan").notNull().default(false),
     max_redemptions: integer("max_redemptions").notNull(),
     redeemed_count: integer("redeemed_count").notNull().default(0),
     expires_at: timestamp("expires_at", { withTimezone: true }),
@@ -28,6 +42,10 @@ export const subscriptionGrantCodes = pgTable(
     hash_check: check(
       "subscription_grant_codes_code_hash_check",
       sql`${table.code_hash} ~ '^[0-9a-f]{64}$'`,
+    ),
+    single_term_check: check(
+      "subscription_grant_codes_single_term_check",
+      sql`${table.duration_days} IS NULL OR ${table.duration_months} IS NULL`,
     ),
     count_check: check(
       "subscription_grant_codes_redeemed_count_check",
@@ -52,7 +70,8 @@ export const subscriptionGrants = pgTable(
     catalog_version: text("catalog_version").notNull(),
     idempotency_key: text("idempotency_key").notNull(),
     starts_at: timestamp("starts_at", { withTimezone: true }).notNull(),
-    ends_at: timestamp("ends_at", { withTimezone: true }).notNull(),
+    /** Null denotes a lifetime grant; revocation remains available. */
+    ends_at: timestamp("ends_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     /** Set once by support revocation; a revoked grant no longer serves. */
     revoked_at: timestamp("revoked_at", { withTimezone: true }),

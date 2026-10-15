@@ -248,9 +248,9 @@ export function normalizeTriggerDraft(params: {
       ? `Run workflow ${workflowName ?? workflowId}`
       : "Run prompt automation";
   const instructions =
-    normalizeText(params.input.instructions ?? "") ||
-    normalizeText(params.fallback.instructions) ||
-    normalizeText(synthesized);
+    (params.input.instructions ?? "").trim() ||
+    params.fallback.instructions.trim() ||
+    synthesized;
 
   if (!displayName) {
     return { error: "displayName is required" };

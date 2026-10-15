@@ -2,7 +2,6 @@
  * Idempotency Utility for Webhook Handlers
  *
  * Database-backed deduplication to prevent replay attacks.
- * TTL matches the 2-minute webhook signature validity window.
  */
 
 import { count, eq, gt, lt, sql } from "drizzle-orm";
@@ -11,6 +10,14 @@ import { idempotencyKeys } from "../../db/schemas/idempotency-keys";
 import { logger } from "./logger";
 
 const IDEMPOTENCY_TTL_MS = 2 * 60 * 1000; // 2 minutes
+
+/**
+ * How long a delivered message stays deduplicated. The 2-minute claim only
+ * lets a crashed delivery be retried; after the work succeeded, a provider
+ * retry or a replay of the signed request (Blooio signatures stay valid for
+ * 300 s) must still be refused, or the agent replies and bills twice.
+ */
+const DELIVERED_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 /**
  * Check if a message has already been processed within the TTL window.
@@ -90,14 +97,17 @@ export async function processOnce<T>(
 ): Promise<ProcessOnceOutcome<T>> {
   const claimed = await tryClaimForProcessing(key, source);
   if (!claimed) return { status: "duplicate" };
+  let result: T;
   try {
-    return { status: "processed", result: await work() };
+    result = await work();
   } catch (error) {
     // error-policy:J2 the claim is released so the provider's retry is not
     // refused as a duplicate; the failure itself is rethrown unchanged.
     await releaseProcessingClaim(key);
     throw error;
   }
+  await markAsProcessed(key, source, DELIVERED_TTL_MS);
+  return { status: "processed", result };
 }
 
 /**
@@ -117,9 +127,13 @@ export async function releaseProcessingClaim(key: string): Promise<void> {
 /**
  * Mark a message as processed. Uses upsert to handle race conditions.
  */
-export async function markAsProcessed(key: string, source = "unknown"): Promise<void> {
+export async function markAsProcessed(
+  key: string,
+  source = "unknown",
+  ttlMs = IDEMPOTENCY_TTL_MS,
+): Promise<void> {
   try {
-    const expires_at = new Date(Date.now() + IDEMPOTENCY_TTL_MS);
+    const expires_at = new Date(Date.now() + ttlMs);
     await dbWrite
       .insert(idempotencyKeys)
       .values({ key, source, expires_at })

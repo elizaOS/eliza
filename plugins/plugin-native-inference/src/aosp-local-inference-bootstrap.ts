@@ -91,10 +91,10 @@ import {
 } from "./aosp-model-paths.js";
 import { createAospNetworkAdmissionCheck } from "./aosp-network-admission.js";
 import {
+  AOSP_VOICE_GROUPS,
   aospEspeakDataParent,
   aospParadeePaths,
   aospVoiceGroupNeedsStaging,
-  aospVoiceGroups,
   readAospVoiceLocalSource,
   stageAospVoiceGroup,
 } from "./aosp-voice-download.js";
@@ -1390,10 +1390,9 @@ function resolveBundledModelsDir(): string {
 // `tts/paradee/` (the dir ElizaBionicInferenceServer.tts() and the fused
 // Paradee loader read), Silero VAD in `vad/`, and the ASR model in `asr/`:
 // Phonon-2 (Parakeet-TDT; the fused library's parakeet backend, batch and
-// streaming) by default, or the Qwen3-ASR-0.6B pair with
-// ELIZA_ASR_BACKEND=qwen3. Changing the backend re-stages `asr/`; until the
-// new rows are available the old group stays and keeps working.
-// ELIZA_ASR_THREADS is read by the fused library itself. All of it runs on
+// streaming), the only local ASR. An `asr/` group staged with the retired
+// Qwen3-ASR pair is re-staged with Phonon-2, or removed while Phonon-2 is not
+// available. ELIZA_ASR_THREADS is read by the fused library itself. All of it runs on
 // libelizainference. The voice is an ESSENTIAL
 // feature, so unlike the general recommended-model auto-download it fetches by
 // default; opt out with ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD=1 (offline/kiosk).
@@ -1405,7 +1404,7 @@ let voiceDownloadInflight: Promise<void> | null = null;
 function ensureAospVoiceAssetsInBackground(bundleRoot: string): void {
   if (process.env.ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD?.trim() === "1") return;
   if (voiceDownloadInflight) return;
-  const groups = aospVoiceGroups();
+  const groups = AOSP_VOICE_GROUPS;
   if (!groups.some((g) => aospVoiceGroupNeedsStaging(bundleRoot, g))) return;
   const fromDir = process.env.ELIZA_VOICE_BUNDLE_FROM?.trim();
   voiceDownloadInflight = (async () => {

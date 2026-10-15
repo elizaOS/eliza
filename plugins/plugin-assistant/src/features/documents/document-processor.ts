@@ -1305,7 +1305,14 @@ async function withRateLimitRetry<T>(
   }
 }
 
-function createRateLimiter(
+/**
+ * Sliding-window throttle for provider calls during document ingestion.
+ * Enforces the configured per-minute request and token budgets; each call
+ * resolves when the budget admits it. Every admitted call is timestamped at
+ * its actual send time so a call that waited advances the window instead of
+ * letting the next call share its slot.
+ */
+export function createRateLimiter(
   requestsPerMinute: number,
   tokensPerMinute?: number,
   rateLimitEnabled: boolean = true,
@@ -1313,49 +1320,69 @@ function createRateLimiter(
   const requestTimes: number[] = [];
   const tokenUsage: Array<{ timestamp: number; tokens: number }> = [];
   const intervalMs = 60 * 1000;
+  let admissionQueue = Promise.resolve();
 
   return async function rateLimiter(estimatedTokens: number = 1000) {
     if (!rateLimitEnabled) return;
 
-    const now = Date.now();
+    const admission = admissionQueue.then(async () => {
+      while (true) {
+        const now = Date.now();
 
-    while (requestTimes.length > 0 && now - requestTimes[0] > intervalMs) {
-      requestTimes.shift();
-    }
-    while (
-      tokenUsage.length > 0 &&
-      now - tokenUsage[0].timestamp > intervalMs
-    ) {
-      tokenUsage.shift();
-    }
+        while (requestTimes.length > 0 && now - requestTimes[0] >= intervalMs) {
+          requestTimes.shift();
+        }
+        while (
+          tokenUsage.length > 0 &&
+          now - tokenUsage[0].timestamp >= intervalMs
+        ) {
+          tokenUsage.shift();
+        }
 
-    const currentTokens = tokenUsage.reduce(
-      (sum, usage) => sum + usage.tokens,
-      0,
-    );
-    const requestLimitExceeded = requestTimes.length >= requestsPerMinute;
-    const tokenLimitExceeded =
-      tokensPerMinute && currentTokens + estimatedTokens > tokensPerMinute;
-
-    if (requestLimitExceeded || tokenLimitExceeded) {
-      let timeToWait = 0;
-      if (requestLimitExceeded) {
-        timeToWait = Math.max(timeToWait, requestTimes[0] + intervalMs - now);
-      }
-      if (tokenLimitExceeded && tokenUsage.length > 0) {
-        timeToWait = Math.max(
-          timeToWait,
-          tokenUsage[0].timestamp + intervalMs - now,
+        const currentTokens = tokenUsage.reduce(
+          (sum, usage) => sum + usage.tokens,
+          0,
         );
-      }
-      if (timeToWait > 0) {
+        const requestLimitExceeded =
+          requestsPerMinute > 0 && requestTimes.length >= requestsPerMinute;
+        const tokenLimitExceeded =
+          tokensPerMinute && currentTokens + estimatedTokens > tokensPerMinute;
+
+        if (!requestLimitExceeded && !tokenLimitExceeded) break;
+
+        let timeToWait = 0;
+        if (requestLimitExceeded && requestTimes.length > 0) {
+          timeToWait = Math.max(timeToWait, requestTimes[0] + intervalMs - now);
+        }
+        if (tokenLimitExceeded && tokenUsage.length > 0) {
+          timeToWait = Math.max(
+            timeToWait,
+            tokenUsage[0].timestamp + intervalMs - now,
+          );
+        }
+        if (timeToWait <= 0) {
+          // A single request may exceed the configured token window. Preserve
+          // the existing fail-open behavior for that request. Its timestamp
+          // is recorded below, so later calls wait for it to expire normally.
+          break;
+        }
         await new Promise((resolve) => setTimeout(resolve, timeToWait));
       }
-    }
 
-    requestTimes.push(now);
-    if (tokensPerMinute) {
-      tokenUsage.push({ timestamp: now, tokens: estimatedTokens });
-    }
+      // Timestamp the call at its actual send time, not at the moment it
+      // arrived: `now` was captured before any wait, so pushing it would let a
+      // throttled call keep its old slot and admit the next call early — the
+      // window would slide twice as fast as real time after every wait.
+      const sentAt = Date.now();
+      requestTimes.push(sentAt);
+      if (tokensPerMinute) {
+        tokenUsage.push({ timestamp: sentAt, tokens: estimatedTokens });
+      }
+    });
+    admissionQueue = admission.then(
+      () => undefined,
+      () => undefined,
+    );
+    await admission;
   };
 }

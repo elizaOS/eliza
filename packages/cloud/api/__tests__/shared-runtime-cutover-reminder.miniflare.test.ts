@@ -70,7 +70,7 @@ const RUNTIME_STUBS = {
       return await response.json();
     }
   `,
-  usersRepository: `export const usersRepository = { async findByPhoneNumberWithOrganization(phone) { const owner = { "+14155550802": ["handled-user", "handled-org"], "+14155550803": ["legacy-intent-user", "legacy-intent-org"], "+14155550804": ["retryable-refusal-user", "retryable-refusal-org"] }[phone] ?? ["continuity-user", "continuity-org"]; return { id: owner[0], organization_id: owner[1], phone_number: phone, phone_verified: true, is_active: true, deleted_at: null, organization: { is_active: true } }; } };`,
+  usersRepository: `export const usersRepository = { async findByPhoneNumberWithOrganization(phone) { const owner = { "+14155550805": ["00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002"], "+14155550802": ["handled-user", "handled-org"], "+14155550803": ["legacy-intent-user", "legacy-intent-org"], "+14155550804": ["retryable-refusal-user", "retryable-refusal-org"] }[phone] ?? ["continuity-user", "continuity-org"]; return { id: owner[0], organization_id: owner[1], phone_number: phone, phone_verified: true, is_active: true, deleted_at: null, organization: { is_active: true } }; } };`,
 
   apiErrors: `
     export class InsufficientCreditsError extends Error {}
@@ -260,7 +260,7 @@ const HANDLED_ROUTE_STUBS: Record<string, string> = {
   "@elizaos/cloud-shared/lib/network/member-store":
     'export function serviceNetworkStoreFactory() { throw new Error("Handled turns must not load model context"); }',
   "@elizaos/cloud-shared/lib/services/eliza-app":
-    'export const elizaAppUserService = { async resolvePersonalDelivery(input) { globalThis.__phoneOwnerCalls = (globalThis.__phoneOwnerCalls ?? 0) + 1; if (input.platform !== "phone") throw new Error("Unexpected account owner"); return { userId: input.phoneNumber === "+14155550802" ? "handled-user" : "continuity-user", organizationId: input.phoneNumber === "+14155550802" ? "handled-org" : "continuity-org", dedicatedTarget: null, isNew: globalThis.__phoneOwnerCalls === 1, resolution: "fixture-phone-owner" }; } };',
+    'export const elizaAppUserService = { async resolvePersonalDelivery(input) { globalThis.__phoneOwnerCalls = (globalThis.__phoneOwnerCalls ?? 0) + 1; if (input.platform !== "phone") throw new Error("Unexpected account owner"); return { userId: input.phoneNumber === "+14155550805" ? "00000000-0000-4000-8000-000000000001" : input.phoneNumber === "+14155550802" ? "handled-user" : "continuity-user", organizationId: input.phoneNumber === "+14155550805" ? "00000000-0000-4000-8000-000000000002" : input.phoneNumber === "+14155550802" ? "handled-org" : "continuity-org", dedicatedTarget: null, isNew: globalThis.__phoneOwnerCalls === 1, resolution: "fixture-phone-owner" }; } };',
   "@elizaos/cloud-shared/lib/services/eliza-app/blooio-media-allowlist":
     "export function isAllowedBlooioMediaUrl() { return false; }",
   "@elizaos/cloud-shared/lib/services/eliza-app/describe-inbound-media":
@@ -365,6 +365,7 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
                 : await store.load(body.agentId, body.channelId));
             }
             if (new URL(request.url).pathname === "/__test/legacy-intents") {
+              await request.json();
               // Rewrite delivery intents as stored before dispatchedAt existed.
               const intents = await this.testState.storage.list({ prefix: "network-delivery:" });
               for (const [key, intent] of intents) {
@@ -626,6 +627,15 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
         JWT_SIGNING_PUBLIC_KEY: publicKey,
         NETWORK_SERVICE_URL: "https://network-service-probe.test",
         NETWORK_PERSONAL_CONTINUITY_ENABLED: "true",
+        NETWORK_OWNED_INGRESS_POLICY: JSON.stringify({
+          project: "eliza-app",
+          platform: "blooio",
+          phoneNumber: "+14155550805",
+          connectorAccountId: "+14155550999",
+          messageIdPrefix: "blooio:eliza-app:",
+          userId: "00000000-0000-4000-8000-000000000001",
+          organizationId: "00000000-0000-4000-8000-000000000002",
+        }),
         SERVICE_TURN_SECRET: "continuity-fixture-service-secret-0123456789",
         GATEWAY_INTERNAL_SECRET: "fixture-gateway-secret",
         ELIZA_APP_WEBHOOK_GATEWAY_URL: "https://gateway-probe.test",
@@ -1656,9 +1666,18 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
       { ...payload, agentId: oldId, roomId: oldId },
       { ...payload, delivery: { ...delivery, userId: "foreign-user" } },
       { ...payload, delivery: { ...delivery, organizationId: "foreign-org" } },
-      { ...payload, delivery: { ...delivery, project: "eliza-app" } },
     ])
       expect((await post(name, "/network-delivery", forged)).status).toBe(400);
+    const unsignedServiceDelivery = await post(name, "/network-delivery", {
+      ...payload,
+      delivery: { ...delivery, project: "eliza-app" },
+    });
+    expect(unsignedServiceDelivery.status).toBe(403);
+    expect(await unsignedServiceDelivery.json()).toMatchObject({
+      ok: false,
+      code: "invalid_admission",
+      retryable: false,
+    });
     expect(gatewayRequests).toHaveLength(1);
     expect(
       (await post(name, "/disabled/network-delivery", payload)).status,
@@ -1886,6 +1905,133 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
     expect(await count()).toBe(calls);
     expect(modelRequests).toEqual([]);
   }, 120000);
+  test("canonical eliza-app handled proof reaches its delivery verifier and records history once", async () => {
+    // The legacy project:"network" case above sends no canonical admission
+    // envelope. This separate owned UUID fixture exercises the real signed
+    // eliza-app route -> DO super.fetch boundary; DB/HTTP stubs remain scoped
+    // to this Workerd unit harness, not genuine PG or deployed acceptance.
+    const path = "/api/internal/eliza-app/personal-shared/messages";
+    const account = {
+      userId: "00000000-0000-4000-8000-000000000001",
+      organizationId: "00000000-0000-4000-8000-000000000002",
+    };
+    const request = {
+      messageId: "canonical-owned-help",
+      channel: "blooio",
+      from: "+14155550805",
+      to: null,
+      text: "help",
+      transport: "sms",
+      receivedAt: Date.now(),
+    };
+    const payload = {
+      platform: "blooio",
+      project: "eliza-app",
+      connectorAccountId: "+14155550999",
+      phoneNumber: request.from,
+      messageId: `blooio:eliza-app:${request.messageId}`,
+      message: request.text,
+      transport: request.transport,
+      networkHandled: {
+        request,
+        response: {
+          outcome: "handled",
+          replies: ["Canonical owned help reply."],
+          replyIds: ["canonical-owned-output"],
+          delivery: "collected",
+          replyKind: "compliance",
+          accountEligible: true,
+          reason: "help",
+          app: null,
+          memberId: null,
+        },
+      },
+    };
+    async function submit(value = payload, jwt = gatewayJWT, signed = true) {
+      const body = JSON.stringify(value);
+      const proof = signed
+        ? await svcSign("continuity-fixture-service-secret-0123456789", {
+            method: "POST",
+            path,
+            id: request.messageId,
+            body,
+          })
+        : {};
+      return await miniflare.dispatchFetch(`https://runtime.test${path}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${jwt}`,
+          ...proof,
+        },
+        body,
+      });
+    }
+    const sends = gatewayRequests.length;
+    const acknowledgements = serviceAcknowledgements.length;
+    expect((await submit(payload, "invalid-token")).status).toBe(401);
+    expect((await submit(payload, gatewayJWT, false)).status).toBe(403);
+    expect(
+      (await submit({ ...payload, phoneNumber: "+14155550806" })).status,
+    ).toBe(403);
+    expect(gatewayRequests).toHaveLength(sends);
+    expect(serviceAcknowledgements).toHaveLength(acknowledgements);
+    const accepted = await submit();
+    expect(accepted.status, await accepted.clone().text()).toBe(200);
+    expect(await accepted.json()).toMatchObject({
+      success: true,
+      data: {
+        account,
+        delivery: {
+          ok: true,
+          history: true,
+          providerMessageIds: ["controlled-network-receipt"],
+        },
+      },
+    });
+    expect((await submit()).status).toBe(200);
+    expect(gatewayRequests).toHaveLength(sends + 1);
+    expect(gatewayRequests.at(-1)).toMatchObject({
+      project: "eliza-app",
+      phoneNumber: request.from,
+      connectorAccountId: payload.connectorAccountId,
+      text: payload.networkHandled.response.replies[0],
+    });
+    expect(gatewayRequests.at(-1)?.app).toBeUndefined();
+    // The harness outbound boundary validates the real service HMAC first.
+    expect(serviceAcknowledgements.at(-1)).toMatchObject({
+      channel: "blooio",
+      messageId: request.messageId,
+      replyIds: payload.networkHandled.response.replyIds,
+      providerMessageIds: ["controlled-network-receipt"],
+      outcome: "accepted",
+      historyRecorded: true,
+    });
+    const agentId = personalSharedAgentId(account);
+    const history = await post(`${agentId}:${agentId}`, "/history", {
+      operation: "history",
+      agentId,
+      roomId: agentId,
+    });
+    const recorded = (await history.json()) as { history: unknown[] };
+    expect(recorded.history).toHaveLength(2);
+    // The provider fixture's fixed acceptedAt predates this inbound clock;
+    // this regression proves exact membership and one-time persistence.
+    expect(recorded.history).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "user",
+          content: request.text,
+          channel: "sms",
+        }),
+        expect.objectContaining({
+          role: "assistant",
+          content: payload.networkHandled.response.replies[0],
+        }),
+      ]),
+    );
+    expect(modelRequests).toEqual([]);
+  }, 120_000);
   test("a legacy dispatching intent without dispatchedAt keeps the claim grace window", async () => {
     const account = {
       userId: "legacy-intent-user",
@@ -1920,7 +2066,8 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
     gatewayDown = calls;
     try {
       expect((await post(name, "/network-delivery", payload)).status).toBe(202);
-      await post(name, "/__test/legacy-intents", {});
+      const migrated = await post(name, "/__test/legacy-intents", {});
+      expect(await migrated.json()).toEqual({ success: true });
       const recovery = await post(name, "/network-delivery", payload);
       expect(recovery.status).toBe(202);
       expect(await recovery.json()).toMatchObject({ error: "unknown" });

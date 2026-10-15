@@ -38,6 +38,122 @@ import {
 } from "./fixtures.js";
 
 describe("Stage 1 response format", () => {
+  it("validates captured replyText against the active array schema before processing fields", async () => {
+    const captured = '[{"kind": "text", "value": "Hey, I\'m here."}';
+    const malformed = stage1Response({
+      contexts: ["simple"],
+      replyText: captured,
+    });
+    const repaired = stage1Response({
+      contexts: ["simple"],
+      replyText: "Hey, I'm here.",
+      replyParts: true,
+    });
+    const runtime = makeRuntime([malformed, repaired]);
+    const message = makeMessage({
+      text: "Hi. Reply with one short sentence.",
+      channelType: ChannelType.DM,
+    });
+    const original = {
+      ...makeMessage({ text: "Earlier user message." }),
+      id: "00000000-0000-0000-0000-00000000fa01" as UUID,
+      agentId: runtime.agentId,
+      createdAt: 1,
+    };
+    const state = {
+      ...makeState(),
+      data: {
+        providers: {
+          RECENT_MESSAGES: { data: { recentMessages: [original] } },
+        },
+      },
+    } as State;
+    const dispatch = vi.spyOn(runtime.responseHandlerFieldRegistry, "dispatch");
+    const result = await runStage1({ runtime, message, state });
+    const calls = useModelCalls(runtime),
+      params = calls[0]?.[1] as {
+        tools?: Array<{
+          name?: string;
+          parameters?: { properties?: { replyText?: { type?: string } } };
+        }>;
+      };
+    expect(
+      params.tools?.find((tool) => tool.name === "HANDLE_RESPONSE")?.parameters
+        ?.properties?.replyText?.type,
+    ).toBe("array");
+    expect(calls).toHaveLength(2);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(result.kind).toBe("direct_reply");
+    if (result.kind === "direct_reply")
+      expect(result.result.responseContent?.text).toBe("Hey, I'm here.");
+    expect(malformed.toolCalls[0].arguments.replyText).toBe(captured);
+  });
+  it.each([
+    ["a plain string reply", "Hey, I'm here.", "RESPOND"],
+    ["an empty string reply", "", "IGNORE"],
+    ["an omitted reply", undefined, "IGNORE"],
+  ] as const)(
+    "keeps %s on the existing path while the parts schema is active",
+    async (_label, replyText, shouldRespond) => {
+      const decision = () => {
+        const response = stage1Response({
+          contexts: ["simple"],
+          shouldRespond,
+          replyText: replyText ?? "",
+        });
+        if (replyText === undefined)
+          delete (response.toolCalls[0].arguments as { replyText?: unknown })
+            .replyText;
+        return response;
+      };
+      // A DM IGNORE keeps its ordinary terminal review; it must not become a
+      // source-reply repair.
+      const runtime = makeRuntime(
+        shouldRespond === "IGNORE" ? [decision(), decision()] : [decision()],
+      );
+      const message = makeMessage({
+        text: "Hi. Reply with one short sentence.",
+        channelType: ChannelType.DM,
+      });
+      const original = {
+        ...makeMessage({ text: "Earlier user message." }),
+        id: "00000000-0000-0000-0000-00000000fa02" as UUID,
+        agentId: runtime.agentId,
+        createdAt: 1,
+      };
+      const state = {
+        ...makeState(),
+        data: {
+          providers: {
+            RECENT_MESSAGES: { data: { recentMessages: [original] } },
+          },
+        },
+      } as State;
+      const result = await runStage1({ runtime, message, state });
+      const calls = useModelCalls(runtime),
+        params = calls[0]?.[1] as {
+          tools?: Array<{
+            name?: string;
+            parameters?: { properties?: { replyText?: { type?: string } } };
+          }>;
+        };
+      expect(
+        params.tools?.find((tool) => tool.name === "HANDLE_RESPONSE")
+          ?.parameters?.properties?.replyText?.type,
+      ).toBe("array");
+      expect(calls).toHaveLength(shouldRespond === "IGNORE" ? 2 : 1);
+      expect(JSON.stringify(calls)).not.toContain(
+        "ordered reply-parts contract",
+      );
+      if (shouldRespond === "RESPOND") {
+        expect(result.kind).toBe("direct_reply");
+        if (result.kind === "direct_reply")
+          expect(result.result.responseContent?.text).toBe(replyText);
+      } else {
+        expect(result.kind).not.toBe("direct_reply");
+      }
+    },
+  );
   it.each([ChannelType.DM, ChannelType.VOICE_DM])(
     "reviews navigation with no pending intent before effects (%s)",
     async (channelType) => {

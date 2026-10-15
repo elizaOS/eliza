@@ -23,6 +23,7 @@ import { containersRepository } from "../../../../db/repositories/containers";
 import { dockerNodesRepository } from "../../../../db/repositories/docker-nodes";
 import { containers } from "../../../../db/schemas/containers";
 import { dockerNodes } from "../../../../db/schemas/docker-nodes";
+import { organizations } from "../../../../db/schemas/organizations";
 import { DockerSSHClient } from "../../docker-ssh";
 import { getHetznerContainersClient } from "./client";
 
@@ -63,6 +64,8 @@ function fakeDockerHost(): DockerSSHClient {
 beforeAll(async () => {
   await createTable(dockerNodes);
   await createTable(containers);
+  // Delete settles accrued compute against the organization; this fixture has none.
+  await createTable(organizations);
   spyOn(DockerSSHClient, "getClient").mockImplementation(() => fakeDockerHost());
   await getPgliteClientForTests().exec(`
     INSERT INTO docker_nodes

@@ -153,9 +153,10 @@ export const respondToMessageAction: Action = {
       logger.warn(`[RespondToMessage] ${text}`);
       return { success: false, text, error: text };
     }
-    const original = service.getStore().getMessage(messageId) ?? undefined;
+    const original =
+      service.getStore().getMessage(messageId, runtime.agentId) ?? undefined;
     const body = parsed.body ?? fallbackReplyBody(original);
-    const record = await service.draftReply(runtime, messageId, body);
+    const record = await service.draftReply(runtime, messageId, body, _message);
 
     const consentDigest = draftConsentDigest(record);
     if (policy) {
@@ -177,7 +178,7 @@ export const respondToMessageAction: Action = {
       if (required) {
         const enq = await policy.enqueueApproval(runtime, draftReq, () =>
           service
-            .sendDraft(runtime, record.draftId, consentDigest)
+            .sendDraft(runtime, record.draftId, consentDigest, _message)
             .then((r) => ({
               externalId: r.sentExternalId ?? `pending:${r.draftId}`,
             })),
@@ -216,6 +217,7 @@ export const respondToMessageAction: Action = {
       runtime,
       record.draftId,
       consentDigest,
+      _message,
     );
     const text = `Replied on ${sent.source}.`;
     logger.info(

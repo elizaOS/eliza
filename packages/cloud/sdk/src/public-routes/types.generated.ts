@@ -879,6 +879,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/voice/stt": Record<never, never>;
   "POST /api/v1/voice/tts": Record<never, never>;
   "POST /api/v1/web-push/subscriptions": Record<never, never>;
+  "POST /api/v1/website-reputation/lookup": Record<never, never>;
   "POST /api/v1/whatsapp/connect": Record<never, never>;
   "POST /api/v1/whatsapp/disconnect": Record<never, never>;
   "POST /api/v1/x/dms/conversations/send": Record<never, never>;
@@ -1543,6 +1544,7 @@ export interface PublicRouteHeaders {
   "POST /api/v1/voice/stt": never;
   "POST /api/v1/voice/tts": never;
   "POST /api/v1/web-push/subscriptions": never;
+  "POST /api/v1/website-reputation/lookup": never;
   "POST /api/v1/whatsapp/connect": never;
   "POST /api/v1/whatsapp/disconnect": never;
   "POST /api/v1/x/dms/conversations/send": never;

@@ -113,8 +113,13 @@ export const REPUTATION_FEEDS = [
     threats: ["MALWARE_OR_SCAM"],
   },
 ];
-export const validFeedTime = (time, now = Date.now()) =>
-  Number.isFinite(time) && time <= now + 300000 && now - time < 48 * 3600000;
+/**
+ * A timestamp that is a number and not in the future (5 minutes of clock skew).
+ * Used only to schedule refreshes and reject tampered caches. Feed age never
+ * makes a feed unusable: a loaded list counts at any age.
+ */
+export const plausibleTime = (time, now = Date.now()) =>
+  Number.isFinite(time) && time <= now + 300000;
 export function parseThreatDomains(text, minimum = 1000) {
   const domains = new Set();
   let invalid = 0;
@@ -154,6 +159,22 @@ export async function readFeedBody(response, maximum = 24 * 1024 * 1024) {
     await reader.cancel();
   }
 }
+export const PHISHING_COMMIT_FEED =
+  "https://github.com/Phishing-Database/Phishing.Database/commits/master/phishing-domains-ACTIVE.txt.atom";
+/**
+ * Latest commit of a GitHub commit Atom feed: its full SHA and its time
+ * (provenance only; NaN when absent). Null when the first entry has no SHA.
+ * Eliza Cloud's list ingestion uses the same rule.
+ */
+export function parseLatestCommitFeed(atom) {
+  const entry = String(atom).match(/<entry>[\s\S]*?<\/entry>/)?.[0] ?? "";
+  const sha = entry.match(/Grit::Commit\/([a-f0-9]{40})</)?.[1];
+  if (!sha) return null;
+  return {
+    sha,
+    publishedAt: Date.parse(entry.match(/<updated>([^<]+)<\/updated>/)?.[1]),
+  };
+}
 export async function downloadThreatFeed(
   feed,
   {
@@ -175,30 +196,23 @@ export async function downloadThreatFeed(
         ? body.match(/^# Last modified: (.+)$/m)?.[1]
         : response.headers.get("last-modified"),
     );
-    if (!validFeedTime(publishedAt, now())) throw Error("Expired feed");
+    // publishedAt is provenance only. It may be NaN when the source gives no date.
     parseThreatDomains(body, minEntries);
   } catch (error) {
     if (!feed.mirror) throw error;
-    const response = await fetchImpl(
-      "https://api.github.com/repos/Phishing-Database/Phishing.Database/commits?path=phishing-domains-ACTIVE.txt&per_page=1",
-      {
-        signal: AbortSignal.timeout(5000),
-        redirect: "error",
-        ...(userAgent
-          ? {
-              headers: {
-                "User-Agent": userAgent,
-                Accept: "application/vnd.github+json",
-              },
-            }
-          : {}),
-      },
+    // The public commit feed names the latest commit without the
+    // unauthenticated REST API, whose 60/hour limit is shared per IP.
+    const response = await fetchImpl(PHISHING_COMMIT_FEED, {
+      signal: AbortSignal.timeout(5000),
+      redirect: "error",
+      ...(userAgent ? { headers: { "User-Agent": userAgent } } : {}),
+    });
+    const latest = parseLatestCommitFeed(
+      await readFeedBody(response, 512 * 1024),
     );
-    const commits = JSON.parse(await readFeedBody(response, 128 * 1024));
-    const sha = commits?.[0]?.sha;
-    publishedAt = Date.parse(commits?.[0]?.commit?.committer?.date);
-    if (!/^[a-f0-9]{40}$/.test(sha) || !validFeedTime(publishedAt, now()))
-      throw Error("Invalid feed provenance");
+    if (!latest) throw Error("Invalid feed provenance");
+    const { sha } = latest;
+    publishedAt = latest.publishedAt;
     body = await readFeedBody(
       await fetchImpl(
         `https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/${sha}/phishing-domains-ACTIVE.txt`,

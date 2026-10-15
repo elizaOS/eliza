@@ -182,13 +182,27 @@ const googleScopes = (value) =>
           ),
       )
     : [];
-// The Cloud Gmail search and read routes need one of these scopes.
-const gmailBodyRead = (scopes) =>
-  [
-    "https://www.googleapis.com/auth/gmail.readonly",
-    "https://www.googleapis.com/auth/gmail.modify",
-    "https://mail.google.com/",
-  ].some((scope) => scopes.includes(scope));
+const GMAIL_READ_ONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
+const GOOGLE_IDENTITY_SCOPES = new Set([
+  "openid",
+  "email",
+  "profile",
+  "https://www.googleapis.com/auth/userinfo.email",
+  "https://www.googleapis.com/auth/userinfo.profile",
+]);
+// This host asks Google for read-only Gmail (`google.gmail.triage`, which
+// Cloud maps to gmail.readonly plus sign-in identity). Mail is read only
+// through a grant that is exactly that. A wider grant (gmail.modify,
+// gmail.send, gmail.compose, https://mail.google.com/ or another product's
+// scope) can change, send or delete mail, so it is refused rather than used.
+// Checked on the raw list: an unrecognized entry also makes the grant wider.
+const gmailReadOnlyGrant = (scopes) =>
+  Array.isArray(scopes) &&
+  scopes.includes(GMAIL_READ_ONLY_SCOPE) &&
+  scopes.every(
+    (scope) =>
+      scope === GMAIL_READ_ONLY_SCOPE || GOOGLE_IDENTITY_SCOPES.has(scope),
+  );
 /**
  * Typed task-read failure. `code` is one fixed reason; no provider text.
  * reauth_required: the Google connection must be reconnected.
@@ -1814,11 +1828,10 @@ export function createCloudRoutes({
             value.grantedCapabilities.includes("google.gmail.triage")
               ? ["google.gmail.triage"]
               : [],
-          // A metadata-only grant still reports triage. Message reads need a
-          // body-read scope, so the app checks the scopes themselves.
+          // A metadata-only grant still reports triage. Messages are read
+          // only through an exactly read-only grant (gmailReadOnlyGrant).
           grantedScopes: connected ? googleScopes(value.grantedScopes) : [],
-          canReadMessages:
-            connected && gmailBodyRead(googleScopes(value.grantedScopes)),
+          canReadMessages: connected && gmailReadOnlyGrant(value.grantedScopes),
         });
         return true;
       }
@@ -1927,12 +1940,35 @@ export function createCloudRoutes({
         send(res, 200, { browserUrl: auth.href });
         return true;
       }
+      // The renderer's list and read are held to the same read-only grant as
+      // task reads. A connection that is not connected is left to Cloud's
+      // own answer, as before. The grant checked is the grant Cloud is then
+      // asked to use: a named connection is checked by name, and must be the
+      // one Cloud reports.
+      const requireReadOnlyGmail = async () => {
+        const status = await parse(
+          await request(`/api/v1/eliza/google/status?side=owner${grantQuery}`, {
+            key,
+            signal,
+            authorityGeneration: credentialEpoch,
+          }),
+        );
+        if (status?.connected !== true) return;
+        if (
+          requestInput?.grantId &&
+          status.connectionId !== requestInput.grantId
+        )
+          throw fail(message("invalidGoogleConnection"), 409);
+        if (!gmailReadOnlyGrant(status.grantedScopes))
+          throw fail(message("gmailReadOnlyRequired"), 403);
+      };
       if (method === "GET" && path === "/cloud/gmail/messages") {
         const maxResults = requestInput?.maxResults ?? 50;
         if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 100)
           throw fail(message("maxresultsMustBe1To100"));
         const query = url.searchParams.get("query") || "in:inbox";
         if (query.length > 1000) throw fail(message("searchQueryTooLong"));
+        await requireReadOnlyGmail();
         const value = await parse(
           await request(
             `/api/v1/eliza/google/gmail/search?side=owner&maxResults=${maxResults}&query=${encodeURIComponent(query)}${grantQuery}`,
@@ -1951,6 +1987,7 @@ export function createCloudRoutes({
         /^\/cloud\/gmail\/messages\/([a-zA-Z0-9_-]{1,256})$/,
       );
       if (method === "GET" && read) {
+        await requireReadOnlyGmail();
         const value = await parse(
           await request(
             `/api/v1/eliza/google/gmail/read?side=owner&messageId=${encodeURIComponent(read[1])}${grantQuery}`,
@@ -2081,7 +2118,7 @@ export function createCloudRoutes({
         );
       if (!googleGrantId(status.connectionId))
         throw googleReadFailure("unavailable");
-      if (!gmailBodyRead(googleScopes(status.grantedScopes)))
+      if (!gmailReadOnlyGrant(status.grantedScopes))
         throw googleReadFailure("insufficient_scope");
       const email = status.identity?.email;
       return {

@@ -24,6 +24,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { secp256k1 } from "@noble/curves/secp256k1";
 import { HDKey } from "@scure/bip32";
 import * as bip39 from "@scure/bip39";
 import { wordlist as englishWordlist } from "@scure/bip39/wordlists/english";
@@ -259,8 +260,8 @@ export async function deriveBitcoinKey(
 
 function bytesToHex0x(bytes: Uint8Array): `0x${string}` {
   let out = "0x";
-  for (let i = 0; i < bytes.length; i++) {
-    out += bytes[i].toString(16).padStart(2, "0");
+  for (const byte of bytes) {
+    out += byte.toString(16).padStart(2, "0");
   }
   return out as `0x${string}`;
 }
@@ -280,9 +281,8 @@ function uncompressSecp256k1(compressed: Uint8Array): Uint8Array {
       "expected compressed secp256k1 public key (33 bytes, 0x02/0x03 prefix)",
     );
   }
-  // Defer to noble — @scure/bip32 depends on it, so it's already installed.
-  const { secp256k1 } =
-    require("@noble/curves/secp256k1") as typeof import("@noble/curves/secp256k1");
+  // Static import (top of file): a bare `require` is undefined in this ESM
+  // module under Node.
   const point = secp256k1.ProjectivePoint.fromHex(compressed);
   return point.toRawBytes(false);
 }
@@ -297,8 +297,6 @@ function compressSecp256k1(publicKey: Uint8Array): Uint8Array {
   if (publicKey.length !== 65 || publicKey[0] !== 0x04) {
     throw new Error("expected secp256k1 public key");
   }
-  const { secp256k1 } =
-    require("@noble/curves/secp256k1") as typeof import("@noble/curves/secp256k1");
   const point = secp256k1.ProjectivePoint.fromHex(publicKey);
   return point.toRawBytes(true);
 }
@@ -312,8 +310,6 @@ function hash160(bytes: Uint8Array): Uint8Array {
 function taprootOutputKey(xOnlyPublicKey: Uint8Array): Uint8Array {
   if (xOnlyPublicKey.length !== 32)
     throw new Error("Taproot x-only public key must be 32 bytes");
-  const { secp256k1 } =
-    require("@noble/curves/secp256k1") as typeof import("@noble/curves/secp256k1");
   const tweak =
     bytesToNumber(taggedHash("TapTweak", xOnlyPublicKey)) % secp256k1.CURVE.n;
   const internal = secp256k1.ProjectivePoint.fromHex(

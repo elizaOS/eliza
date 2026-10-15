@@ -27,17 +27,23 @@ const PASSIVE_CONNECTOR_SETTING_KEYS = [
   "LIFEOPS_PASSIVE_CONNECTORS",
 ] as const;
 
+function isPresent(value: unknown): boolean {
+  if (value === undefined || value === null) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  return true;
+}
+
 function readFirstSetting(
   runtime: SettingsReader | null | undefined,
   env: EnvLike,
 ): unknown {
   for (const key of PASSIVE_CONNECTOR_SETTING_KEYS) {
     const runtimeValue = runtime?.getSetting?.(key);
-    if (runtimeValue !== undefined && runtimeValue !== null) {
+    if (isPresent(runtimeValue)) {
       return runtimeValue;
     }
     const envValue = env[key];
-    if (envValue !== undefined && envValue !== null) {
+    if (isPresent(envValue)) {
       return envValue;
     }
   }

@@ -511,7 +511,9 @@ async function ensureWriteAccess(
 }
 
 function getCleanWriteText(params: DocumentActionParameters): string {
-  return typeof params.text === "string" ? params.text.trim() : "";
+  return typeof params.text === "string" && params.text.trim()
+    ? params.text
+    : "";
 }
 
 function getQuery(params: DocumentActionParameters): string {
@@ -1289,7 +1291,7 @@ async function handleEdit(
 
   const updated = await service.updateDocument({
     documentId,
-    content: text.trim(),
+    content: text,
     message,
   });
   // Return update evidence for the model to evaluate the whole request.
