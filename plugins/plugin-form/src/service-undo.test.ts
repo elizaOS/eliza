@@ -147,6 +147,35 @@ describe("form undo through the evaluator", () => {
     return JSON.parse(String(provider.text).split("form_context_json:\n")[1]);
   }
 
+  it("reactivates a ready form after invalid or uncertain corrections", async () => {
+    const roomId = await openForm("correct-ready");
+    await turn(roomId, "Ann, ann@example.com", "fill_form", [
+      { field: "name", value: "Ann", confidence: 0.95 },
+      { field: "email", value: "ann@example.com", confidence: 0.95 },
+    ]);
+    const session = await service.getActiveSession(entityId, roomId);
+    assert(session);
+    expect(session.status).toBe("ready");
+
+    for (const [value, confidence, expected] of [
+      ["invalid", 0.95, "active"],
+      ["ann@example.com", 0.95, "ready"],
+      ["other@example.com", 0.2, "active"],
+    ] as const) {
+      await service.updateField(
+        session.id,
+        entityId,
+        "email",
+        value,
+        confidence,
+        "correction",
+      );
+      expect((await service.getActiveSession(entityId, roomId))?.status).toBe(
+        expected,
+      );
+    }
+  });
+
   it("keeps an invalid previous answer invalid so the agent asks for it again", async () => {
     const roomId = await openForm("invalid");
     await turn(roomId, "Ann, ann@example", "fill_form", [
@@ -283,6 +312,9 @@ describe("form undo through the evaluator", () => {
     await turn(roomId, "Rob, I think", "fill_form", [
       { field: "name", value: "Rob", confidence: 0.5, isCorrection: true },
     ]);
+    expect((await service.getActiveSession(entityId, roomId))?.status).toBe(
+      "active",
+    );
     await turn(roomId, "Robert", "fill_form", [
       { field: "name", value: "Robert", confidence: 0.95, isCorrection: true },
     ]);
@@ -306,8 +338,9 @@ describe("form undo through the evaluator", () => {
     expect(context.instruction).toBe(
       "All required fields collected. Nudge user to submit.",
     );
-    // Ready once after the first answers, and again after the second undo.
-    expect(readySessions.filter((id) => id === session.id)).toHaveLength(2);
+    // Ready after the first answers, after confirming Robert, and after the
+    // second undo restores Bob from the uncertain intermediate answer.
+    expect(readySessions.filter((id) => id === session.id)).toHaveLength(3);
     await turn(roomId, "Submit", "submit");
     const submissions = await service.getSubmissions(entityId, "contact");
     expect(

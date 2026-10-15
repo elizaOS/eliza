@@ -14,7 +14,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createFakeRuntime } from "../__tests__/fake-runtime.ts";
+import { createFakeRuntime, FAKE_AGENT_ID } from "../__tests__/fake-runtime.ts";
 import { BaseMessageAdapter } from "../adapters/base.ts";
 import { __resetDefaultMessageRefStoreForTests } from "../message-ref-store.ts";
 import {
@@ -145,7 +145,7 @@ describe("draftReplyAction", () => {
     const adapter = new RecordingReplyAdapter();
     const service = getDefaultTriageService();
     service.register(adapter);
-    service.getStore().saveMessage(original);
+    service.getStore().saveMessage(original, FAKE_AGENT_ID);
     const delivered: Content[] = [];
     const callback: HandlerCallback = async (content) => {
       delivered.push(content);
@@ -186,7 +186,9 @@ describe("draftReplyAction", () => {
         action: "MESSAGE",
       },
     ]);
-    expect(service.getStore().getDraft("gmail-draft-1")).toMatchObject({
+    expect(
+      service.getStore().getDraft("gmail-draft-1", FAKE_AGENT_ID),
+    ).toMatchObject({
       draftId: "gmail-draft-1",
       inReplyToId: original.id,
       body: "Thanks, Alice.",

@@ -2,7 +2,7 @@
 import { DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL } from "@elizaos/host/protocol";
 import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/host/protocol";
 import { ElizaError } from "@elizaos/core";
-import { captureDevCloudEnvAuthoritySnapshot } from "../cloud-config/dev-cloud-env-authority.js";
+import { captureDevCloudEnvAuthoritySnapshot, isCloudAuthorityKey, resolveDevCloudAuthorityEnvValue } from "../cloud-config/dev-cloud-env-authority.js";
 import { logger } from "@elizaos/core";
 import { resolveSetting } from "@elizaos/core";
 import { type DevCloudEnvAuthority } from "../cloud-config/dev-cloud-env-authority.js";
@@ -16,6 +16,22 @@ export const DEFAULT_ELIZA_CLOUD_LARGE_MODEL = DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MO
  * strings treated as unset).
  */
 export function getSetting(runtime: IAgentRuntime, key: string, defaultValue?: string): string | undefined {
+    const snapshot = isCloudAuthorityKey(key) ? captureDevCloudEnvAuthoritySnapshot(process.env) : null;
+    if (snapshot) {
+        // The sealed runtime overlay stays authoritative: it also carries values
+        // it derives itself (e.g. ELIZAOS_CLOUD_USE_INFERENCE=false for a direct
+        // text route). Its "" sentinel means absent only when the frozen launch
+        // tuple never set the key; an explicit "" from the launcher stays raw.
+        const canonicalKey = key.toUpperCase();
+        const runtimeValue = runtime.getSetting(canonicalKey);
+        if (runtimeValue === undefined || runtimeValue === null) {
+            return resolveDevCloudAuthorityEnvValue(canonicalKey, process.env) ?? defaultValue;
+        }
+        if (runtimeValue === "" && snapshot.values[canonicalKey] === undefined) {
+            return defaultValue;
+        }
+        return String(runtimeValue);
+    }
     return defaultValue === undefined
         ? resolveSetting(runtime, key)
         : resolveSetting(runtime, key, { defaultValue });
@@ -128,6 +144,8 @@ export function getApiKey(runtime: IAgentRuntime): string | undefined {
 }
 /** Explicit configured native product; the server resolves all tenant and funding authority. */
 export function getNativeApplicationSlot(runtime: IAgentRuntime): string | undefined {
+    const snapshot = captureDevCloudEnvAuthoritySnapshot(process.env);
+    if (snapshot) return snapshot.values.ELIZAOS_CLOUD_APPLICATION_SLOT;
     return getSetting(runtime, "ELIZAOS_CLOUD_APPLICATION_SLOT");
 }
 /** One key per logical model call, retained by the caller across warming or transport retries. */

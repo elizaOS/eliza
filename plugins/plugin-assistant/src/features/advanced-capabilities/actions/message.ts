@@ -4537,6 +4537,35 @@ async function handleSearch(
   // Channel-mode: when a connector source supports searchMessages and the user
   // asked for a connector-scoped search, passthrough.
   const connectors = connectorsWithHook(runtime, "searchMessages");
+  // A registered inbox adapter already owns provider-native search. Use it
+  // when there is no connector search hook, rather than requiring unrelated
+  // semantic-search routing for the same source.
+  const inboxAdapter = source
+    ? getDefaultTriageService().getAdapter(source as MessageSource)
+    : undefined;
+  if (
+    source &&
+    !entityId &&
+    inboxAdapter?.capabilities().search &&
+    !findConnectorBySource(connectors, source)
+  ) {
+    return delegateToTriage(
+      "search_inbox",
+      runtime,
+      message,
+      state,
+      {
+        parameters: {
+          ...params,
+          sources: [source],
+          content: query,
+          ...(limit === undefined ? {} : { limit }),
+        },
+      },
+      undefined,
+      undefined,
+    );
+  }
   if (source && connectors.length > 0) {
     const selection = selectConnectorForOp(
       connectors,
@@ -5758,6 +5787,7 @@ async function handleReadMessage(
         messageId,
         reference,
         worldId: textParam(params.accountId),
+        requester: message,
         requesterEntityId: message.entityId,
         requesterRoomId: message.roomId,
         offset: numberParam(params.offset),
@@ -5883,6 +5913,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
       "Connector source: discord, slack, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail. " +
       `Inbox and draft ops (triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, manage, read_message) accept only: ${ALL_MESSAGE_SOURCES.join(", ")}.`,
     required: false,
+    requiredForSubactions: ["draft_followup"],
     subactions: [
       "send",
       "read_channel",
@@ -6297,6 +6328,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
     description:
       "Draft/response body for draft_reply, draft_followup, respond.",
     required: false,
+    requiredForSubactions: ["draft_followup"],
     subactions: ["draft_reply", "draft_followup", "respond", "send_draft"],
     schema: { type: "string" },
   },
@@ -6325,6 +6357,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
     name: "to",
     description: "Recipient identifiers for op=draft_followup.",
     required: false,
+    requiredForSubactions: ["draft_followup"],
     subactions: ["read_channel", "draft_followup", "send_draft"],
     schema: { type: "array", items: { type: "string" } },
   },

@@ -947,7 +947,12 @@ function tenantUserCsvRow(
       const raw =
         field instanceof Date ? field.toISOString() : String(field ?? "");
       const safe = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
-      if (safe.includes(",") || safe.includes('"') || safe.includes("\n")) {
+      if (
+        safe.includes(",") ||
+        safe.includes('"') ||
+        safe.includes("\n") ||
+        safe.includes("\r")
+      ) {
         return `"${safe.replace(/"/g, '""')}"`;
       }
       return safe;

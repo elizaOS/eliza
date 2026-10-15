@@ -120,7 +120,7 @@
     "vitest": "^5.0.3",
     "@elizaos/testing": "workspace:*",
     "@elizaos/plugin-assistant": "workspace:*",
-    "playwright": "^1.63.0",
+    "playwright": "^1.64.0",
     "tsup": "^8.5.1",
     "vite": "^8.3.0",
     "@elizaos/plugin-elizacloud": "workspace:*"

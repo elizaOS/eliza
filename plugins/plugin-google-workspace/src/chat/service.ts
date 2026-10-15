@@ -652,6 +652,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
     // read every page so target resolution sees the complete membership.
     const spaces: GoogleChatSpace[] = [];
     let pageToken: string | undefined;
+    const seenPageTokens = new Set<string>();
     do {
       const url = new URL(`${CHAT_API_BASE}/spaces`);
       if (pageToken) url.searchParams.set("pageToken", pageToken);
@@ -660,7 +661,14 @@ export class GoogleChatService extends Service implements IGoogleChatService {
         nextPageToken?: string;
       }>(url.toString(), {}, state.accountId);
       spaces.push(...(response.spaces ?? []));
-      pageToken = response.nextPageToken || undefined;
+      const nextToken = response.nextPageToken || undefined;
+      if (nextToken) {
+        if (seenPageTokens.has(nextToken)) {
+          throw new GoogleChatApiError("Google Chat repeated a spaces page token.", 500);
+        }
+        seenPageTokens.add(nextToken);
+      }
+      pageToken = nextToken;
     } while (pageToken);
     state.cachedSpaces = spaces;
     return state.cachedSpaces;

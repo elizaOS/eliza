@@ -153,7 +153,7 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Node 24
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: "24.15.0"
 
@@ -184,7 +184,7 @@ jobs:
           test -n "$ELIZAOS_DESKTOP_SIGNING_PUBLIC_KEY_SPKI_SHA256"
 
       - name: Download signed native desktop artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           repository: elizaOS/eliza
           run-id: ${{ inputs.desktop_run_id }}
@@ -232,7 +232,7 @@ jobs:
 
       - name: Download checksum-pinned Syft
         id: syft
-        uses: anchore/sbom-action/download-syft@c8069d6c989aca1923b19e135cc3a77937f16d98
+        uses: anchore/sbom-action/download-syft@3f46e6c23709f2b35c9c5182affe8ef3d6e32b71
 
       - name: Build clean snapshot-pinned mkosi release disk
         env:
@@ -418,12 +418,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Setup Node 24
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: "24.15.0"
 
       - name: Download exact pre-signing images
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           pattern: elizaos-linux-mkosi-built-*
           path: ${{ env.WORK_ROOT }}/unsigned

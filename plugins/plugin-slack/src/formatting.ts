@@ -251,9 +251,12 @@ function convertLinks(text: string, codeSink: string[]): string {
   // The URL group tolerates one level of balanced parentheses, as the
   // Telegram converter does: a plain [^)]+ capture cuts a Wikipedia-style
   // URL at its inner closing paren and leaves a malformed link token.
+  // The leading alternation keeps inline-code spans literal: a Markdown link
+  // example inside backticks must not become a Slack link token.
   return text.replace(
-    /\[([^\]]+)\]\(((?:[^()]|\([^()]*\))+)\)/g,
-    (_, linkText, url) => {
+    /(`[^`\n]+`)|\[([^\]]+)\]\(((?:[^()]|\([^()]*\))+)\)/g,
+    (match, inlineCode, linkText, url) => {
+      if (inlineCode) return match;
       const trimmedUrl = url.trim();
       const trimmedText = linkText.trim();
       // If link text matches URL, just use URL

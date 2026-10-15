@@ -18,7 +18,7 @@ import org.junit.runner.RunWith;
 
 /**
  * Speaks each sentence with Paradee-8M on the device, hears it again with the
- * native Qwen3-ASR of the same :paradee-voice bundle, and reports corpus WER
+ * native Phonon-2 ASR of the same :paradee-voice bundle, and reports corpus WER
  * and RTF (synthesis time / audio time). Pass: WER <= 0.08, as on the host.
  *
  * Sentences: assets/sentences.txt (the 25 qualify sentences), plus

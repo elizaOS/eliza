@@ -77,6 +77,38 @@ describe("runVfsBuiltinShell >> redirect", () => {
   });
 });
 
+describe("runVfsBuiltinShell redirect with a failing command", () => {
+  it("truncates a stale > target and propagates the exit code", async () => {
+    await vfs().writeFile("log.txt", "alpha\n");
+    await vfs().writeFile("out.txt", "stale\n");
+
+    const result = await sh("grep nomatch log.txt > out.txt");
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(await vfs().readFile("out.txt")).toBe("");
+  });
+
+  it("creates an empty > target for an unknown command", async () => {
+    const result = await sh("unknowncmd > new.txt");
+
+    expect(result.exitCode).toBe(127);
+    expect(result.stdout).toBe("");
+    expect(await vfs().readFile("new.txt")).toBe("");
+  });
+
+  it("leaves a >> target unchanged and propagates the exit code", async () => {
+    await vfs().writeFile("log.txt", "alpha\n");
+    await vfs().writeFile("log2.txt", "keep\n");
+
+    const result = await sh("grep nomatch log.txt >> log2.txt");
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(await vfs().readFile("log2.txt")).toBe("keep\n");
+  });
+});
+
 describe("runVfsBuiltinShell quoted redirection", () => {
   it.each([
     ["echo 'alpha>beta'", "alpha>beta\n"],
@@ -108,5 +140,50 @@ describe("runVfsBuiltinShell quoted redirection", () => {
       stderr: "",
     });
     expect(await vfs().readFile("log.txt")).toBe("alpha>beta\ngamma>>delta\n");
+  });
+});
+
+describe("runVfsBuiltinShell word splitting", () => {
+  it("joins adjacent quoted and unquoted fragments into one path", async () => {
+    await vfs().writeFile("report.txt", "contents\n");
+
+    const result = await sh('cat report".txt"');
+
+    expect(result).toMatchObject({
+      exitCode: 0,
+      stdout: "contents\n",
+      stderr: "",
+    });
+  });
+
+  it.each([
+    ["echo 'a b'\"c\"", "a bc\n"],
+    ["echo a\\ b", "a b\n"],
+    ["echo foo\\.bar", "foo.bar\n"],
+    ['echo "\\d+"', "\\d+\n"],
+    ["echo '\\d+'", "\\d+\n"],
+    ['echo "say \\"hi\\""', 'say "hi"\n'],
+  ])("splits %s like POSIX sh", async (script, stdout) => {
+    const result = await sh(script);
+
+    expect(result).toMatchObject({ exitCode: 0, stdout, stderr: "" });
+  });
+
+  it("keeps the backslash in a double-quoted grep pattern", async () => {
+    await vfs().writeFile("f.txt", "id 42\nnone\n");
+
+    const result = await sh('grep "\\d+" f.txt');
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("id 42");
+    expect(result.stdout).not.toContain("none");
+  });
+
+  it("fails on an unterminated quote instead of dropping it", async () => {
+    const result = await sh('echo "abc');
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("unterminated");
   });
 });

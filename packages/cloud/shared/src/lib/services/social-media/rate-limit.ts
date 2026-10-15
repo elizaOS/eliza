@@ -1,7 +1,8 @@
 /**
  * Coordinates cloud service rate-limit retries and typed exhaustion errors behind route handlers.
  */
-import type { SocialPlatform } from "../../types/social-media";
+import type { PostResult, SocialPlatform } from "../../types/social-media";
+import { extractErrorMessage } from "../../utils/error-handling";
 import { logger } from "../../utils/logger";
 
 export interface RateLimitError extends Error {
@@ -110,6 +111,43 @@ export function createRateLimitError(
   return error;
 }
 
+/**
+ * A create call that was sent once and got no definite answer (a dropped
+ * connection, a timeout, a 5xx): the platform may have published it. It is
+ * not replayed, and it must not be refunded or reported as a plain failure,
+ * or the user resends it by hand and posts twice.
+ */
+export class UnknownPostOutcomeError extends Error {
+  constructor(platform: string, cause: Error) {
+    super(`${platform} did not confirm the post; it may have been published: ${cause.message}`, {
+      cause,
+    });
+    this.name = "UnknownPostOutcomeError";
+  }
+}
+
+/** A parsed provider response explicitly rejected the operation. */
+export class SocialApiRejectionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SocialApiRejectionError";
+  }
+}
+
+/** The PostResult for a failed create; an unknown outcome holds the credit. */
+export function failedPostResult(platform: SocialPlatform, error: unknown): PostResult {
+  if (error instanceof UnknownPostOutcomeError) {
+    return {
+      platform,
+      success: false,
+      error: error.message,
+      errorCode: "POST_OUTCOME_UNKNOWN",
+      creditDisposition: "hold",
+    };
+  }
+  return { platform, success: false, error: extractErrorMessage(error) };
+}
+
 export async function withRetry<T>(
   fn: () => Promise<Response>,
   parser: (response: Response) => Promise<T>,
@@ -119,8 +157,17 @@ export async function withRetry<T>(
   let lastError: Error | undefined;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    // Whether this attempt ended without a definite answer from the platform:
+    // the request may have been accepted even though no response came back.
+    let unknownOutcome = false;
     try {
-      const response = await fn();
+      let response: Response;
+      try {
+        response = await fn();
+      } catch (error) {
+        unknownOutcome = true;
+        throw error;
+      }
 
       if (isRateLimitResponse(response)) {
         const retryAfter = parseRetryAfter(response);
@@ -147,15 +194,22 @@ export async function withRetry<T>(
           );
           return "";
         });
+        unknownOutcome = response.status >= 500;
         throw new Error(`${platform} API error ${response.status}: ${errorBody}`);
       }
 
+      // A successful status does not prove a create failed if its response
+      // body is lost or unreadable. Only a parsed provider refusal is definite.
+      unknownOutcome = true;
       return { data: await parser(response) };
     } catch (error) {
       // error-policy:J1 outbound social-platform API transport boundary — retries transient failures and propagates the last error after exhausting retries (fail-closed)
       lastError = error instanceof Error ? error : new Error(String(error));
       if ((error as RateLimitError).rateLimited) throw error;
-      if (!replayUnknownOutcome) throw lastError;
+      if (error instanceof SocialApiRejectionError) unknownOutcome = false;
+      if (!replayUnknownOutcome) {
+        throw unknownOutcome ? new UnknownPostOutcomeError(platform, lastError) : lastError;
+      }
 
       if (attempt < maxRetries) {
         const delayMs = clampRateLimitWaitMs(baseDelayMs * 2 ** attempt);

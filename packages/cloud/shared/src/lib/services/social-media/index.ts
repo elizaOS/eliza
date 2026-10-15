@@ -534,7 +534,9 @@ class SocialMediaService {
       result = { platform, success: false, error: errorMessage };
     }
 
-    if (!result.success) {
+    // A reply whose outcome is unknown may have posted: hold its credit like a
+    // post (createPost), and refund only a clear failure.
+    if (!result.success && result.creditDisposition !== "hold") {
       await creditsService.refundCredits({
         organizationId,
         amount: POST_CREDIT_COST,

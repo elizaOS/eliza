@@ -5458,6 +5458,15 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
+  postApiV1WebsiteReputationLookup<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/website-reputation/lookup"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/website-reputation/lookup", TResponse>(
+      "POST /api/v1/website-reputation/lookup",
+      options,
+    );
+  }
+
   postApiV1WhatsappConnect<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/whatsapp/connect"> = {},
   ): Promise<TResponse> {
@@ -9722,6 +9731,12 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     options: PublicRouteCallOptions<"POST /api/v1/web-push/subscriptions"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/web-push/subscriptions", options);
+  }
+
+  postApiV1WebsiteReputationLookupRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/website-reputation/lookup"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/website-reputation/lookup", options);
   }
 
   postApiV1WhatsappConnectRaw(

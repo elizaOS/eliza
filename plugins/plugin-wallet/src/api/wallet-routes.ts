@@ -629,7 +629,13 @@ function base58DecodeBrowser(value: string): Buffer {
     number = number * 58n + BigInt(index);
   }
   const hex = number.toString(16);
-  const bytes = Buffer.from(hex.length % 2 === 0 ? hex : `0${hex}`, "hex");
+  // number === 0n means the input was all "1"s (empty numeric section);
+  // the hex conversion above would emit a spurious zero byte, so start
+  // from empty bytes and let the leading-zero prefix carry the value.
+  const bytes =
+    number === 0n
+      ? Buffer.alloc(0)
+      : Buffer.from(hex.length % 2 === 0 ? hex : `0${hex}`, "hex");
   let leadingZeroes = 0;
   for (const character of value) {
     if (character !== "1") {

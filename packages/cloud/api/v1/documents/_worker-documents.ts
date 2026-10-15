@@ -77,7 +77,7 @@ export async function resolveDocumentScope(
 
   const character = await charactersService.getByIdForUser(
     normalizedCharacterId,
-    user.id,
+    user,
   );
   if (!character) {
     return Response.json(

@@ -19,6 +19,7 @@ import {
   isProviderSchemaRejection,
   isRateLimitError,
   ModelType,
+  readProviderRateLimit,
   type StructuredFailureCause,
   sanitizeUserVisibleModelOutput,
   stripReasoningBlocks,
@@ -28,13 +29,21 @@ import { labelHistorySources } from "./history-wire.ts";
 import { reportRejectedUserVisibleModelOutput } from "./stage1-output.ts";
 import { hasTextGenerationHandler } from "./trajectory-stages.ts";
 
+/** Carries the provider's typed 429 detail, when present, to the terminal failure. */
+function rateLimitedAttempt(error: unknown): FailureReplyAttempt {
+  const rateLimit = readProviderRateLimit(error);
+  return rateLimit
+    ? { kind: "rateLimited", rateLimit }
+    : { kind: "rateLimited" };
+}
+
 /** An apology cannot repair provider rejection or an exhausted rate-limit window. */
 function terminalProviderFailure(
   error: unknown,
 ): FailureReplyAttempt | undefined {
   if (isInsufficientCreditsError(error)) return { kind: "creditsExhausted" };
   if (isAuthError(error)) return { kind: "authFailed" };
-  if (isRateLimitError(error)) return { kind: "rateLimited" };
+  if (isRateLimitError(error)) return rateLimitedAttempt(error);
   if (isProviderSchemaRejection(error)) return { kind: "schemaRejected" };
   return undefined;
 }
@@ -93,7 +102,7 @@ export class MessageFailures {
     prompt: string,
     stage: string,
   ): Promise<FailureReplyAttempt> {
-    let sawRateLimit = false;
+    let rateLimitAttempt: FailureReplyAttempt | undefined;
     for (const modelType of [
       ModelType.TEXT_LARGE,
       ModelType.RESPONSE_HANDLER,
@@ -165,7 +174,7 @@ export class MessageFailures {
             },
             "Structured failure reply stopped after Cloud warming exhaustion",
           );
-          if (sawRateLimit) return { kind: "rateLimited" };
+          if (rateLimitAttempt) return rateLimitAttempt;
           return { kind: "text", value: "" };
         }
         // The rate-limit flag tracks the most recent slot's cause:
@@ -174,7 +183,9 @@ export class MessageFailures {
         // Credits are classified before rate limits below: a 429 *with*
         // billing context is a drained balance ("top up"), not a
         // transient throttle ("try again in a few seconds").
-        sawRateLimit = isRateLimitError(error);
+        rateLimitAttempt = isRateLimitError(error)
+          ? rateLimitedAttempt(error)
+          : undefined;
         runtime.logger.warn(
           {
             src: "service:message",
@@ -191,8 +202,8 @@ export class MessageFailures {
     // When the final cause was provider rate-limiting (429), tell the user
     // that plainly instead of the opaque generic message — the honest
     // signal is "try again shortly", not "something broke".
-    if (sawRateLimit) {
-      return { kind: "rateLimited" };
+    if (rateLimitAttempt) {
+      return rateLimitAttempt;
     }
     return { kind: "text", value: "" };
   }
@@ -366,6 +377,9 @@ export class MessageFailures {
         kind: failureKind,
         transient: responseContent.transient === true,
         message: replyText,
+        ...(attempt.kind === "rateLimited" && attempt.rateLimit
+          ? { rateLimit: attempt.rateLimit }
+          : {}),
       },
     };
   }

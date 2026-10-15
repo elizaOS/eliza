@@ -219,9 +219,6 @@ export class EmbeddingGenerationService extends Service {
 		// `processBatch` throwing falls the WHOLE batch back to the per-item
 		// `process` path (BatchQueue.drain), so retry / onExhausted semantics and
 		// per-id write-back are preserved on any batch failure.
-		const hasBatchModel = Boolean(
-			this.runtime.getModel(ModelType.TEXT_EMBEDDING_BATCH),
-		);
 		this.batchQueue = new BatchQueue<EmbeddingQueueItem>({
 			name: EmbeddingGenerationService.EMBEDDING_DRAIN_TASK,
 			taskDescription: "Embedding generation drain",
@@ -241,9 +238,10 @@ export class EmbeddingGenerationService extends Service {
 					if (item.pendingKey) this.pending.delete(item.pendingKey);
 				}
 			},
-			processBatch: hasBatchModel
-				? (items) => this.generateEmbeddingsBatch(items)
-				: undefined,
+			// Provider pinning can change batch availability after startup.
+			canProcessBatch: () =>
+				Boolean(this.runtime.getModel(ModelType.TEXT_EMBEDDING_BATCH)),
+			processBatch: (items) => this.generateEmbeddingsBatch(items),
 			onExhausted: async (item, error) => {
 				await this.runtime.log({
 					entityId: this.runtime.agentId,
