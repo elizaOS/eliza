@@ -65,7 +65,7 @@ function quotedSpanRanges(text: string): QuotedSpanRange[] {
     if (range) ranges.push(range);
   }
   for (const match of text.matchAll(
-    /\b(?:said|says|wrote|writes|texted|messaged|told me|asked me)\b\s*:?\s*([^\n.;!?]*?)(?=,\s*(?:and|but)\s+(?:I|we)\b|\s+but\b|[\n.;!?]|$)/dgi,
+    /\b(?:said|says|wrote|writes|texted|messaged|told me|asked me)\b\s*:?\s*([^\n.;!?]*?)(?=,\s*(?:and|but)\s+(?:I|we)\b|\s+and\s+(?:I|we)\s+(?:said|says|told|asked|wrote|writes|texted|messaged)\b|\s+but\b|[\n.;!?]|$)/dgi,
   )) {
     if (FIRST_PERSON_REPORTING_SUBJECT.test(text.slice(0, match.index)))
       continue;
