@@ -28,10 +28,7 @@ app.get("/", async (c) => {
       return jsonError(c, 400, "Invalid character id", "validation_error");
     }
 
-    const character = await charactersService.getByIdForUser(
-      characterId,
-      user.id,
-    );
+    const character = await charactersService.getByIdForUser(characterId, user);
     if (!character) {
       return jsonError(c, 404, "Character not found", "resource_not_found");
     }

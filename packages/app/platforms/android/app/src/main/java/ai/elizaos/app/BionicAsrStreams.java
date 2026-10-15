@@ -179,8 +179,8 @@ final class BionicAsrStreams {
         try {
             handle = nativeApi.open(ctx.get(), sampleRate);
         } catch (IllegalArgumentException notStreaming) {
-            // The bundle's ASR is not the parakeet backend (Qwen3-ASR only
-            // transcribes in batch). The client falls back to op="asr".
+            // The library has no parakeet backend loaded (a build without
+            // Parakeet-TDT). The client falls back to op="asr".
             log.info("ASR stream unsupported by the loaded backend");
             return error("asr_stream_open: the loaded ASR backend does not stream", "STREAM_UNSUPPORTED");
         }

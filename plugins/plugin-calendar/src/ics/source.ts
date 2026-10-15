@@ -227,6 +227,9 @@ export function expandIcsCalendarEvents(args: {
         timeZone: seriesTimeZone,
         rangeStart: new Date(minMs - durationMs + (durationMs === 0 ? 0 : 1)),
         rangeEnd: new Date(maxMs),
+        // RFC 5545 §3.3.10: a feed occurrence at a nonexistent local time
+        // is ignored and does not count toward COUNT.
+        nonexistentLocalTime: "skip",
       });
     } catch (error) {
       if (

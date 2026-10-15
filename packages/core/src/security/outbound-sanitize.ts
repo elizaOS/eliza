@@ -39,7 +39,13 @@ const INLINE_CODE_RE = /(`+)[^`\n]+?\1(?!`)/g;
 // NUL-marker on the wire.
 const CODE_SENTINEL_PREFIX = "\x00CB";
 
-const PSEUDO_LINK_START_RE = /\[LINK:/gi;
+// No `g` flag: this backs only the cheap pre-filter, and a global regex carries
+// `lastIndex` across calls. A scan that abandons a marker mid-text (an
+// unterminated `[LINK:<url>` with no `]`) leaves that offset set, so the next,
+// unrelated message would test from inside its own text, miss its markers, and
+// take the early return with the raw `[LINK:` syntax intact. The scanning copy
+// in `degradePseudoLinks` is call-local for the same reason.
+const PSEUDO_LINK_START_RE = /\[LINK:/i;
 
 function isValidPseudoLinkUrl(url: string): boolean {
 	if (/\s/.test(url)) return false;
@@ -88,14 +94,11 @@ function formatPseudoLink(url: string, label: string | undefined): string {
 function degradePseudoLinks(text: string): string {
 	let output = "";
 	let cursor = 0;
-	PSEUDO_LINK_START_RE.lastIndex = 0;
-	for (
-		let match = PSEUDO_LINK_START_RE.exec(text);
-		match;
-		match = PSEUDO_LINK_START_RE.exec(text)
-	) {
+	// Call-local: no scan offset can survive this function, whichever path exits.
+	const markerRe = /\[LINK:/gi;
+	for (let match = markerRe.exec(text); match; match = markerRe.exec(text)) {
 		const markerStart = match.index;
-		const urlStart = PSEUDO_LINK_START_RE.lastIndex;
+		const urlStart = markerStart + match[0].length;
 		const urlEnd = text.indexOf("]", urlStart);
 		if (urlEnd < 0) break;
 		const url = text.slice(urlStart, urlEnd);
@@ -113,7 +116,7 @@ function degradePseudoLinks(text: string): string {
 		output += text.slice(cursor, markerStart);
 		output += formatPseudoLink(url, label);
 		cursor = markerEnd;
-		PSEUDO_LINK_START_RE.lastIndex = markerEnd;
+		markerRe.lastIndex = markerEnd;
 	}
 	return cursor === 0 ? text : output + text.slice(cursor);
 }
@@ -170,7 +173,6 @@ export function sanitizeOutboundTextWithLiterals(
 	if (!text || (!QUICK_TAG_RE.test(text) && !PSEUDO_LINK_START_RE.test(text))) {
 		return { text, literalSpans: literalSpans.map((span) => ({ ...span })) };
 	}
-	PSEUDO_LINK_START_RE.lastIndex = 0;
 
 	const namespaces = new Set(
 		[...text.matchAll(new RegExp(`${CODE_SENTINEL_PREFIX}(\\d+):`, "g"))].map(

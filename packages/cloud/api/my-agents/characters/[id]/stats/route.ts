@@ -24,7 +24,7 @@ app.get("/", async (c) => {
     if (!uuidPattern.test(id)) {
       return c.json({ success: false, error: "Invalid character id" }, 400);
     }
-    const character = await charactersService.getByIdForUser(id, user.id);
+    const character = await charactersService.getByIdForUser(id, user);
     if (!character) {
       return c.json({ success: false, error: "Character not found" }, 404);
     }

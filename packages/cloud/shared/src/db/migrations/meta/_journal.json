@@ -3613,6 +3613,27 @@
       "when": 1796083200163,
       "tag": "0545_inference_policy_mutation_fences",
       "breakpoints": true
+    },
+    {
+      "idx": 516,
+      "version": "7",
+      "when": 1796083200164,
+      "tag": "0546_lifetime_subscription_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 517,
+      "version": "7",
+      "when": 1796083200165,
+      "tag": "0547_subscription_grant_calendar_terms",
+      "breakpoints": true
+    },
+    {
+      "idx": 518,
+      "version": "7",
+      "when": 1796083200166,
+      "tag": "0548_agent_provisioning_deferred_backfill",
+      "breakpoints": true
     }
   ]
 }

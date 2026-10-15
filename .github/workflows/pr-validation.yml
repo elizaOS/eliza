@@ -3,7 +3,7 @@
 # statically validates the selected workspace closure. A narrow, mock-backed
 # billing replay E2E, path-scoped real PostgreSQL subscription-authority proof,
 # and the bounded synthetic-world transaction suite are the affected-path test
-# exceptions. Provider, device, deployment, and destructive-effect lanes remain
+# exceptions, alongside a path-scoped native speech compile/contract check. Provider, device, deployment, and destructive-effect lanes remain
 # excluded.
 name: PR Validation
 
@@ -31,6 +31,11 @@ env:
 jobs:
   secret-scan:
     uses: ./.github/workflows/gitleaks.yml
+    with:
+      base_sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+      head_sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+  paradee-stream-contract:
+    uses: ./.github/workflows/paradee-stream-contract.yml
     with:
       base_sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
       head_sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
@@ -85,7 +90,7 @@ jobs:
           fi
 
       - name: Setup Node for dependency-free change selection
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -285,6 +290,16 @@ jobs:
           RUN_TURBO_AFFECTED: ${{ steps.affected.outputs.full == 'false' && '1' || '0' }}
           TURBO_SCM_BASE: ${{ steps.affected.outputs.base }}
         run: node packages/scripts/run-turbo.ts run build --concurrency=4 --output-logs=errors-only
+
+      - name: Verify Network Personal room routes
+        if: steps.affected.outputs.cloud == 'true'
+        timeout-minutes: 3
+        run: bun run --cwd packages/cloud/api test network-personal-room-routes
+
+      - name: Verify Shared signed delivery and history
+        if: steps.affected.outputs.cloud == 'true'
+        timeout-minutes: 3
+        run: bun run --cwd packages/cloud/api test shared-runtime-cutover-reminder.miniflare
 
       - name: Verify personal Shared chat entry without paid activation
         if: steps.affected.outputs.app == 'true'
@@ -721,6 +736,7 @@ jobs:
       - source-checks
       - billing-payment-replay-e2e
       - subscription-authority-postgres
+      - paradee-stream-contract
     runs-on: ubuntu-24.04
     steps:
       - name: Require every admission lane
@@ -730,6 +746,7 @@ jobs:
             source-checks=${{ needs.source-checks.result }}
             billing-payment-replay-e2e=${{ needs.billing-payment-replay-e2e.result }}
             subscription-authority-postgres=${{ needs.subscription-authority-postgres.result }}
+            paradee-stream-contract=${{ needs.paradee-stream-contract.result }}
         run: |
           set -euo pipefail
           for pair in $RESULTS; do

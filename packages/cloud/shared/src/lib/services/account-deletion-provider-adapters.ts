@@ -60,6 +60,7 @@ import {
 } from "./app-billing-deletion-refund-recovery";
 import { deleteAppWithCleanup } from "./app-cleanup";
 import { elizaSandboxService } from "./eliza-sandbox";
+import { prepareInferencePolicyForAccountDeletion } from "./inference-policy-fence";
 import { oauthService } from "./oauth";
 import {
   deactivateStewardPlatformUser,
@@ -428,6 +429,7 @@ async function countLocalRestrictiveRows(context: AccountDeletionProviderContext
 }
 
 async function deleteLocalRestrictiveRows(context: AccountDeletionProviderContext): Promise<void> {
+  await prepareInferencePolicyForAccountDeletion(context.organizationId);
   await writeTransaction(async (tx) => {
     await subscriptionAuthorityRepository.releaseForAccountDeletion(tx, context.organizationId);
     // Retirement preserves financial history until this irreversible, organization-locked erasure.

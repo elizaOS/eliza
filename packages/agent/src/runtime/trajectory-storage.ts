@@ -27,6 +27,7 @@ import {
   type TrajectoryExportResult,
   type TrajectoryListOptions,
   type TrajectoryListResult,
+  type TrajectoryLlmCallRecord,
   type TrajectorySemanticStageRecord,
   type TrajectorySkillInvocationRecord as TrajectorySkillInvocation,
   type TrajectoryStatus,
@@ -72,6 +73,7 @@ import {
   patchedLoggers,
   pushChatExchange,
   readOrchestratorTrajectoryContext,
+  redactTrajectoryParams,
   resolveTrajectoryArchiveDirectory,
   resolveTrajectoryLogger,
   type StartStepOptions,
@@ -1535,6 +1537,169 @@ async function appendLlmCall(
   }
 }
 
+function isGenericTrajectoryModel(model: string): boolean {
+  const normalized = model.trim().toUpperCase();
+  return (
+    normalized.length === 0 ||
+    normalized === "UNKNOWN" ||
+    normalized.startsWith("TEXT_") ||
+    normalized.startsWith("REASONING_") ||
+    normalized.startsWith("OBJECT_")
+  );
+}
+
+/**
+ * Fill in what a model call's own capture left out. A recorded value stays,
+ * except a generic model label; provider metadata is merged. Returns whether
+ * the call changed.
+ */
+function applyLlmCallPatch(
+  call: TrajectoryLlmCallRecord,
+  patch: Record<string, unknown>,
+): boolean {
+  let updated = false;
+  const nextModel = toText(patch.model, "").trim();
+  const currentModel = toText(call.model, "").trim();
+  if (
+    nextModel &&
+    currentModel !== nextModel &&
+    (currentModel.length === 0 ||
+      isGenericTrajectoryModel(currentModel) ||
+      !isGenericTrajectoryModel(nextModel))
+  ) {
+    call.model = nextModel;
+    updated = true;
+  }
+
+  for (const field of ["systemPrompt", "userPrompt", "response"] as const) {
+    const nextText = toText(patch[field], "");
+    if (!toText(call[field], "") && nextText) {
+      call[field] = nextText;
+      updated = true;
+    }
+  }
+
+  for (const field of [
+    "temperature",
+    "maxTokens",
+    "latencyMs",
+    "promptTokens",
+    "completionTokens",
+  ] as const) {
+    const nextValue = toOptionalNumber(patch[field]);
+    if (nextValue === undefined) continue;
+    const currentValue = toOptionalNumber(call[field]);
+    // Zero is a valid sampling setting, not a missing measurement.
+    if (
+      currentValue !== undefined &&
+      (field === "temperature" || currentValue > 0)
+    )
+      continue;
+    call[field] = nextValue;
+    updated = true;
+  }
+
+  if (typeof patch.tokenUsageEstimated === "boolean") {
+    const currentEstimated = call.tokenUsageEstimated;
+    if (
+      typeof currentEstimated !== "boolean" ||
+      (currentEstimated && !patch.tokenUsageEstimated)
+    ) {
+      call.tokenUsageEstimated = patch.tokenUsageEstimated;
+      updated = true;
+    }
+  }
+
+  const patchProviderMetadata = asRecord(patch.providerMetadata);
+  if (patchProviderMetadata) {
+    call.providerMetadata = {
+      ...asRecord(call.providerMetadata),
+      ...patchProviderMetadata,
+    };
+    updated = true;
+  }
+
+  const enriched = enrichTrajectoryLlmCall({ ...call });
+  const nextStepType = toText(enriched.stepType, "");
+  if (nextStepType && toText(call.stepType, "") !== nextStepType) {
+    call.stepType = nextStepType;
+    updated = true;
+  }
+  const nonEmptyTags = (tags: unknown): string[] =>
+    Array.isArray(tags)
+      ? tags.filter(
+          (tag): tag is string => typeof tag === "string" && tag.length > 0,
+        )
+      : [];
+  const nextTags = nonEmptyTags(enriched.tags);
+  if (
+    nextTags.length > 0 &&
+    JSON.stringify(nonEmptyTags(call.tags)) !== JSON.stringify(nextTags)
+  ) {
+    call.tags = nextTags;
+    updated = true;
+  }
+  return updated;
+}
+
+/**
+ * Enrich one recorded model call. The write queue runs the enrichment after
+ * the capture that records the call.
+ */
+function enqueueLlmCallPatch(
+  runtime: IAgentRuntime,
+  stepId: string,
+  callId: string,
+  patch: Record<string, unknown>,
+  isEnabled: () => boolean,
+): void {
+  if (!acceptsTrajectoryStepCapture(runtime, isEnabled(), stepId, "llm"))
+    return;
+  const trajectoryId = resolveBridgeTrajectoryId(runtime, stepId);
+  const writePromise = enqueueStepWrite(runtime, trajectoryId, async () => {
+    if (!isEnabled() || !(await ensureTrajectoriesTable(runtime))) return;
+    const projectedPatch = projectLlmCallDiagnostics(
+      runtime,
+      redactTrajectoryParams(patch),
+    );
+    for (
+      let attempt = 0;
+      attempt < MAX_ACTIVE_CAPTURE_WRITE_ATTEMPTS;
+      attempt += 1
+    ) {
+      const trajectory = await loadTrajectoryByStepId(runtime, trajectoryId);
+      const call = trajectory?.steps
+        .find((step) => step.stepId === stepId)
+        ?.llmCalls.find((candidate) => candidate.callId === callId);
+      if (!trajectory || !call || !applyLlmCallPatch(call, projectedPatch))
+        return;
+      const expectedUpdatedAt = trajectory.updatedAt;
+      trajectory.updatedAt = nextTrajectoryUpdatedAt(
+        expectedUpdatedAt,
+        Date.now(),
+      );
+      const saveResult = await saveActiveTrajectoryCapture(
+        runtime,
+        trajectory,
+        stepId,
+        "llm",
+        expectedUpdatedAt,
+      );
+      if (saveResult !== "conflict") return;
+      await yieldTrajectoryWriteRetry();
+    }
+    throw new ElizaError("Trajectory changed during model-call enrichment", {
+      code: "TRAJECTORY_WRITE_CONFLICT",
+      context: {
+        trajectoryId,
+        stepId,
+        attempts: MAX_ACTIVE_CAPTURE_WRITE_ATTEMPTS,
+      },
+    });
+  });
+  lastWritePromises.set(runtime as object, writePromise);
+}
+
 type PendingProviderCapture = {
   params: Record<string, unknown>;
   recordId: string;
@@ -2416,6 +2581,9 @@ export async function installDatabaseTrajectoryLogger(
     const runtimeKey = runtime as object;
     lastWritePromises.set(runtimeKey, writePromise);
   };
+
+  logger.updateLlmCall = (stepId, callId, patch) =>
+    enqueueLlmCallPatch(runtime, stepId, callId, patch, bridgeIsEnabled);
 
   logger.getLlmCallLogs = () => [];
   logger.getProviderAccessLogs = () => [];
@@ -3575,6 +3743,20 @@ export class DatabaseTrajectoryLogger extends Service {
     );
     const runtimeKey = this.runtime as object;
     lastWritePromises.set(runtimeKey, writePromise);
+  }
+
+  updateLlmCall(
+    stepId: string,
+    callId: string,
+    patch: Record<string, unknown>,
+  ): void {
+    enqueueLlmCallPatch(
+      this.runtime,
+      stepId,
+      callId,
+      patch,
+      () => this.enabled,
+    );
   }
 
   getLlmCallLogs(): readonly unknown[] {

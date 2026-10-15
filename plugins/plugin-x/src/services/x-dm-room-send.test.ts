@@ -3,11 +3,17 @@
  * channelId, which is the dm_conversation_id ("<id>-<id>"), not a user. The
  * real XService send path runs against a recorded DM transport.
  */
+import {
+  ChannelType,
+  createUniqueUuid,
+  type IAgentRuntime,
+} from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { XService } from "./x.service";
 
-function harness(ownUserId: string) {
+function harness(ownUserId: string, groupConversationIds: string[] = []) {
   const dmCalls: Array<{ recipient: string; text: string }> = [];
+  const conversationCalls: Array<{ conversationId: string; text: string }> = [];
   const profileLookups: string[] = [];
   const session = {
     profile: { userId: ownUserId },
@@ -19,6 +25,13 @@ function harness(ownUserId: string) {
         ) => {
           dmCalls.push({ recipient, text: body.text });
           return { dm_event_id: "9001" };
+        },
+        sendDmInConversation: async (
+          conversationId: string,
+          body: { text: string },
+        ) => {
+          conversationCalls.push({ conversationId, text: body.text });
+          return { dm_event_id: "9002" };
         },
       },
     },
@@ -39,9 +52,20 @@ function harness(ownUserId: string) {
   };
   service.defaultAccountId = "default";
   service.getTwitterClientForAccount = async () => ({ client: base });
+  const runtime = {
+    agentId: "00000000-0000-4000-8000-000000000001",
+  } as unknown as IAgentRuntime;
+  // The DM poller stores each conversation's room under this id.
+  const groupRooms = new Set(
+    groupConversationIds.map((id) =>
+      createUniqueUuid(runtime, `x-dm:default:${id}`),
+    ),
+  );
+  (runtime as unknown as { getRoom: unknown }).getRoom = async (id: string) =>
+    groupRooms.has(id as never) ? { id, type: ChannelType.GROUP } : null;
   const send = (channelId: string) =>
     service.handleSendMessage(
-      {} as never,
+      runtime,
       {
         source: "x",
         roomId: "11111111-1111-4111-8111-111111111111",
@@ -49,7 +73,7 @@ function harness(ownUserId: string) {
       } as never,
       { text: "hello from the inbox" },
     );
-  return { dmCalls, profileLookups, send };
+  return { dmCalls, conversationCalls, profileLookups, send };
 }
 
 describe("X DM reply to a stored DM room", () => {
@@ -75,6 +99,20 @@ describe("X DM reply to a stored DM room", () => {
     await send("2000");
     expect(dmCalls).toEqual([
       { recipient: "2000", text: "hello from the inbox" },
+    ]);
+  });
+
+  it("sends a reply to a stored group DM room into the group conversation", async () => {
+    const { dmCalls, conversationCalls, send } = harness("1000", [
+      "1700000000000000001",
+    ]);
+    await send("1700000000000000001");
+    expect(dmCalls).toEqual([]);
+    expect(conversationCalls).toEqual([
+      {
+        conversationId: "1700000000000000001",
+        text: "hello from the inbox",
+      },
     ]);
   });
 });

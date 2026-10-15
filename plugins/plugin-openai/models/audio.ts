@@ -290,11 +290,6 @@ export async function handleTextToSpeech(
     throw new Error("TEXT_TO_SPEECH text exceeds 4096 character limit");
   }
 
-  const validVoices: TTSVoice[] = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"];
-  if (voice && !validVoices.includes(voice as TTSVoice)) {
-    throw new Error(`Invalid voice: ${voice}. Must be one of: ${validVoices.join(", ")}`);
-  }
-
   const baseURL = getBaseURL(runtime);
 
   const requestBody: Record<string, string> = {

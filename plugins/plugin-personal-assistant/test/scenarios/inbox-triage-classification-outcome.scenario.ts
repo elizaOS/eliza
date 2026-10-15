@@ -134,7 +134,10 @@ async function assertPersistedClassifications(
     InboxRepository: new (
       rt: unknown,
     ) => {
-      getBySourceMessageId: (id: string) => Promise<{
+      getBySourceMessageId: (
+        source: string,
+        id: string,
+      ) => Promise<{
         classification: string;
         urgency: string;
         senderName: string | null;
@@ -144,9 +147,9 @@ async function assertPersistedClassifications(
   const repo = new InboxRepository(runtime);
 
   const [urgentEntry, noiseEntry, replyEntry] = await Promise.all([
-    repo.getBySourceMessageId(URGENT_MSG_ID),
-    repo.getBySourceMessageId(NOISE_MSG_ID),
-    repo.getBySourceMessageId(REPLY_MSG_ID),
+    repo.getBySourceMessageId("discord", URGENT_MSG_ID),
+    repo.getBySourceMessageId("gmail", NOISE_MSG_ID),
+    repo.getBySourceMessageId("telegram", REPLY_MSG_ID),
   ]);
 
   if (!urgentEntry || !noiseEntry || !replyEntry) {

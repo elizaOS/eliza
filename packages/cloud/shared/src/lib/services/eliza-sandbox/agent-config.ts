@@ -17,6 +17,7 @@ import { logger } from "../../utils/logger";
 import { imageRequiresDigestPin, isCodingContainerImageAllowed } from "../coding-containers";
 import { withDefaultAgentCharacter } from "../default-agent-character";
 import {
+  AGENT_PROVISIONING_DEFERRED_KEY,
   stripReservedElizaConfigKeys,
   withReusedElizaCharacterOwnership,
 } from "../eliza-agent-config";
@@ -67,6 +68,13 @@ export interface CreateAgentParams {
   maxNonTerminalAgents?: number;
   quotaMode?: "eager" | "non-eager";
   quotaAdmission?: "organization" | "trusted_internal";
+  /**
+   * The row is created `pending` with no provision job on purpose: an eager
+   * tier created with `autoProvision: false` waits for the caller's explicit
+   * provision. Persisted as {@link AGENT_PROVISIONING_DEFERRED_KEY} after the
+   * reserved-key strip, so a caller's `agentConfig` can never forge it.
+   */
+  provisioningDeferred?: boolean;
 }
 
 /**
@@ -144,11 +152,14 @@ export function buildAgentSandboxInsertValues(params: CreateAgentParams): NewAge
   const executionTier = params.executionTier;
   assertAgentExecutionTier(executionTier);
   const sanitizedConfig = stripReservedElizaConfigKeys(params.agentConfig);
-  const agentConfig = params.characterId
+  const baseConfig = params.characterId
     ? withReusedElizaCharacterOwnership(sanitizedConfig)
     : executionTier === "custom"
       ? sanitizedConfig
       : withDefaultAgentCharacter(sanitizedConfig);
+  const agentConfig = params.provisioningDeferred
+    ? { ...baseConfig, [AGENT_PROVISIONING_DEFERRED_KEY]: true }
+    : baseConfig;
 
   const status = executionTier === "shared" ? "running" : "pending";
 
@@ -167,14 +178,20 @@ export function buildAgentSandboxInsertValues(params: CreateAgentParams): NewAge
   };
 }
 
-/** Omits an empty custom-image overlay so a self-contained image keeps its bundled character. */
+/**
+ * Omits an empty custom-image overlay so a self-contained image keeps its
+ * bundled character. The deferred-provisioning marker is cloud bookkeeping,
+ * not overlay content, so a custom row carrying only that marker is empty.
+ */
 export function agentConfigForProvision(
   agent: Pick<AgentSandbox, "agent_config" | "execution_tier">,
 ): Record<string, unknown> | undefined {
   const config = agent.agent_config;
   if (!config || typeof config !== "object" || Array.isArray(config)) return undefined;
   const record = config as Record<string, unknown>;
-  return agent.execution_tier === "custom" && Object.keys(record).length === 0 ? undefined : record;
+  if (agent.execution_tier !== "custom") return record;
+  const overlayKeys = Object.keys(record).filter((key) => key !== AGENT_PROVISIONING_DEFERRED_KEY);
+  return overlayKeys.length === 0 ? undefined : record;
 }
 
 /**

@@ -281,6 +281,10 @@ describe("wallet router action", () => {
       ],
       [{ values: ["0.1"] }, "values must be a base-10 integer string."],
       [
+        { calldatas: ["0xa9059cb"] },
+        "calldatas must contain only hex calldata values.",
+      ],
+      [
         { calldatas: ["0xa9059cbb", "0x"] },
         "targets, values and calldatas must have the same length for governance propose.",
       ],
