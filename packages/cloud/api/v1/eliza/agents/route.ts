@@ -504,11 +504,52 @@ app.post("/", async (c) => {
   const { agent, idempotent } = created;
 
   // Idempotent reuse: the org already had a non-terminal agent, so createAgent
-  // returned it instead of minting a duplicate. It is already provisioned (or
-  // its provision job is in flight) — do NOT enqueue a second job, do NOT run
-  // the orphan-deletion wrapper because that would tear down a live agent, and return
-  // 200 (reuse) rather than the fresh-create 201/202.
+  // returned it instead of minting a duplicate. A legacy pending eager row can
+  // still have lost its first provision enqueue, so a normal auto-provisioning
+  // retry repairs that durable gap through the idempotent queue API. Explicit
+  // autoProvision=false requests stay outside this branch and remain deferred.
   if (idempotent) {
+    if (
+      autoProvision &&
+      agent.status === "pending" &&
+      tierProvisionsEagerly(agent.execution_tier)
+    ) {
+      const workerHealth = await checkProvisioningWorkerHealth();
+      if (!workerHealth.ok) {
+        logger.warn(
+          "[agent-api] Reused pending agent provisioning blocked: worker unavailable",
+          {
+            agentId: agent.id,
+            orgId: user.organization_id,
+            code: workerHealth.code,
+          },
+        );
+        return c.json(
+          provisioningWorkerFailureBody(workerHealth),
+          workerHealth.status,
+        );
+      }
+
+      const recovery = await provisioningJobService.enqueueAgentProvisionOnce({
+        agentId: agent.id,
+        organizationId: user.organization_id,
+        userId: user.id,
+        agentName: agent.agent_name ?? agent.id,
+      });
+      if (recovery.created) {
+        void provisioningJobService.triggerImmediate(c.env).catch(() => {
+          // The persisted job is observed by the provisioning worker poll when
+          // the immediate nudge fails.
+        });
+      }
+      logger.info("[agent-api] Repaired reused pending agent provisioning", {
+        agentId: agent.id,
+        orgId: user.organization_id,
+        jobId: recovery.job.id,
+        jobCreated: recovery.created,
+      });
+    }
+
     logger.info("[agent-api] Reusing existing non-terminal agent", {
       agentId: agent.id,
       orgId: user.organization_id,
