@@ -177,6 +177,7 @@ export async function probeLinuxNtfsFilesystem(options: {
   return {
     filesystemHealth: "healthy",
     dirty: false,
+    hibernated: false,
     ...(minimumBytes !== undefined &&
     Number.isSafeInteger(minimumBytes) &&
     minimumBytes > 0 &&
@@ -626,6 +627,7 @@ export async function probeLinuxPartitionFilesystems(options: {
                   mounted: false,
                   minimumBytes: evidence.minimumBytes,
                   dirty: false,
+                  hibernated: false,
                 },
               }
             : {}),
