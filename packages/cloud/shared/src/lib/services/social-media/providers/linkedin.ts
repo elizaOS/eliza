@@ -23,6 +23,7 @@ import {
   failedPostResult,
   type RetryOptions,
   SocialApiRejectionError,
+  UnknownPostOutcomeError,
   withRetry,
 } from "../rate-limit";
 
@@ -295,8 +296,18 @@ export const linkedinProvider: SocialMediaProvider = {
         { replayUnknownOutcome: false },
       );
 
-      // Extract the share ID
-      const shareId = response.id || response.activity;
+      // Extract the share ID. A 201 without an id in the body or the
+      // x-restli-id header is not a publication receipt: LinkedIn may
+      // have published, so the outcome stays unknown and the credit is
+      // held instead of reporting a success at an undefined URL
+      // (the slack/telegram rule).
+      const shareId = response?.id || response?.activity;
+      if (typeof shareId !== "string" || !shareId.trim()) {
+        throw new UnknownPostOutcomeError(
+          "linkedin",
+          new Error("LinkedIn response lacks a publication receipt"),
+        );
+      }
 
       return {
         platform: "linkedin",

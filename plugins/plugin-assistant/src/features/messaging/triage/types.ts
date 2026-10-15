@@ -3,6 +3,7 @@ import type {
   Memory,
   ReadRangeUnit,
   ReadView,
+  UUID,
 } from "@elizaos/core";
 /**
  * Cross-platform message triage — shared type contract.
@@ -90,8 +91,20 @@ export interface DraftRequest {
   metadata?: Record<string, unknown>;
 }
 
+export interface MessageDraftContext {
+  /** Trusted executing caller; never parsed from model parameters or saved with a draft. */
+  requester?: Memory;
+}
+
+export interface MessageSendContext extends MessageDraftContext {
+  /** The exact canonical draft snapshot whose consent was verified by the service. */
+  snapshot: DraftRequest;
+}
+
 export interface DraftRecord {
   draftId: string;
+  /** Runtime agent that prepared this draft. Absent only on legacy scheduled rows. */
+  agentId?: UUID;
   source: MessageSource;
   inReplyToId?: string;
   threadId?: string;
@@ -148,7 +161,17 @@ export interface MessageAdapterCapabilities {
     markRead?: boolean;
     unsubscribe?: boolean;
   };
-  send: { reply?: boolean; new?: boolean; schedule?: boolean };
+  send: {
+    reply?: boolean;
+    new?: boolean;
+    schedule?: boolean;
+    /**
+     * True when delivery must run inside the executing owner request (the
+     * adapter authorizes against a live requester). Such drafts cannot be
+     * handed to the durable deferred-send runner, which fires without one.
+     */
+    requiresLiveRequester?: boolean;
+  };
   worlds: "single" | "multi";
   channels: "explicit" | "implicit" | "none";
 }
@@ -277,10 +300,18 @@ export interface MessageAdapter {
   createDraft(
     runtime: IAgentRuntime,
     draft: DraftRequest,
+    context?: MessageDraftContext,
   ): Promise<{ draftId: string; preview: string; snapshot?: DraftRequest }>;
+  /** Run before cached send results or in-flight dispatches can be shared. */
+  authorizeSend?(
+    runtime: IAgentRuntime,
+    requester?: Memory,
+    draftId?: string,
+  ): Promise<void>;
   sendDraft(
     runtime: IAgentRuntime,
     draftId: string,
+    context?: MessageSendContext,
   ): Promise<{ externalId: string }>;
   scheduleSend?(
     runtime: IAgentRuntime,

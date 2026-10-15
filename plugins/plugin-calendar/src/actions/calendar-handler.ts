@@ -6392,9 +6392,12 @@ const calendarAction: CalendarHandlerAction = {
             extractedStart: extractedStartAt,
             extractedEnd: extractedEndAt,
             target: targetEvent,
-            timeZone: updateTimeZone,
+            timeZone: updateTimeZone ?? planningTimeZone,
           }),
-          timeZone: updateTimeZone,
+          // An event saved without a zone is moved in the owner's zone: the
+          // derived end above and the bare start in the service must both be
+          // read there, not in UTC or the service default.
+          timeZone: updateTimeZone ?? planningTimeZone,
           recurrence: recurrenceUpdate,
           // Honor a scope only when the target recurs or the update itself
           // introduces a recurrence rule — the planner emits junk scopes.

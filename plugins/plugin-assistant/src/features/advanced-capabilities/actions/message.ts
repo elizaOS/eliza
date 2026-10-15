@@ -5913,6 +5913,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
       "Connector source: discord, slack, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail. " +
       `Inbox and draft ops (triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, manage, read_message) accept only: ${ALL_MESSAGE_SOURCES.join(", ")}.`,
     required: false,
+    requiredForSubactions: ["draft_followup"],
     subactions: [
       "send",
       "read_channel",
@@ -6327,6 +6328,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
     description:
       "Draft/response body for draft_reply, draft_followup, respond.",
     required: false,
+    requiredForSubactions: ["draft_followup"],
     subactions: ["draft_reply", "draft_followup", "respond", "send_draft"],
     schema: { type: "string" },
   },
@@ -6355,6 +6357,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
     name: "to",
     description: "Recipient identifiers for op=draft_followup.",
     required: false,
+    requiredForSubactions: ["draft_followup"],
     subactions: ["read_channel", "draft_followup", "send_draft"],
     schema: { type: "array", items: { type: "string" } },
   },

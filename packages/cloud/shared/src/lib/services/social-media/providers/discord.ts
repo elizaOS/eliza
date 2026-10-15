@@ -20,6 +20,7 @@ import {
   failedPostResult,
   type RetryOptions,
   SocialApiRejectionError,
+  UnknownPostOutcomeError,
   withRetry,
 } from "../rate-limit";
 
@@ -225,11 +226,29 @@ export const discordProvider: SocialMediaProvider = {
         };
       }
 
+      // A 2xx body without the created message id and channel id is not a
+      // publication receipt: Discord may have published, so the outcome
+      // stays unknown and the credit is held instead of reporting a
+      // success at an undefined URL (the slack/telegram rule).
+      const postId = message?.id;
+      const channelId = message?.channel_id;
+      if (
+        typeof postId !== "string" ||
+        !postId.trim() ||
+        typeof channelId !== "string" ||
+        !channelId.trim()
+      ) {
+        throw new UnknownPostOutcomeError(
+          "discord",
+          new Error("Discord response lacks a publication receipt"),
+        );
+      }
+
       return {
         platform: "discord",
         success: true,
-        postId: message.id,
-        postUrl: `https://discord.com/channels/@me/${message.channel_id}/${message.id}`,
+        postId,
+        postUrl: `https://discord.com/channels/@me/${channelId}/${postId}`,
       };
       // error-policy:J1 transport boundary — an outbound Discord post failure becomes the
       // structured { success:false } PostResult the socialMediaService caller inspects and refunds on.

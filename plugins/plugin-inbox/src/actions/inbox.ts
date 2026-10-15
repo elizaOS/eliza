@@ -503,8 +503,13 @@ function fetchScopeSuffix(args: {
  * contract, enriching from the canonical {@link MessageRef} in the core triage
  * store when one exists (full body text, group/DM shape, thread + room ids).
  */
-function toInboundMessage(item: InboxItem): InboundMessage {
-  const ref = getDefaultTriageService().getStore().getMessage(item.id);
+function toInboundMessage(
+  runtime: IAgentRuntime,
+  item: InboxItem,
+): InboundMessage {
+  const ref = getDefaultTriageService()
+    .getStore()
+    .getMessage(item.id, runtime.agentId);
   const timestamp = ref?.receivedAtMs ?? Date.parse(item.receivedAt);
   if (!Number.isFinite(timestamp)) {
     throw new Error(
@@ -662,32 +667,35 @@ function seedMessageRefForEntry(
   const messageId = ensureSourceMessageId(entry);
   const threadId = entry.sourceRoomId ?? entry.sourceMessageId;
   const service = getDefaultTriageService();
-  if (service.getStore().getMessage(messageId)) return;
-  service.getStore().saveMessage({
-    id: messageId,
-    source,
-    externalId: messageId,
-    from: {
-      identifier: entry.sourceEntityId ?? entry.senderName ?? messageId,
-      ...(entry.senderName ? { displayName: entry.senderName } : {}),
+  if (service.getStore().getMessage(messageId, runtime.agentId)) return;
+  service.getStore().saveMessage(
+    {
+      id: messageId,
+      source,
+      externalId: messageId,
+      from: {
+        identifier: entry.sourceEntityId ?? entry.senderName ?? messageId,
+        ...(entry.senderName ? { displayName: entry.senderName } : {}),
+      },
+      to: [{ identifier: runtime.agentId }],
+      snippet: entry.snippet,
+      body: entry.threadContext?.join("\n") ?? entry.snippet,
+      receivedAtMs: inboxReceivedAtMs(entry.createdAt),
+      hasAttachments: false,
+      isRead: false,
+      metadata: {
+        inboxEntryId: entry.id,
+        deepLink: entry.deepLink,
+        triageReasoning: entry.triageReasoning,
+      },
+      ...(threadId ? { threadId } : {}),
+      ...(entry.source === "gmail" ? { subject: entry.channelName } : {}),
+      ...(entry.sourceRoomId
+        ? { worldId: entry.sourceRoomId, channelId: entry.sourceRoomId }
+        : {}),
     },
-    to: [{ identifier: runtime.agentId }],
-    snippet: entry.snippet,
-    body: entry.threadContext?.join("\n") ?? entry.snippet,
-    receivedAtMs: inboxReceivedAtMs(entry.createdAt),
-    hasAttachments: false,
-    isRead: false,
-    metadata: {
-      inboxEntryId: entry.id,
-      deepLink: entry.deepLink,
-      triageReasoning: entry.triageReasoning,
-    },
-    ...(threadId ? { threadId } : {}),
-    ...(entry.source === "gmail" ? { subject: entry.channelName } : {}),
-    ...(entry.sourceRoomId
-      ? { worldId: entry.sourceRoomId, channelId: entry.sourceRoomId }
-      : {}),
-  });
+    runtime.agentId,
+  );
 }
 
 async function replyToEntry(args: {
@@ -871,7 +879,7 @@ export async function executeInboxQueueOperation(args: {
         .filter(
           (item) => !alreadyTriagedByPlatform.get(item.platform)?.has(item.id),
         )
-        .map((item) => toInboundMessage(item));
+        .map((item) => toInboundMessage(args.runtime, item));
       if (freshMessages.length > 0) {
         const service = new InboxService(args.runtime);
         const { triaged } = await service.triage(freshMessages);

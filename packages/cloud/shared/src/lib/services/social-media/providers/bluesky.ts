@@ -23,6 +23,7 @@ import {
   failedPostResult,
   type RetryOptions,
   SocialApiRejectionError,
+  UnknownPostOutcomeError,
   withRetry,
 } from "../rate-limit";
 
@@ -391,13 +392,24 @@ export const blueskyProvider: SocialMediaProvider = {
         { replayUnknownOutcome: false },
       );
 
+      // A 2xx body without the created record URI is not a publication
+      // receipt: Bluesky may have published, so the outcome stays unknown
+      // and the credit is held instead of refunded (the slack/telegram rule).
+      const uri = response?.uri;
+      if (typeof uri !== "string" || !uri.trim()) {
+        throw new UnknownPostOutcomeError(
+          "bluesky",
+          new Error("Bluesky response lacks a publication receipt"),
+        );
+      }
+
       // Extract rkey from URI for URL
-      const rkey = response.uri.split("/").pop();
+      const rkey = uri.split("/").pop();
 
       return {
         platform: "bluesky",
         success: true,
-        postId: response.uri,
+        postId: uri,
         postUrl: `https://bsky.app/profile/${session.handle}/post/${rkey}`,
         metadata: { cid: response.cid },
       };

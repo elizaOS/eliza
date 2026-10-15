@@ -230,14 +230,19 @@ describe("TriageService per-source failure isolation", () => {
 
 it("owner-scoped live sources remove old metadata and do not retain new list or search results", async () => {
   const store = new MessageRefStore();
-  store.saveMessages([ref("gmail", "old-owner"), ref("discord", "kept")]);
   const service = new TriageService(store),
     runtime = createFakeRuntime();
+  store.saveMessages(
+    [ref("gmail", "old-owner"), ref("discord", "kept")],
+    runtime.agentId,
+  );
   class OwnerSource extends HealthyAdapter {
     readonly cachePolicy = "none" as const;
   }
   service.register(new OwnerSource("gmail", [ref("gmail", "current-owner")]));
-  expect(store.listMessages().map((row) => row.id)).toEqual(["discord:kept"]);
+  expect(store.listMessages(runtime.agentId).map((row) => row.id)).toEqual([
+    "discord:kept",
+  ]);
   expect(
     (await service.triage(runtime, { sources: ["gmail"] })).map(
       (row) => row.id,
@@ -252,7 +257,9 @@ it("owner-scoped live sources remove old metadata and do not retain new list or 
       })
     ).map((row) => row.id),
   ).toEqual(["gmail:current-owner"]);
-  expect(store.listMessages().map((row) => row.id)).toEqual(["discord:kept"]);
+  expect(store.listMessages(runtime.agentId).map((row) => row.id)).toEqual([
+    "discord:kept",
+  ]);
 });
 
 it("does not double-probe array-only inbox searches, while receipt searches still detect overflow", async () => {

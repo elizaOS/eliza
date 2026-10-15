@@ -17,6 +17,7 @@ import {
   failedPostResult,
   type RetryOptions,
   SocialApiRejectionError,
+  UnknownPostOutcomeError,
   withRetry,
 } from "../rate-limit";
 
@@ -287,8 +288,26 @@ export const redditProvider: SocialMediaProvider = {
         { replayUnknownOutcome: false },
       );
 
-      if (response.json.errors?.length) {
-        const errorMessage = response.json.errors.map((e) => e.join(": ")).join(", ");
+      const errors = response?.json?.errors;
+      if (
+        errors !== undefined &&
+        (!Array.isArray(errors) ||
+          errors.some(
+            (error) =>
+              !Array.isArray(error) ||
+              error.length < 2 ||
+              !error.every((part) => typeof part === "string") ||
+              !error[0].trim() ||
+              !error[1].trim(),
+          ))
+      ) {
+        throw new UnknownPostOutcomeError(
+          "reddit",
+          new Error("Reddit response contains a malformed error list"),
+        );
+      }
+      if (errors?.length) {
+        const errorMessage = errors.map((e) => e.join(": ")).join(", ");
         return {
           platform: "reddit",
           success: false,
@@ -296,20 +315,24 @@ export const redditProvider: SocialMediaProvider = {
         };
       }
 
-      const postData = response.json.data;
-      if (!postData) {
-        return {
-          platform: "reddit",
-          success: false,
-          error: "No post data returned",
-        };
+      // A 2xx answer with no error list and no post id is neither a
+      // refusal nor a publication receipt: Reddit may have published,
+      // so the outcome stays unknown and the credit is held instead of
+      // refunded (the slack/telegram rule).
+      const postData = response?.json?.data;
+      const postId = postData?.id;
+      if (typeof postId !== "string" || !postId.trim()) {
+        throw new UnknownPostOutcomeError(
+          "reddit",
+          new Error("Reddit response lacks a publication receipt"),
+        );
       }
 
       return {
         platform: "reddit",
         success: true,
-        postId: postData.id,
-        postUrl: `https://reddit.com${postData.url || `/r/${subreddit}/comments/${postData.id}`}`,
+        postId,
+        postUrl: `https://reddit.com${postData?.url || `/r/${subreddit}/comments/${postId}`}`,
       };
     } catch (error) {
       // error-policy:J1 Boundary translation: a failed Reddit submit call becomes a

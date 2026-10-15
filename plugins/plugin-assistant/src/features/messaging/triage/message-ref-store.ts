@@ -6,6 +6,7 @@
  * reporting success, so this cache is never relied on across a restart.
  */
 
+import type { UUID } from "@elizaos/core";
 import type { DraftRecord, MessageRef, MessageSource } from "./types.ts";
 
 function setMostRecent<K, V>(map: Map<K, V>, key: K, value: V): void {
@@ -15,76 +16,114 @@ function setMostRecent<K, V>(map: Map<K, V>, key: K, value: V): void {
 }
 
 export class MessageRefStore {
-  private messages = new Map<string, MessageRef>();
-  private drafts = new Map<string, DraftRecord>();
+  private messages = new Map<string, Map<string, MessageRef>>();
+  private drafts = new Map<string, Map<string, DraftRecord>>();
 
-  saveMessage(ref: MessageRef): void {
-    setMostRecent(this.messages, ref.id, ref);
+  private scope(agentId: UUID): string {
+    return String(agentId);
   }
 
-  saveMessages(refs: readonly MessageRef[]): void {
-    for (const r of refs) setMostRecent(this.messages, r.id, r);
+  private messageScope(agentId: UUID): Map<string, MessageRef> {
+    const scope = this.scope(agentId);
+    let messages = this.messages.get(scope);
+    if (!messages) {
+      messages = new Map<string, MessageRef>();
+      this.messages.set(scope, messages);
+    }
+    return messages;
+  }
+
+  private draftScope(agentId: UUID): Map<string, DraftRecord> {
+    const scope = this.scope(agentId);
+    let drafts = this.drafts.get(scope);
+    if (!drafts) {
+      drafts = new Map<string, DraftRecord>();
+      this.drafts.set(scope, drafts);
+    }
+    return drafts;
+  }
+
+  saveMessage(ref: MessageRef, agentId: UUID): void {
+    setMostRecent(this.messageScope(agentId), ref.id, ref);
+  }
+
+  saveMessages(refs: readonly MessageRef[], agentId: UUID): void {
+    const messages = this.messageScope(agentId);
+    for (const r of refs) setMostRecent(messages, r.id, r);
   }
 
   /** Forget only transient source metadata; drafts and provider mail are untouched. */
   forgetSource(source: MessageSource): void {
-    for (const [id, ref] of this.messages)
-      if (ref.source === source) this.messages.delete(id);
+    for (const messages of this.messages.values())
+      for (const [id, ref] of messages)
+        if (ref.source === source) messages.delete(id);
   }
 
-  getMessage(id: string): MessageRef | null {
-    return this.messages.get(id) ?? null;
+  getMessage(id: string, agentId: UUID): MessageRef | null {
+    return this.messages.get(this.scope(agentId))?.get(id) ?? null;
   }
 
   findByExternalId(
     source: MessageSource,
     externalId: string,
+    agentId: UUID,
   ): MessageRef | null {
-    for (const m of this.messages.values()) {
+    const messages = [
+      ...(this.messages.get(this.scope(agentId))?.values() ?? []),
+    ];
+    for (const m of messages) {
       if (m.source === source && m.externalId === externalId) return m;
     }
     return null;
   }
 
-  addTag(messageId: string, tag: string): MessageRef | null {
-    const existing = this.messages.get(messageId);
+  addTag(messageId: string, tag: string, agentId: UUID): MessageRef | null {
+    const messages = this.messageScope(agentId);
+    const existing = messages.get(messageId);
     if (!existing) return null;
     if (existing.tags?.includes(tag)) return existing;
     const tags = existing.tags ? [...existing.tags] : [];
     tags.push(tag);
     const next: MessageRef = { ...existing, tags };
-    setMostRecent(this.messages, messageId, next);
+    setMostRecent(messages, messageId, next);
     return next;
   }
 
-  removeTag(messageId: string, tag: string): MessageRef | null {
-    const existing = this.messages.get(messageId);
+  removeTag(messageId: string, tag: string, agentId: UUID): MessageRef | null {
+    const messages = this.messageScope(agentId);
+    const existing = messages.get(messageId);
     if (!existing) return null;
     if (!existing.tags || existing.tags.length === 0) return existing;
     const tags = existing.tags.filter((t) => t !== tag);
     if (tags.length === existing.tags.length) return existing;
     const next: MessageRef = { ...existing, tags };
-    setMostRecent(this.messages, messageId, next);
+    setMostRecent(messages, messageId, next);
     return next;
   }
 
-  saveDraft(record: DraftRecord): void {
-    setMostRecent(this.drafts, record.draftId, record);
+  saveDraft(record: DraftRecord, agentId: UUID): void {
+    const owned = { ...record, agentId };
+    setMostRecent(this.draftScope(agentId), owned.draftId, owned);
   }
 
-  getDraft(draftId: string): DraftRecord | null {
-    return this.drafts.get(draftId) ?? null;
+  getDraft(draftId: string, agentId: UUID): DraftRecord | null {
+    return this.drafts.get(this.scope(agentId))?.get(draftId) ?? null;
   }
 
-  markDraftSent(draftId: string, externalId: string): DraftRecord | null {
-    const existing = this.drafts.get(draftId);
+  markDraftSent(
+    draftId: string,
+    externalId: string,
+    agentId: UUID,
+  ): DraftRecord | null {
+    const drafts = this.draftScope(agentId);
+    const existing = drafts.get(draftId);
     if (!existing) return null;
     const next: DraftRecord = {
       ...existing,
       sent: true,
       sentExternalId: externalId,
     };
-    setMostRecent(this.drafts, draftId, next);
+    setMostRecent(drafts, draftId, next);
     return next;
   }
 
@@ -93,8 +132,10 @@ export class MessageRefStore {
     sendAtMs: number,
     scheduledId: string,
     scheduleCommit: NonNullable<DraftRecord["scheduleCommit"]>,
+    agentId: UUID,
   ): DraftRecord | null {
-    const existing = this.drafts.get(draftId);
+    const drafts = this.draftScope(agentId);
+    const existing = drafts.get(draftId);
     if (!existing) return null;
     const next: DraftRecord = {
       ...existing,
@@ -102,12 +143,12 @@ export class MessageRefStore {
       scheduledId,
       scheduleCommit,
     };
-    setMostRecent(this.drafts, draftId, next);
+    setMostRecent(drafts, draftId, next);
     return next;
   }
 
-  listMessages(): MessageRef[] {
-    return Array.from(this.messages.values());
+  listMessages(agentId: UUID): MessageRef[] {
+    return Array.from(this.messages.get(this.scope(agentId))?.values() ?? []);
   }
 
   clear(): void {

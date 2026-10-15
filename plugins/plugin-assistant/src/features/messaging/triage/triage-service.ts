@@ -76,8 +76,8 @@ export class TriageService {
     string,
     { sendAtMs: number; promise: Promise<DraftRecord> }
   >();
-  // Keyed by `${source}:${messageId}` → owning adapter, populated as messages
-  // flow through triage(). Used to route MESSAGE without a per-call hint.
+  // Keyed by `${agentId}:${source}:${messageId}` → owning adapter, populated as
+  // messages flow through triage(). Used to route MESSAGE without a per-call hint.
   private adapterByMessageId = new Map<string, MessageAdapter>();
 
   constructor(
@@ -105,6 +105,12 @@ export class TriageService {
     return this.store;
   }
 
+  /** Return a draft only to the runtime agent that prepared it. */
+  getDraft(runtime: IAgentRuntime, draftId: string): DraftRecord | null {
+    const record = this.store.getDraft(draftId, runtime.agentId);
+    return record?.agentId === runtime.agentId ? record : null;
+  }
+
   // adapterByMessageId grows one entry per message routed through triage(). Cap
   // it (FIFO eviction by Map insertion order) so a long-running agent doesn't
   // retain a routing entry for every message it has ever seen. Evicted entries
@@ -113,12 +119,16 @@ export class TriageService {
   private static readonly MAX_ADAPTER_ROUTES = 5000;
 
   private trackAdapterForMessage(
+    runtime: IAgentRuntime,
     source: MessageSource,
     messageId: string,
   ): void {
     const adapter = this.adapters.get(source);
     if (!adapter) return;
-    this.adapterByMessageId.set(`${source}:${messageId}`, adapter);
+    this.adapterByMessageId.set(
+      `${String(runtime.agentId)}:${source}:${messageId}`,
+      adapter,
+    );
     while (this.adapterByMessageId.size > TriageService.MAX_ADAPTER_ROUTES) {
       const oldest = this.adapterByMessageId.keys().next().value;
       if (oldest === undefined) break;
@@ -139,13 +149,20 @@ export class TriageService {
     return false;
   }
 
-  getAdapterForMessage(messageId: string): MessageAdapter | undefined {
+  getAdapterForMessage(
+    runtime: IAgentRuntime,
+    messageId: string,
+  ): MessageAdapter | undefined {
     // Fast path: explicit source:id key.
     for (const [key, adapter] of this.adapterByMessageId) {
-      if (key.endsWith(`:${messageId}`)) return adapter;
+      if (
+        key.startsWith(`${String(runtime.agentId)}:`) &&
+        key.endsWith(`:${messageId}`)
+      )
+        return adapter;
     }
     // Fallback: look up via the store.
-    const ref = this.store.getMessage(messageId);
+    const ref = this.store.getMessage(messageId, runtime.agentId);
     if (!ref) return undefined;
     return this.adapters.get(ref.source);
   }
@@ -182,7 +199,7 @@ export class TriageService {
       );
     }
     const stored = request.messageId
-      ? this.store.getMessage(request.messageId)
+      ? this.store.getMessage(request.messageId, runtime.agentId)
       : null;
     if (stored && stored.source !== source) {
       throw new ElizaError("Message source does not match the stored message", {
@@ -243,7 +260,7 @@ export class TriageService {
         continue;
       }
       for (const ref of batch) {
-        this.trackAdapterForMessage(ref.source, ref.id);
+        this.trackAdapterForMessage(runtime, ref.source, ref.id);
       }
       all.push(...batch);
     }
@@ -256,6 +273,7 @@ export class TriageService {
       scored.filter(
         (ref) => this.adapters.get(ref.source)?.cachePolicy !== "none",
       ),
+      runtime.agentId,
     );
     return rankScored(scored);
   }
@@ -342,7 +360,7 @@ export class TriageService {
       }
       succeeded.push(source);
       for (const ref of hits) {
-        this.trackAdapterForMessage(ref.source, ref.id);
+        this.trackAdapterForMessage(runtime, ref.source, ref.id);
       }
       merged.push(...hits);
     }
@@ -353,6 +371,7 @@ export class TriageService {
       merged.filter(
         (ref) => this.adapters.get(ref.source)?.cachePolicy !== "none",
       ),
+      runtime.agentId,
     );
     merged.sort(compareMessageRefsByRecency);
     const hasMore =
@@ -375,12 +394,13 @@ export class TriageService {
 
   /** The adapter `manage` will route to, for checks that precede it. */
   getManageAdapter(
+    runtime: IAgentRuntime,
     messageId: string,
     hint?: { source?: MessageSource },
   ): MessageAdapter | undefined {
     return hint?.source
       ? this.adapters.get(hint.source)
-      : this.getAdapterForMessage(messageId);
+      : this.getAdapterForMessage(runtime, messageId);
   }
 
   async manage(
@@ -389,7 +409,7 @@ export class TriageService {
     op: ManageOperation,
     hint?: { source?: MessageSource },
   ): Promise<ManageResult> {
-    const adapter = this.getManageAdapter(messageId, hint);
+    const adapter = this.getManageAdapter(runtime, messageId, hint);
     if (!adapter) {
       return {
         ok: false,
@@ -400,8 +420,8 @@ export class TriageService {
     if (op.kind === "tag_add" || op.kind === "tag_remove") {
       const updated =
         op.kind === "tag_add"
-          ? this.store.addTag(messageId, op.tag)
-          : this.store.removeTag(messageId, op.tag);
+          ? this.store.addTag(messageId, op.tag, runtime.agentId)
+          : this.store.removeTag(messageId, op.tag, runtime.agentId);
       return updated
         ? { ok: true }
         : { ok: false, reason: `message ${messageId} not in store` };
@@ -419,8 +439,9 @@ export class TriageService {
     runtime: IAgentRuntime,
     inReplyToId: string,
     body: string,
+    requester?: Memory,
   ): Promise<DraftRecord> {
-    const original = this.store.getMessage(inReplyToId);
+    const original = this.store.getMessage(inReplyToId, runtime.agentId);
     if (!original) {
       throw new Error(`No message found for id ${inReplyToId}`);
     }
@@ -445,9 +466,11 @@ export class TriageService {
     const { draftId, preview, snapshot } = await adapter.createDraft(
       runtime,
       draftRequest,
+      { requester },
     );
     const record: DraftRecord = {
       draftId,
+      agentId: runtime.agentId,
       source: original.source,
       inReplyToId,
       threadId: original.threadId,
@@ -461,13 +484,15 @@ export class TriageService {
       channelId: draftRequest.channelId,
     };
     if (snapshot) Object.assign(record, structuredClone(snapshot));
-    this.store.saveDraft(record);
+    record.agentId = runtime.agentId;
+    this.store.saveDraft(record, runtime.agentId);
     return record;
   }
 
   async draftFollowup(
     runtime: IAgentRuntime,
     params: {
+      requester?: Memory;
       source: MessageSource;
       to: Array<{ identifier: string; displayName?: string }>;
       subject?: string;
@@ -481,17 +506,22 @@ export class TriageService {
     if (!adapter) {
       throw new Error(`No adapter registered for source "${params.source}"`);
     }
-    const { draftId, preview, snapshot } = await adapter.createDraft(runtime, {
-      source: params.source,
-      threadId: params.threadId,
-      to: params.to,
-      subject: params.subject,
-      body: params.body,
-      worldId: params.worldId,
-      channelId: params.channelId,
-    });
+    const { draftId, preview, snapshot } = await adapter.createDraft(
+      runtime,
+      {
+        source: params.source,
+        threadId: params.threadId,
+        to: params.to,
+        subject: params.subject,
+        body: params.body,
+        worldId: params.worldId,
+        channelId: params.channelId,
+      },
+      { requester: params.requester },
+    );
     const record: DraftRecord = {
       draftId,
+      agentId: runtime.agentId,
       source: params.source,
       threadId: params.threadId,
       to: params.to,
@@ -504,7 +534,8 @@ export class TriageService {
       channelId: params.channelId,
     };
     if (snapshot) Object.assign(record, structuredClone(snapshot));
-    this.store.saveDraft(record);
+    record.agentId = runtime.agentId;
+    this.store.saveDraft(record, runtime.agentId);
     return record;
   }
 
@@ -512,8 +543,9 @@ export class TriageService {
     runtime: IAgentRuntime,
     draftId: string,
     consentDigest?: string,
+    requester?: Memory,
   ): Promise<DraftRecord> {
-    const record = this.store.getDraft(draftId);
+    const record = this.getDraft(runtime, draftId);
     if (!record) {
       throw new ElizaError(`No draft found for id ${draftId}`, {
         code: "MESSAGE_DRAFT_NOT_FOUND",
@@ -530,6 +562,9 @@ export class TriageService {
         { code: "MESSAGE_DRAFT_CONSENT_DIGEST_MISMATCH" },
       );
     }
+    await this.adapters
+      .get(record.source)
+      ?.authorizeSend?.(runtime, requester, draftId);
     if (record.sent) return record;
     const sendKey = `${String(runtime.agentId)}:${record.source}:${draftId}`;
     const pending = this.sendsInFlight.get(sendKey);
@@ -541,7 +576,12 @@ export class TriageService {
         });
       return pending.promise;
     }
-    const send = this.sendDraftOnce(runtime, structuredClone(record), digest);
+    const send = this.sendDraftOnce(
+      runtime,
+      structuredClone(record),
+      digest,
+      requester,
+    );
     this.sendsInFlight.set(sendKey, { digest, promise: send });
     try {
       return await send;
@@ -556,6 +596,7 @@ export class TriageService {
     runtime: IAgentRuntime,
     record: DraftRecord,
     consentDigest?: string,
+    requester?: Memory,
   ): Promise<DraftRecord> {
     const adapter = this.adapters.get(record.source);
     if (!adapter?.isAvailable(runtime)) {
@@ -570,7 +611,7 @@ export class TriageService {
     }
     if (
       consentDigest !== undefined &&
-      draftConsentDigest(this.store.getDraft(record.draftId) ?? record) !==
+      draftConsentDigest(this.getDraft(runtime, record.draftId) ?? record) !==
         consentDigest
     ) {
       throw new ElizaError(
@@ -578,7 +619,10 @@ export class TriageService {
         { code: "MESSAGE_DRAFT_CONSENT_DIGEST_MISMATCH" },
       );
     }
-    const { externalId } = await adapter.sendDraft(runtime, record.draftId);
+    const { externalId } = await adapter.sendDraft(runtime, record.draftId, {
+      requester,
+      snapshot: record,
+    });
     if (typeof externalId !== "string" || externalId.trim().length === 0) {
       throw new ElizaError(
         `The ${record.source} adapter did not return an accepted message identifier.`,
@@ -590,13 +634,13 @@ export class TriageService {
       );
     }
     const updated =
-      this.store.markDraftSent(record.draftId, externalId) ??
+      this.store.markDraftSent(record.draftId, externalId, runtime.agentId) ??
       ({
         ...record,
         sent: true,
         sentExternalId: externalId,
       } satisfies DraftRecord);
-    this.store.saveDraft(updated);
+    this.store.saveDraft(updated, runtime.agentId);
     return updated;
   }
 
@@ -612,10 +656,21 @@ export class TriageService {
     runtime: IAgentRuntime,
     snapshot: DraftRecord,
   ): Promise<DraftRecord> {
-    const sendKey = `${String(runtime.agentId)}:${snapshot.source}:${snapshot.draftId}`;
+    if (
+      snapshot.agentId !== undefined &&
+      snapshot.agentId !== runtime.agentId
+    ) {
+      throw new ElizaError(`No draft found for id ${snapshot.draftId}`, {
+        code: "MESSAGE_DRAFT_NOT_FOUND",
+        context: { draftId: snapshot.draftId },
+        severity: "ephemeral",
+      });
+    }
+    const boundSnapshot = { ...snapshot, agentId: runtime.agentId };
+    const sendKey = `${String(runtime.agentId)}:${boundSnapshot.source}:${boundSnapshot.draftId}`;
     const pending = this.persistedSendsInFlight.get(sendKey);
     if (pending) return pending;
-    const send = this.sendPersistedDraftOnce(runtime, snapshot);
+    const send = this.sendPersistedDraftOnce(runtime, boundSnapshot);
     this.persistedSendsInFlight.set(sendKey, send);
     try {
       return await send;
@@ -689,7 +744,7 @@ export class TriageService {
       preview: recreated.preview,
       sent: false,
     };
-    this.store.saveDraft(hydrated);
+    this.store.saveDraft(hydrated, runtime.agentId);
     const sent = await this.sendDraft(runtime, hydrated.draftId);
     if (hydrated.draftId === snapshot.draftId) return sent;
     if (!sent.sentExternalId) {
@@ -710,7 +765,7 @@ export class TriageService {
       sent: true,
       sentExternalId: sent.sentExternalId,
     };
-    this.store.saveDraft(original);
+    this.store.saveDraft(original, runtime.agentId);
     return original;
   }
 
@@ -719,7 +774,7 @@ export class TriageService {
     draftId: string,
     sendAtMs: number,
   ): Promise<DraftRecord> {
-    const record = this.store.getDraft(draftId);
+    const record = this.getDraft(runtime, draftId);
     if (!record) {
       throw new ElizaError(`No draft found for id ${draftId}`, {
         code: "MESSAGE_DRAFT_NOT_FOUND",
@@ -744,7 +799,7 @@ export class TriageService {
           ...record,
           scheduleCommit: { ...record.scheduleCommit, replayed: true },
         };
-        this.store.saveDraft(replayed);
+        this.store.saveDraft(replayed, runtime.agentId);
         return replayed;
       }
       throw new ElizaError(
@@ -792,7 +847,7 @@ export class TriageService {
         ...scheduled,
         scheduleCommit: { ...scheduled.scheduleCommit, replayed: true },
       };
-      this.store.saveDraft(replayed);
+      this.store.saveDraft(replayed, runtime.agentId);
       return replayed;
     }
 
@@ -825,12 +880,10 @@ export class TriageService {
       );
     }
 
+    const sendCapabilities = adapter.capabilities().send;
     // A connector-owned remote schedule is authoritative when available.
     // Every other adapter must use the one durable ScheduledTask runner.
-    if (
-      adapter.capabilities().send.schedule === true &&
-      adapter.scheduleSend != null
-    ) {
+    if (sendCapabilities.schedule === true && adapter.scheduleSend != null) {
       const { scheduledId } = await adapter.scheduleSend(
         runtime,
         draftId,
@@ -860,8 +913,22 @@ export class TriageService {
         scheduledId,
         scheduleCommit,
       };
-      this.store.saveDraft(updated);
+      this.store.saveDraft(updated, runtime.agentId);
       return updated;
+    }
+
+    // The durable runner dispatches without an executing requester, so an
+    // adapter that authorizes delivery against a live owner request would
+    // accept the schedule and then fail at send time. Refuse it up front.
+    if (sendCapabilities.requiresLiveRequester === true) {
+      throw new ElizaError(
+        `Scheduled delivery is not supported for ${record.source} drafts; send it now instead.`,
+        {
+          code: "MESSAGE_SCHEDULE_UNSUPPORTED",
+          context: { draftId, source: record.source, sendAtMs },
+          severity: "ephemeral",
+        },
+      );
     }
 
     const scheduler = getDeferredMessageScheduler(runtime);
@@ -882,7 +949,7 @@ export class TriageService {
       scheduledId: scheduled.scheduledId,
       scheduleCommit: scheduled.commit,
     };
-    this.store.saveDraft(updated);
+    this.store.saveDraft(updated, runtime.agentId);
     return updated;
   }
 }

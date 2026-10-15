@@ -17,7 +17,7 @@ import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import { getDefaultTriageService } from "@elizaos/plugin-assistant";
 import { inboxAction } from "./actions/inbox.ts";
 import { inboxDbSchema } from "./db/schema.ts";
-import { ManagedGmailReadAdapter } from "./inbox/managed-gmail-adapter.ts";
+import { ManagedGmailAdapter } from "./inbox/managed-gmail-adapter.ts";
 import { InboxMigrationService } from "./inbox/migration.ts";
 import { crossChannelContextProvider } from "./providers/cross-channel-context.ts";
 import { inboxTriageProvider } from "./providers/inbox-triage.ts";
@@ -32,11 +32,11 @@ export const inboxPlugin: Plugin = {
   // The adapter verifies the live owner action for every read. It supports
   // both standard MESSAGE reads and the existing INBOX fan-out, without writes.
   init: async () => {
-    const gmail = new ManagedGmailReadAdapter();
+    const gmail = new ManagedGmailAdapter();
     if (gmail.isAvailable()) {
       const registry = getDefaultTriageService();
       const existing = registry.getAdapter("gmail");
-      if (existing && !(existing instanceof ManagedGmailReadAdapter))
+      if (existing && !(existing instanceof ManagedGmailAdapter))
         throw new ElizaError(
           "A Gmail source is already registered. Select one owner transport before starting the agent.",
           { code: "MANAGED_GMAIL_SOURCE_CONFLICT" },

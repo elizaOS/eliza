@@ -33,6 +33,8 @@ import type {
 } from "../types.ts";
 import { manageMessageAction } from "./manageMessage.ts";
 
+const AGENT_ID = "00000000-0000-0000-0000-000000000001" as const;
+
 class RecordingManageAdapter extends BaseMessageAdapter {
   readonly source: MessageSource = "gmail";
   messages: MessageRef[] = [];
@@ -109,6 +111,7 @@ function messageRef(
 function createRuntime(): IAgentRuntime {
   const cache = new Map<string, unknown>();
   return {
+    agentId: AGENT_ID,
     getCache: <T>(key: string) =>
       Promise.resolve(cache.get(key) as T | undefined),
     setCache: (key: string, value: unknown) => {
@@ -131,7 +134,7 @@ describe("manageMessageAction", () => {
     adapter = new RecordingManageAdapter();
     const service = getDefaultTriageService();
     service.register(adapter);
-    service.getStore().saveMessages([messageRef("direct-1", 2_000)]);
+    service.getStore().saveMessages([messageRef("direct-1", 2_000)], AGENT_ID);
   });
 
   afterEach(() => {
@@ -309,7 +312,7 @@ describe("manageMessageAction", () => {
       success: true,
       text: "Tagged that message.",
     });
-    expect(store.getMessage("direct-1")?.tags).toEqual(["urgent"]);
+    expect(store.getMessage("direct-1", AGENT_ID)?.tags).toEqual(["urgent"]);
 
     const removed = await manageMessageAction.handler(
       createRuntime(),
@@ -326,7 +329,7 @@ describe("manageMessageAction", () => {
       success: true,
       text: "Removed the tag.",
     });
-    expect(store.getMessage("direct-1")?.tags).toEqual([]);
+    expect(store.getMessage("direct-1", AGENT_ID)?.tags).toEqual([]);
     expect(adapter.managed).toEqual([]);
   });
 

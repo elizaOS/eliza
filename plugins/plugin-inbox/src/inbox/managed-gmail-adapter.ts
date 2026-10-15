@@ -1,4 +1,4 @@
-/** One owner-checked, read-only adapter for the standard MESSAGE/INBOX tools. */
+/** Owner-checked Google mail through standard MESSAGE/INBOX tools. */
 import { createHash } from "node:crypto";
 import {
   buildContentReference,
@@ -11,8 +11,11 @@ import {
 } from "@elizaos/core";
 import {
   BaseMessageAdapter,
+  type DraftRequest,
   type ListOptions,
+  type MessageDraftContext,
   type MessageRef,
+  type MessageSendContext,
   type ReadMessageRequest,
   type ReadMessageResult,
   type SearchMessagesFilters,
@@ -22,6 +25,10 @@ import {
   managedGmailMessageReader,
   managedGmailReadFetcher,
 } from "./managed-gmail-read.ts";
+import {
+  type ManagedSendContent,
+  managedGmailSender,
+} from "./managed-gmail-send.ts";
 
 const unavailable = (message: string) =>
   new ElizaError(message, { code: "MANAGED_GMAIL_READ_UNAVAILABLE" });
@@ -35,11 +42,23 @@ async function owner(runtime: IAgentRuntime, requester?: Memory) {
     throw unavailable("Gmail is restricted to its owner.");
   return requester;
 }
-export class ManagedGmailReadAdapter extends BaseMessageAdapter {
+export class ManagedGmailAdapter extends BaseMessageAdapter {
   readonly source = "gmail" as const;
   readonly cachePolicy = "none" as const;
   private readonly fetcher = managedGmailReadFetcher();
   private readonly reader = managedGmailMessageReader();
+  private readonly sender = managedGmailSender();
+  private readonly drafts = new Map<
+    string,
+    {
+      agentId: string;
+      entityId: string;
+      roomId: string;
+      content: ManagedSendContent;
+      reviewDigest: string;
+      attempted: boolean;
+    }
+  >();
   isAvailable() {
     return Boolean(this.fetcher && this.reader);
   }
@@ -48,10 +67,128 @@ export class ManagedGmailReadAdapter extends BaseMessageAdapter {
       list: true,
       search: true,
       manage: {},
-      send: {},
+      send: this.sender
+        ? { new: true, requiresLiveRequester: true }
+        : { requiresLiveRequester: true },
       worlds: "single" as const,
       channels: "none" as const,
     };
+  }
+  async authorizeSend(
+    runtime: IAgentRuntime,
+    requester?: Memory,
+    draftId?: string,
+  ) {
+    const caller = await owner(runtime, requester),
+      draft = draftId && this.drafts.get(draftId);
+    if (
+      !draft ||
+      draft.agentId !== runtime.agentId ||
+      draft.entityId !== caller.entityId ||
+      draft.roomId !== caller.roomId
+    )
+      throw unavailable(
+        "Review this email in the owner conversation that prepared it.",
+      );
+  }
+  protected async createDraftImpl(
+    runtime: IAgentRuntime,
+    draft: DraftRequest,
+    context?: MessageDraftContext,
+  ) {
+    const caller = await owner(runtime, context?.requester);
+    if (!this.sender)
+      throw unavailable("Managed Gmail sending is unavailable.");
+    if (
+      draft.source !== "gmail" ||
+      draft.inReplyToId ||
+      draft.threadId ||
+      draft.channelId ||
+      (draft.worldId && draft.worldId !== "default")
+    )
+      throw unavailable(
+        "Prepare a new Gmail email with explicit recipients; threaded sending is not available through this host yet.",
+      );
+    const content = {
+      to: draft.to.map((to) => to.identifier),
+      subject: draft.subject ?? "",
+      bodyText: draft.body,
+    };
+    const prepared = await this.sender.prepare(content);
+    await owner(runtime, context?.requester);
+    this.drafts.set(prepared.id, {
+      agentId: runtime.agentId,
+      entityId: caller.entityId,
+      roomId: caller.roomId,
+      content: structuredClone(content),
+      reviewDigest: prepared.reviewDigest,
+      attempted: false,
+    });
+    return {
+      draftId: prepared.id,
+      preview: `From: ${prepared.from}\nTo: ${content.to.join(", ")}\nSubject: ${content.subject}\n\n${content.bodyText}`,
+    };
+  }
+  protected async sendDraftImpl(
+    runtime: IAgentRuntime,
+    draftId: string,
+    context?: MessageSendContext,
+  ) {
+    await this.authorizeSend(runtime, context?.requester, draftId);
+    const draft = this.drafts.get(draftId)!,
+      snapshot = context?.snapshot;
+    if (
+      !this.sender ||
+      !snapshot ||
+      snapshot.source !== "gmail" ||
+      snapshot.inReplyToId ||
+      snapshot.threadId ||
+      snapshot.body !== draft.content.bodyText ||
+      (snapshot.subject ?? "") !== draft.content.subject ||
+      JSON.stringify(snapshot.to.map((to) => to.identifier)) !==
+        JSON.stringify(draft.content.to)
+    )
+      throw unavailable(
+        "The email changed after its provider review. Prepare and review the current email before sending.",
+      );
+    const accepted = (
+      receipt: Awaited<ReturnType<NonNullable<typeof this.sender>["receipt"]>>,
+    ) => {
+      if (
+        receipt.reviewDigest !== draft.reviewDigest ||
+        receipt.state !== "succeeded" ||
+        typeof receipt.providerResult?.messageId !== "string" ||
+        !receipt.providerResult.messageId
+      )
+        throw unavailable(
+          "Delivery is not confirmed. Check this exact saved receipt; do not send this email again.",
+        );
+      return { externalId: receipt.providerResult.messageId };
+    };
+    const prior = await this.sender.receipt(draftId);
+    await owner(runtime, context.requester);
+    if (prior.state === "succeeded") return accepted(prior);
+    if (
+      prior.state !== "prepared" ||
+      prior.reviewDigest !== draft.reviewDigest ||
+      draft.attempted
+    )
+      throw unavailable(
+        "This send outcome needs review. Check its saved receipt; this email will not be sent again automatically.",
+      );
+    draft.attempted = true;
+    let result;
+    try {
+      result = await this.sender.dispatch(
+        draftId,
+        draft.reviewDigest,
+        draft.content,
+      );
+    } catch {
+      result = await this.sender.receipt(draftId);
+    }
+    await owner(runtime, context.requester);
+    return accepted(result);
   }
   private async messages(
     runtime: IAgentRuntime,

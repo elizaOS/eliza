@@ -172,12 +172,13 @@ async function runScriptSegment(
   const redirect = parseOutputRedirect(segment);
   if (redirect) {
     const { before, op, target } = redirect;
-    const result = await runCommandLine(vfs, cwd, before.trim());
-    if (result.exitCode !== 0) return result;
     const targetPath = resolveVirtualPath(cwd, stripQuotes(target));
     const existing = op === ">>" ? await readAppendBase(vfs, targetPath) : "";
+    // Open/truncate the target before execution, including a failing command.
+    await vfs.writeFile(targetPath, existing);
+    const result = await runCommandLine(vfs, cwd, before.trim());
     await vfs.writeFile(targetPath, existing + result.stdout);
-    return { exitCode: 0, stdout: "", stderr: result.stderr };
+    return { ...result, stdout: "" };
   }
   return runCommandLine(vfs, cwd, segment);
 }
@@ -567,12 +568,49 @@ function normalizeAbsoluteVirtualPath(input: string): string {
 
 function tokenize(input: string): string[] {
   const tokens: string[] = [];
-  const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
-  let match = re.exec(input);
-  while (match) {
-    tokens.push(match[1] ?? match[2] ?? match[3] ?? "");
-    match = re.exec(input);
+  let token = "";
+  let started = false;
+  let quote: "'" | '"' | null = null;
+  for (let index = 0; index < input.length; index += 1) {
+    const character = input[index];
+    if (character === "\\" && quote !== "'") {
+      const next = input[index + 1];
+      if (
+        next !== undefined &&
+        (quote === null ||
+          next === '"' ||
+          next === "\\" ||
+          next === "$" ||
+          next === "`" ||
+          next === "\n")
+      ) {
+        if (next !== "\n") {
+          token += next;
+          started = true;
+        }
+        index += 1;
+        continue;
+      }
+    }
+    if (quote !== null) {
+      if (character === quote) quote = null;
+      else token += character;
+    } else if (character === "'" || character === '"') {
+      quote = character;
+      started = true;
+    } else if (/\s/.test(character)) {
+      if (started) tokens.push(token);
+      token = "";
+      started = false;
+    } else {
+      token += character;
+      started = true;
+    }
   }
+  if (quote !== null) {
+    throw new Error(`[vfs-shell] unterminated ${quote} quote in: ${input}`);
+  }
+  if (started) tokens.push(token);
   return tokens;
 }
 

@@ -2,6 +2,7 @@ import { afterEach, expect, spyOn, test } from "bun:test";
 import { blueskyProvider } from "./bluesky";
 import { discordProvider } from "./discord";
 import { linkedinProvider } from "./linkedin";
+import { mastodonProvider } from "./mastodon";
 import { metaProvider } from "./meta";
 import { redditProvider } from "./reddit";
 import { slackProvider } from "./slack";
@@ -409,5 +410,166 @@ for (const platform of ["slack", "telegram"] as const) {
     expect(result.success).toBe(true);
     expect(result.postId).toBe(platform === "slack" ? "123.456" : "7");
     expect(result.creditDisposition).toBeUndefined();
+  });
+}
+
+const receiptCases = [
+  {
+    platform: "twitter",
+    path: "/tweets",
+    receipt: { data: { id: "1" } },
+    send: () => twitterProvider.createPost({ accessToken: "fixture" }, { text: "Receipt review" }),
+  },
+  {
+    platform: "discord",
+    path: "/channels/42/messages",
+    receipt: { id: "9", channel_id: "42" },
+    send: () =>
+      discordProvider.createPost(
+        { botToken: "fixture" },
+        { text: "Receipt review" },
+        { discord: { channelId: "42" } },
+      ),
+  },
+  {
+    platform: "bluesky",
+    path: "com.atproto.repo.createRecord",
+    receipt: { uri: "at://did:plc:app/app.bsky.feed.post/k2", cid: "cid" },
+    send: () =>
+      blueskyProvider.createPost(
+        { handle: "app.bsky.social", appPassword: "fixture" },
+        { text: "Receipt review" },
+      ),
+  },
+  {
+    platform: "linkedin",
+    path: "/ugcPosts",
+    receipt: { id: "urn:li:share:1" },
+    send: () =>
+      linkedinProvider.createPost(
+        { accessToken: "fixture" },
+        { text: "Receipt review" },
+        { linkedin: { organizationId: "123" } },
+      ),
+  },
+  {
+    platform: "facebook",
+    path: "/page-1/feed",
+    receipt: { id: "page-1_1" },
+    send: () =>
+      metaProvider.createPost(
+        { accessToken: "fixture" },
+        { text: "Receipt review" },
+        { facebook: { pageId: "page-1" } },
+      ),
+  },
+  {
+    platform: "instagram",
+    path: "/account-1/media_publish",
+    receipt: { id: "media-1" },
+    send: () =>
+      metaProvider.createPost(
+        { accessToken: "fixture", accountId: "account-1" },
+        {
+          text: "Receipt review",
+          media: [{ type: "image" as const, url: "https://cdn.example.com/image.png" }],
+        },
+      ),
+  },
+  {
+    platform: "mastodon",
+    path: "/api/v1/statuses",
+    receipt: { id: "110000000000000001", url: "https://mastodon.example/@app/110000000000000001" },
+    send: () =>
+      mastodonProvider.createPost(
+        { accessToken: "fixture", instanceUrl: "https://mastodon.example" },
+        { text: "Receipt review" },
+      ),
+  },
+  {
+    platform: "reddit",
+    path: "/api/submit",
+    receipt: { json: { errors: [], data: { id: "t3_1", url: "/r/elizaos/comments/1" } } },
+    send: () =>
+      redditProvider.createPost(
+        { apiKey: "id", apiSecret: "fixture", username: "u", password: "fixture" },
+        { text: "Receipt review" },
+        { reddit: { subreddit: "elizaos", title: "Receipt review" } },
+      ),
+  },
+];
+
+for (const scenario of receiptCases) {
+  for (const outcome of ["missing", "null", "numeric", "blank", "confirmed"] as const) {
+    test(`${scenario.platform} classifies ${outcome} create receipts without replay`, async () => {
+      let creates = 0;
+      const id = outcome === "numeric" ? 17 : "  ";
+      const malformed = {
+        id,
+        channel_id: id,
+        uri: id,
+        data: { id },
+        json: { errors: [], data: { id } },
+      };
+      const payload =
+        outcome === "confirmed"
+          ? scenario.receipt
+          : outcome === "missing"
+            ? {}
+            : outcome === "null"
+              ? null
+              : malformed;
+      spies.push(
+        spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+          const url = String(input);
+          if (url.includes(scenario.path) && init?.method === "POST") {
+            creates++;
+            return json(payload);
+          }
+          if (url.includes("com.atproto.server.createSession"))
+            return json({
+              accessJwt: "jwt",
+              refreshJwt: "r",
+              did: "did:plc:app",
+              handle: "app.bsky.social",
+            });
+          if (url.includes("/api/v1/access_token"))
+            return json({ access_token: "token", expires_in: 3600 });
+          if (url.includes("/account-1/media?")) return json({ id: "container-1" });
+          throw new Error(`Unexpected fixture request ${url}`);
+        }),
+      );
+      const result = await scenario.send();
+      expect(creates).toBe(1);
+      expect(result.success).toBe(outcome === "confirmed");
+      if (outcome === "confirmed") {
+        expect(result.postId).toBeTruthy();
+        expect(result.creditDisposition).toBeUndefined();
+      } else {
+        expect(result.creditDisposition).toBe("hold");
+        expect(result.errorCode).toBe("POST_OUTCOME_UNKNOWN");
+      }
+    });
+  }
+}
+
+for (const errors of ["malformed", [null], [["REJECTED", "not permitted", "field"]]]) {
+  test(`reddit distinguishes explicit rejection from malformed errors ${JSON.stringify(errors)}`, async () => {
+    let creates = 0;
+    spies.push(
+      spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+        if (String(input).includes("/api/v1/access_token"))
+          return json({ access_token: "token", expires_in: 3600 });
+        creates++;
+        return json({ json: { errors } });
+      }),
+    );
+    const scenario = receiptCases.find((item) => item.platform === "reddit");
+    if (!scenario) throw new Error("Reddit fixture missing");
+    const result = await scenario.send();
+    expect(creates).toBe(1);
+    expect(result.success).toBe(false);
+    const explicitRejection = Array.isArray(errors) && Array.isArray(errors[0]);
+    expect(result.creditDisposition).toBe(explicitRejection ? undefined : "hold");
   });
 }

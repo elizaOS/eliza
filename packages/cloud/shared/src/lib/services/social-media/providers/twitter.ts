@@ -17,7 +17,12 @@ import {
   decodeSocialMediaBase64,
   downloadSocialMediaBytes,
 } from "../media-download";
-import { failedPostResult, type RetryOptions, withRetry } from "../rate-limit";
+import {
+  failedPostResult,
+  type RetryOptions,
+  UnknownPostOutcomeError,
+  withRetry,
+} from "../rate-limit";
 
 const TWITTER_REQUEST_TIMEOUT_MS = 30_000;
 
@@ -309,11 +314,22 @@ export const twitterProvider: SocialMediaProvider = {
         { replayUnknownOutcome: false },
       );
 
+      // A 2xx body without the created tweet's id is not a publication
+      // receipt: X may have published, so the outcome stays unknown and
+      // the credit is held instead of refunded (the slack/telegram rule).
+      const postId = response?.data?.id;
+      if (typeof postId !== "string" || !postId.trim()) {
+        throw new UnknownPostOutcomeError(
+          "twitter",
+          new Error("X response lacks a publication receipt"),
+        );
+      }
+
       return {
         platform: "twitter",
         success: true,
-        postId: response.data.id,
-        postUrl: `https://twitter.com/i/status/${response.data.id}`,
+        postId,
+        postUrl: `https://twitter.com/i/status/${postId}`,
       };
     } catch (error) {
       // error-policy:J1 boundary translation — a failed Twitter post becomes the {success:false}

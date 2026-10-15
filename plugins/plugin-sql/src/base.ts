@@ -6016,17 +6016,34 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const newWorldId = normalizedWorld.id as UUID;
 
       assertJsonbStorable(normalizedWorld.metadata);
-      try {
-        await this.db.insert(worldTable).values(normalizedWorld);
-      } catch (error) {
-        if (isDuplicateKeyError(error)) {
-          throw new ElizaError("World already exists", {
-            code: "WORLD_ALREADY_EXISTS",
-            cause: error,
+      // ON CONFLICT DO NOTHING keeps an enclosing transaction usable so the
+      // owner of a colliding id can be read back instead of aborting it.
+      const inserted = await this.db
+        .insert(worldTable)
+        .values(normalizedWorld)
+        .onConflictDoNothing({ target: worldTable.id })
+        .returning();
+      if (inserted.length === 0) {
+        // World ids are a global primary key while world reads are scoped to
+        // the adapter agent. A colliding row this agent does not own is a
+        // caller id collision, not a creation race: retrying can never
+        // succeed, so it carries its own code that ensureWorldExists does not
+        // retry.
+        const owned = await this.db
+          .select({ id: worldTable.id })
+          .from(worldTable)
+          .where(and(eq(worldTable.id, newWorldId), eq(worldTable.agentId, this.agentId)))
+          .limit(1);
+        if (owned.length === 0) {
+          throw new ElizaError("World id is owned by another agent", {
+            code: "WORLD_OWNED_BY_OTHER_AGENT",
             context: { worldId: newWorldId, agentId: this.agentId },
           });
         }
-        throw error;
+        throw new ElizaError("World already exists", {
+          code: "WORLD_ALREADY_EXISTS",
+          context: { worldId: newWorldId, agentId: this.agentId },
+        });
       }
       return newWorldId;
     });
