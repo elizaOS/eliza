@@ -104,6 +104,7 @@ import {
 } from "./provisioning-job-types";
 import { sendProvisioningWorkerAlert } from "./provisioning-worker-health-monitor";
 import { isContainerBackedExecutionTier } from "./sandbox-provider-types";
+import { tierProvisionsEagerly } from "./shared-runtime/agent-tier";
 import { hasReadyWarmClaimCredential } from "./warm-claim-key-push";
 
 export type {
@@ -546,6 +547,34 @@ export class ProvisioningJobQueue {
   }): Promise<Job> {
     const result = await this.enqueueAgentProvisionOnce(params);
     return result.job;
+  }
+
+  /**
+   * A create request that asks for provisioning and reuses an existing agent
+   * must leave that agent provisioning. An eager-tier agent that is still
+   * pending may have no provision job: its create-time enqueue was lost, or it
+   * was created with `autoProvision: false`. Enqueue its job once; an agent
+   * that already has a live job gets that job back. Returns null when the
+   * agent needs no job.
+   */
+  async enqueueReusedPendingAgentProvision(params: {
+    agent: { id: string; status: string; execution_tier: string; agent_name: string | null };
+    organizationId: string;
+    userId: string;
+  }): Promise<EnqueueAgentProvisionResult | null> {
+    const { agent } = params;
+    if (
+      agent.status !== "pending" ||
+      !tierProvisionsEagerly(agent.execution_tier as Parameters<typeof tierProvisionsEagerly>[0])
+    ) {
+      return null;
+    }
+    return this.enqueueAgentProvisionOnce({
+      agentId: agent.id,
+      organizationId: params.organizationId,
+      userId: params.userId,
+      agentName: agent.agent_name ?? agent.id,
+    });
   }
 
   async enqueueAgentProvisionOnce(params: {

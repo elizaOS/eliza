@@ -49,6 +49,22 @@ describe("processOnce", () => {
     expect(handled).toBe(1);
   });
 
+  test("a delivered message stays refused after the processing claim would expire", async () => {
+    let handled = 0;
+    const work = async () => {
+      handled += 1;
+      return "reply";
+    };
+    expect((await processOnce("blooio:MSG_late", "blooio", work)).status).toBe("processed");
+    // Three minutes later: past the 2-minute claim, inside Blooio's 300 s
+    // signature window, so the signed request can still be resent.
+    await getPgliteClientForTests().exec(
+      `UPDATE idempotency_keys SET expires_at = expires_at - interval '3 minutes' WHERE key = 'blooio:MSG_late'`,
+    );
+    expect(await processOnce("blooio:MSG_late", "blooio", work)).toEqual({ status: "duplicate" });
+    expect(handled).toBe(1);
+  });
+
   test("a failing work function releases the claim and rethrows", async () => {
     await expect(
       processOnce("blooio:MSG_fail", "blooio", async () => {

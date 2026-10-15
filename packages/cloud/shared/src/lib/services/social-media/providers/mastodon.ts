@@ -15,7 +15,7 @@ import {
   decodeSocialMediaBase64,
   downloadSocialMediaBytes,
 } from "../media-download";
-import { withRetry } from "../rate-limit";
+import { failedPostResult, UnknownPostOutcomeError, withRetry } from "../rate-limit";
 
 const MASTODON_REQUEST_TIMEOUT_MS = 30_000;
 
@@ -242,10 +242,26 @@ export const mastodonProvider: SocialMediaProvider = {
       },
     );
 
+    // A 2xx body without the created status id is not a publication
+    // receipt: Mastodon may have published, so the outcome stays unknown
+    // and the credit is held instead of reporting a success with no
+    // post id (the slack/telegram rule). This method returns its result
+    // directly, so build the held result here.
+    const postId = status?.id;
+    if (typeof postId !== "string" || !postId.trim()) {
+      return failedPostResult(
+        "mastodon",
+        new UnknownPostOutcomeError(
+          "mastodon",
+          new Error("Mastodon response lacks a publication receipt"),
+        ),
+      );
+    }
+
     return {
       platform: "mastodon",
       success: true,
-      postId: status.id,
+      postId,
       postUrl: status.url,
       metadata: { visibility: status.visibility },
     };

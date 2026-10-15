@@ -162,7 +162,12 @@ afterAll(async () => {
 });
 
 test("restore drops a linked character the user may not link and never lists it", async () => {
-  expect(await charactersService.getByIdForUser(CHAR, USER_B)).toBeNull();
+  expect(
+    await charactersService.getByIdForUser(CHAR, {
+      id: USER_B,
+      organization_id: ORG_B,
+    }),
+  ).toBeNull();
 
   const restore = await app.request(
     "/api/v1/apps/backup/restore",
@@ -210,4 +215,67 @@ test("restore drops a linked character the user may not link and never lists it"
     success: true,
     characters: [],
   });
+});
+
+test("a user who moved to another organization cannot restore or link their old organization's private character", async () => {
+  // USER_B created this while in ORG_A, then moved to ORG_B (the caller's
+  // current organization). The user id still matches; the organization does not.
+  const OLD_CHAR = "77777777-7777-4777-8777-777777777777";
+  await dbWrite.insert(userCharacters).values({
+    id: OLD_CHAR,
+    organization_id: ORG_A,
+    user_id: USER_B,
+    name: "Left behind in org A",
+    username: "left-behind",
+    bio: ["private to org A"],
+    settings: {},
+    character_data: { name: "Left behind in org A" },
+    is_public: false,
+  });
+
+  const restore = await app.request(
+    "/api/v1/apps/backup/restore",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        backup: {
+          version: 1,
+          app: {
+            name: "Org B app with old character",
+            app_url: "https://app-b2.example.test",
+            linked_character_ids: [OLD_CHAR],
+          },
+          monetization: {
+            enabled: false,
+            inference_markup_percentage: 0,
+            purchase_share_percentage: 0,
+          },
+        },
+      }),
+    },
+    workerEnv,
+  );
+  const restored = (await restore.json()) as {
+    app?: { id: string };
+    warnings?: string[];
+  };
+  expect(restore.status).toBe(201);
+  expect(restored.warnings).toEqual([
+    `Linked character ${OLD_CHAR} was not restored: it is not yours and not public.`,
+  ]);
+  const appId = restored.app!.id;
+  expect((await appsService.getById(appId))?.linked_character_ids).toEqual([]);
+
+  const link = await app.request(
+    `/api/v1/apps/${appId}/characters`,
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ character_ids: [OLD_CHAR] }),
+    },
+    workerEnv,
+  );
+  expect(link.status).toBe(403);
+  expect((await appsService.getById(appId))?.linked_character_ids).toEqual([]);
 });

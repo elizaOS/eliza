@@ -938,6 +938,42 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     ]);
   });
 
+  it("ignores a spring-forward gap occurrence without consuming COUNT", async () => {
+    const source = await createSource();
+    await syncBody(
+      source.id,
+      calendar(
+        [
+          "BEGIN:VEVENT",
+          "UID:dst-gap",
+          "DTSTAMP:20260301T000000Z",
+          "DTSTART;TZID=America/New_York:20260307T023000",
+          "DURATION:PT30M",
+          "RRULE:FREQ=DAILY;COUNT=3",
+          "SUMMARY:Night shift",
+          "END:VEVENT",
+        ].join("\r\n"),
+      ),
+    );
+    const feed = await service.getCalendarFeed(
+      new URL("http://internal.test/api/calendar"),
+      {
+        grantId: source.id,
+        timeMin: "2026-03-06T00:00:00.000Z",
+        timeMax: "2026-03-15T00:00:00.000Z",
+      },
+      new Date(),
+    );
+
+    // RFC 5545 3.3.10: 02:30 does not exist on March 8, so that occurrence is
+    // ignored and the third occurrence is March 10.
+    expect(feed.events.map((event) => event.startAt).sort()).toEqual([
+      "2026-03-07T07:30:00.000Z",
+      "2026-03-09T06:30:00.000Z",
+      "2026-03-10T06:30:00.000Z",
+    ]);
+  });
+
   it("expands the RFC 5545 weekly examples that set WKST", async () => {
     const source = await createSource();
     const example = (uid: string, wkst: string) =>

@@ -4,7 +4,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { resolveJobTypesForLanes } from "@elizaos/cloud-shared/agent-contracts";
 import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
-import { userCharactersRepository } from "@elizaos/cloud-shared/db/repositories/characters";
 import {
   dockerNodesRepository,
   stampDockerNodeEnvironmentMetadata,
@@ -18,6 +17,7 @@ import {
 import { ApiError } from "@elizaos/cloud-shared/lib/api/errors";
 import { containersEnv } from "@elizaos/cloud-shared/lib/config/containers-env";
 import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
 import { chatSseFrame } from "@elizaos/cloud-shared/lib/services/chat-sse-frames";
 import {
   envWarmPoolPolicy,
@@ -1211,7 +1211,7 @@ app.delete("/api/compat/agents/:id", (c) =>
 
     if (characterId && !reusesExistingCharacter) {
       try {
-        await userCharactersRepository.delete(characterId);
+        await charactersService.delete(characterId);
       } catch (charErr) {
         logger.warn(
           "[container-control-plane] Failed linked character cleanup after agent delete",

@@ -150,6 +150,7 @@ import {
   resolveNoResponseFallback,
   resolveTrustedApiPrincipal,
   setChatMessageIdOutcome,
+  withoutLiveRateLimit,
 } from "./chat-routes.ts";
 import {
   createChatTokenStreamWriter,
@@ -2134,7 +2135,7 @@ async function persistDurableConversationChatOutcome(
           scope,
           clientMessageId,
           fingerprint,
-          outcomeJson: JSON.stringify(outcome),
+          outcomeJson: JSON.stringify(withoutLiveRateLimit(outcome)),
         } satisfies DurableConversationChatMarker,
       },
     });

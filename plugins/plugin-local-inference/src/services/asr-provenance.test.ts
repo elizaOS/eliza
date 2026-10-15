@@ -80,21 +80,20 @@ describe("bundle ASR provenance", () => {
 		expect(readBundleAsrProvenanceBlockers(root)).toEqual([]);
 	});
 
-	it("does not apply the Eliza-1 lineage block to the staged mobile voice ASR pair", () => {
-		// A strict Eliza-1 manifest with no ASR lineage, plus the Qwen3-ASR pair
+	it("does not apply the Eliza-1 lineage block to the staged Phonon-2 ASR", () => {
+		// A strict Eliza-1 manifest with no ASR lineage, plus the Phonon-2 GGUF
 		// that the Android/AOSP agent stages from the mobile-voice catalog.
 		const root = writeManifest({ defaultEligible: true, version: "1.0.0" });
-		writeFileSync(path.join(root, "asr", "Qwen3-ASR-0.6B-Q8_0.gguf"), "m");
 		writeFileSync(
-			path.join(root, "asr", "mmproj-Qwen3-ASR-0.6B-Q8_0.gguf"),
-			"p",
+			path.join(root, "asr", "phonon-2-fv5.gguf"),
+			gguf("parakeet-tdt"),
 		);
 		writeFileSync(
 			path.join(root, "asr", "voice-files.json"),
 			JSON.stringify({
 				schema: "eliza-mobile-voice-group-v1",
 				dir: "asr",
-				files: [{ id: "qwen3-asr-0.6b-q8_0", role: "asr-text" }],
+				files: [{ id: "phonon-2-fv5", role: "asr-parakeet" }],
 			}),
 		);
 
@@ -112,15 +111,14 @@ describe("bundle ASR provenance", () => {
 });
 
 describe("bundle ASR artifacts", () => {
-	it("requires both the text model and its projector", () => {
+	it("does not accept a text model + projector pair", () => {
 		const root = writeManifest({});
 		const asrDir = path.join(root, "asr");
 
 		expect(bundleHasAsrModelFiles(root)).toBe(false);
 		writeFileSync(path.join(asrDir, "eliza-1-asr-mmproj.gguf"), "projector");
+		writeFileSync(path.join(asrDir, "eliza-1-asr.gguf"), gguf("qwen3"));
 		expect(bundleHasAsrModelFiles(root)).toBe(false);
-		writeFileSync(path.join(asrDir, "eliza-1-asr.gguf"), "model");
-		expect(bundleHasAsrModelFiles(root)).toBe(true);
 	});
 
 	it("accepts a Parakeet-TDT GGUF (Phonon-2) on its own", () => {
@@ -131,7 +129,7 @@ describe("bundle ASR artifacts", () => {
 			"parakeet-tdt",
 		);
 		expect(bundleHasAsrModelFiles(root)).toBe(true);
-		// A lone non-parakeet GGUF is still half of the Qwen3-ASR pair.
+		// A GGUF with another architecture is not an ASR model.
 		const other = writeManifest({});
 		writeFileSync(path.join(other, "asr", "qwen.gguf"), gguf("qwen3"));
 		expect(bundleHasAsrModelFiles(other)).toBe(false);

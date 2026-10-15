@@ -10,10 +10,7 @@ const { protection } = await chrome.storage.local
   .get("protection")
   .catch(() => ({}));
 document.querySelector("#status").textContent =
-  protection?.status === "current" &&
-  Number.isFinite(protection.publishedAt) &&
-  protection.publishedAt <= Date.now() + 300000 &&
-  Date.now() - protection.publishedAt < 48 * 3600000
+  protection?.status === "current"
     ? "The page has not been opened."
     : "The page has not been opened. Protection updates are unavailable; this warning uses the last saved list.";
 document.querySelector("#back").onclick = () =>

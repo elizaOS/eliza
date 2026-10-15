@@ -39,8 +39,12 @@ export async function interact(
       llmCalls: detail.llmCalls.filter(
         (call) => phaseOf(call) === requestedPhase,
       ).length,
-      toolEvents: detail.toolEvents?.length ?? 0,
-      evaluationEvents: detail.evaluationEvents?.length ?? 0,
+      toolEvents:
+        requestedPhase === "ACTION" ? (detail.toolEvents?.length ?? 0) : 0,
+      evaluationEvents:
+        requestedPhase === "EVALUATE"
+          ? (detail.evaluationEvents?.length ?? 0)
+          : 0,
     }));
   }
 

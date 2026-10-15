@@ -103,6 +103,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * Dedupe key for an extracted or corrected field value. Values are compared by
+ * their JSON encoding so distinct object/array values (which all stringify to
+ * "[object Object]" via `String()`) are kept apart.
+ */
+function extractionDedupeKey(field: string, value: unknown): string {
+  return `${field}\0${JSON.stringify(value ?? null)}`;
+}
+
 function isValidIntent(str: string): str is FormIntent {
   return (FORM_INTENTS as string[]).includes(str);
 }
@@ -246,7 +255,7 @@ export function parseFormExtractorOutput(raw: unknown): IntentResult | null {
     if (!fieldKey) continue;
     if (!isSafeExtractionField(fieldKey)) continue;
 
-    const dedupeKey = `${fieldKey}\0${String(entry.value ?? "")}`;
+    const dedupeKey = extractionDedupeKey(fieldKey, entry.value);
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);
 
@@ -511,7 +520,7 @@ Rules:
     );
     if (!control) continue;
 
-    const dedupeKey = `${control.key}\0${String(correction.new_value ?? "")}`;
+    const dedupeKey = extractionDedupeKey(control.key, correction.new_value);
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);
 

@@ -265,7 +265,10 @@ export class TaskDrain {
 		}
 		const current = (task.metadata as Record<string, unknown>)
 			?.updateInterval as number | undefined;
-		if (current === newIntervalMs) {
+		if (
+			current === newIntervalMs &&
+			task.metadata?.baseInterval === newIntervalMs
+		) {
 			return;
 		}
 		await runtime.updateTask(taskId, {

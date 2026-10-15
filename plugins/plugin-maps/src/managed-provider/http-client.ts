@@ -128,17 +128,17 @@ function classifyProviderError(
       context: { status: response.status },
     });
   }
-  if (response.status === 429) {
-    return new ManagedProviderError("The provider is rate limited.", {
-      code: "RATE_LIMITED",
-      retryAfterMs: retryAfterMs(response),
-      context: { status: response.status },
-    });
-  }
   // A short machine code lets domain adapters tell refusals apart.
   const codeContext = /^[a-z][a-z_]{0,63}$/.test(providerCode)
     ? { providerCode }
     : {};
+  if (response.status === 429) {
+    return new ManagedProviderError("The provider is rate limited.", {
+      code: "RATE_LIMITED",
+      retryAfterMs: retryAfterMs(response),
+      context: { status: response.status, ...codeContext },
+    });
+  }
   if (response.status >= 500) {
     return new ManagedProviderError("The provider failed.", {
       code: "PROVIDER_FAILURE",

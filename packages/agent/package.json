@@ -266,6 +266,7 @@
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-imessage": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",
+    "@elizaos/plugin-maps": "workspace:*",
     "@elizaos/plugin-mcp": "workspace:*",
     "@elizaos/plugin-native-filesystem": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",

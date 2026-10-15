@@ -58,7 +58,7 @@ A new APK must be built from the changed native sources and tested on the device
 Install dependencies with `bun install` at the repository root. Run from that root:
 
 ```bash
-bun run build:client  # build
+bun run --cwd packages/app build  # build
 bun run --cwd packages/app test   # tests
 ```
 
@@ -211,9 +211,8 @@ converting the pinned source and pass it through `ELIZA_VOICE_BUNDLE_FROM`
 (`<dir>/asr/phonon-2-fv5.gguf`; the catalog row pins its hash):
 `python tools/parakeet/convert_phonon2_to_gguf.py --archive phonon-2.bps.tar.zst
 --output phonon-2-fv5.gguf --verify` in the llama.cpp submodule, with the
-archive from `FermionResearch/Phonon-2@7e153e40`. `ELIZA_ASR_BACKEND=qwen3`
-stages the Qwen3-ASR-0.6B pair into `asr/` instead (batch only), and
-`ELIZA_ASR_THREADS` sets decode threads. Phonon-2 weights are CC-BY-4.0
+archive from `FermionResearch/Phonon-2@7e153e40`. Phonon-2 is the only
+local ASR model; `ELIZA_ASR_THREADS` sets decode threads. Phonon-2 weights are CC-BY-4.0
 (derived from NVIDIA parakeet-tdt-0.6b-v3): ship the attribution and
 Fermion's NOTICE. The NOTICE lists CHiME-6 (CC-BY-SA-4.0) and SPGISpeech
 (Kensho terms) training audio, which is flagged for review and does not block
@@ -225,10 +224,10 @@ serves `asr_stream_supported / open / feed / partial / finish / close / cancel`
 stream and 4 streams; disconnecting cancels and frees the stream; logs carry
 lengths, never text). On the agent side `BionicHostLoader.openAsrStream()` and
 `createStreamingTranscriber()` emit partials and use batch `op:"asr"` only when
-the host reports `STREAM_UNSUPPORTED` (the Qwen3-ASR pair). Before loading the
-library, `ElizaVoiceNative` exports `ELIZA_ASR_BACKEND` (default `auto`) and
-`ELIZA_ASR_THREADS` (default: one per big core) into the app process; a process
-value wins over the build-time `BuildConfig` value.
+the host reports `STREAM_UNSUPPORTED`. Before loading the library,
+`ElizaVoiceNative` sets `ELIZA_ASR_BACKEND=ggml`, the registered in-tree
+backend used by Phonon-2. For `ELIZA_ASR_THREADS`, a process value wins over
+the build-time `BuildConfig` value; the default is one thread per big core.
 
 ```sh
 bun packages/app/scripts/voice-quality/host-wer-gate.ts --librispeech /data/LibriSpeech
