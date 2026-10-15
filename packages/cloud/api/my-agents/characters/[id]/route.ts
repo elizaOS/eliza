@@ -26,7 +26,7 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id") ?? "";
-    const character = await charactersService.getByIdForUser(id, user.id);
+    const character = await charactersService.getByIdForUser(id, user);
     if (!character) {
       return c.json({ success: false, error: "Character not found" }, 404);
     }
@@ -90,11 +90,7 @@ app.put("/", async (c) => {
       avatar_url: elizaCharacter.avatarUrl ?? null,
     };
 
-    const character = await charactersService.updateForUser(
-      id,
-      user.id,
-      updates,
-    );
+    const character = await charactersService.updateForUser(id, user, updates);
     if (!character) throw NotFoundError("Character not found or access denied");
 
     const invalidations: Promise<void>[] = [
@@ -121,7 +117,7 @@ app.delete("/", async (c) => {
       userId: user.id,
     });
 
-    const character = await charactersService.getByIdForUser(id, user.id);
+    const character = await charactersService.getByIdForUser(id, user);
     if (!character) {
       return c.json(
         { success: false, error: "Character not found or access denied" },

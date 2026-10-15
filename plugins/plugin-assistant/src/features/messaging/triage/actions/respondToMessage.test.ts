@@ -26,6 +26,7 @@ import type {
 import { respondToMessageAction } from "./respondToMessage.ts";
 
 const turn = { content: { text: "Reply to the message" } } as Memory;
+const AGENT_ID = "00000000-0000-0000-0000-000000000001" as const;
 
 function messageRef(overrides: Partial<MessageRef> = {}): MessageRef {
   return {
@@ -87,7 +88,7 @@ class RecordingAdapter extends BaseMessageAdapter {
 }
 
 function runtime(): IAgentRuntime {
-  return { agentId: "00000000-0000-0000-0000-000000000001" } as IAgentRuntime;
+  return { agentId: AGENT_ID } as IAgentRuntime;
 }
 
 /** A runtime whose send policy holds every draft, recording what it held. */
@@ -162,7 +163,7 @@ describe("respondToMessageAction", () => {
   it("uses an explicit message id and sends the supplied body", async () => {
     const adapter = new RecordingAdapter();
     register(adapter);
-    getDefaultMessageRefStore().saveMessage(messageRef());
+    getDefaultMessageRefStore().saveMessage(messageRef(), AGENT_ID);
     const callbackMessages: Array<{ text?: string; action?: string }> = [];
     const callback: HandlerCallback = async (content) => {
       callbackMessages.push(content);
@@ -282,7 +283,7 @@ describe("respondToMessageAction", () => {
     async (_name, fields, expected) => {
       const adapter = new RecordingAdapter();
       register(adapter);
-      getDefaultMessageRefStore().saveMessage(messageRef(fields));
+      getDefaultMessageRefStore().saveMessage(messageRef(fields), AGENT_ID);
 
       // The policy would send directly; a generated body is held regardless.
       const { runtime: current, held } = holdingRuntime(false);
@@ -303,7 +304,7 @@ describe("respondToMessageAction", () => {
   it("refuses an omitted body when no send policy can hold the reply", async () => {
     const adapter = new RecordingAdapter();
     register(adapter);
-    getDefaultMessageRefStore().saveMessage(messageRef());
+    getDefaultMessageRefStore().saveMessage(messageRef(), AGENT_ID);
 
     const result = await respondToMessageAction.handler(
       runtime(),
@@ -346,7 +347,7 @@ describe("respondToMessageAction", () => {
   it("holds a dictated body verbatim and never swaps a refused body for an acknowledgment", async () => {
     const adapter = new RecordingAdapter();
     register(adapter);
-    getDefaultMessageRefStore().saveMessage(messageRef());
+    getDefaultMessageRefStore().saveMessage(messageRef(), AGENT_ID);
     const { runtime: currentRuntime, held } = holdingRuntime();
 
     const dictated = await respondToMessageAction.handler(
@@ -386,7 +387,7 @@ describe("respondToMessageAction", () => {
   it("queues an approval-gated reply and sends only when its executor runs", async () => {
     const adapter = new RecordingAdapter();
     register(adapter);
-    getDefaultMessageRefStore().saveMessage(messageRef());
+    getDefaultMessageRefStore().saveMessage(messageRef(), AGENT_ID);
     const currentRuntime = runtime();
     let pendingDraft: DraftRequest | undefined;
     let executor: (() => Promise<{ externalId: string }>) | undefined;
@@ -451,7 +452,7 @@ describe("respondToMessageAction", () => {
   it("sends immediately when the registered policy does not require approval", async () => {
     const adapter = new RecordingAdapter();
     register(adapter);
-    getDefaultMessageRefStore().saveMessage(messageRef());
+    getDefaultMessageRefStore().saveMessage(messageRef(), AGENT_ID);
     const currentRuntime = runtime();
     const policy: SendPolicy = {
       async shouldRequireApproval() {

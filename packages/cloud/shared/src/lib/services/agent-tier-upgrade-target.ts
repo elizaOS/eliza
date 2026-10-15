@@ -94,14 +94,27 @@ const LIVE_TARGET_STATUSES: AgentSandboxStatus[] = [
   "pending",
   "provisioning",
   "running",
+  // Keeps its container and node slot while recovery reconnects it.
+  "disconnected",
   "stopped",
   "sleeping",
   "error",
 ];
 
+/**
+ * Adopted targets that keep their container and must not be reprovisioned by
+ * adoption: a running row is already serving, and a disconnected row is owned
+ * by disconnected recovery, which reconnects it with its live state intact.
+ */
+const NON_PROVISIONING_ADOPTION_STATUSES: ReadonlySet<AgentSandboxStatus> = new Set([
+  "running",
+  "disconnected",
+]);
+
 /** Existing owner rows that can be deliberately bound without minting capacity. */
 const ADOPTABLE_UNMARKED_TARGET_STATUSES: AgentSandboxStatus[] = [
   "running",
+  "disconnected",
   "stopped",
   "sleeping",
   "error",
@@ -869,7 +882,8 @@ function adoptionError(
 
 /**
  * Atomically bind the sole existing same-owner Dedicated row to personal
- * Eliza and, when it is not already running, enqueue same-id provisioning.
+ * Eliza and, when it is not already running or disconnected (recovery owns
+ * reconnecting a disconnected container), enqueue same-id provisioning.
  * The receipt, compatibility projection, and job commit together under the canonical org/source/agent
  * lock order. Personal cutover remains a separate running-target transaction.
  */
@@ -989,7 +1003,7 @@ export async function adoptPersonalDedicatedTargetWithProvision(
           params,
         );
       }
-      if (target.status === "running") {
+      if (NON_PROVISIONING_ADOPTION_STATUSES.has(target.status)) {
         const conflict = await findActiveExclusiveLifecycleJobInTx(
           tx,
           params.organizationId,
@@ -1046,7 +1060,7 @@ export async function adoptPersonalDedicatedTargetWithProvision(
         target = updated;
       }
 
-      if (target.status === "running") {
+      if (NON_PROVISIONING_ADOPTION_STATUSES.has(target.status)) {
         attemptedResult = { agent: target, alreadyAdopted, jobCreated: false };
         return attemptedResult;
       }

@@ -199,6 +199,11 @@ export default smithers(()=><Workflow name="approval-http"><Sequence><Approval i
       }
       expect(pending.approvals).toHaveLength(1);
       const approval = pending.approvals[0];
+      const pendingExecution = await embedded!.getExecution(id);
+      const originalRequestedAt = pendingExecution.approvals?.find(
+        (entry) => entry.nodeId === 'review' && entry.iteration === approval.iteration
+      )?.requestedAt;
+      expect(originalRequestedAt).toBeTruthy();
       expect(approval.status).toBe('pending');
       expect(approval.supported).toBe(scenario.supported);
       if (scenario.supported) expect(approval.operation).toBe('Compute');
@@ -241,6 +246,9 @@ export default smithers(()=><Workflow name="approval-http"><Sequence><Approval i
       expect(dropped).toBe(true);
       const readback = await call(route);
       expect(readback.body.approvals[0].status).toBe('approved');
+      expect((await embedded!.getExecution(id)).approvals?.[0]?.requestedAt).toBe(
+        originalRequestedAt
+      );
       expect(readback.body.approvals[0].requestDigest).toBe(approval.requestDigest);
       expect(readback.body.approvals[0].decidedBy).toBe('owner');
       expect((await call(decisionRoute, decision)).status).toBe(202);
@@ -252,6 +260,9 @@ export default smithers(()=><Workflow name="approval-http"><Sequence><Approval i
       db = new PGlite(directory);
       origin = await boot();
       expect((await call(route)).body.approvals[0].status).toBe('approved');
+      expect((await embedded!.getExecution(id)).approvals?.[0]?.requestedAt).toBe(
+        originalRequestedAt
+      );
     } finally {
       await embedded?.stop();
       if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));

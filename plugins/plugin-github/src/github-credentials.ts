@@ -166,6 +166,9 @@ export interface ApplySavedTokenResult {
   username?: string;
 }
 
+/** The saved token that {@link applySavedTokenToEnv} copied into the env. */
+let envTokenFromSavedCredential: string | null = null;
+
 /**
  * Read the saved credential and copy the token into `process.env.GITHUB_TOKEN`
  * when no explicit env value is already set. Called once at runtime
@@ -185,5 +188,21 @@ export async function applySavedTokenToEnv(): Promise<ApplySavedTokenResult> {
     return { applied: false, envAlreadySet: false };
   }
   process.env.GITHUB_TOKEN = creds.token;
+  envTokenFromSavedCredential = creds.token;
   return { applied: true, envAlreadySet: false, username: creds.username };
+}
+
+/**
+ * Undo {@link applySavedTokenToEnv} when the saved credential is cleared, so
+ * `getSetting("GITHUB_TOKEN")` stops falling back to the disconnected token.
+ * A token the operator exported in the shell is not ours and is kept.
+ */
+export function clearSavedTokenFromEnv(): void {
+  if (
+    envTokenFromSavedCredential !== null &&
+    process.env.GITHUB_TOKEN === envTokenFromSavedCredential
+  ) {
+    delete process.env.GITHUB_TOKEN;
+  }
+  envTokenFromSavedCredential = null;
 }

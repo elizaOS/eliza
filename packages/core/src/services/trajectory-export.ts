@@ -128,7 +128,7 @@ function csvEscape(value: unknown): string {
 		return "";
 	}
 	const text = String(value);
-	if (!/[",\n]/.test(text)) {
+	if (!/[",\r\n]/.test(text)) {
 		return text;
 	}
 	return `"${text.replace(/"/g, '""')}"`;

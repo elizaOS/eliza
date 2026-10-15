@@ -114,7 +114,12 @@ export const draftReplyAction: Action = {
       logger.warn(`[DraftReply] ${text}`);
       return { success: false, text, error: text };
     }
-    const record = await service.draftReply(runtime, messageId, parsed.body);
+    const record = await service.draftReply(
+      runtime,
+      messageId,
+      parsed.body,
+      _message,
+    );
 
     const text = `Drafted reply on ${record.source}. Preview: ${record.preview}`;
     logger.info(

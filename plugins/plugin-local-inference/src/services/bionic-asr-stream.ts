@@ -281,8 +281,9 @@ export class BionicAsrStream {
 
 /**
  * Open a stream. Resolves `null` when the host's ASR backend cannot stream
- * (`STREAM_UNSUPPORTED`, e.g. the Qwen3-ASR pair), which is the only case a
- * caller should fall back to batch `op:"asr"`. Other failures reject.
+ * (`STREAM_UNSUPPORTED`, a host library built without the Parakeet-TDT
+ * backend), which is the only case a caller should fall back to batch
+ * `op:"asr"`. Other failures reject.
  */
 export async function openBionicAsrStream(args: {
 	socketPath: string;

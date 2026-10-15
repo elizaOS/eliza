@@ -247,13 +247,11 @@ describeIf(LIVE_SUITE_ENABLED)(
         | {
             logLlmCall?: (...args: unknown[]) => unknown;
             setEnabled?: (enabled: boolean) => void;
-            updateLatestLlmCall?: (...args: unknown[]) => unknown;
           }
         | undefined;
       if (trajectoryService) {
         trajectoryService.setEnabled?.(false);
         trajectoryService.logLlmCall = () => {};
-        trajectoryService.updateLatestLlmCall = async () => {};
       }
 
       await ensureRoom({

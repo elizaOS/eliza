@@ -11,6 +11,7 @@ import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
+import { assertCanManageApiKey } from "../../../api-keys/_lib/key-access";
 
 async function handlePOST(
   request: Request,
@@ -55,6 +56,14 @@ async function handlePOST(
         { status: 403 },
       );
     }
+
+    // The new key acts as the app's creator, and the caller receives its
+    // plaintext: only that user may regenerate it (same rule as user keys).
+    assertCanManageApiKey(
+      user,
+      { user_id: existingApp.created_by_user_id },
+      "regenerate",
+    );
 
     const newApiKey = await appsService.regenerateApiKey(id);
 
