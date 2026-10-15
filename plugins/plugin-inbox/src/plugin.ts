@@ -36,7 +36,7 @@ export const inboxPlugin: Plugin = {
     if (gmail.isAvailable()) {
       const registry = getDefaultTriageService();
       const existing = registry.getAdapter("gmail");
-      if (existing && !(existing instanceof ManagedGmailReadAdapter))
+      if (existing && !(existing instanceof ManagedGmailAdapter))
         throw new ElizaError(
           "A Gmail source is already registered. Select one owner transport before starting the agent.",
           { code: "MANAGED_GMAIL_SOURCE_CONFLICT" },
