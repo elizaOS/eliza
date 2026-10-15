@@ -836,6 +836,8 @@ function listWindows(): Array<{
     try {
       const script = `
         tell application "System Events"
+          set previousDelimiters to AppleScript's text item delimiters
+          set AppleScript's text item delimiters to linefeed
           set windowList to {}
           repeat with proc in (every process whose visible is true)
             try
@@ -844,7 +846,9 @@ function listWindows(): Array<{
               end repeat
             end try
           end repeat
-          return windowList as text
+          set serializedWindowList to windowList as text
+          set AppleScript's text item delimiters to previousDelimiters
+          return serializedWindowList
         end tell`;
       const output = execSync(`osascript -e '${script}'`, {
         encoding: "utf-8",
@@ -852,7 +856,7 @@ function listWindows(): Array<{
         stdio: ["ignore", "pipe", "ignore"],
       });
       return output
-        .split(", ")
+        .split("\n")
         .filter(Boolean)
         .map((entry) => {
           const [app, title, id] = splitWindowFields(entry);
