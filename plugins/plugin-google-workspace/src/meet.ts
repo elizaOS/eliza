@@ -469,7 +469,6 @@ function mapTranscriptEntry(entry: meet_v2.Schema$TranscriptEntry): GoogleMeetTr
     startTime: entry.startTime ?? undefined,
     endTime: entry.endTime ?? undefined,
     languageCode: entry.languageCode ?? undefined,
-    confidence: 1,
   };
 }
 

@@ -26,6 +26,7 @@ export const CORE_PLUGIN_PROFILE_METADATA: readonly CorePluginProfile[] = [
   { plugin: "@elizaos/plugin-agent-orchestrator/ui", viewEveryPlatform: true },
   { plugin: "@elizaos/plugin-inbox", viewEveryPlatform: true },
   { plugin: "@elizaos/plugin-notes", viewEveryPlatform: true },
+  { plugin: "@elizaos/plugin-maps", viewEveryPlatform: true },
   { plugin: "@elizaos/plugin-calendar", viewEveryPlatform: true },
   { plugin: "@elizaos/plugin-todos", viewEveryPlatform: true },
   { plugin: "@elizaos/plugin-native-wifi", aospCore: true },
@@ -83,6 +84,7 @@ export const CORE_PLUGINS: readonly string[] = [
 export const LEAN_CHAT_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql", // database adapter — required
   "@elizaos/plugin-local-inference", // text + embeddings + voice — required for memory + generation
+  "@elizaos/plugin-maps", // Cloud Maps tools and authenticated phone navigation
   "@elizaos/plugin-notes", // managed Cloud Notes data and capabilities
   "@elizaos/plugin-todos", // UI-free personal Todo action/provider on local PGlite
   "@elizaos/plugin-knowledge", // Knowledge CRUD/search routes exposed to hosted web clients

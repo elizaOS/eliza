@@ -35,7 +35,8 @@ function runtime(listWorkflows: () => Promise<unknown[]>): IAgentRuntime {
     agentId,
     character: { name: 'Eliza' },
     getSetting: () => undefined,
-    getRooms: async () => [],
+    getRoomsForParticipant: async () => [],
+    getRoomsByIds: async () => [],
     getTasks: async (query: { tags?: string[] }) =>
       !query.tags || query.tags.includes('trigger') ? [triggerTask] : [],
     getService: (type: string) =>

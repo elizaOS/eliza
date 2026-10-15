@@ -13,6 +13,11 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import {
+  gmailTextFragments as exactFragments,
+  gmailTextLines as exactLines,
+  readGmailTextRange,
+} from "./gmail-text-range.ts";
 
 export const GMAIL_CONTENT_HEAD_TABLE = "gmail_content_heads";
 export const GMAIL_CONTENT_SEGMENT_TABLE = "gmail_content_segments";
@@ -82,35 +87,6 @@ const SHA_PATTERN = /^[0-9a-f]{64}$/u;
 
 function digest(value: string | Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
-}
-
-function exactLines(text: string): string[] {
-  if (!text) return [];
-  const result: string[] = [];
-  let start = 0;
-  for (let index = 0; index < text.length; index += 1) {
-    const code = text.charCodeAt(index);
-    if (code !== 10 && code !== 13) continue;
-    if (code === 13 && text.charCodeAt(index + 1) === 10) index += 1;
-    result.push(text.slice(start, index + 1));
-    start = index + 1;
-  }
-  if (start < text.length) result.push(text.slice(start));
-  return result;
-}
-
-function exactFragments(text: string): string[] {
-  const fragments: string[] = [];
-  let current = "";
-  for (const line of exactLines(text)) {
-    current += line;
-    if (line.replace(/[\r\n]/gu, "").trim().length === 0) {
-      fragments.push(current);
-      current = "";
-    }
-  }
-  if (current) fragments.push(current);
-  return fragments;
 }
 
 function unitRanges(text: string, unit: "line" | "fragment"): UnitRange[] {
@@ -557,38 +533,18 @@ export async function readGmailContentPage(args: {
     }
     return { descriptor, text };
   });
-  let text = "";
-  let pageEnd = requestedEnd;
-  if (args.unit === "byte") {
-    const joined = encoder.encode(ordered.map((entry) => entry.text).join(""));
-    const base = descriptors[0]?.byteStart ?? args.offset;
-    const localStart = args.offset - base;
-    let localEnd = localStart + (requestedEnd - args.offset);
-    if (localStart < joined.length && (joined[localStart] & 0xc0) === 0x80) {
-      throw new ElizaError("Gmail byte range splits a UTF-8 code point", {
-        code: "GMAIL_READ_INVALID_UTF8_BOUNDARY",
-      });
-    }
-    while (
-      localEnd > localStart &&
-      localEnd < joined.length &&
-      (joined[localEnd] & 0xc0) === 0x80
-    ) {
-      localEnd -= 1;
-    }
-    if (localEnd === localStart && args.offset < manifest.byteLength) {
-      throw new ElizaError("Gmail byte limit is too small for the next UTF-8 code point", {
-        code: "GMAIL_READ_LIMIT_SPLITS_CODE_POINT",
-      });
-    }
-    pageEnd = base + localEnd;
-    text = decoder.decode(joined.subarray(localStart, localEnd));
-  } else {
-    const joined = ordered.map((entry) => entry.text).join("");
-    const values = args.unit === "line" ? exactLines(joined) : exactFragments(joined);
-    const base = descriptors[0]?.[`${args.unit}Start`] ?? args.offset;
-    text = values.slice(args.offset - base, requestedEnd - base).join("");
-  }
+  const joined = ordered.map((entry) => entry.text).join("");
+  const key =
+    args.unit === "byte" ? "byteStart" : args.unit === "line" ? "lineStart" : "fragmentStart";
+  const base = descriptors[0]?.[key] ?? args.offset;
+  const page = readGmailTextRange(
+    joined,
+    args.unit,
+    args.offset - base,
+    requestedEnd - args.offset
+  );
+  const text = page.text,
+    pageEnd = base + page.end;
   if (args.limit !== undefined && encoder.encode(text).length > GMAIL_CONTENT_SEGMENT_MAX_BYTES) {
     throw new ElizaError("Gmail unit page exceeds the 64 KiB result bound", {
       code: "GMAIL_READ_UNIT_TOO_LARGE",

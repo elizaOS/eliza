@@ -364,12 +364,14 @@ export class InboxRepository {
   }
 
   async getBySourceMessageId(
+    source: string,
     sourceMessageId: string,
   ): Promise<TriageEntry | null> {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT * FROM app_inbox.life_inbox_triage_entries
        WHERE source_message_id = ${sqlText(sourceMessageId)}
+         AND source = ${sqlText(source)}
          AND agent_id = ${sqlText(this.agentId)}
        LIMIT 1`,
     );
@@ -378,6 +380,7 @@ export class InboxRepository {
   }
 
   async getBySourceMessageIds(
+    source: string,
     sourceMessageIds: string[],
   ): Promise<Set<string>> {
     if (sourceMessageIds.length === 0) return new Set();
@@ -386,6 +389,7 @@ export class InboxRepository {
       this.runtime,
       `SELECT source_message_id FROM app_inbox.life_inbox_triage_entries
        WHERE agent_id = ${sqlText(this.agentId)}
+         AND source = ${sqlText(source)}
          AND source_message_id IN (${inClause})`,
     );
     return new Set(rows.map((r) => toText(r.source_message_id)));

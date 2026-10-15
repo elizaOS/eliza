@@ -1,5 +1,5 @@
-// Device qualification for the shipped mobile voice: Paradee-8M TTS and the
-// Qwen3-ASR-0.6B pair on libelizainference, through the :paradee-voice
+// Device qualification for the shipped mobile voice: Paradee-8M TTS and
+// Phonon-2 ASR on libelizainference, through the :paradee-voice
 // library only (no ONNX, no platform recognizer, no network, no agent).
 pluginManagement {
     repositories {

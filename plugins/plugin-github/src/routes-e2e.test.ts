@@ -30,7 +30,9 @@ const {
   loadMetadata,
   buildCredentialsFromUserResponse,
   saveCredentials,
+  applySavedTokenToEnv,
 } = await import("./github-credentials.ts");
+const { GitHubService } = await import("./services/github-service.ts");
 
 const servers: http.Server[] = [];
 const realFetch = globalThis.fetch;
@@ -494,3 +496,65 @@ it.each(["timeout", "disconnect"])(
   },
   20_000,
 );
+
+it("disconnecting stops a saved token that startup copied into the environment", async () => {
+  const priorEnvToken = process.env.GITHUB_TOKEN;
+  delete process.env.GITHUB_TOKEN;
+  try {
+    await saveCredentials(
+      buildCredentialsFromUserResponse(
+        "saved-settings-token",
+        { login: "owner", id: 1 } as never,
+        ["repo"],
+      ),
+    );
+    // Runtime bootstrap (dev-server) copies the saved token into the env.
+    expect((await applySavedTokenToEnv()).applied).toBe(true);
+
+    // The host builds the character secrets from the environment at startup.
+    const runtime = new AgentRuntime({
+      character: {
+        name: "GitHub route fixture",
+        secrets: { GITHUB_TOKEN: process.env.GITHUB_TOKEN ?? "" },
+      },
+      logLevel: "fatal",
+    });
+    registerHttpPluginRoutes(runtime, githubPlugin);
+    const service = (await GitHubService.start(runtime)) as InstanceType<
+      typeof GitHubService
+    >;
+    const getService = runtime.getService.bind(runtime);
+    runtime.getService = ((type: string) =>
+      type === "github"
+        ? service
+        : getService(type)) as typeof runtime.getService;
+    expect(service.getOctokit({ role: "user" })).not.toBeNull();
+
+    const server = http_.createServer(async (req, res) => {
+      await tryHandleHonoRuntimeRoute({
+        req,
+        res,
+        runtime,
+        isAuthorized: () => true,
+      });
+    });
+    servers.push(server);
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    const del = await fetch(`http://127.0.0.1:${port}${TOKEN_PATH}`, {
+      method: "DELETE",
+    });
+    expect(del.status).toBe(200);
+
+    // Without a restart, the disconnected token is gone everywhere: the running
+    // service, the runtime setting, and the env that spawned gh/git inherit.
+    expect(process.env.GITHUB_TOKEN).toBeUndefined();
+    expect(runtime.getSetting("GITHUB_TOKEN")).toBeFalsy();
+    expect(service.getOctokit({ role: "user" })).toBeNull();
+  } finally {
+    if (priorEnvToken === undefined) delete process.env.GITHUB_TOKEN;
+    else process.env.GITHUB_TOKEN = priorEnvToken;
+  }
+});

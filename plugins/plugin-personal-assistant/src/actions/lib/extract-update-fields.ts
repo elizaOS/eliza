@@ -108,7 +108,7 @@ function parseStructuredRecord(raw: string): Record<string, unknown> | null {
 
 function parseTimeOfDay(value: string): string | null {
   const normalized = value.trim().toLowerCase();
-  const hhmmMatch = normalized.match(/\b(\d{1,2}):(\d{2})\b/);
+  const hhmmMatch = normalized.match(/\b(\d{1,2}):(\d{2})\b(?!\s*(?:am|pm)\b)/);
   if (hhmmMatch) {
     const hour = Number(hhmmMatch[1]);
     const minute = Number(hhmmMatch[2]);

@@ -235,7 +235,11 @@ class PolicyEngine {
 	}
 
 	recordPick(provider: string, modelType: string): void {
-		this.statsFor(provider).lastPicked.set(modelType, Date.now());
+		let pickedAt = Date.now();
+		for (const stats of this.stats.values()) {
+			pickedAt = Math.max(pickedAt, (stats.lastPicked.get(modelType) ?? 0) + 1);
+		}
+		this.statsFor(provider).lastPicked.set(modelType, pickedAt);
 	}
 
 	p50(provider: string, modelType: string): number | null {

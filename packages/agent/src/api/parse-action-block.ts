@@ -201,7 +201,11 @@ function toCoordinationResponse(
     reasoning: typeof parsed.reasoning === "string" ? parsed.reasoning : "",
   };
   if (parsed.action === "respond") {
-    if (parsed.useKeys && Array.isArray(parsed.keys)) {
+    if (
+      parsed.useKeys === true &&
+      Array.isArray(parsed.keys) &&
+      parsed.keys.length > 0
+    ) {
       result.useKeys = true;
       result.keys = parsed.keys.map(String);
     } else if (typeof parsed.response === "string") {
