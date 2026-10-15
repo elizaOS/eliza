@@ -6,6 +6,11 @@
  * two sides cannot drift (#12409, parent #12093).
  */
 
+import {
+  type ProviderRateLimit,
+  parseProviderRateLimit,
+} from "@elizaos/core/protocol";
+
 /**
  * In-flight assistant-turn status, surfaced to the UI as an additive SSE
  * `{ type: "status", ... }` event so the chat can show what the agent is *doing*
@@ -122,6 +127,12 @@ export interface ChatTerminalFailure {
   message: string;
   transient: boolean;
   code?: string;
+  /**
+   * Present only on the live reply when `kind` is `rate_limited` and the
+   * provider reported a wait. `retryAfterMs` is the provider's wait at the
+   * time the request failed; replays and history omit it.
+   */
+  rateLimit?: ProviderRateLimit;
 }
 
 /**
@@ -173,11 +184,16 @@ export function parseChatTerminalFailure(
   ) {
     return undefined;
   }
+  const rateLimit =
+    kind === "rate_limited"
+      ? parseProviderRateLimit(record.rateLimit)
+      : undefined;
   return {
     kind,
     message: record.message,
     transient: record.transient,
     ...(record.code ? { code: record.code } : {}),
+    ...(rateLimit ? { rateLimit } : {}),
   };
 }
 

@@ -6,10 +6,10 @@
  * lexicon (`tts/paradee/`), the eSpeak NG English data misaki uses for words
  * outside the lexicon (`tts/paradee/espeak-ng-data/`, staged after and inside
  * `tts/paradee/`), the ASR model (`asr/`) and Silero VAD (`vad/`).
- * `asr/` holds Phonon-2 (Parakeet-TDT, batch + streaming) by default, or the
- * Qwen3-ASR-0.6B text + mmproj pair with `ELIZA_ASR_BACKEND=qwen3`; switching
- * the backend re-stages `asr/` with the other rows. Every file runs on
- * libelizainference; nothing here is ONNX.
+ * `asr/` holds Phonon-2 (Parakeet-TDT, batch + streaming), the only local ASR.
+ * An `asr/` group staged with other rows (the retired Qwen3-ASR pair) is
+ * re-staged with Phonon-2. Every file runs on libelizainference; nothing here
+ * is ONNX.
  *
  * Each group is staged into `<dir>.staging/`, verified (size + sha256), and
  * published with one rename, so a reader sees the whole group or nothing.
@@ -42,11 +42,9 @@ import {
 } from "./aosp-network-admission.js";
 import {
   isPublishedMobileVoiceFile,
-  type MobileAsrBackend,
+  MOBILE_ASR_ROLES,
   type MobileVoiceFile,
   type MobileVoiceFileRole,
-  mobileAsrBackend,
-  mobileAsrRoles,
   mobileVoiceBundle,
 } from "./model-catalog/voice-models.js";
 import { downloadHttpModel } from "./shared/http-model-download.js";
@@ -76,23 +74,15 @@ export const AOSP_ESPEAK_GROUP: AospVoiceGroup = {
 };
 
 /**
- * The groups to stage for an ASR backend. Order: the voice the user hears
- * first, then VAD, then ASR (330 MB Phonon-2, or the 1 GB Qwen3-ASR pair).
+ * The groups to stage. Order: the voice the user hears first, then VAD, then
+ * ASR (the 330 MB Phonon-2 GGUF).
  */
-export function aospVoiceGroups(
-  backend: MobileAsrBackend = mobileAsrBackend(),
-): ReadonlyArray<AospVoiceGroup> {
-  return [
-    { dir: "tts/paradee", roles: ["tts", "g2p-lexicon"] },
-    AOSP_ESPEAK_GROUP,
-    { dir: "vad", roles: ["vad"] },
-    { dir: "asr", roles: mobileAsrRoles(backend) },
-  ];
-}
-
-/** The default groups (Phonon-2 ASR). Use `aospVoiceGroups()` to honour ELIZA_ASR_BACKEND. */
-export const AOSP_VOICE_GROUPS: ReadonlyArray<AospVoiceGroup> =
-  aospVoiceGroups("parakeet");
+export const AOSP_VOICE_GROUPS: ReadonlyArray<AospVoiceGroup> = [
+  { dir: "tts/paradee", roles: ["tts", "g2p-lexicon"] },
+  AOSP_ESPEAK_GROUP,
+  { dir: "vad", roles: ["vad"] },
+  { dir: "asr", roles: MOBILE_ASR_ROLES },
+];
 
 /** Name of the per-group record written next to the staged files. */
 export const AOSP_VOICE_RECORD = "voice-files.json";
@@ -261,11 +251,15 @@ export function readAospVoiceGroupRecordIds(
   );
 }
 
-/** `id` and `path` of each row in a staged group's record, or null without a valid record. */
+/** `id`, `path` and `role` of each row in a staged group's record, or null without a valid record. */
 function readAospVoiceGroupRecordRows(
   groupDir: string,
   group: AospVoiceGroup,
-): Array<{ id: string; path: string | undefined }> | null {
+): Array<{
+  id: string;
+  path: string | undefined;
+  role: string | undefined;
+}> | null {
   try {
     const record = JSON.parse(
       readFileSync(path.join(groupDir, AOSP_VOICE_RECORD), "utf8"),
@@ -283,10 +277,15 @@ function readAospVoiceGroupRecordRows(
       return {
         id: r.id,
         path: typeof r.path === "string" ? r.path : undefined,
+        role: typeof r.role === "string" ? r.role : undefined,
       };
     });
     return rows.every((row) => typeof row.id === "string")
-      ? (rows as Array<{ id: string; path: string | undefined }>)
+      ? (rows as Array<{
+          id: string;
+          path: string | undefined;
+          role: string | undefined;
+        }>)
       : null;
   } catch {
     // error-policy:J3 an unreadable or missing record is "no record"; the
@@ -298,7 +297,7 @@ function readAospVoiceGroupRecordRows(
 /**
  * True when `<bundleRoot>/<group.dir>` is absent, or holds a recorded set of
  * rows other than the one this group stages now (for example `asr/` staged
- * with the Qwen3-ASR pair while the selected backend is parakeet, or a row
+ * with the retired Qwen3-ASR pair before Phonon-2 became the only ASR, or a row
  * whose staged file name changed, such as `paradee-8m-v1.0.gguf` before it
  * became `paradee-8m-v1_0.gguf`).
  */
@@ -391,7 +390,7 @@ export async function stageAospVoiceGroup(
       reason: `${group.dir} is staged only after ${group.requires}`,
     };
   }
-  // A group staged with other rows (the ASR backend changed) is replaced
+  // A group staged with other rows (the retired ASR pair) is replaced
   // after the new rows are staged and verified, never edited in place.
   const replacing =
     existsSync(finalDir) &&
@@ -456,8 +455,8 @@ export async function stageAospVoiceGroup(
       const stat = lstatSync(target, { bigint: true });
       // The bootstrap re-runs this for every group whenever any group is
       // missing (and on each TTS request until tts/paradee/ lands), so a
-      // file already hashed in this process is not re-hashed (the ASR pair is
-      // ~1 GB) unless its inode, size, mtime or ctime changed.
+      // file already hashed in this process is not re-hashed (the Phonon-2
+      // GGUF is 330 MB) unless its inode, size, mtime or ctime changed.
       const signature = `${pin.sha256}:${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`;
       if (verifiedExistingFiles.get(target) === signature) continue;
       verifiedExistingFiles.delete(target);
@@ -474,6 +473,9 @@ export async function stageAospVoiceGroup(
     }
     return { status: "present", dir: finalDir };
   }
+  const removeStaging =
+    options.removeStaging ??
+    ((dir: string) => rmSync(dir, { recursive: true, force: true }));
   const plan: Array<{
     file: MobileVoiceFile;
     pin: AospVoicePin;
@@ -505,9 +507,6 @@ export async function stageAospVoiceGroup(
     plan.push({ file, pin, localPath });
   }
   const stagingDir = `${finalDir}.staging`;
-  const removeStaging =
-    options.removeStaging ??
-    ((dir: string) => rmSync(dir, { recursive: true, force: true }));
   removeStaging(stagingDir);
   mkdirSync(stagingDir, { recursive: true });
   try {
@@ -567,18 +566,10 @@ export async function stageAospVoiceGroup(
   }
 }
 
-/**
- * Absolute path of the staged ASR model for the selected backend: the
- * Phonon-2 GGUF for parakeet, the Qwen3-ASR text GGUF for qwen3.
- */
-export function aospAsrModelPath(
-  bundleRoot: string,
-  backend: MobileAsrBackend = mobileAsrBackend(),
-): string {
-  const role: MobileVoiceFileRole =
-    backend === "qwen3" ? "asr-text" : "asr-parakeet";
-  const file = aospVoiceFiles().find((f) => f.role === role);
-  if (!file) throw new Error(`[aosp-voice] no ${role} row`);
+/** Absolute path of the staged Phonon-2 ASR GGUF. */
+export function aospAsrModelPath(bundleRoot: string): string {
+  const file = aospVoiceFiles().find((f) => f.role === "asr-parakeet");
+  if (!file) throw new Error("[aosp-voice] no asr-parakeet row");
   return path.join(bundleRoot, file.path);
 }
 

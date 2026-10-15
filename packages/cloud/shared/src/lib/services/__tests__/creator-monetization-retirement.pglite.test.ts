@@ -476,7 +476,7 @@ test(
     const { agentMonetizationService } = await import("../agent-monetization");
     const { CreatorMonetizationRetiredError } = await import("../creator-monetization-retirement");
     await expect(
-      agentMonetizationService.updateSettings(agent.id, account.user.id, {
+      agentMonetizationService.updateSettings(agent.id, account.user, {
         markupPercentage: 250,
       }),
     ).rejects.toBeInstanceOf(CreatorMonetizationRetiredError);
@@ -488,7 +488,7 @@ test(
 
     // A zero markup is not the retired surcharge and is still accepted.
     await expect(
-      agentMonetizationService.updateSettings(agent.id, account.user.id, {
+      agentMonetizationService.updateSettings(agent.id, account.user, {
         markupPercentage: 0,
       }),
     ).resolves.toMatchObject({ success: true });

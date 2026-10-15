@@ -5,7 +5,8 @@
  * runtime authorize against that cached `user_id` / `organization_id`. Both
  * transfer paths — claiming an affiliate character and migrating an anonymous
  * session (in place and into an existing account) — write the owner columns
- * directly, so each must evict the cached row and the cached runtime.
+ * directly, so each must evict the cached row and the cached runtime. Deleting
+ * an agent deletes its linked character, which must leave the cache as well.
  *
  * Real services and schema on PGlite with the in-memory Redis adapter; only
  * the runtime-factory eviction hook is replaced by a recorder.
@@ -52,12 +53,14 @@ type ClientModule = typeof import("../../../db/client");
 type CharactersModule = typeof import("../characters");
 type SessionModule = typeof import("../../session");
 type InvitesModule = typeof import("../invites");
+type DeletionModule = typeof import("../eliza-sandbox/lifecycle/deletion");
 
 let dbWrite: ClientModule["dbWrite"];
 let closeDatabaseConnectionsForTests: ClientModule["closeDatabaseConnectionsForTests"] | undefined;
 let charactersService: CharactersModule["charactersService"];
 let migrateAnonymousSession: SessionModule["migrateAnonymousSession"];
 let invitesService: InvitesModule["invitesService"];
+let SandboxDeletion: DeletionModule["SandboxDeletion"];
 let schemaFailure = "";
 const evictedRuntimes: string[] = [];
 let seq = 0;
@@ -111,19 +114,27 @@ async function insertCharacter(userId: string, organizationId: string): Promise<
 
 beforeAll(async () => {
   try {
-    const [clientModule, charactersModule, sessionModule, registryModule, invitesModule] =
-      await Promise.all([
-        import("../../../db/client"),
-        import("../characters"),
-        import("../../session"),
-        import("../../eliza/runtime-cache-registry"),
-        import("../invites"),
-      ]);
+    const [
+      clientModule,
+      charactersModule,
+      sessionModule,
+      registryModule,
+      invitesModule,
+      deletionModule,
+    ] = await Promise.all([
+      import("../../../db/client"),
+      import("../characters"),
+      import("../../session"),
+      import("../../eliza/runtime-cache-registry"),
+      import("../invites"),
+      import("../eliza-sandbox/lifecycle/deletion"),
+    ]);
     dbWrite = clientModule.dbWrite;
     closeDatabaseConnectionsForTests = clientModule.closeDatabaseConnectionsForTests;
     charactersService = charactersModule.charactersService;
     migrateAnonymousSession = sessionModule.migrateAnonymousSession;
     invitesService = invitesModule.invitesService;
+    SandboxDeletion = deletionModule.SandboxDeletion;
     registryModule.registerRuntimeCacheActions({
       invalidateRuntime: async (agentId) => {
         evictedRuntimes.push(agentId);
@@ -344,5 +355,36 @@ describe("character ownership transfers evict the cached owner", () => {
         .where(eq(conversations.id, conversation.id));
       expect(moved.organization_id).toBe(invitingOrg);
     });
+  });
+});
+
+describe("agent deletion evicts the linked character", () => {
+  test("executeDeletion: getById no longer serves the deleted character", async () => {
+    const orgId = await insertOrganization("deleted-agent");
+    const userId = await insertUser({ organizationId: orgId, stewardUserId: `owner-${seq}` });
+    const characterId = await insertCharacter(userId, orgId);
+    expect((await charactersService.getById(characterId))?.id).toBe(characterId);
+
+    // Only the sandbox teardown is replaced; the linked character cleanup
+    // after it runs against the real service and schema.
+    const deletion = new SandboxDeletion({
+      getAgentForWrite: async () => undefined,
+    } as never);
+    spyOn(deletion, "deleteAgent").mockResolvedValue({
+      success: true,
+      rowDeleted: true,
+      deletedSandbox: { character_id: characterId, agent_config: {} },
+    } as never);
+
+    const result = await deletion.executeDeletion("agent-1", orgId);
+
+    expect(result.rowDeleted).toBe(true);
+    const [row] = await dbWrite
+      .select({ id: userCharacters.id })
+      .from(userCharacters)
+      .where(eq(userCharacters.id, characterId));
+    expect(row).toBeUndefined();
+    expect(await charactersService.getById(characterId)).toBeUndefined();
+    expect(evictedRuntimes).toContain(characterId);
   });
 });

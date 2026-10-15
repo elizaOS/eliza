@@ -136,6 +136,14 @@ function egressLimitResponse(
   };
 }
 
+/**
+ * Stream the upstream body and charge the org's monthly bucket for the bytes
+ * sent. The known Content-Length is reserved before the first byte; whatever
+ * part of it is not sent is released when the stream ends, fails, or is
+ * cancelled by a client that disconnects. A cancelled download is resumed with
+ * a Range request that reserves its own remainder, so keeping the unsent part
+ * would charge the same file again on every resume.
+ */
 function streamWithEgressAccounting(args: {
   body: ReadableStream<Uint8Array>;
   quota: HfProxyEgressQuotaStore;
@@ -147,11 +155,39 @@ function streamWithEgressAccounting(args: {
   path: string;
   status: number;
   cacheStatus: string | null;
+  waitUntil?: (promise: Promise<unknown>) => void;
 }): ReadableStream<Uint8Array> {
+  const reader = args.body.getReader();
   let bytes = 0;
-  return args.body.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      async transform(chunk, controller) {
+  let settled: Promise<void> | null = null;
+  const settle = (): Promise<void> => {
+    settled ??= (async () => {
+      const excess = args.reservedBytes - bytes;
+      if (excess > 0) {
+        await args.quota.release(args.organizationId, args.month, excess);
+      }
+      logger.info("[hf-proxy] egress metric", {
+        organizationId: args.organizationId,
+        repo: args.repo,
+        path: args.path,
+        bytes,
+        status: args.status,
+        cacheStatus: args.cacheStatus,
+        cacheHit: cacheHit(args.cacheStatus),
+      });
+    })();
+    args.waitUntil?.(settled);
+    return settled;
+  };
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value: chunk } = await reader.read();
+        if (done) {
+          await settle();
+          controller.close();
+          return;
+        }
         const nextBytes = bytes + chunk.byteLength;
         if (nextBytes > args.reservedBytes) {
           const decision = await args.quota.reserve(
@@ -167,26 +203,19 @@ function streamWithEgressAccounting(args: {
           }
           args.reservedBytes = nextBytes;
         }
-        bytes += chunk.byteLength;
+        bytes = nextBytes;
         controller.enqueue(chunk);
-      },
-      async flush() {
-        const excess = args.reservedBytes - bytes;
-        if (excess > 0) {
-          await args.quota.release(args.organizationId, args.month, excess);
-        }
-        logger.info("[hf-proxy] egress metric", {
-          organizationId: args.organizationId,
-          repo: args.repo,
-          path: args.path,
-          bytes,
-          status: args.status,
-          cacheStatus: args.cacheStatus,
-          cacheHit: cacheHit(args.cacheStatus),
-        });
-      },
-    }),
-  );
+      } catch (error) {
+        await reader.cancel(error).catch(() => undefined);
+        await settle();
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason).catch(() => undefined);
+      await settle();
+    },
+  });
 }
 
 app.get("/*", async (c) => {
@@ -367,6 +396,7 @@ app.get("/*", async (c) => {
       if (value) responseHeaders.set(name, value);
     }
 
+    const streamCtx = getGenerativeExecutionContext(c);
     const body = upstreamResponse.body
       ? streamWithEgressAccounting({
           body: upstreamResponse.body,
@@ -379,6 +409,7 @@ app.get("/*", async (c) => {
           path,
           status: upstreamResponse.status,
           cacheStatus: cacheStatus(upstreamResponse.headers),
+          waitUntil: streamCtx && ((promise) => streamCtx.waitUntil(promise)),
         })
       : null;
 

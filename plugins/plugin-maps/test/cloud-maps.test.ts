@@ -45,6 +45,7 @@ type Request = {
   path: string;
   body: unknown;
   authorization: string | null;
+  requestId: string | null;
   url: string;
 };
 
@@ -61,6 +62,7 @@ function cloud(answer: (request: Request) => Response) {
           url: url.href,
           body: init?.body ? JSON.parse(String(init.body)) : undefined,
           authorization: new Headers(init?.headers).get("authorization"),
+          requestId: new Headers(init?.headers).get("Idempotency-Key"),
         };
         requests.push(request);
         return answer(request);
@@ -121,6 +123,7 @@ describe("ElizaCloudMapsAdapter", () => {
     expect(requests).toEqual([
       {
         path: "/api/v1/maps/places/search",
+        requestId: expect.stringMatching(/^[a-f0-9-]{36}$/),
         url: "https://api.example.test/api/v1/maps/places/search",
         body: { query: "Casino", near: CASINO, limit: 5 },
         authorization: "Bearer eliza_test_key",
@@ -186,10 +189,28 @@ describe("ElizaCloudMapsAdapter", () => {
     });
   });
 
+  it("assigns a distinct request ID per explicit operation, without automatic replay", async () => {
+    const { adapter, requests } = cloud(() =>
+      Response.json({
+        providerId: "eliza-cloud-osm",
+        attribution: ELIZA_CLOUD_MAPS_ATTRIBUTION,
+        places: [PLACE],
+      }),
+    );
+    await adapter.searchPlaces({ query: "Casino" });
+    await adapter.searchPlaces({ query: "Casino" });
+    expect(requests).toHaveLength(2);
+    expect(requests[0]?.requestId).toMatch(/^[a-f0-9-]{36}$/);
+    expect(requests[1]?.requestId).not.toBe(requests[0]?.requestId);
+  });
   it.each([
     [422, "unsupported_region", "MAPS_UNSUPPORTED_REGION"],
     [422, "no_route", "MAPS_NOT_FOUND"],
     [403, "subscription_required", "MAPS_NOT_ENTITLED"],
+    [503, "maps_allowance_unconfigured", "MAPS_ALLOWANCE_UNCONFIGURED"],
+    [503, "maps_admission_unknown", "MAPS_ADMISSION_UNKNOWN"],
+    [409, "maps_request_already_admitted", "MAPS_REQUEST_ALREADY_ADMITTED"],
+    [429, "allowance_exhausted", "MAPS_BUDGET_EXHAUSTED"],
     [503, "maps_not_configured", "MAPS_PROVIDER_UNAVAILABLE"],
     [503, "provider_unavailable", "MAPS_PROVIDER_FAILURE"],
   ])(

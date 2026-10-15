@@ -517,7 +517,8 @@ export class InboxUnsubscribeService {
         );
         filterCreated = true;
         filterId = filter.filterId;
-        status = "succeeded";
+        // A filter hides later mail; it does not undo a failed unsubscribe.
+        if (status !== "failed") status = "succeeded";
       }
 
       if (request.trashExisting) {
@@ -526,7 +527,7 @@ export class InboxUnsubscribeService {
           await this.gmail.trashGmailThread(accountId, threadId);
           threadsTrashed += 1;
         }
-        if (threadIds.length > 0) {
+        if (threadIds.length > 0 && status !== "failed") {
           status = "succeeded";
         }
       }

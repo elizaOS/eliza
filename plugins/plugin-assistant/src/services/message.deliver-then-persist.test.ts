@@ -43,7 +43,7 @@ import {
 } from "./message.ts";
 
 /** The Stage-1 HANDLE_RESPONSE tool-call envelope a live model emits. */
-function stage1DirectReply(replyText: string) {
+function stage1DirectReply(replyText: string, nativeParts = false) {
   return {
     text: "",
     toolCalls: [
@@ -56,7 +56,9 @@ function stage1DirectReply(replyText: string) {
           contexts: ["simple"],
           intents: [],
           candidateActionNames: [],
-          replyText,
+          replyText: nativeParts
+            ? [{ kind: "text", value: replyText }]
+            : replyText,
           facts: [],
           relationships: [],
           addressedTo: [],
@@ -128,6 +130,8 @@ async function createHarness(opts: HarnessOptions = {}) {
       await opts.beforeStage1Return?.(runtime);
       return stage1DirectReply(
         invocation === 1 ? replyText : followUpReplyText,
+        params.tools?.find((tool) => tool.name === "HANDLE_RESPONSE")
+          ?.parameters?.properties?.replyText?.type === "array",
       );
     },
     "deterministic-test",

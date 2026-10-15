@@ -387,7 +387,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: "24.15.0"
 
@@ -1035,7 +1035,7 @@ jobs:
               checkout --force --detach FETCH_HEAD \
             || { echo "::error::git checkout (working-tree materialization) timed out or failed after ${CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS}s"; exit 1; }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: "24.15.0"
 
@@ -2559,7 +2559,7 @@ jobs:
           echo "run_attempt=$PRODUCER_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
           echo "source_sha=$PRODUCER_SOURCE_SHA" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: "24.15.0"
 
@@ -2782,7 +2782,7 @@ jobs:
               checkout --force --detach FETCH_HEAD \
             || { echo "::error::git checkout (working-tree materialization) timed out or failed after ${CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS}s"; exit 1; }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: "24.15.0"
 
@@ -2823,7 +2823,7 @@ jobs:
           echo "name=pages-app-${PRODUCER_RUN_ID}-${PRODUCER_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
 
       - name: Download immutable app artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: ${{ steps.pages-artifact.outputs.name }}
           path: ${{ env.CHECKOUT_DIR }}/packages/app
@@ -3279,7 +3279,7 @@ jobs:
           show-progress: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: "24.15.0"
 
@@ -3338,7 +3338,7 @@ jobs:
           submodules: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: "24.15.0"
 
@@ -3362,7 +3362,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Download exact Pages deployment authority
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: ${{ needs.deploy-app.outputs.pages_authority_artifact }}
           path: ${{ runner.temp }}/deployed-renderer-proof-${{ github.run_id }}-${{ github.run_attempt }}/authority

@@ -50,8 +50,9 @@ test("target scope owns every graph row and leaves the importing adapter unchang
     ]);
     await scoped.createEntities([{ id: entity, agentId: target, names: ["Imported entity"] }]);
   });
-  expect((await adapter.getWorld(world))?.agentId).toBe(target);
+  expect(await adapter.getWorld(world)).toBeNull();
   await adapter.withAgentScope(target, async (scoped) => {
+    expect((await scoped.getWorld(world))?.agentId).toBe(target);
     expect((await scoped.getRoomsByIds([room]))[0]?.agentId).toBe(target);
     expect((await scoped.getEntitiesByIds([entity]))[0]?.agentId).toBe(target);
   });

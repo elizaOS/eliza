@@ -160,7 +160,6 @@ type TopupBody = {
   walletAddress?: string;
   ref?: string;
   referral_code?: string;
-  appOwnerId?: string;
 };
 
 function readEnvString(env: TopupEnv, key: string): string | undefined {
@@ -431,12 +430,13 @@ export function createTopupHandler(options: CreateTopupHandlerOptions) {
       new URL(req.url).searchParams.get("referral_code") ||
       body.ref ||
       body.referral_code;
-    const appOwnerId = new URL(req.url).searchParams.get("appOwnerId") || body.appOwnerId;
 
-    if (ref && user) {
-      const result = await referralsService.applyReferralCode(user.id, organizationId, ref, {
-        appOwnerId: appOwnerId || undefined,
-      });
+    // A referral binds the recipient's future purchases to a revenue split for
+    // good, so only the recipient may accept one: the unsigned branch credits a
+    // wallet named in the body, which anyone can name. The app owner share is
+    // never taken from the request.
+    if (ref && user && signedRecipient) {
+      const result = await referralsService.applyReferralCode(user.id, organizationId, ref);
       if (result.success) {
         logger.info(`[x402] Successfully applied referral code ${ref} to user ${user.id}`);
       }

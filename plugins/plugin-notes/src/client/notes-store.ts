@@ -204,7 +204,7 @@ export class NotesStore {
     if (op.type === "notes_read_selected")
       result.fields = notesFields({
         title: original.title,
-        body: original.body,
+        body: original.body === undefined ? "" : original.body,
       });
     if (op.type === "notes_update") {
       const next: NoteRecord = { ...original, ...op.fields };

@@ -47,9 +47,12 @@ export class ConfidenceDecayManager {
     const halfLives = decayTime / specificConfig.halfLife;
     const decayFactor = 0.5 ** halfLives;
 
-    // Apply decay but respect minimum
+    // A decay floor must not raise confidence below that floor.
     const decayedConfidence = experience.confidence * decayFactor;
-    return Math.max(specificConfig.minConfidence, decayedConfidence);
+    return Math.min(
+      experience.confidence,
+      Math.max(specificConfig.minConfidence, decayedConfidence),
+    );
   }
 
   /**
@@ -142,9 +145,12 @@ export class ConfidenceDecayManager {
         const decayTime = age - specificConfig.decayStartDelay;
         const halfLives = decayTime / specificConfig.halfLife;
         const decayFactor = 0.5 ** halfLives;
-        confidence = Math.max(
-          specificConfig.minConfidence,
-          experience.confidence * decayFactor,
+        confidence = Math.min(
+          experience.confidence,
+          Math.max(
+            specificConfig.minConfidence,
+            experience.confidence * decayFactor,
+          ),
         );
       }
 

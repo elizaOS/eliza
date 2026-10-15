@@ -116,8 +116,8 @@ async function handlePOST(c: AppContext): Promise<Response> {
 
   // Replay dedupe on the Stripe event id (matches the main stripe/webhook and
   // crypto webhooks). Stripe delivers at-least-once; without this a re-delivered
-  // `account.updated` reapplies capability/status writes. The mutation below is
-  // synchronous (no queue), so a committed marker with no rollback is safe.
+  // `account.updated` reapplies capability/status writes. The marker is removed
+  // when applying the event fails, so Stripe's retry applies it.
   const dedupe = await webhookEventsRepository.tryCreate({
     event_id: `stripe-connect:${event.id}`,
     provider: "stripe-connect",
@@ -134,15 +134,44 @@ async function handlePOST(c: AppContext): Promise<Response> {
     return c.json({ success: true, duplicate: true });
   }
 
+  try {
+    return await applyConnectEvent(c, stripe, event);
+  } catch (error) {
+    try {
+      await webhookEventsRepository.deleteByEventId(
+        `stripe-connect:${event.id}`,
+        "stripe-connect",
+      );
+    } catch (rollbackError) {
+      // error-policy:J2 Preserve both failures for the transport boundary.
+      throw new AggregateError(
+        [error, rollbackError],
+        "Stripe Connect webhook handling and dedupe rollback both failed",
+      );
+    }
+    throw error;
+  }
+}
+
+async function applyConnectEvent(
+  c: AppContext,
+  stripe: Stripe,
+  event: Stripe.Event,
+): Promise<Response> {
+  // Stripe does not deliver events in order, so an `account.updated` snapshot
+  // can be older than one already applied. Read the account's current state
+  // instead of trusting the snapshot.
+  const object =
+    event.type === "account.updated" && event.account
+      ? await stripe.accounts.retrieve(event.account)
+      : event.data?.object;
   const outcome = mapConnectWebhookEvent({
     type: event.type,
     account: event.account ?? undefined,
     // Stripe types `data.object` as a wide event-object union; the pure mapper
     // only reads capability booleans by key, so widen via `unknown`.
     data: {
-      object: event.data?.object as unknown as
-        | Record<string, unknown>
-        | undefined,
+      object: object as unknown as Record<string, unknown> | undefined,
     },
   });
   if (outcome.ignored || !outcome.accountId) {

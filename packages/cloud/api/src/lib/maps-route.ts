@@ -1,11 +1,11 @@
 /**
  * Shared handler for the /api/v1/maps routes. Order: authenticate the account,
  * read the configured provider, check the subscription entitlement, ask the
- * admission hook (the plan burst and sustained buckets, in memory), then call
+ * durable organization Maps request allowance, then call
  * the provider. Location data stays in POST bodies,
  * is passed only to the provider and is never logged.
  */
-import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+
 import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
@@ -35,11 +35,21 @@ import type {
   AppEnv,
 } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
+import { getGenerativeExecutionContext } from "./generative-route-auth";
+import {
+  admitMapsRequest,
+  authenticateMapsCaller,
+  MapsAdmissionError,
+  type MapsCaller,
+  type MapsCompletion,
+} from "./maps-request-admission";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
 export interface MapsRouteDependencies {
-  authenticate(c: AppContext): Promise<{ id: string; organization_id: string }>;
+  authenticate(c: AppContext): Promise<MapsCaller>;
+  /** Production durable admission; injected tests may exercise the legacy seam. */
+  admitRequest?: typeof admitMapsRequest;
   /** Whether the organization's plan is active or trialing, and the policy that keys its buckets. */
   entitlement(organizationId: string): Promise<MapsPlanEntitlement>;
   admit: MapsAdmissionHook;
@@ -76,9 +86,8 @@ export interface MapsPlanEntitlement {
 }
 
 /**
- * Admission by the plan burst and sustained buckets (same configuration as
- * inference, separate Maps buckets). Admits everything while
- * ELIZA_CLOUD_PLAN_RATE_LIMITS is unset.
+ * Legacy isolate limiter retained for explicit injected callers. Production
+ * routes use durable Maps admission, which requires a selected allowance.
  */
 export const admitMapsByPlanBuckets: MapsAdmissionHook = async (request) => {
   const config = readPlanRequestLimitConfig();
@@ -105,7 +114,8 @@ export const admitMapsByPlanBuckets: MapsAdmissionHook = async (request) => {
 };
 
 export const defaultMapsRouteDependencies: MapsRouteDependencies = {
-  authenticate: requireUserOrApiKeyWithOrg,
+  authenticate: authenticateMapsCaller,
+  admitRequest: admitMapsRequest,
   entitlement: async (organizationId) => {
     const { plan, rateTier, effectiveUntil } =
       await readOrganizationEntitlementSummary(organizationId);
@@ -169,6 +179,7 @@ async function dispatch(
   operation: MapsOperation,
   provider: MapsProviderAdapter,
   c: AppContext,
+  body: unknown,
 ): Promise<Record<string, unknown>> {
   const signal = c.req.raw.signal;
   const { providerId, attribution } = provider.coverage();
@@ -180,7 +191,7 @@ async function dispatch(
         providerId,
         attribution,
         places: await provider.geocode(
-          parsed(mapsTextSearchRequestSchema, await readBody(c)),
+          parsed(mapsTextSearchRequestSchema, body),
           signal,
         ),
       };
@@ -189,7 +200,7 @@ async function dispatch(
         providerId,
         attribution,
         places: await provider.search(
-          parsed(mapsTextSearchRequestSchema, await readBody(c)),
+          parsed(mapsTextSearchRequestSchema, body),
           signal,
         ),
       };
@@ -198,7 +209,7 @@ async function dispatch(
         providerId,
         attribution,
         place: await provider.reverse(
-          parsed(mapsReverseRequestSchema, await readBody(c)),
+          parsed(mapsReverseRequestSchema, body),
           signal,
         ),
       };
@@ -207,7 +218,7 @@ async function dispatch(
         providerId,
         attribution,
         place: await provider.details(
-          parsed(mapsPlaceDetailsRequestSchema, await readBody(c)),
+          parsed(mapsPlaceDetailsRequestSchema, body),
           signal,
         ),
       };
@@ -216,7 +227,7 @@ async function dispatch(
         providerId,
         attribution,
         routes: await provider.routes(
-          parsed(mapsRoutesRequestSchema, await readBody(c)),
+          parsed(mapsRoutesRequestSchema, body),
           signal,
         ),
       };
@@ -231,7 +242,7 @@ export function createMapsRoute(
   const app = new Hono<AppEnv>();
   app.use("*", rateLimit(RateLimitPresets.STANDARD));
   const handler = async (c: AppContext) => {
-    let user: { id: string; organization_id: string };
+    let user: MapsCaller;
     try {
       user = await dependencies.authenticate(c);
     } catch (error) {
@@ -261,56 +272,134 @@ export function createMapsRoute(
           "Eliza Cloud Maps is not configured.",
         ),
       );
-    let entitlement: MapsPlanEntitlement;
+    let body: unknown;
     try {
-      entitlement = await dependencies.entitlement(user.organization_id);
+      body = operation === "coverage" ? undefined : await readBody(c);
+      if (operation !== "coverage")
+        parsed<unknown>(
+          operation === "search" || operation === "geocode"
+            ? mapsTextSearchRequestSchema
+            : operation === "reverse"
+              ? mapsReverseRequestSchema
+              : operation === "details"
+                ? mapsPlaceDetailsRequestSchema
+                : mapsRoutesRequestSchema,
+          body,
+        );
     } catch (error) {
-      // error-policy:J1 an entitlement read failure refuses the request; it never admits it.
-      logger.error("[Maps] Entitlement unavailable", {
-        organizationId: user.organization_id,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return failure(
-        c,
-        new MapsServiceError(
-          "entitlement_unavailable",
-          "Subscription status is temporarily unavailable.",
-          {
-            retryAfterSeconds: 60,
-          },
-        ),
-      );
+      if (error instanceof MapsServiceError) return failure(c, error);
+      throw error;
     }
-    if (!entitlement.entitled)
-      return failure(
-        c,
-        new MapsServiceError(
-          "subscription_required",
-          "An active Eliza subscription is required for Maps.",
-        ),
-      );
-    const decision = await dependencies.admit({
-      organizationId: user.organization_id,
-      userId: user.id,
-      operation,
-      planKey: entitlement.planKey,
-      planEffectiveUntil: entitlement.planEffectiveUntil,
-    });
-    if (!decision.allowed)
-      return failure(
-        c,
-        new MapsServiceError(
-          "rate_limited",
-          "Maps request limit reached. Try again later.",
-          {
-            retryAfterSeconds: decision.retryAfterSeconds,
-          },
-        ),
-      );
+    let completion: MapsCompletion | undefined;
+    if (dependencies.admitRequest) {
+      try {
+        completion = await dependencies.admitRequest(c, user, operation);
+      } catch (error) {
+        if (error instanceof ApiError || error instanceof MapsAdmissionError)
+          return c.json(
+            {
+              error: error.message,
+              code: error.code,
+              ...(error.details?.retryAfterSeconds
+                ? { retryAfterSeconds: error.details.retryAfterSeconds }
+                : {}),
+            },
+            error.status as 400 | 403 | 408 | 409 | 429 | 503,
+            NO_STORE,
+          );
+        throw error;
+      }
+    } else {
+      let entitlement: MapsPlanEntitlement;
+      try {
+        entitlement = await dependencies.entitlement(user.organization_id);
+      } catch (error) {
+        // error-policy:J1 an entitlement read failure refuses the request; it never admits it.
+        logger.error("[Maps] Entitlement unavailable", {
+          organizationId: user.organization_id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return failure(
+          c,
+          new MapsServiceError(
+            "entitlement_unavailable",
+            "Subscription status is temporarily unavailable.",
+            {
+              retryAfterSeconds: 60,
+            },
+          ),
+        );
+      }
+      if (!entitlement.entitled)
+        return failure(
+          c,
+          new MapsServiceError(
+            "subscription_required",
+            "An active Eliza subscription is required for Maps.",
+          ),
+        );
+      const decision = await dependencies.admit({
+        organizationId: user.organization_id,
+        userId: user.id,
+        operation,
+        planKey: entitlement.planKey,
+        planEffectiveUntil: entitlement.planEffectiveUntil,
+      });
+      if (!decision.allowed)
+        return failure(
+          c,
+          new MapsServiceError(
+            "rate_limited",
+            "Maps request limit reached. Try again later.",
+            {
+              retryAfterSeconds: decision.retryAfterSeconds,
+            },
+          ),
+        );
+    }
+    const record = (outcome: "succeeded" | "failed" | "cancelled") => {
+      if (!completion) return;
+      const task = completion(outcome).catch(() => {
+        logger.warn("[Maps] Usage outcome remains unknown", { operation });
+      });
+      const execution = getGenerativeExecutionContext(c);
+      if (execution) execution.waitUntil(task);
+      return task;
+    };
     try {
-      return c.json(await dispatch(operation, provider, c), 200, NO_STORE);
+      if (c.req.raw.signal.aborted) {
+        await record("cancelled");
+        return c.json(
+          { error: "Maps request cancelled", code: "maps_request_cancelled" },
+          408,
+          NO_STORE,
+        );
+      }
+      const result = await dispatch(operation, provider, c, body);
+      if (c.req.raw.signal.aborted) {
+        await record("cancelled");
+        return c.json(
+          { error: "Maps request cancelled", code: "maps_request_cancelled" },
+          408,
+          NO_STORE,
+        );
+      }
+      const outcome = record("succeeded");
+      if (!getGenerativeExecutionContext(c)) await outcome;
+      return c.json(result, 200, NO_STORE);
     } catch (error) {
+      if (c.req.raw.signal.aborted) await record("cancelled");
       if (!(error instanceof MapsServiceError)) throw error;
+      if (
+        !c.req.raw.signal.aborted &&
+        [
+          "unsupported_region",
+          "unsupported_mode",
+          "no_route",
+          "provider_invalid_response",
+        ].includes(error.code)
+      )
+        await record("failed");
       // Operation and code only: queries and coordinates are never logged.
       logger.warn("[Maps] Request refused", {
         operation,

@@ -329,11 +329,11 @@
     "@elizaos/voice": "workspace:*"
   },
   "devDependencies": {
-    "@capacitor/cli": "8.5.2",
+    "@capacitor/cli": "8.5.3",
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/plugin-sqlite": "workspace:*",
     "@elizaos/testing": "workspace:*",
-    "@playwright/test": "^1.63.0",
+    "@playwright/test": "^1.64.0",
     "@tailwindcss/postcss": "^4.3.1",
     "@tailwindcss/vite": "^4.3.1",
     "@testing-library/user-event": "^14.6.7",
@@ -341,7 +341,7 @@
     "@types/react-dom": "^19.3.0",
     "@types/ws": "^8.18.1",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "@vitejs/plugin-react": "^6.1.1",
+    "@vitejs/plugin-react": "^6.1.2",
     "adze": "^2.3.0",
     "ai": "^6.0.23",
     "bun-types": "1.4.2",
@@ -353,9 +353,9 @@
     "jsdom": "^30.1.2",
     "nodemailer": "^10.0.12",
     "pathe": "^2.0.3",
-    "playwright": "^1.63.0",
+    "playwright": "^1.64.0",
     "playwright-core": "^1.58.2",
-    "postcss": "^8.5.16",
+    "postcss": "^8.5.29",
     "puppeteer-core": "^24.43.1",
     "react-test-renderer": "19.2.7",
     "rollup-plugin-visualizer": "^7.0.1",
@@ -369,7 +369,7 @@
     "viem": "^2.56.9",
     "vite": "^8.3.0",
     "vitest": "^5.0.3",
-    "yaml": "^2.9.0"
+    "yaml": "^2.9.1"
   },
   "elizaos": {
     "app": {
