@@ -21,6 +21,8 @@ import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 
 const PREVIEW_MARKER = "/frontend/preview";
+const PREVIEW_SANDBOX_CSP =
+  "sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads";
 
 const app = new Hono<AppEnv>();
 
@@ -109,9 +111,17 @@ app.get("*", async (c) => {
       }
     }
 
+    // The preview is served from the Cloud API origin, which the web app
+    // shares through its same-origin `/api/*` proxy. Uploaded HTML must not run
+    // as that origin (it could read the viewer's session), so it runs in an
+    // opaque sandbox origin; scripts, forms and popups still work.
     return new Response(rendered.body, {
       status: rendered.status,
-      headers: rendered.headers,
+      headers: {
+        ...rendered.headers,
+        "content-security-policy": PREVIEW_SANDBOX_CSP,
+        "cache-control": "private, no-store",
+      },
     });
   } catch (error) {
     logger.error("[Apps Frontend API] Failed to serve preview:", error);
