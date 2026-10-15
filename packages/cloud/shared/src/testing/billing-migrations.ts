@@ -73,10 +73,15 @@ export async function installBillingCommandEvidenceTestColumns(
 export async function installSubscriptionGrantTestSchema(
   execute: (statement: string) => Promise<unknown>,
 ): Promise<void> {
-  const migration = await readFile(
-    new URL("../db/migrations/0542_subscription_grant_codes.sql", import.meta.url),
-    "utf8",
-  );
+  const migration = (
+    await Promise.all(
+      [
+        "0542_subscription_grant_codes.sql",
+        "0546_lifetime_subscription_grants.sql",
+        "0547_subscription_grant_calendar_terms.sql",
+      ].map((name) => readFile(new URL(`../db/migrations/${name}`, import.meta.url), "utf8")),
+    )
+  ).join("\n--> statement-breakpoint\n");
   const statements = migration
     .split("--> statement-breakpoint")
     .map((statement) => statement.trim())

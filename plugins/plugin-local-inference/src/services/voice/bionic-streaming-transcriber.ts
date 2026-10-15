@@ -13,7 +13,8 @@
  * stream.
  *
  * Batch fallback happens only when the host reports that its ASR backend
- * cannot stream (`asr_stream_open` → `STREAM_UNSUPPORTED`, e.g. Qwen3-ASR):
+ * cannot stream (`asr_stream_open` → `STREAM_UNSUPPORTED`, a host library
+ * built without the Parakeet-TDT backend):
  * the segment's audio is then kept and transcribed with op="asr" on flush.
  * Any other failure surfaces from `flush()`; there is no silent degrade.
  *

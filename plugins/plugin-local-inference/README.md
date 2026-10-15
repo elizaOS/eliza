@@ -30,7 +30,8 @@ On Android the agent's TRANSCRIPTION handler streams through the bionic host
 when the host reports a streaming ASR backend (Phonon-2): the utterance goes
 through `BionicHostLoader.createStreamingTranscriber()` and `flush()` returns
 the final. Batch `op:"asr"` runs only when the host answers `STREAM_UNSUPPORTED`
-(the Qwen3-ASR pair).
+(a host library built without the Parakeet-TDT backend). Phonon-2 is the only
+local ASR model.
 
 For live text while the user speaks, a client streams mic audio to
 `POST /api/asr/local-inference/live` (auth as `/api/asr/local-inference`):

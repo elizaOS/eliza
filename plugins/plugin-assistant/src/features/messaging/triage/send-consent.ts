@@ -16,6 +16,7 @@ export function sendConsentDigest(value: unknown): string {
 export function draftConsentDigest(draft: DraftRecord): string {
   return sendConsentDigest({
     draftId: draft.draftId,
+    agentId: draft.agentId,
     source: draft.source,
     inReplyToId: draft.inReplyToId,
     threadId: draft.threadId,

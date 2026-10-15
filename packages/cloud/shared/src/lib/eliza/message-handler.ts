@@ -239,7 +239,9 @@ export class MessageHandler {
 
     const entityUuid = stringToUuid(entityId) as UUID;
     const roomUuid = roomId as UUID;
-    const worldId = stringToUuid("eliza-world") as UUID;
+    // Agent-scoped: world ids are a global key and world reads are
+    // agent-scoped, so one shared id would collide across agents.
+    const worldId = createUniqueUuid(this.runtime, "eliza-world");
     const serverId = stringToUuid("eliza-server") as UUID;
 
     const displayName =

@@ -23,6 +23,13 @@ export interface TrajectoryContext {
 		{ trajectoryId: string; trajectoryStepId: string } | undefined
 	>;
 	/**
+	 * Single-flight start of this scope's deferred child step at its first
+	 * model capture (provider steps); a scope with no model call leaves none.
+	 */
+	activateChildStep?: () =>
+		| { trajectoryId: string; trajectoryStepId: string; parentStepId: string }
+		| undefined;
+	/**
 	 * Root-turn correlation id. Minted at the message.ts turn boundary
 	 * so DB persistence and sub-agent spawns downstream can read one shared
 	 * `traceId` and stitch the file, DB, and orchestrator trace stores together.

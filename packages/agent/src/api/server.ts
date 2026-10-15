@@ -1036,10 +1036,39 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     under("/api/memories") ||
     // Served by the memory handler from the same stored notes.
     under("/api/context/quick") ||
+    // Whole-agent data: export/snapshot carry the memories and secrets,
+    // restore/import/reset replace or wipe them.
+    under("/api/snapshot") ||
+    pathname === "/api/restore" ||
+    under("/api/backups") ||
+    under("/api/agent/export") ||
+    (write &&
+      [
+        "import",
+        "reset",
+        "start",
+        "stop",
+        "restart",
+        "pause",
+        "resume",
+        "autonomy",
+      ].some((op) => under(`/api/agent/${op}`))) ||
+    // Legacy restart endpoint: exits and restarts the whole agent process.
+    (write && pathname === "/api/restart") ||
     (write &&
       (pathname.startsWith("/api/wallet/") ||
         under("/api/config") ||
-        under("/api/character")))
+        under("/api/character") ||
+        // Deleting a stored file removes the owner's attachments for good.
+        under("/api/files") ||
+        // Shell, trading, automation and computer-use permissions.
+        under("/api/permissions") ||
+        // Bot tokens and allowlists of the owner's connectors. The provider's
+        // OAuth callback is authenticated by its state/code, not the owner.
+        (under("/api/connectors") &&
+          !/^\/api\/connectors\/[^/]+\/oauth\/callback\/?$/.test(pathname)) ||
+        // Who receives the model traffic, and with which key.
+        pathname === "/api/provider/switch"))
   );
 }
 
@@ -3305,6 +3334,24 @@ function strictPortBindingEnabled(): boolean {
   const value = process.env.ELIZA_API_STRICT_PORT?.trim().toLowerCase();
   return value === "1" || value === "true" || value === "yes";
 }
+/**
+ * The Character view's FILL_BIO / ADD_STYLE_RULE / ADD_MESSAGE_EXAMPLE are
+ * registered per runtime. Deferred startup work only reaches the runtime that
+ * exists when the server binds, so a runtime attached later (bind-first hosts,
+ * restart, start after stop) needs its own registration.
+ */
+function registerBuiltinViewScopedActions(
+  runtime: AgentRuntime | null | undefined,
+  context: string,
+): void {
+  if (!runtime) return;
+  void registerBuiltinViews(runtime).catch((err) => {
+    logger.warn(
+      `[eliza-api] Built-in view registration failed ${context}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  });
+}
+
 export async function startApiServer(opts?: {
   /** Compose product status fields before serialization; does not intercept transport. */
   composeStatus?: ApiStatusComposer;
@@ -3634,6 +3681,7 @@ export async function startApiServer(opts?: {
     onRuntimeActivated,
     onRuntimeSwapped: () => {
       bindInProcessApi();
+      registerBuiltinViewScopedActions(state.runtime, "after swap");
       if (state.runtime)
         state.connectorHealthMonitor?.setRuntime(state.runtime);
       bindRuntimeStreams(state.runtime);
@@ -4456,14 +4504,24 @@ export async function startApiServer(opts?: {
       void sendInitialStatus();
       // Replay stays synchronous so newer live events cannot overtake history
       // while the optional model-readiness probe reads the local registry.
+      // Pagination stays synchronous for the same reason: every page must
+      // drain before the live subscription attaches, or a live event could
+      // be delivered ahead of the history it belongs to.
       try {
-        const replay = selectReplayEvents(
-          state.eventBuffer,
-          replayCursor,
-          DEFAULT_REPLAY_LIMIT,
-        );
-        for (const event of replay) {
-          sendWebSocket(ws, JSON.stringify(event));
+        let cursor = replayCursor;
+        const maxPages =
+          Math.ceil(state.eventBuffer.length / DEFAULT_REPLAY_LIMIT) + 1;
+        for (let page = 0; page < maxPages; page++) {
+          const result = selectReplayEvents(
+            state.eventBuffer,
+            cursor,
+            DEFAULT_REPLAY_LIMIT,
+          );
+          for (const event of result.events) {
+            sendWebSocket(ws, JSON.stringify(event));
+          }
+          if (!result.hasMore || result.nextCursor === null) break;
+          cursor = result.nextCursor;
         }
       } catch (err) {
         logger.error(
@@ -5020,6 +5078,7 @@ export async function startApiServer(opts?: {
   /** Hot-swap the runtime reference (used after an in-process restart). */
   const updateRuntime = (rt: AgentRuntime): void => {
     registerRuntimeBuiltinViews(rt);
+    registerBuiltinViewScopedActions(rt, "after update");
     void assertX402RoutesValid(rt).catch((err) => {
       logger.error(
         `[x402] runtime route validation failed after update: ${err instanceof Error ? err.message : String(err)}`,

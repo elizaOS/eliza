@@ -24,6 +24,7 @@ export const OPTIONAL_PLUGIN_IMPORTERS: Record<string, () => Promise<unknown>> =
       // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
       // @ts-ignore: not every sibling package resolves optional plugin declarations before they are built.
       import("@elizaos/plugin-inbox"),
+    "@elizaos/plugin-maps": () => import("@elizaos/plugin-maps/plugin"),
     "@elizaos/plugin-notes": () => import("@elizaos/plugin-notes"),
     "@elizaos/plugin-todos": () =>
       // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.

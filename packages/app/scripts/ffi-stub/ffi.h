@@ -1,5 +1,5 @@
 /*
- * libelizainference FFI ABI v18.
+ * libelizainference FFI ABI v19.
  *
  * (Banner tracks ELIZA_INFERENCE_ABI_VERSION below; the per-version history is
  * at the end of this header preamble, newest first.)
@@ -134,6 +134,7 @@ extern "C" {
  * load and refuses to bind if they disagree.
  *
  * Changelog:
+ *   v19: bounded Paradee model-chunk PCM delivery and cancellation.
  *   v18: text-model context capacity resolved before stream admission.
  *         - `eliza_inference_llm_context_capacity(ctx, requested_context,
  *           n_gpu_layers, &out_capacity, &err)` loads the resident text model
@@ -144,6 +145,28 @@ extern "C" {
  *           non-positive capacity instead of creating a zero-sized context.
  *       Additive symbol; no existing signature changes. A v17 library lacks
  *       the symbol, so loaders must treat it as absent.
+ *       Parakeet-TDT ASR backend (additive behaviour, no new symbols, no
+ *       version bump):
+ *       builds that fold tools/parakeet (`ELIZA_ENABLE_PARAKEET`) serve the
+ *       ASR surface from a parakeet-tdt GGUF under `<bundle>/asr/` (e.g.
+ *       FermionResearch/Phonon-2, CC-BY-4.0) when `mmap_acquire("asr")`
+ *       finds one; `ELIZA_ASR_BACKEND=qwen3|parakeet` overrides. With it:
+ *         - `asr_transcribe_timed` returns TDT token-frame word times (80 ms
+ *           resolution) instead of duration-proportional ones;
+ *         - `asr_stream_supported()` returns 1 while at least one context has
+ *           the parakeet backend loaded (0 before `mmap_acquire("asr")`, after
+ *           `mmap_evict("asr")`, and for the Qwen3-ASR backend), and the
+ *           `asr_stream_*` session decodes pause-delimited windows with local
+ *           agreement. `stream_open` fails cleanly without the backend;
+ *           partial/finish on a stream whose region was evicted return
+ *           ELIZA_ERR_INVALID_ARG;
+ *         - stream `out_tokens` are never written (`*io_n_tokens = 0`):
+ *           Parakeet's SentencePiece vocabulary is not the text model's;
+ *         - `asr_cancel` is polled between encoder layers and decode steps;
+ *         - `asr_stream_feed` may run on another thread than partial/finish
+ *           (it only buffers, and never waits for a decode); `close` must not
+ *           race other calls on the same stream. Partial/finish truncate at a
+ *           UTF-8 boundary when `max_text_bytes` is too small.
  *   v17: Paradee-8M TTS with native misaki G2P, plus cancellation and
  *       eviction for every TTS head and for ASR. All additions are new
  *       symbols; no existing signature changes.
@@ -195,6 +218,16 @@ extern "C" {
  *        main-lineage vision surface. This develop-pinned lineage (fork-sync
  *        #11386) advances 12 -> 14 for the Kokoro IPA surface so the two
  *        independent bumps stay collision-free through reconciliation.
+ *   v13: token-by-token vision describe. `eliza_inference_vision_stream_supported()`
+ *        + `_describe_image_stream` run the SAME mmproj-prefill + greedy decode as
+ *        `_describe_image`, but invoke an `eliza_vision_chunk_cb` with each decoded
+ *        UTF-8 text piece as it is produced (then once more with `is_final == 1`),
+ *        so the IMAGE_DESCRIPTION handler streams a description into the dashboard
+ *        through the SAME per-token pipe as chat text (mirrors the streaming-TTS
+ *        `eliza_tts_chunk_cb` cancellation contract). Additive symbols — a v12
+ *        caller is unaffected; a v12 library reports `vision_stream_supported() == 0`
+ *        and the loader falls back to the buffered `_describe_image`. Gated on the
+ *        same `-DELIZA_ENABLE_VISION=1` build flag.
  *   v12: ASR word timestamps folded into the fused ASR.
  *        `eliza_inference_asr_timestamps_supported()` + `_asr_transcribe_timed`
  *        run the SAME audio-in/text-out decode as `_asr_transcribe` and
@@ -264,9 +297,9 @@ extern "C" {
  *   v7: real Silero VAD (same symbol surface as v6).
  *   v6: fused wake-word, speaker, diarizer.
  */
-#define ELIZA_INFERENCE_ABI_VERSION 18
+#define ELIZA_INFERENCE_ABI_VERSION 19
 
-/* Returns a static, NUL-terminated string of the form "18" matching
+/* Returns a static, NUL-terminated string of the form "19" matching
  * ELIZA_INFERENCE_ABI_VERSION at the time the library was built. The
  * pointer is owned by the library — do NOT free. */
 const char * eliza_inference_abi_version(void);
@@ -293,7 +326,7 @@ const char * eliza_inference_abi_version(void);
  *   ----------------------  --------------------------------------  -----
  *   batch ASR + cancel      eliza_inference_asr_supported            v17
  *   ASR word timestamps     eliza_inference_asr_timestamps_supported v12
- *   streaming ASR           eliza_inference_asr_stream_supported     v2 (0 today)
+ *   streaming ASR           eliza_inference_asr_stream_supported     v2 (1 with parakeet loaded, v18)
  *   OmniVoice stream+cancel eliza_inference_tts_stream_supported     v2
  *   Kokoro TTS              eliza_inference_kokoro_supported         v10
  *   Kokoro G2P kind         eliza_inference_kokoro_g2p_kind(ctx)     v14
@@ -641,6 +674,26 @@ int eliza_inference_paradee_synthesize_alloc(
     float ** out_pcm,
     size_t * out_samples,
     char ** out_error);
+
+/* Paradee model-chunk streaming (ABI v19). Emits each <=510-id model
+ * chunk before synthesizing the next, in callbacks of at most 24000 samples.
+ * This is not sub-model/incremental decoding. G2P runs before the first chunk.
+ * The synchronous callback provides backpressure; PCM is borrowed only during
+ * the callback. Return nonzero to cancel. cancel_tts may run on another thread.
+ * The callback must not reenter synthesis, loading, eviction or destruction of
+ * this context. No more PCM is delivered after cancellation is observed.
+ * Unlike the OmniVoice stream API, a zero-length is_final=1 callback occurs
+ * only after successful synthesis; errors/cancellation have no final callback.
+ * The return code is authoritative, including cancellation by the final callback.
+ * Already delivered PCM cannot be retracted: callers must stop their playback
+ * queue on any failure. Empty valid input produces only the final callback.
+ * No full-utterance PCM buffer is accumulated. Text/chunk metadata and a single
+ * model output still scale to their respective inputs; this is not an input cap.
+ */
+int eliza_inference_paradee_stream_supported(void);
+int eliza_inference_paradee_synthesize_stream(
+    EliInferenceContext * ctx, const char * text, size_t text_len, float speed,
+    eliza_tts_chunk_cb on_chunk, void * user_data, char ** out_error);
 
 /* Same as `paradee_synthesize_alloc`, but the input is a misaki phoneme
  * string (as returned by `paradee_phonemize`); G2P is skipped. Characters
@@ -1401,6 +1454,38 @@ int eliza_inference_describe_image(
     const char * prompt,
     char * out_text,
     size_t max_text_bytes,
+    char ** out_error);
+
+/* ---- Streaming mmproj vision describe (ABI v13, additive) --------- *
+ *
+ * Token-by-token vision. `_describe_image_stream_open` runs the SAME
+ * mmproj-prefill as `_describe_image` (mtmd_tokenize + mtmd_helper_eval_chunks),
+ * but instead of decoding the whole description into a buffer it returns an
+ * `EliLlmStream *` whose KV is primed with the image + prompt and whose sampler
+ * (greedy) + `max_tokens` (ELIZA_VISION_MAX_TOKENS) match `_describe_image`.
+ * The caller then PULLS tokens with the existing `eliza_inference_llm_stream_next`
+ * loop and releases the handle with `eliza_inference_llm_stream_close` — the
+ * exact same machinery (and JS FfiStreamingRunner) that drives chat text, so a
+ * description streams into the dashboard through one pipe with no event-loop
+ * blocking (each `_next` step yields between tokens). The returned stream has no
+ * MTP engine (vision uses the plain fixed-KV decode path).
+ *
+ * Gated on `-DELIZA_ENABLE_VISION=1` (same flag as `_describe_image`). A build
+ * without it returns 0 from `_vision_stream_supported()` and NULL (+ *out_error)
+ * from `_describe_image_stream_open`; the IMAGE_DESCRIPTION handler then falls
+ * back to the buffered `_describe_image`. */
+
+/* Capability probe: 1 when this build wires the streaming vision-describe path
+ * (ELIZA_ENABLE_VISION compiled in), 0 otherwise. Callers pick the streaming
+ * open + `_llm_stream_next` loop vs the buffered `_describe_image` off this. */
+int eliza_inference_vision_stream_supported(void);
+
+EliLlmStream * eliza_inference_describe_image_stream_open(
+    EliInferenceContext * ctx,
+    const unsigned char * image_bytes,
+    size_t n_bytes,
+    const char * mmproj_path,
+    const char * prompt,
     char ** out_error);
 
 /* ---- Tokenizer (ABI v9, additive) --------------------------------- *

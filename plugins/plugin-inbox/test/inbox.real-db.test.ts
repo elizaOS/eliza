@@ -14,7 +14,7 @@
  * the test is fully hermetic (no network, no real LLM, no credentials).
  *
  * Every assertion is a triage-then-read-back round-trip against the live DB,
- * and dedup-by-`source_message_id` is verified against the real table.
+ * and source-scoped message deduplication is verified against the real table.
  */
 
 import {
@@ -254,6 +254,61 @@ describe("InboxService + InboxRepository — real PGLite", () => {
     });
   });
 
+  it("keeps a failed HTTP unsubscribe failed when the sender is also blocked", async () => {
+    const createFilter = vi.fn(async () => ({ filterId: "filter-500" }));
+    const gmail = {
+      requireGmailGrant: async () =>
+        ({
+          id: "grant-1",
+          connectorAccountId: "account-1",
+          capabilities: ["google.gmail.triage", "google.gmail.manage"],
+        }) as Awaited<ReturnType<InboxGmailGateway["requireGmailGrant"]>>,
+      searchGmail: async () =>
+        ({
+          syncedAt: "2026-10-11T00:00:00.000Z",
+          messages: [
+            {
+              id: "unsubscribe-message-500",
+              threadId: "unsubscribe-thread-500",
+              from: "Promo <promo@example.com>",
+              fromEmail: "promo@example.com",
+              subject: "Sale",
+              receivedAt: "2026-10-10T00:00:00.000Z",
+              metadata: {
+                headers: {
+                  "List-Unsubscribe": "<https://unsubscribe.example.com/promo>",
+                },
+              },
+            },
+          ],
+        }) as Awaited<ReturnType<InboxGmailGateway["searchGmail"]>>,
+      sendMailtoUnsubscribeEmail: vi.fn(),
+      createGmailFilterForSender: createFilter,
+      trashGmailThread: vi.fn(),
+    } satisfies InboxGmailGateway;
+    const unsubscribe = new InboxUnsubscribeService(runtime, {
+      gmail,
+      httpTransport: {
+        lookupFn: async () => [{ address: "93.184.216.34", family: 4 }],
+        pinnedFetchImpl: async () => new Response(null, { status: 500 }),
+      },
+    });
+
+    const result = await unsubscribe.unsubscribeEmailSender({
+      senderEmail: "promo@example.com",
+      userAuthorization: true,
+      blockAfter: true,
+    });
+
+    // The filter hides the mail, but the sender was never unsubscribed.
+    expect(createFilter).toHaveBeenCalledTimes(1);
+    expect(result.record).toMatchObject({
+      status: "failed",
+      filterCreated: true,
+      errorMessage: "HTTP unsubscribe returned 500.",
+    });
+  });
+
   it("sends the mailto unsubscribe fields as RFC 6068 defines them", async () => {
     const send = vi.fn(async () => undefined);
     const gmail = {
@@ -307,7 +362,7 @@ describe("InboxService + InboxRepository — real PGLite", () => {
     });
   });
 
-  it("dedups by source_message_id against the real DB on re-triage", async () => {
+  it("dedups one source message against the real DB on re-triage", async () => {
     const first = await service.triage([
       inbound({ id: "msg-dedup", text: "Can you confirm the meeting?" }),
     ]);
@@ -322,6 +377,32 @@ describe("InboxService + InboxRepository — real PGLite", () => {
     expect(second.triaged[0]?.entry?.id).toBe(firstEntryId);
     const after = (await service.list()).length;
     expect(after).toBe(before);
+  });
+
+  it("keeps provider-local message ids separate across sources", async () => {
+    await service.triage([
+      inbound({
+        id: "shared-provider-id",
+        source: "discord",
+        text: "Discord question?",
+      }),
+    ]);
+    const gmail = await service.triage([
+      inbound({
+        id: "shared-provider-id",
+        source: "gmail",
+        text: "Gmail question?",
+      }),
+    ]);
+
+    expect(gmail.triaged[0]?.entry?.source).toBe("gmail");
+    const matches = (await service.list()).filter(
+      (entry) => entry.sourceMessageId === "shared-provider-id",
+    );
+    expect(matches.map((entry) => entry.source).sort()).toEqual([
+      "discord",
+      "gmail",
+    ]);
   });
 
   it("filters by classification and respects resolve() against the real DB", async () => {

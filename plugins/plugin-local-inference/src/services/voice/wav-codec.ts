@@ -60,25 +60,37 @@ export function decodeMonoPcm16Wav(bytes: Uint8Array): TranscriptionAudio {
 		throw new Error("[voice] WAV input is too short to contain a header");
 	}
 	const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-	if (
-		readAscii(bytes, 0, 4) !== "RIFF" ||
-		readAscii(bytes, 8, 4) !== "WAVE" ||
-		readAscii(bytes, 12, 4) !== "fmt "
-	) {
+	if (readAscii(bytes, 0, 4) !== "RIFF" || readAscii(bytes, 8, 4) !== "WAVE") {
 		throw new Error("[voice] Local transcription expects mono PCM16 WAV bytes");
 	}
-	const audioFormat = view.getUint16(20, true);
-	const channels = view.getUint16(22, true);
-	const sampleRate = view.getUint32(24, true);
-	const bitsPerSample = view.getUint16(34, true);
-	const fmtChunkBytes = view.getUint32(16, true);
+	let fmtOffset = 12;
+	while (
+		fmtOffset + 8 <= bytes.byteLength &&
+		readAscii(bytes, fmtOffset, 4) !== "fmt "
+	) {
+		const size = view.getUint32(fmtOffset + 4, true);
+		fmtOffset += 8 + size + (size % 2);
+	}
+	if (fmtOffset + 24 > bytes.byteLength) {
+		throw new Error("[voice] WAV input is missing a complete fmt chunk");
+	}
+	const fmtChunkBytes = view.getUint32(fmtOffset + 4, true);
+	if (fmtChunkBytes < 16 || fmtOffset + 8 + fmtChunkBytes > bytes.byteLength) {
+		throw new Error(
+			"[voice] WAV fmt chunk exceeds input length or is too short",
+		);
+	}
+	const audioFormat = view.getUint16(fmtOffset + 8, true);
+	const channels = view.getUint16(fmtOffset + 10, true);
+	const sampleRate = view.getUint32(fmtOffset + 12, true);
+	const bitsPerSample = view.getUint16(fmtOffset + 22, true);
 	if (audioFormat !== 1 || channels !== 1 || bitsPerSample !== 16) {
 		throw new Error(
 			`[voice] Local transcription expects mono PCM16 WAV (format=1 channels=1 bits=16); got format=${audioFormat} channels=${channels} bits=${bitsPerSample}`,
 		);
 	}
 
-	let pos = 20 + fmtChunkBytes + (fmtChunkBytes % 2);
+	let pos = fmtOffset + 8 + fmtChunkBytes + (fmtChunkBytes % 2);
 	while (pos + 8 <= bytes.byteLength) {
 		const chunkId = readAscii(bytes, pos, 4);
 		const chunkBytes = view.getUint32(pos + 4, true);

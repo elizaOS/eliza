@@ -7,7 +7,10 @@ export function parseJsonObjectResponse<T = Record<string, unknown>>(
 ): T | null {
   try {
     const trimmed = raw.trim();
-    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    // A raw JSON object can contain Markdown fences inside string values.
+    const fenced = trimmed.startsWith("{")
+      ? null
+      : trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
     const candidate = (fenced?.[1] ?? trimmed).trim();
     const firstBrace = candidate.indexOf("{");
     const lastBrace = candidate.lastIndexOf("}");

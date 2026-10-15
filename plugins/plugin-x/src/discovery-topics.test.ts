@@ -120,3 +120,40 @@ describe("X discovery topics", () => {
     expect(runtime.reportError).not.toHaveBeenCalled();
   });
 });
+
+describe("discovery count settings", () => {
+  it("preserves an explicit zero for follow and engagement limits", () => {
+    const discovery = createDiscovery(
+      createRuntime(
+        { topics: ["software"] },
+        {
+          TWITTER_MIN_FOLLOWER_COUNT: "0",
+          TWITTER_MAX_FOLLOWS_PER_CYCLE: "0",
+          TWITTER_MAX_ENGAGEMENTS_PER_RUN: "0",
+        },
+      ),
+    );
+    expect((discovery as unknown as { config: unknown }).config).toMatchObject({
+      minFollowerCount: 0,
+      maxFollowsPerCycle: 0,
+      maxEngagementsPerCycle: 0,
+    });
+  });
+  it.each(["3cats", "-1", "1.5", "9007199254740992"])(
+    "rejects malformed count %s",
+    (value) => {
+      expect(() =>
+        createDiscovery(
+          createRuntime(
+            { topics: ["software"] },
+            {
+              TWITTER_MAX_ENGAGEMENTS_PER_RUN: value,
+            },
+          ),
+        ),
+      ).toThrowError(
+        expect.objectContaining({ code: "X_INVALID_COUNT_SETTING" }),
+      );
+    },
+  );
+});
