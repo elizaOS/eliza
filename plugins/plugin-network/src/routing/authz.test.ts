@@ -9,6 +9,30 @@ import {
 } from "./authz.js";
 
 describe("Network own-word boundary", () => {
+  it("recognizes curly contractions without accepting negated or quoted signals", () => {
+    for (const apostrophe of ["‘", "’"]) {
+      assert.deepEqual(detectNetworkSignals(`I${apostrophe}m in Lisbon`), [
+        { kind: "travel", evidence: "I'm in Lisbon" },
+      ]);
+      assert.deepEqual(
+        detectNetworkSignals(`Don${apostrophe}t stop texting me`),
+        [],
+      );
+    }
+    assert.deepEqual(
+      detectNetworkSignals(
+        "She said ‘stop texting me’ but I still want updates",
+      ),
+      [],
+    );
+    assert.deepEqual(
+      detectNetworkSignals(
+        "He said stop texting me and I said don’t stop texting",
+      ),
+      [],
+    );
+  });
+
   it("keeps third-party text out without masking the member's words", () => {
     const quotedOptOut =
       'My friend said "stop\u200b texting me" but I still want updates';
