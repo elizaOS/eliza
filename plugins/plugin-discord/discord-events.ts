@@ -25,6 +25,7 @@ import {
 import { isDiscordUserAddressed } from "./addressing";
 import { DISCORD_SERVICE_NAME } from "./constants";
 import { type ChannelDebouncer, createChannelDebouncer } from "./debouncer";
+import { checkDiscordDmAccess } from "./dm-access";
 import {
 	getDiscordMessageCoalesceConfig,
 	makeCoalescedDiscordMessage,
@@ -46,6 +47,7 @@ import {
 	DiscordEventTypes,
 	type DiscordListenChannelPayload,
 	type DiscordNotInChannelsPayload,
+	type DiscordSettings,
 	type DiscordSlashCommand,
 } from "./types";
 
@@ -617,15 +619,29 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 		if (clientUser && user.id === clientUser.id) {
 			return;
 		}
-		// DMs are exempt from CHANNEL_IDS, mirroring messageCreate: the allowlist
-		// scopes guild surfaces; DM access is governed by the DM policy.
-		const reactionChannelType = reaction.message.channel
-			?.type as DiscordChannelType | undefined;
-		const reactionIsDm =
-			reactionChannelType === DiscordChannelType.DM ||
+		// DMs are exempt from CHANNEL_IDS, mirroring messageCreate: the
+		// allowlist scopes guild surfaces. Plain DMs additionally pass the
+		// same checkDiscordDmAccess gate the message path uses, so a sender
+		// the DM policy refuses cannot record reactions through this
+		// listener. Group DMs have no such gate on the message path either,
+		// so their exemption matches messageCreate as-is.
+		const reactionChannelType = reaction.message.channel?.type as
+			| DiscordChannelType
+			| undefined;
+		const reactionIsDm = reactionChannelType === DiscordChannelType.DM;
+		const reactionIsGroupDm =
 			reactionChannelType === DiscordChannelType.GroupDM;
-		if (
-			!reactionIsDm &&
+		if (reactionIsDm) {
+			const dmAccess = await checkDiscordDmAccess(
+				service.runtime,
+				service.discordSettings as unknown as DiscordSettings,
+				{ id: user.id, username: user.username ?? "unknown" },
+			);
+			if (!dmAccess.allowed) {
+				return;
+			}
+		} else if (
+			!reactionIsGroupDm &&
 			service.allowedChannelIds &&
 			reaction.message.channel &&
 			!service.isChannelAllowed(reaction.message.channel.id)
@@ -652,15 +668,29 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 		if (clientUser && user.id === clientUser.id) {
 			return;
 		}
-		// DMs are exempt from CHANNEL_IDS, mirroring messageCreate: the allowlist
-		// scopes guild surfaces; DM access is governed by the DM policy.
-		const reactionChannelType = reaction.message.channel
-			?.type as DiscordChannelType | undefined;
-		const reactionIsDm =
-			reactionChannelType === DiscordChannelType.DM ||
+		// DMs are exempt from CHANNEL_IDS, mirroring messageCreate: the
+		// allowlist scopes guild surfaces. Plain DMs additionally pass the
+		// same checkDiscordDmAccess gate the message path uses, so a sender
+		// the DM policy refuses cannot record reactions through this
+		// listener. Group DMs have no such gate on the message path either,
+		// so their exemption matches messageCreate as-is.
+		const reactionChannelType = reaction.message.channel?.type as
+			| DiscordChannelType
+			| undefined;
+		const reactionIsDm = reactionChannelType === DiscordChannelType.DM;
+		const reactionIsGroupDm =
 			reactionChannelType === DiscordChannelType.GroupDM;
-		if (
-			!reactionIsDm &&
+		if (reactionIsDm) {
+			const dmAccess = await checkDiscordDmAccess(
+				service.runtime,
+				service.discordSettings as unknown as DiscordSettings,
+				{ id: user.id, username: user.username ?? "unknown" },
+			);
+			if (!dmAccess.allowed) {
+				return;
+			}
+		} else if (
+			!reactionIsGroupDm &&
 			service.allowedChannelIds &&
 			reaction.message.channel &&
 			!service.isChannelAllowed(reaction.message.channel.id)
