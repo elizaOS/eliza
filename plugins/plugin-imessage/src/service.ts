@@ -3061,7 +3061,9 @@ export function parseMessagesFromAppleScript(result: string): IMessageMessage[] 
   }
 
   for (const line of result.split("\n")) {
-    const trimmed = line.trim();
+    // trimStart (not trim): a trailing tab marks an empty final column, which
+    // is valid — trimming it drops the column and the row gets skipped.
+    const trimmed = line.trimStart().replace(/\r$/, "");
     if (!trimmed) {
       continue;
     }
