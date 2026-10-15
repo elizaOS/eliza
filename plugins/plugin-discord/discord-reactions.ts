@@ -64,7 +64,9 @@ export async function handleReaction(
 
 		// Get emoji info
 		let emoji = reaction.emoji.name;
-		if (!emoji && reaction.emoji.id) {
+		// Custom emoji carry an id: format as <:name:id> so the id survives
+		// in reaction memories (mirrors formatMessageReactionEmoji).
+		if (reaction.emoji.id && reaction.emoji.name) {
 			emoji = `<:${reaction.emoji.name}:${reaction.emoji.id}>`;
 		}
 
