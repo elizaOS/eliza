@@ -1,6 +1,7 @@
 /** Runs bounded generic subscription recovery and signed outbox delivery through the shared cron scheduler. */
 
 import { requireCronSecret } from "@elizaos/cloud-shared/auth";
+import { subscriptionGrantsRepository } from "@elizaos/cloud-shared/db/repositories/subscription-grants";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { appBillingNotifications } from "@elizaos/cloud-shared/lib/services/app-billing-notifications";
 import { appBillingReconciliation } from "@elizaos/cloud-shared/lib/services/app-billing-reconciliation";
@@ -15,12 +16,15 @@ app.post("/", async (c) => {
     const commands = await appBillingReconciliation.recoverCommands(5);
     const subscriptions = await appBillingReconciliation.recoverPeriodic(5);
     const notifications = await appBillingNotifications.drain(5);
+    const lifetimeAllowancePeriods =
+      await subscriptionGrantsRepository.replenishLifetimeAllowances(5);
     return c.json({
       success: true,
       intake,
       commands,
       subscriptions,
       notifications,
+      lifetimeAllowancePeriods,
     });
   } catch (error) {
     // error-policy:J1 The scheduler sees a failed run when recovery storage or configuration is unavailable.

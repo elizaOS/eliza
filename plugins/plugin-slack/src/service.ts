@@ -373,7 +373,7 @@ function normalizeSlackEmojiName(emoji: string): string {
   let end = value.length;
   while (start < end && value.charCodeAt(start) === 58) start += 1;
   while (end > start && value.charCodeAt(end - 1) === 58) end -= 1;
-  return value.slice(start, end);
+  return value.slice(start, end).toLowerCase();
 }
 
 function isUnknownRecord(value: unknown): value is Record<string, unknown> {

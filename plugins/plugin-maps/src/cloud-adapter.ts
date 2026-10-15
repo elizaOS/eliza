@@ -98,6 +98,12 @@ export interface ElizaCloudMapsAdapterOptions {
 
 const CODE_BY_CLOUD_CODE: Record<string, MapsErrorCode> = {
   invalid_request: "MAPS_INVALID_INPUT",
+  maps_request_id_required: "MAPS_INVALID_INPUT",
+  maps_allowance_unconfigured: "MAPS_ALLOWANCE_UNCONFIGURED",
+  maps_admission_unknown: "MAPS_ADMISSION_UNKNOWN",
+  maps_request_already_admitted: "MAPS_REQUEST_ALREADY_ADMITTED",
+  maps_request_identity_conflict: "MAPS_REQUEST_ALREADY_ADMITTED",
+  allowance_exhausted: "MAPS_BUDGET_EXHAUSTED",
   subscription_required: "MAPS_NOT_ENTITLED",
   rate_limited: "MAPS_RATE_LIMITED",
   unsupported_region: "MAPS_UNSUPPORTED_REGION",
@@ -110,6 +116,14 @@ const CODE_BY_CLOUD_CODE: Record<string, MapsErrorCode> = {
 };
 
 const MESSAGE_BY_CODE: Partial<Record<MapsErrorCode, string>> = {
+  MAPS_ALLOWANCE_UNCONFIGURED:
+    "Contact the service operator to configure the Maps request allowance and credential authority.",
+  MAPS_ADMISSION_UNKNOWN:
+    "Maps admission could not be confirmed. Do not replay this request.",
+  MAPS_REQUEST_ALREADY_ADMITTED:
+    "This Maps request was already admitted. It will not be dispatched again.",
+  MAPS_BUDGET_EXHAUSTED:
+    "The separate Maps request allowance is exhausted until its reset.",
   MAPS_NOT_ENTITLED: "Maps needs an active Eliza subscription.",
   MAPS_UNSUPPORTED_REGION:
     "Eliza Cloud Maps does not cover this place or travel mode yet.",
@@ -335,7 +349,10 @@ export class ElizaCloudMapsAdapter implements MapsProviderAdapter {
         this.client.url(path),
         {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: {
+            "content-type": "application/json",
+            "Idempotency-Key": crypto.randomUUID(),
+          },
           body: JSON.stringify(body),
         },
         schema,

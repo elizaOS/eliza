@@ -135,7 +135,7 @@ export async function walkContainedGlob(
       return;
     }
     for (const entry of entries) {
-      if (EXCLUDED_DIR_NAMES.has(entry.name)) continue;
+      if (entry.isDirectory() && EXCLUDED_DIR_NAMES.has(entry.name)) continue;
       const abs = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         if (canMatchDescendants) await walk(abs);

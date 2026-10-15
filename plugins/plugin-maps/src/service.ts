@@ -307,7 +307,7 @@ export class MapsService extends Service {
   ): Promise<MapsPlaceResult> {
     const registration = this.provider(provider, expectedGeneration);
     const { adapter } = registration;
-    if (!providerPlaceId || providerPlaceId.length > 512) {
+    if (!providerPlaceId.trim() || providerPlaceId.length > 512) {
       throw new MapsError("Place id is invalid.", {
         code: "MAPS_INVALID_INPUT",
       });
@@ -350,8 +350,9 @@ export class MapsService extends Service {
   async planRouteAlternativesResult(
     request: RoutePlanRequest,
     provider?: string,
+    expectedGeneration?: number,
   ): Promise<{ routes: RoutePlan[]; provider: MapsProviderDescription }> {
-    const registration = this.provider(provider);
+    const registration = this.provider(provider, expectedGeneration);
     const { adapter } = registration;
     const normalized = this.routeRequest(request, adapter);
     const routes = adapter.planRouteAlternatives

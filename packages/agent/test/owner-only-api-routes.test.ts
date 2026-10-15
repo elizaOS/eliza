@@ -95,6 +95,44 @@ it("refuses owner-only writes and memory reads to a paired USER session", async 
       ["/api/context/quick?q=private", {}],
       ["/api/context/quick/?q=private", {}],
       [`/api/memories/${memoryId}`, { method: "DELETE" }],
+      [`/api/files/${"a".repeat(64)}.png`, { method: "DELETE" }],
+      [
+        "/api/agent/export",
+        {
+          method: "POST",
+          body: JSON.stringify({ password: "guest-pass-123" }),
+        },
+      ],
+      ["/api/snapshot", { method: "POST" }],
+      ["/api/restore", { method: "POST", body: "{}" }],
+      ["/api/backups", {}],
+      ["/api/agent/import", { method: "POST", body: "{}" }],
+      ["/api/agent/reset", { method: "POST" }],
+      ["/api/agent/stop", { method: "POST" }],
+      ["/api/restart", { method: "POST" }],
+      [
+        "/api/agent/autonomy",
+        { method: "POST", body: JSON.stringify({ enabled: true }) },
+      ],
+      [
+        "/api/permissions/shell",
+        { method: "PUT", body: JSON.stringify({ enabled: true }) },
+      ],
+      [
+        "/api/permissions/trade-mode",
+        { method: "PUT", body: JSON.stringify({ mode: "agent-auto" }) },
+      ],
+      [
+        "/api/connectors",
+        {
+          method: "POST",
+          body: JSON.stringify({ name: "discord", config: {} }),
+        },
+      ],
+      [
+        "/api/provider/switch",
+        { method: "POST", body: JSON.stringify({ provider: "openai" }) },
+      ],
       [
         "/api/config",
         {
@@ -130,6 +168,15 @@ it("refuses owner-only writes and memory reads to a paired USER session", async 
     expect(await runtime.getMemoryById(memoryId)).not.toBeNull();
     expect(process.env.OPENAI_BASE_URL).not.toBe("https://example.invalid/v1");
     expect(runtime.character.system).not.toBe("Changed by guest.");
+
+    // The connector OAuth callback is authenticated by its state/code, so the
+    // owner gate leaves it to the callback handler.
+    const callback = await send(
+      "guest-session-id",
+      "/api/connectors/google/oauth/callback",
+      { method: "POST", body: JSON.stringify({ code: "c", state: "s" }) },
+    );
+    expect(callback.status).not.toBe(403);
 
     // Reads of settings stay open to the session; the owner keeps every route.
     expect((await send("guest-session-id", "/api/config")).status).toBe(200);

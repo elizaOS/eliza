@@ -37,6 +37,7 @@ import type { TrajectorySkillInvocationRecord } from "./services/trajectory-type
 import {
 	getTrajectoryContext,
 	runWithTrajectoryContext,
+	type TrajectoryContext,
 } from "./trajectory-context";
 import type { ActionResult } from "./types/components";
 import { isTextGenerationModelType } from "./types/model";
@@ -1038,8 +1039,23 @@ export function resolveTrajectoryLogger(
 	return bestScore > 0 ? best : null;
 }
 
-/** Activate an inherited task capture before invoking a provider, never at the synchronous sink. */
+/**
+ * Start the active scope's deferred child step (see `withProviderStep`) at its
+ * first model capture, so the call is recorded on that child, not the parent.
+ */
+export function activateDeferredChildStep(): void {
+	const context = getTrajectoryContext();
+	const owner = context?.activateChildStep?.();
+	if (context && owner) Object.assign(context, owner);
+}
+
+/**
+ * Before invoking a model provider, start the deferred child step and activate
+ * an inherited task capture. The task capture is never activated at the
+ * synchronous sink.
+ */
 export async function ensureTaskTrajectory(): Promise<void> {
+	activateDeferredChildStep();
 	const context = getTrajectoryContext();
 	if (
 		!context ||
@@ -1220,6 +1236,7 @@ export function logActiveTrajectoryLlmCall(
 		return false;
 	}
 
+	activateDeferredChildStep();
 	const stepId = assertActiveTrajectoryForLlmCall({
 		actionType: details.actionType,
 		model: details.model,
@@ -1460,7 +1477,9 @@ async function withChildTrajectoryStep<T>(
 	let childStepId = normalizedParentStepId;
 	let hasChildStep = false;
 
-	if (trajectoryId && typeof trajectoryLogger.startStep === "function") {
+	const startChildStep = (): void => {
+		if (!trajectoryId || typeof trajectoryLogger.startStep !== "function")
+			return;
 		try {
 			const startedStepId = trajectoryLogger.startStep(trajectoryId, {
 				timestamp: Date.now(),
@@ -1495,21 +1514,49 @@ async function withChildTrajectoryStep<T>(
 				diagnosticOnly: true,
 			});
 		}
-	}
+	};
 
-	const childContext = hasChildStep
-		? {
-				...parentCtx,
-				trajectoryId,
-				trajectoryStepId: childStepId,
-				parentStepId: normalizedParentStepId,
-				purpose: options.purpose,
-			}
-		: { ...parentCtx, purpose: options.purpose };
+	let childContext: TrajectoryContext;
+	let closed = false;
+	if (options.purpose === "provider" && trajectoryId) {
+		// A provider scope that calls no model must not persist an empty step.
+		let started = false;
+		childContext = {
+			...parentCtx,
+			purpose: options.purpose,
+			activateChildStep: () => {
+				if (closed) return undefined;
+				if (!started) {
+					started = true;
+					startChildStep();
+				}
+				return hasChildStep
+					? {
+							trajectoryId,
+							trajectoryStepId: childStepId,
+							parentStepId: normalizedParentStepId,
+						}
+					: undefined;
+			},
+		};
+	} else {
+		startChildStep();
+		childContext = hasChildStep
+			? {
+					...parentCtx,
+					activateChildStep: undefined,
+					trajectoryId,
+					trajectoryStepId: childStepId,
+					parentStepId: normalizedParentStepId,
+					purpose: options.purpose,
+				}
+			: { ...parentCtx, purpose: options.purpose };
+	}
 
 	try {
 		return await runWithTrajectoryContext(childContext, () => fn(hasChildStep));
 	} finally {
+		closed = true;
 		if (trajectoryId || hasChildStep) {
 			const finalizeChild = async (): Promise<void> => {
 				try {

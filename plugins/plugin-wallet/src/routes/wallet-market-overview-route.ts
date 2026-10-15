@@ -300,7 +300,7 @@ function highlightedPredictionOutcome(market: PolymarketMarketRecord): {
 
   if (highestIndex >= 0) {
     return {
-      label: market.outcomeLabels[highestIndex] ?? "Top",
+      label: market.outcomeLabels[highestIndex] || "Top",
       probability: market.outcomeProbabilities[highestIndex] ?? null,
     };
   }

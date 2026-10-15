@@ -245,6 +245,7 @@ function connectorGrantIdDetail(
   return isAppleCalendarGrant(value) ||
     isMicrosoftCalendarGrantId(value) ||
     value === ELIZA_CALENDAR_GRANT_ID ||
+    /^alpha-google:[a-f0-9]{64}$/.test(value) ||
     value.startsWith(GOOGLE_CONNECTOR_ACCOUNT_GRANT_PREFIX)
     ? value
     : undefined;
@@ -2434,9 +2435,9 @@ function parseDateTimeInZone(value: string, timeZone: string): Date | null {
  * Time range for an update. A new start without a new end keeps the event's
  * current duration (live 2026-09-10: "move my dentist appointment to friday at
  * 4pm" arrived as `start` only, the stored 3–4 pm event kept its 4 pm end, and
- * the service rejected the zero-length range). The derived end is spelled like
- * the start it follows: absolute for `Z`/offset starts, wall-clock in
- * `timeZone` otherwise. Every other combination passes through unchanged and
+ * the service rejected the zero-length range). The derived end is absolute:
+ * elapsed duration identifies one instant even when its local wall clock is a
+ * repeated DST-fold time. Every other combination passes through unchanged and
  * the service keeps validating end-after-start.
  */
 export function resolveUpdateTimeRange(args: {
@@ -2470,9 +2471,7 @@ export function resolveUpdateTimeRange(args: {
   const end = new Date(start.getTime() + durationMs);
   return {
     startAt,
-    endAt: OFFSET_OR_UTC_SUFFIX_PATTERN.test(startAt.trim())
-      ? end.toISOString()
-      : formatLocalDateTimeInZone(end, timeZone),
+    endAt: end.toISOString(),
   };
 }
 
@@ -5308,7 +5307,9 @@ const calendarAction: CalendarHandlerAction = {
         transcriptVisibility: "internal",
         modelReplyRequired: true,
         turnComplete: false,
-        text: nativeCalendarFailure,
+        text:
+          nativeCalendarFailure +
+          " Connected provider calendars are separate: use CALENDAR_SOURCES operation=list to discover the exact Google or Microsoft source, then retry this Calendar read with details.grantId and details.calendarId from that source. Do not substitute local backend records or change source selections without the owner request.",
         effectReceipts: [
           calendarFailedReceipt({
             message,
@@ -6391,9 +6392,12 @@ const calendarAction: CalendarHandlerAction = {
             extractedStart: extractedStartAt,
             extractedEnd: extractedEndAt,
             target: targetEvent,
-            timeZone: updateTimeZone,
+            timeZone: updateTimeZone ?? planningTimeZone,
           }),
-          timeZone: updateTimeZone,
+          // An event saved without a zone is moved in the owner's zone: the
+          // derived end above and the bare start in the service must both be
+          // read there, not in UTC or the service default.
+          timeZone: updateTimeZone ?? planningTimeZone,
           recurrence: recurrenceUpdate,
           // Honor a scope only when the target recurs or the update itself
           // introduces a recurrence rule — the planner emits junk scopes.

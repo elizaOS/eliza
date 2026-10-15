@@ -13,6 +13,12 @@ export const AGENT_MANAGED_GITHUB_KEY = "__agentManagedGithub";
  * can never forge it (stripReservedElizaConfigKeys drops it at every create).
  */
 export const AGENT_UPGRADED_FROM_KEY = "__agentUpgradedFrom";
+/**
+ * Set at create when an eager tier is created with `autoProvision: false`: the
+ * row is pending with no provision job on purpose until the caller provisions
+ * it, so the orphaned-pending sweep must not mark it as failed.
+ */
+export const AGENT_PROVISIONING_DEFERRED_KEY = "__agentProvisioningDeferred";
 export const AGENT_PERSONAL_CUTOVER_KEY = "__agentPersonalCutover";
 
 export interface PersonalElizaCutover {

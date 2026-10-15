@@ -92,6 +92,7 @@ crons = [
   "*/15 * * * *",
   "0 * * * *",
   "0 */6 * * *",
+  "45 */6 * * *",
   "0 0 * * *",
   "0 1 * * *",
   "0 2 * * *",
@@ -524,6 +525,8 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 # =============================================================================
 
 [env.staging]
+# Staging owns declarative lifecycle after the accepted admission transfer.
+migrations = []
 compatibility_flags = ["nodejs_compat", "enable_request_signal"]
 name = "eliza-cloud-api-staging"
 workers_dev = false
@@ -557,6 +560,44 @@ routes = [
   { pattern = "relay-staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
   { pattern = "x402-staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
 ]
+
+# Complete staging override: exports is inherited as one map, not merged.
+[env.staging.exports.SharedRuntimeConversation]
+type = "durable-object"
+storage = "sqlite"
+
+[env.staging.exports.InferenceAdmissionGate]
+type = "durable-object"
+state = "transferred"
+transferred_to = "eliza-cloud-admission-staging"
+
+[env.staging.exports.AnonymousChatGate]
+type = "durable-object"
+storage = "sqlite"
+
+[env.staging.exports.OnboardingSessionCoordinator]
+type = "durable-object"
+storage = "sqlite"
+
+[env.staging.exports.TwitterOAuthRefreshCoordinator]
+type = "durable-object"
+storage = "sqlite"
+
+[env.staging.exports.PersonalDeliveryProjection]
+type = "durable-object"
+storage = "sqlite"
+
+[env.staging.exports.PersonalTelegramDelivery]
+type = "durable-object"
+storage = "sqlite"
+
+[env.staging.exports.InferenceRateLimitV2RollbackFloor]
+type = "durable-object"
+storage = "sqlite"
+
+[env.staging.exports.DoorDashCheckoutGate]
+type = "durable-object"
+storage = "sqlite"
 
 [env.staging.define]
 __dirname = '"/"'
@@ -811,6 +852,7 @@ class_name = "SharedRuntimeConversation"
 [[env.staging.durable_objects.bindings]]
 name = "INFERENCE_ADMISSION_GATES"
 class_name = "InferenceAdmissionGate"
+script_name = "eliza-cloud-admission-staging"
 
 [[env.staging.durable_objects.bindings]]
 name = "DOORDASH_CHECKOUT_GATES"

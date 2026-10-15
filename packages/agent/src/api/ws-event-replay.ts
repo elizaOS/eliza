@@ -69,15 +69,40 @@ export function parseEventCursor(
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
 }
 /**
+ * One page of a cursor-paginated replay.
+ *
+ * The caller advances its cursor to `nextCursor` and requests the next page
+ * while `hasMore` is true. With no cursor (`null`) the caller receives a
+ * single tail page and `hasMore` is always false — that path preserves the
+ * historical one-shot replay for clients that do not track a cursor.
+ */
+export interface ReplayPage<T> {
+  /** The envelopes to send for this page, in buffer order. */
+  events: T[];
+  /**
+   * True only when a valid cursor was supplied and more missing envelopes
+   * remain beyond this page. Always false for `cursor === null`.
+   */
+  hasMore: boolean;
+  /**
+   * The sequence of the last envelope in `events` — the cursor to resume
+   * from for the next page. `null` when `events` is empty.
+   */
+  nextCursor: number | null;
+}
+/**
  * Select the envelopes to replay to a (re)connecting client.
  *
- * - With a valid `cursor`, returns only envelopes whose sequence is strictly
- *   greater than the cursor (the events the client is missing), preserving
- *   buffer order and capped to the `limit` most recent so a stale cursor can
- *   never replay an unbounded burst.
+ * - With a valid `cursor`, returns the envelopes whose sequence is strictly
+ *   greater than the cursor (the events the client is missing), oldest first,
+ *   capped to `limit`. Oldest-first matters: the client resumes from its
+ *   cursor, so each page must continue where the previous one left off. The
+ *   caller loops on `hasMore`/`nextCursor` until the backlog is drained, so a
+ *   stale cursor can never silently skip the events between `cursor + 1` and
+ *   a truncated page — that is the cursor-recovery contract.
  * - With `cursor === null` (absent/invalid), returns `buffer.slice(-limit)` —
  *   the exact historical behavior, so clients that send no cursor are
- *   unaffected.
+ *   unaffected. No pagination is offered on this path (`hasMore: false`).
  *
  * Does not mutate the input buffer and does not reorder events.
  */
@@ -85,15 +110,24 @@ export function selectReplayEvents<T extends ReplayableEvent>(
   buffer: readonly T[],
   cursor: number | null,
   limit: number = DEFAULT_REPLAY_LIMIT,
-): T[] {
+): ReplayPage<T> {
   const cap = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 0;
-  if (cap === 0) return [];
+  if (cap === 0) return { events: [], hasMore: false, nextCursor: null };
   if (cursor === null) {
-    return cap >= buffer.length ? buffer.slice() : buffer.slice(-cap);
+    const events = cap >= buffer.length ? buffer.slice() : buffer.slice(-cap);
+    // hasMore stays false here: a cursor-less client keeps the historical
+    // one-shot tail replay and is never offered pagination.
+    const last = events[events.length - 1];
+    const nextCursor = last !== undefined ? eventSequence(last) : null;
+    return { events, hasMore: false, nextCursor };
   }
   const missing = buffer.filter((event) => {
     const seq = eventSequence(event);
     return seq !== null && seq > cursor;
   });
-  return missing.length > cap ? missing.slice(-cap) : missing;
+  const events = missing.slice(0, cap);
+  const hasMore = missing.length > events.length;
+  const last = events[events.length - 1];
+  const nextCursor = last !== undefined ? eventSequence(last) : null;
+  return { events, hasMore, nextCursor };
 }

@@ -7,10 +7,9 @@ import java.util.List;
 
 /**
  * On-device English transcription with the ASR head of
- * {@code libelizainference}. {@code <bundleDir>/asr/} holds one backend:
- * Phonon-2 ({@code phonon-2-fv5.gguf}, Parakeet-TDT, the default; batch and
- * streaming) or the Qwen3-ASR text + mmproj pair (batch only, staged with
- * {@code ELIZA_ASR_BACKEND=qwen3}). Batch input is 16 kHz mono float PCM;
+ * {@code libelizainference}. {@code <bundleDir>/asr/} holds Phonon-2
+ * ({@code phonon-2-fv5.gguf}, Parakeet-TDT; batch and streaming), the only
+ * ASR model. Batch input is 16 kHz mono float PCM;
  * streams take any rate. No agent, server, account or network use.
  *
  * <p>Calls are serialized; run them on a worker thread. {@link #cancel} may
@@ -48,7 +47,7 @@ public final class NativeAsr implements AutoCloseable {
         return VoiceNative.nativeAsrTranscribe(check(), pcm16kMono, SAMPLE_RATE);
     }
 
-    /** True when the loaded backend streams (Phonon-2); false for the Qwen3-ASR pair. */
+    /** True when the loaded backend streams (Phonon-2); false only for a library built without Parakeet-TDT. */
     public boolean supportsStreaming() {
         check();
         return VoiceNative.nativeAsrStreamSupported() == 1;

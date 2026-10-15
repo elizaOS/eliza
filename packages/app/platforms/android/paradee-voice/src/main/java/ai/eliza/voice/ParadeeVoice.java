@@ -3,6 +3,8 @@ package ai.eliza.voice;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * On-device English speech with Paradee-8M v1.0 (one voice, af_heart) in
@@ -41,6 +43,10 @@ public final class ParadeeVoice implements AutoCloseable {
     /** Guards the context pointer so cancel never signals a freed context. */
     private final Object handleLock = new Object();
     private long handle;
+    private final AtomicLong generation = new AtomicLong();
+    private boolean streaming;
+    private volatile boolean closing;
+    private volatile Thread streamingThread;
     private final int sampleRate;
     private final int g2pKind;
 
@@ -99,8 +105,58 @@ public final class ParadeeVoice implements AutoCloseable {
         return new Audio(VoiceNative.nativeParadeeSynthesizePhonemes(check(), bytes(phonemes), speed), sampleRate);
     }
 
+    /** Receives native model chunks on the synthesis worker. Return false to cancel. */
+    public interface PcmSink {
+        boolean onChunk(float[] samples, boolean complete);
+    }
+
+    private final class NativeSink implements PcmSink {
+        private final long admitted;
+        private final PcmSink sink;
+        NativeSink(long admitted, PcmSink sink) { this.admitted = admitted; this.sink = sink; }
+        public boolean onChunk(float[] samples, boolean complete) {
+            if (closing || generation.get() != admitted) return false;
+            boolean keep = sink.onChunk(samples, complete);
+            return keep && !closing && generation.get() == admitted;
+        }
+    }
+
+    public boolean supportsStreaming() {
+        return VoiceNative.nativeParadeeStreamSupported() == 1;
+    }
+
+    /**
+     * Delivers model chunks without accumulating the whole utterance. Each array
+     * holds at most 24,000 mono samples. The final callback has an empty array.
+     * The return/exception is authoritative; flush queued playback on failure.
+     * The sink must not reenter this voice except to cancel. Cancellation invalidates
+     * calls already waiting for the synthesis lock and every later callback.
+     */
+    public void synthesizeStream(String text, float speed, PcmSink sink) {
+        if (sink == null) throw new IllegalArgumentException("Expected PCM sink");
+        if (closing) throw new IllegalStateException("Paradee voice closing");
+        final long admitted = generation.get();
+        synchronized (this) {
+            final long ctx = check();
+            if (closing || generation.get() != admitted) throw new CancellationException();
+            if (!supportsStreaming()) throw new IllegalStateException("Paradee streaming unavailable");
+            streaming = true;
+            streamingThread = Thread.currentThread();
+            try {
+                PcmSink guarded = new NativeSink(admitted, sink);
+                if (closing || generation.get() != admitted) throw new CancellationException();
+                VoiceNative.nativeParadeeSynthesizeStream(ctx, bytes(text), speed, guarded);
+                if (closing || generation.get() != admitted) throw new CancellationException();
+            } finally {
+                streaming = false;
+                streamingThread = null;
+            }
+        }
+    }
+
     /** Stops the running synthesis, if any. Safe from any thread. */
     public void cancel() {
+        generation.incrementAndGet();
         synchronized (handleLock) {
             if (handle != 0) VoiceNative.nativeCancelTts(handle);
         }
@@ -113,8 +169,11 @@ public final class ParadeeVoice implements AutoCloseable {
 
     @Override
     public void close() {
+        if (streamingThread == Thread.currentThread()) throw new IllegalStateException("Cannot close voice from PCM callback");
+        closing = true;
         cancel();
         synchronized (this) {
+            if (streaming) throw new IllegalStateException("Cannot close voice from PCM callback");
             synchronized (handleLock) {
                 if (handle != 0) {
                     VoiceNative.nativeContextDestroy(handle);
@@ -125,6 +184,8 @@ public final class ParadeeVoice implements AutoCloseable {
     }
 
     private long check() {
+        if (closing) throw new IllegalStateException("Paradee voice closing");
+        if (streaming) throw new IllegalStateException("Cannot reenter voice from PCM callback");
         synchronized (handleLock) {
             if (handle == 0) throw new IllegalStateException("Paradee voice closed");
             return handle;

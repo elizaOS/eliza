@@ -19,7 +19,7 @@ export function browserWorkspacePatternMatches(
     return false;
   }
   if (!trimmed.includes("*")) {
-    return value.includes(trimmed);
+    return value.toLowerCase().includes(trimmed.toLowerCase());
   }
   let wildcardPattern = "";
   for (let index = 0; index < trimmed.length; index += 1) {

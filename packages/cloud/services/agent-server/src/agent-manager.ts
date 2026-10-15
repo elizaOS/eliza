@@ -483,7 +483,11 @@ export class AgentManager {
           ? `${agentId}:${source}:${connectorAccountId ?? "default"}:${connectorChatId}`
           : `${agentId}:${userId}`;
       const roomId = stringToUuid(sourceRoomKey);
-      const worldId = stringToUuid(`server:${process.env.SERVER_NAME}`);
+      // World ids are a global key and world reads are agent-scoped, so a
+      // server-wide id shared by every agent in this pod would collide.
+      const worldId = stringToUuid(
+        `server:${process.env.SERVER_NAME}:${agentId}`,
+      );
       const userName = resolveUserName(userId, metadata);
       const connMeta = buildConnectionMetadata(metadata);
       const chatType = metadata?.chatType?.toLowerCase();

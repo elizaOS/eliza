@@ -83,6 +83,11 @@ export function compareSemver(a: string, b: string): -1 | 0 | 1 | null {
   if (!pa || !pb) return null;
 
   for (let i = 0; i < 4; i++) {
+    if (i === 3 && Number.isFinite(pa[3]) && Number.isFinite(pb[3])) {
+      const aTag = /-(beta|rc|nightly)\./.exec(a)?.[1] ?? "";
+      const bTag = /-(beta|rc|nightly)\./.exec(b)?.[1] ?? "";
+      if (aTag !== bTag) return aTag < bTag ? -1 : 1;
+    }
     if (pa[i] < pb[i]) return -1;
     if (pa[i] > pb[i]) return 1;
   }

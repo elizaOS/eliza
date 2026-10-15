@@ -825,12 +825,12 @@ export class GoogleGmailClient {
         criteria: { from: params.fromAddress },
         action: params.trash
           ? { removeLabelIds: ["INBOX"], addLabelIds: ["TRASH"] }
-          : { addLabelIds: ["TRASH"], removeLabelIds: ["INBOX", "UNREAD"] },
+          : { removeLabelIds: ["INBOX", "UNREAD"] },
       },
     });
     return {
       filterId: response.data.id ?? null,
-      trashed: true,
+      trashed: params.trash === true,
     };
   }
 

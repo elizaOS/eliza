@@ -66,6 +66,7 @@ export {
 	resourcesSchema,
 	type SecondarySurface,
 } from "./catalog/schema.js";
+export { getClientChatRooms } from "./client-chat-rooms.js";
 // Connection management (ensureConnection/ensureConnections) - standalone batch helpers
 export * from "./connection";
 export * from "./connectors/account-manager";

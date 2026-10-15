@@ -8,8 +8,13 @@
  *
  * Usage:
  *   bun --conditions=eliza-source packages/cloud/scripts/admin/mint-subscription-grant-codes.ts \
- *     --count 100 [--max-redemptions 1] [--duration-days 183] [--plan plus_monthly] \
- *     [--family alpha_phone] [--expires-at 2027-12-31T00:00:00Z] [--label "Alpha Phone batch 1"]
+ *     --count 100 [--max-redemptions 1] [--duration-days 183 | --duration-months 6 | --lifetime] \
+ *     [--plan plus_monthly] [--family alpha_phone] [--requires-no-paid-plan] \
+ *     [--expires-at 2027-12-31T00:00:00Z] [--label "Alpha Phone batch 1"]
+ *
+ * `--duration-months` grants UTC calendar months from redemption (a month end
+ * clamps, so Aug 31 + 6 is the end of February). `--requires-no-paid-plan`
+ * refuses redemption while the organization has an open paid subscription.
  */
 
 import { parseArgs } from "node:util";
@@ -42,7 +47,9 @@ export function generateSubscriptionGrantCode(
 export interface MintOptions {
   count: number;
   maxRedemptions: number;
-  durationDays: number;
+  durationDays: number | null;
+  durationMonths: number | null;
+  requiresNoPaidPlan: boolean;
   planKey: "plus_monthly" | "pro_monthly";
   family: string;
   expiresAt: Date | null;
@@ -55,7 +62,10 @@ export function parseMintOptions(argv: string[]): MintOptions {
     options: {
       count: { type: "string" },
       "max-redemptions": { type: "string", default: "1" },
-      "duration-days": { type: "string", default: "183" },
+      "duration-days": { type: "string" },
+      "duration-months": { type: "string" },
+      "requires-no-paid-plan": { type: "boolean", default: false },
+      lifetime: { type: "boolean", default: false },
       plan: { type: "string", default: "plus_monthly" },
       family: { type: "string", default: "alpha_phone" },
       "expires-at": { type: "string" },
@@ -76,6 +86,20 @@ export function parseMintOptions(argv: string[]): MintOptions {
   };
   if (values.plan !== "plus_monthly" && values.plan !== "pro_monthly")
     throw new Error("--plan must be plus_monthly or pro_monthly");
+  if (
+    [
+      values.lifetime,
+      values["duration-days"] !== undefined,
+      values["duration-months"] !== undefined,
+    ].filter(Boolean).length > 1
+  )
+    throw new Error(
+      "--lifetime, --duration-days and --duration-months are mutually exclusive",
+    );
+  const durationMonths =
+    values["duration-months"] === undefined
+      ? null
+      : integer(values["duration-months"], "duration-months", 1, 24);
   if (!/^[a-z0-9_]{1,64}$/.test(values.family ?? ""))
     throw new Error("--family must match ^[a-z0-9_]{1,64}$");
   const expiresAt = values["expires-at"]
@@ -93,7 +117,12 @@ export function parseMintOptions(argv: string[]): MintOptions {
       1,
       1_000_000,
     ),
-    durationDays: integer(values["duration-days"], "duration-days", 1, 731),
+    durationDays:
+      values.lifetime || durationMonths !== null
+        ? null
+        : integer(values["duration-days"] ?? "183", "duration-days", 1, 731),
+    durationMonths,
+    requiresNoPaidPlan: values["requires-no-paid-plan"] === true,
     planKey: values.plan,
     family: values.family ?? "alpha_phone",
     expiresAt,
@@ -125,6 +154,8 @@ async function main(): Promise<void> {
         family: options.family,
         plan_key: options.planKey,
         duration_days: options.durationDays,
+        duration_months: options.durationMonths,
+        requires_no_paid_plan: options.requiresNoPaidPlan,
         max_redemptions: options.maxRedemptions,
         expires_at: options.expiresAt,
         label: options.label,
@@ -136,7 +167,7 @@ async function main(): Promise<void> {
     await tx.insert(subscriptionGrantCodes).values(rows);
   });
   console.error(
-    `Minted ${codes.size} ${options.planKey} code(s), family ${options.family}, ${options.durationDays} days, ` +
+    `Minted ${codes.size} ${options.planKey} code(s), family ${options.family}, ${options.durationMonths !== null ? `${options.durationMonths} calendar months` : options.durationDays === null ? "lifetime" : `${options.durationDays} days`}${options.requiresNoPaidPlan ? ", refused for paying accounts" : ""}, ` +
       `${options.maxRedemptions} redemption(s) each. Store them now; they are not recoverable.`,
   );
   for (const code of codes) console.log(code);

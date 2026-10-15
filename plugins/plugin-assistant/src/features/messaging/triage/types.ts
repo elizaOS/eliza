@@ -1,4 +1,10 @@
-import type { IAgentRuntime, ReadRangeUnit, ReadView } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  Memory,
+  ReadRangeUnit,
+  ReadView,
+  UUID,
+} from "@elizaos/core";
 /**
  * Cross-platform message triage — shared type contract.
  *
@@ -85,8 +91,20 @@ export interface DraftRequest {
   metadata?: Record<string, unknown>;
 }
 
+export interface MessageDraftContext {
+  /** Trusted executing caller; never parsed from model parameters or saved with a draft. */
+  requester?: Memory;
+}
+
+export interface MessageSendContext extends MessageDraftContext {
+  /** The exact canonical draft snapshot whose consent was verified by the service. */
+  snapshot: DraftRequest;
+}
+
 export interface DraftRecord {
   draftId: string;
+  /** Runtime agent that prepared this draft. Absent only on legacy scheduled rows. */
+  agentId?: UUID;
   source: MessageSource;
   inReplyToId?: string;
   threadId?: string;
@@ -118,6 +136,8 @@ export interface DraftRecord {
 }
 
 export interface ListOptions {
+  /** Verified caller injected by the tool boundary; never read from model parameters. */
+  requester?: Memory;
   sinceMs?: number;
   limit?: number;
   /**
@@ -141,12 +161,24 @@ export interface MessageAdapterCapabilities {
     markRead?: boolean;
     unsubscribe?: boolean;
   };
-  send: { reply?: boolean; new?: boolean; schedule?: boolean };
+  send: {
+    reply?: boolean;
+    new?: boolean;
+    schedule?: boolean;
+    /**
+     * True when delivery must run inside the executing owner request (the
+     * adapter authorizes against a live requester). Such drafts cannot be
+     * handed to the durable deferred-send runner, which fires without one.
+     */
+    requiresLiveRequester?: boolean;
+  };
   worlds: "single" | "multi";
   channels: "explicit" | "implicit" | "none";
 }
 
 export interface SearchMessagesFilters {
+  /** Verified caller injected by the tool boundary; never read from model parameters. */
+  requester?: Memory;
   sources?: MessageSource[];
   worldIds?: string[];
   channelIds?: string[];
@@ -162,6 +194,8 @@ export interface SearchMessagesFilters {
 
 /** Provider-native request for one exact, bounded page of a message body. */
 export interface ReadMessageRequest {
+  /** Verified caller injected by the tool boundary; never read from model parameters. */
+  requester?: Memory;
   messageId?: string;
   reference?: string;
   worldId?: string;
@@ -241,6 +275,8 @@ export interface ManageResult {
 
 export interface MessageAdapter {
   readonly source: MessageSource;
+  /** Owner/grant-scoped sources can opt out of the shared metadata cache. */
+  readonly cachePolicy?: "none";
   isAvailable(runtime: IAgentRuntime): boolean;
   capabilities(): MessageAdapterCapabilities;
   listMessages(
@@ -264,10 +300,18 @@ export interface MessageAdapter {
   createDraft(
     runtime: IAgentRuntime,
     draft: DraftRequest,
+    context?: MessageDraftContext,
   ): Promise<{ draftId: string; preview: string; snapshot?: DraftRequest }>;
+  /** Run before cached send results or in-flight dispatches can be shared. */
+  authorizeSend?(
+    runtime: IAgentRuntime,
+    requester?: Memory,
+    draftId?: string,
+  ): Promise<void>;
   sendDraft(
     runtime: IAgentRuntime,
     draftId: string,
+    context?: MessageSendContext,
   ): Promise<{ externalId: string }>;
   scheduleSend?(
     runtime: IAgentRuntime,
