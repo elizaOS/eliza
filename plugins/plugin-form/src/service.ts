@@ -1395,6 +1395,10 @@ export class FormService extends Service {
     }
 
     session.status = "active";
+    const restoredForm = this.getForm(session.formId);
+    if (restoredForm && this.checkAllRequiredFilled(session, restoredForm)) {
+      session.status = "ready";
+    }
     session.updatedAt = Date.now();
 
     // Recalculate TTL on restore
