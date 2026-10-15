@@ -912,32 +912,20 @@ export class FormService extends Service {
     let subFieldStatus: FieldState["status"];
     let error: string | undefined;
 
-    // Use control type's validate if available
-    if (controlType.validate) {
-      const result = controlType.validate(value, subControl);
-      if (!result.valid) {
-        subFieldStatus = "invalid";
-        error = result.error;
-      } else if (confidence < (subControl.confirmThreshold ?? 0.8)) {
-        subFieldStatus = "uncertain";
-      } else {
-        subFieldStatus = "filled";
-      }
+    // Validate the child against its own declared type. The parent composite
+    // validator expects a complete parent object, not a child scalar.
+    const validation = validateField(
+      value,
+      subControl,
+      this.getControlType(subControl.type),
+    );
+    if (!validation.valid) {
+      subFieldStatus = "invalid";
+      error = validation.error;
+    } else if (confidence < (subControl.confirmThreshold ?? 0.8)) {
+      subFieldStatus = "uncertain";
     } else {
-      // Fallback to basic validation
-      const validation = validateField(
-        value,
-        subControl,
-        this.getControlType(subControl.type),
-      );
-      if (!validation.valid) {
-        subFieldStatus = "invalid";
-        error = validation.error;
-      } else if (confidence < (subControl.confirmThreshold ?? 0.8)) {
-        subFieldStatus = "uncertain";
-      } else {
-        subFieldStatus = "filled";
-      }
+      subFieldStatus = "filled";
     }
 
     // Update the subfield state
