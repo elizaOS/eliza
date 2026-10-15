@@ -314,7 +314,10 @@ export function validateParamsAgainstSchema(
         if (!allowedTypes.includes(actual)) {
           errors.push(`Parameter '${name}' expected ${expected}, got ${actual}`);
         }
-      } else if (actual !== expected) {
+      } else if (prop.type !== undefined && actual !== expected) {
+        // An absent `type` means "any type" per JSON Schema; only the enum
+        // check below constrains the value. mapJsonSchemaType(undefined)
+        // falls through to "object", which wrongly rejects primitives.
         errors.push(`Parameter '${name}' expected ${expected}, got ${actual}`);
       }
 
