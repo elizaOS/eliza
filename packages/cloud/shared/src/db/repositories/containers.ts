@@ -717,12 +717,22 @@ export class ContainersRepository {
     now: Date,
   ): Promise<void> {
     const [container] = await tx
-      .select({ user_id: containers.user_id, name: containers.name })
+      .select({
+        user_id: containers.user_id,
+        name: containers.name,
+        status: containers.status,
+        billing_status: containers.billing_status,
+      })
       .from(containers)
       .where(and(eq(containers.id, id), eq(containers.organization_id, organizationId)))
       .for("update")
       .limit(1);
     if (!container) return;
+    if (
+      !["running", "deleting"].includes(container.status) ||
+      !["active", "warning", "shutdown_pending"].includes(container.billing_status)
+    )
+      return;
     const [organization] = await tx
       .select({ pay_as_you_go_from_earnings: organizations.pay_as_you_go_from_earnings })
       .from(organizations)

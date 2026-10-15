@@ -1524,6 +1524,54 @@ describe("compute billing recovery", () => {
     },
   );
 
+  test("daemon deletion does not settle a container after app teardown", async () => {
+    const { org, user } = await seed("10.000000");
+    const containerId = crypto.randomUUID();
+    const periodStart = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    await dbWrite.execute(sql`INSERT INTO containers
+      (id, name, project_name, organization_id, user_id, status, billing_status,
+       last_billed_at, next_billing_at, lifecycle_revision, created_at, updated_at)
+      VALUES (${containerId}, 'delete-idempotency', 'delete-idempotency', ${org.id}, ${user.id},
+        'running', 'active', ${periodStart}, ${new Date(periodStart.getTime() + 24 * 60 * 60 * 1000)},
+        1, ${periodStart}, ${periodStart})`);
+    await dbWrite.insert(computeBillingRateSegments).values({
+      organization_id: org.id,
+      workload_kind: "container",
+      workload_id: containerId,
+      lifecycle_revision: 1,
+      billing_state: "running",
+      rate_per_hour: "0.027917",
+      effective_at: periodStart,
+    });
+
+    await containersRepository.markStoppedForBilling(containerId, org.id);
+    const [afterStop] = await dbWrite
+      .select({ credit_balance: organizations.credit_balance })
+      .from(organizations)
+      .where(eq(organizations.id, org.id));
+    const receiptsAfterStop = await dbWrite
+      .select()
+      .from(containerBillingRecords)
+      .where(eq(containerBillingRecords.container_id, containerId));
+
+    await containersRepository.settleAccruedCompute(
+      containerId,
+      org.id,
+      new Date(Date.now() + 3 * 60 * 60 * 1000),
+    );
+
+    const [afterDelete] = await dbWrite
+      .select({ credit_balance: organizations.credit_balance })
+      .from(organizations)
+      .where(eq(organizations.id, org.id));
+    const receiptsAfterDelete = await dbWrite
+      .select()
+      .from(containerBillingRecords)
+      .where(eq(containerBillingRecords.container_id, containerId));
+    expect(afterDelete.credit_balance).toBe(afterStop.credit_balance);
+    expect(receiptsAfterDelete).toHaveLength(receiptsAfterStop.length);
+  });
+
   test("recovery discovery excludes live jobs and includes failed or unbound intents", async () => {
     const { org, user } = await seed("10.000000");
     const dueAt = new Date(0);
