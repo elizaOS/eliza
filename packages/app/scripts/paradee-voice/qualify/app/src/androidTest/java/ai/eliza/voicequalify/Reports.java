@@ -88,7 +88,7 @@ final class Reports {
     static void status(String key, String summary) {
         Bundle status = new Bundle();
         status.putString(key, summary);
-        InstrumentationRegistry.getInstrumentation().sendStatus(0, status);
+        InstrumentationRegistry.getInstrumentation().addResults(status);
     }
 
     static JSONObject device() throws Exception {

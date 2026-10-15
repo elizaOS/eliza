@@ -1,6 +1,7 @@
 import addressparser from "nodemailer/lib/addressparser";
 import {
   decodeGmailPart,
+  extractGmailHtmlView,
   type GmailMessageLink,
   type GmailPayloadPart,
 } from "../../utils/gmail-mime-text";
@@ -391,8 +392,11 @@ export class InboxGoogleProvider {
       if (!normalized) throw new InboxContractError(502, "Incomplete thread message");
       if (encoder.encode(normalized.bodyText).length > 256 * 1024)
         throw new InboxContractError(413, "Message body exceeds the explicit display limit");
+      const html = extractGmailHtmlView(object(raw.payload));
       return {
         ...normalized,
+        bodyHtml: html.html,
+        bodyHtmlStatus: html.status,
         historyId: typeof raw.historyId === "string" ? raw.historyId : null,
         attachments: attachmentParts(object(raw.payload)).map((part) => {
           const body = object(part.body),

@@ -151,7 +151,7 @@ export const manageMessageAction: Action = {
 
     if (parsed.operation.kind === "unsubscribe") {
       // Refuse before asking: a yes to an unsupported unsubscribe can only fail.
-      const adapter = service.getManageAdapter(messageId, {
+      const adapter = service.getManageAdapter(runtime, messageId, {
         source: parsed.source,
       });
       if (adapter?.capabilities().manage.unsubscribe !== true) {

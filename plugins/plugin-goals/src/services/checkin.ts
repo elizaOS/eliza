@@ -36,6 +36,7 @@ import type {
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   getScheduledTaskRunner,
+  isRecurringTrigger,
   OWNER_LOCAL_TZ,
   type ScheduledTask,
   type ScheduledTaskInput,
@@ -77,6 +78,20 @@ const TERMINAL_TASK_STATUSES: ReadonlySet<ScheduledTaskStatus> =
     "failed",
     "dismissed",
   ]);
+
+/**
+ * Whether a check-in task can still fire. A recurring task parked in a
+ * terminal status (`completed` after the owner answered, `skipped`,
+ * `expired`, `failed`) is fired again by the spine at its next occurrence;
+ * only `dismissed` stops it. A finished once task has no next occurrence.
+ */
+function isLiveCheckinTask(task: ScheduledTask): boolean {
+  if (task.state.status === "dismissed") return false;
+  return (
+    !TERMINAL_TASK_STATUSES.has(task.state.status) ||
+    isRecurringTrigger(task.trigger)
+  );
+}
 
 /**
  * Representative owner-local hour for each named LifeOps time window.
@@ -493,7 +508,7 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
     for (const task of existing) {
       if (belongsToDesiredSlot(task)) continue;
       if (holdsDesiredOnce(task)) continue;
-      if (TERMINAL_TASK_STATUSES.has(task.state.status)) continue;
+      if (!isLiveCheckinTask(task)) continue;
       await runner.apply(task.taskId, "dismiss", {
         reason: GOAL_CHECKIN_SYNC_DISMISS_REASON,
       });
@@ -596,7 +611,7 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
     const existing = await this.listGoalTasks(runner, goalId);
     const dismissedTaskIds: string[] = [];
     for (const task of existing) {
-      if (TERMINAL_TASK_STATUSES.has(task.state.status)) continue;
+      if (!isLiveCheckinTask(task)) continue;
       await runner.apply(task.taskId, "dismiss", {
         reason: GOAL_CHECKIN_SYNC_DISMISS_REASON,
       });

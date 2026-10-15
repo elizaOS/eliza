@@ -13,7 +13,8 @@
  *      the supported subset (DAILY / WEEKLY / MONTHLY / YEARLY with INTERVAL,
  *      BYDAY, BYMONTHDAY, COUNT, UNTIL). Occurrences keep the event's local
  *      wall-clock time in its IANA timezone across DST transitions — one fire
- *      per local day, never a double-fire or a skip.
+ *      per local day, never a double-fire. A wall-clock time inside a
+ *      spring-forward gap shifts past it or is skipped, as the caller chooses.
  *   3. **Human-readable descriptions** — "weekly on Monday", "every 2 weeks on
  *      Mon and Wed, 10 times" for grounded action replies.
  *
@@ -26,6 +27,7 @@ import { CalendarServiceError } from "./errors.js";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,
+  CalendarLocalTimeError,
   getWeekdayForLocalDate,
   getZonedDateParts,
   type ZonedDateParts,
@@ -578,6 +580,20 @@ function compareLocalDates(left: LocalDateOnly, right: LocalDateOnly): number {
 }
 
 /**
+ * How a generated occurrence whose DTSTART wall-clock time does not exist on
+ * its date (a spring-forward gap) is handled.
+ *
+ * - `"shift-forward"`: the occurrence keeps its date and moves past the gap
+ *   (02:30 becomes 03:30), and it counts toward COUNT. This is RFC 5545
+ *   §3.3.5 DATE-TIME resolution, as libical and provider calendars expand
+ *   series, so provider-backed series (split plans) use it to keep
+ *   occurrence indexes aligned with the provider's instances.
+ * - `"skip"`: RFC 5545 §3.3.10 — the occurrence is ignored and does not count
+ *   toward COUNT, so the series gains one occurrence at its end instead.
+ */
+export type NonexistentLocalTimePolicy = "shift-forward" | "skip";
+
+/**
  * Generate occurrence instants for a rule, DST-correct: every occurrence keeps
  * the DTSTART wall-clock time in `timeZone`. DTSTART itself is always the
  * first occurrence (RFC 5545) and counts toward COUNT.
@@ -588,8 +604,10 @@ function* generateOccurrences(args: {
   timeZone: string;
   rangeStart?: Date;
   rangeEnd: Date;
+  nonexistentLocalTime?: NonexistentLocalTimePolicy;
 }): Generator<Date> {
   const { rule, startAt, timeZone, rangeStart, rangeEnd } = args;
+  const skipNonexistent = args.nonexistentLocalTime === "skip";
   if (rule.beyondExpansionSubset) {
     throw new CalendarServiceError(
       400,
@@ -630,7 +648,9 @@ function* generateOccurrences(args: {
   // An occurrence on a local date before this one ends more than a day before
   // `rangeStart`, so the caller discards it. Such dates still count toward
   // COUNT, but their instant is never resolved: an old daily series costs
-  // date arithmetic only, not one time zone lookup per past day.
+  // date arithmetic only, not one time zone lookup per past day. When
+  // nonexistent local times are skipped, a COUNT rule must resolve every
+  // date, because a skipped gap date does not count toward COUNT.
   const skipBeforeDate = rangeStartParts
     ? addDaysToLocalDate(
         {
@@ -645,13 +665,26 @@ function* generateOccurrences(args: {
   let emitted = 0;
   const emitBudget = rule.count ?? Number.POSITIVE_INFINITY;
 
-  function toInstant(date: LocalDateOnly): Date {
+  // Null when the DTSTART wall-clock time does not exist on `date` and the
+  // policy skips such occurrences.
+  function toInstant(date: LocalDateOnly): Date | null {
     assertValidLocalDate(date);
+    const parts = { ...date, ...timeOfDay };
     try {
-      const instant = buildUtcDateFromLocalParts(timeZone, {
-        ...date,
-        ...timeOfDay,
-      });
+      let instant: Date;
+      if (skipNonexistent) {
+        try {
+          instant = buildUtcDateFromLocalParts(timeZone, parts, "reject");
+        } catch (error) {
+          if (!(error instanceof CalendarLocalTimeError)) throw error;
+          if (error.code === "CALENDAR_LOCAL_TIME_NONEXISTENT") return null;
+          // A repeated fall-back time is a real occurrence; it resolves to
+          // the earlier instant exactly as the shift-forward policy does.
+          instant = buildUtcDateFromLocalParts(timeZone, parts);
+        }
+      } else {
+        instant = buildUtcDateFromLocalParts(timeZone, parts);
+      }
       if (!Number.isFinite(instant.getTime())) {
         invalidExpansionDate("the candidate instant cannot be represented");
       }
@@ -820,11 +853,20 @@ function* generateOccurrences(args: {
       daysAfterAnchor > 0 &&
       compareLocalDates(date, skipBeforeDate) < 0
     ) {
-      emitted += 1;
-      if (emitted >= emitBudget) return;
+      // A skipped gap date before the range does not count toward COUNT.
+      const counts =
+        !skipNonexistent ||
+        rule.count === undefined ||
+        toInstant(date) !== null;
+      if (counts) {
+        emitted += 1;
+        if (emitted >= emitBudget) return;
+      }
       continue;
     }
     const instant = toInstant(date);
+    // RFC 5545 §3.3.10: a nonexistent local time is ignored, not counted.
+    if (instant === null) continue;
     if (instant.getTime() >= rangeEndMs) return;
     if (instant.getTime() <= startMs) continue;
     if (pastUntil(instant.getTime(), date)) return;
@@ -839,7 +881,8 @@ function* generateOccurrences(args: {
  * honoring COUNT/UNTIL termination. With `rangeStart`, earlier occurrences
  * count toward COUNT but are not returned and do not use the output cap.
  * DST-correct: occurrences keep the DTSTART wall-clock time in `timeZone`
- * across transitions.
+ * across transitions. `nonexistentLocalTime` decides whether an occurrence in
+ * a spring-forward gap shifts past it or is skipped without counting.
  */
 export function expandRecurrenceOccurrences(args: {
   rule: ParsedCalendarRecurrenceRule;
@@ -848,6 +891,7 @@ export function expandRecurrenceOccurrences(args: {
   rangeStart?: Date;
   rangeEnd: Date;
   maxOccurrences?: number;
+  nonexistentLocalTime: NonexistentLocalTimePolicy;
 }): Date[] {
   const cap = Math.min(
     args.maxOccurrences ?? MAX_EXPANDED_RECURRENCE_OCCURRENCES,
@@ -865,13 +909,16 @@ export function expandRecurrenceOccurrences(args: {
 
 /**
  * First occurrence strictly after `after`; null when the series has terminated
- * (COUNT/UNTIL) or the rule is outside the local expansion subset.
+ * (COUNT/UNTIL) or the rule is outside the local expansion subset. A
+ * spring-forward gap occurrence shifts past the gap unless
+ * `nonexistentLocalTime` is `"skip"`.
  */
 export function nextRecurrenceOccurrence(args: {
   rule: ParsedCalendarRecurrenceRule;
   startAt: Date;
   timeZone: string;
   after: Date;
+  nonexistentLocalTime?: NonexistentLocalTimePolicy;
 }): Date | null {
   if (args.rule.beyondExpansionSubset) return null;
   const ruleEnd =
@@ -1048,6 +1095,10 @@ export function buildRecurrenceSplitPlan(args: {
     timeZone: args.timeZone,
     rangeEnd: new Date(targetStartMs + 1),
     maxOccurrences: MAX_EXPANDED_RECURRENCE_OCCURRENCES,
+    // The provider series keeps a spring-forward gap occurrence and moves it
+    // past the gap (RFC 5545 §3.3.5); the split index must count it the same
+    // way or the truncated and following COUNTs drop or add an occurrence.
+    nonexistentLocalTime: "shift-forward",
   });
   const targetOccurrenceIndex = occurrences.findIndex(
     (occurrence) => occurrence.getTime() === targetStartMs,

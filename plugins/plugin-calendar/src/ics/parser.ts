@@ -456,13 +456,15 @@ function parseDateProperty(
       `${field} must use RFC 5545 DATE or DATE-TIME basic format.`,
     );
   }
+  // RFC 5545: represent leap seconds as second 59 on clocks without support.
+  const second = Number(dateTimeMatch[6] ?? "0");
   const parts = {
     year: Number(dateTimeMatch[1]),
     month: Number(dateTimeMatch[2]),
     day: Number(dateTimeMatch[3]),
     hour: Number(dateTimeMatch[4]),
     minute: Number(dateTimeMatch[5]),
-    second: Number(dateTimeMatch[6] ?? "0"),
+    second: second === 60 ? 59 : second,
   };
   validateDateParts(parts);
   const isUtc = dateTimeMatch[7] === "Z";
@@ -481,7 +483,7 @@ function parseDateProperty(
   const instant = isUtc
     ? dUtc.toISOString()
     : normalizeCalendarDateTimeInTimeZone(
-        `${dateTimeMatch[1]}-${dateTimeMatch[2]}-${dateTimeMatch[3]}T${dateTimeMatch[4]}:${dateTimeMatch[5]}:${dateTimeMatch[6] ?? "00"}`,
+        `${dateTimeMatch[1]}-${dateTimeMatch[2]}-${dateTimeMatch[3]}T${dateTimeMatch[4]}:${dateTimeMatch[5]}:${String(parts.second).padStart(2, "0")}`,
         field,
         timezone,
       );

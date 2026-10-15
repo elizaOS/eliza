@@ -100,7 +100,9 @@ export function getReleaseBundledPluginIds(): Set<string> {
   const packageJsonPath = path.join(packageRoot, "package.json");
 
   try {
-    const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")) as {
+    const pkg = JSON.parse(
+      fs.readFileSync(packageJsonPath, "utf-8").replace(/^\uFEFF/, ""),
+    ) as {
       dependencies?: Record<string, string>;
     };
     return new Set(
@@ -351,7 +353,9 @@ function extractPluginPackageMetadata(
 
 function readJsonFile<T>(filePath: string): T | null {
   try {
-    return JSON.parse(fs.readFileSync(filePath, "utf-8")) as T;
+    return JSON.parse(
+      fs.readFileSync(filePath, "utf-8").replace(/^\uFEFF/, ""),
+    ) as T;
   } catch {
     return null;
   }
@@ -874,7 +878,9 @@ export function discoverInstalledPlugins(
       for (const pkgPath of candidates) {
         try {
           if (fs.existsSync(pkgPath)) {
-            const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
+            const pkg = JSON.parse(
+              fs.readFileSync(pkgPath, "utf-8").replace(/^\uFEFF/, ""),
+            ) as {
               name?: string;
               description?: string;
               homepage?: string;
@@ -1460,9 +1466,8 @@ export function readBundledPluginPackageMetadata(
     seen.add(pkgPath);
 
     try {
-      const pkg = JSON.parse(
-        fs.readFileSync(pkgPath, "utf-8"),
-      ) as PackageJsonLike;
+      const pkg = readJsonFile<PackageJsonLike>(pkgPath);
+      if (!pkg) continue;
       const extracted = extractPluginPackageMetadata(pkg, { dirName, npmName });
 
       if (!metadata.description && extracted.description) {

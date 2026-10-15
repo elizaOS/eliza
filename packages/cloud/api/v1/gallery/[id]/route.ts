@@ -27,7 +27,11 @@ app.delete("/", async (c) => {
     const id = c.req.param("id") ?? "";
 
     const generation = await generationsService.getById(id);
-    if (!generation || generation.user_id !== user.id) {
+    if (
+      !generation ||
+      generation.user_id !== user.id ||
+      generation.organization_id !== user.organization_id
+    ) {
       throw NotFoundError("Media not found or access denied");
     }
 

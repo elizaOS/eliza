@@ -155,3 +155,83 @@ export function providerRateLimitRetryAt(
 	}
 	return undefined;
 }
+
+/** Provider rate-limit buckets a typed 429 may name. */
+export const PROVIDER_RATE_LIMIT_SCOPES = ["burst", "sustained"] as const;
+export type ProviderRateLimitScope =
+	(typeof PROVIDER_RATE_LIMIT_SCOPES)[number];
+
+/**
+ * Typed, client-safe view of a provider 429. It holds only bounded fields:
+ * never the provider message, the raw body or any credential.
+ */
+export interface ProviderRateLimit {
+	kind: "rate_limited";
+	/** Wait before the next attempt, whole milliseconds, capped. */
+	retryAfterMs: number;
+	/** Provider plan id that owns the refused bucket. */
+	planId?: string;
+	/** Provider bucket that refused the request. */
+	scope?: ProviderRateLimitScope;
+}
+
+/** Upper bound for a reported wait; longer provider hints are clamped. */
+export const MAX_PROVIDER_RATE_LIMIT_RETRY_AFTER_MS = 60 * 60 * 1000;
+
+const PROVIDER_PLAN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/;
+
+/** Clamp a provider wait to whole milliseconds; reject non-finite or negative. */
+export function boundProviderRetryAfterMs(value: unknown): number | undefined {
+	if (typeof value !== "number" || !Number.isFinite(value) || value < 0)
+		return undefined;
+	return Math.min(Math.ceil(value), MAX_PROVIDER_RATE_LIMIT_RETRY_AFTER_MS);
+}
+
+/**
+ * Validate a rate-limit record at a trust boundary. Unknown keys are dropped,
+ * a malformed plan id or scope is omitted, and the wait is capped.
+ */
+export function parseProviderRateLimit(
+	value: unknown,
+): ProviderRateLimit | undefined {
+	if (typeof value !== "object" || value === null || Array.isArray(value))
+		return undefined;
+	const record = value as Record<string, unknown>;
+	if (record.kind !== "rate_limited") return undefined;
+	const retryAfterMs = boundProviderRetryAfterMs(record.retryAfterMs);
+	if (retryAfterMs === undefined) return undefined;
+	const planId =
+		typeof record.planId === "string" &&
+		PROVIDER_PLAN_ID_PATTERN.test(record.planId)
+			? record.planId
+			: undefined;
+	const scope = PROVIDER_RATE_LIMIT_SCOPES.find(
+		(candidate) => candidate === record.scope,
+	);
+	return {
+		kind: "rate_limited",
+		retryAfterMs,
+		...(planId ? { planId } : {}),
+		...(scope ? { scope } : {}),
+	};
+}
+
+/**
+ * Read the typed rate limit a provider attached to its 429 (`rateLimit` on the
+ * error node), through SDK and failover wrappers. Prose is never parsed. It is
+ * a report for the client, not a retry signal: no caller waits on it.
+ */
+export function readProviderRateLimit(
+	error: unknown,
+): ProviderRateLimit | undefined {
+	if (typeof error !== "object" || error === null) return undefined;
+	if (isPermanentQuotaError(error)) return undefined;
+	for (const node of retryEvidenceNodes(error)) {
+		if (nodeStatus(node) !== 429) continue;
+		const rateLimit = parseProviderRateLimit(
+			(node as { rateLimit?: unknown }).rateLimit,
+		);
+		if (rateLimit) return rateLimit;
+	}
+	return undefined;
+}

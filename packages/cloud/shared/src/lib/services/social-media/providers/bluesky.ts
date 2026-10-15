@@ -19,7 +19,13 @@ import {
   decodeSocialMediaBase64,
   downloadSocialMediaBytes,
 } from "../media-download";
-import { type RetryOptions, withRetry } from "../rate-limit";
+import {
+  failedPostResult,
+  type RetryOptions,
+  SocialApiRejectionError,
+  UnknownPostOutcomeError,
+  withRetry,
+} from "../rate-limit";
 
 const BLUESKY_SERVICE = "https://bsky.social";
 
@@ -77,7 +83,7 @@ async function createSession(handle: string, appPassword: string): Promise<BskyS
       }),
     async (response) => {
       const json = (await response.json()) as BskySession & { error?: string; message?: string };
-      if (json.error) throw new Error(json.message || json.error);
+      if (json.error) throw new SocialApiRejectionError(json.message || json.error);
       return json;
     },
     { platform: "bluesky", maxRetries: 2 },
@@ -103,7 +109,7 @@ async function bskyApiRequest<T>(
       }),
     async (response) => {
       const json = (await response.json()) as T & { error?: string; message?: string };
-      if (json.error) throw new Error(json.message || json.error);
+      if (json.error) throw new SocialApiRejectionError(json.message || json.error);
       return json;
     },
     { platform: "bluesky", maxRetries: 3, ...retry },
@@ -386,13 +392,24 @@ export const blueskyProvider: SocialMediaProvider = {
         { replayUnknownOutcome: false },
       );
 
+      // A 2xx body without the created record URI is not a publication
+      // receipt: Bluesky may have published, so the outcome stays unknown
+      // and the credit is held instead of refunded (the slack/telegram rule).
+      const uri = response?.uri;
+      if (typeof uri !== "string" || !uri.trim()) {
+        throw new UnknownPostOutcomeError(
+          "bluesky",
+          new Error("Bluesky response lacks a publication receipt"),
+        );
+      }
+
       // Extract rkey from URI for URL
-      const rkey = response.uri.split("/").pop();
+      const rkey = uri.split("/").pop();
 
       return {
         platform: "bluesky",
         success: true,
-        postId: response.uri,
+        postId: uri,
         postUrl: `https://bsky.app/profile/${session.handle}/post/${rkey}`,
         metadata: { cid: response.cid },
       };
@@ -400,11 +417,7 @@ export const blueskyProvider: SocialMediaProvider = {
       // error-policy:J1 boundary translation of the Bluesky post call into the typed
       // PostResult failure the caller renders; a failure, not a fabricated success.
       logger.error("[Bluesky] Post failed", { error });
-      return {
-        platform: "bluesky",
-        success: false,
-        error: extractErrorMessage(error),
-      };
+      return failedPostResult("bluesky", error);
     }
   },
 
@@ -618,11 +631,7 @@ export const blueskyProvider: SocialMediaProvider = {
     } catch (error) {
       // error-policy:J1 boundary translation of the Bluesky repost call into the typed
       // PostResult failure the caller renders; a failure, not a fabricated success.
-      return {
-        platform: "bluesky",
-        success: false,
-        error: extractErrorMessage(error),
-      };
+      return failedPostResult("bluesky", error);
     }
   },
 };

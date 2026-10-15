@@ -378,6 +378,24 @@ export class TwitterClientInstance implements ITwitterClient {
   }
 }
 
+/**
+ * Whether `conversationId` belongs to a stored X group DM room of this
+ * account. The DM poller stores each conversation's room under
+ * `x-dm:<accountId>:<conversationId>`; a group room's channelId is the group
+ * conversation id, which looks like a user id.
+ */
+async function isStoredXGroupDmRoom(
+  runtime: IAgentRuntime,
+  accountId: string,
+  conversationId: string,
+): Promise<boolean> {
+  if (!/^\d+$/.test(conversationId)) return false;
+  const room = await runtime.getRoom(
+    createUniqueUuid(runtime, `x-dm:${accountId}:${conversationId}`),
+  );
+  return room?.type === ChannelType.GROUP;
+}
+
 export class XService extends Service {
   static serviceType = "x";
 
@@ -756,7 +774,7 @@ export class XService extends Service {
   }
 
   async handleSendMessage(
-    _runtime: IAgentRuntime,
+    runtime: IAgentRuntime,
     target: TargetInfo,
     content: Content,
   ): Promise<void> {
@@ -798,6 +816,22 @@ export class XService extends Service {
           { code: "X_DM_CONVERSATION_NOT_OWNED", context: { accountId } },
         );
       }
+      // A stored group DM room's channelId is the group conversation id, a
+      // single number that is not a user: send into the conversation.
+      if (
+        conversationRecipient === undefined &&
+        candidate !== undefined &&
+        candidate === target.channelId &&
+        (await isStoredXGroupDmRoom(runtime, accountId, candidate))
+      ) {
+        await this.sendXDirectMessage(
+          base,
+          session,
+          { conversationId: candidate },
+          text,
+        );
+        return;
+      }
       const recipient =
         conversationRecipient ??
         (await this.resolveDmRecipient(candidate, base));
@@ -806,7 +840,12 @@ export class XService extends Service {
           "X DM connector requires a resolvable recipient user id.",
         );
       }
-      await this.sendXDirectMessage(base, session, recipient, text);
+      await this.sendXDirectMessage(
+        base,
+        session,
+        { participantId: recipient },
+        text,
+      );
     });
   }
 
@@ -834,7 +873,12 @@ export class XService extends Service {
           "X DM connector requires a resolvable recipient user id.",
         );
       }
-      return this.sendXDirectMessage(base, session, recipient, text);
+      return this.sendXDirectMessage(
+        base,
+        session,
+        { participantId: recipient },
+        text,
+      );
     });
     return {
       ok: true,
@@ -1372,15 +1416,20 @@ export class XService extends Service {
   private async sendXDirectMessage(
     base: ClientBase,
     session: AuthenticatedTwitterSession,
-    recipient: string,
+    to: { participantId: string } | { conversationId: string },
     text: string,
   ): Promise<{ messageId: string | null; messageIds: string[] }> {
     const messageIds: string[] = [];
     for (const chunk of splitXDirectMessageContent(text)) {
       this.assertDmSessionCurrent(base, session);
-      const result = await session.client.v2.sendDmToParticipant(recipient, {
-        text: chunk,
-      });
+      const result =
+        "conversationId" in to
+          ? await session.client.v2.sendDmInConversation(to.conversationId, {
+              text: chunk,
+            })
+          : await session.client.v2.sendDmToParticipant(to.participantId, {
+              text: chunk,
+            });
       const messageId = normalizeXReceiptId(result.dm_event_id);
       if (messageId) messageIds.push(messageId);
     }

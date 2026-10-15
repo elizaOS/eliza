@@ -149,6 +149,11 @@ app.delete("/", async (c) => {
 
     const agent = await charactersService.getById(agentId);
     if (!agent) throw NotFoundError("Agent not found");
+    await assertOrgMembership(user, agent.organization_id, {
+      resourceType: "agent",
+      resourceId: agentId,
+      c,
+    });
     if (agent.user_id !== user.id) throw ForbiddenError("Not authorized");
 
     await userCharactersRepository.unpublish(agentId);

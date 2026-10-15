@@ -28,12 +28,16 @@ const PARAPHRASE_TIE_MARGIN = 0.15;
 
 /** Case-, punctuation-, and whitespace-insensitive form of todo content. */
 export function normalizeTodoContent(content: string): string {
-  return content
-    .normalize("NFKC")
-    .toLowerCase()
-    .replace(/[\p{P}\p{S}]+/gu, " ")
-    .replace(/\s+/gu, " ")
-    .trim();
+  return (
+    content
+      .normalize("NFKC")
+      .toLowerCase()
+      // A numeric minus is data, not ignorable punctuation.
+      .replace(/(?<![\p{L}\p{N}])[-\u2212](?=\d)/gu, "negative ")
+      .replace(/[\p{P}\p{S}]+/gu, " ")
+      .replace(/\s+/gu, " ")
+      .trim()
+  );
 }
 
 function stem(token: string): string {
@@ -82,18 +86,25 @@ export function isOpenTodo(todo: Pick<Todo, "status">): boolean {
   return todo.status === "pending" || todo.status === "in_progress";
 }
 
-function matchWithinPool<T extends Pick<Todo, "content">>(
+/**
+ * Match steps from the strongest to the weakest: the same normalized text,
+ * then the same set of words, then a paraphrase (Dice score).
+ */
+function matchByStage<T extends Pick<Todo, "content">>(
   query: string,
   pool: readonly T[],
+  stage: "exact" | "sameTokens" | "paraphrase",
 ): T[] {
-  const normalized = normalizeTodoContent(query);
-  const exact = pool.filter(
-    (todo) => normalizeTodoContent(todo.content) === normalized,
-  );
-  if (exact.length > 0) return exact;
-  const key = tokenKey(query);
-  const sameTokens = pool.filter((todo) => tokenKey(todo.content) === key);
-  if (sameTokens.length > 0) return sameTokens;
+  if (stage === "exact") {
+    const normalized = normalizeTodoContent(query);
+    return pool.filter(
+      (todo) => normalizeTodoContent(todo.content) === normalized,
+    );
+  }
+  if (stage === "sameTokens") {
+    const key = tokenKey(query);
+    return pool.filter((todo) => tokenKey(todo.content) === key);
+  }
   const scored = pool
     .map((todo) => ({ todo, score: paraphraseScore(query, todo.content) }))
     .filter((entry) => entry.score >= PARAPHRASE_THRESHOLD)
@@ -106,20 +117,25 @@ function matchWithinPool<T extends Pick<Todo, "content">>(
 }
 
 /**
- * Resolve visible content to candidate todos. Open todos are preferred, so a
- * finished duplicate never makes an active todo ambiguous; closed todos are
- * considered only when no open todo matches. Returns every tied candidate.
+ * Resolve visible content to candidate todos. A stronger match always wins
+ * over a weaker one: an exact match on a finished todo beats a paraphrase of
+ * an open one, so "complete Pay water bill" never changes "Pay electricity
+ * bill". Within one step, open todos are preferred, so a finished duplicate
+ * never makes an active todo ambiguous. Returns every tied candidate.
  */
 export function matchTodosByContent<T extends Pick<Todo, "content" | "status">>(
   query: string,
   todos: readonly T[],
 ): T[] {
-  const open = matchWithinPool(query, todos.filter(isOpenTodo));
-  if (open.length > 0) return open;
-  return matchWithinPool(
-    query,
-    todos.filter((todo) => !isOpenTodo(todo)),
-  );
+  const open = todos.filter(isOpenTodo);
+  const closed = todos.filter((todo) => !isOpenTodo(todo));
+  for (const stage of ["exact", "sameTokens", "paraphrase"] as const) {
+    const openMatches = matchByStage(query, open, stage);
+    if (openMatches.length > 0) return openMatches;
+    const closedMatches = matchByStage(query, closed, stage);
+    if (closedMatches.length > 0) return closedMatches;
+  }
+  return [];
 }
 
 /**

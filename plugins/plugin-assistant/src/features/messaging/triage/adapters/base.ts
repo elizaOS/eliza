@@ -20,7 +20,9 @@ import {
   type ManageResult,
   type MessageAdapter,
   type MessageAdapterCapabilities,
+  type MessageDraftContext,
   type MessageRef,
+  type MessageSendContext,
   type MessageSource,
   NotYetImplementedError,
   type ReadMessageRequest,
@@ -121,25 +123,27 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
   async createDraft(
     runtime: IAgentRuntime,
     draft: DraftRequest,
+    context?: MessageDraftContext,
   ): Promise<{ draftId: string; preview: string; snapshot?: DraftRequest }> {
     if (!this.isAvailable(runtime)) {
       throw new NotYetImplementedError(
         `${this.source} adapter is unavailable for createDraft`,
       );
     }
-    return this.createDraftImpl(runtime, structuredClone(draft));
+    return this.createDraftImpl(runtime, structuredClone(draft), context);
   }
 
   async sendDraft(
     runtime: IAgentRuntime,
     draftId: string,
+    context?: MessageSendContext,
   ): Promise<{ externalId: string }> {
     if (!this.isAvailable(runtime)) {
       throw new NotYetImplementedError(
         `${this.source} adapter is unavailable for sendDraft`,
       );
     }
-    return this.sendDraftImpl(runtime, draftId);
+    return this.sendDraftImpl(runtime, draftId, context);
   }
 
   async scheduleSend(
@@ -206,6 +210,7 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
   protected createDraftImpl(
     _runtime: IAgentRuntime,
     _draft: DraftRequest,
+    _context?: MessageDraftContext,
   ): Promise<{ draftId: string; preview: string; snapshot?: DraftRequest }> {
     throw new NotYetImplementedError(
       `${this.source} adapter does not support draft creation`,
@@ -215,6 +220,7 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
   protected sendDraftImpl(
     _runtime: IAgentRuntime,
     _draftId: string,
+    _context?: MessageSendContext,
   ): Promise<{ externalId: string }> {
     throw new NotYetImplementedError(
       `${this.source} adapter does not support draft delivery`,
@@ -243,6 +249,7 @@ export async function searchByListing(
   filters: SearchMessagesFilters,
 ): Promise<MessageRef[]> {
   const listed = await adapter.listMessages(runtime, {
+    requester: filters.requester,
     sinceMs: filters.sinceMs,
     worldIds: filters.worldIds,
     channelIds: filters.channelIds,

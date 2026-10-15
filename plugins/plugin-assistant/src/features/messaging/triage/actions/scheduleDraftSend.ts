@@ -115,7 +115,7 @@ export const scheduleDraftSendAction: Action = {
     const sendAtIso = formatSendAtIso(parsed.sendAtMs);
 
     const service = getDefaultTriageService();
-    const existing = service.getStore().getDraft(parsed.draftId);
+    const existing = service.getDraft(runtime, parsed.draftId);
     if (!existing) {
       const msg = `No draft found for id ${parsed.draftId}`;
       logger.warn(`[ScheduleDraftSend] ${msg}`);

@@ -118,6 +118,12 @@ export class PhraseAggregator {
    * the remaining text or null if nothing speakable is left.
    */
   flush(): string | null {
+    const tail = this.buffer.trim();
+    if (tail.length > 0 && tail.length < this.minEmitChars) {
+      this.reset();
+      this.emittedCount += 1;
+      return tail;
+    }
     return this.take();
   }
 

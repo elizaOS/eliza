@@ -8,13 +8,13 @@ import { Hono } from "hono";
  * GET/DELETE /api/compat/agents/[id]
  */
 
-import { userCharactersRepository } from "@elizaos/cloud-shared/db/repositories/characters";
 import {
   envelope,
   errorEnvelope,
   toCompatAgent,
   toCompatOpResult,
 } from "@elizaos/cloud-shared/lib/api/compat-envelope";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
 import { reusesExistingElizaCharacter } from "@elizaos/cloud-shared/lib/services/eliza-agent-config";
 import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
 import { getStewardAgent } from "@elizaos/cloud-shared/lib/services/steward-client";
@@ -191,7 +191,7 @@ async function __hono_DELETE(
     // is released. Best-effort: log but do not fail the delete if character deletion fails.
     if (characterId && !reusesExistingCharacter) {
       try {
-        await userCharactersRepository.delete(characterId);
+        await charactersService.delete(characterId);
         logger.info("[compat] Cleaned up linked character after agent delete", {
           agentId,
           characterId,

@@ -9,7 +9,7 @@
  */
 import type { HandlerOptions, IAgentRuntime, Memory } from "@elizaos/core";
 import { beforeEach, describe, expect, it } from "vitest";
-import { createFakeRuntime } from "../__tests__/fake-runtime.ts";
+import { createFakeRuntime, FAKE_AGENT_ID } from "../__tests__/fake-runtime.ts";
 import { BaseMessageAdapter } from "../adapters/base.ts";
 import { __resetDefaultMessageRefStoreForTests } from "../message-ref-store.ts";
 import {
@@ -65,20 +65,23 @@ describe("listInboxAction cached sinceMs floor", () => {
 
   it("excludes cached unread rows older than sinceMs", async () => {
     const service = getDefaultTriageService();
-    service.getStore().saveMessages([
-      messageRef({
-        id: "old-unread",
-        externalId: "external-old",
-        receivedAtMs: 1_000,
-        snippet: "old message",
-      }),
-      messageRef({
-        id: "new-unread",
-        externalId: "external-new",
-        receivedAtMs: 2_000,
-        snippet: "new message",
-      }),
-    ]);
+    service.getStore().saveMessages(
+      [
+        messageRef({
+          id: "old-unread",
+          externalId: "external-old",
+          receivedAtMs: 1_000,
+          snippet: "old message",
+        }),
+        messageRef({
+          id: "new-unread",
+          externalId: "external-new",
+          receivedAtMs: 2_000,
+          snippet: "new message",
+        }),
+      ],
+      FAKE_AGENT_ID,
+    );
 
     const data = resultMessages(await runListInbox({ sinceMs: 1_500 }));
 
@@ -88,14 +91,17 @@ describe("listInboxAction cached sinceMs floor", () => {
 
   it("keeps every cached unread row when sinceMs is absent", async () => {
     const service = getDefaultTriageService();
-    service.getStore().saveMessages([
-      messageRef({ id: "old-unread", externalId: "external-old" }),
-      messageRef({
-        id: "new-unread",
-        externalId: "external-new",
-        receivedAtMs: 2_000,
-      }),
-    ]);
+    service.getStore().saveMessages(
+      [
+        messageRef({ id: "old-unread", externalId: "external-old" }),
+        messageRef({
+          id: "new-unread",
+          externalId: "external-new",
+          receivedAtMs: 2_000,
+        }),
+      ],
+      FAKE_AGENT_ID,
+    );
 
     const data = resultMessages(await runListInbox());
 

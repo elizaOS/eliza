@@ -128,7 +128,7 @@
 		"@huggingface/tokenizers": "0.1.3",
 		"phonemizer": "^1.2.1",
 		"ws": "^8.21.3",
-		"yaml": "^2.8.2",
+		"yaml": "^2.9.1",
 		"@elizaos/auth": "workspace:*",
 		"zod": "^4.4.3",
 		"@elizaos/contracts": "workspace:*",

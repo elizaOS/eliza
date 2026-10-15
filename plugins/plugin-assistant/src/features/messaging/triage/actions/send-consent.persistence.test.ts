@@ -144,7 +144,9 @@ it("binds actual draft sending to a later user turn and consumes consent once du
       "pending",
     );
     const staleDigest = draftConsentDigest(draft);
-    service.getStore().saveDraft({ ...draft, body: "Changed body" });
+    service
+      .getStore()
+      .saveDraft({ ...draft, body: "Changed body" }, runtime.agentId);
     await expect(
       service.sendDraft(runtime, draft.draftId, staleDigest),
     ).rejects.toMatchObject({ code: "MESSAGE_DRAFT_CONSENT_DIGEST_MISMATCH" });

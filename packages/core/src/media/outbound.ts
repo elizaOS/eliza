@@ -96,7 +96,11 @@ function decodeDataUrl(
 	let buffer: Buffer;
 	try {
 		if (isBase64) {
-			buffer = Buffer.from(payload.replace(/\s+/g, ""), "base64");
+			// Decode URL escapes before base64 so escaped +, / and = keep their bytes.
+			buffer = Buffer.from(
+				decodeURIComponent(payload).replace(/\s+/g, ""),
+				"base64",
+			);
 		} else {
 			buffer = Buffer.from(decodeURIComponent(payload), "utf8");
 		}
