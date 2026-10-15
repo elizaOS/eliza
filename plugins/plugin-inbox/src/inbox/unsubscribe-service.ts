@@ -517,7 +517,7 @@ export class InboxUnsubscribeService {
         );
         filterCreated = true;
         filterId = filter.filterId;
-        status = "succeeded";
+        if (status !== "failed") status = "succeeded";
       }
 
       if (request.trashExisting) {
@@ -527,7 +527,7 @@ export class InboxUnsubscribeService {
           threadsTrashed += 1;
         }
         if (threadIds.length > 0) {
-          status = "succeeded";
+          if (status !== "failed") status = "succeeded";
         }
       }
 
