@@ -557,6 +557,9 @@ export class CloudAuthService extends Service {
             authenticatedAt: Date.now(),
         };
         logger.info("[CloudAuth] Authenticated with API key");
+        // Start the background revalidation loop so a key entered
+        // interactively gets the same revocation checks as a boot-time key.
+        this.scheduleRevalidation(0);
         return this.credentials;
     }
     clearAuth(): void {
