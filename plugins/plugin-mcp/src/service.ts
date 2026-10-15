@@ -385,6 +385,10 @@ export class McpService extends Service {
     if (!state) return;
     state.status = "disconnected";
     state.lastError = error instanceof Error ? error : new Error(String(error));
+    const connection = this.connections.get(name);
+    if (connection) {
+      connection.server.status = "disconnected";
+    }
     if (state.pingInterval) clearInterval(state.pingInterval);
     if (state.reconnectTimeout) clearTimeout(state.reconnectTimeout);
     if (state.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
