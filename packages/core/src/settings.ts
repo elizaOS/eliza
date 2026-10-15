@@ -63,14 +63,18 @@ function getEphemeralSalt(): string {
 function isEncryptedV1(value: string): boolean {
 	const parts = value.split(":");
 	if (parts.length !== 2) return false;
-	try {
-		const iv = BufferUtils.fromHex(parts[0]);
-		return iv.length === 16;
-	} catch {
-		// error-policy:J3 settings are persisted input; malformed hexadecimal
-		// content makes this an invalid v1 ciphertext.
-		return false;
-	}
+	// v1 was AES-256-CBC: a 16-byte IV (32 hex chars) and a ciphertext that is a
+	// whole number of 16-byte blocks (>=32 hex chars). Validate both halves as
+	// pure hex. BufferUtils.fromHex silently strips non-hex characters, so an
+	// IV-shaped-but-punctuated prefix, or a plaintext like "<32 hex>:<text>",
+	// would otherwise be classified as already-encrypted: stored in the clear by
+	// encryptStringValue, then fatal SETTING_DECRYPTION_FAILED when read back.
+	const [ivHex, ciphertextHex] = parts;
+	return (
+		/^[0-9a-fA-F]{32}$/.test(ivHex) &&
+		/^[0-9a-fA-F]{32,}$/.test(ciphertextHex) &&
+		ciphertextHex.length % 32 === 0
+	);
 }
 
 function isEncryptedV2(value: string): boolean {

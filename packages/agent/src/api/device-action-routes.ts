@@ -35,6 +35,7 @@ import {
   createConversationStreamDisconnectTracker,
   resolvePairedSessionToken,
 } from "./conversation-routes.ts";
+import { handleMapsNavigationRelay } from "./maps-navigation-relay.ts";
 import { workflowDeviceOwner } from "./workflow-device-owner.ts";
 
 function isDeviceRequestRejection(cause: unknown): boolean {
@@ -181,6 +182,52 @@ export async function handleDeviceActionRoutes(
           ],
         },
       });
+      return true;
+    }
+    if (
+      method === "POST" &&
+      pathname === "/api/client-devices/maps-navigation"
+    ) {
+      if (ctx.authorization?.role !== "OWNER") {
+        error(res, "Owner role required", 403);
+        return true;
+      }
+      if (!(runtime instanceof AgentRuntime)) {
+        error(res, "Canonical navigation host unavailable", 503);
+        return true;
+      }
+      const body = await ctx.readJsonBody<unknown>(req, res);
+      if (!body) return true;
+      const recheck = async () => {
+        const resolve = getAgentHostBridge().resolveHttpRequestAuthorization;
+        const fresh = ctx.revalidateAuthorization
+          ? await ctx.revalidateAuthorization()
+          : resolve
+            ? await resolve(req, runtime, {
+                allowCookieAuth: true,
+                allowTrustedLocalBypass: false,
+                allowBearerAuth: true,
+              })
+            : null;
+        const current = fresh ? deviceRequestCredential(req, fresh) : null;
+        if (
+          res.destroyed ||
+          !fresh?.ok ||
+          fresh.role !== "OWNER" ||
+          current?.subjectUserId !== credential.subjectUserId ||
+          current.installationId !== credential.installationId
+        )
+          throw new DeviceActionError("Navigation owner authority retired");
+        ctx.assertRuntimeCurrent?.();
+      };
+      const result = await handleMapsNavigationRelay(
+        runtime,
+        credential,
+        body,
+        recheck,
+      );
+      await recheck();
+      json(res, result);
       return true;
     }
     if (method === "GET" && pathname === "/api/client-devices/context") {

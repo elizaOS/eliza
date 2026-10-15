@@ -2292,6 +2292,7 @@ export class SharedRuntimeConversation {
 
     let verifiedNetworkAdmission: VerifiedNetworkAdmission | undefined;
     if (
+      payload.operation !== "network-delivery" &&
       "trustedNetworkAdmission" in payload &&
       payload.trustedNetworkAdmission
     ) {

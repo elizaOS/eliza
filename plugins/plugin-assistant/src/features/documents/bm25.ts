@@ -31,7 +31,12 @@ export interface Bm25Options {
  * Shared between index building and query processing.
  */
 export function tokenize(text: string): string[] {
-  return text.toLowerCase().match(/[\p{L}\p{M}\p{N}]+/gu) ?? [];
+  return (
+    text
+      .normalize("NFC")
+      .toLowerCase()
+      .match(/[\p{L}\p{M}\p{N}]+/gu) ?? []
+  );
 }
 
 /**

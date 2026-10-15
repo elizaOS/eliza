@@ -141,8 +141,16 @@ export function ContactsSpatialView({
           dispatch={dispatch}
           onAction={onAction}
         />
-      ) : mode === "detail" && selected ? (
-        <ContactsDetailBody contact={selected} dispatch={dispatch} />
+      ) : mode === "detail" ? (
+        selected ? (
+          <ContactsDetailBody contact={selected} dispatch={dispatch} />
+        ) : (
+          <ContactsListBody
+            snapshot={snapshot}
+            dispatch={dispatch}
+            onAction={onAction}
+          />
+        )
       ) : (
         <ContactsFormBody
           snapshot={snapshot}

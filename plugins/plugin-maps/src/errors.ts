@@ -3,6 +3,9 @@
 import { ElizaError } from "@elizaos/core";
 
 export type MapsErrorCode =
+  | "MAPS_ALLOWANCE_UNCONFIGURED"
+  | "MAPS_ADMISSION_UNKNOWN"
+  | "MAPS_REQUEST_ALREADY_ADMITTED"
   | "MAPS_INVALID_INPUT"
   | "MAPS_PROVIDER_UNAVAILABLE"
   | "MAPS_PROVIDER_CHANGED"

@@ -34,6 +34,15 @@ const { stripeCheckoutOrders } = await import(
 const { organizationPaymentReversalHolds } = await import(
   "@elizaos/cloud-shared/db/schemas/organization-payment-reversal-holds"
 );
+const {
+  earningsSourceEnum,
+  ledgerEntryTypeEnum,
+  redeemableEarnings,
+  redeemableEarningsLedger,
+} = await import("@elizaos/cloud-shared/db/schemas/redeemable-earnings");
+const { redeemableEarningsService } = await import(
+  "@elizaos/cloud-shared/lib/services/redeemable-earnings"
+);
 const { billingHoldService, BillingHoldActiveError } = await import(
   "@elizaos/cloud-shared/lib/services/billing-hold"
 );
@@ -58,6 +67,10 @@ beforeAll(async () => {
         creditTransactions,
         stripeCheckoutOrders,
         organizationPaymentReversalHolds,
+        earningsSourceEnum,
+        ledgerEntryTypeEnum,
+        redeemableEarnings,
+        redeemableEarningsLedger,
       },
       empty.id,
     ),
@@ -255,20 +268,7 @@ test("a partially consumed pack restores only the applied clawback, never the sh
 });
 
 test("a half dispute on a $15 fee-inclusive auto top-up claws back half of its 10 credits", async () => {
-  const buyer = await purchase({
-    credits: "10",
-    cents: null,
-    balance: "10",
-    metadata: {
-      type: "auto_top_up",
-      auto_top_up_attempt_id: randomUUID(),
-      base_amount: "10.00",
-      total_charged: "15.00",
-      platform_fee_amount: "2.00",
-      affiliate_fee_amount: "3.00",
-      fees_included: "true",
-    },
-  });
+  const buyer = await affiliateTopUp();
   expect(await disputeRoundTrip(buyer, `dp_${randomUUID()}`, 750)).toBe(5);
   expect(await balance(buyer.org)).toBe(10);
   expect(await ledger(buyer.org)).toEqual([
@@ -460,6 +460,54 @@ test("cumulative partial refunds on a low balance book each unrecovered credit o
   expect(applied).toBe(50);
   expect(unrecovered).toBe(200);
 });
+
+/** A $15 auto top-up (10 credits) whose $3 affiliate fee was paid out as earnings. */
+async function affiliateTopUp(
+  deferFee = false,
+): Promise<Purchase & { affiliate: string }> {
+  const buyer = await purchase({
+    credits: "10",
+    cents: null,
+    balance: "10",
+    metadata: {
+      type: "auto_top_up",
+      auto_top_up_attempt_id: randomUUID(),
+      base_amount: "10.00",
+      total_charged: "15.00",
+      platform_fee_amount: "2.00",
+      affiliate_fee_amount: "3.00",
+      fees_included: "true",
+    },
+  });
+  const affiliate = randomUUID();
+  await pg().query(
+    "INSERT INTO users(id,organization_id,steward_user_id,role) VALUES ($1,$2,$3,'owner')",
+    [affiliate, buyer.org, `subject_${affiliate}`],
+  );
+  if (deferFee) return { ...buyer, affiliate };
+  // The same credit the payment_intent.succeeded handler books.
+  const earned = await redeemableEarningsService.addEarnings({
+    userId: affiliate,
+    amount: 3,
+    source: "affiliate",
+    sourceId: `affiliate_auto_topup:${buyer.paymentIntentId}:${randomUUID()}`,
+    dedupeBySourceId: true,
+    description: "Auto top-up affiliate fee",
+    metadata: { payment_intent_id: buyer.paymentIntentId },
+  });
+  expect(earned.success).toBe(true);
+  return { ...buyer, affiliate };
+}
+
+/** What the affiliate payout sums: affiliate earning + adjustment ledger rows. */
+async function affiliatePayable(userId: string): Promise<number> {
+  const rows = await pg().query<{ total: string }>(
+    `SELECT COALESCE(SUM(amount),0)::text AS total FROM redeemable_earnings_ledger
+     WHERE user_id=$1 AND earnings_source='affiliate' AND entry_type IN ('earning','adjustment')`,
+    [userId],
+  );
+  return Number(rows.rows[0]?.total);
+}
 
 function refundEvent(
   chargeId: string,
@@ -699,4 +747,202 @@ test("a won dispute clears its hold and returns any repayment toward it", async 
   expect(await billingHoldService.getState(buyer.org)).toEqual({
     status: "clear",
   });
+});
+
+test("refunds of an auto top-up take back the same share of its affiliate fee", async () => {
+  const buyer = await affiliateTopUp();
+  const charge = `ch_${randomUUID()}`;
+  for (let delivery = 0; delivery < 2; delivery++)
+    expect(
+      await processStripeEvent(refundEvent(charge, 750, buyer.paymentIntentId)),
+    ).toBe("ack");
+  expect(await affiliatePayable(buyer.affiliate)).toBe(1.5);
+
+  expect(
+    await processStripeEvent(refundEvent(charge, 1500, buyer.paymentIntentId)),
+  ).toBe("ack");
+  expect(await affiliatePayable(buyer.affiliate)).toBe(0);
+});
+
+test("a dispute takes back the affiliate fee and a won dispute returns it", async () => {
+  const buyer = await affiliateTopUp();
+  const disputeId = `dp_${randomUUID()}`;
+  await disputeRoundTrip(buyer, disputeId, 1500);
+  expect(await affiliatePayable(buyer.affiliate)).toBe(3);
+
+  const lost = await affiliateTopUp();
+  expect(
+    await processStripeEvent(
+      disputeEvent(
+        "charge.dispute.funds_withdrawn",
+        `dp_${randomUUID()}`,
+        1500,
+        lost.paymentIntentId,
+      ),
+    ),
+  ).toBe("ack");
+  expect(await affiliatePayable(lost.affiliate)).toBe(0);
+});
+
+test("a full dispute and a full refund of one charge reverse the affiliate fee once, in either order", async () => {
+  const disputeFirst = await affiliateTopUp();
+  expect(
+    await processStripeEvent(
+      disputeEvent(
+        "charge.dispute.funds_withdrawn",
+        `dp_${randomUUID()}`,
+        1500,
+        disputeFirst.paymentIntentId,
+      ),
+    ),
+  ).toBe("ack");
+  expect(
+    await processStripeEvent(
+      refundEvent(`ch_${randomUUID()}`, 1500, disputeFirst.paymentIntentId),
+    ),
+  ).toBe("ack");
+  expect(await affiliatePayable(disputeFirst.affiliate)).toBe(0);
+
+  const refundFirst = await affiliateTopUp();
+  expect(
+    await processStripeEvent(
+      refundEvent(`ch_${randomUUID()}`, 1500, refundFirst.paymentIntentId),
+    ),
+  ).toBe("ack");
+  expect(
+    await processStripeEvent(
+      disputeEvent(
+        "charge.dispute.funds_withdrawn",
+        `dp_${randomUUID()}`,
+        1500,
+        refundFirst.paymentIntentId,
+      ),
+    ),
+  ).toBe("ack");
+  expect(await affiliatePayable(refundFirst.affiliate)).toBe(0);
+});
+
+test("a won dispute and a full refund of one charge leave the affiliate fee reversed once", async () => {
+  const wonThenRefunded = await affiliateTopUp();
+  await disputeRoundTrip(wonThenRefunded, `dp_${randomUUID()}`, 1500);
+  expect(await affiliatePayable(wonThenRefunded.affiliate)).toBe(3);
+  expect(
+    await processStripeEvent(
+      refundEvent(`ch_${randomUUID()}`, 1500, wonThenRefunded.paymentIntentId),
+    ),
+  ).toBe("ack");
+  expect(await affiliatePayable(wonThenRefunded.affiliate)).toBe(0);
+
+  // Half refunded, the other half disputed and won: only the refund stays reversed.
+  const refundedThenWon = await affiliateTopUp();
+  expect(
+    await processStripeEvent(
+      refundEvent(`ch_${randomUUID()}`, 750, refundedThenWon.paymentIntentId),
+    ),
+  ).toBe("ack");
+  await disputeRoundTrip(refundedThenWon, `dp_${randomUUID()}`, 750);
+  expect(await affiliatePayable(refundedThenWon.affiliate)).toBe(1.5);
+});
+
+test("a refund that lands between a dispute and its reinstatement stays reversed", async () => {
+  const buyer = await affiliateTopUp();
+  const disputeId = `dp_${randomUUID()}`;
+  expect(
+    await processStripeEvent(
+      disputeEvent(
+        "charge.dispute.funds_withdrawn",
+        disputeId,
+        1500,
+        buyer.paymentIntentId,
+      ),
+    ),
+  ).toBe("ack");
+  // The dispute already took the whole fee and grant, so the refund adds nothing yet.
+  expect(
+    await processStripeEvent(
+      refundEvent(`ch_${disputeId}`, 1500, buyer.paymentIntentId),
+    ),
+  ).toBe("ack");
+  expect(await affiliatePayable(buyer.affiliate)).toBe(0);
+  expect(await balance(buyer.org)).toBe(0);
+
+  // Stripe returns the disputed funds, but the full refund still stands.
+  const reinstated = disputeEvent(
+    "charge.dispute.funds_reinstated",
+    disputeId,
+    1500,
+    buyer.paymentIntentId,
+  );
+  (
+    reinstated.body.event.data.object as unknown as {
+      charge: Record<string, unknown>;
+    }
+  ).charge.amount_refunded = 1500;
+  for (let delivery = 0; delivery < 2; delivery++)
+    expect(await processStripeEvent(reinstated)).toBe("ack");
+
+  expect(await affiliatePayable(buyer.affiliate)).toBe(0);
+  expect(await balance(buyer.org)).toBe(0);
+});
+
+async function affiliateAvailable(userId: string): Promise<number> {
+  const rows = await pg().query<{ available: string }>(
+    "SELECT available_balance::text AS available FROM redeemable_earnings WHERE user_id=$1",
+    [userId],
+  );
+  return Number(rows.rows[0]?.available);
+}
+
+test("a won dispute does not return an affiliate fee the affiliate already spent", async () => {
+  const buyer = await affiliateTopUp();
+  // The affiliate is paid the $3 fee out first, as debitAffiliatePayout does.
+  const paidOut = await redeemableEarningsService.reduceEarnings({
+    userId: buyer.affiliate,
+    amount: 3,
+    source: "affiliate",
+    sourceId: `payout:${randomUUID()}`,
+    description: "Affiliate payout",
+    requireSufficientBalance: true,
+    dedupeBySourceId: true,
+    countAsRedeemed: true,
+  });
+  expect(paidOut.success).toBe(true);
+  expect(await affiliateAvailable(buyer.affiliate)).toBe(0);
+  expect(await affiliatePayable(buyer.affiliate)).toBe(0);
+
+  // The withdrawal can take nothing from the paid-out balance, so it books the
+  // fee as ledger debt, and winning the dispute clears that debt without
+  // adding the fee to the balance a second time.
+  await disputeRoundTrip(buyer, `dp_${randomUUID()}`, 1500);
+  expect(await affiliateAvailable(buyer.affiliate)).toBe(0);
+  expect(await affiliatePayable(buyer.affiliate)).toBe(0);
+
+  // A later full refund books the paid-out fee as debt once.
+  const charge = `ch_${randomUUID()}`;
+  for (let delivery = 0; delivery < 2; delivery++)
+    expect(
+      await processStripeEvent(
+        refundEvent(charge, 1500, buyer.paymentIntentId),
+      ),
+    ).toBe("ack");
+  expect(await affiliateAvailable(buyer.affiliate)).toBe(0);
+  expect(await affiliatePayable(buyer.affiliate)).toBe(-3);
+});
+
+test("a refund waits for the pending affiliate earning before acknowledgement", async () => {
+  const buyer = await affiliateTopUp(true);
+  const event = refundEvent(`ch_${randomUUID()}`, 1500, buyer.paymentIntentId);
+  expect(await processStripeEvent(event)).toBe("retry");
+  const earned = await redeemableEarningsService.addEarnings({
+    userId: buyer.affiliate,
+    amount: 3,
+    source: "affiliate",
+    sourceId: `affiliate_auto_topup:${buyer.paymentIntentId}:${randomUUID()}`,
+    dedupeBySourceId: true,
+    description: "Delayed auto top-up affiliate fee",
+    metadata: { payment_intent_id: buyer.paymentIntentId },
+  });
+  expect(earned.success).toBe(true);
+  expect(await processStripeEvent(event)).toBe("ack");
+  expect(await affiliatePayable(buyer.affiliate)).toBe(0);
 });

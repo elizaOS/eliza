@@ -360,13 +360,29 @@ export function getChatMessageIdFirstSeenAt(
  * after that result is durable; a retry can then replay this exact outcome
  * without starting another model turn or borrowing a neighboring turn.
  */
+/**
+ * A provider wait counts from the failed attempt, so an idempotent replay must
+ * not repeat it. Replays keep the typed failure without `rateLimit`.
+ */
+export function withoutLiveRateLimit(
+  outcome: ChatMessageIdOutcome,
+): ChatMessageIdOutcome {
+  if (!outcome.terminalFailure?.rateLimit) return outcome;
+  const { rateLimit: _rateLimit, ...terminalFailure } = outcome.terminalFailure;
+  return { ...outcome, terminalFailure };
+}
 export function setChatMessageIdOutcome(
   scope: string,
   clientMessageId: string | null,
   outcome: ChatMessageIdOutcome,
   reservation: ChatMessageIdReservation | null,
 ): void {
-  chatIdempotency.settle(scope, clientMessageId, outcome, reservation);
+  chatIdempotency.settle(
+    scope,
+    clientMessageId,
+    withoutLiveRateLimit(outcome),
+    reservation,
+  );
 }
 /** Return the durable outcome bound to an exact idempotency key, if settled. */
 export function getChatMessageIdOutcome(

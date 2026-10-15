@@ -97,7 +97,7 @@ beforeAll(async () => {
     getService: (name: string) =>
       name === CalendarService.serviceType ? service : null,
     reportError: vi.fn(),
-    logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     useModel: () => {
       throw new Error("Unexpected model invocation");
     },

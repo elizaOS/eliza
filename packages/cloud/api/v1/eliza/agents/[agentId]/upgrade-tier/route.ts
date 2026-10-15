@@ -314,7 +314,9 @@ async function respondToLiveTarget(
     orgId: user.organization_id,
     status: target.status,
   });
-  if (target.status === "running") {
+  // A disconnected target keeps its container; disconnected recovery owns
+  // reconnecting or reprovisioning it, so report it as in progress.
+  if (target.status === "running" || target.status === "disconnected") {
     return json({
       success: true,
       created: false,

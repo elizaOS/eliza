@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Host quality gate for the shipped mobile voice: Paradee-8M TTS and the
- * Qwen3-ASR-0.6B pair, both on native libelizainference (no ONNX anywhere;
+ * Phonon-2 GGUF, both on native libelizainference (no ONNX anywhere;
  * the evaluator is the native ASR itself).
  *
  * Gates (thresholds in fixtures.json):

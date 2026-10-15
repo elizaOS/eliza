@@ -398,9 +398,15 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
           <div className="flex items-center gap-2">
             <Select
               value={period}
-              onValueChange={(v: "hourly" | "daily" | "monthly") =>
-                setPeriod(v)
-              }
+              onValueChange={(value) => {
+                if (
+                  value === "hourly" ||
+                  value === "daily" ||
+                  value === "monthly"
+                ) {
+                  setPeriod(value);
+                }
+              }}
             >
               <SelectTrigger className="w-[130px] h-9 bg-card border-border rounded-sm">
                 <SelectValue />

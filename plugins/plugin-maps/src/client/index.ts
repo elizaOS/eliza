@@ -2,6 +2,7 @@ export * from "./agent-context.ts";
 export * from "./approved-read.ts";
 export * from "./contracts.ts";
 export * from "./location.ts";
+export * from "./navigation-relay.ts";
 export * from "./navigation-voice.ts";
 export * from "./route-distance.ts";
 export * from "./runtime.ts";

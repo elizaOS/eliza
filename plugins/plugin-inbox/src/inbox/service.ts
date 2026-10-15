@@ -187,8 +187,8 @@ export class InboxService {
   /**
    * Classify a batch of inbound messages and (unless `classifyOnly`) persist
    * one triage entry per message. Returns the per-message decision in input
-   * order. Messages already triaged by `source_message_id` are skipped so a
-   * re-run does not double-store.
+   * order. Messages already triaged for the same source and
+   * `source_message_id` are skipped so a re-run does not double-store.
    */
   async triage(
     messages: InboundMessage[],
@@ -226,7 +226,10 @@ export class InboxService {
 
       if (!opts.classifyOnly) {
         const existing = message.id
-          ? await this.repository.getBySourceMessageId(message.id)
+          ? await this.repository.getBySourceMessageId(
+              message.source,
+              message.id,
+            )
           : null;
         if (existing) {
           triagedMessage.entry = existing;

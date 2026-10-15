@@ -87,7 +87,7 @@ export const listInboxAction: Action = {
 
   handler: async (
     runtime: IAgentRuntime,
-    _message: Memory,
+    message: Memory,
     _state?: State,
     options?: HandlerOptions,
     _callback?: HandlerCallback,
@@ -125,15 +125,23 @@ export const listInboxAction: Action = {
       // refs answer only requests without that scope. A scoped request goes
       // to the live pull below.
       const scoped =
-        params.worldIds !== undefined || params.channelIds !== undefined;
+        params.worldIds !== undefined ||
+        params.channelIds !== undefined ||
+        service
+          .listAdapters()
+          .some(
+            (adapter) =>
+              adapter.cachePolicy === "none" &&
+              (!params.sources || params.sources.includes(adapter.source)),
+          );
       const requestedSources = params.sources;
       let messages = scoped
         ? []
         : requestedSources
           ? store
-              .listMessages()
+              .listMessages(runtime.agentId)
               .filter((m) => requestedSources.includes(m.source))
-          : store.listMessages();
+          : store.listMessages(runtime.agentId);
 
       messages = rankScored(messages);
       const sinceMs = params.sinceMs;
@@ -147,6 +155,7 @@ export const listInboxAction: Action = {
       // before it can establish that no unread messages match the request.
       if (unread.length === 0) {
         messages = await service.triage(runtime, {
+          requester: message,
           sources: params.sources,
           worldIds: params.worldIds,
           channelIds: params.channelIds,

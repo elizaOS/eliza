@@ -223,6 +223,7 @@ export function registerOwnerSendApprovalWorker(runtime: IAgentRuntime): void {
         const { draftId, preview } = await adapter.createDraft(rt, draft);
         const record: DraftRecord = {
           draftId,
+          agentId: rt.agentId,
           source: draft.source,
           inReplyToId: draft.inReplyToId,
           threadId: draft.threadId,
@@ -235,9 +236,9 @@ export function registerOwnerSendApprovalWorker(runtime: IAgentRuntime): void {
           worldId: draft.worldId,
           channelId: draft.channelId,
         };
-        service.getStore().saveDraft(record);
+        service.getStore().saveDraft(record, rt.agentId);
         const { externalId } = await adapter.sendDraft(rt, draftId);
-        service.getStore().markDraftSent(draftId, externalId);
+        service.getStore().markDraftSent(draftId, externalId, rt.agentId);
         await rt.deleteTask(task.id);
         logger.info(
           `[OwnerSendPolicy] approved send ${taskId} executed from the persisted draft payload (externalId=${externalId})`,

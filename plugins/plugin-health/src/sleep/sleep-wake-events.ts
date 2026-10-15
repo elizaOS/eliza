@@ -115,8 +115,11 @@ function buildEvent(args: {
 function isAsleepState(state: LifeOpsCircadianState): boolean {
   return state === "sleeping" || state === "napping";
 }
+// winding_down is up and awake too: the decision table reports it for the
+// hours before the owner's baseline bedtime, which is when bedtime.imminent
+// is due (relative-time's minutesAwake counts it the same way).
 function isAwakeState(state: LifeOpsCircadianState): boolean {
-  return state === "awake" || state === "waking";
+  return state === "awake" || state === "waking" || state === "winding_down";
 }
 /**
  * Edge-triggered circadian event derivation per `sleep-wake-spec.md`:
@@ -130,7 +133,8 @@ function isAwakeState(state: LifeOpsCircadianState): boolean {
  * - `sleep.detected` fires on any -> sleeping transition.
  * - `nap.detected` fires on any -> napping transition.
  * - `bedtime.imminent` fires once when minutesUntilBedtimeTarget crosses
- *   from >30 to <=30 with a target after the current time.
+ *   from >30 to <=30 with a target after the current time, while the owner
+ *   is awake, waking or winding down.
  * - `regularity.changed` fires on regularityClass transitions.
  */
 export function deriveSleepWakeEvents(args: {

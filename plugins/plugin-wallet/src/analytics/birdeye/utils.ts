@@ -325,7 +325,9 @@ export const extractLimit = (text: string): number => {
 };
 
 export const formatValue = (value?: number): string => {
-  if (!value) return "N/A";
+  // A real zero is data, not missing data: only nullish/NaN means "N/A".
+  if (value === undefined || value === null || Number.isNaN(value))
+    return "N/A";
   const abs = Math.abs(value);
   const tiers: Array<[number, string]> = [
     [1_000_000_000, "B"],

@@ -142,7 +142,12 @@ export class AppBackupService {
       const character = await charactersService.getByIdForAccessCheck(characterId);
       if (!character) {
         warnings.push(`Linked character ${characterId} was not restored: it no longer exists.`);
-      } else if (charactersService.isLinkedCharacterVisible(character, { userId })) {
+      } else if (
+        charactersService.isLinkedCharacterVisible(character, {
+          userId,
+          organizationId,
+        })
+      ) {
         linkedCharacterIds.push(characterId);
       } else {
         warnings.push(

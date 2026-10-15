@@ -190,6 +190,7 @@ export function startActivityCollector(
   });
 
   proc.on("error", (err) => {
+    if (stopped) return;
     logger.error({ err }, "[activity-tracker] Collector spawn failure");
     options.onFatal?.(err.message);
   });
