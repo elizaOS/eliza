@@ -628,6 +628,7 @@ export async function handleCloudRoute(req: http.IncomingMessage, res: http.Serv
         if (state.cloudManager) {
             await state.cloudManager.disconnect();
         }
+        clearCloudAuth(state.runtime);
         const cloud = (state.config.cloud ?? {}) as NonNullable<CloudConfigLike["cloud"]>;
         delete cloud.apiKey;
         (state.config as Record<string, unknown>).cloud = cloud;
