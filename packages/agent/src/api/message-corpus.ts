@@ -471,8 +471,9 @@ export interface MessageCorpusSeedOptions {
 
 /**
  * Land a generated corpus through the runtime as real web-chat conversations:
- * one `web-conv-*` room per conversation in the agent's web-chat world (the
- * exact shape `restoreConversationsFromDb` scans for), user messages authored
+ * one `web-conv-*` room per conversation in the agent's web-chat world, with
+ * the `client_chat` source and the agent as a participant (the shape that
+ * `restoreConversationsFromDb` reads), user messages authored
  * by a deterministic simulated-owner entity, assistant messages by the agent,
  * and per-conversation derived facts in the `facts` table — all with the
  * corpus's backdated `createdAt` values.

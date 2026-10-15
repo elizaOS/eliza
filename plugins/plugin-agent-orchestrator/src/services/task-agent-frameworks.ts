@@ -352,9 +352,12 @@ type FrameworkStateCacheEntry = {
   value: FrameworkInventory;
 };
 
-const frameworkStateCache = new Map<
-  FrameworkDiscoveryCacheKey,
-  FrameworkStateCacheEntry
+// Discovery includes runtime-owned API-key readiness. Keep each short-lived
+// inventory with the runtime that supplied those settings so one agent cannot
+// make another agent appear authenticated.
+let frameworkStateCaches = new WeakMap<
+  IAgentRuntime,
+  Map<FrameworkDiscoveryCacheKey, FrameworkStateCacheEntry>
 >();
 
 // In-flight dedup for the slow `computeTaskAgentFrameworkState` path.
@@ -364,11 +367,34 @@ const frameworkStateCache = new Map<
 // `computeTaskAgentFrameworkState`, which probes the filesystem for
 // installed CLI binaries and adapter availability — the dominant
 // per-turn cost when the cache is cold. With this dedup, the first
-// caller starts the probe and the rest await its promise.
-const frameworkStateInflight = new Map<
-  FrameworkDiscoveryCacheKey,
-  Promise<FrameworkInventory>
+// caller starts the probe and the rest await its promise. The promise is also
+// runtime-scoped because its result contains that runtime's credential state.
+let frameworkStateInflights = new WeakMap<
+  IAgentRuntime,
+  Map<FrameworkDiscoveryCacheKey, Promise<FrameworkInventory>>
 >();
+
+function runtimeFrameworkStateCache(
+  runtime: IAgentRuntime,
+): Map<FrameworkDiscoveryCacheKey, FrameworkStateCacheEntry> {
+  let cache = frameworkStateCaches.get(runtime);
+  if (!cache) {
+    cache = new Map();
+    frameworkStateCaches.set(runtime, cache);
+  }
+  return cache;
+}
+
+function runtimeFrameworkStateInflight(
+  runtime: IAgentRuntime,
+): Map<FrameworkDiscoveryCacheKey, Promise<FrameworkInventory>> {
+  let inflight = frameworkStateInflights.get(runtime);
+  if (!inflight) {
+    inflight = new Map();
+    frameworkStateInflights.set(runtime, inflight);
+  }
+  return inflight;
+}
 
 function frameworkDiscoveryCacheKey(
   probe?: TaskAgentFrameworkProbe,
@@ -973,7 +999,9 @@ export async function getTaskAgentFrameworkState(
   profileInput?: TaskAgentTaskProfileInput,
 ): Promise<TaskAgentFrameworkState> {
   const cacheKey = frameworkDiscoveryCacheKey(probe);
-  const cached = frameworkStateCache.get(cacheKey);
+  const cache = runtimeFrameworkStateCache(runtime);
+  const inflights = runtimeFrameworkStateInflight(runtime);
+  const cached = cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     return computeTaskAgentFrameworkStateFromInventory(
       runtime,
@@ -989,7 +1017,7 @@ export async function getTaskAgentFrameworkState(
   // in the same state-composition cycle share one probe instead of
   // racing N independent filesystem walks.
   if (!profileInput) {
-    let inflight = frameworkStateInflight.get(cacheKey);
+    let inflight = inflights.get(cacheKey);
     if (!inflight) {
       // Forward `probe` to the cold compute so the first caller's ACP
       // preflight data (auth/install/docs status) is reflected in the
@@ -1019,16 +1047,16 @@ export async function getTaskAgentFrameworkState(
               selectionSignals: undefined,
             })),
           };
-          frameworkStateCache.set(cacheKey, {
+          cache.set(cacheKey, {
             expiresAt: Date.now() + 15_000,
             value: inventory,
           });
           return inventory;
         } finally {
-          frameworkStateInflight.delete(cacheKey);
+          inflights.delete(cacheKey);
         }
       })();
-      frameworkStateInflight.set(cacheKey, inflight);
+      inflights.set(cacheKey, inflight);
     }
     const inventory = await inflight;
     return computeTaskAgentFrameworkStateFromInventory(
@@ -1337,8 +1365,8 @@ function buildPreferredReason(
 }
 
 export function clearTaskAgentFrameworkStateCache(): void {
-  frameworkStateCache.clear();
-  frameworkStateInflight.clear();
+  frameworkStateCaches = new WeakMap();
+  frameworkStateInflights = new WeakMap();
 }
 
 export function formatTaskAgentFrameworkLine(

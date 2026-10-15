@@ -71,7 +71,7 @@ interface GmailDraftContext {
   readonly preview: string;
   readonly replyEnvelope?: {
     accountId: string;
-    to: string;
+    to: string[];
     subject: string;
     inReplyTo: string;
     references: string;
@@ -281,6 +281,21 @@ function getGoogleService(runtime: IAgentRuntime): GoogleGmailAdapterService | n
   return service && typeof service === "object" && isGoogleGmailAdapterService(service)
     ? service
     : null;
+}
+
+/**
+ * Who a reply goes to. A reply to a message the account itself sent (Gmail
+ * label SENT) goes to that message's recipients, as Gmail's own Reply does;
+ * otherwise to its Reply-To, else its sender.
+ */
+function gmailReplyRecipients(message: MessageRef): string[] {
+  if (message.tags?.includes("SENT")) {
+    const recipients = (message.to ?? [])
+      .map((recipient) => recipient.identifier.trim())
+      .filter(Boolean);
+    if (recipients.length > 0) return recipients;
+  }
+  return [metadataString(message.metadata ?? {}, "replyTo") ?? message.from.identifier];
 }
 
 function messageAccountId(message: MessageRef | null | undefined): string {
@@ -708,7 +723,7 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
     }
     const replyEnvelope = {
       accountId: messageAccountId(message),
-      to: metadataString(message.metadata ?? {}, "replyTo") ?? message.from.identifier,
+      to: gmailReplyRecipients(message),
       subject: message.subject ?? "Re: your message",
       inReplyTo,
       references: gmailReplyReferences(
@@ -718,7 +733,7 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       externalId: message.externalId,
       threadId,
     };
-    draft.to = [{ identifier: replyEnvelope.to }];
+    draft.to = replyEnvelope.to.map((identifier) => ({ identifier }));
     draft.worldId = replyEnvelope.accountId;
     draft.subject = replyEnvelope.subject;
     draft.threadId = replyEnvelope.threadId;
@@ -752,7 +767,7 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       });
     const sent = await service.sendGmailReply({
       accountId: envelope.accountId,
-      to: [envelope.to],
+      to: envelope.to,
       subject: envelope.subject,
       bodyText: request.body,
       inReplyTo: envelope.inReplyTo,

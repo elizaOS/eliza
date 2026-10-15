@@ -193,6 +193,10 @@ export class TeamsCaptionRouter {
   }
 
   private isBot(speaker: string): boolean {
-    return speaker.toLowerCase().includes(this.botNameLower);
+    const name = speaker
+      .replace(/\s+\((?:guest|external)\)$/i, "")
+      .trim()
+      .toLowerCase();
+    return name === this.botNameLower.trim();
   }
 }

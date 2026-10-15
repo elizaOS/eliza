@@ -35,3 +35,21 @@ registers a `MapsDeviceNavigation` with `MapsService.registerDeviceNavigation`; 
 `MAPS_SELECT` and `MAPS_NAVIGATION_START`, `_REROUTE` and `_STOP` actions ask it and
 report its state. Without one they return `MAPS_DEVICE_UNAVAILABLE`. GPS, the active
 route and guidance stay on the device; `MAPS_SHARE` still needs the user's confirmation.
+
+The agent host loads Maps on mobile and lean chat profiles. A phone can offer
+its navigation through the authenticated `/api/client-devices/maps-navigation`
+route while it sends a conversation turn. The shared client helper binds the
+offer to that turn. The host still decides whether to show a place, plan from
+local GPS, ask for confirmation, reroute, or stop. No device coordinates are
+returned by this relay.
+
+Requests belong to the current authenticated conversation and device enrollment.
+The relay delivers a request once and waits at most 30 seconds for its result.
+Cancellation, replacement, or an uncertain response does not replay an effect.
+Idle polls wait up to one second without holding a database transaction.
+
+Cloud Maps creates one `Idempotency-Key` for each explicit POST operation.
+The server consumes a separate organization Maps request allowance and makes
+no per-request monetary charge (Alpha P-56). It refuses duplicate admissions,
+including retries after an unknown acknowledgement. An unconfigured allowance
+needs an operator configuration change; it is not a payment or upgrade prompt.

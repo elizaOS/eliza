@@ -44,12 +44,12 @@ app.post("/", async (c) => {
     // public/template. Otherwise any authenticated user could clone (and read
     // back) another org's PRIVATE character config (system prompt, knowledge,
     // settings) — cross-tenant IP disclosure. 404 (not 403) to avoid an
-    // existence oracle. Mirrors the app-link route's guard.
-    if (
-      original.user_id !== user.id &&
-      !original.is_public &&
-      !original.is_template
-    ) {
+    // existence oracle. Mirrors the app-link route's guard. A creator who left
+    // the character's organization no longer owns it.
+    const ownsOriginal =
+      original.user_id === user.id &&
+      original.organization_id === user.organization_id;
+    if (!ownsOriginal && !original.is_public && !original.is_template) {
       return c.json({ success: false, error: "Character not found" }, 404);
     }
 

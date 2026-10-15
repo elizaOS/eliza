@@ -12,6 +12,7 @@ import { ElizaError } from "../src/errors";
 import { AgentRuntime } from "../src/runtime";
 import { TurnAbortedError } from "../src/runtime/turn-controller";
 import { runWithStreamingContext } from "../src/streaming-context";
+import { runWithTrajectoryContext } from "../src/trajectory-context";
 import type { Character } from "../src/types/agent.js";
 import type {
 	Provider,
@@ -20,6 +21,8 @@ import type {
 import type { Memory } from "../src/types/memory.js";
 import { ModelType } from "../src/types/model.js";
 import type { UUID } from "../src/types/primitives.js";
+import type { IAgentRuntime } from "../src/types/runtime.js";
+import { Service } from "../src/types/service.js";
 
 const ROOM_ID = "11111111-1111-1111-1111-111111111111" as UUID;
 const OTHER_ROOM_ID = "33333333-3333-3333-3333-333333333333" as UUID;
@@ -587,6 +590,91 @@ describe("composeState provider execution", () => {
 
 		expect(state.text).toBe("provider model result");
 		expect(observed).toEqual([{ stream: false, hasSignal: true }]);
+		await adapter.close();
+	});
+
+	it("starts one trajectory step per provider at its first model call when provider calls run concurrently", async () => {
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", ENTITY_ID);
+		await adapter.init();
+		const runtime = await createRuntime({
+			character: { name: "provider-child-steps" } as Character,
+			adapter,
+		});
+		const started: Record<string, unknown>[] = [];
+		const recorded: [prompt: string, stepId: string][] = [];
+		class TrajectoryRecorder extends Service {
+			static override serviceType = "trajectories";
+			capabilityDescription = "records child steps and model calls";
+			static override async start(owner: IAgentRuntime) {
+				return new TrajectoryRecorder(owner);
+			}
+			async stop() {}
+			startStep(_trajectoryId: string, step: Record<string, unknown>) {
+				started.push(step);
+				return `child-${started.length}`;
+			}
+			logLlmCall(call: { prompt: string; stepId: string }) {
+				recorded.push([call.prompt, call.stepId]);
+			}
+			logProviderAccess() {}
+		}
+		await runtime.registerService(TrajectoryRecorder);
+		// Each call waits until all three calls run, so every step activation comes before any record.
+		const allCallsRunning = deferred();
+		let runningCalls = 0;
+		runtime.registerModel(
+			ModelType.TEXT_SMALL,
+			async (_runtime, params) => {
+				runningCalls += 1;
+				if (runningCalls === 3) allCallsRunning.resolve();
+				await allCallsRunning.promise;
+				return `summary of ${params.prompt}`;
+			},
+			"provider-child-steps-test",
+		);
+		runtime.registerProvider({
+			name: "NO_MODEL",
+			get: async () => ({ text: "static context" }),
+		});
+		runtime.registerProvider({
+			name: "TWO_CONCURRENT_CALLS",
+			get: async (providerRuntime) => ({
+				text: (
+					await Promise.all(
+						["a1", "a2"].map((prompt) =>
+							providerRuntime.useModel(ModelType.TEXT_SMALL, { prompt }),
+						),
+					)
+				).join("\n"),
+			}),
+		});
+		runtime.registerProvider({
+			name: "ONE_CALL",
+			get: async (providerRuntime) => ({
+				text: await providerRuntime.useModel(ModelType.TEXT_SMALL, {
+					prompt: "b1",
+				}),
+			}),
+		});
+
+		await runWithTrajectoryContext(
+			{ trajectoryId: "turn-trajectory", trajectoryStepId: "turn-step" },
+			() =>
+				runtime.composeState(
+					makeMessage("23232323-2323-2323-2323-232323232323"),
+					["NO_MODEL", "TWO_CONCURRENT_CALLS", "ONE_CALL"],
+					true,
+				),
+		);
+
+		expect(started).toEqual([
+			expect.objectContaining({ parentStepId: "turn-step", kind: "llm" }),
+			expect.objectContaining({ parentStepId: "turn-step", kind: "llm" }),
+		]);
+		expect(recorded).toHaveLength(3);
+		const stepOf = Object.fromEntries(recorded);
+		expect(stepOf.a2).toBe(stepOf.a1);
+		expect([stepOf.a1, stepOf.b1].sort()).toEqual(["child-1", "child-2"]);
 		await adapter.close();
 	});
 

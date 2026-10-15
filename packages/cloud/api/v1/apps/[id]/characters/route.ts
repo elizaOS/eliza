@@ -210,6 +210,7 @@ async function __hono_PUT(
       if (
         !charactersService.isLinkedCharacterVisible(character, {
           userId: user.id,
+          organizationId: user.organization_id,
         })
       ) {
         return Response.json(

@@ -26,7 +26,8 @@ export async function extractTextFromFileBuffer(
 
   if (
     lowerContentType ===
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    originalFilename.toLowerCase().endsWith(".docx")
   ) {
     try {
       // Loaded on use: mammoth is a CJS parser whose static import drags the

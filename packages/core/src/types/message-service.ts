@@ -6,6 +6,7 @@
 
 import type { InferenceTurnSummary } from "../inference-timing";
 import type { RoomHandlerLease } from "../runtime/room-handler-queue";
+import type { ProviderRateLimit } from "../utils/model-retry";
 import type { CodingActionProfile } from "./coding";
 import type {
 	ActionResult,
@@ -100,6 +101,8 @@ export interface RuntimeFailure {
 	transient: boolean;
 	/** Complete user-facing explanation of why the turn did not complete. */
 	message: string;
+	/** Typed provider 429 detail when `kind` is `rate_limited`. */
+	rateLimit?: ProviderRateLimit;
 }
 
 /** Server-only evidence for regenerating prose without executing a turn again. */

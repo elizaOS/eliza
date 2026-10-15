@@ -19,8 +19,8 @@ import org.json.JSONObject;
  * Copies the APK's pinned voice bundle to app storage and checks every file
  * against the SHA-256 in the bundle manifest. The bundle uses the
  * libelizainference layout: {@code tts/paradee/} holds the Paradee GGUF, the
- * misaki lexicon and the optional eSpeak NG English data; {@code asr/} holds an
- * ASR pair when the bundle carries one. It takes no URL or caller path. Run it
+ * misaki lexicon and the optional eSpeak NG English data; {@code asr/} holds the
+ * Phonon-2 GGUF when the bundle carries one. It takes no URL or caller path. Run it
  * on a worker thread.
  */
 public final class VoiceAssets {

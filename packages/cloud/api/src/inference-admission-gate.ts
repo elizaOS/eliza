@@ -237,9 +237,9 @@ const MAX_LEASE_AGE_MS = 20 * 60_000;
 const RECOVERY_RETRY_MS = 60_000;
 const MAX_ACTIVE_LEASES = 2_048;
 const MAX_SETTLED_REQUEST_IDS = 2_048;
-const RATE_LIMIT_OPERATION_VALIDITY_MS = 3_000;
-// Both internal attempts finish within three seconds. Retaining every receipt
-// for ten seconds covers all retryable in-flight operations without imposing a
+const RATE_LIMIT_OPERATION_VALIDITY_MS = 5_000;
+// Rate operations expire within five seconds. Retaining every receipt
+// for ten seconds covers repeated in-flight operations without imposing a
 // concurrency-sensitive FIFO cap; the next request prunes expired receipts.
 const RATE_LIMIT_RECEIPT_TTL_MS = 10_000;
 const MAX_ALARM_LEASE_MUTATIONS = 32;
@@ -273,11 +273,11 @@ function nonNegativeFinite(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
-function validId(value: unknown): value is string {
+export function validId(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= 256;
 }
 
-function validRequestId(value: unknown): value is string {
+export function validRequestId(value: unknown): value is string {
   return (
     typeof value === "string" &&
     value.length > 0 &&
@@ -308,7 +308,7 @@ function sessionBindingStorageKey(
   return `${revocationStorageKey(REVOKED_SESSION_BINDING_PREFIX, userId)}:${encodeURIComponent(stewardUserId)}`;
 }
 
-function validRecoveryContext(
+export function validRecoveryContext(
   value: unknown,
   requestId: string,
   organizationId: string,
@@ -1878,6 +1878,21 @@ export class InferenceAdmissionGate {
           this.authorizedLease(dispatch, dispatch.preProviderCancellationToken),
         ),
       );
+    }
+    if (path === "/maps/admit" || path === "/maps/usage") {
+      const { MapsRequestAllowanceController } = await import(
+        "./maps-request-allowance-controller"
+      );
+      return this.serializeRevocation(async () => {
+        const controller = new MapsRequestAllowanceController(
+          this.state.storage,
+          this.env as Record<string, unknown>,
+          {
+            credential: (value) => this.credentialDenial(value),
+          },
+        );
+        return controller.handle(path, body);
+      });
     }
     if (path === "/hydrate") {
       return await this.serialize(() => this.hydrate(body as HydrateRequest));

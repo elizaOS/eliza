@@ -68,15 +68,19 @@ const SENSITIVE_KEY_EXACT: ReadonlySet<string> = new Set([
  * shared by log sinks and model-output redaction.
  */
 const NON_SECRET_TOKEN_METADATA_KEYS: ReadonlySet<string> = new Set([
+	"budgettokens",
 	"cachecreationinputtokens",
 	"cachereadinputtokens",
 	"completiontokens",
 	"compactionthresholdtokens",
 	"contextwindowtokens",
 	"estimatedinputtokens",
+	"finalprompttokens",
 	"inputtokens",
 	"maxtokens",
 	"maxtokensomitted",
+	"originalprompttokens",
+	"outputreservetokens",
 	"outputtokens",
 	"prompttokens",
 	"reasoningtokens",

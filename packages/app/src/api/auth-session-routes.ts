@@ -30,8 +30,10 @@ import {
 import { findActiveSession, readAllCookieValues } from "./auth/sessions";
 import {
   extractHeaderValue,
+  getCompatApiToken,
   getProvidedApiToken,
   roleForIdentityKind,
+  tokenMatches,
 } from "./auth.ts";
 import {
   type CompatRuntimeState,
@@ -251,6 +253,19 @@ export async function handleAuthSessionRoutes(
 
 // ── /api/auth/setup ─────────────────────────────────────────────────────────
 
+// Serializes concurrent setup POSTs so two requests can't both pass the
+// hasOwnerIdentity check and create duplicate owner identities.
+let setupMutex: Promise<void> = Promise.resolve();
+
+function acquireSetupMutex(): Promise<() => void> {
+  let release!: () => void;
+  const previous = setupMutex;
+  setupMutex = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return previous.then(() => release);
+}
+
 async function handleSetup(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -262,6 +277,30 @@ async function handleSetup(
     return true;
   }
 
+  // Creating the first owner is the operator's step: from the host itself, or
+  // with the configured API token. Otherwise anyone who can reach a server
+  // that has no owner yet (a non-loopback bind, a tunnel, a cloud container
+  // before its owner's first visit) would claim the owner account.
+  const expectedToken = getCompatApiToken();
+  const providedToken = getProvidedApiToken(req);
+  const operator =
+    isTrustedLocalRequest(req) ||
+    Boolean(
+      expectedToken &&
+        providedToken &&
+        tokenMatches(expectedToken, providedToken),
+    );
+  if (!operator) {
+    sendJsonResponse(res, 403, {
+      error: "setup_requires_operator",
+      reason: "setup_requires_operator",
+    });
+    return true;
+  }
+
+  // Fast path: answer 409 at once when an owner already exists. This check
+  // runs before the request body is read so a slow or stalled body cannot
+  // hold up other setup callers.
   if (await store.hasOwnerIdentity()) {
     sendJsonResponse(res, 409, {
       error: "already_initialized",
@@ -295,14 +334,32 @@ async function handleSetup(
   const passwordHash = await hashPassword(password);
   const identityId = crypto.randomUUID();
   const now = Date.now();
-  await store.createIdentity({
-    id: identityId,
-    kind: "owner",
-    displayName: displayNameRaw,
-    createdAt: now,
-    passwordHash,
-    cloudUserId: null,
-  });
+
+  // Take the lock only around the final check-and-create. Body reads and
+  // password hashing happen outside the lock: a stalled request body must
+  // not hold the process-global setup lock. The in-lock re-check keeps the
+  // original race fix — two requests that both passed the fast-path check
+  // still cannot both create an owner identity.
+  const release = await acquireSetupMutex();
+  try {
+    if (await store.hasOwnerIdentity()) {
+      sendJsonResponse(res, 409, {
+        error: "already_initialized",
+        reason: "already_initialized",
+      });
+      return true;
+    }
+    await store.createIdentity({
+      id: identityId,
+      kind: "owner",
+      displayName: displayNameRaw,
+      createdAt: now,
+      passwordHash,
+      cloudUserId: null,
+    });
+  } finally {
+    release();
+  }
 
   const { session, csrfToken } = await createBrowserSession(store, {
     identityId,

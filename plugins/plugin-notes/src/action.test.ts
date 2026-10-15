@@ -1532,6 +1532,25 @@ describe("NOTES operation parsing", () => {
     });
   });
 
+  it("matches topic-scoped reads across Unicode forms and repeated whitespace", async () => {
+    const runtime = await harness();
+    await run(runtime, { action: "create", content: "Café plans" });
+    await run(runtime, {
+      action: "create",
+      content: "spare key under the mat",
+    });
+
+    for (const topic of ["Café", "café   plans", "CAFÉ\tPLANS"]) {
+      const match = await run(runtime, { action: "list", content: topic });
+      expect(match.data?.notes).toMatchObject([{ title: "Café plans" }]);
+      expect(match.data).toMatchObject({
+        count: 1,
+        total: 2,
+        filterApplied: true,
+      });
+    }
+  });
+
   it("preserves literal colon content through create and full replacement", async () => {
     const runtime = await harness();
     const created = await run(runtime, {

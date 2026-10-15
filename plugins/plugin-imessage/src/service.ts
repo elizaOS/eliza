@@ -635,6 +635,18 @@ async function resolveIMessageChatId(
  * iMessage service for Eliza agents.
  * Note: This only works on macOS.
  */
+/**
+ * Whether a sender handle is in IMESSAGE_ALLOW_FROM. Both sides use the same
+ * normalization as the contacts lookup, so "+1 (555) 123-4567" or
+ * "15551234567" entries match the E.164 handle "+15551234567" that chat.db and
+ * Blooio report, and emails match case-insensitively.
+ */
+function isAllowlistedHandle(allowFrom: readonly string[], handle: string): boolean {
+  const normalizedHandle = normalizeContactHandle(handle);
+  if (!normalizedHandle) return false;
+  return allowFrom.some((allowed) => normalizeContactHandle(allowed) === normalizedHandle);
+}
+
 export class IMessageService extends Service implements IIMessageService {
   static serviceType: string = IMESSAGE_SERVICE_NAME;
 
@@ -2816,9 +2828,7 @@ export class IMessageService extends Service implements IIMessageService {
     }
 
     // allowlist — only handles present in IMESSAGE_ALLOW_FROM may participate.
-    const inAllowlist = this.settings.allowFrom.some(
-      (allowed) => allowed.toLowerCase() === handle.toLowerCase()
-    );
+    const inAllowlist = isAllowlistedHandle(this.settings.allowFrom, handle);
     return { allowed: inAllowlist };
   }
 
@@ -2844,9 +2854,7 @@ export class IMessageService extends Service implements IIMessageService {
       return { allowed: false };
     }
 
-    const inStaticAllowlist = this.settings.allowFrom.some(
-      (allowed) => allowed.toLowerCase() === handle.toLowerCase()
-    );
+    const inStaticAllowlist = isAllowlistedHandle(this.settings.allowFrom, handle);
 
     if (this.settings.dmPolicy === "allowlist") {
       return { allowed: inStaticAllowlist };

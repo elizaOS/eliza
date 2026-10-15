@@ -14,7 +14,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createFakeRuntime } from "../__tests__/fake-runtime.ts";
+import { createFakeRuntime, FAKE_AGENT_ID } from "../__tests__/fake-runtime.ts";
 import { BaseMessageAdapter } from "../adapters/base.ts";
 import { __resetDefaultMessageRefStoreForTests } from "../message-ref-store.ts";
 import {
@@ -174,7 +174,9 @@ describe("draftFollowupAction", () => {
         action: "MESSAGE",
       },
     ]);
-    expect(service.getStore().getDraft("telegram-draft-1")).toMatchObject({
+    expect(
+      service.getStore().getDraft("telegram-draft-1", FAKE_AGENT_ID),
+    ).toMatchObject({
       draftId: "telegram-draft-1",
       source: "telegram",
       to: [{ identifier: "alice" }, { identifier: "bob", displayName: "Bob" }],

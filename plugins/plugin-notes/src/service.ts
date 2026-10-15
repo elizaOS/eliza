@@ -49,7 +49,7 @@ function notFound(id: string): ElizaError {
 
 type NoteLookupSelector = "title" | "query";
 
-function normalizedLookup(value: string): string {
+export function normalizedLookup(value: string): string {
   return value
     .normalize("NFC")
     .trim()
@@ -130,7 +130,7 @@ function lookupError(
 
 /** Identity key for copies with exactly the same user-visible content. */
 function noteContentKey(note: StickyNote): string {
-  return `${note.title}\0${note.body}\0${note.color}`;
+  return JSON.stringify([note.title, note.body, note.color]);
 }
 
 function distinctNotes(notes: readonly StickyNote[]): StickyNote[] {

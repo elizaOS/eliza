@@ -794,6 +794,14 @@ function epochMs(value: string | undefined): number | undefined {
 }
 
 function parseWebVtt(value: string): VttCue[] {
+  const entities: Record<string, string> = {
+    "&amp;": "&",
+    "&lt;": "<",
+    "&gt;": ">",
+    "&nbsp;": "\u00a0",
+    "&lrm;": "\u200e",
+    "&rlm;": "\u200f",
+  };
   const blocks = value
     .replace(/^\uFEFF/, "")
     .split(/\r?\n\r?\n+/)
@@ -813,6 +821,10 @@ function parseWebVtt(value: string): VttCue[] {
       .slice(timingIndex + 1)
       .join(" ")
       .replace(/<[^>]+>/g, "")
+      .replace(
+        /&(?:amp|lt|gt|nbsp|lrm|rlm);/g,
+        (entity) => entities[entity] ?? entity,
+      )
       .trim();
     if (!rawText) continue;
     const speaker = /^([^:]{1,120}):\s+(.+)$/.exec(rawText);

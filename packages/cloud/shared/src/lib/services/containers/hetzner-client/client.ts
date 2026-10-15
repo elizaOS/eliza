@@ -655,6 +655,9 @@ export class HetznerContainersClient {
       }
     }
 
+    // The runtime is gone: charge what it ran since the last daily bill
+    // before the row (and with it the cron's view of the container) is removed.
+    await containersRepository.settleAccruedCompute(containerId, organizationId, new Date());
     await containersRepository.delete(containerId, organizationId);
   }
 

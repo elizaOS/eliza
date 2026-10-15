@@ -35,7 +35,8 @@ const GATE_ORIGIN = "https://inference-admission.internal";
 const RATE_LIMIT_GATE_PREFIX = "rate-limit:v2:";
 const HYDRATION_GATE_TIMEOUT_MS = 5_000;
 const GATE_OPERATION_TIMEOUT_MS = 1_500;
-const RATE_LIMIT_GATE_MAX_ATTEMPTS = 2;
+// One bounded readiness window avoids canceling a rate actor before it can run.
+const RATE_LIMIT_GATE_TIMEOUT_MS = 5_000;
 const LEASE_GATE_MAX_ATTEMPTS = 2;
 const DISPATCH_GATE_TIMEOUT_MS = 1_500;
 const DISPATCH_GATE_MAX_ATTEMPTS = 3;
@@ -671,39 +672,20 @@ export async function consumeInferenceRateLimit(params: {
   const operationStartedAt = Date.now();
   const body = {
     operationId: crypto.randomUUID(),
-    operationDeadlineAt:
-      operationStartedAt + RATE_LIMIT_GATE_MAX_ATTEMPTS * GATE_OPERATION_TIMEOUT_MS,
+    operationDeadlineAt: operationStartedAt + RATE_LIMIT_GATE_TIMEOUT_MS,
     endpointType: params.endpointType,
     windowMs: params.windowMs,
     maxRequests: params.maxRequests,
     windowStartedAt: activeGate.windowStartedAt,
     ...(params.apiKey && { apiKey: params.apiKey }),
   };
-  let response: Response | undefined;
-  for (let attempt = 1; attempt <= RATE_LIMIT_GATE_MAX_ATTEMPTS; attempt += 1) {
-    try {
-      response = await gateFetch(
-        params.organizationId,
-        "/rate-limit",
-        body,
-        activeGate.stub,
-        AbortSignal.timeout(GATE_OPERATION_TIMEOUT_MS),
-      );
-    } catch (error) {
-      // error-policy:J2 gateFetch already wraps the transport failure with
-      // typed context. Retry once with the same idempotency identity, then
-      // preserve that wrapper as the exhausted operation's cause.
-      if (attempt < RATE_LIMIT_GATE_MAX_ATTEMPTS) continue;
-      throw error;
-    }
-    if (response.status >= 500 && attempt < RATE_LIMIT_GATE_MAX_ATTEMPTS) continue;
-    break;
-  }
-  if (!response) {
-    throw new InferenceAdmissionGateUnavailableError(
-      "Inference admission gate rate limit produced no response",
-    );
-  }
+  const response = await gateFetch(
+    params.organizationId,
+    "/rate-limit",
+    body,
+    activeGate.stub,
+    AbortSignal.timeout(RATE_LIMIT_GATE_TIMEOUT_MS),
+  );
   if (response.status !== 200 && response.status !== 429) {
     throw new InferenceAdmissionGateUnavailableError(
       `Inference admission gate rate limit failed with status ${response.status}`,
@@ -1250,4 +1232,23 @@ export async function settleInferenceAdmissionLease(
     );
   }
   await parseSettleResponse(response);
+}
+
+/** Maps has a distinct nonmonetary counter in the organization gate. Never retry an ambiguous admission. */
+export async function callMapsRequestAllowance(
+  request: import("./maps-request-policy").MapsAllowanceRequest,
+  outcome?: import("./maps-request-policy").MapsUsageOutcome,
+): Promise<Response> {
+  if (!getCloudBinding("INFERENCE_ADMISSION_GATES"))
+    return Response.json({ error: { code: "maps_allowance_unconfigured" } }, { status: 503 });
+  return gateFetch(
+    request.organizationId,
+    outcome ? "/maps/usage" : "/maps/admit",
+    {
+      ...request,
+      ...(outcome && { outcome }),
+    },
+    gateStub(request.organizationId),
+    AbortSignal.timeout(GATE_OPERATION_TIMEOUT_MS),
+  );
 }

@@ -238,16 +238,20 @@ export async function withInferenceUserPolicyMutation<T>(
   userId: string,
   additionalOrganizationIds: string[],
   fn: (tx: DbTransaction) => Promise<T>,
+  transaction?: DbTransaction,
 ): Promise<T> {
-  if (getCloudAwareEnv().INFERENCE_FUNDED_BUDGET_ADMISSION !== "true") return writeTransaction(fn);
+  if (getCloudAwareEnv().INFERENCE_FUNDED_BUDGET_ADMISSION !== "true")
+    return transaction ? fn(transaction) : writeTransaction(fn);
   const rows = await sqlRows<{ organization_id: string }>(
-    dbWrite,
+    transaction ?? dbWrite,
     sql`SELECT organization_id FROM users WHERE id = ${userId}::uuid AND organization_id IS NOT NULL UNION SELECT organization_id FROM api_keys WHERE user_id = ${userId}::uuid`,
   );
-  return withInferencePolicyMutation(
-    { organizationIds: [...rows.map((row) => row.organization_id), ...additionalOrganizationIds] },
-    fn,
-  );
+  const options = {
+    organizationIds: [...rows.map((row) => row.organization_id), ...additionalOrganizationIds],
+  };
+  return transaction
+    ? withInferencePolicyMutationInTransaction(transaction, options, fn)
+    : withInferencePolicyMutation(options, fn);
 }
 
 /** Authorize subsequent policy writes through the exact outer transaction's COMMIT. */
@@ -318,10 +322,109 @@ export async function disableInferenceBudgetAdmission(organizationId: string): P
       if (open) throw new InferencePolicyDrainPendingError(organizationId);
     },
   );
+  await confirmInferencePolicyAuthCacheWithdrawal(organizationId);
+}
+
+async function confirmInferencePolicyAuthCacheWithdrawal(organizationId: string): Promise<void> {
   const keys = await sqlRows<{ key_hash: string }>(
     dbWrite,
     sql`SELECT key_hash FROM api_keys WHERE organization_id = ${organizationId}::uuid`,
   );
   const { invalidateInferenceAuthContextsByKeyHashes } = await import("./inference-auth-cache");
   await invalidateInferenceAuthContextsByKeyHashes(keys.map((key) => key.key_hash));
+}
+
+/** Old deployments have no delegation metadata; partial installation must remain unavailable. */
+async function inferencePolicyMetadataAvailable(tx?: DbTransaction): Promise<boolean> {
+  const [tables] = await sqlRows<{
+    authorities: boolean;
+    mutations: boolean;
+    grants: boolean;
+    receipts: boolean;
+  }>(
+    tx ?? dbWrite,
+    sql`SELECT to_regclass('inference_policy_authorities') IS NOT NULL AS authorities,
+      to_regclass('inference_policy_mutations') IS NOT NULL AS mutations,
+      to_regclass('inference_funding_budget_grants') IS NOT NULL AS grants,
+      to_regclass('inference_funding_budget_receipts') IS NOT NULL AS receipts`,
+  );
+  if (!tables) throw new InferencePolicyFenceError("Inference policy metadata is unavailable");
+  const available = Object.values(tables);
+  if (available.every((exists) => exists)) return true;
+  if (
+    available.every((exists) => !exists) &&
+    getCloudAwareEnv().INFERENCE_FUNDED_BUDGET_ADMISSION !== "true"
+  )
+    return false;
+  throw new InferencePolicyFenceError("Inference policy metadata migration is incomplete");
+}
+
+/** Drain and withdraw delegated authority before irreversible account resource cleanup. */
+export async function prepareInferencePolicyForAccountDeletion(
+  organizationId: string,
+): Promise<void> {
+  if (!(await inferencePolicyMetadataAvailable())) return;
+  const [authority] = await sqlRows<{ enabled: boolean }>(
+    dbWrite,
+    sql`SELECT enabled FROM inference_policy_authorities WHERE organization_id = ${organizationId}::uuid`,
+  );
+  if (!authority) return;
+  if (!authority.enabled) {
+    // Rollback commits before cache withdrawal; a retry must confirm that remaining effect.
+    await confirmInferencePolicyAuthCacheWithdrawal(organizationId);
+    return;
+  }
+  if (getCloudAwareEnv().INFERENCE_FUNDED_BUDGET_ADMISSION !== "true")
+    throw new InferencePolicyFenceError(
+      "Keep funded budget admission enabled until rollback is acknowledged",
+    );
+  const { inferenceBudgetGateRequest } = await import("./inference-funded-budget-admission");
+  const result = await inferenceBudgetGateRequest<unknown>(organizationId, "/budget/reclaim", {
+    organizationId,
+  });
+  if (
+    typeof result !== "object" ||
+    result === null ||
+    !("released" in result) ||
+    result.released !== true ||
+    !("pending" in result) ||
+    typeof result.pending !== "boolean"
+  )
+    throw new InferencePolicyFenceError("Inference escrow reclaim was not acknowledged");
+  if (result.pending) throw new InferencePolicyDrainPendingError(organizationId);
+  await disableInferenceBudgetAdmission(organizationId);
+}
+
+/** Remove nonfinancial policy receipts only after their ordinary rollback is acknowledged. */
+export async function clearDisabledInferencePolicyForAccountDeletion(
+  tx: DbTransaction,
+  organizationId: string,
+): Promise<void> {
+  if (!(await inferencePolicyMetadataAvailable(tx))) return;
+  const [authority] = await sqlRows<{ enabled: boolean }>(
+    tx,
+    sql`SELECT enabled FROM inference_policy_authorities WHERE organization_id = ${organizationId}::uuid FOR UPDATE`,
+  );
+  if (authority?.enabled) throw new InferencePolicyDrainPendingError(organizationId);
+  const [pending] = await sqlRows<{ mutation_id: string }>(
+    tx,
+    sql`SELECT mutation_id FROM inference_policy_mutations WHERE organization_id = ${organizationId}::uuid AND phase <> 'complete' LIMIT 1`,
+  );
+  if (pending) throw new InferencePolicyDrainPendingError(organizationId);
+  const [history] = await sqlRows<{ retained: boolean }>(
+    tx,
+    sql`SELECT EXISTS (SELECT 1 FROM inference_funding_budget_grants WHERE organization_id = ${organizationId}::uuid) OR EXISTS (SELECT 1 FROM inference_funding_budget_receipts WHERE organization_id = ${organizationId}::uuid) AS retained`,
+  );
+  if (history?.retained !== false)
+    throw new ElizaError("Inference escrow history requires its retained-audit erasure owner", {
+      code: "INFERENCE_BUDGET_HISTORY_RETENTION_REQUIRED",
+      context: { organizationId },
+      severity: "ephemeral",
+    });
+  await tx.execute(
+    sql`DELETE FROM inference_policy_mutations WHERE organization_id = ${organizationId}::uuid`,
+  );
+  await tx.execute(
+    sql`DELETE FROM inference_policy_authorities WHERE organization_id = ${organizationId}::uuid AND NOT enabled`,
+  );
 }
