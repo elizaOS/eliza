@@ -72,9 +72,13 @@ export function parseEventCursor(
  * Select the envelopes to replay to a (re)connecting client.
  *
  * - With a valid `cursor`, returns only envelopes whose sequence is strictly
- *   greater than the cursor (the events the client is missing), preserving
- *   buffer order and capped to the `limit` most recent so a stale cursor can
- *   never replay an unbounded burst.
+ *   greater than the cursor (the events the client is missing), oldest first
+ *   and capped to `limit` so a stale cursor can never replay an unbounded
+ *   burst. Oldest-first matters: the client resumes from its cursor, so the
+ *   page must continue where the cursor left off. Returning the newest
+ *   `limit` instead would silently skip every event between `cursor + 1` and
+ *   the page start, and the client — which advances its cursor past what it
+ *   received, with no gap signaled — could never recover them.
  * - With `cursor === null` (absent/invalid), returns `buffer.slice(-limit)` —
  *   the exact historical behavior, so clients that send no cursor are
  *   unaffected.
@@ -95,5 +99,5 @@ export function selectReplayEvents<T extends ReplayableEvent>(
     const seq = eventSequence(event);
     return seq !== null && seq > cursor;
   });
-  return missing.length > cap ? missing.slice(-cap) : missing;
+  return missing.slice(0, cap);
 }
