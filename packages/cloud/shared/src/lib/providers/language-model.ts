@@ -11,6 +11,7 @@ import {
   isGroqNativeModel,
   isVastNativeModel,
 } from "../models";
+import { observeCerebrasFetch } from "../observability/cloud-backend-observability";
 import { getCloudBinding } from "../runtime/cloud-bindings";
 import type { SharedModelCallSelection } from "../services/shared-runtime/shared-runtime-timing";
 import type { PooledDirectProvider } from "../services/team-credential-pool/provider-map";
@@ -161,6 +162,7 @@ function getCerebrasClient() {
     cerebrasClient = createOpenAI({
       apiKey,
       baseURL: "https://api.cerebras.ai/v1",
+      fetch: observeCerebrasFetch as typeof fetch,
     });
   }
 

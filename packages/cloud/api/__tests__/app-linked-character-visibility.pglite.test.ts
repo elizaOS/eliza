@@ -141,7 +141,12 @@ test("a linked character leaves the app list when its owner makes it private", a
   expect((await charactersService.getById(CHAR))?.is_public).toBe(true);
 
   // B has no legitimate read path to the character any more.
-  expect(await charactersService.getByIdForUser(CHAR, USER_B)).toBeNull();
+  expect(
+    await charactersService.getByIdForUser(CHAR, {
+      id: USER_B,
+      organization_id: ORG_B,
+    }),
+  ).toBeNull();
   const relink = await app.request(
     `/api/v1/apps/${APP}/characters`,
     {

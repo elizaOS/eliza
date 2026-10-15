@@ -33,6 +33,8 @@ export interface BatchQueueOptions<T> {
 	 * Without a batch processor, items use the per-item path.
 	 */
 	processBatch?: (items: T[]) => Promise<BatchItemOutcome<T>[]>;
+	/** Re-evaluate live capability before each drain; absence uses the normal per-item path. */
+	canProcessBatch?: () => boolean;
 	maxParallel?: number;
 	maxRetriesAfterFailure?: number;
 	retryPolicy?: RetryConfig;
@@ -122,6 +124,13 @@ export class BatchQueue<T> {
 		this.isDraining = true;
 		const started = Date.now();
 		try {
+			// Evaluate live capability before removing work: a failed probe must
+			// leave every queued item available for the next drain.
+			if (this.priorityQueue.size === 0) return 0;
+			const processBatch =
+				this.options.processBatch && this.options.canProcessBatch?.() !== false
+					? this.options.processBatch
+					: undefined;
 			const batch = this.priorityQueue.dequeueBatch(this.batchSize);
 			if (batch.length === 0) {
 				return 0;
@@ -130,11 +139,11 @@ export class BatchQueue<T> {
 			// every item; explicit failed outcomes fail only those items. Either
 			// way, failures go through the per-item retry / onExhausted path.
 			let outcomes: BatchItemOutcome<T>[];
-			if (this.options.processBatch) {
+			if (processBatch) {
 				let settled: Array<BatchItemOutcome<T> | undefined>;
 				let failures: Array<{ index: number; item: T; error: Error }>;
 				try {
-					const batchOutcomes = await this.options.processBatch(batch);
+					const batchOutcomes = await processBatch(batch);
 					settled = batchOutcomes.map((outcome) =>
 						outcome.success ? outcome : undefined,
 					);
@@ -457,7 +466,10 @@ export class PriorityQueue<T> {
 				}
 			}
 			arr.length = 0;
-			arr.push(...kept);
+			// Unbounded queues can exceed the runtime's function argument limit.
+			for (const item of kept) {
+				arr.push(item);
+			}
 			return out;
 		};
 

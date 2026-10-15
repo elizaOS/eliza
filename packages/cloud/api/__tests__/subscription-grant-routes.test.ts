@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import {
   SUBSCRIPTION_GRANT_ALREADY_GRANTED,
   SUBSCRIPTION_GRANT_CODE_INVALID,
+  SUBSCRIPTION_GRANT_PAID_PLAN_ACTIVE,
 } from "@elizaos/cloud-shared/db/repositories/subscription-grants";
 import type { SubscriptionGrant } from "@elizaos/cloud-shared/db/schemas/subscription-grants";
 import { AuthenticationError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
@@ -331,6 +332,28 @@ describe("POST /api/v1/subscription/redeem", () => {
     expect(res.status).toBe(409);
     expect(await bodyOf(res)).toMatchObject({
       code: "subscription_grant_already_redeemed",
+    });
+  });
+
+  test("an exclusive code offered to a paying account is a distinct conflict", async () => {
+    const res = await post(
+      createSubscriptionRedeemRoute(
+        redeemDeps({
+          redeem: async () => {
+            throw new ElizaError("paid", {
+              code: SUBSCRIPTION_GRANT_PAID_PLAN_ACTIVE,
+            });
+          },
+        }),
+      ),
+      { code: "ABCD-EFGH-JKMN-PQRS", idempotencyKey: "pilot-install-1" },
+    );
+    expect(res.status).toBe(409);
+    expect(await bodyOf(res)).toEqual({
+      success: false,
+      error:
+        "This account already has a paid plan. This subscription code cannot be added to it.",
+      code: "subscription_grant_paid_plan_active",
     });
   });
 

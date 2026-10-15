@@ -86,7 +86,7 @@ describe("Zoom cloud import", () => {
       }
       if (url.endsWith("/download/transcript-file")) {
         return new Response(
-          "WEBVTT\n\n1\n00:00:01.000 --> 00:00:03.000\nAlice: Hello from Zoom.\n",
+          "WEBVTT\n\n1\n00:00:01.000 --> 00:00:03.000\nAlice: <b>Hello</b> &amp; &lt;Zoom&gt; &amp;lt; &nbsp; &lrm;left&rlm;.\n",
           { headers: { "content-type": "text/vtt" } },
         );
       }
@@ -116,7 +116,7 @@ describe("Zoom cloud import", () => {
     });
     expect(result.artifact.transcriptSpans).toEqual([
       expect.objectContaining({
-        text: "Hello from Zoom.",
+        text: "Hello & <Zoom> &lt; \u00a0 \u200eleft\u200f.",
         startMs: 1_000,
         endMs: 3_000,
         platformParticipantId: "participant-1",

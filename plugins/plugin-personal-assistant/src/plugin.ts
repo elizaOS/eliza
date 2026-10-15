@@ -1121,7 +1121,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     // core default adapters so MESSAGE triage operations operate on real
     // connected data.
     const triage = getDefaultTriageService();
-    triage.register(new GoogleGmailAdapter());
+    if (!triage.getAdapter("gmail")) triage.register(new GoogleGmailAdapter());
     triage.register(new XDmAdapter());
     // Register the activity-profile maintenance worker. One scheduler
     // (#10721 H1): this tick only maintains the owner activity profile and

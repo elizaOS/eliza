@@ -450,6 +450,10 @@ app.post("/", async (c) => {
       agentConfig: parsed.data.characterId
         ? withReusedElizaCharacterOwnership(sanitizedConfig)
         : sanitizedConfig,
+      // An eager tier created without provisioning waits for the caller's
+      // explicit provision; the orphaned-pending sweep must leave it alone.
+      provisioningDeferred:
+        !autoProvision && tierProvisionsEagerly(executionTier),
       environmentVars: parsed.data.environmentVars,
       executionTier,
       // Default reuses the org's existing non-terminal agent (idempotent create);
@@ -514,6 +518,57 @@ app.post("/", async (c) => {
       orgId: user.organization_id,
       status: agent.status,
     });
+    // A request that asks for provisioning must not leave a reused eager agent
+    // pending with no job: its earlier enqueue was lost, or it was created with
+    // `autoProvision: false`. The reused agent's tier decides, because the
+    // reuse guard returns the org's agent whatever tier this request names.
+    // The queue returns the live job when one exists.
+    if (
+      autoProvision &&
+      agent.status === "pending" &&
+      tierProvisionsEagerly(agent.execution_tier)
+    ) {
+      // A request for a non-eager tier skipped the dedicated price and credit
+      // gates above; provisioning this agent bills dedicated compute.
+      if (!shouldProvisionEagerly) {
+        const priceError = requireDedicatedComputePriceAcceptance(c.req.raw);
+        if (priceError) return priceError;
+        const creditCheck = await checkAgentCreditGate(user.organization_id);
+        if (!creditCheck.allowed) {
+          return c.json(
+            insufficientCredits402(
+              creditCheck,
+              "[agent-api] Agent provisioning blocked: insufficient credits",
+              { orgId: user.organization_id },
+            ),
+            402,
+          );
+        }
+      }
+      const workerHealth = await checkProvisioningWorkerHealth();
+      if (!workerHealth.ok) {
+        return c.json(
+          provisioningWorkerFailureBody(workerHealth),
+          workerHealth.status,
+        );
+      }
+      const repair =
+        await provisioningJobService.enqueueReusedPendingAgentProvision({
+          agent,
+          organizationId: user.organization_id,
+          userId: user.id,
+        });
+      if (repair?.created) {
+        void provisioningJobService.triggerImmediate(c.env).catch(() => {
+          // Logged inside the service.
+        });
+        logger.info("[agent-api] Provisioning job enqueued for reused agent", {
+          agentId: agent.id,
+          orgId: user.organization_id,
+          jobId: repair.job.id,
+        });
+      }
+    }
     return c.json(
       {
         success: true,

@@ -86,6 +86,11 @@ beforeAll(async () => {
     ({ containers, TERMINAL_CONTAINER_STATUS } = await import("../../../db/schemas/containers"));
     ({ ContainerRepoAppContainerStore } = await import("../app-container-store"));
     await dbWrite.execute(CONTAINERS_DDL);
+    // markStoppedForBilling settles accrued compute against the organization;
+    // this fixture has no organization rows, so the settlement is a no-op.
+    await dbWrite.execute(
+      "CREATE TABLE organizations (id uuid PRIMARY KEY, pay_as_you_go_from_earnings boolean)",
+    );
   } catch (error) {
     ready = false;
     console.error("[app-container-terminal-status] PGlite setup failed", error);

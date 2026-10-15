@@ -7,7 +7,8 @@
  * windows, `flush()` returns the final transcript, and each running partial
  * reaches `onPartial` as a delta (the runtime's `onStreamChunk` pipe, as on
  * the in-process engine path). When the host reports no streaming backend
- * (Qwen3-ASR) the batch op="asr" runs instead. Any other failure propagates.
+ * (a host library built without the Parakeet-TDT backend) the batch op="asr"
+ * runs instead. Any other failure propagates.
  */
 
 import type { PcmFrame, StreamingTranscriber } from "./types";

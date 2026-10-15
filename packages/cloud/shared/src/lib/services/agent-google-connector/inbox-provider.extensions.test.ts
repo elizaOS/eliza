@@ -65,6 +65,8 @@ test("thread messages carry inert links extracted from HTML parts", async () => 
   const page = await inbox.thread(owner, "thread1");
   expect(page.messages[0]?.links).toEqual([{ href: "https://html.example.org/a", text: "Open" }]);
   expect(page.messages[0]?.bodyText).toBe("Plain https://plain.example.org/");
+  expect(page.messages[0]?.bodyHtml).toBe('<a href="https://html.example.org/a">Open</a>');
+  expect(page.messages[0]?.bodyHtmlStatus).toBe("available");
 });
 
 test("capabilities advertise Trash search with the read scope only", async () => {

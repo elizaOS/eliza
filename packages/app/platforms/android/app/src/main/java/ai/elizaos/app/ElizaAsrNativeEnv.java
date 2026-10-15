@@ -4,20 +4,18 @@ package ai.elizaos.app;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.util.Locale;
 
 /**
- * libelizainference reads {@code ELIZA_ASR_BACKEND} ({@code parakeet} for
- * Phonon-2, {@code qwen3} for the Qwen3-ASR pair, unset or {@code auto} to
- * pick from the bundle) and {@code ELIZA_ASR_THREADS} from the process
- * environment when it loads the ASR region. In the app process nothing sets
+ * libelizainference reads {@code ELIZA_ASR_BACKEND} and {@code ELIZA_ASR_THREADS}
+ * from the process environment when it loads the ASR region. Phonon-2 on the
+ * Parakeet-TDT model is the only ASR. It uses the registered in-tree
+ * {@code ggml} backend; {@code parakeet} is not a backend registry name.
+ * The staged bundle verifies the Phonon-2 model. In the app process nothing sets
  * them, so {@link ElizaVoiceNative#ensureLoaded} calls {@link #apply} before
  * {@code System.loadLibrary}.
  *
- * <p>Values: an existing process variable wins; otherwise the build-time value
- * ({@code BuildConfig}, from the same {@code ELIZA_ASR_BACKEND} /
- * {@code ELIZA_ASR_THREADS} that choose which model the build stages);
- * otherwise backend {@code auto} and one thread per big core.
+ * <p>Threads: an existing process variable wins; otherwise the build-time value
+ * ({@code BuildConfig.ELIZA_ASR_THREADS}); otherwise one thread per big core.
  *
  * <p>A big core is one whose {@code cpuinfo_max_freq} is within 20% of the
  * fastest core, the same rule the parakeet pool uses to pin workers.
@@ -30,23 +28,8 @@ final class ElizaAsrNativeEnv {
 
     private ElizaAsrNativeEnv() {}
 
-    /** Normalise a backend name; null when it is not one the library knows. */
-    static String normalizeBackend(String value) {
-        if (value == null) return null;
-        final String v = value.trim().toLowerCase(Locale.ROOT);
-        switch (v) {
-            case "":
-            case "auto":
-                return "auto";
-            case "parakeet":
-                return "parakeet";
-            case "qwen3":
-            case "mtmd":
-                return "qwen3";
-            default:
-                return null;
-        }
-    }
+    /** Phonon-2 runs on the in-tree ggml backend. */
+    static final String BACKEND = "ggml";
 
     /** Positive thread count, or 0 when unset/invalid. */
     static int parseThreads(String value) {
@@ -88,14 +71,6 @@ final class ElizaAsrNativeEnv {
         return out;
     }
 
-    /** The backend to export: process value, else build value, else auto. */
-    static String resolveBackend(String processValue, String buildValue) {
-        final String fromProcess = normalizeBackend(processValue);
-        if (processValue != null && fromProcess != null) return fromProcess;
-        final String fromBuild = normalizeBackend(buildValue);
-        return fromBuild != null ? fromBuild : "auto";
-    }
-
     /** The thread count to export: process value, else build value, else big cores. */
     static int resolveThreads(String processValue, String buildValue, int bigCores) {
         final int p = parseThreads(processValue);
@@ -104,19 +79,18 @@ final class ElizaAsrNativeEnv {
         return b > 0 ? b : Math.max(1, bigCores);
     }
 
-    /** Set both variables in this process; returns "backend/threads". Never throws. */
-    static String apply(String buildBackend, String buildThreads, EnvWriter env) {
+    /** Set both variables; fail before loading a library with the wrong backend. */
+    static String apply(String buildThreads, EnvWriter env) {
         final int cpus = Runtime.getRuntime().availableProcessors();
         final int bigCores = bigCoreCount(
             readMaxFreqs(new File("/sys/devices/system/cpu"), cpus), cpus);
-        final String backend = resolveBackend(System.getenv("ELIZA_ASR_BACKEND"), buildBackend);
+        final String backend = BACKEND;
         final int threads = resolveThreads(System.getenv("ELIZA_ASR_THREADS"), buildThreads, bigCores);
         try {
             env.set("ELIZA_ASR_BACKEND", backend);
             env.set("ELIZA_ASR_THREADS", String.valueOf(threads));
         } catch (Exception e) {
-            // The library falls back to its own defaults (auto, big cores capped at 4).
-            return "unset (" + e.getClass().getSimpleName() + ")";
+            throw new IllegalStateException("Cannot configure the Phonon-2 ASR backend", e);
         }
         return backend + "/" + threads;
     }

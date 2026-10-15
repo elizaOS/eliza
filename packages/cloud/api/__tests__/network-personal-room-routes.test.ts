@@ -88,6 +88,10 @@ test("Network enrichment preserves selected rooms across the four Personal HTTP 
         {
           name: "room-route-external-boundaries",
           setup(builder) {
+            // Match the Worker alias: SSH runs on the sidecar, never in these routes.
+            builder.onResolve({ filter: /^ssh2$/ }, () => ({
+              path: join(apiDirectory, "src/stubs/ssh2.ts"),
+            }));
             builder.onResolve({ filter: /^@elizaos\/core$/ }, () => ({
               path: fileURLToPath(import.meta.resolve("@elizaos/core")),
               external: true,

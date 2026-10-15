@@ -39,10 +39,7 @@ app.get("/", async (c) => {
     const agent = await charactersService.getById(agentId);
     if (!agent) throw NotFoundError("Agent not found");
 
-    if (
-      agent.user_id !== user.id &&
-      agent.organization_id !== user.organization_id
-    ) {
+    if (agent.organization_id !== user.organization_id) {
       throw ForbiddenError("Not authorized to view this agent");
     }
 
@@ -86,7 +83,7 @@ app.put("/", async (c) => {
 
     const result = await agentMonetizationService.updateSettings(
       agentId,
-      user.id,
+      user,
       validation.data,
     );
     if (!result.success) {

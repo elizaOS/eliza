@@ -397,7 +397,7 @@ export class BionicHostLoader implements LocalInferenceLoader {
 	/**
 	 * On-device STT: transcribe mono fp32 PCM via the bionic host's fused
 	 * libelizainference ASR (op="asr") over the bundle's `asr/` model
-	 * (Phonon-2 by default, or the Qwen3-ASR pair). Live voice should prefer
+	 * (Phonon-2). Live voice should prefer
 	 * `openAsrStream()`; this batch call is the fallback when it returns null. The musl agent
 	 * can't load the fused lib, so the TRANSCRIPTION delegate routes the audio
 	 * here over the UDS and gets the transcript back. `pcm` is little-endian
@@ -431,7 +431,7 @@ export class BionicHostLoader implements LocalInferenceLoader {
 	private assertAsrBundle(): void {
 		if (!this.bundleDir || !bundleHasAsrModelFiles(this.bundleDir)) {
 			throw new Error(
-				"[BionicHostLoader] host asr requires an active bundle with an asr/ model (Phonon-2 GGUF, or a Qwen3-ASR text + mmproj pair); refusing to use the bionic host default bundle",
+				"[BionicHostLoader] host asr requires an active bundle with an asr/ model (the Phonon-2 GGUF); refusing to use the bionic host default bundle",
 			);
 		}
 		const blockers = readBundleAsrProvenanceBlockers(this.bundleDir);
@@ -444,7 +444,8 @@ export class BionicHostLoader implements LocalInferenceLoader {
 	/**
 	 * Whether the host's ASR backend streams (op="asr_stream_supported"). The
 	 * host acquires the bundle's asr/ region first, so this is accurate on a
-	 * cold context: true for Phonon-2 (parakeet), false for Qwen3-ASR.
+	 * cold context: true for Phonon-2 (parakeet), false only for a host
+	 * library built without the Parakeet-TDT backend.
 	 */
 	async asrStreamSupported(): Promise<boolean> {
 		this.assertAsrBundle();

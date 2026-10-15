@@ -72,13 +72,21 @@ export class X402Client {
   /**
    * Make an x402-aware fetch request. Automatically handles 402 responses.
    */
-  async fetch(url: string | URL, init?: RequestInit): Promise<Response> {
-    const urlStr = url.toString();
+  async fetch(
+    url: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> {
+    const request = url instanceof Request ? new Request(url, init) : null;
+    const retryRequest = request?.clone();
+    const urlStr = request ? request.url : url.toString();
+    const callerSignal = request?.signal ?? init?.signal;
     const timeoutSignal = AbortSignal.timeout(DEFAULT_X402_FETCH_TIMEOUT_MS);
-    const signal = init?.signal
-      ? AbortSignal.any([init.signal, timeoutSignal])
+    const signal = callerSignal
+      ? AbortSignal.any([callerSignal, timeoutSignal])
       : timeoutSignal;
-    const response = await globalThis.fetch(url, { ...init, signal });
+    const response = request
+      ? await globalThis.fetch(request, { signal })
+      : await globalThis.fetch(url, { ...init, signal });
 
     if (response.status !== 402) {
       return response;
@@ -183,18 +191,18 @@ export class X402Client {
     this.config.onPaymentComplete?.(log, attempt);
 
     // Retry request with payment proof
-    const retryHeaders = new Headers(init?.headers);
+    const retryHeaders = new Headers(retryRequest?.headers ?? init?.headers);
     const payloadB64 = btoa(JSON.stringify(paymentPayload));
     retryHeaders.set("X-PAYMENT", payloadB64);
 
     const retryTimeoutSignal = AbortSignal.timeout(
       DEFAULT_X402_FETCH_TIMEOUT_MS,
     );
-    const retrySignal = init?.signal
-      ? AbortSignal.any([init.signal, retryTimeoutSignal])
+    const retrySignal = callerSignal
+      ? AbortSignal.any([callerSignal, retryTimeoutSignal])
       : retryTimeoutSignal;
-    const retryResponse = await globalThis.fetch(url, {
-      ...init,
+    const retryResponse = await globalThis.fetch(retryRequest ?? url, {
+      ...(retryRequest ? undefined : init),
       headers: retryHeaders,
       signal: retrySignal,
     });
