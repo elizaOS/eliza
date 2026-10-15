@@ -261,7 +261,9 @@ export async function deriveBitcoinKey(
 function bytesToHex0x(bytes: Uint8Array): `0x${string}` {
   let out = "0x";
   for (let i = 0; i < bytes.length; i++) {
-    out += bytes[i]!.toString(16).padStart(2, "0");
+    const byte = bytes[i];
+    if (byte === undefined) throw new Error("Unexpected missing byte");
+    out += byte.toString(16).padStart(2, "0");
   }
   return out as `0x${string}`;
 }
