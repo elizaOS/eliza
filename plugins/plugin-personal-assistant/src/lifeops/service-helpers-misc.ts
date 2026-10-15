@@ -730,7 +730,7 @@ export function normalizeGeneratedLifeOpsAssistantText(
   stripPrefixes: RegExp[] = [],
 ): string | null {
   let cleaned = value
-    .replace(/<think>[\s\S]*?<\/think>/gi, " ")
+    .replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, " ")
     .replace(/^["'`]+|["'`]+$/g, "")
     .replace(/\s+/g, " ")
     .trim();

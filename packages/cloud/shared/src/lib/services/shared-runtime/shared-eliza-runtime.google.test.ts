@@ -130,7 +130,14 @@ async function exercise(
     const text = input instanceof Request ? await input.clone().text() : String(init?.body ?? "");
     const body = JSON.parse(text) as {
       messages?: Array<{ role?: string; content?: unknown }>;
-      tools?: Array<{ function?: { name?: string } }>;
+      tools?: Array<{
+        function?: {
+          name?: string;
+          parameters?: {
+            properties?: { replyText?: { type?: string } };
+          };
+        };
+      }>;
     };
     const names = body.tools?.map((t) => t.function?.name) ?? [];
     const system = (body.messages ?? [])
@@ -143,7 +150,11 @@ async function exercise(
         message.content.includes("Google connection and Gmail reads (owner permission required)"),
     );
     if (publicRead) expect(names).not.toContain("GOOGLE_CONTEXT");
-    if (names.includes("HANDLE_RESPONSE"))
+    if (names.includes("HANDLE_RESPONSE")) {
+      const responseTool = body.tools?.find((tool) => tool.function?.name === "HANDLE_RESPONSE");
+      const replyText = kind === "weather-missing" || ordinary ? currentReply : "";
+      const nativeReplyParts =
+        responseTool?.function?.parameters?.properties?.replyText?.type === "array";
       return model(null, {
         name: "HANDLE_RESPONSE",
         args: {
@@ -156,13 +167,14 @@ async function exercise(
               ? []
               : [compoundMissing ? "TODO" : publicRead ? "WEB_SEARCH" : "GOOGLE_CONTEXT"],
           requiresTool: kind !== "weather-missing" && !ordinary,
-          replyText: kind === "weather-missing" || ordinary ? currentReply : "",
+          replyText: nativeReplyParts ? [{ kind: "text", value: replyText }] : replyText,
           replyEffectStatus: "none",
           facts: [],
           relationships: [],
           addressedTo: [],
         },
       });
+    }
     if (names.includes("FACTS_AND_RELATIONSHIPS_VALIDATE"))
       return model(null, {
         name: "FACTS_AND_RELATIONSHIPS_VALIDATE",

@@ -47,6 +47,10 @@ import {
   observeSubscriptionAllowanceEligibility,
   type SubscriptionAllowanceEligibility,
 } from "./subscription-allowance-eligibility";
+import {
+  readSubscriptionGrantObservation,
+  type SubscriptionGrantObservation,
+} from "./subscription-grants";
 
 export interface PrimaryStatusCounts {
   used: string;
@@ -66,6 +70,7 @@ export interface PrimaryAccountBillingReadModel {
   observedAt: string;
   subscription: PrimaryOrganizationSubscription;
   allowanceFunding: SubscriptionAllowanceEligibility;
+  grant: SubscriptionGrantObservation | null;
   policyObservedAt: string;
   policyLimits: OrganizationQuotaPolicy["limits"] | { status: "unavailable"; code: string };
   organization: {
@@ -400,11 +405,17 @@ export async function readPrimaryAccountBillingSnapshot(
         organizationId,
         new Date(observedAt),
       );
+      const grant = await readSubscriptionGrantObservation(
+        tx,
+        organizationId,
+        new Date(observedAt),
+      );
 
       return {
         observedAt,
         subscription,
         allowanceFunding,
+        grant,
         policyLimits,
         policyObservedAt,
         organization: {

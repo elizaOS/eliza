@@ -15,8 +15,9 @@ import { parseJSONObjectFromText } from "@elizaos/core/protocol";
 import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
 import { defineActionParameters } from "../plugin-cloud-bootstrap/types";
 import { normalizeCloudActionArgs } from "../plugin-cloud-bootstrap/utils/native-planner-guards";
+import { formatWebSearchText } from "./reputation";
 import { WebSearchService } from "./service";
-import { type SearchResponse, type SearchResult } from "./types";
+import type { SearchResponse } from "./types";
 
 interface WebSearchParams {
   query?: string;
@@ -74,7 +75,9 @@ function toCallbackData(
       rawContent: result.rawContent,
       score: result.score,
       publishedDate: result.publishedDate,
+      reputation: result.reputation,
     })),
+    reputationWarnings: searchResponse.reputationWarnings,
     model: searchResponse.model,
     provider: searchResponse.provider,
     searchQueries: searchResponse.searchQueries,
@@ -340,18 +343,7 @@ export const webSearch: Action & Record<string, unknown> = {
       const hasResults =
         Array.isArray(searchResponse?.results) && searchResponse.results.length > 0;
       if (searchResponse && (hasResults || searchResponse.answer)) {
-        const responseList = searchResponse.answer
-          ? `${searchResponse.answer}${
-              hasResults
-                ? `\n\nFor more details, you can check out these resources:\n${searchResponse.results
-                    .map(
-                      (result: SearchResult, index: number) =>
-                        `${index + 1}. [${result.title}](${result.url})`,
-                    )
-                    .join("\n")}`
-                : ""
-            }`
-          : "";
+        const responseList = formatWebSearchText(searchResponse);
         // Build detailed reasoning for storage
         const reasoningSteps = [
           `1. Extracted search query: "${query}"`,

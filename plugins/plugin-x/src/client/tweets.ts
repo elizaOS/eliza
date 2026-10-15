@@ -529,22 +529,30 @@ export function parseTweetV2ToV1(
 
   // Process Polls
   if (includes?.polls?.length) {
-    const poll = includes.polls[0];
-    parsedTweet.poll = {
-      id: poll.id,
-      end_datetime: poll.end_datetime,
-      options: poll.options.map((option) => ({
-        position: option.position,
-        label: option.label,
-        votes: option.votes,
-      })),
-      voting_status: poll.voting_status,
-    };
+    const pollId = tweetV2.attachments?.poll_ids?.[0];
+    const poll = pollId
+      ? includes.polls.find((p) => p.id === pollId)
+      : undefined;
+    if (poll) {
+      parsedTweet.poll = {
+        id: poll.id,
+        end_datetime: poll.end_datetime,
+        options: poll.options.map((option) => ({
+          position: option.position,
+          label: option.label,
+          votes: option.votes,
+        })),
+        voting_status: poll.voting_status,
+      };
+    }
   }
 
   // Process Media (photos and videos)
-  if (includes?.media?.length) {
+  // includes.media is response-scoped; only attach media this tweet references.
+  const mediaKeys = new Set(tweetV2.attachments?.media_keys ?? []);
+  if (includes?.media?.length && mediaKeys.size > 0) {
     includes.media.forEach((media: MediaObjectV2) => {
+      if (!mediaKeys.has(media.media_key)) return;
       if (media.type === "photo") {
         parsedTweet.photos.push({
           id: media.media_key,

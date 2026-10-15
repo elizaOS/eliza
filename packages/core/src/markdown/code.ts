@@ -47,7 +47,7 @@ export function parseFenceSpans(buffer: string): FenceSpan[] {
 		const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
 
 		const match = line.match(/^( {0,3})(`{3,}|~{3,})(.*)$/);
-		if (match) {
+		if (match && (open || match[2][0] !== "`" || !match[3].includes("`"))) {
 			const indent = match[1];
 			const marker = match[2];
 			const markerChar = marker[0];

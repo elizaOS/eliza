@@ -57,6 +57,29 @@ const SOCK = `eliza-bionic-test-${process.pid}`;
 const describeLinuxOnly =
 	process.platform === "linux" ? describe : describe.skip;
 
+/** A GGUF v3 header whose only entry is `general.architecture = parakeet-tdt` (Phonon-2). */
+function parakeetGgufHeader(): Buffer {
+	const str = (value: string) => {
+		const bytes = Buffer.from(value, "utf8");
+		const length = Buffer.alloc(8);
+		length.writeBigUInt64LE(BigInt(bytes.length));
+		return Buffer.concat([length, bytes]);
+	};
+	const head = Buffer.alloc(24);
+	head.write("GGUF", 0, "ascii");
+	head.writeUInt32LE(3, 4);
+	head.writeBigUInt64LE(0n, 8);
+	head.writeBigUInt64LE(1n, 16);
+	const stringType = Buffer.alloc(4);
+	stringType.writeUInt32LE(8);
+	return Buffer.concat([
+		head,
+		str("general.architecture"),
+		stringType,
+		str("parakeet-tdt"),
+	]);
+}
+
 function makeBundleModelPath(manifest: unknown = {}): string {
 	const bundleRoot = fs.mkdtempSync(
 		path.join(os.tmpdir(), "eliza-bionic-bundle-"),
@@ -64,10 +87,9 @@ function makeBundleModelPath(manifest: unknown = {}): string {
 	tempDirs.push(bundleRoot);
 	fs.mkdirSync(path.join(bundleRoot, "text"), { recursive: true });
 	fs.mkdirSync(path.join(bundleRoot, "asr"), { recursive: true });
-	fs.writeFileSync(path.join(bundleRoot, "asr", "gemma-asr.gguf"), "asr");
 	fs.writeFileSync(
-		path.join(bundleRoot, "asr", "gemma-asr-mmproj.gguf"),
-		"asr-projector",
+		path.join(bundleRoot, "asr", "phonon-2-fv5.gguf"),
+		parakeetGgufHeader(),
 	);
 	fs.writeFileSync(
 		path.join(bundleRoot, "eliza-1.manifest.json"),

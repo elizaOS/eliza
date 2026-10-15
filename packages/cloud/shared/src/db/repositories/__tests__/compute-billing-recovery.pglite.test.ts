@@ -3,7 +3,16 @@
  * against the real Drizzle statements on an isolated PGlite database.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  setSystemTime,
+  spyOn,
+  test,
+} from "bun:test";
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { pushSchema } from "drizzle-kit/api";
@@ -1484,6 +1493,93 @@ describe("compute billing recovery", () => {
       sql.raw(`SELECT organization_id FROM jobs ORDER BY organization_id`),
     );
     expect(rows.rows).toHaveLength(1);
+  });
+
+  test.each(["api delete", "app teardown"] as const)(
+    "%s charges the compute run since the last daily bill",
+    async (path) => {
+      const { org, user } = await seed("10.000000");
+      const containerId = crypto.randomUUID();
+      // Three hours since the last daily run at the base container rate.
+      const periodStart = new Date(Date.now() - 3 * 60 * 60 * 1000);
+      await dbWrite.execute(sql`INSERT INTO containers
+        (id, name, project_name, organization_id, user_id, status, billing_status,
+         last_billed_at, next_billing_at, lifecycle_revision, created_at, updated_at)
+        VALUES (${containerId}, 'delete-fixture', 'delete-fixture', ${org.id}, ${user.id}, 'running', 'active',
+          ${periodStart}, ${new Date(periodStart.getTime() + 24 * 60 * 60 * 1000)}, 1, ${periodStart}, ${periodStart})`);
+      await dbWrite.insert(computeBillingRateSegments).values({
+        organization_id: org.id,
+        workload_kind: "container",
+        workload_id: containerId,
+        lifecycle_revision: 1,
+        billing_state: "running",
+        rate_per_hour: "0.027917",
+        effective_at: periodStart,
+      });
+
+      if (path === "api delete") {
+        await getHetznerContainersClient().deleteContainer(containerId, org.id);
+      } else {
+        await containersRepository.markStoppedForBilling(containerId, org.id);
+      }
+
+      const [balance] = await dbWrite
+        .select({ credit_balance: organizations.credit_balance })
+        .from(organizations)
+        .where(eq(organizations.id, org.id));
+      // 3 h x $0.027917/h, within a minute of test runtime.
+      expect(10 - Number(balance.credit_balance)).toBeGreaterThan(0.083);
+      expect(10 - Number(balance.credit_balance)).toBeLessThan(0.085);
+    },
+  );
+
+  test("app teardown settles once; the daemon's later delete charges nothing more", async () => {
+    const { org, user } = await seed("10.000000");
+    const containerId = crypto.randomUUID();
+    const periodStart = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    await dbWrite.execute(sql`INSERT INTO containers
+      (id, name, project_name, organization_id, user_id, status, billing_status,
+       last_billed_at, next_billing_at, lifecycle_revision, created_at, updated_at)
+      VALUES (${containerId}, 'teardown-fixture', 'teardown-fixture', ${org.id}, ${user.id}, 'running', 'active',
+        ${periodStart}, ${new Date(periodStart.getTime() + 24 * 60 * 60 * 1000)}, 1, ${periodStart}, ${periodStart})`);
+    await dbWrite.insert(computeBillingRateSegments).values({
+      organization_id: org.id,
+      workload_kind: "container",
+      workload_id: containerId,
+      lifecycle_revision: 1,
+      billing_state: "running",
+      rate_per_hour: "0.027917",
+      effective_at: periodStart,
+    });
+    const debits = async () =>
+      (
+        await dbWrite
+          .select({ id: creditTransactions.id })
+          .from(creditTransactions)
+          .where(eq(creditTransactions.organization_id, org.id))
+      ).length;
+
+    await containersRepository.markStoppedForBilling(containerId, org.id);
+    const afterTeardown = await dbWrite
+      .select({ credit_balance: organizations.credit_balance })
+      .from(organizations)
+      .where(eq(organizations.id, org.id));
+    const teardownDebits = await debits();
+
+    // The daemon runs the delete two hours later.
+    setSystemTime(new Date(Date.now() + 2 * 60 * 60 * 1000));
+    try {
+      await getHetznerContainersClient().deleteContainer(containerId, org.id);
+    } finally {
+      setSystemTime();
+    }
+
+    const afterDelete = await dbWrite
+      .select({ credit_balance: organizations.credit_balance })
+      .from(organizations)
+      .where(eq(organizations.id, org.id));
+    expect(afterDelete[0]?.credit_balance).toBe(afterTeardown[0]?.credit_balance);
+    expect(await debits()).toBe(teardownDebits);
   });
 
   test("recovery discovery excludes live jobs and includes failed or unbound intents", async () => {

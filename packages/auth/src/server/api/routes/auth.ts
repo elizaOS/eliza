@@ -40,7 +40,7 @@ import { verifySolanaMessageSignature } from "../services/wallet-proof";
  */
 
 import { randomBytes } from "node:crypto";
-import { assertPublicHttpsEndpoint, logger } from "@elizaos/core";
+import { assertPublicHttpsEndpoint, ElizaError, logger } from "@elizaos/core";
 import { and, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import { errors as joseErrors } from "jose";
@@ -1431,13 +1431,30 @@ async function findOrCreateWalletUserWithStatus(
 
 async function findOrCreatePhoneUserWithStatus(
   phone: string,
+  provider: "phone" | "whatsapp" = "phone",
 ): Promise<UserProvisionResult> {
   const phoneSubject = `phone:${hashSha256Hex(phone)}`;
   const db = getDb();
+  const [linked] = await db
+    .select({ user: users })
+    .from(accounts)
+    .innerJoin(users, eq(accounts.userId, users.id))
+    .where(
+      and(
+        eq(accounts.provider, provider),
+        eq(accounts.providerAccountId, phoneSubject),
+      ),
+    );
   const [existing] = await db
     .select()
     .from(users)
     .where(eq(users.walletAddress, phoneSubject));
+  if (linked && existing && linked.user.id !== existing.id) {
+    throw new ElizaError("Phone login identity needs reconciliation", {
+      code: "PHONE_IDENTITY_CONFLICT",
+    });
+  }
+  if (linked) return { user: linked.user, isNew: false };
   if (existing) return { user: existing, isNew: false };
 
   const [created] = await db
@@ -5795,7 +5812,10 @@ auth.post("/whatsapp/verify", async (c) => {
   }
   await clearSmsVerifyFailures(body.phone, otpPurpose);
 
-  const { user, isNew } = await findOrCreatePhoneUserWithStatus(body.phone);
+  const { user, isNew } = await findOrCreatePhoneUserWithStatus(
+    body.phone,
+    "whatsapp",
+  );
   const tenantResult = await resolveAndValidateTenant(
     c,
     user.id,

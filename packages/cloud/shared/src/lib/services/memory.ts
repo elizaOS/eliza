@@ -1,7 +1,12 @@
 // Coordinates cloud service memory behavior behind route handlers.
 
 import type { AgentRuntime, Content, Memory, UUID } from "@elizaos/core";
-import { assertModelOutputComplete, ChannelType, stringToUuid } from "@elizaos/core";
+import {
+  assertModelOutputComplete,
+  ChannelType,
+  createUniqueUuid,
+  stringToUuid,
+} from "@elizaos/core";
 import { memoryTable, participantTable } from "@elizaos/plugin-sql";
 import { streamText } from "ai";
 import { createHash } from "crypto";
@@ -162,6 +167,9 @@ export class MemoryService {
     // Ensure the room exists in the database
     const roomId = input.roomId as UUID;
     const entityId = input.entityId as UUID;
+    // Agent-scoped: world ids are a global key and world reads are
+    // agent-scoped, so one shared id would collide across agents.
+    const worldId = createUniqueUuid(runtime, "eliza-world");
 
     // Ensure room exists
     await runtime.ensureRoomExists({
@@ -170,7 +178,7 @@ export class MemoryService {
       type: ChannelType.DM,
       channelId: input.roomId,
       serverId: stringToUuid("eliza-server") as UUID,
-      worldId: stringToUuid("eliza-world") as UUID,
+      worldId,
       agentId: runtime.agentId,
     });
     logger.debug(`[Memory Service] Ensured room exists: ${roomId}`);
@@ -180,7 +188,7 @@ export class MemoryService {
     await runtime.ensureConnection({
       entityId,
       roomId,
-      worldId: stringToUuid("eliza-world") as UUID,
+      worldId,
       source: "memory",
       type: ChannelType.DM,
       channelId: input.roomId,

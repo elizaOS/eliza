@@ -32,6 +32,7 @@ import type { Tweet as ClientTweet } from "./client/tweets";
 import {
   getRandomInterval,
   getTargetUsers,
+  parseTwitterCount,
   shouldTargetUser,
 } from "./environment";
 import { quoteTweetTemplate, twitterActionTemplate } from "./templates";
@@ -51,6 +52,7 @@ import {
   sendChunkedTweet,
   sendTextAsTweetThread,
 } from "./utils";
+import { isExplicitTwitterRejection } from "./utils/error-handler";
 import { describeTweetPhotos } from "./utils/image-descriptions";
 import {
   buildTwitterMessageMetadata,
@@ -113,15 +115,6 @@ export function normalizeTweet(tweet: ClientTweet): ProcessableTweet | null {
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
-function normalizePositiveInteger(value: unknown, fallback: number): number {
-  const parsed =
-    typeof value === "number"
-      ? value
-      : typeof value === "string"
-        ? Number.parseInt(value, 10)
-        : Number.NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
-}
 /**
  * Template for generating dialog and actions for a Twitter message handler.
  *
@@ -163,6 +156,11 @@ export const messageHandlerTemplate = `
  *
  * @extends ClientBase
  */
+/** Durable per-mention reply state: egress_started, delivered or indeterminate. */
+function mentionReplySettledKey(accountId: string, tweetId: string): string {
+  return `x:mention-reply:${accountId}:${tweetId}`;
+}
+
 export class TwitterInteractionClient {
   client: ClientBase;
   runtime: IAgentRuntime;
@@ -370,7 +368,7 @@ export class TwitterInteractionClient {
     username: string,
     session: TwitterAccountSession,
   ) {
-    const maxEngagementsPerRun = normalizePositiveInteger(
+    const maxEngagementsPerRun = parseTwitterCount(
       getSetting(this.runtime, "TWITTER_MAX_ENGAGEMENTS_PER_RUN") ??
         process.env.TWITTER_MAX_ENGAGEMENTS_PER_RUN,
       10,
@@ -401,7 +399,16 @@ export class TwitterInteractionClient {
         logger.info(
           `Engaging with tweet from @${username}: ${tweet.text.substring(0, 50)}...`,
         );
-        const engaged = await this.engageWithTweet(tweet, actions, session);
+        let engaged: boolean;
+        try {
+          engaged = await this.engageWithTweet(tweet, actions, session);
+        } catch (error) {
+          // An earlier action (a quote, a like) may already be public. Mark the
+          // tweet processed so the next poll does not ask the model again and
+          // repeat it; X has no idempotency key for these writes.
+          await this.ensureTweetContext(tweet);
+          throw error;
+        }
         if (engaged) {
           await this.ensureTweetContext(tweet);
           engagementCount++;
@@ -873,7 +880,7 @@ ${tweet.text}`;
       });
     }
     // Get max interactions per run setting
-    const maxInteractionsPerRun = normalizePositiveInteger(
+    const maxInteractionsPerRun = parseTwitterCount(
       getSetting(this.runtime, "TWITTER_MAX_ENGAGEMENTS_PER_RUN") ??
         process.env.TWITTER_MAX_ENGAGEMENTS_PER_RUN,
       10,
@@ -912,9 +919,12 @@ ${tweet.text}`;
             memory.content.inReplyTo === tweetId ||
             memory.content.inReplyTo === tweet.id,
         );
-        if (hasExistingReply) {
+        const replySettled = await this.runtime.getCache<string>(
+          mentionReplySettledKey(this.client.accountId, tweet.id),
+        );
+        if (hasExistingReply || replySettled) {
           logger.log(
-            `Already responded to tweet ${tweet.id} (found in conversation history), skipping`,
+            `Already responded to tweet ${tweet.id} (${hasExistingReply ? "found in conversation history" : `reply ${replySettled}`}), skipping`,
           );
           // A durable reply can survive a crash before the cursor was saved.
           this.assertCurrentSession(session);
@@ -1276,7 +1286,23 @@ ${tweet.text}`;
         deliveryError = error;
         throw error;
       }
+      // X has no idempotency key for posts. Persist a no-replay barrier before
+      // the request, as the DM path does, so a timeout or a failure after the
+      // first chunk cannot post a second public reply on the next poll. The
+      // mention reopens only when no post request was issued (auth rotation,
+      // media fetch or upload failure) or X explicitly refused the first chunk.
+      const settledKey = mentionReplySettledKey(
+        this.client.accountId,
+        normalizedTweet.id,
+      );
+      try {
+        await this.runtime.setCache(settledKey, "egress_started");
+      } catch (error) {
+        deliveryError = error;
+        throw error;
+      }
       let responseMemories: Memory[];
+      let postRequests = 0;
       try {
         responseMemories = await sendChunkedTweet(
           this.client,
@@ -1284,11 +1310,27 @@ ${tweet.text}`;
           message.roomId,
           normalizedTweet.username,
           tweetToReplyTo,
+          {
+            onPostRequest: () => {
+              postRequests += 1;
+            },
+          },
         );
       } catch (error) {
         deliveryError = error;
+        // error-policy:J2 nothing reached X, or X explicitly refused the first
+        // chunk: reopen the mention. Any other failure keeps the tombstone.
+        if (
+          postRequests === 0 ||
+          (postRequests === 1 && isExplicitTwitterRejection(error))
+        ) {
+          await this.runtime.deleteCache(settledKey);
+        } else {
+          await this.runtime.setCache(settledKey, "indeterminate");
+        }
         throw error;
       }
+      await this.runtime.setCache(settledKey, "delivered");
       if (responseMemories.length === 0) {
         throw new Error("Failed to get X thread receipts from response");
       }

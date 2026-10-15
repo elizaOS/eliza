@@ -49,6 +49,7 @@ export type VoiceModelQuant =
   | "q5_k_m"
   | "q6_k"
   | "q8_0"
+  | "fv5-pair16-v1"
   | "gguf-fp32"
   | "fp16"
   | "onnx-fp32"
@@ -178,41 +179,31 @@ export type MobileVoiceFileRole =
   /** One file of the eSpeak NG English data misaki uses for words outside its lexicon. */
   | "g2p-espeak-data"
   | "asr-parakeet"
-  | "asr-text"
-  | "asr-mmproj"
-  | "vad";
+  | "vad"
+  /**
+   * Retired Qwen3-ASR text GGUF and audio projector. They occur only in the
+   * `mobile-voice` 1.0.0 and 1.1.0 history rows; `mobileVoiceBundle()`
+   * refuses a latest version that still lists them.
+   */
+  | RetiredMobileVoiceFileRole;
+
+/** Roles of the retired Qwen3-ASR pair (catalog history only). */
+export type RetiredMobileVoiceFileRole = "asr-text" | "asr-mmproj";
+
+const RETIRED_MOBILE_VOICE_ROLES: ReadonlySet<MobileVoiceFileRole> =
+  new Set<MobileVoiceFileRole>(["asr-text", "asr-mmproj"]);
 
 /**
- * Which libelizainference ASR backend an `asr/` row feeds. `parakeet` is the
- * Parakeet-TDT backend (Phonon-2, batch and streaming); `qwen3` is the
- * Qwen3-ASR text + mmproj pair on mtmd. `asr/` holds one backend's files at a
- * time: the fused library picks parakeet when it finds a parakeet-tdt GGUF
- * there, and the Qwen3 picker needs exactly one text GGUF beside the mmproj.
+ * The libelizainference ASR backend an `asr/` row feeds. Phonon-2 on the
+ * Parakeet-TDT backend (batch and streaming) is the only local ASR; `qwen3`
+ * appears only on retired history rows.
  */
-export type MobileAsrBackend = "parakeet" | "qwen3";
+export type MobileAsrBackend = "parakeet";
 
-/** The mobile default: Phonon-2 on the parakeet backend. */
-export const DEFAULT_MOBILE_ASR_BACKEND: MobileAsrBackend = "parakeet";
-
-/**
- * Resolve the ASR backend to stage from `ELIZA_ASR_BACKEND`, the same variable
- * the fused library reads (`parakeet`, `qwen3`, or its `mtmd` alias for
- * qwen3). Unset, empty, `auto` or an unknown value give the default.
- */
-export function mobileAsrBackend(
-  env: Readonly<Record<string, string | undefined>> = process.env,
-): MobileAsrBackend {
-  const value = env.ELIZA_ASR_BACKEND?.trim().toLowerCase();
-  if (value === "qwen3" || value === "mtmd") return "qwen3";
-  return DEFAULT_MOBILE_ASR_BACKEND;
-}
-
-/** Roles that make up the `asr/` group for a backend. */
-export function mobileAsrRoles(
-  backend: MobileAsrBackend,
-): ReadonlyArray<MobileVoiceFileRole> {
-  return backend === "qwen3" ? ["asr-text", "asr-mmproj"] : ["asr-parakeet"];
-}
+/** The `asr/` group: the Phonon-2 GGUF. */
+export const MOBILE_ASR_ROLES: ReadonlyArray<MobileVoiceFileRole> = [
+  "asr-parakeet",
+];
 
 /**
  * One pinned file of the Android/AOSP voice bundle. `path` is relative to the
@@ -231,8 +222,8 @@ export function mobileAsrRoles(
 export interface MobileVoiceFile {
   readonly id: string;
   readonly role: MobileVoiceFileRole;
-  /** For `asr-*` rows: the backend this file belongs to. */
-  readonly asrBackend?: MobileAsrBackend;
+  /** For `asr-*` rows: the backend this file belongs to (`qwen3` only on retired rows). */
+  readonly asrBackend?: MobileAsrBackend | "qwen3";
   readonly path: string;
   readonly hfRepo: string;
   readonly hfPath: string;
@@ -401,9 +392,10 @@ export function findVoiceModelVersion(
 
 /**
  * The pinned Android/AOSP voice bundle (Paradee TTS + misaki lexicon,
- * Phonon-2 ASR with the Qwen3-ASR pair as the selectable alternative, Silero
- * VAD). Throws when the catalog has no `mobile-voice`
- * entry with file rows, so a broken catalog cannot silently ship no voice.
+ * Phonon-2 ASR, Silero VAD). Throws when the catalog has no `mobile-voice`
+ * entry with file rows, or when the latest entry still lists a retired
+ * Qwen3-ASR row, so a broken catalog cannot silently ship no voice or a
+ * removed model.
  */
 export function mobileVoiceBundle(): VoiceModelVersion & {
   readonly files: ReadonlyArray<MobileVoiceFile>;
@@ -411,6 +403,15 @@ export function mobileVoiceBundle(): VoiceModelVersion & {
   const latest = latestVoiceModelVersion("mobile-voice");
   if (!latest?.files?.length) {
     throw new Error("voice-model-versions.json has no mobile-voice file rows");
+  }
+  const retired = latest.files.filter(
+    (file) =>
+      RETIRED_MOBILE_VOICE_ROLES.has(file.role) || file.asrBackend === "qwen3",
+  );
+  if (retired.length > 0) {
+    throw new Error(
+      `mobile-voice ${latest.version} lists retired ASR rows: ${retired.map((file) => file.id).join(", ")}`,
+    );
   }
   return latest as VoiceModelVersion & {
     readonly files: ReadonlyArray<MobileVoiceFile>;

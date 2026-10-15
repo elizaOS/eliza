@@ -52,6 +52,7 @@ export class GitHubService extends Service implements IGitHubService {
     "GitHub REST API integration for PRs, issues, and notifications";
 
   private clients = new Map<string, GitHubClientRecord>();
+  private accountGeneration = 0;
 
   constructor(
     runtime?: IAgentRuntime,
@@ -71,14 +72,25 @@ export class GitHubService extends Service implements IGitHubService {
     return service;
   }
 
+  /**
+   * Re-read the configured accounts. The Settings token routes call this after
+   * they save or clear GITHUB_TOKEN, so a connected token is used, and a
+   * disconnected one stops working, without an agent restart.
+   */
+  async reloadAccounts(): Promise<void> {
+    await this.initialize();
+  }
+
   private async initialize(): Promise<void> {
+    const generation = ++this.accountGeneration;
+    this.clients.clear();
     if (!this.runtime) {
       return;
     }
     const accounts = await readGitHubAccountsWithConnectorCredentials(
       this.runtime,
     );
-    this.clients.clear();
+    if (generation !== this.accountGeneration) return;
     for (const account of accounts) {
       this.clients.set(account.accountId, {
         account,
@@ -133,6 +145,7 @@ export class GitHubService extends Service implements IGitHubService {
   }
 
   async stop(): Promise<void> {
+    ++this.accountGeneration;
     this.clients.clear();
   }
 }

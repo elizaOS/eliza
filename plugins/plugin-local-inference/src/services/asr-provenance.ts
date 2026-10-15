@@ -7,17 +7,12 @@
  * out of the GGUF header bytes.
  *
  * Scope: this block reads ONLY the Eliza-1 bundle manifest's own ASR lineage
- * (`lineage.asr.base`, `provenance.sourceModels.asr.repo`). The pinned mobile
- * voice bundle (`mobile-voice` in plugin-native-inference's
- * voice-model-versions.json) is not an Eliza-1 manifest: the Android/AOSP
- * agent stages its ASR into `asr/` with an `asr/voice-files.json` record:
- * Phonon-2 (`phonon-2-fv5.gguf`, Parakeet-TDT, not Qwen) by default, or the
- * Qwen3-ASR-0.6B text + mmproj pair with ELIZA_ASR_BACKEND=qwen3. The Eliza-1
- * manifest says nothing about it, so the Qwen-lineage block does not apply to
- * that pair, and a strict Eliza-1 text bundle can transcribe with it on a
- * phone. Gemma-4 audio is too
- * large for phones, and text inference stays on Qwen via Cerebras; this split
- * is an owner decision that still needs explicit owner confirmation.
+ * (`lineage.asr.base`, `provenance.sourceModels.asr.repo`). The local ASR is
+ * Phonon-2 (`asr/phonon-2-fv5.gguf`, Parakeet-TDT, not Qwen): the pinned
+ * mobile voice bundle (`mobile-voice` in plugin-native-inference's
+ * voice-model-versions.json) stages it into `asr/` with an
+ * `asr/voice-files.json` record, and the Eliza-1 manifest says nothing about
+ * it. A strict Eliza-1 text bundle can therefore transcribe with Phonon-2.
  */
 import {
 	closeSync,
@@ -146,32 +141,19 @@ export function readGgufArchitecture(file: string): string | null {
 
 /**
  * True when `<bundle>/asr/` holds a model the fused library can load: a
- * Parakeet-TDT GGUF (Phonon-2, the mobile default), or a Qwen3-ASR text GGUF
- * together with its mmproj projector.
+ * Parakeet-TDT GGUF (Phonon-2). No other local ASR is supported.
  */
 export function bundleHasAsrModelFiles(bundleRoot: string): boolean {
 	const asrDir = path.join(bundleRoot, "asr");
 	if (!existsSync(asrDir)) return false;
 	try {
-		let hasTextModel = false;
-		let hasProjector = false;
-		for (const entry of readdirSync(asrDir, { withFileTypes: true })) {
-			if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".gguf")) {
-				continue;
-			}
-			if (
+		return readdirSync(asrDir, { withFileTypes: true }).some(
+			(entry) =>
+				entry.isFile() &&
+				entry.name.toLowerCase().endsWith(".gguf") &&
 				readGgufArchitecture(path.join(asrDir, entry.name)) ===
-				PARAKEET_TDT_ARCHITECTURE
-			) {
-				return true;
-			}
-			if (/mmproj|proj/i.test(entry.name)) {
-				hasProjector = true;
-			} else {
-				hasTextModel = true;
-			}
-		}
-		return hasTextModel && hasProjector;
+					PARAKEET_TDT_ARCHITECTURE,
+		);
 	} catch {
 		return false;
 	}

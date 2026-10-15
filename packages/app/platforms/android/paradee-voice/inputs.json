@@ -28,5 +28,19 @@
       "lang/gmw/en",
       "lang/gmw/en-US"
     ]
+  },
+  "asr": {
+    "path": "asr/phonon-2-fv5.gguf",
+    "source": "llama.cpp tools/parakeet/convert_phonon2_to_gguf.py from the pinned FermionResearch/Phonon-2 archive",
+    "bytes": 330632256,
+    "sha256": "dc552eb786486167dde3ac80bbe49a6088c8ef39c03c257d5a090fc57b2c47b3",
+    "license": "CC-BY-4.0"
+  },
+  "vad": {
+    "path": "vad/silero-vad-v5.gguf",
+    "url": "https://huggingface.co/elizaos/eliza-1/resolve/1e4c73713e11f7ff42bc2a686cc5b178c8cac14f/bundles/e2b/vad/silero-vad-v5.gguf",
+    "bytes": 620736,
+    "sha256": "d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995",
+    "license": "MIT"
   }
 }

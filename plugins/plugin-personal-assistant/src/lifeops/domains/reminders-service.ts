@@ -66,6 +66,7 @@ import {
   hashStableJson,
   type IAgentRuntime,
   inspectSendHandlerResult,
+  isElizaError,
   logger,
   type Memory,
   ModelType,
@@ -75,6 +76,7 @@ import {
   readDurableConversationChatMarker,
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
+  SEND_HANDLER_NOT_FOUND,
   ServiceType,
   unwrapUserMessageText,
   validateUuid,
@@ -215,6 +217,8 @@ import {
   buildActiveReminders,
   isReminderChannelAllowedForUrgency,
   isWithinQuietHours as isWithinQuietHoursPolicy,
+  normalizeGeneratedReminderBody,
+  normalizeGeneratedWorkflowBody,
 } from "../service-helpers-misc.js";
 import { computeDefinitionPerformance } from "../service-helpers-occurrence.js";
 import {
@@ -378,6 +382,22 @@ function foregroundRequestHandling(
     return undefined;
   }
 }
+
+/**
+ * Reminder attempts whose send may have reached the recipient: the connector
+ * accepted part of it, accepted it but failed to save it, gave no delivery
+ * evidence, or threw after the request left. Sending the same step again would
+ * duplicate the message, so these attempts count as consumed on every
+ * channel. A clean refusal (`runtime_send_not_delivered`) or a missing send
+ * handler (`runtime_send_handler_missing`, nothing was sent) is retried.
+ */
+const SEND_MAY_HAVE_REACHED_RECIPIENT = new Set([
+  "runtime_send_acceptance_unknown",
+  "runtime_send_partially_delivered",
+  "runtime_send_persistence_failed",
+  "runtime_send_unknown",
+  "runtime_send_in_flight",
+]);
 
 export { REMINDER_DISPATCH_INSTRUCTIONS } from "../optimized-prompt-instructions.js";
 
@@ -904,16 +924,6 @@ function readMemoryCreatedAtMs(memory: { createdAt?: unknown }): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
-}
-
-function normalizeGeneratedReminderBody(value: string): string | null {
-  const cleaned = value.replace(/^["'`]+|["'`]+$/g, "").trim();
-  return cleaned.length > 0 ? cleaned : null;
-}
-
-function normalizeGeneratedWorkflowBody(value: string): string | null {
-  const cleaned = value.replace(/^["'`]+|["'`]+$/g, "").trim();
-  return cleaned.length > 0 ? cleaned : null;
 }
 
 function formatReminderPromptValue(value: unknown): string {
@@ -2570,9 +2580,27 @@ export class RemindersDomain {
     timezone?: string | null;
     now?: Date;
   }): Promise<LifeOpsScheduleMergedStateRecord | null> {
-    const timezone =
-      normalizeOptionalString(args?.timezone) ?? resolveDefaultTimeZone();
     const now = args?.now ?? new Date();
+    const preferred = await this.readStoredEffectiveScheduleState({
+      timezone: args?.timezone,
+      now,
+    });
+    return preferred ? refreshLifeOpsRelativeTime(preferred, now) : null;
+  }
+
+  /**
+   * The preferred merged state as persisted, keeping the relative time it was
+   * computed with. The circadian tick diffs the refreshed state against this:
+   * re-projecting the previous state onto `now` would give it the current
+   * `minutesUntilBedtimeTarget`, so `bedtime.imminent` could never see the
+   * crossing into its window.
+   */
+  private async readStoredEffectiveScheduleState(args: {
+    timezone?: string | null;
+    now: Date;
+  }): Promise<LifeOpsScheduleMergedStateRecord | null> {
+    const timezone =
+      normalizeOptionalString(args.timezone) ?? resolveDefaultTimeZone();
     const local = await this.ctx.repository.getScheduleMergedState(
       this.ctx.agentId(),
       "local",
@@ -2583,12 +2611,11 @@ export class RemindersDomain {
       "cloud",
       timezone,
     );
-    const preferred = preferEffectiveMergedState({
-      now,
+    return preferEffectiveMergedState({
+      now: args.now,
       local,
       cloud,
     });
-    return preferred ? refreshLifeOpsRelativeTime(preferred, now) : null;
   }
 
   public async refreshEffectiveScheduleState(args?: {
@@ -5205,12 +5232,21 @@ export class RemindersDomain {
               ),
             );
           } catch (error) {
-            // error-policy:J1 reminder dispatch boundary treats a thrown
-            // connector result as acceptance-unknown. Retrying without an
-            // explicit zero-accept receipt can duplicate an external message.
             outcome = "blocked_connector";
-            deliveryMetadata.error = `${lifeOpsErrorMessage(error)} Provider acceptance is unknown; do not retry blindly.`;
-            deliveryMetadata.reason = "runtime_send_acceptance_unknown";
+            if (isElizaError(error) && error.code === SEND_HANDLER_NOT_FOUND) {
+              // The registry throws before calling any handler when the
+              // connector has not registered (startup, restart, account
+              // removal). Nothing left the process, so the step stays
+              // retryable on a later tick.
+              deliveryMetadata.error = lifeOpsErrorMessage(error);
+              deliveryMetadata.reason = "runtime_send_handler_missing";
+            } else {
+              // error-policy:J1 reminder dispatch boundary treats a thrown
+              // connector result as acceptance-unknown. Retrying without an
+              // explicit zero-accept receipt can duplicate an external message.
+              deliveryMetadata.error = `${lifeOpsErrorMessage(error)} Provider acceptance is unknown; do not retry blindly.`;
+              deliveryMetadata.reason = "runtime_send_acceptance_unknown";
+            }
           }
         } else {
           outcome = "blocked_connector";
@@ -6007,10 +6043,10 @@ export class RemindersDomain {
         .filter(
           (attempt) =>
             isDeliveredReminderOutcome(attempt.outcome) ||
-            ((attempt.channel === "in_app" || attempt.channel === "sms") &&
-              attempt.outcome === "blocked_connector" &&
-              attempt.deliveryMetadata.reason ===
-                "runtime_send_acceptance_unknown"),
+            (attempt.outcome === "blocked_connector" &&
+              SEND_MAY_HAVE_REACHED_RECIPIENT.has(
+                String(attempt.deliveryMetadata.reason),
+              )),
         )
         .map((attempt) =>
           attemptKey(attempt.planId, attempt.stepIndex, attempt.scheduledFor),
@@ -6445,7 +6481,7 @@ export class RemindersDomain {
         // Same owner-zone anchor as the reminder pass (#13509): the sleep
         // cycle check-ins read `currentSchedule.timezone`.
         const timezone = await resolveOwnerTimeZone(this.ctx.runtime, now);
-        const previousSchedule = await this.readEffectiveScheduleState({
+        const previousSchedule = await this.readStoredEffectiveScheduleState({
           timezone,
           now,
         });

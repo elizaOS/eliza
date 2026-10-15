@@ -65,6 +65,7 @@ function buildRuntime(
   return {
     agentId: AGENT_ID,
     adapter,
+    getService: () => null,
     getSetting: (key: string) =>
       key === "WORLD_ID" ? String(CONFIG_WORLD_ID) : null,
     getWorld: async (worldId: UUID) => {

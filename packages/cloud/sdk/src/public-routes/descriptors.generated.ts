@@ -5408,6 +5408,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/web-push/subscriptions/route.ts",
   },
+  "POST /api/v1/website-reputation/lookup": {
+    method: "POST",
+    path: "/api/v1/website-reputation/lookup",
+    methodName: "postApiV1WebsiteReputationLookup",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/website-reputation/lookup/route.ts",
+  },
   "POST /api/v1/whatsapp/connect": {
     method: "POST",
     path: "/api/v1/whatsapp/connect",

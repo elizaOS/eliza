@@ -234,7 +234,7 @@ try {
   assert.equal(other.status, 200);
   await other.arrayBuffer();
   console.log("Native speech, replay and independent-host checks passed");
-  // Round trip: Paradee speech in, Qwen3-ASR transcript out.
+  // Round trip: Paradee speech in, Phonon-2 transcript out.
   const heard = await first.transcribe(audio);
   assert.equal(heard.status, 200);
   const transcript = await heard.json();

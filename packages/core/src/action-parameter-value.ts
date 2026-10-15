@@ -222,7 +222,17 @@ function collectActionsFromEntries(
 				);
 			}
 			if (Object.keys(params).length > 0) {
-				result.set(actionName.trim().toUpperCase(), params);
+				const normalizedName = actionName.trim().toUpperCase();
+				// An empty name is not an action; skip it like the other
+				// non-action entries above instead of storing an "" key.
+				if (normalizedName === "") continue;
+				// Two distinct raw names that normalize to the same key are
+				// ambiguous input. Fail loudly instead of silently dropping
+				// one action's parameters.
+				if (result.has(normalizedName)) {
+					failUnbounded({ duplicateAction: true });
+				}
+				result.set(normalizedName, params);
 			}
 		} finally {
 			ctx.visiting.delete(paramsValue);
