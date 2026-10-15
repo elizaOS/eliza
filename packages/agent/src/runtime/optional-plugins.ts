@@ -91,6 +91,7 @@ export const OPTIONAL_STATIC_PLUGIN_OVERRIDES: Readonly<
   "@elizaos/plugin-inbox": {
     importSubpath: "./plugin",
   },
+  "@elizaos/plugin-maps": { importSubpath: "./plugin" },
   "@elizaos/plugin-notes": {
     importSubpath: "./plugin",
   },

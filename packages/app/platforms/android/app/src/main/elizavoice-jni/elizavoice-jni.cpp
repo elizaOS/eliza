@@ -28,8 +28,8 @@
 
 #include "eliza-inference-ffi.h"
 
-#if ELIZA_INFERENCE_ABI_VERSION < 17
-#error "elizavoice-jni needs eliza-inference-ffi.h ABI 17 or newer (Paradee TTS, ASR cancel)"
+#if ELIZA_INFERENCE_ABI_VERSION < 19
+#error "elizavoice-jni needs eliza-inference-ffi.h ABI 19 or newer (Paradee streaming)"
 #endif
 
 #ifndef ELIZA_VOICE_JNI_CLASS
@@ -1803,6 +1803,56 @@ jfloatArray nativeParadeeSynthesizePhonemes(JNIEnv* env, jclass, jlong ctxHandle
     return take_pcm(env, "paradee_synthesize_phonemes: no audio", pcm, samples);
 }
 
+struct ParadeeStreamSink {
+    JNIEnv * env;
+    jobject sink;
+    jmethodID method;
+};
+
+static int paradee_stream_chunk(const float * pcm, size_t samples, int final, void * user) {
+    auto & target = *static_cast<ParadeeStreamSink *>(user);
+    JNIEnv * env = target.env;
+    if (env->ExceptionCheck()) return 1;
+    if (samples > 24000 || (samples && !pcm)) {
+        throw_voice(env, "paradee stream: invalid PCM window", ELIZA_ERR_FFI_FAULT, nullptr);
+        return 1;
+    }
+    jfloatArray chunk = env->NewFloatArray(static_cast<jsize>(samples));
+    if (!chunk) return 1;
+    if (samples) env->SetFloatArrayRegion(chunk, 0, static_cast<jsize>(samples), pcm);
+    jboolean accepted = JNI_FALSE;
+    if (!env->ExceptionCheck()) accepted = env->CallBooleanMethod(target.sink, target.method, chunk, final ? JNI_TRUE : JNI_FALSE);
+    env->DeleteLocalRef(chunk);
+    return env->ExceptionCheck() || accepted != JNI_TRUE ? 1 : 0;
+}
+
+jint nativeParadeeStreamSupported(JNIEnv *, jclass) {
+    return eliza_inference_paradee_stream_supported();
+}
+
+void nativeParadeeSynthesizeStream(JNIEnv * env, jclass, jlong ctxHandle,
+        jbyteArray text, jfloat speed, jobject sink) {
+    auto * ctx = voice_context(env, ctxHandle, "paradee stream");
+    if (!ctx) return;
+    if (!sink) {
+        throw_voice(env, "paradee stream: missing sink", ELIZA_ERR_INVALID_ARG, nullptr);
+        return;
+    }
+    std::string utf8;
+    if (!read_utf8(env, text, "paradee stream", utf8)) return;
+    jclass type = env->GetObjectClass(sink);
+    if (!type) return;
+    jmethodID method = env->GetMethodID(type, "onChunk", "([FZ)Z");
+    env->DeleteLocalRef(type);
+    if (!method || env->ExceptionCheck()) return;
+    ParadeeStreamSink target{env, sink, method};
+    char * error = nullptr;
+    const int rc = eliza_inference_paradee_synthesize_stream(
+        ctx, utf8.data(), utf8.size(), speed, paradee_stream_chunk, &target, &error);
+    if (env->ExceptionCheck()) { eliza_inference_free_string(error); return; }
+    if (rc != ELIZA_OK) throw_voice(env, "paradee stream", rc, error);
+}
+
 // Stop the TTS forward pass running on another thread. The running call
 // throws CancellationException. Cancelling nothing is not an error.
 jint nativeCancelTts(JNIEnv* env, jclass, jlong ctxHandle) {
@@ -1898,8 +1948,8 @@ AsrStream* asr_stream(JNIEnv* env, jlong handle, const char* stage) {
 }
 
 // 1 when this library can stream: the parakeet backend is compiled in and
-// some context has it loaded (0 before the first "asr" acquire, after an
-// evict, and with the Qwen3-ASR backend, which only transcribes in batch).
+// some context has it loaded (0 before the first "asr" acquire and after an
+// evict).
 jint nativeAsrStreamSupported(JNIEnv*, jclass) {
     return static_cast<jint>(eliza_inference_asr_stream_supported());
 }
@@ -2093,6 +2143,8 @@ const JNINativeMethod kVoiceMethods[] = {
     ELIZA_NATIVE(nativeParadeeG2pKind, "(J)I"),
     ELIZA_NATIVE(nativeParadeePhonemize, "(J[B)Ljava/lang/String;"),
     ELIZA_NATIVE(nativeParadeeSynthesize, "(J[BF)[F"),
+    ELIZA_NATIVE(nativeParadeeStreamSupported, "()I"),
+    ELIZA_NATIVE(nativeParadeeSynthesizeStream, "(J[BFLjava/lang/Object;)V"),
     ELIZA_NATIVE(nativeParadeeSynthesizePhonemes, "(J[BF)[F"),
     ELIZA_NATIVE(nativeCancelTts, "(J)I"),
     ELIZA_NATIVE(nativeAsrSupported, "()I"),

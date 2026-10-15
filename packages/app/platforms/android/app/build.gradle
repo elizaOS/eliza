@@ -71,12 +71,10 @@ android {
         versionCode System.getenv("ELIZAOS_VERSION_CODE")?.toInteger() ?: 1
         versionName System.getenv("ELIZAOS_VERSION_NAME") ?: "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        // libelizainference ASR backend (auto | parakeet | qwen3) and decode
-        // threads; ElizaVoiceNative exports them before loading the library.
-        // Empty threads means one per big core, measured on the device.
-        def asrBackend = (System.getenv('ELIZA_ASR_BACKEND') ?: 'auto').trim().toLowerCase()
+        // libelizainference ASR decode threads; ElizaVoiceNative exports them
+        // (and ELIZA_ASR_BACKEND=ggml, Phonon-2 being the only ASR) before
+        // loading the library. Empty means one per big core, measured on the device.
         def asrThreads = (System.getenv('ELIZA_ASR_THREADS') ?: '').trim()
-        buildConfigField "String", "ELIZA_ASR_BACKEND", "\"${asrBackend in ['auto', 'parakeet', 'qwen3', 'mtmd'] ? asrBackend : 'auto'}\""
         buildConfigField "String", "ELIZA_ASR_THREADS", "\"${asrThreads ==~ /[0-9]{1,2}/ ? asrThreads : ''}\""
         // AOSP-only build gate. The ElizaOS AOSP product build sets
         // -PelizaAospBuild=true via scripts/elizaos/build-aosp.ts; the

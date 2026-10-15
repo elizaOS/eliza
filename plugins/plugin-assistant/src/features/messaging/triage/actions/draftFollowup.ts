@@ -112,6 +112,7 @@ export const draftFollowupAction: Action = {
 
     const service = getDefaultTriageService();
     const record = await service.draftFollowup(runtime, {
+      requester: _message,
       source: parsed.source,
       to: parsed.to,
       subject: parsed.subject,

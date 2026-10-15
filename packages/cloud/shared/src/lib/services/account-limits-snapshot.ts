@@ -38,7 +38,10 @@ import type {
   PrimaryComputeRateSegment,
 } from "../../db/repositories/account-billing-snapshot";
 import { QUOTA_COUNTED_STATUSES } from "../constants/agent-sandbox-quota";
-import { buildOrganizationSubscriptionSnapshot } from "./account-subscription-snapshot";
+import {
+  buildOrganizationSubscriptionSnapshot,
+  buildSubscriptionGrantSnapshot,
+} from "./account-subscription-snapshot";
 
 export type {
   AccountBillingSnapshot,
@@ -645,6 +648,7 @@ function allUnavailableV2(
     snapshotCompletedAt,
     balance: primary(),
     subscription: primary(),
+    grant: primary(),
     paymentMethodPresence: primary(),
     billingReadiness: primary(),
     autoTopUp: {
@@ -1493,6 +1497,7 @@ export async function buildAccountBillingSnapshot(
         primary.allowanceFunding,
         sources.cancellationAuthority,
       ),
+      grant: buildSubscriptionGrantSnapshot(primary.grant, primary.subscription, observedAt),
       snapshotStartedAt,
       snapshotCompletedAt,
       balance,

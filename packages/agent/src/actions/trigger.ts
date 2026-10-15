@@ -316,9 +316,24 @@ function buildTriggerDedupeKey(input: {
   );
 }
 
+// Delay-derived once triggers hash the RELATIVE delay, not the absolute fire
+// time: a planner retry/double-emit of the same tool call lands milliseconds
+// apart and must dedupe to one reminder. This single helper feeds both the
+// create-path key and the persisted key, so an update can never silently swap
+// schemes and re-open the duplicate window. Triggers that were never
+// delay-derived fall back to the absolute timestamp.
+function onceScheduleDedupeKey(trigger: {
+  delayMs?: number;
+  scheduledAtIso?: string;
+}): string {
+  return trigger.delayMs !== undefined
+    ? `+${trigger.delayMs}`
+    : (trigger.scheduledAtIso ?? "");
+}
+
 function persistedScheduleDedupeKey(trigger: TriggerConfig): string {
   if (trigger.triggerType === "once") {
-    return trigger.scheduledAtIso ?? "";
+    return onceScheduleDedupeKey(trigger);
   }
   if (trigger.triggerType === "interval") {
     return `every:${trigger.intervalMs ?? ""}`;
@@ -834,9 +849,10 @@ async function opCreate(
   // no-op.
   const scheduleKey =
     triggerType === "once"
-      ? usedDelay
-        ? `+${delayMs}`
-        : (scheduledAtIso ?? "")
+      ? onceScheduleDedupeKey({
+          delayMs: usedDelay ? delayMs : undefined,
+          scheduledAtIso,
+        })
       : triggerType === "interval"
         ? `every:${intervalMs}`
         : `cron:${normalizeCronDedupeExpression(cronExpression ?? "")}@${messageTimeZone}`;
@@ -940,6 +956,9 @@ async function opCreate(
     runCount: 0,
     intervalMs: triggerType === "interval" ? intervalMs : undefined,
     scheduledAtIso: triggerType === "once" ? scheduledAtIso : undefined,
+    // Delay-derived once triggers keep the relative delay so the persisted
+    // dedupe key uses the same relative scheme as the create-path key.
+    delayMs: usedDelay ? delayMs : undefined,
     cronExpression: triggerType === "cron" ? cronExpression : undefined,
     maxRuns,
     dedupeKey,
@@ -1154,6 +1173,9 @@ async function opUpdate(
     }
     dedupeIdentityChanged =
       dedupeIdentityChanged || scheduledAtIso !== trigger.scheduledAtIso;
+    // An explicit move replaces the original relative schedule identity.
+    // Replaying the existing time must keep the original retry identity.
+    if (scheduledAtIso !== trigger.scheduledAtIso) delete next.delayMs;
     next.scheduledAtIso = scheduledAtIso;
   }
   if (cronExpression !== undefined && next.triggerType === "cron") {

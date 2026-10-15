@@ -117,6 +117,10 @@ export const CRON_FANOUT: Record<string, string[]> = {
     // state — charge on late success, refund once on verified failure.
     "/api/cron/reconcile-video-generations",
   ],
+  // Website reputation index (HaGeZi threat lists + Phishing.Database). It has
+  // its own schedule because hashing about a million list entries is the most
+  // CPU-heavy cron step; it must not share an invocation budget with others.
+  "45 */6 * * *": ["/api/cron/website-reputation-refresh"],
   "0 */6 * * *": [
     // #22508: DELIBERATELY NOT SCHEDULED. The route 404s today because it is
     // GET-only, which has masked a defect: its second query filters on

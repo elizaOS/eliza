@@ -52,6 +52,11 @@ export type TrajectoryLoggerLike = {
   isEnabled?: () => boolean;
   setEnabled?: (enabled: boolean) => void;
   logLlmCall?: (params: Record<string, unknown>) => void;
+  updateLlmCall?: (
+    stepId: string,
+    callId: string,
+    patch: Record<string, unknown>,
+  ) => void;
   logProviderAccess?: (params: Record<string, unknown>) => void;
   getLlmCallLogs?: () => readonly unknown[];
   getProviderAccessLogs?: () => readonly unknown[];
@@ -1422,7 +1427,7 @@ const TRAJECTORY_REDACTABLE_FIELDS: readonly string[] = [
   "response",
   "reasoning",
 ];
-function redactTrajectoryParams(
+export function redactTrajectoryParams(
   params: Record<string, unknown>,
 ): Record<string, unknown> {
   let cloned: Record<string, unknown> | null = null;

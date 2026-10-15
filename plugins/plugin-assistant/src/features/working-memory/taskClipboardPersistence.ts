@@ -80,8 +80,8 @@ export async function maybeStoreTaskClipboardItem(
     return { requested: false, stored: false };
   }
 
-  const content = input.content.trim();
-  if (!content) {
+  const content = input.content;
+  if (!content.trim()) {
     return {
       requested: true,
       stored: false,

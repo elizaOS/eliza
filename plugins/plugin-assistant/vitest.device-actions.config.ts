@@ -11,6 +11,7 @@ export default defineConfig({
     fileParallelism: false,
     include: [
       "test/device-actions.e2e.test.ts",
+      "test/maps-navigation.integration.test.ts",
       "test/device-read-completion.test.ts",
       "test/device-read-completion-pipeline.test.ts",
       "test/notes-query.e2e.test.ts",

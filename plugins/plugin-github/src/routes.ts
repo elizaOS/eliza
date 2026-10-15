@@ -12,11 +12,13 @@ import {
 import {
   buildCredentialsFromUserResponse,
   clearCredentials,
+  clearSavedTokenFromEnv,
   type GitHubCredentialMetadata,
   loadMetadata,
   saveCredentials,
 } from "./github-credentials.js";
 import { formatRateLimitMessage, inspectRateLimit } from "./rate-limit.js";
+import { GITHUB_SERVICE_TYPE } from "./types.js";
 
 const GITHUB_USER_URL = "https://api.github.com/user";
 const VALIDATION_TIMEOUT_MS = 10_000;
@@ -190,6 +192,14 @@ async function validateToken(
   return { user: body, scopes };
 }
 
+/** Apply a saved or cleared Settings token to the running GitHub service. */
+async function reloadGitHubService(ctx: Context): Promise<void> {
+  const service = ctx.runtime.getService(GITHUB_SERVICE_TYPE) as {
+    reloadAccounts?: () => Promise<void>;
+  } | null;
+  await service?.reloadAccounts?.();
+}
+
 async function persistToken(
   ctx: Context,
   token: string,
@@ -203,6 +213,7 @@ async function persistToken(
   );
   await saveCredentials(credentials);
   ctx.runtime.setSetting("GITHUB_TOKEN", token, true);
+  await reloadGitHubService(ctx);
   logger.info(
     { src: "github-routes", username: validated.user.login },
     "Saved GitHub credential",
@@ -249,7 +260,9 @@ export const githubRoutes: Route[] = [
   }),
   route("DELETE", "token", async (ctx) => {
     await clearCredentials();
+    clearSavedTokenFromEnv();
     ctx.runtime.setSetting("GITHUB_TOKEN", null, true);
+    await reloadGitHubService(ctx);
     return {
       status: 200,
       body: {

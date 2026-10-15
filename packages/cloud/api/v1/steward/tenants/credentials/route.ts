@@ -3,12 +3,22 @@
  *
  * Returns Steward tenant credentials for the authenticated user's org.
  * Called by the desktop agent after cloud login to configure Steward locally.
+ *
+ * The tenant key is full authority over every wallet in the organization's
+ * Steward tenant, so only an organization owner or admin may read it, and only
+ * with their own owner credential (never an app-scoped key).
  */
 
-import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  requirePrivateOwnerAccess,
+  requireUserOrApiKeyWithOrg,
+} from "@elizaos/cloud-shared/auth";
 import { dbWrite } from "@elizaos/cloud-shared/db/helpers";
 import { organizations } from "@elizaos/cloud-shared/db/schemas/organizations";
-import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  ForbiddenError,
+  failureResponse,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { resolveServerStewardApiUrlFromEnv } from "@elizaos/cloud-shared/lib/steward-url";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
@@ -20,6 +30,12 @@ const app = new Hono<AppEnv>();
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
+    if (user.role !== "owner" && user.role !== "admin") {
+      throw ForbiddenError(
+        "Only an organization owner or admin can read Steward credentials",
+      );
+    }
+    await requirePrivateOwnerAccess(c, user);
 
     const [org] = await dbWrite
       .select({

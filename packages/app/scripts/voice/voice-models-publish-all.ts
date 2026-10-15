@@ -40,7 +40,13 @@ const VOICE_MODELS = [
   {
     id: "asr",
     path: "voice/asr",
-    description: "Qwen3-ASR GGUF + mmproj",
+    description: "Phonon-2 GGUF and attribution",
+    requiredFiles: [
+      "phonon-2-fv5.gguf",
+      "NOTICE",
+      "LICENSE-WEIGHTS-CC-BY-4.0.txt",
+    ],
+    retiredFiles: ["eliza-1-asr.gguf", "eliza-1-asr-mmproj.gguf"],
   },
   {
     id: "turn",
@@ -180,6 +186,17 @@ function publishModel(model) {
       success: false,
       skipped: false,
       reason: `missing required staging file(s): ${missingRequired.join(", ")}`,
+    };
+  }
+
+  const retired = (model.retiredFiles ?? []).filter((name) =>
+    existsSync(join(stagingDir, name)),
+  );
+  if (retired.length > 0) {
+    return {
+      success: false,
+      skipped: false,
+      reason: `Retired ASR files in staging: ${retired.join(", ")}`,
     };
   }
 

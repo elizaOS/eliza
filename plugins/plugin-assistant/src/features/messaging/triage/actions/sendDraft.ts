@@ -312,6 +312,7 @@ export const sendDraftAction: Action = {
       }
 
       const record = await service.draftFollowup(runtime, {
+        requester: _message,
         source: draftParsed.source,
         to: draftParsed.to,
         subject: draftParsed.subject,
@@ -352,7 +353,7 @@ export const sendDraftAction: Action = {
       };
     }
 
-    const existing = service.getStore().getDraft(parsed.draftId);
+    const existing = service.getDraft(runtime, parsed.draftId);
     if (!existing) {
       const msg = `No draft found for id ${parsed.draftId}`;
       logger.warn(`[SendDraft] ${msg}`);
@@ -413,7 +414,7 @@ export const sendDraftAction: Action = {
       if (required) {
         const enq = await policy.enqueueApproval(runtime, draftReq, () =>
           service
-            .sendDraft(runtime, parsed.draftId, consentDigest)
+            .sendDraft(runtime, parsed.draftId, consentDigest, _message)
             .then((rec) => ({
               externalId: rec.sentExternalId ?? `pending:${rec.draftId}`,
             })),
@@ -452,6 +453,7 @@ export const sendDraftAction: Action = {
       runtime,
       parsed.draftId,
       consentDigest,
+      _message,
     );
     // The sent confirmation is the complete answer to a single-operation
     // turn: verified + turnComplete make it the sole delivery; the draftId
