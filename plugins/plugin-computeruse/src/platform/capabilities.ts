@@ -197,9 +197,12 @@ export function detectPlatformCapabilities(
   caps.terminal =
     options.osName === "win32"
       ? { available: true, tool: "powershell.exe" }
-      : options.commandExists(options.shell ?? "/bin/bash")
-        ? { available: true, tool: options.shell ?? "/bin/bash" }
-        : { available: true, tool: options.shell ?? "/bin/sh" };
+      : (() => {
+          const shell = options.shell ?? "/bin/bash";
+          return options.commandExists(shell)
+            ? { available: true, tool: shell }
+            : { available: false, tool: `none (no shell found: ${shell})` };
+        })();
 
   return caps;
 }
