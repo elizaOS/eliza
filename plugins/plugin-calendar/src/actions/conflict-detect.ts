@@ -252,6 +252,25 @@ function allDayDateForCalendarEvent(
   )}-${String(date.day).padStart(2, "0")}`;
 }
 
+/**
+ * An Apple row without a zone carries only its instants, so there is no civil
+ * date to trust. Leave `startDate`/`endDate` unset for that shape and let the
+ * availability engine compare the instants, which is what CalendarService's
+ * all-day window check already does for the same provider shape.
+ */
+function allDayDateFields(event: LifeOpsCalendarEvent): {
+  startDate?: string;
+  endDate?: string;
+} {
+  if (event.provider === "apple_calendar" && !event.timezone?.trim()) {
+    return {};
+  }
+  return {
+    startDate: allDayDateForCalendarEvent(event, "start"),
+    endDate: allDayDateForCalendarEvent(event, "end"),
+  };
+}
+
 function calendarEventForAvailability(
   event: LifeOpsCalendarEvent,
 ): ConflictDetectEvent {
@@ -260,12 +279,7 @@ function calendarEventForAvailability(
     title: event.title,
     startISO: event.startAt,
     endISO: event.endAt,
-    ...(event.isAllDay
-      ? {
-          startDate: allDayDateForCalendarEvent(event, "start"),
-          endDate: allDayDateForCalendarEvent(event, "end"),
-        }
-      : {}),
+    ...(event.isAllDay ? allDayDateFields(event) : {}),
     // All-day dates are civil dates on the owner's local days, as in feed
     // reads, so they resolve in the scan's zone. The stored zone is the
     // calendar's (UTC for an ICS feed without X-WR-TIMEZONE).

@@ -20,6 +20,7 @@ function appleAllDayEvent(args: {
   title: string;
   startAt: string;
   endAt: string;
+  timezone?: string | null;
 }) {
   return {
     id: args.id,
@@ -35,7 +36,7 @@ function appleAllDayEvent(args: {
     startAt: args.startAt,
     endAt: args.endAt,
     isAllDay: true,
-    timezone: "Asia/Tokyo",
+    timezone: args.timezone === undefined ? "Asia/Tokyo" : args.timezone,
     htmlLink: null,
     conferenceLink: null,
     organizer: null,
@@ -180,5 +181,48 @@ describe("CONFLICT_DETECT Apple Calendar all-day coverage", () => {
     });
 
     expect(titles).not.toContain("June 3 offsite");
+  });
+
+  it("blocks a no-zone Apple all-day event by its instants", async () => {
+    // Same June 3 EventKit instants, but the row carries no zone. There is no
+    // civil date to trust, so the instants must decide: 12:00 to 13:00 Tokyo on
+    // June 3 falls inside them and must still conflict.
+    const runtime = feedRuntime([
+      appleAllDayEvent({
+        id: "apple-jun-3-no-zone",
+        title: "June 3 offsite (no zone)",
+        startAt: "2026-06-02T15:00:00.000Z",
+        endAt: "2026-06-03T14:59:59.000Z",
+        timezone: null,
+      }),
+    ]);
+
+    const titles = await conflictTitles(runtime, {
+      startISO: "2026-06-03T03:00:00.000Z",
+      endISO: "2026-06-03T04:00:00.000Z",
+    });
+
+    expect(titles).toContain("June 3 offsite (no zone)");
+  });
+
+  it("does not hold the day after a no-zone Apple all-day event", async () => {
+    // Guard against over-blocking: the instants end on June 3, so June 4 must
+    // stay free even without a zone on the row.
+    const runtime = feedRuntime([
+      appleAllDayEvent({
+        id: "apple-jun-3-no-zone",
+        title: "June 3 offsite (no zone)",
+        startAt: "2026-06-02T15:00:00.000Z",
+        endAt: "2026-06-03T14:59:59.000Z",
+        timezone: null,
+      }),
+    ]);
+
+    const titles = await conflictTitles(runtime, {
+      startISO: "2026-06-04T03:00:00.000Z",
+      endISO: "2026-06-04T04:00:00.000Z",
+    });
+
+    expect(titles).not.toContain("June 3 offsite (no zone)");
   });
 });
