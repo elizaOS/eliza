@@ -236,23 +236,16 @@ function storedPrefixForSpokenText(
   cuts.push(stored.length);
   const spoken = (cut: number) =>
     spokenComparable(sanitizeSpeechText(stored.slice(0, cut)));
-  // Spoken length grows with the stored prefix, so bisect for the first cut
-  // that speaks at least as much as was heard.
-  let low = 0;
-  let high = cuts.length - 1;
-  if (spoken(cuts[high] ?? 0).length < heardComparable.length) return null;
-  while (low < high) {
-    const middle = Math.floor((low + high) / 2);
-    if (spoken(cuts[middle] ?? 0).length >= heardComparable.length) {
-      high = middle;
-    } else {
-      low = middle + 1;
+  // Spoken length is NOT monotonic in the cut: sanitizeSpeechText drops a
+  // parenthetical/stage-direction only once it is complete, so a longer stored
+  // prefix can speak shorter. Scan in order for the shortest stored prefix
+  // whose spoken form starts with what was heard.
+  for (const cut of cuts) {
+    if (spoken(cut).startsWith(heardComparable)) {
+      return stored.slice(0, cut).trimEnd();
     }
   }
-  const cut = cuts[low] ?? stored.length;
-  return spoken(cut).startsWith(heardComparable)
-    ? stored.slice(0, cut).trimEnd()
-    : null;
+  return null;
 }
 
 /**
