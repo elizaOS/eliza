@@ -51,3 +51,86 @@ describe("validateParamsAgainstSchema null handling", () => {
     ).toEqual(["Parameter 'mode' does not accept null"]);
   });
 });
+
+describe("validateParamsAgainstSchema type derivation without top-level type", () => {
+  it("accepts a string value for an anyOf schema with no top-level type", () => {
+    expect(
+      validateParamsAgainstSchema(
+        { mode: "hello" },
+        { properties: { mode: { anyOf: [{ type: "string" }, { type: "number" }] } } },
+      ),
+    ).toEqual([]);
+  });
+
+  it("accepts a number value for an anyOf schema with no top-level type", () => {
+    expect(
+      validateParamsAgainstSchema(
+        { mode: 42 },
+        { properties: { mode: { anyOf: [{ type: "string" }, { type: "number" }] } } },
+      ),
+    ).toEqual([]);
+  });
+
+  it("rejects a value whose type is not in anyOf branches", () => {
+    expect(
+      validateParamsAgainstSchema(
+        { mode: true },
+        { properties: { mode: { anyOf: [{ type: "string" }, { type: "number" }] } } },
+      ),
+    ).toEqual(["Parameter 'mode' expected string | number, got boolean"]);
+  });
+
+  it("accepts a string value for a oneOf schema with no top-level type", () => {
+    expect(
+      validateParamsAgainstSchema(
+        { mode: "hello" },
+        { properties: { mode: { oneOf: [{ type: "string" }, { type: "boolean" }] } } },
+      ),
+    ).toEqual([]);
+  });
+
+  it("accepts a string value for an enum schema with no top-level type", () => {
+    expect(
+      validateParamsAgainstSchema(
+        { mode: "automatic" },
+        { properties: { mode: { enum: ["automatic", "manual"] } } },
+      ),
+    ).toEqual([]);
+  });
+
+  it("accepts a number value for a mixed-type enum with no top-level type", () => {
+    expect(
+      validateParamsAgainstSchema(
+        { mode: 5 },
+        { properties: { mode: { enum: ["automatic", 5, true] } } },
+      ),
+    ).toEqual([]);
+  });
+
+  it("accepts a matching value for a const schema with no top-level type", () => {
+    expect(
+      validateParamsAgainstSchema(
+        { mode: "hello" },
+        { properties: { mode: { const: "hello" } } },
+      ),
+    ).toEqual([]);
+  });
+
+  it("accepts any value for an empty schema", () => {
+    expect(
+      validateParamsAgainstSchema({ mode: "anything" }, { properties: { mode: {} } }),
+    ).toEqual([]);
+    expect(
+      validateParamsAgainstSchema({ mode: 123 }, { properties: { mode: {} } }),
+    ).toEqual([]);
+  });
+
+  it("still rejects a non-enum string when type and enum are both present", () => {
+    expect(
+      validateParamsAgainstSchema(
+        { mode: "invalid" },
+        { properties: { mode: { type: "string", enum: ["automatic", "manual"] } } },
+      ),
+    ).toEqual(["Parameter 'mode' must be one of: \"automatic\", \"manual\""]);
+  });
+});

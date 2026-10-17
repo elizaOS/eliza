@@ -304,18 +304,12 @@ export function validateParamsAgainstSchema(
       }
       if (value === undefined) continue;
 
-      const expected = mapJsonSchemaType(prop.type);
       const actual = getValueType(value);
-
-      if (Array.isArray(prop.type)) {
-        const allowedTypes = prop.type
-          .filter((t) => t !== "null")
-          .map((t) => (t === "integer" ? "number" : t));
-        if (!allowedTypes.includes(actual)) {
-          errors.push(`Parameter '${name}' expected ${expected}, got ${actual}`);
-        }
-      } else if (actual !== expected) {
-        errors.push(`Parameter '${name}' expected ${expected}, got ${actual}`);
+      const allowedTypes = collectAllowedTypes(prop);
+      if (allowedTypes !== null && !allowedTypes.includes(actual)) {
+        errors.push(
+          `Parameter '${name}' expected ${allowedTypes.join(" | ")}, got ${actual}`,
+        );
       }
 
       const requiresInteger = Array.isArray(prop.type)
@@ -349,4 +343,56 @@ function getValueType(value: unknown): string {
     default:
       return "object";
   }
+}
+
+/**
+ * Derive the set of runtime value types a property accepts. Returns `null` when
+ * the schema imposes no type constraint (an empty schema or a composition whose
+ * branches also impose none), in which case any value type is valid.
+ *
+ * `mapJsonSchemaType` defaults to `"object"` when `type` is absent, which is
+ * correct for building action-parameter metadata but wrong for validation: a
+ * property constrained only by `anyOf`, `oneOf`, `enum`, or `const` can accept
+ * strings, numbers, booleans, or arrays without ever declaring a top-level
+ * `type`. Without this helper, those valid values are rejected as
+ * "expected object".
+ */
+function collectAllowedTypes(prop: JsonSchemaProperty): string[] | null {
+  if (prop.type !== undefined) {
+    const raw = Array.isArray(prop.type) ? prop.type : [prop.type];
+    const types = raw
+      .filter((t) => t !== "null")
+      .map((t) => (t === "integer" ? "number" : t));
+    return types.length > 0 ? types : null;
+  }
+
+  const fromComposition = (branches: JsonSchemaProperty[]): string[] => {
+    const collected: string[] = [];
+    for (const branch of branches) {
+      const branchTypes = collectAllowedTypes(branch);
+      if (branchTypes) collected.push(...branchTypes);
+    }
+    return collected;
+  };
+
+  if (prop.anyOf) {
+    const types = fromComposition(prop.anyOf);
+    if (types.length > 0) return [...new Set(types)];
+  }
+  if (prop.oneOf) {
+    const types = fromComposition(prop.oneOf);
+    if (types.length > 0) return [...new Set(types)];
+  }
+  if (prop.enum && prop.enum.length > 0) {
+    const types = new Set(
+      prop.enum
+        .filter((v) => v !== null)
+        .map((v) => getValueType(v)),
+    );
+    if (types.size > 0) return [...types];
+  }
+  if (prop.const !== undefined && prop.const !== null) {
+    return [getValueType(prop.const)];
+  }
+  return null;
 }
