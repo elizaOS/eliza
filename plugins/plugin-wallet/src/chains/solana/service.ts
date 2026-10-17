@@ -2126,11 +2126,14 @@ export class SolanaService extends Service {
         }
       }
 
+      // The read path above expects CacheWrapper ({ exp, data }); writing
+      // `fetchedAt` instead left `check.exp` undefined, making `now - exp`
+      // NaN so the `notOlderThan` freshness check could never hit.
       await this.runtime.setCache<{
-        fetchedAt: number;
+        exp: number;
         data: KeyedParsedTokenAccount[];
       }>(key, {
-        fetchedAt: now,
+        exp: now,
         data: haveAllTokens,
       });
       return haveAllTokens;
