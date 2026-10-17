@@ -27,6 +27,7 @@ import { parsePdfSpecDate } from "./pdf-date.js";
 
 type PdfTextItem = {
   str: string;
+  hasEOL?: boolean;
   transform?: unknown;
   width?: unknown;
   height?: unknown;
@@ -51,7 +52,7 @@ function isTextItem(item: unknown): item is PdfTextItem {
   );
 }
 
-function collectTextStrings(items: unknown): string[] {
+function collectTextStrings(items: unknown, lineSeparator = ""): string[] {
   if (!Array.isArray(items)) {
     throw new TypeError("PDF text content items must be an array");
   }
@@ -59,7 +60,7 @@ function collectTextStrings(items: unknown): string[] {
   const textItems: string[] = [];
   for (const item of items) {
     if (isTextItem(item)) {
-      textItems.push(item.str);
+      textItems.push(item.str + (item.hasEOL ? lineSeparator : ""));
     }
   }
   return textItems;
@@ -268,7 +269,11 @@ export class PdfService extends Service {
         const page = await pdf.getPage(pageNumber);
         const viewport = page.getViewport({ scale: 1 });
         const textContent = await page.getTextContent();
-        const nativeText = this.cleanUpContent(collectTextStrings(textContent.items).join(" "));
+        // A text item is one font run, not one word: a run boundary is not a word
+        // boundary. Only the parser end-of-line flag ends a line.
+        const nativeText = this.cleanUpContent(
+          collectTextStrings(textContent.items, "\n").join("")
+        );
         const nativePositionedText = collectPositionedTextItems(textContent.items, pageNumber);
         const operatorList = await page.getOperatorList();
         if (!Array.isArray(operatorList.fnArray)) {
@@ -521,7 +526,7 @@ export class PdfService extends Service {
       const viewport = page.getViewport({ scale: 1.0 });
       const textContent = await page.getTextContent();
 
-      const pageText = collectTextStrings(textContent.items).join(" ");
+      const pageText = collectTextStrings(textContent.items, "\n").join("");
 
       pages.push({
         pageNumber: pageNum,
