@@ -6,12 +6,17 @@ export interface McpInputSchema {
 }
 
 /** MCP → runtime action parameter row (replaces removed @elizaos/core ActionParameter export). */
+type RuntimeParameterType = "string" | "number" | "boolean" | "object" | "array";
+
 export interface ActionParameter {
   name: string;
   description: string;
   required?: boolean;
   schema: {
-    type: "string" | "number" | "boolean" | "object" | "array";
+    /** Omitted for a mixed union, which is described by `anyOf` instead. */
+    type?: RuntimeParameterType;
+    /** Mixed union branches. A sibling `type` would contradict the other branch. */
+    anyOf?: ReadonlyArray<{ type: RuntimeParameterType }>;
     default?: unknown;
     enum?: string[];
     enumValues?: string[];
@@ -114,21 +119,55 @@ function propertyTypeNames(prop: JsonSchemaProperty | undefined, depth = 0): str
   return [...names];
 }
 
-function mapJsonSchemaType(prop: JsonSchemaProperty): ActionParameter["schema"]["type"] {
-  const jsonType = propertyTypeNames(prop).find((type) => type !== "null");
-  switch (jsonType) {
-    case "string":
-      return "string";
-    case "number":
-    case "integer":
-      return "number";
-    case "boolean":
-      return "boolean";
-    case "array":
-      return "array";
-    default:
-      return "object";
+/** Runtime value types a single JSON Schema type name can satisfy. */
+function runtimeTypeName(name: string): RuntimeParameterType | undefined {
+  // `integer` is a narrower `number`; `null` and unknown names are not value types.
+  if (name === "integer") return "number";
+  return name === "string" ||
+    name === "number" ||
+    name === "boolean" ||
+    name === "object" ||
+    name === "array"
+    ? name
+    : undefined;
+}
+
+/**
+ * Runtime value types the declared branches allow.
+ *
+ * Validation uses every name so a value any branch allows is accepted. The
+ * advertised schema uses this normalized set, because `integer | number` is one
+ * runtime type while `string | number` is two.
+ */
+function propertyRuntimeTypes(prop: JsonSchemaProperty): RuntimeParameterType[] {
+  const types = new Set<RuntimeParameterType>();
+  for (const name of propertyTypeNames(prop)) {
+    const type = runtimeTypeName(name);
+    if (type) types.add(type);
   }
+  return [...types];
+}
+
+/**
+ * The parameter schema advertised to the model.
+ *
+ * One runtime type stays a plain `type` (`string | null` → `string`). Distinct
+ * runtime types become a pure `anyOf` union: picking the first branch would tell
+ * the model that only that branch is valid and would make the declared type
+ * depend on branch order.
+ */
+function declaredParameterSchema(prop: JsonSchemaProperty): ActionParameter["schema"] {
+  const types = propertyRuntimeTypes(prop);
+  if (types.length === 1) return { type: types[0] };
+  if (types.length > 1) return { anyOf: types.map((type) => ({ type })) };
+  // No branch names a type. Keep the historical object fallback.
+  return { type: "object" };
+}
+
+/** Readable type names for a description and for validation messages. */
+function describeParameterTypes(prop: JsonSchemaProperty): string {
+  const types = propertyRuntimeTypes(prop);
+  return types.length > 0 ? types.join(" | ") : "object";
 }
 
 function formatType(type?: string | string[]): string {
@@ -291,7 +330,7 @@ function renderSchemaDetails(prop: JsonSchemaProperty): string {
 
 function buildDescription(_name: string, prop: JsonSchemaProperty): string {
   const details = renderSchemaDetails(prop);
-  return details.length > 0 ? details : `(${mapJsonSchemaType(prop)})`;
+  return details.length > 0 ? details : `(${describeParameterTypes(prop)})`;
 }
 
 export function convertJsonSchemaToActionParams(
@@ -304,15 +343,19 @@ export function convertJsonSchemaToActionParams(
   const params: ActionParameter[] = [];
 
   for (const [name, prop] of Object.entries(properties)) {
+    const declared = declaredParameterSchema(prop);
+    // A pure union carries no sibling constraints: core rejects those, and each
+    // branch already states its own type.
+    const attachEnum = declared.type !== undefined && prop.enum !== undefined;
     params.push({
       name,
       description: buildDescription(name, prop),
       required: required.has(name),
       schema: {
-        type: mapJsonSchemaType(prop),
-        default: prop.default,
-        enum: prop.enum?.map((value) => String(value)),
-        enumValues: prop.enum?.map((value) => String(value)),
+        ...declared,
+        default: declared.type !== undefined ? prop.default : undefined,
+        enum: attachEnum ? prop.enum?.map((value) => String(value)) : undefined,
+        enumValues: attachEnum ? prop.enum?.map((value) => String(value)) : undefined,
       },
     });
   }
@@ -349,7 +392,7 @@ export function validateParamsAgainstSchema(
       if (value === undefined) continue;
 
       const declaredTypes = propertyTypeNames(prop).filter((type) => type !== "null");
-      const expected = mapJsonSchemaType(prop);
+      const expected = describeParameterTypes(prop);
       const actual = getValueType(value);
 
       if (declaredTypes.length > 0) {
