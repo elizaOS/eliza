@@ -488,6 +488,9 @@ export const linkedinProvider: SocialMediaProvider = {
             message: { text: content.text },
           }),
         },
+        // A replay after a timeout or a 5xx publishes the comment twice
+        // (the create path in this file passes the same flag).
+        { replayUnknownOutcome: false },
       );
 
       return {
