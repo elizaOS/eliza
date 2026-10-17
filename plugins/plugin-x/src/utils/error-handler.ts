@@ -176,6 +176,16 @@ export function isExplicitTwitterRejection(error: unknown): boolean {
   return status !== undefined && status >= 400 && status < 500;
 }
 
+/**
+ * A rejection X may accept on a later try: expired auth, a timeout, or a rate
+ * limit. Any other 4xx (a blocked sender, closed DMs, a conversation that
+ * limits replies) repeats on every retry.
+ */
+export function isTransientTwitterRejection(error: unknown): boolean {
+  const status = errorCode(error);
+  return status === 401 || status === 408 || status === 429;
+}
+
 export function getErrorType(error: unknown): TwitterErrorType {
   const message = errorMessage(error);
   const code = errorCode(error);

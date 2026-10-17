@@ -31,6 +31,10 @@ import { parseTwitterInterval } from "./environment";
 import type { TwitterClientState } from "./types";
 import { splitXDirectMessageContent } from "./utils";
 import { resolveCloudApiKeyForXEndpoint } from "./utils/cloud-credential-boundary";
+import {
+  isExplicitTwitterRejection,
+  isTransientTwitterRejection,
+} from "./utils/error-handler";
 import { createMemorySafe, reconcileTwitterWorld } from "./utils/memory";
 import { normalizeXReceiptId } from "./utils/provider-receipt";
 import { getSetting } from "./utils/settings";
@@ -563,12 +567,18 @@ export class TwitterDirectMessageClient {
               });
         } catch (error) {
           // error-policy:J2 explicit HTTP rejection proves X did not accept
-          // this part. With no earlier part accepted, reopen the event for a
-          // later retry. Transport failures, and any failure after an earlier
-          // part was accepted, retain the no-replay tombstone.
+          // this part. With no earlier part accepted, reopen the event when a
+          // retry can succeed; a permanent refusal settles it so the cursor
+          // moves past it instead of retrying it ahead of every later DM.
+          // Transport failures, and any failure after an earlier part was
+          // accepted, retain the no-replay tombstone.
           deliveryError = error;
           if (partsAccepted === 0 && isExplicitTwitterRejection(error)) {
-            await this.runtime.deleteCache(settledKey);
+            if (isTransientTwitterRejection(error)) {
+              await this.runtime.deleteCache(settledKey);
+            } else {
+              await this.runtime.setCache(settledKey, "rejected");
+            }
           } else {
             await this.runtime.setCache(settledKey, "indeterminate");
           }
@@ -701,25 +711,4 @@ export class TwitterDirectMessageClient {
       throw this.sessionRotationError(phase);
     }
   }
-}
-
-function isExplicitTwitterRejection(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const candidate = error as {
-    code?: unknown;
-    status?: unknown;
-    data?: { status?: unknown };
-    response?: { status?: unknown };
-  };
-  const status =
-    candidate.data?.status ??
-    candidate.response?.status ??
-    candidate.status ??
-    candidate.code;
-  return (
-    typeof status === "number" &&
-    Number.isInteger(status) &&
-    status >= 400 &&
-    status < 500
-  );
 }

@@ -52,7 +52,10 @@ import {
   sendChunkedTweet,
   sendTextAsTweetThread,
 } from "./utils";
-import { isExplicitTwitterRejection } from "./utils/error-handler";
+import {
+  isExplicitTwitterRejection,
+  isTransientTwitterRejection,
+} from "./utils/error-handler";
 import { describeTweetPhotos } from "./utils/image-descriptions";
 import {
   buildTwitterMessageMetadata,
@@ -1319,12 +1322,18 @@ ${tweet.text}`;
       } catch (error) {
         deliveryError = error;
         // error-policy:J2 nothing reached X, or X explicitly refused the first
-        // chunk: reopen the mention. Any other failure keeps the tombstone.
+        // chunk: reopen the mention when a retry can succeed. A permanent
+        // refusal settles it so later mentions are not held behind it. Any
+        // other failure keeps the tombstone.
+        const refusedFirstChunk =
+          postRequests === 1 && isExplicitTwitterRejection(error);
         if (
           postRequests === 0 ||
-          (postRequests === 1 && isExplicitTwitterRejection(error))
+          (refusedFirstChunk && isTransientTwitterRejection(error))
         ) {
           await this.runtime.deleteCache(settledKey);
+        } else if (refusedFirstChunk) {
+          await this.runtime.setCache(settledKey, "rejected");
         } else {
           await this.runtime.setCache(settledKey, "indeterminate");
         }

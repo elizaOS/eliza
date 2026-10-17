@@ -219,6 +219,33 @@ describe("mention reply is posted at most once", () => {
     expect(handleMessageOf(runtime)).toHaveBeenCalledTimes(2);
   });
 
+  it("does not retry a reply X refuses for good, so later mentions are not held behind it", async () => {
+    const runtime = replyingRuntime();
+    const send = vi.fn(async () => {
+      throw Object.assign(
+        new Error("Reply to this conversation is not allowed"),
+        {
+          code: 403,
+        },
+      );
+    });
+    const client = createClient(runtime, send);
+    const interactions = new TwitterInteractionClient(
+      client,
+      runtime,
+      {} as TwitterClientState,
+    );
+
+    await poll(interactions);
+    await poll(interactions);
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(handleMessageOf(runtime)).toHaveBeenCalledTimes(1);
+    expect(client.getLatestCheckedTweetId(PROFILE_ID)).toBe(
+      BigInt(mention().id),
+    );
+  });
+
   it("retries a reply when credentials rotate before its first chunk is sent", async () => {
     // The rotation lands after the poll acquired its session and before the
     // reply's own session is used, so no post request is ever issued.

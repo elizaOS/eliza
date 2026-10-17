@@ -223,9 +223,9 @@ describe("X DM auto-reply over the per-message length limit", () => {
     expect(cache.get(CURSOR_KEY)).toBe(EVENT_ID);
   });
 
-  it("reopens the event when the first part is rejected", async () => {
+  it("reopens the event when the first part is rate limited", async () => {
     const reply = "e".repeat(X_MAX_DM_LENGTH + 5);
-    const send = vi.fn().mockRejectedValueOnce(rejection(400));
+    const send = vi.fn().mockRejectedValueOnce(rejection(429));
     const { cache, pollOnce, runtime } = createHarness(reply, send);
 
     await pollOnce();
@@ -234,5 +234,24 @@ describe("X DM auto-reply over the per-message length limit", () => {
     expect(runtime.reportError).toHaveBeenCalledTimes(1);
     expect(cache.has(SETTLED_KEY)).toBe(false);
     expect(cache.get(CURSOR_KEY)).toBe("100");
+  });
+
+  it("moves past an event whose reply X refuses for good, so later DMs are not held behind it", async () => {
+    const send = vi.fn().mockRejectedValue(rejection(403));
+    const { cache, handleMessage, pollOnce, runtime } = createHarness(
+      "f",
+      send,
+    );
+
+    await pollOnce();
+
+    expect(runtime.reportError).toHaveBeenCalledTimes(1);
+    expect(cache.get(SETTLED_KEY)).toBe("rejected");
+
+    await pollOnce();
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(cache.get(CURSOR_KEY)).toBe(EVENT_ID);
   });
 });
