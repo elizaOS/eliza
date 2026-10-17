@@ -198,10 +198,36 @@ export interface TaskBoardDeps {
   store?: BoardMessageStore;
 }
 
+type BoardEditFailure = "unchanged" | "unavailable" | "retry";
+
+function classifyBoardEditFailure(error: unknown): BoardEditFailure {
+  const response = (
+    error as {
+      response?: { error_code?: unknown; description?: unknown };
+    }
+  )?.response;
+  if (
+    response?.error_code !== 400 ||
+    typeof response.description !== "string"
+  ) {
+    return "retry";
+  }
+  if (/message is not modified/i.test(response.description)) {
+    return "unchanged";
+  }
+  if (
+    /message (?:to edit not found|can't be edited)/i.test(response.description)
+  ) {
+    return "unavailable";
+  }
+  return "retry";
+}
+
 /**
  * Owns one board message per (chat, thread) and keeps it current: first render
- * posts, later renders edit in place. An edit failure (e.g. the message was
- * deleted) falls back to posting a fresh board so the user always gets one.
+ * posts, later renders edit in place. A confirmed missing or uneditable message
+ * falls back to a fresh board. Other edit failures keep the stored message id
+ * so a temporary Bot API failure cannot create a duplicate pinned board.
  *
  * Store mutations are serialized per (chat, thread) key. The durable store
  * resolves load/save through real DB round-trips, so two concurrent triggers
@@ -282,9 +308,12 @@ export class TelegramTaskBoard {
         await this.deps.edit(chatId, existing, text, threadId);
         return existing;
       } catch (error) {
-        // The board message may have been deleted — post a fresh one.
+        const failure = classifyBoardEditFailure(error);
+        if (failure === "unchanged") return existing;
+        if (failure === "retry") throw error;
+        // Telegram confirmed that the stored board cannot be edited. Replace it.
         logger.warn(
-          `[TelegramTaskBoard] edit failed, reposting: ${
+          `[TelegramTaskBoard] board unavailable, reposting: ${
             error instanceof Error ? error.message : String(error)
           }`,
         );
