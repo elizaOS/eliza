@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+	AssignmentsFileError,
 	autoAssignAtBoot,
 	buildRecommendedAssignments,
 	ensureDefaultAssignment,
@@ -153,6 +154,45 @@ describe("local inference assignments", () => {
 			]);
 			expect((await readAssignments()).TEXT_SMALL).toBe("eliza-1-4b");
 		}
+	});
+
+	it("surfaces a corrupt assignments file instead of reporting no assignments", async () => {
+		process.env.ELIZA_STATE_DIR = fs.mkdtempSync(
+			path.join(os.tmpdir(), "eliza-assignments-test-"),
+		);
+		await writeAssignments({ TEXT_SMALL: "eliza-1-4b" });
+		const assignmentFile = path.join(
+			process.env.ELIZA_STATE_DIR,
+			"local-inference",
+			"assignments.json",
+		);
+		// Truncated by a crash mid-write (the pre-#25123 staging race) or
+		// edited by hand: the file exists but no longer parses.
+		fs.writeFileSync(
+			assignmentFile,
+			'{"version": 1, "assignments": {"TEXT_SMALL": "eliza-1-4b"',
+		);
+
+		// Reading it as "no saved slots" would let setAssignment() rewrite the
+		// file from `{}` and silently drop every other slot the user chose.
+		const error = await readAssignments().catch((cause: unknown) => cause);
+		expect(error).toBeInstanceOf(AssignmentsFileError);
+		expect((error as AssignmentsFileError).code).toBe("ASSIGNMENTS_CORRUPT");
+		expect((error as AssignmentsFileError).path).toBe(assignmentFile);
+
+		await expect(setAssignment("TEXT_LARGE", "eliza-1-2b")).rejects.toThrow(
+			AssignmentsFileError,
+		);
+		expect(fs.readFileSync(assignmentFile, "utf8")).toContain("TEXT_SMALL");
+	});
+
+	it("keeps a missing assignments file as an empty assignment set", async () => {
+		process.env.ELIZA_STATE_DIR = fs.mkdtempSync(
+			path.join(os.tmpdir(), "eliza-assignments-test-"),
+		);
+
+		// No assignments.json yet is the normal first-boot path, not a fault.
+		expect(await readAssignments()).toEqual({});
 	});
 
 	it("drops stale custom ids while preserving curated assignments", async () => {
