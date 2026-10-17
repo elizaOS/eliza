@@ -23,8 +23,55 @@ export {
   MCP_TOOL_SCHEMA_UNBOUNDED,
 } from "./schema-budget.js";
 
+interface ObjectSpan {
+  readonly start: number;
+  readonly end: number;
+}
+
+/** Balanced top-level `{...}` regions of `text`, oldest first, in one pass. A
+ * brace in a JSON5 string or comment does not change the depth, and a nested
+ * object is part of the region that holds it. Quotes and comments count only
+ * inside a region: outside one the text is prose, where an apostrophe such as
+ * "Here's" would open a string that pairs with a quote in a later region. */
+function topLevelObjects(text: string): ObjectSpan[] {
+  const spans: ObjectSpan[] = [];
+  const open: number[] = [];
+  let quote: string | undefined;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (quote) {
+      if (character === "\\") index += 1;
+      else if (character === quote) quote = undefined;
+      continue;
+    }
+    if (open.length === 0) {
+      if (character === "{") open.push(index);
+      continue;
+    }
+    if (character === '"' || character === "'") quote = character;
+    else if (character === "/" && text[index + 1] === "/") {
+      const newline = text.indexOf("\n", index);
+      if (newline === -1) break;
+      index = newline;
+    } else if (character === "/" && text[index + 1] === "*") {
+      const commentEnd = text.indexOf("*/", index + 2);
+      if (commentEnd === -1) break;
+      index = commentEnd + 1;
+    } else if (character === "{") open.push(index);
+    else if (character === "}") {
+      const start = open.pop();
+      // A `}` written in prose has no opening brace of its own.
+      if (start !== undefined && open.length === 0) spans.push({ start, end: index + 1 });
+    }
+  }
+  return spans;
+}
+
+/** Scan starts to try in one reply. */
+const MAX_OBJECT_CANDIDATES = 64;
+
 export function parseJSON<T>(input: string): T {
-  let cleanedInput = input.replace(/^```(?:json)?\s*|\s*```$/g, "").trim();
+  const cleanedInput = input.replace(/^```(?:json)?\s*|\s*```$/g, "").trim();
 
   const firstBrace = cleanedInput.indexOf("{");
   const lastBrace = cleanedInput.lastIndexOf("}");
@@ -33,9 +80,38 @@ export function parseJSON<T>(input: string): T {
     throw new Error("No valid JSON object found in input");
   }
 
-  cleanedInput = cleanedInput.substring(firstBrace, lastBrace + 1);
+  const wholeRange = cleanedInput.substring(firstBrace, lastBrace + 1);
+  const objects = topLevelObjects(cleanedInput).slice(-MAX_OBJECT_CANDIDATES);
 
-  return JSON5.parse(cleanedInput) as T;
+  // The whole first-brace..last-brace range is tried first, so every reply that
+  // parsed before parses the same way.
+  let failure: string | undefined;
+  try {
+    return JSON5.parse(wholeRange) as T;
+  } catch (error) {
+    failure = error instanceof Error ? error.message : String(error);
+  }
+
+  // Prose around the arguments can contain a brace, as in "set units with
+  // {metric} or {imperial}". The arguments follow that prose, so the newest
+  // top-level region that parses is the call; the first region would run the
+  // example from the sentence and skip the retry that a parse failure causes.
+  for (let index = objects.length - 1; index >= 0; index -= 1) {
+    const { start, end } = objects[index];
+    const candidate = cleanedInput.slice(start, end);
+    if (candidate === wholeRange) continue;
+    try {
+      return JSON5.parse(candidate) as T;
+    } catch {
+      // error-policy:J3 untrusted model output — try the next region.
+    }
+  }
+
+  throw new Error(
+    failure
+      ? `No valid JSON object found in input: ${failure}`
+      : "No valid JSON object found in input"
+  );
 }
 
 interface AjvErrorLike {
