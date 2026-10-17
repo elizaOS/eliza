@@ -7,10 +7,11 @@
  * host with `tesseract-ocr` present, so we don't exercise it here.
  */
 
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { buildGetScreen, summarizeGetScreen } from "./get-screen.js";
 import {
   _resetTesseractAvailabilityForTests,
   LinuxTesseractOcrService,
@@ -18,6 +19,7 @@ import {
   parseTesseractTsv,
   resolveTesseract,
 } from "./ocr-service-linux-tesseract.js";
+import { buildVisionSetOfMarksProvider } from "./set-of-marks-provider.js";
 
 // A realistic `tesseract <img> stdout --psm 11 tsv` fixture. Columns:
 // level page block par line word left top width height conf text
@@ -132,6 +134,74 @@ describe("LinuxTesseractOcrService", () => {
       expect(typeof LinuxTesseractOcrService.isAvailable()).toBe("boolean");
     }
   });
+});
+
+describe("LinuxTesseractOcrService failures", () => {
+  const savedBin = process.env.ELIZA_TESSERACT_BIN;
+  afterEach(() => {
+    if (savedBin === undefined) delete process.env.ELIZA_TESSERACT_BIN;
+    else process.env.ELIZA_TESSERACT_BIN = savedBin;
+    _resetTesseractAvailabilityForTests();
+  });
+
+  const png = Uint8Array.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48,
+    0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0,
+  ]);
+  // tesseract installed without its language data: --version works, OCR fails.
+  const useFailingTesseract = () => {
+    const bin = join(mkdtempSync(join(tmpdir(), "ocr-fail-")), "tesseract");
+    writeFileSync(
+      bin,
+      '#!/bin/sh\n[ "$1" = "--version" ] && exit 0\necho "Error opening data file eng.traineddata" >&2\nexit 1\n',
+    );
+    chmodSync(bin, 0o755);
+    process.env.ELIZA_TESSERACT_BIN = bin;
+    _resetTesseractAvailabilityForTests();
+  };
+
+  it.runIf(process.platform === "linux")(
+    "keeps the icon marks and reports the OCR failure in Set-of-Marks",
+    async () => {
+      useFailingTesseract();
+      const provider = buildVisionSetOfMarksProvider({
+        detectIcons: async () => [
+          {
+            boundingBox: { x: 10, y: 10, width: 20, height: 20 },
+            type: "icon",
+            confidence: 0.9,
+          },
+        ],
+        resolveOcr: () => new LinuxTesseractOcrService(),
+      });
+
+      const result = await provider.describe({
+        displayId: "0",
+        sourceX: 0,
+        sourceY: 0,
+        pngBytes: png,
+      });
+
+      expect(result.marks).toHaveLength(1);
+      expect(result.ocrError).toContain("tesseract");
+    },
+  );
+
+  it.runIf(process.platform === "linux")(
+    "reports a failed OCR run instead of a screen with no text",
+    async () => {
+      useFailingTesseract();
+
+      const result = await buildGetScreen({
+        pngBytes: png,
+        ocrService: new LinuxTesseractOcrService(),
+      });
+
+      expect(result.ocrError).toBeDefined();
+      expect(summarizeGetScreen(result)).toContain("OCR failed");
+      expect(summarizeGetScreen(result)).not.toContain("no text was detected");
+    },
+  );
 });
 
 // #9105: the provider must resolve a SHIPPED tesseract (no host install) so OCR

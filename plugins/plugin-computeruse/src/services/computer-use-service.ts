@@ -1344,7 +1344,7 @@ export class ComputerUseService extends Service {
     if (!som) return null;
     try {
       const cap = await captureDisplay(displayId);
-      const { marks, overlayPngBase64 } = await som.describe({
+      const { marks, overlayPngBase64, ocrError } = await som.describe({
         displayId: String(cap.display.id),
         sourceX: 0,
         sourceY: 0,
@@ -1375,9 +1375,12 @@ export class ComputerUseService extends Service {
           setOfMarks: {
             marks,
             ...(overlayPngBase64 ? { overlay: overlayPngBase64 } : {}),
+            ...(ocrError ? { ocrError } : {}),
           },
         },
-        message: `Set-of-Marks detected ${elements.length} numbered element(s) on display ${cap.display.id}.`,
+        message: ocrError
+          ? `Set-of-Marks detected ${elements.length} numbered element(s) on display ${cap.display.id}; OCR failed (${ocrError}), so no text marks.`
+          : `Set-of-Marks detected ${elements.length} numbered element(s) on display ${cap.display.id}.`,
       });
     } catch (error) {
       // error-policy:J1 action boundary — SoM failure surfaces as a clear

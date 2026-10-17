@@ -272,13 +272,14 @@ async function runGetScreen(
     capturedAt: frame.capturedAt,
   });
   const text = summarizeGetScreen(result);
+  const success = result.ocrError === undefined;
   await saveExecutionRecord(runtime, message, text, text, ["VISION"]);
   if (callback) await callback({ thought: text, text, actions: ["VISION"] });
   return {
-    success: true,
+    success,
     text,
     values: {
-      success: true,
+      success,
       visionAvailable: true,
       ocrAvailable: result.ocrAvailable,
       elementCount: result.elementCount,
