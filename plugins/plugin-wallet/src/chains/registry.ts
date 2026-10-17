@@ -28,11 +28,6 @@ import {
   truncateWellFormed,
 } from "@elizaos/core";
 import {
-  createAssociatedTokenAccountInstruction,
-  createTransferInstruction,
-  getAssociatedTokenAddressSync,
-} from "@solana/spl-token";
-import {
   Connection,
   LAMPORTS_PER_SOL,
   PublicKey,
@@ -77,6 +72,7 @@ import {
   getWalletKey,
 } from "./solana/keypairUtils";
 import type { SolanaService } from "./solana/service";
+import { buildSplTransferInstructions } from "./solana/spl-transfer";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const SOLANA_DEFAULT_RPC = "https://api.mainnet-beta.solana.com";
@@ -946,16 +942,15 @@ async function executeSolanaTransfer(
   const tokenMint = resolveSolanaMint(params.fromToken);
   let lamports: number | null = null;
   let tokenBaseUnits: bigint | null = null;
+  let tokenDecimals = 0;
   let connection: Connection | null = null;
   if (tokenMint === SOL_MINT) {
     // Reject an inexact lamport amount before a signer or RPC lookup.
     lamports = parseSolanaTransferLamports(params.amount);
   } else {
     connection = getSolanaConnection(context.runtime);
-    tokenBaseUnits = parseSolanaTokenBaseUnits(
-      params.amount,
-      await getSolanaTokenDecimals(connection, tokenMint),
-    );
+    tokenDecimals = await getSolanaTokenDecimals(connection, tokenMint);
+    tokenBaseUnits = parseSolanaTokenBaseUnits(params.amount, tokenDecimals);
   }
   const { keypair: senderKeypair } = await getWalletKey(context.runtime, true);
   if (!senderKeypair) {
@@ -974,34 +969,15 @@ async function executeSolanaTransfer(
       }),
     );
   } else if (tokenBaseUnits !== null) {
-    const mintPubkey = new PublicKey(tokenMint);
-    const adjustedAmount = tokenBaseUnits;
-    const senderAta = getAssociatedTokenAddressSync(
-      mintPubkey,
-      senderKeypair.publicKey,
-    );
-    const recipientAta = getAssociatedTokenAddressSync(
-      mintPubkey,
-      recipientPubkey,
-    );
-    const recipientAtaInfo = await connection.getAccountInfo(recipientAta);
-    if (!recipientAtaInfo) {
-      instructions.push(
-        createAssociatedTokenAccountInstruction(
-          senderKeypair.publicKey,
-          recipientAta,
-          recipientPubkey,
-          mintPubkey,
-        ),
-      );
-    }
     instructions.push(
-      createTransferInstruction(
-        senderAta,
-        recipientAta,
+      ...(await buildSplTransferInstructions(
+        connection,
+        new PublicKey(tokenMint),
         senderKeypair.publicKey,
-        adjustedAmount,
-      ),
+        recipientPubkey,
+        tokenBaseUnits,
+        tokenDecimals,
+      )),
     );
   }
 

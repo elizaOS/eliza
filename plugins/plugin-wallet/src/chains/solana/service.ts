@@ -44,8 +44,6 @@ export interface WalletPortfolioType {
 
 import {
   AccountLayout,
-  createAssociatedTokenAccountInstruction,
-  createTransferInstruction,
   ExtensionType,
   getAssociatedTokenAddressSync,
   getExtensionData,
@@ -83,6 +81,7 @@ import { SOLANA_SERVICE_NAME, SOLANA_WALLET_DATA_CACHE_KEY } from "./constants";
 import { parseSolanaTokenBaseUnits, SOLANA_SWAP_AMOUNT_INVALID } from "./exact-base-units";
 import { fetchJupiterJson, resolveJupiterApiBaseUrl } from "./jupiter-api";
 import { getWalletKey } from "./keypairUtils";
+import { buildSplTransferInstructions } from "./spl-transfer";
 import type {
   BirdeyePriceResponse,
   BirdeyeWalletTokenListResponse,
@@ -640,10 +639,8 @@ export class SolanaService extends Service {
     const dryRun = params.dryRun === true || params.mode === "prepare";
     const isSolTransfer = tokenAddress === null;
     const mintPubkey = isSolTransfer ? null : new PublicKey(tokenAddress);
-    const atomicAmount = this.toAtomicAmount(
-      amount,
-      mintPubkey === null ? 9 : await this.getTokenDecimalsForTransfer(mintPubkey)
-    );
+    const decimals = mintPubkey === null ? 9 : await this.getTokenDecimalsForTransfer(mintPubkey);
+    const atomicAmount = this.toAtomicAmount(amount, decimals);
     const senderKeypair = await this.getWalletKeypair();
 
     const instructions: TransactionInstruction[] = [];
@@ -657,23 +654,15 @@ export class SolanaService extends Service {
         })
       );
     } else {
-      const senderATA = getAssociatedTokenAddressSync(mintPubkey, senderKeypair.publicKey);
-      const recipientATA = getAssociatedTokenAddressSync(mintPubkey, recipientPubkey);
-
-      const recipientATAInfo = await this.connection.getAccountInfo(recipientATA);
-      if (!recipientATAInfo) {
-        instructions.push(
-          createAssociatedTokenAccountInstruction(
-            senderKeypair.publicKey,
-            recipientATA,
-            recipientPubkey,
-            mintPubkey
-          )
-        );
-      }
-
       instructions.push(
-        createTransferInstruction(senderATA, recipientATA, senderKeypair.publicKey, atomicAmount)
+        ...(await buildSplTransferInstructions(
+          this.connection,
+          mintPubkey,
+          senderKeypair.publicKey,
+          recipientPubkey,
+          atomicAmount,
+          decimals
+        ))
       );
     }
 
