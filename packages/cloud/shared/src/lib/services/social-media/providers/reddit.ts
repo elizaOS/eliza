@@ -498,7 +498,7 @@ export const redditProvider: SocialMediaProvider = {
         }),
       });
 
-      if (response.json.errors?.length) {
+      if (response?.json?.errors?.length) {
         return {
           platform: "reddit",
           success: false,
@@ -506,12 +506,23 @@ export const redditProvider: SocialMediaProvider = {
         };
       }
 
-      const commentId = response.json.data?.things?.[0]?.data?.id;
+      // A 2xx answer with no error list and no comment id is neither a
+      // refusal nor a publication receipt: Reddit may have published the
+      // comment, so the outcome stays unknown and the credit is held
+      // instead of reporting the parent post as the new comment
+      // (the slack/telegram rule).
+      const commentId = response?.json?.data?.things?.[0]?.data?.id;
+      if (typeof commentId !== "string" || !commentId) {
+        throw new UnknownPostOutcomeError(
+          "reddit",
+          new Error("Reddit response lacks a publication receipt"),
+        );
+      }
 
       return {
         platform: "reddit",
         success: true,
-        postId: commentId || postId,
+        postId: commentId,
       };
     } catch (error) {
       // error-policy:J1 Boundary translation: a failed Reddit comment call becomes a
