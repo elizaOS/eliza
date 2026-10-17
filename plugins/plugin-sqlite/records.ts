@@ -1678,7 +1678,12 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     const offset = typeof params.offset === "number" ? params.offset : 0;
     let sliced = offset > 0 ? readableMemories.slice(offset) : readableMemories;
     if (params.limit !== undefined) sliced = sliced.slice(0, params.limit);
-    return sliced;
+    // Same flag as getMemories and searchMemories: a caller that asks for no
+    // vectors must not receive them. Paging callers keep every returned row in
+    // memory, so the 384-float vector per row is real retained cost.
+    return params.includeEmbedding === false
+      ? sliced.map(({ embedding, ...memory }) => memory)
+      : sliced;
   }
 
   async searchMessages(params: {
