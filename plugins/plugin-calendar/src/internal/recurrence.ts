@@ -1022,7 +1022,26 @@ export function assertRecurrenceStartMatchesRule(args: {
     rule.byMonthDay.some((day) =>
       day < 0 ? monthLength + day + 1 === local.day : day === local.day,
     );
-  const byDayMatches = rule.byDay === undefined || rule.byDay.includes(weekday);
+  // BYDAY with an ordinal (2TU, -1FR) names a specific occurrence in the
+  // month, not just a weekday: verify the day matches the ordinal pattern.
+  // A YEARLY rule with BYMONTH must also start in a listed month.
+  let byDayMatches: boolean;
+  if (rule.byDayOfMonth) {
+    const monthDays = daysOfMonthForWeekdays(
+      local.year,
+      local.month,
+      rule.byDayOfMonth,
+    );
+    byDayMatches = monthDays.includes(local.day);
+    if (rule.freq === "YEARLY" && rule.byMonthOfYear) {
+      byDayMatches = byDayMatches && rule.byMonthOfYear.includes(local.month);
+    }
+  } else {
+    byDayMatches = rule.byDay === undefined || rule.byDay.includes(weekday);
+    if (rule.freq === "YEARLY" && rule.byMonthOfYear) {
+      byDayMatches = byDayMatches && rule.byMonthOfYear.includes(local.month);
+    }
+  }
   const untilMatches = rule.untilDate
     ? compareLocalDates(localDate, rule.untilDate) <= 0
     : rule.untilMs === undefined || startMs <= rule.untilMs;
