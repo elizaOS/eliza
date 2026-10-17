@@ -5,6 +5,7 @@ import {
   type ConnectorAccount,
   getConnectorAccountManager,
   type IAgentRuntime,
+  truncateWellFormed,
 } from '@elizaos/core';
 import { WorkflowApiError } from '../types/index';
 
@@ -280,7 +281,10 @@ export async function assertHostedGoogleSource(
   return selected;
 }
 function text(value: unknown, max: number) {
-  return typeof value === 'string' ? value.slice(0, max) : '';
+  // A raw `value.slice(0, max)` can end between a surrogate pair when the cut
+  // lands on an emoji, leaving a lone high surrogate in the calendar label that
+  // the owner is asked to pick. Back the boundary off by one code unit instead.
+  return typeof value === 'string' ? truncateWellFormed(value, max) : '';
 }
 export async function readHostedGoogleSource(
   runtime: IAgentRuntime,
