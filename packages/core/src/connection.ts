@@ -229,6 +229,7 @@ export async function ensureConnections(
 	>();
 	const worldMap = new Map<string, World>();
 	const roomMap = new Map<string, Room>();
+	const roomFallbackNames = new Map<string, string>();
 	const roomParticipants = new Map<string, Set<UUID>>();
 
 	for (const c of connections) {
@@ -286,17 +287,20 @@ export async function ensureConnections(
 			(Object.values(ChannelType) as string[]).includes(c.type)
 				? (c.type as keyof typeof ChannelType)
 				: ChannelType.DM;
+		// `name` and `channelId` stay unset here when the connection omits them;
+		// they are filled from the stored room (or a default) before the write.
 		const room: Room = {
 			id: c.roomId,
-			name: c.roomName || c.name || "default",
+			name: c.roomName || undefined,
 			source,
 			type: roomType,
-			channelId: c.channelId ?? c.roomId,
+			channelId: c.channelId,
 			serverId: c.serverId,
 			messageServerId: c.messageServerId,
 			worldId,
 		};
 		roomMap.set(c.roomId, room);
+		if (c.name) roomFallbackNames.set(c.roomId, c.name);
 
 		if (!roomParticipants.has(c.roomId)) {
 			roomParticipants.set(c.roomId, new Set());
@@ -408,10 +412,23 @@ export async function ensureConnections(
 		},
 	);
 
-	const rooms = [...roomMap.values()].map((r) => ({
-		...r,
-		agentId,
-	}));
+	// A connection that omits the room's channel or name keeps what the room
+	// already records, such as the platform conversation id a connector stored
+	// through ensureRoomExists; replies to the room are addressed by it.
+	const storedRooms =
+		roomMap.size > 0
+			? ((await adapter.getRoomsByIds([...roomMap.keys()] as UUID[])) ?? [])
+			: [];
+	const storedRoomById = new Map(storedRooms.map((r) => [r.id, r]));
+	const rooms = [...roomMap.values()].map((r) => {
+		const stored = storedRoomById.get(r.id);
+		return {
+			...r,
+			name: r.name || stored?.name || roomFallbackNames.get(r.id) || "default",
+			channelId: r.channelId ?? stored?.channelId ?? r.id,
+			agentId,
+		};
+	});
 	if (rooms.length) await adapter.upsertRooms(rooms);
 
 	let createdRoomParticipants = 0;
