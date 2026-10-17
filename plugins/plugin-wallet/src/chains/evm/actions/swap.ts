@@ -847,7 +847,14 @@ async function resolveRelativeSwapAmount(
   opts: { rawPercent: unknown; nativeBalance: string | undefined }
 ): Promise<string> {
   if (isNativeFromToken(wp, chain, fromToken)) {
-    return resolveRelativeAmount(mode, opts.rawPercent, opts.nativeBalance);
+    // Native decimals are chain-specific (e.g. Tempo uses 6); fall back to
+    // 18 only when the chain itself is not configured (parseSwapParams will
+    // reject it below).
+    const chainConfig = wp.chains[chain]
+      ? wp.getChainConfigs(chain as SupportedChain)
+      : undefined;
+    const nativeDecimals = chainConfig?.nativeCurrency.decimals ?? 18;
+    return resolveRelativeAmount(mode, opts.rawPercent, opts.nativeBalance, nativeDecimals);
   }
   const { raw, decimals } = await fetchFromTokenBalance(wp, chain, fromToken);
   return resolveRelativeTokenAmount(mode, opts.rawPercent, raw, decimals);
@@ -892,19 +899,17 @@ function resolveRelativeTokenAmount(
 }
 
 /**
- * Chain native balances are `formatUnits(wei, 18)`. Reverse that exactly.
- * `parseFloat` then `Number#toString` turns 0.000001 ETH / 2 into `"5e-7"`,
- * which `parseUnits` rejects, so the relative swap never gets a quote.
+ * Reverse `formatUnits(wei, nativeDecimals)` exactly. `parseFloat` then
+ * `Number#toString` turns tiny balances into `"5e-7"`, which `parseUnits`
+ * rejects, so the relative swap never gets a quote.
  */
-const NATIVE_BALANCE_DECIMALS = 18;
-
-function nativeBalanceToWei(balance: string): bigint {
+function nativeBalanceToWei(balance: string, nativeDecimals: number): bigint {
   try {
-    return parseUnits(balance, NATIVE_BALANCE_DECIMALS);
+    return parseUnits(balance, nativeDecimals);
   } catch (error) {
     throw new EVMError(
       EVMErrorCode.INVALID_PARAMS,
-      "Cannot resolve a relative swap amount: native balance is not an exact 18-decimal value.",
+      `Cannot resolve a relative swap amount: native balance is not an exact ${nativeDecimals}-decimal value.`,
       error instanceof Error ? error : undefined
     );
   }
@@ -920,7 +925,8 @@ function nativeBalanceToWei(balance: string): bigint {
 function resolveRelativeAmount(
   mode: Exclude<AmountMode, "absolute">,
   rawPercent: unknown,
-  balance: string | undefined
+  balance: string | undefined,
+  nativeDecimals: number
 ): string {
   if (balance === undefined) {
     throw new EVMError(
@@ -928,11 +934,11 @@ function resolveRelativeAmount(
       `Cannot resolve a relative swap amount: unknown balance for the selected chain.`
     );
   }
-  const raw = nativeBalanceToWei(balance);
+  const raw = nativeBalanceToWei(balance, nativeDecimals);
   if (mode === "max") {
-    return formatUnits((raw * 9n) / 10n, NATIVE_BALANCE_DECIMALS);
+    return formatUnits((raw * 9n) / 10n, nativeDecimals);
   }
-  return resolveRelativeTokenAmount(mode, rawPercent, raw, NATIVE_BALANCE_DECIMALS);
+  return resolveRelativeTokenAmount(mode, rawPercent, raw, nativeDecimals);
 }
 export const swapAction = {
   name: spec.name,
