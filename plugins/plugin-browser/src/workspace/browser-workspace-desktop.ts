@@ -10,6 +10,7 @@ import {
   DEFAULT_TIMEOUT_MS,
   isBrowserWorkspaceUserScriptAllowed,
   normalizeEnvValue,
+  resolveBrowserCommandTimeoutMs,
   resolveBrowserWorkspaceCommandElementRefs,
 } from "./browser-workspace-helpers.js";
 import {
@@ -76,6 +77,7 @@ export async function requestBrowserWorkspace<T>(
   path: string,
   init?: RequestInit,
   env: NodeJS.ProcessEnv = process.env,
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
 ): Promise<T> {
   const config = resolveBrowserWorkspaceBridgeConfig(env);
   if (!config) {
@@ -98,7 +100,7 @@ export async function requestBrowserWorkspace<T>(
   const response = await fetch(`${config.baseUrl}${path}`, {
     ...init,
     headers,
-    signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
   });
 
   if (!response.ok) {
@@ -142,6 +144,7 @@ export async function evaluateBrowserWorkspaceTab(
       body: JSON.stringify(evalBody),
     },
     env,
+    request.timeoutMs,
   );
   return payload.result;
 }
@@ -1607,6 +1610,7 @@ export async function executeDesktopBrowserWorkspaceUtilityCommand(
         ...command,
         id,
       }),
+      timeoutMs: resolveBrowserCommandTimeoutMs(command),
     },
     env,
   );
@@ -1787,6 +1791,10 @@ export async function executeDesktopBrowserWorkspaceDomCommand(
         },
         env,
       ),
+      // The page script can run as long as the host's eval budget (30s by
+      // default) or the command's own wait; the 12s bridge default would
+      // abort a wait or a long typed fill that is still running.
+      timeoutMs: resolveBrowserCommandTimeoutMs(command),
     },
     env,
   );
