@@ -50,12 +50,72 @@ interface JsonSchemaProperty {
   nullable?: boolean;
 }
 
-function mapJsonSchemaType(
-  jsonType: string | string[] | undefined
-): ActionParameter["schema"]["type"] {
-  if (Array.isArray(jsonType)) {
-    return mapJsonSchemaType(jsonType.find((t) => t !== "null"));
+/**
+ * JSON Schema type names a property accepts.
+ *
+ * A property does not need a top-level `type`: `anyOf`/`oneOf` branch types are
+ * just as binding, and pydantic/FastMCP emit `{"anyOf":[{"type":"string"},
+ * {"type":"null"}]}` for `Optional[str]`. Ignoring those branches declared the
+ * argument as an object, so the model was told to send an object and every
+ * correct string argument failed validation.
+ */
+const MAX_TYPE_BRANCH_DEPTH = 8;
+
+function propertyTypeNames(prop: JsonSchemaProperty | undefined, depth = 0): string[] {
+  if (!prop || depth > MAX_TYPE_BRANCH_DEPTH) return [];
+  const names = new Set<string>();
+  if (typeof prop.type === "string") {
+    names.add(prop.type);
+  } else if (Array.isArray(prop.type)) {
+    for (const entry of prop.type) {
+      if (typeof entry === "string") names.add(entry);
+    }
   }
+
+  for (const key of ["anyOf", "oneOf"] as const) {
+    const variants = prop[key];
+    if (!Array.isArray(variants)) continue;
+    for (const variant of variants) {
+      for (const name of propertyTypeNames(variant, depth + 1)) names.add(name);
+    }
+  }
+
+  // `allOf` requires every branch. Only a type that all typed branches agree on
+  // can describe the value, so intersect the branch sets.
+  const allOf = prop.allOf;
+  if (Array.isArray(allOf) && allOf.length > 0) {
+    let shared: Set<string> | undefined;
+    for (const variant of allOf) {
+      const branchNames = propertyTypeNames(variant, depth + 1);
+      if (branchNames.length === 0) continue;
+      shared = shared
+        ? new Set([...shared].filter((name) => branchNames.includes(name)))
+        : new Set(branchNames);
+    }
+    if (shared) for (const name of shared) names.add(name);
+  }
+
+  // A declared value with no `type` still names its own kind (`const`, `enum`).
+  if (names.size === 0) {
+    const literals = prop.const !== undefined ? [prop.const] : prop.enum;
+    if (Array.isArray(literals) && literals.length > 0) {
+      const kinds = new Set<string>();
+      for (const literal of literals) {
+        if (literal === null) continue;
+        kinds.add(typeof literal);
+      }
+      if (kinds.size === 1) {
+        const [kind] = kinds;
+        if (kind === "string" || kind === "number" || kind === "boolean") names.add(kind);
+      }
+    }
+  }
+
+  return [...names];
+}
+
+function mapJsonSchemaType(prop: JsonSchemaProperty): ActionParameter["schema"]["type"] {
+  const jsonType = propertyTypeNames(prop).find((type) => type !== "null");
   switch (jsonType) {
     case "string":
       return "string";
@@ -231,7 +291,7 @@ function renderSchemaDetails(prop: JsonSchemaProperty): string {
 
 function buildDescription(_name: string, prop: JsonSchemaProperty): string {
   const details = renderSchemaDetails(prop);
-  return details.length > 0 ? details : `(${mapJsonSchemaType(prop.type)})`;
+  return details.length > 0 ? details : `(${mapJsonSchemaType(prop)})`;
 }
 
 export function convertJsonSchemaToActionParams(
@@ -249,7 +309,7 @@ export function convertJsonSchemaToActionParams(
       description: buildDescription(name, prop),
       required: required.has(name),
       schema: {
-        type: mapJsonSchemaType(prop.type),
+        type: mapJsonSchemaType(prop),
         default: prop.default,
         enum: prop.enum?.map((value) => String(value)),
         enumValues: prop.enum?.map((value) => String(value)),
@@ -288,13 +348,12 @@ export function validateParamsAgainstSchema(
       }
       if (value === undefined) continue;
 
-      const expected = mapJsonSchemaType(prop.type);
+      const declaredTypes = propertyTypeNames(prop).filter((type) => type !== "null");
+      const expected = mapJsonSchemaType(prop);
       const actual = getValueType(value);
 
-      if (Array.isArray(prop.type)) {
-        const allowedTypes = prop.type
-          .filter((t) => t !== "null")
-          .map((t) => (t === "integer" ? "number" : t));
+      if (declaredTypes.length > 0) {
+        const allowedTypes = declaredTypes.map((type) => (type === "integer" ? "number" : type));
         if (!allowedTypes.includes(actual)) {
           errors.push(`Parameter '${name}' expected ${expected}, got ${actual}`);
         }
@@ -302,9 +361,8 @@ export function validateParamsAgainstSchema(
         errors.push(`Parameter '${name}' expected ${expected}, got ${actual}`);
       }
 
-      const requiresInteger = Array.isArray(prop.type)
-        ? prop.type.includes("integer") && !prop.type.includes("number")
-        : prop.type === "integer";
+      const requiresInteger =
+        declaredTypes.includes("integer") && !declaredTypes.includes("number");
       if (requiresInteger && typeof value === "number" && !Number.isInteger(value)) {
         errors.push(`Parameter '${name}' expected integer, got ${value}`);
       }
