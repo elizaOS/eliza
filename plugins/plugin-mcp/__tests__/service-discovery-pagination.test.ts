@@ -1,4 +1,6 @@
-/** Exercises registered McpService discovery against an SDK server over real stdio. */
+/** Exercises registered McpService discovery against SDK servers over real stdio and HTTP. */
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 import {
   type AgentRuntime,
@@ -8,6 +10,9 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mcpAction } from "../src/actions/mcp";
 import { McpService } from "../src/service";
@@ -421,4 +426,76 @@ describe("MCP resource selection through model feedback", () => {
       expect(memories[0].content.text).toContain("last-page resource");
     }
   );
+});
+
+describe("McpService HTTP transport recovery", () => {
+  it("serves tool calls again after one failed HTTP request", async () => {
+    let failNext = false;
+    const httpServer = http.createServer(async (req, res) => {
+      if (req.method !== "POST") {
+        res.writeHead(405).end();
+        return;
+      }
+      if (failNext) {
+        failNext = false;
+        res.writeHead(502).end("bad gateway");
+        return;
+      }
+      let body = "";
+      for await (const chunk of req) body += chunk;
+      const mcp = new McpServer({ name: "echo", version: "1.0.0" });
+      mcp.tool("echo", async () => ({ content: [{ type: "text", text: "ok" }] }));
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+      await mcp.connect(transport);
+      await transport.handleRequest(req, res, JSON.parse(body));
+    });
+    await new Promise<void>((resolve) => httpServer.listen(0, "127.0.0.1", resolve));
+    const { port } = httpServer.address() as AddressInfo;
+    try {
+      const runtime = createSQLiteTestRuntime({
+        character: { name: "mcp-http-test", bio: "MCP HTTP recovery regression" },
+        logLevel: "fatal",
+      });
+      runtimes.push(runtime);
+      await runtime.initialize();
+      await runtime.registerService(McpService);
+      const service = (await runtime.getServiceLoadPromise("mcp")) as McpService;
+      // The SSRF guard rightly refuses loopback URLs, so this test builds an
+      // unguarded transport to the local server and enters the service's own
+      // connection path directly. Error handling and reconnect stay real.
+      vi.spyOn(
+        service as unknown as {
+          buildHttpClientTransport(name: string, config: { url: string }): Promise<unknown>;
+        },
+        "buildHttpClientTransport"
+      ).mockImplementation(
+        async (_name, config) => new StreamableHTTPClientTransport(new URL(config.url))
+      );
+      await (
+        service as unknown as {
+          initializeConnection(name: string, config: Record<string, string>): Promise<void>;
+        }
+      ).initializeConnection("remote", {
+        type: "streamable-http",
+        url: `http://127.0.0.1:${port}/mcp`,
+      });
+      expect((await service.callTool("remote", "echo")).content[0]).toMatchObject({ text: "ok" });
+
+      failNext = true;
+      await expect(service.callTool("remote", "echo")).rejects.toThrow();
+
+      // The server is healthy again; the service must reconnect on its own.
+      await vi.waitFor(
+        async () => {
+          expect((await service.callTool("remote", "echo")).content[0]).toMatchObject({
+            text: "ok",
+          });
+        },
+        { timeout: 10_000, interval: 250 }
+      );
+    } finally {
+      httpServer.closeAllConnections();
+      await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    }
+  }, 30_000);
 });

@@ -332,7 +332,11 @@ export class McpService extends Service {
         connection.server.status = "disconnected";
         this.appendErrorMessage(connection, error.message);
       }
-      if (!isHttpTransport) {
+      // A failed HTTP request (502, a lost session's 404, a network blip)
+      // marks the server disconnected, and callTool refuses disconnected
+      // servers, so HTTP needs the same reconnect ladder as stdio or one bad
+      // response disables the server until the agent restarts.
+      if (!isHttpTransport || !isExpectedTimeout) {
         this.handleDisconnection(name, error);
       }
     };
