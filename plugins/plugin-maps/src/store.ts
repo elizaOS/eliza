@@ -202,17 +202,40 @@ function digest(value: unknown): string {
 
 function mutation(request: SavePlaceRequest): {
   idempotencyKey: string;
+  /** False when the key is derived from the place and label. */
+  explicitKey: boolean;
   label: string;
   requestDigest: string;
 } {
   const label = request.label?.trim() || request.place.name;
   const requestDigest = digest({ place: request.place, label });
+  const explicit = request.idempotencyKey?.trim();
   return {
     label,
     requestDigest,
-    idempotencyKey:
-      request.idempotencyKey?.trim() || `maps-save:${requestDigest}`,
+    explicitKey: Boolean(explicit),
+    idempotencyKey: explicit || `maps-save:${requestDigest}`,
   };
+}
+
+function currentSavedPlaceFor(
+  operation: SavedPlaceOperation,
+  state: SavedPlaceState,
+): SavedPlace | null {
+  return (
+    state.savedPlaces.find((place) => place.id === operation.result.id) ?? null
+  );
+}
+
+function isCurrentlyApplied(
+  operation: SavedPlaceOperation,
+  state: SavedPlaceState,
+): boolean {
+  const current = currentSavedPlaceFor(operation, state);
+  return (
+    current !== null &&
+    JSON.stringify(current) === JSON.stringify(operation.result)
+  );
 }
 
 function replay(
@@ -229,18 +252,14 @@ function replay(
       },
     );
   }
-  const currentSavedPlace =
-    state.savedPlaces.find((place) => place.id === operation.result.id) ?? null;
   return {
     savedPlace: operation.result,
     replayed: true,
     commitId: operation.mutationId,
     committedAt: operation.committedAt,
     idempotencyKey: operation.idempotencyKey,
-    currentlyApplied:
-      currentSavedPlace !== null &&
-      JSON.stringify(currentSavedPlace) === JSON.stringify(operation.result),
-    currentSavedPlace,
+    currentlyApplied: isCurrentlyApplied(operation, state),
+    currentSavedPlace: currentSavedPlaceFor(operation, state),
   };
 }
 
@@ -353,7 +372,16 @@ export class RuntimeSavedPlaceStore implements SavedPlaceStore {
       const prior = state?.operations.find(
         (operation) => operation.idempotencyKey === normalized.idempotencyKey,
       );
-      if (prior && state) return replay(prior, normalized.requestDigest, state);
+      // A key derived from place + label only dedupes a repeat of the current
+      // state. Saving a label the place had before is a new change ("change
+      // it back to Work"), not a replay of the superseded save.
+      const reapply =
+        prior !== undefined &&
+        state !== null &&
+        !normalized.explicitKey &&
+        !isCurrentlyApplied(prior, state);
+      if (prior && state && !reapply)
+        return replay(prior, normalized.requestDigest, state);
 
       const committedAt = nextCommittedAt(state);
       const mutationId = randomUUID() as UUID;
@@ -388,7 +416,10 @@ export class RuntimeSavedPlaceStore implements SavedPlaceStore {
         revision: (state?.revision ?? -1) + 1,
         ownerEntityId: request.ownerEntityId,
         savedPlaces,
-        operations: [...(state?.operations ?? []), operation],
+        operations: [
+          ...(state?.operations ?? []).filter((entry) => entry !== prior),
+          operation,
+        ],
       };
       assertSerializedCapacity(replacement);
 
