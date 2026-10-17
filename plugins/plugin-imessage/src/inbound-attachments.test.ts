@@ -9,10 +9,15 @@ import crypto from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { IAgentRuntime, IFileStorageService, Memory } from "@elizaos/core";
+import {
+  ElizaError,
+  type IAgentRuntime,
+  type IFileStorageService,
+  type Memory,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { ChatDbMessage, ChatDbReader } from "./chatdb-reader";
-import { IMessageService } from "./service";
+import { IMESSAGE_INBOUND_PERSIST_MAX_ATTEMPTS, IMessageService } from "./service";
 import type { IMessageSettings } from "./types";
 
 describe("native Messages inbound attachments", () => {
@@ -121,6 +126,153 @@ describe("native Messages inbound attachments", () => {
     } finally {
       await rm(fixtureDir, { recursive: true, force: true });
     }
+  });
+
+  function textRow(rowId: number, text: string): ChatDbMessage {
+    return {
+      rowId,
+      guid: `message-guid-retry-${rowId}`,
+      text,
+      kind: "text",
+      handle: "+15551234567",
+      chatId: "iMessage;-;+15551234567",
+      chatType: "direct",
+      displayName: null,
+      timestamp: 1_700_000_000_000 + rowId,
+      isFromMe: false,
+      service: "iMessage",
+      isSent: true,
+      isDelivered: true,
+      isRead: false,
+      dateRead: 0,
+      dateEdited: 0,
+      dateRetracted: 0,
+      replyToGuid: null,
+      reaction: null,
+      attachments: [],
+    };
+  }
+
+  function pollHarness(rows: ChatDbMessage[], createMemory: ReturnType<typeof vi.fn>) {
+    const fetchNewMessages = vi.fn((sinceRowId: number, limit: number) =>
+      rows.filter((row) => row.rowId > sinceRowId).slice(0, limit)
+    );
+    const emitted: string[] = [];
+    const reportError = vi.fn((_scope: string, _error: unknown, _context?: unknown) => {});
+    const runtime = {
+      agentId: "00000000-0000-0000-0000-000000000001",
+      getSetting: vi.fn(() => undefined),
+      getService: vi.fn(() => null),
+      emitEvent: vi.fn((type: string) => emitted.push(type)),
+      ensureConnection: vi.fn(async () => {}),
+      createMemory,
+      reportError,
+    } as unknown as IAgentRuntime;
+    const service = new IMessageService(runtime);
+    const internal = service as unknown as {
+      chatDb: Pick<ChatDbReader, "fetchNewMessages">;
+      lastRowId: number;
+      contactsLoadAttempted: boolean;
+      settings: IMessageSettings;
+      pollForNewMessagesInner(): Promise<void>;
+    };
+    internal.chatDb = { fetchNewMessages };
+    internal.lastRowId = 0;
+    internal.contactsLoadAttempted = true;
+    internal.settings = {
+      pollIntervalMs: 0,
+      heartbeatIntervalMs: 60_000,
+      dmPolicy: "open",
+      groupPolicy: "allowlist",
+      allowFrom: [],
+      enabled: true,
+    };
+    return { internal, fetchNewMessages, emitted, reportError };
+  }
+
+  function reportedCodes(reportError: ReturnType<typeof vi.fn>): string[] {
+    return reportError.mock.calls.map((call) => (call[1] as ElizaError).code);
+  }
+
+  it("retries a default-off inbound message after transient persistence failure", async () => {
+    const row = textRow(44, "keep this message");
+    const createMemory = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("temporary database outage"))
+      .mockResolvedValue(undefined);
+    const { internal, fetchNewMessages, emitted } = pollHarness([row], createMemory);
+
+    await internal.pollForNewMessagesInner();
+
+    expect(internal.lastRowId).toBe(0);
+    expect(emitted).not.toContain("MESSAGE_RECEIVED");
+
+    await internal.pollForNewMessagesInner();
+
+    expect(fetchNewMessages).toHaveBeenNthCalledWith(1, 0, 50);
+    expect(fetchNewMessages).toHaveBeenNthCalledWith(2, 0, 50);
+    expect(createMemory).toHaveBeenCalledTimes(2);
+    expect(internal.lastRowId).toBe(44);
+    expect(emitted.filter((type) => type === "MESSAGE_RECEIVED")).toHaveLength(1);
+  });
+
+  it("does not stall the cursor on a fatal persistence rejection", async () => {
+    const poisoned = textRow(50, "contains an unsupported character");
+    const later = textRow(51, "later message");
+    const createMemory = vi.fn(async (memory: Memory) => {
+      if (memory.content.text === poisoned.text) {
+        throw new ElizaError("sql json text contains an unsupported NUL character", {
+          code: "SQL_JSON_UNSUPPORTED_NUL",
+          severity: "fatal",
+        });
+      }
+    });
+    const { internal, fetchNewMessages, emitted, reportError } = pollHarness(
+      [poisoned, later],
+      createMemory
+    );
+
+    await internal.pollForNewMessagesInner();
+
+    expect(internal.lastRowId).toBe(51);
+    expect(createMemory).toHaveBeenCalledTimes(2);
+    expect(createMemory.mock.calls[1]?.[0].content.text).toBe(later.text);
+    expect(emitted.filter((type) => type === "MESSAGE_RECEIVED")).toHaveLength(1);
+    expect(reportedCodes(reportError)).toEqual(["IMESSAGE_INBOUND_PERSIST_REJECTED"]);
+
+    await internal.pollForNewMessagesInner();
+
+    expect(fetchNewMessages).toHaveBeenLastCalledWith(51, 50);
+    expect(createMemory).toHaveBeenCalledTimes(2);
+  });
+
+  it("skips a row after bounded retries so later rows are not blocked", async () => {
+    const stuck = textRow(60, "always fails");
+    const later = textRow(61, "later message");
+    const createMemory = vi.fn(async (memory: Memory) => {
+      if (memory.content.text === stuck.text) {
+        throw new Error("database keeps timing out");
+      }
+    });
+    const { internal, emitted, reportError } = pollHarness([stuck, later], createMemory);
+
+    for (let attempt = 1; attempt < IMESSAGE_INBOUND_PERSIST_MAX_ATTEMPTS; attempt++) {
+      await internal.pollForNewMessagesInner();
+      expect(internal.lastRowId).toBe(0);
+    }
+    expect(emitted).not.toContain("MESSAGE_RECEIVED");
+
+    await internal.pollForNewMessagesInner();
+
+    expect(internal.lastRowId).toBe(61);
+    expect(createMemory).toHaveBeenCalledTimes(IMESSAGE_INBOUND_PERSIST_MAX_ATTEMPTS + 1);
+    expect(createMemory.mock.calls.at(-1)?.[0].content.text).toBe(later.text);
+    expect(emitted.filter((type) => type === "MESSAGE_RECEIVED")).toHaveLength(1);
+    const codes = reportedCodes(reportError);
+    expect(codes.at(-1)).toBe("IMESSAGE_INBOUND_PERSIST_REJECTED");
+    expect(codes.filter((code) => code === "IMESSAGE_INBOUND_PERSIST_FAILED")).toHaveLength(
+      IMESSAGE_INBOUND_PERSIST_MAX_ATTEMPTS
+    );
   });
 });
 
