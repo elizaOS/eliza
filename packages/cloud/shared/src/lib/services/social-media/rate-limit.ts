@@ -155,6 +155,7 @@ export async function withRetry<T>(
 ): Promise<ApiResponse<T>> {
   const { maxRetries = 3, baseDelayMs = 1000, platform, replayUnknownOutcome = true } = options;
   let lastError: Error | undefined;
+  let lastUnknownOutcome = false;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     // Whether this attempt ended without a definite answer from the platform:
@@ -207,6 +208,7 @@ export async function withRetry<T>(
       lastError = error instanceof Error ? error : new Error(String(error));
       if ((error as RateLimitError).rateLimited) throw error;
       if (error instanceof SocialApiRejectionError) unknownOutcome = false;
+      lastUnknownOutcome = unknownOutcome;
       if (!replayUnknownOutcome) {
         throw unknownOutcome ? new UnknownPostOutcomeError(platform, lastError) : lastError;
       }
@@ -219,6 +221,12 @@ export async function withRetry<T>(
     }
   }
 
+  // Retries are exhausted. When the last attempt ended without a definite
+  // answer (a timeout, a lost body, a 5xx), the request may have taken
+  // effect, so surface the unknown outcome instead of the raw error:
+  // callers classify it as held, not as a refundable failure. The
+  // no-replay branch above already throws this error per attempt.
+  if (lastError && lastUnknownOutcome) throw new UnknownPostOutcomeError(platform, lastError);
   throw lastError || new Error(`${platform} request failed after ${maxRetries} retries`);
 }
 

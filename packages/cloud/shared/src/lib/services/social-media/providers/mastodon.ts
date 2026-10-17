@@ -229,18 +229,27 @@ export const mastodonProvider: SocialMediaProvider = {
       };
     }
 
-    const status = await mastodonApiRequest<MastodonStatus>(
-      instanceUrl,
-      "/statuses",
-      credentials.accessToken,
-      {
-        method: "POST",
-        body: JSON.stringify(payload),
-        // withRetry replays this POST after a timeout or a 5xx, when the status
-        // may already exist; one key per post lets Mastodon drop the replay.
-        headers: { "Idempotency-Key": crypto.randomUUID() },
-      },
-    );
+    // Sibling providers catch their create errors and return a
+    // failedPostResult. A throw past this method reaches the service
+    // boundary, which converts it to a plain, refundable failure — an
+    // exhausted unknown outcome (the status may exist) must stay held.
+    let status: MastodonStatus;
+    try {
+      status = await mastodonApiRequest<MastodonStatus>(
+        instanceUrl,
+        "/statuses",
+        credentials.accessToken,
+        {
+          method: "POST",
+          body: JSON.stringify(payload),
+          // withRetry replays this POST after a timeout or a 5xx, when the status
+          // may already exist; one key per post lets Mastodon drop the replay.
+          headers: { "Idempotency-Key": crypto.randomUUID() },
+        },
+      );
+    } catch (error) {
+      return failedPostResult("mastodon", error);
+    }
 
     // A 2xx body without the created status id is not a publication
     // receipt: Mastodon may have published, so the outcome stays unknown
