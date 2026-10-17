@@ -318,17 +318,40 @@ export const mastodonProvider: SocialMediaProvider = {
 
     const instanceUrl = getInstanceUrl(credentials);
 
-    const status = await mastodonApiRequest<MastodonStatus>(
-      instanceUrl,
-      `/statuses/${postId}/reblog`,
-      credentials.accessToken,
-      { method: "POST" },
-    );
+    // Sibling providers return a failedPostResult for a failed repost;
+    // a throw past this method breaks the PostResult contract.
+    let status: MastodonStatus;
+    try {
+      status = await mastodonApiRequest<MastodonStatus>(
+        instanceUrl,
+        `/statuses/${postId}/reblog`,
+        credentials.accessToken,
+        { method: "POST" },
+      );
+    } catch (error) {
+      return failedPostResult("mastodon", error);
+    }
+
+    // A 2xx body without the reblog status id is not a publication
+    // receipt: the reblog may exist, so the outcome stays unknown and
+    // the credit is held instead of reporting a success with no post
+    // id (the create path in this file applies the same rule). This
+    // method returns its result directly, so build the held result here.
+    const reblogId = status?.id;
+    if (typeof reblogId !== "string" || !reblogId) {
+      return failedPostResult(
+        "mastodon",
+        new UnknownPostOutcomeError(
+          "mastodon",
+          new Error("Mastodon response lacks a publication receipt"),
+        ),
+      );
+    }
 
     return {
       platform: "mastodon",
       success: true,
-      postId: status.id,
+      postId: reblogId,
       postUrl: status.url,
     };
   },
