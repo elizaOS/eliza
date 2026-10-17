@@ -635,3 +635,34 @@ test("reddit retains a confirmed publication receipt", async () => {
   expect(result.postId).toBe("abc");
   expect(result.creditDisposition).toBeUndefined();
 });
+
+test("twitter sends a like once and reports the unknown outcome", async () => {
+  const seen = stubPlatform("/likes", {
+    "/users/me": () => json({ data: { id: "7" } }),
+    create: () => json({ data: { liked: true } }),
+  });
+
+  const result = await twitterProvider.likePost({ accessToken: "token" }, "1");
+
+  // The like timed out, so it was sent exactly once: X refuses a duplicate
+  // like, and a replay would report the delivered like as a failure the
+  // caller refunds.
+  expect(seen.creates).toBe(1);
+  expect(result.success).toBe(false);
+  expect(result.error).toBeDefined();
+});
+
+test("twitter sends /retweets once and reports the unknown outcome", async () => {
+  const seen = stubPlatform("/retweets", {
+    "/users/me": () => json({ data: { id: "7" } }),
+    create: () => json({ data: { retweeted: true } }),
+  });
+
+  const result = await twitterProvider.repost({ accessToken: "token" }, "1");
+
+  expect(seen.creates).toBe(1);
+  expect(result.success).toBe(false);
+  // The retweet may already exist: hold the credit, do not refund.
+  expect(result.creditDisposition).toBe("hold");
+  expect(result.errorCode).toBe("POST_OUTCOME_UNKNOWN");
+});
