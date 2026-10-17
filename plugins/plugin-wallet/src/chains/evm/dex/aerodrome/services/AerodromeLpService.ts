@@ -383,7 +383,10 @@ export class AerodromeLpService extends Service implements IEvmLpService {
         });
 
         if (params.percentageToRemove && params.percentageToRemove < 100) {
-          lpTokenAmount = ((balance as bigint) * BigInt(params.percentageToRemove)) / 100n;
+          // Basis points, rounded down: BigInt() rejects non-integers, and a
+          // fractional percentage must never remove more than requested.
+          const percentageBps = BigInt(Math.floor(params.percentageToRemove * 100));
+          lpTokenAmount = ((balance as bigint) * percentageBps) / 10000n;
         } else {
           lpTokenAmount = balance as bigint;
         }

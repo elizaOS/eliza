@@ -435,7 +435,10 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
 
       let liquidityToRemove = position.liquidity;
       if (params.percentageToRemove && params.percentageToRemove < 100) {
-        liquidityToRemove = (position.liquidity * BigInt(params.percentageToRemove)) / 100n;
+        // Basis points, rounded down: BigInt() rejects non-integers, and a
+        // fractional percentage must never remove more than requested.
+        const percentageBps = BigInt(Math.floor(params.percentageToRemove * 100));
+        liquidityToRemove = (position.liquidity * percentageBps) / 10000n;
       }
 
       const deadline = params.deadline ?? BigInt(Math.floor(Date.now() / 1000) + 1800);
