@@ -7,7 +7,7 @@
  * Octokit client.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import {
   listConnectorAccounts,
   loadConnectorOAuthAccessToken,
@@ -85,8 +85,13 @@ function parseAccountsJson(raw: string | undefined): RawAccountRecord[] {
           accountId: (value as RawAccountRecord).accountId ?? id,
         }));
     }
-  } catch {
-    return [];
+  } catch (cause) {
+    throw new ElizaError("GitHub accounts config is not valid JSON.", {
+      code: "GITHUB_ACCOUNTS_CONFIG_INVALID",
+      cause,
+      context: { setting: "GITHUB_ACCOUNTS" },
+      severity: "fatal",
+    });
   }
   return [];
 }
