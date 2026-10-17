@@ -32,6 +32,8 @@ const schemas = {
   explicit: input("https://json-schema.org/draft/2020-12/schema"),
   legacy: input("http://json-schema.org/draft-07/schema#"),
   legacyHttps: input("https://json-schema.org/draft-07/schema#"),
+  legacyMixedCase: input("HTTP://json-schema.org/draft-07/schema#"),
+  legacyNonHttpScheme: input("ftp://json-schema.org/draft-07/schema#"),
   legacyUndeclared: { ...input("http://json-schema.org/draft-07/schema#"), $schema: undefined },
   declaredMismatch: {
     ...input("http://json-schema.org/draft-07/schema#"),

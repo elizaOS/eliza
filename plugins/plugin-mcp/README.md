@@ -5,7 +5,8 @@ servers, exposing their tools and resources as agent capabilities.
 
 Tool argument validation defaults to JSON Schema 2020-12. An explicit
 `json-schema.org/draft-07/schema` URI selects draft-07 instead, with either
-`http` or `https` and with or without the trailing `#`. Unsupported
+`http` or `https` in any letter case, and with or without the trailing `#`. Any
+other scheme or dialect is rejected. Unsupported
 dialects are rejected within the existing isolated validation worker.
 If an undeclared schema cannot compile as 2020-12, the same bounded worker
 tries draft-07 to support legacy tuple schemas. A failed argument validation

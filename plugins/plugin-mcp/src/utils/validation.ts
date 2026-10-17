@@ -61,9 +61,13 @@ const SCHEMA_WORKER_SOURCE = `
       // with or without the trailing fragment. Compare the scheme-less form,
       // or a server that declares "https://json-schema.org/draft-07/schema#"
       // fails every call as an unsupported dialect.
+      // "HTTP://" is the same scheme as "http://" (RFC 3986 section 3.1), so
+      // only those two schemes are removed, case-insensitively. A different
+      // scheme keeps its prefix and stays an unsupported dialect instead of
+      // matching the draft-07 path by accident.
       const declaredSchema = schema.$schema;
       const dialect = typeof declaredSchema === "string"
-        ? declaredSchema.trim().replace(/#$/, "").replace(/^[a-z][a-z0-9+.-]*:[/][/]/, "")
+        ? declaredSchema.trim().replace(/#$/, "").replace(/^https?[:][/][/]/i, "")
         : declaredSchema;
       const DIALECTS = {
         "json-schema.org/draft/2020-12/schema": Ajv2020,

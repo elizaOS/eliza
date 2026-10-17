@@ -191,6 +191,8 @@ describe("MCP tool schema dialects through model argument selection", () => {
     { tool: "explicit", pair: ["task", 0], valid: true },
     { tool: "legacy", pair: ["task", 0], valid: true },
     { tool: "legacyHttps", pair: ["task", 0], valid: true },
+    { tool: "legacyMixedCase", pair: ["task", 0], valid: true },
+    { tool: "legacyNonHttpScheme", pair: ["task", 0], valid: false },
     { tool: "legacyUndeclared", pair: ["task", 0], valid: true },
     { tool: "implicit", pair: [0, "task"], valid: false },
     { tool: "explicit", pair: ["task", 0, 1], valid: false },
@@ -254,6 +256,8 @@ describe("MCP tool schema dialects through model argument selection", () => {
           "explicit",
           "legacy",
           "legacyHttps",
+          "legacyMixedCase",
+          "legacyNonHttpScheme",
           "legacyUndeclared",
           "declaredMismatch",
           "unsupported",
@@ -315,7 +319,7 @@ describe("MCP tool schema dialects through model argument selection", () => {
             : [ModelType.TEXT_LARGE, ModelType.TEXT_LARGE, ModelType.TEXT_LARGE]
         );
         model.assertFixturesConsumed();
-        if (tool === "unsupported") {
+        if (tool === "unsupported" || tool === "legacyNonHttpScheme") {
           expect(modelCalls[1]?.prompt).toContain("Unsupported MCP JSON Schema dialect");
         }
         console.info(
