@@ -1630,7 +1630,11 @@ export class FormService extends Service {
         uncertainFields.push({
           key: control.key,
           label: control.label,
-          value: fieldState.value ?? null,
+          // A sensitive value goes to the model and the confirm prompt, so it
+          // gets the same mask as a filled one.
+          value: control.sensitive
+            ? formatValue(fieldState.value ?? null, control)
+            : (fieldState.value ?? null),
           confidence: fieldState.confidence ?? 0,
         });
       } else if (fieldState?.status === "invalid") {
