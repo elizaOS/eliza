@@ -1496,6 +1496,64 @@ async function collectHookTargets(
   return candidates;
 }
 
+/**
+ * Collects hook candidates from every considered connector. A connector whose
+ * discovery hooks all failed does not abort resolution while other connectors
+ * remain; the failure is rethrown only when every considered connector failed
+ * and none produced a candidate.
+ */
+async function collectConsideredHookTargets(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  considered: readonly ConnectorWithHooks[],
+  query: string | undefined,
+  targetKind: MessageTargetKind | undefined,
+  sourceWasExact: boolean,
+  accountId?: string,
+): Promise<SendCandidate[]> {
+  const candidates: SendCandidate[] = [];
+  let firstFailure: unknown;
+  let failedConnectors = 0;
+  for (const connector of considered) {
+    const context = buildQueryContext(
+      runtime,
+      message,
+      state,
+      connector.source,
+      undefined,
+      connector,
+      accountId,
+    );
+    try {
+      candidates.push(
+        ...(await collectHookTargets(
+          runtime,
+          connector,
+          query,
+          context,
+          targetKind,
+          sourceWasExact,
+          accountId,
+        )),
+      );
+    } catch (error) {
+      // error-policy:J4 Other considered connectors may still resolve the
+      // target; collectHookTargets already reported each failed hook.
+      firstFailure ??= error;
+      failedConnectors += 1;
+    }
+  }
+  if (
+    candidates.length === 0 &&
+    failedConnectors > 0 &&
+    failedConnectors === considered.length
+  ) {
+    throw firstFailure;
+  }
+  return candidates;
+}
+
 function explicitSendTarget(
   connector: ConnectorWithHooks,
   rawTarget: string,
@@ -2395,52 +2453,32 @@ async function resolveSendTarget(
       claimEntityFound = true;
       candidates.push(...entityCandidates.candidates);
     } else {
-      for (const connector of considered) {
-        const context = buildQueryContext(
+      candidates.push(
+        ...(await collectConsideredHookTargets(
           runtime,
           message,
           state,
-          connector.source,
-          undefined,
-          connector,
-          params.accountId,
-        );
-        candidates.push(
-          ...(await collectHookTargets(
-            runtime,
-            connector,
-            params.target,
-            context,
-            params.targetKind,
-            sourceWasExact,
-            params.accountId,
-          )),
-        );
-      }
-    }
-  } else {
-    for (const connector of considered) {
-      const context = buildQueryContext(
-        runtime,
-        message,
-        state,
-        connector.source,
-        undefined,
-        connector,
-        params.accountId,
-      );
-      candidates.push(
-        ...(await collectHookTargets(
-          runtime,
-          connector,
+          considered,
           params.target,
-          context,
           params.targetKind,
           sourceWasExact,
           params.accountId,
         )),
       );
     }
+  } else {
+    candidates.push(
+      ...(await collectConsideredHookTargets(
+        runtime,
+        message,
+        state,
+        considered,
+        params.target,
+        params.targetKind,
+        sourceWasExact,
+        params.accountId,
+      )),
+    );
     candidates.push(
       ...(await collectLegacyEntityCandidates(
         runtime,

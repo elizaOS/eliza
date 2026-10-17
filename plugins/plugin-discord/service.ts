@@ -2720,7 +2720,10 @@ export class DiscordService extends Service implements IDiscordService {
 		const accountId = this.resolveAccountIdFromTarget(context.target, context);
 		const client = this.getClient(accountId);
 		if (!client) {
-			return [];
+			throw new ElizaError("Discord account client is not initialized", {
+				code: "DISCORD_ACCOUNT_NOT_INITIALIZED",
+				context: { accountId },
+			});
 		}
 
 		const normalizedQuery = normalizeDiscordConnectorQuery(query);
@@ -2871,7 +2874,10 @@ export class DiscordService extends Service implements IDiscordService {
 		const accountId = this.resolveAccountIdFromTarget(context.target, context);
 		const client = this.getClient(accountId);
 		if (!client) {
-			return [];
+			throw new ElizaError("Discord account client is not initialized", {
+				code: "DISCORD_ACCOUNT_NOT_INITIALIZED",
+				context: { accountId },
+			});
 		}
 
 		const targets: MessageConnectorTarget[] = [];
