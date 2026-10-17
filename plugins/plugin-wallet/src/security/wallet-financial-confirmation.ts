@@ -171,10 +171,12 @@ export function walletFinancialPendingKey(
     entries.push(["dex", params.dex.toLowerCase()]);
   }
   if (params.tokenA !== undefined) {
-    entries.push(["tokenA", params.tokenA.toLowerCase()]);
+    // addressKey, not toLowerCase: base58 (Solana) addresses are
+    // case-sensitive; only 0x (EVM) addresses are safe to lowercase.
+    entries.push(["tokenA", addressKey(params.tokenA)]);
   }
   if (params.tokenB !== undefined) {
-    entries.push(["tokenB", params.tokenB.toLowerCase()]);
+    entries.push(["tokenB", addressKey(params.tokenB)]);
   }
   if (params.feeTier !== undefined) {
     entries.push(["feeTier", String(params.feeTier)]);
