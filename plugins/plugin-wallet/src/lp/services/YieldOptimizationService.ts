@@ -323,8 +323,12 @@ export class YieldOptimizationService
 
     if (idleAssets.length > 0) {
       for (const pool of allAvailablePools) {
+        // Prefer the recorded apy when present (steer vaults only report apy);
+        // the positions-rebalance branch of this same function screens with
+        // recordedYield, so idle assets deserve the same view of the pool.
+        const idlePoolYield = recordedYield(pool.apy, pool.apr);
         if (
-          (pool.apr || 0) <=
+          idlePoolYield <=
           userProfile.autoRebalanceConfig.minGainThresholdPercent / 100
         )
           continue;
@@ -342,19 +346,19 @@ export class YieldOptimizationService
             idleAssets,
           );
           if (
-            (pool.apr || 0) * 100 >
+            idlePoolYield * 100 >
             userProfile.autoRebalanceConfig.minGainThresholdPercent
           ) {
             opportunities.push({
               targetPool: pool,
-              estimatedNewYield: (pool.apr || 0) * 100,
+              estimatedNewYield: idlePoolYield * 100,
               currentYield: 0,
               estimatedCostToMoveLamports: costDetails.costSolLamports,
               estimatedCostToMoveUsd: costDetails.costUsd,
               netGainPercent:
-                (pool.apr || 0) * 100 -
+                idlePoolYield * 100 -
                 ((costDetails.costUsd || 0) / 1000) * 100,
-              reason: `Deploy idle assets to ${pool.displayName || pool.id} with APR of ${((pool.apr || 0) * 100).toFixed(2)}%`,
+              reason: `Deploy idle assets to ${pool.displayName || pool.id} with APR of ${(idlePoolYield * 100).toFixed(2)}%`,
               actions: costDetails.steps.filter(
                 (s) => !s.toLowerCase().includes("withdraw"),
               ),
