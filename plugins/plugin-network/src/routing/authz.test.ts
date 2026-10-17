@@ -209,3 +209,30 @@ describe("Network stated duration", () => {
     );
   });
 });
+
+describe("Network weekday with a date", () => {
+  it("ends on the stated date, not on the next weekday", () => {
+    const now = new Date("2026-10-14T15:00:00Z");
+    for (const [text, until] of [
+      ["I'm in Lisbon until Friday, October 30", "2026-10-30"],
+      ["I'm in Lisbon until Monday the 26th", "2026-10-26"],
+      ["I'm in Lisbon until Thursday 10/29", "2026-10-29"],
+      ["I'm in Lisbon until Friday", "2026-10-16"],
+    ]) {
+      assert.deepEqual(
+        authorizeSetState(
+          { state: "traveling", until, evidence: text },
+          text,
+          now,
+        ),
+        {
+          allowed: true,
+          state: "traveling",
+          from: null,
+          until: `${until}T00:00:00.000Z`,
+        },
+        text,
+      );
+    }
+  });
+});
