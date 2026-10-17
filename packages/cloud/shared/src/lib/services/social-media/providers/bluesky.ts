@@ -623,10 +623,22 @@ export const blueskyProvider: SocialMediaProvider = {
         { replayUnknownOutcome: false },
       );
 
+      // A 2xx body without the created record uri is not a publication
+      // receipt: the repost may exist, so the outcome stays unknown
+      // instead of reporting a success with no post id (the rule the
+      // create path in this file follows).
+      const repostUri = response?.uri;
+      if (typeof repostUri !== "string" || !repostUri) {
+        throw new UnknownPostOutcomeError(
+          "bluesky",
+          new Error("Bluesky response lacks a publication receipt"),
+        );
+      }
+
       return {
         platform: "bluesky",
         success: true,
-        postId: response.uri,
+        postId: repostUri,
       };
     } catch (error) {
       // error-policy:J1 boundary translation of the Bluesky repost call into the typed
