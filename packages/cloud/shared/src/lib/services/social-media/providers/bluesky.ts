@@ -561,18 +561,26 @@ export const blueskyProvider: SocialMediaProvider = {
         session.accessJwt,
       );
 
-      await bskyApiRequest("com.atproto.repo.createRecord", session.accessJwt, {
-        method: "POST",
-        body: JSON.stringify({
-          repo: session.did,
-          collection: "app.bsky.feed.like",
-          record: {
-            $type: "app.bsky.feed.like",
-            subject: { uri: postId, cid: postResponse.thread.post.cid },
-            createdAt: new Date().toISOString(),
-          },
-        }),
-      });
+      await bskyApiRequest(
+        "com.atproto.repo.createRecord",
+        session.accessJwt,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            repo: session.did,
+            collection: "app.bsky.feed.like",
+            record: {
+              $type: "app.bsky.feed.like",
+              subject: { uri: postId, cid: postResponse.thread.post.cid },
+              createdAt: new Date().toISOString(),
+            },
+          }),
+        },
+        // A replay after a timeout writes a second like record under a
+        // fresh key (the create and repost calls in this file pass the
+        // same flag).
+        { replayUnknownOutcome: false },
+      );
 
       return { success: true };
     } catch (error) {
