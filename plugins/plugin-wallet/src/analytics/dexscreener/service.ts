@@ -211,7 +211,10 @@ export class DexScreenerService extends Service {
           const pairData = await this.get<TokensV1Wire>(
             `/tokens/v1/${token.chainId}/${token.tokenAddress}`,
           );
-          return Array.isArray(pairData) ? pairData[0] : null;
+          // A boosted token with no pairs returns []; [][0] is undefined,
+          // which would leak past the downstream `!== null` filter, so guard
+          // the length like getNewPairs does.
+          return Array.isArray(pairData) && pairData.length > 0 ? pairData[0] : null;
         } catch (error) {
           console.error(
             `Failed to get pair data for ${token.tokenAddress}:`,
