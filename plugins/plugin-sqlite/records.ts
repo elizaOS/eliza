@@ -2608,6 +2608,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       if (params.type && l.type !== params.type) return false;
       return true;
     });
+    logs = await this.filterLogsVisibleToOwner(logs);
     logs.sort((a, b) => {
       const bTime = Number.isFinite(new Date(b.createdAt).getTime())
         ? new Date(b.createdAt).getTime()
@@ -2650,11 +2651,40 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     }
   }
 
+  /**
+   * Logs carry no agent column; like PostgreSQL's ownedLogRoomCondition they
+   * are separated through the owning room. A log whose room record is absent
+   * (legacy rows, or callers that log before the room exists) stays visible,
+   * matching the room/world convention that rows stored without an agentId
+   * belong to this database. createLogs performs no room-existence check
+   * (PostgreSQL rejects such writes with its room foreign key), so fail-open
+   * reads keep normally written rows reachable and mutable.
+   */
+  private async logIsVisibleToOwner(log: Log): Promise<boolean> {
+    if (!log.roomId) return true;
+    const room = await this.storage.get<Room>(COLLECTIONS.ROOMS, log.roomId);
+    return !room || this.roomIsVisibleToOwner(room);
+  }
+
+  private async filterLogsVisibleToOwner(logs: Log[]): Promise<Log[]> {
+    const roomIds = [...new Set(logs.map((log) => log.roomId))];
+    const visibleByRoom = new Map<UUID | undefined, boolean>();
+    for (const roomId of roomIds) {
+      if (roomId === undefined) {
+        visibleByRoom.set(undefined, true);
+        continue;
+      }
+      const room = await this.storage.get<Room>(COLLECTIONS.ROOMS, roomId);
+      visibleByRoom.set(roomId, !room || this.roomIsVisibleToOwner(room));
+    }
+    return logs.filter((log) => visibleByRoom.get(log.roomId) ?? true);
+  }
+
   async getLogsByIds(logIds: UUID[]): Promise<Log[]> {
     const logs: Log[] = [];
     for (const id of logIds) {
       const log = await this.storage.get<Log>(COLLECTIONS.LOGS, id);
-      if (log) logs.push(log);
+      if (log && (await this.logIsVisibleToOwner(log))) logs.push(log);
     }
     return logs;
   }
@@ -2665,12 +2695,16 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     for (const { id, updates } of logs) {
       const existing = await this.storage.get<Log>(COLLECTIONS.LOGS, id);
       if (!existing) continue;
+      if (!(await this.logIsVisibleToOwner(existing))) continue;
       await this.storage.set(COLLECTIONS.LOGS, id, { ...existing, ...updates });
     }
   }
 
   async deleteLogs(logIds: UUID[]): Promise<void> {
     for (const id of logIds) {
+      const existing = await this.storage.get<Log>(COLLECTIONS.LOGS, id);
+      if (!existing) continue;
+      if (!(await this.logIsVisibleToOwner(existing))) continue;
       await this.storage.delete(COLLECTIONS.LOGS, id);
     }
   }
