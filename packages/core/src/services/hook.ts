@@ -13,6 +13,12 @@
  * - Integration with runtime event system
  */
 
+import {
+	accessSync,
+	constants as fsConstants,
+	statSync,
+} from "node:fs";
+import { delimiter as pathDelimiter, join as joinPath } from "node:path";
 import type { EventPayload } from "../types/events";
 import { EventType } from "../types/events";
 import type {
@@ -33,7 +39,44 @@ import { DEFAULT_HOOK_PRIORITY } from "../types/hook";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service, ServiceType } from "../types/service";
 
-function hasBinary(_bin: string): boolean {
+/**
+ * PATH lookup for hook binary requirements. A requirement names a binary, not
+ * a path, so names containing separators are rejected rather than resolved.
+ */
+function hasBinary(bin: string): boolean {
+	if (!bin || bin.includes("/") || bin.includes("\\")) {
+		return false;
+	}
+	const pathValue = process.env.PATH ?? "";
+	if (!pathValue) {
+		return false;
+	}
+	const extensions =
+		process.platform === "win32" ? [".exe", ".cmd", ".bat", ""] : [""];
+	for (const dir of pathValue.split(pathDelimiter)) {
+		if (!dir) continue;
+		for (const extension of extensions) {
+			const candidate = joinPath(dir, `${bin}${extension}`);
+			let isFile = false;
+			try {
+				isFile = statSync(candidate).isFile();
+			} catch {
+				continue;
+			}
+			if (!isFile) continue;
+			if (process.platform === "win32") {
+				return true;
+			}
+			try {
+				// Executability is part of "available": a non-executable file
+				// with the right name must not satisfy the requirement.
+				accessSync(candidate, fsConstants.X_OK);
+				return true;
+			} catch {
+				// Not executable; keep scanning the remaining PATH entries.
+			}
+		}
+	}
 	return false;
 }
 
