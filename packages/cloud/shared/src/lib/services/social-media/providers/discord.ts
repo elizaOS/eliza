@@ -339,11 +339,23 @@ export const discordProvider: SocialMediaProvider = {
         { replayUnknownOutcome: false },
       );
 
+      // A 2xx body without the created message id is not a publication
+      // receipt: Discord may have published the reply, so the outcome
+      // stays unknown and the credit is held instead of reporting a
+      // success at an undefined URL (the slack/telegram rule).
+      const replyId = message?.id;
+      if (typeof replyId !== "string" || !replyId) {
+        throw new UnknownPostOutcomeError(
+          "discord",
+          new Error("Discord response lacks a publication receipt"),
+        );
+      }
+
       return {
         platform: "discord",
         success: true,
-        postId: message.id,
-        postUrl: `https://discord.com/channels/@me/${channelId}/${message.id}`,
+        postId: replyId,
+        postUrl: `https://discord.com/channels/@me/${channelId}/${replyId}`,
       };
       // error-policy:J1 transport boundary — an outbound Discord reply failure becomes the
       // structured { success:false } PostResult the socialMediaService caller inspects and refunds on.
