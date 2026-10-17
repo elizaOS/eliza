@@ -63,3 +63,48 @@ it.each([
     ).toBe(count);
   },
 );
+
+const wrapped = `<section data-testid="hero"><h1>Shop</h1><a id="details" href="/details">View Details</a></section>`;
+
+it("targets the link inside a matching wrapper in both backends", async () => {
+  const dom = new JSDOM(wrapped, { runScripts: "outside-only" });
+  try {
+    expect(
+      dom.window.eval(
+        createDesktopBrowserWorkspaceCommandScript({
+          subaction: "get",
+          getMode: "count",
+          selector: "text:View Details",
+        }),
+      ),
+    ).toEqual({ value: 1 });
+  } finally {
+    dom.window.close();
+  }
+  const env = {};
+  const tab = await openBrowserWorkspaceTab({ url: "about:blank" }, env);
+  for (const [url, responseBody] of [
+    ["https://example.test/shop", wrapped],
+    ["https://example.test/details", "<title>Details</title>"],
+  ]) {
+    await executeBrowserWorkspaceCommand(
+      {
+        id: tab.id,
+        subaction: "network",
+        networkAction: "route",
+        url,
+        responseBody,
+      },
+      env,
+    );
+  }
+  await executeBrowserWorkspaceCommand(
+    { id: tab.id, subaction: "navigate", url: "https://example.test/shop" },
+    env,
+  );
+  const clicked = await executeBrowserWorkspaceCommand(
+    { id: tab.id, subaction: "click", text: "View Details" },
+    env,
+  );
+  expect(clicked.tab?.url).toBe("https://example.test/details");
+});

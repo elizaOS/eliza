@@ -514,7 +514,7 @@ export function findAllBrowserWorkspaceElementsByText(
     ),
   );
 
-  return candidates.filter((element) => {
+  const matches = candidates.filter((element) => {
     const haystacks = [
       element.textContent,
       element.getAttribute("aria-label"),
@@ -532,7 +532,18 @@ export function findAllBrowserWorkspaceElementsByText(
       exact ? value === wanted : value.includes(wanted),
     );
   });
+  // A wrapper (a [data-testid] section, a heading, a label) contains the text
+  // of the link or button inside it and comes first in document order. Keep the
+  // inner control so a click by text reaches it, not the wrapper.
+  return matches.filter(
+    (element) =>
+      element.matches(BROWSER_WORKSPACE_TEXT_CONTROL_SELECTOR) ||
+      !matches.some((other) => other !== element && element.contains(other)),
+  );
 }
+
+const BROWSER_WORKSPACE_TEXT_CONTROL_SELECTOR =
+  "a, button, input, textarea, select, option, [role='button']";
 
 export function findBrowserWorkspaceElementByText(
   document: Document,
