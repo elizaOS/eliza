@@ -622,3 +622,42 @@ describe("browser workspace web-mode real-code command flow", () => {
     });
   });
 });
+
+describe("browser workspace web-mode label click", () => {
+  beforeEach(async () => {
+    await __resetBrowserWorkspaceStateForTests();
+  });
+
+  it("checks the control that a clicked label names or wraps", async () => {
+    const tab = await openBrowserWorkspaceTab(
+      { show: true, url: "about:blank" },
+      webEnv,
+    );
+    const url = "https://example.test/consent";
+    await executeBrowserWorkspaceCommand(
+      {
+        id: tab.id,
+        subaction: "network",
+        networkAction: "route",
+        url,
+        responseBody: `<label>Remember me <input id="remember" type="checkbox" /></label>
+<input id="terms" type="checkbox" /><label for="terms">I agree to the terms</label>`,
+      },
+      webEnv,
+    );
+    await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "navigate", url },
+      webEnv,
+    );
+    for (const [text, selector] of [
+      ["Remember me", "#remember"],
+      ["I agree to the terms", "#terms"],
+    ]) {
+      const clicked = await executeBrowserWorkspaceCommand(
+        { id: tab.id, subaction: "click", text },
+        webEnv,
+      );
+      expect(clicked.value, text).toMatchObject({ checked: true, selector });
+    }
+  });
+});

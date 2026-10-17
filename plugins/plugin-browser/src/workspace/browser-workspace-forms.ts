@@ -153,6 +153,13 @@ export async function activateWebBrowserWorkspaceElement(
     throw new Error("Target element is disabled.");
   }
   const tag = element.tagName.toLowerCase();
+  // A click on a label activates its control, as in a browser: "Remember me"
+  // toggles the checkbox it names or wraps.
+  const control =
+    tag === "label" ? (element as HTMLLabelElement).control : null;
+  if (control) {
+    return activateWebBrowserWorkspaceElement(tab, control, subaction);
+  }
   if (tag === "a") {
     const href = element.getAttribute("href")?.trim();
     if (!href) {
