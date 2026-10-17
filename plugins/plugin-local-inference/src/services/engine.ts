@@ -640,6 +640,10 @@ export class LocalInferenceEngine {
 			if (this.endOfTurnClassifier?.bridge === bridge) {
 				this.releaseEndOfTurnClassifier();
 			}
+			if (this.liveEndOfTurnClassifier?.bridge === bridge) {
+				this.liveEndOfTurnClassifier.classifier.dispose();
+				this.liveEndOfTurnClassifier = null;
+			}
 			bridge.dispose();
 			if (this.voiceBridge === bridge) this.voiceBridge = null;
 		}
@@ -1783,6 +1787,10 @@ export class LocalInferenceEngine {
 		} finally {
 			if (this.endOfTurnClassifier?.bridge === bridge) {
 				this.releaseEndOfTurnClassifier();
+			}
+			if (this.liveEndOfTurnClassifier?.bridge === bridge) {
+				this.liveEndOfTurnClassifier.classifier.dispose();
+				this.liveEndOfTurnClassifier = null;
 			}
 			bridge.dispose();
 			if (this.voiceBridge === bridge) this.voiceBridge = null;
