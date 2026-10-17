@@ -55,17 +55,29 @@ const SCHEMA_WORKER_SOURCE = `
     try {
       const schema = JSON.parse(schemaJson);
       const data = JSON.parse(dataJson);
-      const dialect = typeof schema.$schema === "string"
-        ? schema.$schema.replace(/#$/, "") : schema.$schema;
       // MCP defaults to 2020-12. Keep draft-07 only when it is declared.
       // Each request still has its own bounded worker and Ajv instance.
-      let Ajv = Ajv2020;
-      if (dialect !== undefined && dialect !== "https://json-schema.org/draft/2020-12/schema") {
-        if (dialect !== "http://json-schema.org/draft-07/schema") {
-          throw new Error("Unsupported MCP JSON Schema dialect: " + String(dialect));
-        }
-        Ajv = AjvLegacy;
+      // "$schema" is a URI: the same draft arrives with either scheme and
+      // with or without the trailing fragment. Compare the scheme-less form,
+      // or a server that declares "https://json-schema.org/draft-07/schema#"
+      // fails every call as an unsupported dialect.
+      const declaredSchema = schema.$schema;
+      const dialect = typeof declaredSchema === "string"
+        ? declaredSchema.trim().replace(/#$/, "").replace(/^[a-z][a-z0-9+.-]*:[/][/]/, "")
+        : declaredSchema;
+      const DIALECTS = {
+        "json-schema.org/draft/2020-12/schema": Ajv2020,
+        "json-schema.org/draft-07/schema": AjvLegacy,
+      };
+      if (dialect !== undefined && !Object.hasOwn(DIALECTS, dialect)) {
+        throw new Error("Unsupported MCP JSON Schema dialect: " + String(declaredSchema));
       }
+      // The Ajv instance already selects the draft for this call, so the
+      // declaration is not needed to validate the arguments. Drop it: Ajv
+      // registers each meta-schema under one exact URI and refuses the other
+      // scheme.
+      if (dialect !== undefined) delete schema.$schema;
+      const Ajv = dialect === undefined ? Ajv2020 : DIALECTS[dialect];
       // "format" is an annotation by default; without format definitions Ajv
       // refuses the whole schema ("unknown format"), so every call fails.
       // Unknown keywords ("discriminator", vendor "x-*" keys) are ignored per
