@@ -145,6 +145,7 @@ import {
   getImportSessionBackend,
   getPhoneAuth,
   releaseUnattemptedSmsVerifyClaim,
+  tenantSwitchLoginRefusal,
 } from "../services/auth-lifecycle";
 import {
   continueWithTenantDatabase,
@@ -7173,6 +7174,15 @@ user.post("/me/tenants/switch", async (c) => {
       { ok: false, error: "Not a member of this tenant" },
       403,
     );
+  }
+  // A switch is a sign-in to the target tenant: its login methods apply to
+  // the method this session signed in with, as on a refresh-token switch.
+  const loginRefusal = await tenantSwitchLoginRefusal(
+    membership.tenantId,
+    session as Record<string, unknown>,
+  );
+  if (loginRefusal) {
+    return c.json<ApiResponse>({ ok: false, error: loginRefusal }, 403);
   }
 
   if (typeof session.exp !== "number" || !Number.isFinite(session.exp)) {

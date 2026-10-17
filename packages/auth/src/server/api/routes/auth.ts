@@ -22,11 +22,15 @@ import {
   getPasskeyAuth,
   getPhoneAuth,
   isMockEmailEnabled,
+  type LoginMethodName,
+  loginMethodProviderKey,
+  loginMethodRefusal,
   normalizePublicClientId,
   OAUTH_CODE_TTL_MS,
   releaseUnattemptedSmsVerifyClaim,
   SMS_VERIFY_MAX_FAILED_ATTEMPTS,
   smsVerifyAttemptSlotKey,
+  tenantSwitchLoginRefusal,
 } from "../services/auth-lifecycle";
 import {
   checkAuthRateLimit,
@@ -322,21 +326,16 @@ async function getTenantAppClientLoginMethods(
   );
 }
 
-type LoginMethodName =
-  | "passkey"
-  | "email"
-  | "sms"
-  | "whatsapp"
-  | "totp"
-  | "siwe"
-  | "siws"
-  | "telegram"
-  | "farcaster"
-  | "oauth"
-  | "oidc";
-
-function loginMethodProviderKey(providerId: string | undefined): string {
-  return providerId?.trim().toLowerCase() ?? "";
+function withoutTenantMfaClaims(
+  claims: Record<string, unknown>,
+): Record<string, unknown> {
+  const {
+    mfaVerifiedAt: _mfaVerifiedAt,
+    mfaMethod: _mfaMethod,
+    factorEnrollmentVerifiedAt: _factorEnrollmentVerifiedAt,
+    ...rest
+  } = claims;
+  return rest;
 }
 
 async function requireTenantLoginMethodAllowed(
@@ -350,37 +349,10 @@ async function requireTenantLoginMethodAllowed(
   const loginMethods =
     (await getTenantAppClientLoginMethods(tenantId, clientId)) ??
     (await getTenantAuthAbuseConfig(tenantId)).loginMethods;
-  if (!loginMethods) return null;
-  if (
-    method !== "oauth" &&
-    method !== "oidc" &&
-    loginMethods[method] === false
-  ) {
-    return c.json<ApiResponse>(
-      { ok: false, error: `${method} login is disabled for this tenant` },
-      403,
-    );
-  }
-  const normalizedProviderId = loginMethodProviderKey(providerId);
-  if (
-    method === "oauth" &&
-    loginMethods.oauth?.[normalizedProviderId] === false
-  ) {
-    return c.json<ApiResponse>(
-      { ok: false, error: "OAuth login is disabled for this tenant" },
-      403,
-    );
-  }
-  if (
-    method === "oidc" &&
-    loginMethods.oidc?.[normalizedProviderId] === false
-  ) {
-    return c.json<ApiResponse>(
-      { ok: false, error: "OIDC login is disabled for this tenant" },
-      403,
-    );
-  }
-  return null;
+  const refusal = loginMethodRefusal(loginMethods, method, providerId);
+  return refusal
+    ? c.json<ApiResponse>({ ok: false, error: refusal }, 403)
+    : null;
 }
 
 async function isSsoRequiredForEmailDomain(
@@ -613,7 +585,13 @@ type RefreshRotationResult =
   | { status: "invalid" }
   | { status: "deactivated"; userId: string; tenantId: string }
   | { status: "not_member"; userId: string; tenantId: string }
-  | { status: "revoked"; userId: string; tenantId: string };
+  | { status: "revoked"; userId: string; tenantId: string }
+  | {
+      status: "login_method_disabled";
+      userId: string;
+      tenantId: string;
+      error: string;
+    };
 
 type UsedRefreshTokenRecord = {
   userId?: string;
@@ -771,16 +749,21 @@ async function rotateRefreshTokenInsideTenant(
     }
 
     const targetTenantId = requestedTenantId ?? record.tenantId;
+    const switchesTenant = targetTenantId !== record.tenantId;
     const membership = await authTenantSubject(targetTenantId, record.userId);
     if (!membership?.membership_role) {
-      await tx
-        .delete(refreshTokens)
-        .where(
-          and(
-            eq(refreshTokens.userId, record.userId),
-            eq(refreshTokens.tenantId, record.tenantId),
-          ),
-        );
+      // A refused switch leaves the caller's current session as it was; only
+      // a token whose own tenant dropped the user is spent.
+      if (!switchesTenant) {
+        await tx
+          .delete(refreshTokens)
+          .where(
+            and(
+              eq(refreshTokens.userId, record.userId),
+              eq(refreshTokens.tenantId, record.tenantId),
+            ),
+          );
+      }
       return {
         status: "not_member",
         userId: record.userId,
@@ -807,11 +790,33 @@ async function rotateRefreshTokenInsideTenant(
 
     const walletAddress = user?.walletAddress ?? "";
     const email = user?.email ?? undefined;
-    const sessionClaims =
+    const storedClaims =
       (await readMfaJson<Record<string, unknown>>(
         `refresh:claims:${record.tokenHash}`,
       )) ?? {};
+    // A switch into another tenant is a sign-in to it: that tenant's login
+    // methods apply, checked before anything is spent so a refusal keeps the
+    // current session.
+    if (switchesTenant) {
+      const refusal = await tenantSwitchLoginRefusal(
+        targetTenantId,
+        storedClaims,
+      );
+      if (refusal) {
+        return {
+          status: "login_method_disabled",
+          userId: record.userId,
+          tenantId: record.tenantId,
+          error: refusal,
+        };
+      }
+    }
     await getMfaBackend().delete(`refresh:claims:${record.tokenHash}`);
+    // MFA freshness is scoped to the tenant where it was performed, as on
+    // /user/me/tenants/switch: the switched tenant needs its own step-up.
+    const sessionClaims = switchesTenant
+      ? withoutTenantMfaClaims(storedClaims)
+      : storedClaims;
 
     const newAccessToken = await createSessionToken(
       walletAddress,
@@ -8534,6 +8539,9 @@ auth.post("/refresh", async (c) => {
       401,
     );
   }
+  if (rotatedRefresh.status === "login_method_disabled") {
+    return c.json<ApiResponse>({ ok: false, error: rotatedRefresh.error }, 403);
+  }
 
   const { record, newAccessToken, newRefreshToken } = rotatedRefresh;
   await withVerifiedAuthTenant(record.tenantId, record.userId, async () => {
@@ -11995,6 +12003,7 @@ async function provisionOAuthUser(opts: {
           userId: user.id,
           email,
           authMethod: "oauth",
+          oauthProviderId: providerName,
         },
         { id: user.id, email, walletAddress },
         c,
