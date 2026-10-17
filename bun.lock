@@ -3322,6 +3322,7 @@
       "devDependencies": {
         "@biomejs/biome": "2.5.15",
         "@elizaos/plugin-elizacloud": "workspace:*",
+        "@elizaos/testing": "workspace:*",
         "@types/node": "^22.19.17",
         "@types/twitter-text": "3.1.10",
         "@typescript/native": "npm:typescript@^7.0.2",

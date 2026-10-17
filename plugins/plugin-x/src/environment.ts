@@ -8,7 +8,7 @@
  * Also exposes target-user matching and randomized loop-interval helpers.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { ElizaError, logger } from "@elizaos/core";
+import { ElizaError, logger, parseBooleanFromText } from "@elizaos/core";
 import * as z from "zod";
 import { getSetting } from "./utils/settings";
 
@@ -254,12 +254,12 @@ export async function validateTwitterConfig(
         config.TWITTER_PERSONAL_DM_ROUTER_URL ??
         getSetting(runtime, "TWITTER_PERSONAL_DM_ROUTER_URL") ??
         "",
+      // Same parser as TWITTER_ENABLE_POST and the post client, so `1`, `yes`
+      // and `on` keep dry run on instead of posting for real.
       TWITTER_DRY_RUN: String(
-        (
-          config.TWITTER_DRY_RUN ??
-          getSetting(runtime, "TWITTER_DRY_RUN") ??
-          "false"
-        ).toLowerCase() === "true",
+        parseBooleanFromText(
+          config.TWITTER_DRY_RUN ?? getSetting(runtime, "TWITTER_DRY_RUN"),
+        ),
       ),
       TWITTER_TARGET_USERS:
         config.TWITTER_TARGET_USERS ??
