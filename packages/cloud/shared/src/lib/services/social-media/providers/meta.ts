@@ -617,10 +617,22 @@ export const metaProvider: SocialMediaProvider = {
         { replayUnknownOutcome: false },
       );
 
+      // A 2xx body without the created comment id is not a publication
+      // receipt: Facebook may have published the comment, so the outcome
+      // stays unknown and the credit is held instead of reporting a
+      // success with no post id (the slack/telegram rule).
+      const commentId = response?.id;
+      if (typeof commentId !== "string" || !commentId) {
+        throw new UnknownPostOutcomeError(
+          "facebook",
+          new Error("Facebook response lacks a publication receipt"),
+        );
+      }
+
       return {
         platform: "facebook",
         success: true,
-        postId: response.id,
+        postId: commentId,
       };
     } catch (error) {
       // error-policy:J1 boundary translation — a failed Graph API comment becomes a typed
