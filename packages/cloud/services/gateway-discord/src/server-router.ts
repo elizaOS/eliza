@@ -8,6 +8,7 @@ import {
   resolveGatewayAgentServer,
   wakeGatewayServer,
 } from "@elizaos/cloud-services-common/node";
+import { telegramReplyWithMedia } from "@elizaos/cloud-services-common/telegram";
 import {
   executeGatewayForwardAttempts,
   type GatewayTargetResult,
@@ -132,8 +133,13 @@ function tryTarget(
     sharedSecret: process.env.AGENT_SERVER_SHARED_SECRET,
     timeoutIsConnectionError: true,
     readResponse: async (response) => {
-      const data = (await response.json()) as { response: string };
-      return data.response;
+      const data = (await response.json()) as {
+        response?: string;
+        mediaUrls?: unknown;
+      };
+      // Generated images and files arrive as HTTPS links next to the text,
+      // as on the webhook gateway; an image-only reply is still a reply.
+      return telegramReplyWithMedia(data.response ?? "", data.mediaUrls);
     },
   });
 }
