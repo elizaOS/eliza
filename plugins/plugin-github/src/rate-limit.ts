@@ -40,18 +40,35 @@ function headerNumber(
   return Number.isFinite(num) ? num : null;
 }
 
-export function inspectRateLimit(err: unknown): RateLimitDetails {
+export function inspectRateLimit(
+  err: unknown,
+  nowMs: number = Date.now(),
+): RateLimitDetails {
   const e = toErrorLike(err);
   const headers = e.response?.headers;
   const remaining = headerNumber(headers, "x-ratelimit-remaining");
   const resetSeconds = headerNumber(headers, "x-ratelimit-reset");
-  // GitHub answers an exhausted primary rate limit with 403 or 429.
+  const retryAfterSeconds = headerNumber(headers, "retry-after");
+  // A 429 always means "too many requests". A 403 counts only when GitHub says
+  // the primary quota is spent (`x-ratelimit-remaining: 0`) or asks for a wait
+  // (`retry-after`), which is how the secondary abuse limit answers while the
+  // primary quota still has requests left. A plain 403 stays a permission
+  // error.
   const isRateLimited =
-    (e.status === 403 || e.status === 429) && remaining === 0;
+    e.status === 429 ||
+    (e.status === 403 && (remaining === 0 || retryAfterSeconds !== null));
   return {
     isRateLimited,
     remaining,
-    resetAtMs: resetSeconds === null ? null : resetSeconds * 1000,
+    // `retry-after` is a wait from now, so it is the precise answer for a
+    // secondary limit; `x-ratelimit-reset` is the epoch second of the primary
+    // window reset.
+    resetAtMs:
+      retryAfterSeconds !== null
+        ? nowMs + retryAfterSeconds * 1000
+        : resetSeconds === null
+          ? null
+          : resetSeconds * 1000,
   };
 }
 
