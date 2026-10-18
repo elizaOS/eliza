@@ -38,6 +38,7 @@ import {
 
 type SlotKey = string;
 const PERSONALITY_SLOT_MEMORY_SOURCE = "personality_slot";
+const PERSONALITY_SLOT_PAGE_SIZE = 500;
 
 function slotKey(
   agentId: UUID,
@@ -243,13 +244,40 @@ export class PersonalityStore extends Service {
     }
   }
 
+  /**
+   * Every stored slot row, page by page. A slot missing from the cache reads
+   * as empty, and its next write would replace the stored slot, so the load
+   * must not stop at a row count.
+   */
+  private async listSlotMemories(): Promise<Memory[]> {
+    const rows: Memory[] = [];
+    let cursor: { createdAt: number; id: UUID } | undefined;
+    while (true) {
+      const page = await this.runtime.getMemories({
+        tableName: PERSONALITY_SLOT_TABLE,
+        roomId: this.runtime.agentId,
+        metadata: { source: PERSONALITY_SLOT_MEMORY_SOURCE },
+        count: PERSONALITY_SLOT_PAGE_SIZE,
+        ...(cursor ? { cursor } : {}),
+        orderBy: "createdAt",
+        orderDirection: "desc",
+        includeEmbedding: false,
+      });
+      rows.push(...page);
+      if (page.length < PERSONALITY_SLOT_PAGE_SIZE) return rows;
+      const last = page[page.length - 1];
+      if (!last?.id || !Number.isSafeInteger(last.createdAt)) {
+        throw new ElizaError("Personality slot rows cannot be paged", {
+          code: "PERSONALITY_SLOT_PAGE_INVALID",
+          context: { agentId: this.runtime.agentId, memoryId: last?.id },
+        });
+      }
+      cursor = { createdAt: last.createdAt as number, id: last.id };
+    }
+  }
+
   private async hydrateSlotsFromMemory(): Promise<void> {
-    const memories = await this.runtime.getMemories({
-      tableName: PERSONALITY_SLOT_TABLE,
-      roomId: this.runtime.agentId,
-      metadata: { source: PERSONALITY_SLOT_MEMORY_SOURCE },
-      count: 10_000,
-    });
+    const memories = await this.listSlotMemories();
     for (const memory of memories) {
       const slot = this.slotFromMemory(memory);
       if (slot.agentId !== this.runtime.agentId) continue;
@@ -490,12 +518,7 @@ export class PersonalityStore extends Service {
     // re-persist a slot after the wipe below (stored tails never reject).
     await Promise.all([...this.slotWriteChains.values()]);
     this.slotWriteChains.clear();
-    const memories = await this.runtime.getMemories({
-      tableName: PERSONALITY_SLOT_TABLE,
-      roomId: this.runtime.agentId,
-      metadata: { source: PERSONALITY_SLOT_MEMORY_SOURCE },
-      count: 10_000,
-    });
+    const memories = await this.listSlotMemories();
     for (const memory of memories) {
       if (memory.id) await this.runtime.deleteMemory(memory.id);
     }
