@@ -5078,6 +5078,9 @@ export class DiscordService extends Service implements IDiscordService {
 		accountId: string,
 	): Promise<DiscordDrainResult> {
 		const normalized = normalizeAccountId(accountId);
+		// Hand this account's debounced messages to the message manager while
+		// ingress is still open, so the drain below tracks them.
+		this.accountPool.get(normalized)?.channelDebouncer?.flushAll();
 		this.cordonedAccounts.add(normalized);
 		const drain = await this.accountTurnRegistry(normalized).drain(
 			DISCORD_SHUTDOWN_DRAIN_TIMEOUT_MS,
@@ -5148,6 +5151,14 @@ export class DiscordService extends Service implements IDiscordService {
 
 	/** Close inbound admissions exactly once while allowing admitted turns to drain. */
 	public cordonIngress(reason = "shutdown-cordon"): void {
+		if (this.ingressClosedReason === null) {
+			// Guild messages wait in the debouncer after admission. Hand them to the
+			// message manager before closing, so the drain tracks them and the
+			// debouncer teardown does not drop them.
+			for (const state of this.accountPool.list()) {
+				state.channelDebouncer?.flushAll();
+			}
+		}
 		this.ingressClosedReason ??= reason;
 	}
 
