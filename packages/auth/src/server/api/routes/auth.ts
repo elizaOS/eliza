@@ -2152,9 +2152,18 @@ async function readMfaJson<T>(key: string): Promise<T | null> {
   if (!raw) return null;
   try {
     return decryptMfaJson<T>(raw);
-  } catch {
-    await getMfaBackend().delete(key);
-    return null;
+  } catch (cause) {
+    // An unreadable record is a key-store or payload failure, not proof that
+    // the user has no second factor. Deleting it here would erase the
+    // enrollment and make every caller read "absent", so a login would skip
+    // the MFA challenge. Keep the bytes and fail closed instead.
+    const kind = key.split(":")[0];
+    throw new ElizaError(`Stored ${kind} MFA record cannot be read.`, {
+      code: "MFA_RECORD_UNREADABLE",
+      cause,
+      context: { kind },
+      severity: "ephemeral",
+    });
   }
 }
 
