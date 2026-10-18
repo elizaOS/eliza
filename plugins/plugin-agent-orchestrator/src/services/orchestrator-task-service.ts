@@ -3876,9 +3876,12 @@ export class OrchestratorTaskService extends Service {
     // A paused task must not dispatch — drop it from the in-memory order but
     // KEEP its admission record so resume can replay the original spawn.
     await this.dequeueAdmission(taskId, false);
-    const hadActiveWork = doc.sessions.some(
-      (s) => !TERMINAL_TASK_SESSION_STATUSES.has(s.status),
-    );
+    // A repeated pause finds every session already stopped; it must keep the
+    // first pause's record of interrupted work, or resume re-engages nothing.
+    const hadActiveWork =
+      doc.sessions.some((s) => !TERMINAL_TASK_SESSION_STATUSES.has(s.status)) ||
+      (doc.task.paused === true &&
+        doc.task.metadata?.pausedWithActiveWork === true);
     await this.stopActiveSessions(doc);
     await this.store.updateTask(taskId, {
       paused: true,

@@ -528,6 +528,45 @@ describe("resumeTask after a failed re-engage spawn", () => {
   }, 30_000);
 });
 
+describe("resumeTask after a repeated pause", () => {
+  it("still starts the interrupted work", async () => {
+    let service: AcpService | undefined;
+    let tasks: OrchestratorTaskService | undefined;
+    const runtime = runtimeWith(
+      () => service,
+      () => tasks,
+    );
+    service = new AcpService(runtime);
+    await service.start();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    tasks = new OrchestratorTaskService(runtime, { store });
+    const live = async (taskId: string) =>
+      (await store.getTask(taskId))?.sessions.filter(
+        (s) => s.status !== "stopped",
+      ) ?? [];
+    try {
+      const task = await store.createTask({
+        title: "Paused twice",
+        goal: "finish the long build",
+        acceptanceCriteria: [],
+        roomId: "target-room",
+        worldId: "target-world",
+      });
+      const taskId = task.task.id;
+      await tasks.spawnAgentForTask(taskId);
+      await tasks.pauseTask(taskId);
+      // "pause it" again: every session is already stopped.
+      await tasks.pauseTask(taskId);
+      expect(await live(taskId)).toEqual([]);
+
+      await tasks.resumeTask(taskId);
+      expect(await live(taskId)).toHaveLength(1);
+    } finally {
+      await service.stop();
+    }
+  }, 30_000);
+});
+
 describe("TASKS history with a task id", () => {
   async function withTwoTasks(
     body: (ctx: {
