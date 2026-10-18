@@ -6,7 +6,7 @@
  */
 
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { discordChannelsRepository } from "../../../db/repositories/discord-channels";
 import { discordGuildsRepository } from "../../../db/repositories/discord-guilds";
 import { discordFetch } from "../../utils/discord-api";
@@ -707,8 +707,23 @@ class DiscordAutomationService {
    */
   async disconnectAll(organizationId: string): Promise<void> {
     const guilds = await this.getGuilds(organizationId);
+    const failedGuildIds: string[] = [];
+
     for (const guild of guilds) {
-      await this.disconnect(organizationId, guild.guild_id);
+      const result = await this.disconnect(organizationId, guild.guild_id);
+      if (!result.success) failedGuildIds.push(guild.guild_id);
+    }
+
+    if (failedGuildIds.length > 0) {
+      throw new ElizaError("Discord guild disconnect did not finish", {
+        code: "DISCORD_DISCONNECT_ALL_FAILED",
+        context: {
+          organizationId,
+          failedGuildIds,
+          guildCount: guilds.length,
+        },
+        severity: "ephemeral",
+      });
     }
   }
 
