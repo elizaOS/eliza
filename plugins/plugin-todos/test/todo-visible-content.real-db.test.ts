@@ -89,6 +89,25 @@ describe("TODO visible-content addressing — real PGLite (#29690)", () => {
     return service.create({ entityId, agentId: runtime.agentId, content });
   }
 
+  it.each([
+    ["Buy 12 bolts and 24 nuts", "Buy 24 bolts and 12 nuts"],
+    ["Buy 1.5 kg rice and 2.5 kg flour", "Buy 2.5 kg rice and 1.5 kg flour"],
+  ])(
+    "keeps different quantities as separate todos: %s",
+    async (first, second) => {
+      const entityId = newEntity();
+      await seed(entityId, first);
+      const added = await run(say(entityId, `add ${second}`), {
+        action: "create",
+        content: second,
+      });
+      expect(added.data?.duplicate).not.toBe(true);
+      expect((await rows(entityId)).map((todo) => todo.content).sort()).toEqual(
+        [first, second].sort(),
+      );
+    },
+  );
+
   it("completes a todo named by a paraphrase of its listed content, across turns, without ids", async () => {
     const entityId = newEntity();
     const report = await seed(entityId, "Finish the quarterly report");
