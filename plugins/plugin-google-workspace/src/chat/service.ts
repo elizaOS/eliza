@@ -23,6 +23,9 @@ import {
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
   readResponseWithLimit,
+  requireConfirmedSendHandlerDelivery,
+  type SendHandlerOutcome,
+  type SendHandlerReceipt,
   Service,
   type TargetInfo,
   toWellFormedUnicode,
@@ -324,9 +327,8 @@ export class GoogleChatService extends Service implements IGoogleChatService {
       handlerRuntime: IAgentRuntime,
       target: TargetInfo,
       content: Content
-    ): Promise<Memory | undefined> => {
-      await service.handleSendMessage(handlerRuntime, target, content);
-      return undefined;
+    ): Promise<SendHandlerOutcome | undefined> => {
+      return service.handleSendMessage(handlerRuntime, target, content);
     };
 
     if (typeof runtime.registerMessageConnector === "function") {
@@ -686,24 +688,38 @@ export class GoogleChatService extends Service implements IGoogleChatService {
 
     const textChunks = options.text ? splitMessageForGoogleChat(options.text) : [undefined];
     let lastResult: GoogleChatSendResult | undefined;
+    const messageNames: string[] = [];
 
     // Sequential sends preserve visible chunk order and stop immediately on a
     // provider failure. Attachments belong to the logical message, so only the
     // first chunk carries them rather than duplicating uploads on every chunk.
     for (let index = 0; index < textChunks.length; index += 1) {
-      lastResult = await this.sendSingleMessage({
-        ...options,
-        text: textChunks[index],
-        attachments: index === 0 ? options.attachments : undefined,
-      });
+      try {
+        lastResult = await this.sendSingleMessage({
+          ...options,
+          text: textChunks[index],
+          attachments: index === 0 ? options.attachments : undefined,
+        });
+        if (lastResult.messageName) messageNames.push(lastResult.messageName);
+      } catch (error) {
+        if (messageNames.length === 0) throw error;
+        const reason = error instanceof Error ? error.message : String(error);
+        return {
+          success: false,
+          messageName: messageNames[messageNames.length - 1],
+          messageNames,
+          space: options.space,
+          error: `Some message parts were sent before Google Chat refused a later part: ${reason}`,
+        };
+      }
     }
 
-    return (
-      lastResult ?? {
-        success: false,
-        error: "Google Chat message has no sendable content",
-      }
-    );
+    return lastResult
+      ? { ...lastResult, messageNames }
+      : {
+          success: false,
+          error: "Google Chat message has no sendable content",
+        };
   }
 
   private async sendSingleMessage(
@@ -1015,7 +1031,8 @@ export class GoogleChatService extends Service implements IGoogleChatService {
     if (!space?.name) {
       throw new Error(`Could not resolve Google Chat direct message for ${target}`);
     }
-    await this.sendConnectorContent(space.name, content, undefined, accountId);
+    const outcome = await this.sendConnectorContent(space.name, content, undefined, accountId);
+    if (outcome) requireConfirmedSendHandlerDelivery(outcome);
   }
 
   async sendRoomMessage(target: string, content: Content): Promise<void> {
@@ -1024,14 +1041,15 @@ export class GoogleChatService extends Service implements IGoogleChatService {
     if (!spaceName) {
       throw new Error(`Invalid Google Chat space target: ${target}`);
     }
-    await this.sendConnectorContent(spaceName, content, undefined, accountId);
+    const outcome = await this.sendConnectorContent(spaceName, content, undefined, accountId);
+    if (outcome) requireConfirmedSendHandlerDelivery(outcome);
   }
 
   private async handleSendMessage(
     runtime: IAgentRuntime,
     target: TargetInfo,
     content: Content
-  ): Promise<void> {
+  ): Promise<SendHandlerOutcome | undefined> {
     const requestedAccountId = normalizeGoogleChatAccountId(
       target.accountId ?? readGoogleChatAccountId(content, target) ?? this.getAccountId()
     );
@@ -1045,27 +1063,26 @@ export class GoogleChatService extends Service implements IGoogleChatService {
 
     const userName = normalizeUserTarget(channelId);
     if (userName && !channelId.startsWith("spaces/")) {
-      await this.sendConnectorDirectMessage(userName, content, requestedAccountId);
-      return;
+      return this.sendConnectorDirectMessage(userName, content, requestedAccountId);
     }
 
     const spaceName = normalizeSpaceTarget(channelId);
     if (!spaceName) {
       throw new Error(`Invalid Google Chat target: ${channelId}`);
     }
-    await this.sendConnectorContent(spaceName, content, target, requestedAccountId);
+    return this.sendConnectorContent(spaceName, content, target, requestedAccountId);
   }
 
   private async sendConnectorDirectMessage(
     userName: string,
     content: Content,
     accountId: string
-  ): Promise<void> {
+  ): Promise<SendHandlerOutcome | undefined> {
     const space = await this.findDirectMessage(userName, accountId);
     if (!space?.name) {
       throw new Error(`Could not resolve Google Chat direct message for ${userName}`);
     }
-    await this.sendConnectorContent(space.name, content, undefined, accountId);
+    return this.sendConnectorContent(space.name, content, undefined, accountId);
   }
 
   private async sendConnectorContent(
@@ -1073,16 +1090,34 @@ export class GoogleChatService extends Service implements IGoogleChatService {
     content: Content,
     target?: TargetInfo,
     accountId?: string
-  ): Promise<void> {
+  ): Promise<SendHandlerOutcome | undefined> {
     const text = typeof content.text === "string" ? content.text.trim() : "";
     const options = googleChatOptionsFromContent(space, { ...content, text }, target);
     if (!options.text && (!options.attachments || options.attachments.length === 0)) {
       return;
     }
     const result = await this.sendMessage({ ...options, accountId });
-    if (!result.success) {
-      throw new Error(result.error || "Google Chat message send failed");
+    const messageNames = result.messageNames ?? (result.messageName ? [result.messageName] : []);
+    if (messageNames.length === 0) {
+      throw new Error(result.error || "Google Chat message send returned no provider receipt");
     }
+    const receipt: SendHandlerReceipt = {
+      providerMessageIds: messageNames as [string, ...string[]],
+      acceptedAt: Date.now(),
+      persistence: {
+        status: "not_attempted",
+        reason: "Google Chat accepted the message; caller owns local persistence",
+      },
+    };
+    return result.success
+      ? { kind: "delivered", receipt, memories: [] }
+      : {
+          kind: "partially_delivered",
+          receipt,
+          memories: [],
+          code: "GOOGLE_CHAT_PARTIALLY_SENT",
+          message: `${result.error ?? "Google Chat sent only part of the message"}. Do not retry blindly.`,
+        };
   }
 
   private async listConnectorSpaces(accountId?: string): Promise<GoogleChatSpace[]> {

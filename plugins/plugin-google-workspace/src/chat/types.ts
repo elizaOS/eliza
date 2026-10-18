@@ -160,6 +160,8 @@ export interface GoogleChatMessageSendOptions {
 export interface GoogleChatSendResult {
   success: boolean;
   messageName?: string;
+  /** Every provider message name accepted for a chunked logical message. */
+  messageNames?: string[];
   space?: string;
   error?: string;
 }
