@@ -71,6 +71,7 @@ function registerWithHistory(): MessageConnectorRegistration {
   const service = {
     getStatus: vi.fn(makeStatus),
     getContacts: vi.fn(() => new Map()),
+    getResolvedContacts: vi.fn(async () => new Map()),
     getChats: vi.fn(async () => []),
     getRecentMessages: vi.fn(async () => []),
     getMessages: vi.fn(async () => CHAT_HISTORY.map((message) => ({ ...message }))),
@@ -134,6 +135,7 @@ function registerWithAddressBook(): MessageConnectorRegistration {
   const service = {
     getStatus: vi.fn(makeStatus),
     getContacts: vi.fn(() => ADDRESS_BOOK),
+    getResolvedContacts: vi.fn(async () => ADDRESS_BOOK),
     getChats: vi.fn(async () =>
       [...ADDRESS_BOOK.keys()].map((handle) => ({
         chatId: `iMessage;-;${handle}`,
