@@ -166,6 +166,7 @@ import {
   modelNotAvailableMessage,
   summarizeFinishedStepUsage,
 } from "@/api-app/lib/inference-usage";
+import { getSafeProviderErrorMetadata } from "./provider-error-metadata";
 
 /**
  * Write the durable billing ledger row for one settled inference. Credits are
@@ -2475,6 +2476,7 @@ export async function handleChatCompletionsPOST(
     );
     logger.error("[Chat Completions] Error", {
       traceId,
+      ...getSafeProviderErrorMetadata(unwrapProviderError(error)),
       error: rawMessage,
       cause:
         error instanceof Error && error.cause
@@ -3503,6 +3505,7 @@ async function handleStreamingRequest(
         "[Chat Completions] Stream provider error — admission settled",
         {
           model,
+          ...getSafeProviderErrorMetadata(unwrapProviderError(error)),
           conservative: deliveredProviderOutput,
           error: redactPromptCacheKey(
             error instanceof Error ? error.message : String(error),
