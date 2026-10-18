@@ -58,6 +58,7 @@ export {
   type ContactsMap,
   deleteContact,
   type FullContact,
+  findContact,
   listAllContacts,
   loadContacts,
   type NewContactInput,

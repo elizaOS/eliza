@@ -47,8 +47,7 @@ export interface ResolvedContact {
 /**
  * Handle → contact map. Keys are normalized handles (phone numbers in
  * digits-only form with a leading `+` if international, emails in
- * lowercase). Callers should normalize their lookup keys with
- * {@link normalizeContactHandle} before querying.
+ * lowercase). Look up a chat.db handle with {@link findContact}.
  */
 export type ContactsMap = Map<string, ResolvedContact>;
 
@@ -206,6 +205,33 @@ export function normalizeContactHandle(raw: string): string {
   const hasPlus = trimmed.startsWith("+");
   const digitsOnly = trimmed.replace(/[^\d]/g, "");
   return formatPhoneNumber(hasPlus ? `+${digitsOnly}` : digitsOnly);
+}
+
+/**
+ * Find the contact for a chat.db handle. A contact saved without its country
+ * code ("(555) 987-6543", or "07700 900123" with a trunk 0) is keyed by its
+ * national digits, so an E.164 handle that misses the exact key is tried
+ * without a 1–3 digit country code. That match is used only when the
+ * national part has at least 9 digits and exactly one contact name fits,
+ * so a short number from another country is not taken as this sender.
+ */
+export function findContact(contacts: ContactsMap, handle: string): ResolvedContact | undefined {
+  const key = normalizeContactHandle(handle);
+  if (!key) return undefined;
+  const exact = contacts.get(key);
+  if (exact || !key.startsWith("+")) return exact;
+
+  const digits = key.slice(1);
+  const matches = new Map<string, ResolvedContact>();
+  for (let codeLength = 1; codeLength <= 3; codeLength++) {
+    const national = digits.slice(codeLength);
+    if (national.length < 9) break;
+    for (const candidate of [national, `0${national}`]) {
+      const contact = contacts.get(candidate);
+      if (contact) matches.set(contact.name, contact);
+    }
+  }
+  return matches.size === 1 ? [...matches.values()][0] : undefined;
 }
 
 /**

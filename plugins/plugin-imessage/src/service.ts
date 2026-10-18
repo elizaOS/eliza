@@ -69,6 +69,7 @@ import {
   type ContactsMap,
   deleteContact,
   type FullContact,
+  findContact,
   getLastContactsFailure,
   listAllContacts,
   loadContacts,
@@ -639,9 +640,7 @@ function chatTarget(chat: IMessageChat, contacts: ContactsMap): MessageConnector
   );
   const primaryHandle = participants[0];
   const isGroup = chat.chatType === "group";
-  const contactName = primaryHandle
-    ? contacts.get(normalizeContactHandle(primaryHandle))?.name
-    : undefined;
+  const contactName = primaryHandle ? findContact(contacts, primaryHandle)?.name : undefined;
   const label =
     chat.displayName ??
     contactName ??
@@ -995,9 +994,7 @@ export class IMessageService extends Service implements IIMessageService {
 
         const normalized = normalizeIMessageConnectorHandle(query);
         if (normalized && (isValidIMessageTarget(normalized) || isEmail(normalized))) {
-          candidates.push(
-            contactTarget(normalized, contacts.get(normalizeContactHandle(normalized))?.name, 0.8)
-          );
+          candidates.push(contactTarget(normalized, findContact(contacts, normalized)?.name, 0.8));
         }
 
         const chats = await service.getChats();
@@ -1035,7 +1032,7 @@ export class IMessageService extends Service implements IIMessageService {
                   },
                   IMESSAGE_LOCAL_ACCOUNT_ID
                 ),
-                label: contacts.get(normalizeContactHandle(handle))?.name ?? message.handle,
+                label: findContact(contacts, handle)?.name ?? message.handle,
                 kind: isGroupIMessage(message) ? "group" : contactKind(handle),
                 score: 0.68,
                 metadata: {
@@ -1045,7 +1042,7 @@ export class IMessageService extends Service implements IIMessageService {
                   lastMessageAt: message.timestamp,
                 },
               }
-            : contactTarget(handle, contacts.get(normalizeContactHandle(handle))?.name, 0.66);
+            : contactTarget(handle, findContact(contacts, handle)?.name, 0.66);
           byKey.set(
             `${target.target.channelId ?? ""}|${target.target.entityId ?? ""}`,
             target as MessageConnectorTarget
@@ -1144,9 +1141,7 @@ export class IMessageService extends Service implements IIMessageService {
             ? "iMessage chat context from local Messages database."
             : "iMessage is available in send-only mode; chat database context is unavailable.",
           recentMessages: messages.map((message) => ({
-            name:
-              service.getContacts().get(normalizeContactHandle(message.handle))?.name ??
-              message.handle,
+            name: findContact(service.getContacts(), message.handle)?.name ?? message.handle,
             text: message.text,
             timestamp: message.timestamp,
             metadata: {
@@ -1168,7 +1163,7 @@ export class IMessageService extends Service implements IIMessageService {
       ): Promise<MessageConnectorUserContext | null> => {
         const handle = normalizeIMessageConnectorHandle(String(entityId));
         if (!handle) return null;
-        const contact = service.getContacts().get(normalizeContactHandle(handle));
+        const contact = findContact(service.getContacts(), handle);
         return {
           entityId,
           label: contact?.name ?? handle,
@@ -1200,7 +1195,7 @@ export class IMessageService extends Service implements IIMessageService {
           )
         );
         if (!handle) return null;
-        const contact = service.getContacts().get(normalizeContactHandle(handle));
+        const contact = findContact(service.getContacts(), handle);
         return {
           id: createUniqueUuid(_handlerRuntime, `imessage:${handle}`) as UUID,
           names: contact?.name ? [contact.name, handle] : [handle],
@@ -2582,7 +2577,7 @@ export class IMessageService extends Service implements IIMessageService {
     // app launch). On a miss we fall back to the raw handle, so the
     // conversation still works — it just looks uglier in logs and state.
     await this.ensureContactsLoaded();
-    const resolvedContact = this.contacts.get(normalizeContactHandle(row.handle)) ?? null;
+    const resolvedContact = findContact(this.contacts, row.handle) ?? null;
     const resolvedName = resolvedContact?.name ?? null;
 
     // Make sure the agent's memory store knows about this entity + room +
