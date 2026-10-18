@@ -1031,6 +1031,9 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           ...existing,
           ...component,
           id: existing.id,
+          // The shared adapter contract preserves the original timestamp
+          // on upsert: only data, agentId, and roomId are mutable.
+          createdAt: existing.createdAt,
         };
         // An omitted key matched the stored row; it must not erase the
         // stored world/source the match was allowed to ignore.

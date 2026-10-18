@@ -449,6 +449,7 @@ describe("durable SQLite agent adapter", () => {
     expect(rows[0]?.id).toBe(componentId);
     expect(rows[0]?.worldId).toBe(worldId);
     expect(rows[0]?.sourceEntityId).toBe(agentId);
+    expect(rows[0]?.createdAt).toBe(1);
     expect(rows[0]?.data).toEqual({ status: "updated" });
   });
 
