@@ -432,6 +432,47 @@ export function allDayEventIntersectsLocalWindow(
   );
 }
 
+/**
+ * EventKit reads an all-day date as the local day of the instant it is given
+ * and stores all-day events as local midnight to 23:59:59 on the last day.
+ * UTC midnight is the previous local day west of UTC, so Apple gets the
+ * owner-zone instants of the requested dates.
+ */
+function appleCalendarRange(range: {
+  startAt: string;
+  endAt: string;
+  timeZone: string;
+  isAllDay: boolean;
+  startDate?: string;
+  endDateExclusive?: string;
+}): { startAt: string; endAt: string; timeZone: string } {
+  if (!range.isAllDay || !range.startDate || !range.endDateExclusive) {
+    return {
+      startAt: range.startAt,
+      endAt: range.endAt,
+      timeZone: range.timeZone,
+    };
+  }
+  const localMidnight = (date: string) => {
+    const [year, month, day] = date.split("-").map(Number);
+    return buildUtcDateFromLocalParts(range.timeZone, {
+      year,
+      month,
+      day,
+      hour: 0,
+      minute: 0,
+      second: 0,
+    });
+  };
+  return {
+    startAt: localMidnight(range.startDate).toISOString(),
+    endAt: new Date(
+      localMidnight(range.endDateExclusive).getTime() - 1_000,
+    ).toISOString(),
+    timeZone: range.timeZone,
+  };
+}
+
 function isGoogleCalendarDisconnected(error: unknown): boolean {
   return (
     error instanceof Error &&
@@ -6473,11 +6514,11 @@ export class CalendarService extends Service {
         failAppleRecurrenceUnsupported("create");
       }
       await this.requireReceiptAwareAppleCreate(options);
-      return this.createAppleCalendarEvent(request, calendarId, {
-        startAt,
-        endAt,
-        timeZone,
-      });
+      return this.createAppleCalendarEvent(
+        request,
+        calendarId,
+        appleCalendarRange(range),
+      );
     }
 
     let grant: LifeOpsConnectorGrant;
@@ -6498,11 +6539,11 @@ export class CalendarService extends Service {
         failAppleRecurrenceUnsupported("create");
       }
       await this.requireReceiptAwareAppleCreate(options);
-      return this.createAppleCalendarEvent(request, calendarId, {
-        startAt,
-        endAt,
-        timeZone,
-      });
+      return this.createAppleCalendarEvent(
+        request,
+        calendarId,
+        appleCalendarRange(range),
+      );
     }
     const createEvent = requireGoogleServiceMethod(this.runtime, "createEvent");
     let googleEvent: GoogleCalendarEvent;
@@ -6934,7 +6975,12 @@ export class CalendarService extends Service {
       if (recurrence || recurrenceScope) {
         failAppleRecurrenceUnsupported("update");
       }
-      return this.updateAppleCalendarEvent(request.eventId, nativePatch);
+      return this.updateAppleCalendarEvent(
+        request.eventId,
+        allDayRange
+          ? { ...nativePatch, ...appleCalendarRange(allDayRange) }
+          : nativePatch,
+      );
     }
 
     let grant: LifeOpsConnectorGrant;
@@ -6957,7 +7003,12 @@ export class CalendarService extends Service {
       if (recurrence || recurrenceScope) {
         failAppleRecurrenceUnsupported("update");
       }
-      return this.updateAppleCalendarEvent(request.eventId, nativePatch);
+      return this.updateAppleCalendarEvent(
+        request.eventId,
+        allDayRange
+          ? { ...nativePatch, ...appleCalendarRange(allDayRange) }
+          : nativePatch,
+      );
     }
     if (recurrenceScope === "this_and_following") {
       return this.updateGoogleThisAndFollowing({
