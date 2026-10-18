@@ -473,13 +473,15 @@ function resolveSearchLimit(limit: number): number {
   return limit;
 }
 
-function createSearchUrl(limit: number, cursor?: string): string {
+function createSearchUrl(limit: number, query?: string, cursor?: string): string {
   const url = new URL("/v0/servers", MCP_REGISTRY_BASE_URL);
   url.searchParams.set("version", "latest");
   url.searchParams.set("limit", String(limit));
-  // The Registry's `search` parameter filters server names only. Query the
-  // latest catalog pages so the public name/title/description contract remains
-  // reachable, then apply that predicate locally below.
+  // The Registry's `search` parameter matches server names. Scanning the whole
+  // catalog (1350+ servers, about 28 pages) to also match titles and
+  // descriptions locally could not finish inside one request timeout, so
+  // every query search failed with a timeout.
+  if (query) url.searchParams.set("search", query);
   if (cursor) url.searchParams.set("cursor", cursor);
   return url.toString();
 }
@@ -495,15 +497,12 @@ export async function searchMcpMarketplace(
     const results: McpMarketplaceSearchItem[] = [];
     const seenNames = new Set<string>();
     const normalizedQuery = query?.toLowerCase();
-    // Query searches may need to scan several pages before the local predicate
-    // matches, so use the largest public result bound to minimize round trips.
-    const pageLimit = normalizedQuery ? MAX_MCP_MARKETPLACE_RESULTS : requestedLimit;
     let cursor: string | undefined;
     const seenCursors = new Set<string>();
 
     do {
       const page = await fetchRegistryJson(
-        createSearchUrl(pageLimit, cursor),
+        createSearchUrl(requestedLimit, query, cursor),
         parseListResponse,
         resolved
       );
