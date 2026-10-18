@@ -5395,6 +5395,14 @@ export class OrchestratorTaskService extends Service {
           });
         }
       }
+    } else if (doc.task.paused) {
+      // A paused task must not dispatch: a worker started here would run
+      // while every status writer ignores the paused task, and resume would
+      // start a second one. The message stays on the task for resume.
+      failedTo.push({
+        sessionId: "(paused)",
+        error: "Task is paused; resume it to continue with this message.",
+      });
     } else {
       // No active coding agent — auto-spawn one to work on the message so
       // messaging the orchestrator "just works" (parity with claude/codex):
