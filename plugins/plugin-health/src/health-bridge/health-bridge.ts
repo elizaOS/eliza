@@ -658,6 +658,44 @@ function enumerateGoogleFitDates(
  */
 const GOOGLE_FIT_SLEEP_STAGES = new Set([2, 4, 5, 6]);
 
+/**
+ * Sleep in `[startMs, endMs)`, from `com.google.sleep.segment`. A segment can
+ * cross the window edge (a night crosses midnight), so each segment is
+ * clipped to the window before it is counted.
+ */
+async function googleFitSleepMs(
+  accessToken: string,
+  startMs: number,
+  endMs: number,
+): Promise<number> {
+  const sleepResponse = await callGoogleFitAggregate(accessToken, {
+    aggregateBy: [{ dataTypeName: "com.google.sleep.segment" }],
+    bucketByTime: { durationMillis: endMs - startMs },
+    startTimeMillis: startMs,
+    endTimeMillis: endMs,
+  });
+  let sleepMs = 0;
+  for (const ds of sleepResponse.bucket?.[0]?.dataset ?? []) {
+    for (const point of ds.point ?? []) {
+      // Each segment's intVal is its sleep stage. Awake (1) and out of
+      // bed (3) segments are part of the session but are not sleep.
+      const stage = point.value?.[0]?.intVal;
+      if (stage === undefined || !GOOGLE_FIT_SLEEP_STAGES.has(stage)) {
+        continue;
+      }
+      const segmentStartMs = Number(point.startTimeNanos ?? "0") / 1_000_000;
+      const segmentEndMs = Number(point.endTimeNanos ?? "0") / 1_000_000;
+      if (!Number.isFinite(segmentStartMs) || !Number.isFinite(segmentEndMs)) {
+        continue;
+      }
+      const clippedMs =
+        Math.min(segmentEndMs, endMs) - Math.max(segmentStartMs, startMs);
+      if (clippedMs > 0) sleepMs += clippedMs;
+    }
+  }
+  return sleepMs;
+}
+
 async function googleFitDailySummary(
   date: string,
   accessToken: string,
@@ -709,36 +747,8 @@ async function googleFitDailySummary(
 
   // Google Fit sleep lives in a separate dataset; fetch it with a dedicated call.
   try {
-    const sleepResponse = await callGoogleFitAggregate(accessToken, {
-      aggregateBy: [{ dataTypeName: "com.google.sleep.segment" }],
-      bucketByTime: { durationMillis: endMs - startMs },
-      startTimeMillis: startMs,
-      endTimeMillis: endMs,
-    });
-    const sleepBucket = sleepResponse.bucket?.[0];
-    if (sleepBucket) {
-      let sleepMs = 0;
-      for (const ds of sleepBucket.dataset ?? []) {
-        for (const point of ds.point ?? []) {
-          // Each segment's intVal is its sleep stage. Awake (1) and out of
-          // bed (3) segments are part of the session but are not sleep.
-          const stage = point.value?.[0]?.intVal;
-          if (stage === undefined || !GOOGLE_FIT_SLEEP_STAGES.has(stage)) {
-            continue;
-          }
-          const startNs = Number(point.startTimeNanos ?? "0");
-          const endNs = Number(point.endTimeNanos ?? "0");
-          if (
-            Number.isFinite(startNs) &&
-            Number.isFinite(endNs) &&
-            endNs > startNs
-          ) {
-            sleepMs += (endNs - startNs) / 1_000_000;
-          }
-        }
-      }
-      summary.sleepHours = sleepMs / (1000 * 60 * 60);
-    }
+    summary.sleepHours =
+      (await googleFitSleepMs(accessToken, startMs, endMs)) / (1000 * 60 * 60);
   } catch (error) {
     // error-policy:J4 optional secondary dataset degrade; the primary activity
     // summary already succeeded, so a failed sleep sub-fetch flags the day
@@ -773,23 +783,39 @@ async function googleFitDataPoints(
 ): Promise<HealthDataPoint[]> {
   if (opts.metric === "sleep_hours") {
     const points: HealthDataPoint[] = [];
+    const windowStartMs = Date.parse(opts.startAt);
+    const windowEndMs = Date.parse(opts.endAt);
     for (const date of enumerateGoogleFitDates(
       opts.startAt,
       opts.endAt,
       timeZone,
     )) {
-      const summary = await googleFitDailySummary(date, accessToken, timeZone);
-      // Skip days with no sleep points OR a failed sleep sub-fetch: emitting a
-      // point for a `sleepUnavailable` day would surface a fabricated value.
-      // The failure is already logged as a structured warn in
-      // googleFitDailySummary; here we simply omit the unknown day.
-      if (summary.sleepUnavailable || summary.sleepHours <= 0) {
+      // Count only the part of each local day inside the requested window:
+      // a trailing "last N days" window covers part of its first day.
+      const day = dayBoundsMs(date, timeZone);
+      const startMs = Math.max(day.startMs, windowStartMs);
+      const endMs = Math.min(day.endMs, windowEndMs);
+      if (endMs <= startMs) continue;
+      let sleepMs: number;
+      try {
+        sleepMs = await googleFitSleepMs(accessToken, startMs, endMs);
+      } catch (error) {
+        // error-policy:J4 an unknown day is omitted, never a fabricated zero.
+        logger.warn(
+          {
+            boundary: "lifeops",
+            integration: "google-fit",
+            date,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "[lifeops] Google Fit sleep aggregation failed; sleep marked unavailable for this day",
+        );
         continue;
       }
-      const { startMs, endMs } = dayBoundsMs(date, timeZone);
+      if (sleepMs <= 0) continue;
       points.push({
         metric: "sleep_hours",
-        value: summary.sleepHours,
+        value: sleepMs / (1000 * 60 * 60),
         unit: "hours",
         startAt: new Date(startMs).toISOString(),
         endAt: new Date(endMs - 1).toISOString(),
