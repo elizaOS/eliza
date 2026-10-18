@@ -503,27 +503,20 @@ async function ownerRespondedSince(
     if (hint.entityId) entityIds.add(hint.entityId);
   }
 
-  for (const entityId of entityIds) {
-    const rooms = await runtime.getRoomsForParticipant(entityId as UUID);
-    if (rooms.length === 0) continue;
+  if (entityIds.size === 0) return false;
 
-    const messages = await runtime.getMemoriesByRoomIds({
-      roomIds: rooms as UUID[],
-      tableName: "messages",
-      limit: 20,
-    });
-    if (
-      messages.some(
-        (message) =>
-          message.entityId === entityId &&
-          message.createdAt != null &&
-          message.createdAt > sinceTimestamp,
-      )
-    )
-      return true;
-  }
-
-  return false;
+  // Filter by author and time in the store: a window of the newest room
+  // messages from anyone can push the owner's reply out of view.
+  const replies = await runtime.getMemories({
+    tableName: "messages",
+    authorEntityIds: [...entityIds] as UUID[],
+    start: sinceTimestamp + 1,
+    limit: 1,
+  });
+  return replies.some(
+    (message) =>
+      message.createdAt != null && message.createdAt > sinceTimestamp,
+  );
 }
 
 function scheduleCheck(
