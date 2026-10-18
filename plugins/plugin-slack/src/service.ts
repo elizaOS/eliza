@@ -1101,23 +1101,50 @@ export class SlackService extends Service implements ISlackService {
   private async shutdown(): Promise<void> {
     const states =
       this.accountStates instanceof Map
-        ? Array.from(this.accountStates.values())
+        ? Array.from(this.accountStates.entries())
         : [];
     if (states.length > 0) {
-      for (const state of states) {
-        await state.app.stop();
-        state.isConnected = false;
-        this.runtime.logger.info(
-          {
-            src: "plugin:slack",
-            agentId: this.runtime.agentId,
+      const failures: Array<{ accountId: string; error: unknown }> = [];
+      const failedStates = new Map<string, SlackAccountRuntime>();
+      for (const [key, state] of states) {
+        try {
+          await state.app.stop();
+          state.isConnected = false;
+          this.runtime.logger.info(
+            {
+              src: "plugin:slack",
+              agentId: this.runtime.agentId,
+              accountId: state.accountId,
+            },
+            "Slack account stopped",
+          );
+        } catch (error) {
+          // Keep a failed state available for a retry. A rejected stop does not
+          // prove that Bolt closed its Socket Mode connection.
+          failedStates.set(key, state);
+          failures.push({ accountId: state.accountId, error });
+          this.runtime.reportError("slack-account-stop", error, {
             accountId: state.accountId,
-          },
-          "Slack account stopped",
-        );
+          });
+        }
       }
       this.accountStates.clear();
+      for (const [key, state] of failedStates) {
+        this.accountStates.set(key, state);
+      }
       this.syncDefaultAccountAliases();
+      if (failures.length > 0) {
+        throw new ElizaError("Failed to stop one or more Slack accounts", {
+          code: "SLACK_ACCOUNT_STOP_FAILED",
+          cause: new AggregateError(
+            failures.map(({ error }) => error),
+            "Slack account shutdown failed",
+          ),
+          context: {
+            accountIds: failures.map(({ accountId }) => accountId),
+          },
+        });
+      }
       return;
     }
 
