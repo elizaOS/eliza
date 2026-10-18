@@ -3202,6 +3202,15 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   ): Promise<boolean> {
     let removed = false;
     for (const { entityId, roomId } of participants) {
+      // Participant rows carry no agentId; ownership runs through the room,
+      // the same convention the log deletes use (logIsVisibleToOwner).
+      // plugin-sql implements this batch delete through removeParticipant,
+      // which scopes the delete with
+      // eq(participantTable.agentId, this.agentId), so a participant of a
+      // room stored for another agent is not removed here. A room row that
+      // is absent (legacy rows) stays removable, matching the log deletes.
+      const room = await this.storage.get<Room>(COLLECTIONS.ROOMS, roomId);
+      if (room && !this.roomIsVisibleToOwner(room)) continue;
       const matches = await this.storage.getWhere<StoredParticipant>(
         COLLECTIONS.PARTICIPANTS,
         (p) => p.entityId === entityId && p.roomId === roomId,
