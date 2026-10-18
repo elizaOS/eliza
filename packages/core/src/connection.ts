@@ -229,6 +229,8 @@ export async function ensureConnections(
 	>();
 	const worldMap = new Map<string, World>();
 	const roomMap = new Map<string, Room>();
+	const roomExplicitServerIds = new Map<string, string>();
+	const roomExplicitMessageServerIds = new Map<string, UUID>();
 	const roomFallbackNames = new Map<string, string>();
 	const roomParticipants = new Map<string, Set<UUID>>();
 
@@ -300,6 +302,15 @@ export async function ensureConnections(
 			worldId,
 		};
 		roomMap.set(c.roomId, room);
+		// `serverId` and `messageServerId` are optional: remember only a
+		// binding a connection actually gave, so a binding-less connection
+		// can keep the stored room's binding at write time instead of
+		// erasing it, and an explicit binding from any connection in this
+		// batch is not lost when a later one omits it.
+		if (c.serverId !== undefined)
+			roomExplicitServerIds.set(c.roomId, c.serverId);
+		if (c.messageServerId !== undefined)
+			roomExplicitMessageServerIds.set(c.roomId, c.messageServerId);
 		if (c.name) roomFallbackNames.set(c.roomId, c.name);
 
 		if (!roomParticipants.has(c.roomId)) {
@@ -412,9 +423,10 @@ export async function ensureConnections(
 		},
 	);
 
-	// A connection that omits the room's channel or name keeps what the room
-	// already records, such as the platform conversation id a connector stored
-	// through ensureRoomExists; replies to the room are addressed by it.
+	// A connection that omits the room's channel, name, or server binding
+	// keeps what the room already records, such as the platform conversation
+	// id a connector stored through ensureRoomExists; replies to the room
+	// are addressed by it, and the raw server id binds the exact destination.
 	const storedRooms =
 		roomMap.size > 0
 			? ((await adapter.getRoomsByIds([...roomMap.keys()] as UUID[])) ?? [])
@@ -426,6 +438,15 @@ export async function ensureConnections(
 			...r,
 			name: r.name || stored?.name || roomFallbackNames.get(r.id) || "default",
 			channelId: r.channelId ?? stored?.channelId ?? r.id,
+			// A connection that omits the room's server binding keeps the
+			// stored binding; the built room carries `undefined` for both
+			// fields, and the adapter upsert replaces the whole record.
+			serverId:
+				roomExplicitServerIds.get(r.id) ?? stored?.serverId ?? r.serverId,
+			messageServerId:
+				roomExplicitMessageServerIds.get(r.id) ??
+				stored?.messageServerId ??
+				r.messageServerId,
 			agentId,
 		};
 	});
