@@ -2198,6 +2198,7 @@ function buildTrajectoryWhereClauses(
       `(
         LOWER(COALESCE(CAST(metadata_json AS TEXT), CAST(metadata AS TEXT), '')) LIKE ${quotedPattern}
         OR LOWER(COALESCE(CAST(steps_json AS TEXT), '')) LIKE ${quotedPattern}
+        OR ${stepRowsMatch(quotedPattern)}
       )`,
     );
   }
@@ -2235,10 +2236,24 @@ function buildTrajectoryWhereClauses(
         OR LOWER(COALESCE(batch_id, '')) LIKE ${quotedPattern}
         OR LOWER(COALESCE(CAST(metadata_json AS TEXT), CAST(metadata AS TEXT), '')) LIKE ${quotedPattern}
         OR LOWER(COALESCE(CAST(steps_json AS TEXT), '')) LIKE ${quotedPattern}
+        OR ${stepRowsMatch(quotedPattern)}
       )`,
     );
   }
   return whereClauses;
+}
+
+/**
+ * Steps written after a trajectory starts (LLM calls, provider reads, action
+ * results) are stored as trajectory_steps rows; steps_json keeps only the
+ * start-time snapshot. A content match must read the rows as readers do.
+ */
+function stepRowsMatch(quotedPattern: string): string {
+  return `EXISTS (
+          SELECT 1 FROM trajectory_steps s
+          WHERE s.trajectory_id = trajectories.id
+            AND LOWER(CAST(s.payload AS TEXT)) LIKE ${quotedPattern}
+        )`;
 }
 
 function buildTrajectoryWhereClause(

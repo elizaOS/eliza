@@ -177,6 +177,9 @@ it("reads complete persisted calls with the same filters and failures on both lo
     });
     expect(filtered.total).toBe(1);
     expect(filtered.trajectories.map((row) => row.id)).toEqual([trajectoryId]);
+    // Prompt text is stored in the step rows, not the start-time snapshot.
+    const searched = await reader.listTrajectories({ search: "final-request" });
+    expect(searched.trajectories.map((row) => row.id)).toEqual([trajectoryId]);
     const page = await reader.listTrajectories({ limit: 1, offset: 1 });
     expect(page.total).toBe(2);
     expect(page.trajectories).toHaveLength(1);
