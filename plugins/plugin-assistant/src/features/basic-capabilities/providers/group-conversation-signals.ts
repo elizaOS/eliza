@@ -71,7 +71,15 @@ export async function resolveChannelType(
     // round-trip within a compose fan-out.
     const room = await runtime.getRoom(message.roomId);
     return room?.type ? String(room.type).trim().toUpperCase() : "";
-  } catch {
+  } catch (error) {
+    // error-policy:J4 Group signals are advisory and the bot-loop gate fails
+    // open, so a failed lookup still resolves to "unknown channel" — but the
+    // failure must reach the diagnostic boundary: an empty string from a
+    // broken adapter is otherwise indistinguishable from a room row that
+    // genuinely has no type, and every consumer silently goes inert.
+    runtime.reportError("GroupConversationSignals.resolveChannelType", error, {
+      roomId: message.roomId,
+    });
     return "";
   }
 }

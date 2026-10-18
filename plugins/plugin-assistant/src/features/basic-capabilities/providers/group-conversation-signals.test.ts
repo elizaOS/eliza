@@ -59,16 +59,21 @@ function stateWithRecentMessages(messages: Memory[]): State {
 function runtimeWithRoom(room: unknown): {
   runtime: IAgentRuntime;
   getRoomCalls: unknown[];
+  reportErrorCalls: unknown[][];
 } {
   const getRoomCalls: unknown[] = [];
+  const reportErrorCalls: unknown[][] = [];
   const runtime = {
     getRoom: async (...args: unknown[]) => {
       getRoomCalls.push(args);
       if (room instanceof Error) throw room;
       return room;
     },
+    reportError: (...args: unknown[]) => {
+      reportErrorCalls.push(args);
+    },
   } as IAgentRuntime;
-  return { runtime, getRoomCalls };
+  return { runtime, getRoomCalls, reportErrorCalls };
 }
 
 function runtimeWithMemories(rows: Memory[] | Error): {
@@ -171,6 +176,25 @@ describe("resolveChannelType", () => {
     await expect(resolveChannelType(typeless.runtime, message)).resolves.toBe(
       "",
     );
+  });
+
+  it("reports a failed room lookup instead of only returning empty", async () => {
+    const failure = new Error("db down");
+    const { runtime, reportErrorCalls } = runtimeWithRoom(failure);
+    const message = turn(ALICE, 1, { roomId: ROOM });
+
+    // Callers still fail open: advisory group signals must never disturb a
+    // turn, so the empty channel type stays.
+    await expect(resolveChannelType(runtime, message)).resolves.toBe("");
+
+    // But "the lookup broke" must not be indistinguishable from "the room
+    // row has no type": the failure has to reach the diagnostic boundary.
+    expect(reportErrorCalls).toHaveLength(1);
+    expect(reportErrorCalls[0]?.[0]).toBe(
+      "GroupConversationSignals.resolveChannelType",
+    );
+    expect(reportErrorCalls[0]?.[1]).toBe(failure);
+    expect(reportErrorCalls[0]?.[2]).toEqual({ roomId: ROOM });
   });
 });
 
