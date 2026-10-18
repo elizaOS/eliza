@@ -480,6 +480,35 @@ function assertLocalIMessageAccount(accountId?: string | null): string {
   return normalized;
 }
 
+/**
+ * error-policy: Event listeners are observers. A listener that throws
+ * synchronously or rejects asynchronously must not produce an unhandled
+ * rejection — report it via runtime.reportError and continue. Follows the
+ * pattern established for MESSAGE_SENT emissions (#36784), extended to the
+ * remaining emission sites (connection, inbound, reaction, system, heartbeat).
+ */
+export function observeRuntimeEvent(
+  runtime: IAgentRuntime | undefined | null,
+  source: string,
+  event: string,
+  payload: EventPayload,
+  context?: Record<string, unknown>
+): void {
+  if (!runtime) return;
+  const reportFailure = (error: unknown) =>
+    runtime.reportError(source, error, { event, ...context });
+  try {
+    const emitted = runtime.emitEvent(event, payload);
+    // Guard against non-promise returns (e.g. test mocks): only attach
+    // .catch when the return value is thenable.
+    if (emitted && typeof (emitted as Promise<unknown>).catch === "function") {
+      void (emitted as Promise<unknown>).catch(reportFailure);
+    }
+  } catch (error) {
+    reportFailure(error);
+  }
+}
+
 function normalizeConnectorLimit(limit: number | undefined): number | undefined {
   if (limit === undefined) {
     return undefined;
@@ -876,11 +905,17 @@ export class IMessageService extends Service implements IIMessageService {
       );
     }
 
-    // Emit connection ready event
-    runtime.emitEvent(IMessageEventTypes.CONNECTION_READY, {
+    // Emit connection ready event. Listeners are observers — a throwing
+    // listener must not crash startup with an unhandled rejection.
+    observeRuntimeEvent(
       runtime,
-      service,
-    } as EventPayload);
+      "IMessageService.emitConnectionReady",
+      IMessageEventTypes.CONNECTION_READY,
+      {
+        runtime,
+        service,
+      } as EventPayload
+    );
 
     return service;
   }
@@ -2631,55 +2666,67 @@ export class IMessageService extends Service implements IIMessageService {
     // createMemory leaves observers in the dark about new rooms.
     if (!this.seenWorlds.has(roomKey)) {
       this.seenWorlds.add(roomKey);
-      this.runtime.emitEvent(EventType.WORLD_JOINED, {
-        runtime: this.runtime,
-        source: "imessage",
-        world: {
-          id: worldId,
-          name: row.displayName ? `imessage-chat-${row.displayName}` : `imessage-chat-${roomKey}`,
-          agentId: this.runtime.agentId,
-          serverId: roomKey,
-          metadata: {
-            accountId,
-            type: channelType,
-            chatId: roomKey,
-            displayName: row.displayName ?? undefined,
-          },
-        },
-        rooms: [
-          {
-            id: roomId,
-            name: row.displayName ?? roomKey,
-            type: channelType,
-            source: "imessage",
-            worldId,
-            channelId: roomKey,
-            serverId: roomKey,
+      observeRuntimeEvent(
+        this.runtime,
+        "IMessageService.emitWorldJoined",
+        EventType.WORLD_JOINED,
+        {
+          runtime: this.runtime,
+          source: "imessage",
+          world: {
+            id: worldId,
+            name: row.displayName ? `imessage-chat-${row.displayName}` : `imessage-chat-${roomKey}`,
             agentId: this.runtime.agentId,
-            metadata: { accountId, chatType: row.chatType },
+            serverId: roomKey,
+            metadata: {
+              accountId,
+              type: channelType,
+              chatId: roomKey,
+              displayName: row.displayName ?? undefined,
+            },
           },
-        ],
-        entities: [],
-      } as EventPayload);
+          rooms: [
+            {
+              id: roomId,
+              name: row.displayName ?? roomKey,
+              type: channelType,
+              source: "imessage",
+              worldId,
+              channelId: roomKey,
+              serverId: roomKey,
+              agentId: this.runtime.agentId,
+              metadata: { accountId, chatType: row.chatType },
+            },
+          ],
+          entities: [],
+        } as EventPayload,
+        { roomKey }
+      );
       logger.debug(`[imessage][world-joined] roomKey=${roomKey}`);
     }
 
     if (!this.seenEntities.has(entityKey)) {
       this.seenEntities.add(entityKey);
-      this.runtime.emitEvent(EventType.ENTITY_JOINED, {
-        runtime: this.runtime,
-        source: "imessage",
-        entityId,
-        worldId,
-        roomId,
-        metadata: {
-          accountId,
-          originalId: row.handle,
-          username: row.handle,
-          displayName: resolvedName ?? row.handle,
-          type: channelType,
-        },
-      } as EventPayload);
+      observeRuntimeEvent(
+        this.runtime,
+        "IMessageService.emitEntityJoined",
+        EventType.ENTITY_JOINED,
+        {
+          runtime: this.runtime,
+          source: "imessage",
+          entityId,
+          worldId,
+          roomId,
+          metadata: {
+            accountId,
+            originalId: row.handle,
+            username: row.handle,
+            displayName: resolvedName ?? row.handle,
+            type: channelType,
+          },
+        } as EventPayload,
+        { entityKey }
+      );
       logger.debug(
         `[imessage][entity-joined] entityKey=${entityKey} name=${resolvedName ?? row.handle}`
       );
@@ -2861,20 +2908,34 @@ export class IMessageService extends Service implements IIMessageService {
       // Keep the plugin event for pre-fix listeners and the generic core event
       // for every runtime listener. Default-off ingestion calls this only after
       // its durable write succeeds, so a retry cannot duplicate these events.
-      this.runtime?.emitEvent(IMessageEventTypes.MESSAGE_RECEIVED, {
-        runtime: this.runtime,
-        message: memory,
-        source: "imessage",
-        accountId,
-        callback,
-      } as EventPayload);
-      this.runtime?.emitEvent(EventType.MESSAGE_RECEIVED, {
-        runtime: this.runtime,
-        message: memory,
-        source: "imessage",
-        accountId,
-        callback,
-      } as EventPayload);
+      // Listeners are observers — report failures instead of crashing on an
+      // unhandled rejection.
+      observeRuntimeEvent(
+        this.runtime,
+        "IMessageService.emitReceivedEvents",
+        IMessageEventTypes.MESSAGE_RECEIVED,
+        {
+          runtime: this.runtime,
+          message: memory,
+          source: "imessage",
+          accountId,
+          callback,
+        } as EventPayload,
+        { messageId }
+      );
+      observeRuntimeEvent(
+        this.runtime,
+        "IMessageService.emitReceivedEvents",
+        EventType.MESSAGE_RECEIVED,
+        {
+          runtime: this.runtime,
+          message: memory,
+          source: "imessage",
+          accountId,
+          callback,
+        } as EventPayload,
+        { messageId }
+      );
     };
 
     // Inbound messages are always ingested + emitted above. The agent only
@@ -2949,27 +3010,39 @@ export class IMessageService extends Service implements IIMessageService {
       logger.debug(
         `[imessage] reaction ${row.reaction.add ? "+" : "-"}${row.reaction.kind} on guid=${row.reaction.targetGuid} by ${row.handle}`
       );
-      this.runtime.emitEvent(IMessageEventTypes.REACTION_RECEIVED, {
-        runtime: this.runtime,
-        source: "imessage",
-        accountId,
-        chatId: row.chatId,
-        handle: row.handle,
-        targetGuid: row.reaction.targetGuid,
-        reactionKind: row.reaction.kind,
-        add: row.reaction.add,
-        emoji: row.reaction.emoji,
-        service: row.service,
-      } as EventPayload);
-      this.runtime.emitEvent(EventType.REACTION_RECEIVED, {
-        runtime: this.runtime,
-        source: "imessage",
-        accountId,
-        targetGuid: row.reaction.targetGuid,
-        reactionKind: row.reaction.kind,
-        add: row.reaction.add,
-        emoji: row.reaction.emoji,
-      } as EventPayload);
+      observeRuntimeEvent(
+        this.runtime,
+        "IMessageService.emitAuxiliaryEvent",
+        IMessageEventTypes.REACTION_RECEIVED,
+        {
+          runtime: this.runtime,
+          source: "imessage",
+          accountId,
+          chatId: row.chatId,
+          handle: row.handle,
+          targetGuid: row.reaction.targetGuid,
+          reactionKind: row.reaction.kind,
+          add: row.reaction.add,
+          emoji: row.reaction.emoji,
+          service: row.service,
+        } as EventPayload,
+        { targetGuid: row.reaction.targetGuid }
+      );
+      observeRuntimeEvent(
+        this.runtime,
+        "IMessageService.emitAuxiliaryEvent",
+        EventType.REACTION_RECEIVED,
+        {
+          runtime: this.runtime,
+          source: "imessage",
+          accountId,
+          targetGuid: row.reaction.targetGuid,
+          reactionKind: row.reaction.kind,
+          add: row.reaction.add,
+          emoji: row.reaction.emoji,
+        } as EventPayload,
+        { targetGuid: row.reaction.targetGuid }
+      );
       return;
     }
 
@@ -2978,7 +3051,9 @@ export class IMessageService extends Service implements IIMessageService {
         `[imessage] system event ROWID=${row.rowId} handle=${row.handle} chat=${row.chatId}`
       );
       // No core equivalent — plugin-namespaced only.
-      this.runtime.emitEvent(
+      observeRuntimeEvent(
+        this.runtime,
+        "IMessageService.emitAuxiliaryEvent",
         "IMESSAGE_SYSTEM_EVENT" as never,
         {
           runtime: this.runtime,
@@ -2988,7 +3063,8 @@ export class IMessageService extends Service implements IIMessageService {
           handle: row.handle,
           rowId: row.rowId,
           guid: row.guid,
-        } as EventPayload
+        } as EventPayload,
+        { rowId: row.rowId }
       );
     }
   }
@@ -3152,7 +3228,11 @@ export class IMessageService extends Service implements IIMessageService {
           `[imessage][heartbeat] ok=${ok} tip=${tip} cursor=${this.lastRowId} contacts=${contactsCount}${reason ? ` reason=${reason}` : ""}`
         );
 
-        runtime.emitEvent(
+        // Heartbeat listeners are observers — a throwing listener must not
+        // turn a health signal into an unhandled rejection.
+        observeRuntimeEvent(
+          runtime,
+          "IMessageService.heartbeat",
           ok ? "IMESSAGE_HEARTBEAT_OK" : ("IMESSAGE_HEARTBEAT_UNHEALTHY" as never),
           {
             runtime,
@@ -3164,7 +3244,8 @@ export class IMessageService extends Service implements IIMessageService {
             contactsCount,
             connected: this.connected,
             timestamp: Date.now(),
-          } as EventPayload
+          } as EventPayload,
+          { ok }
         );
         return { nextInterval: heartbeatIntervalMs };
       },
