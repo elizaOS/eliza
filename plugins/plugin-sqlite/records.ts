@@ -3263,6 +3263,17 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   ): Promise<ParticipantsForRoomsResult> {
     const result: ParticipantsForRoomsResult = [];
     for (const roomId of roomIds) {
+      // Participant rows carry no agentId; ownership runs through the room,
+      // the same convention the log reads use (logIsVisibleToOwner).
+      // plugin-sql scopes this query with
+      // eq(participantTable.agentId, this.agentId), so a room stored for
+      // another agent answers with no participants here. A room row that
+      // is absent (legacy rows) stays visible, matching the log reads.
+      const room = await this.storage.get<Room>(COLLECTIONS.ROOMS, roomId);
+      if (room && !this.roomIsVisibleToOwner(room)) {
+        result.push({ roomId, entityIds: [] });
+        continue;
+      }
       const stored = await this.storage.getWhere<StoredParticipant>(
         COLLECTIONS.PARTICIPANTS,
         (p) => p.roomId === roomId,
