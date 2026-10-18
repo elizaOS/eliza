@@ -83,8 +83,15 @@ class TestOrchestratorTaskService extends Service {
     return { id: task.id, metadata: task.metadata };
   }
 
-  async listTasks(): Promise<StoredTask[]> {
-    return storedTasks.map(({ metadata: _metadata, ...task }) => task);
+  async listTasks(filter: { limit?: number } = {}): Promise<StoredTask[]> {
+    // Like the orchestrator store: newest activity first, then the limit.
+    // Later entries in `storedTasks` count as more recent.
+    const newestFirst = [...storedTasks].reverse();
+    const listed =
+      filter.limit && filter.limit > 0
+        ? newestFirst.slice(0, filter.limit)
+        : newestFirst;
+    return listed.map(({ metadata: _metadata, ...task }) => task);
   }
 
   async getTask(taskId: string): Promise<StoredTask | null> {
@@ -214,5 +221,36 @@ describe("pr-shepherd live task matching", () => {
       "operator-task-1",
       "operator-task-12",
     ]);
+  }, 60_000);
+});
+
+describe("pr-shepherd live task lookup", () => {
+  it("finds an older live task behind more than 200 newer finished tasks", async () => {
+    storedTasks = [
+      {
+        id: "shepherd-12",
+        title: "PR shepherd: acme/widgets#12",
+        status: "waiting_on_user",
+        originalRequest: "",
+        metadata: { prShepherdReceiptKey: "pr-shepherd:acme/widgets#12" },
+      },
+      ...Array.from({ length: 200 }, (_, i) => ({
+        id: `done-${i}`,
+        title: `Finished task ${i}`,
+        status: "completed",
+        originalRequest: "",
+      })),
+    ];
+    assignedPullRequests = [
+      pullRequest(12, { reviewDecision: "CHANGES_REQUESTED" }),
+    ];
+
+    expect(await fireShepherd()).toBe("fired");
+
+    expect(
+      storedTasks.filter(
+        (task) => task.title === "PR shepherd: acme/widgets#12",
+      ),
+    ).toHaveLength(1);
   }, 60_000);
 });

@@ -596,10 +596,11 @@ async function findLiveTaskForReceipt(
   projectId?: string,
 ): Promise<string | null> {
   if (typeof orchestrator.listTasks !== "function") return null;
+  // No limit: the store sorts by recent activity, so a cap would hide an
+  // older live task behind newer finished ones and create a duplicate.
   const tasks = await orchestrator.listTasks({
     includeArchived: false,
     ...(projectId ? { projectId } : {}),
-    limit: 200,
   });
   for (const task of tasks) {
     if (task.status && !LIVE_TASK_STATUSES.has(task.status)) continue;
