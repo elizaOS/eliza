@@ -40,13 +40,51 @@ export function whatsappFetch(
 
 const WHATSAPP_API_BASE = "https://graph.facebook.com/v21.0";
 
+const WhatsAppWebhookMediaSchema = z.object({
+  caption: z.string().optional(),
+  filename: z.string().optional(),
+});
+
 const WhatsAppWebhookMessageSchema = z.object({
   id: z.string(),
   from: z.string(),
   timestamp: z.string(),
   type: z.string(),
   text: z.object({ body: z.string() }).optional(),
+  image: WhatsAppWebhookMediaSchema.optional(),
+  video: WhatsAppWebhookMediaSchema.optional(),
+  audio: WhatsAppWebhookMediaSchema.optional(),
+  document: WhatsAppWebhookMediaSchema.optional(),
+  sticker: WhatsAppWebhookMediaSchema.optional(),
 });
+
+// Runtime-local copy of the org WhatsApp webhook's media note
+// (`packages/cloud/api/webhooks/whatsapp/[orgId]/route.ts`; this service must
+// not depend on cloud-shared at runtime). A photo, video, voice note,
+// document or sticker is a real message: keep its caption and tell the agent
+// what was sent instead of dropping the turn.
+const WHATSAPP_MEDIA_LABELS = {
+  image: "a photo",
+  video: "a video",
+  audio: "a voice note",
+  document: "a document",
+  sticker: "a sticker",
+} as const;
+
+function whatsAppMessageText(
+  msg: z.infer<typeof WhatsAppWebhookMessageSchema>,
+): string {
+  const mediaType = Object.hasOwn(WHATSAPP_MEDIA_LABELS, msg.type)
+    ? (msg.type as keyof typeof WHATSAPP_MEDIA_LABELS)
+    : undefined;
+  const caption =
+    msg.image?.caption ?? msg.video?.caption ?? msg.document?.caption;
+  const name = msg.document?.filename ? ` ("${msg.document.filename}")` : "";
+  const note = mediaType
+    ? `[The user sent ${WHATSAPP_MEDIA_LABELS[mediaType]}${name} on WhatsApp. This connector cannot open WhatsApp media yet.]`
+    : undefined;
+  return [(msg.text?.body ?? caption)?.trim(), note].filter(Boolean).join("\n");
+}
 
 const WhatsAppWebhookContactSchema = z.object({
   profile: z.object({ name: z.string() }),
@@ -286,9 +324,11 @@ export const whatsappAdapter: PlatformAdapter = {
         }
 
         // Meta can batch multiple messages per delivery. We intentionally process
-        // only the first text message — each subsequent delivery will be its own webhook.
+        // only the first message with text or media — each subsequent delivery
+        // will be its own webhook.
         for (const msg of value.messages) {
-          if (msg.type !== "text" || !msg.text?.body) continue;
+          const text = whatsAppMessageText(msg);
+          if (!text) continue;
 
           return {
             platform: "whatsapp",
@@ -296,7 +336,7 @@ export const whatsappAdapter: PlatformAdapter = {
             chatId: msg.from,
             senderId: msg.from,
             senderName: contactMap.get(msg.from),
-            text: msg.text.body,
+            text,
             rawPayload: data,
           };
         }
