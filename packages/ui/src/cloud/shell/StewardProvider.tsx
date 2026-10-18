@@ -64,6 +64,7 @@ const StewardAuthRuntimeProvider = lazy(
 );
 
 const STEWARD_RUNTIME_ROUTE_PATTERNS = [
+  /^\/alpha\/sign-in\/?$/,
   /^\/app-auth(?:\/|$)/,
   /^\/auth(?:\/|$)/,
   /^\/bsc(?:\/|$)/,

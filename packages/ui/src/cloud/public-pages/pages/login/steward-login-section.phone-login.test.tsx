@@ -203,6 +203,7 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn() },
 }));
 
+import type { StewardLoginMethod } from "./steward-login-methods";
 import StewardLoginSection from "./steward-login-section";
 
 function makeJwt(payload: Record<string, unknown>): string {
@@ -224,10 +225,17 @@ function LoginDestinationProbe() {
   );
 }
 
-function renderSection(initialEntry = "/login", phoneOnly = false) {
+function renderSection(
+  initialEntry = "/login",
+  phoneOnly = false,
+  allowedMethods?: readonly StewardLoginMethod[],
+) {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
-      <StewardLoginSection phoneOnly={phoneOnly} />
+      <StewardLoginSection
+        phoneOnly={phoneOnly}
+        allowedMethods={allowedMethods}
+      />
       <LoginDestinationProbe />
     </MemoryRouter>,
   );
@@ -299,6 +307,112 @@ describe("StewardLoginSection phone login", () => {
     vi.clearAllMocks();
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it("restricts Alpha presentation to discovered Google, email and phone without changing default capabilities", async () => {
+    authSpies.getProviders.mockResolvedValue({
+      passkey: true,
+      email: true,
+      sms: true,
+      siwe: true,
+      siws: true,
+      google: true,
+      discord: true,
+      github: true,
+      twitter: true,
+      telegram: true,
+      oauth: ["google", "discord", "github", "twitter", "apple"],
+    });
+    renderSection("/alpha/sign-in", false, ["google", "email", "sms"]);
+    await screen.findByRole("button", { name: "Google" });
+    const summary = screen.getByText("Phone or email");
+    const disclosure = summary.closest("details") as HTMLDetailsElement;
+    expect(disclosure.open).toBe(false);
+    fireEvent.click(summary);
+    expect(disclosure.open).toBe(true);
+    await screen.findByRole("button", { name: "Email me a link" });
+    expect(screen.getByRole("button", { name: "Google" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Text me a code" })).toBeTruthy();
+    for (const name of [
+      /passkey/i,
+      /magic link/i,
+      /discord/i,
+      /github/i,
+      /twitter/i,
+      /apple/i,
+      /telegram/i,
+      /wallet/i,
+    ])
+      expect(screen.queryByRole("button", { name })).toBeNull();
+    cleanup();
+    renderSection();
+    await screen.findByRole("button", { name: "Magic Link" });
+    expect(screen.getByRole("button", { name: "Discord" })).toBeTruthy();
+  });
+
+  it("does not enable a selected method the server disabled", async () => {
+    authSpies.getProviders.mockResolvedValue({
+      passkey: true,
+      email: false,
+      sms: false,
+      siwe: false,
+      siws: false,
+      google: true,
+      discord: true,
+      github: false,
+      twitter: false,
+      oauth: ["google", "discord"],
+    });
+    renderSection("/alpha/sign-in", false, ["google", "email", "sms"]);
+    await screen.findByRole("button", { name: "Google" });
+    expect(
+      screen.queryByRole("button", { name: "Email me a link" }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Text me a code" })).toBeNull();
+    expect(screen.queryByLabelText("Email")).toBeNull();
+  });
+
+  it("offers recovery when successful discovery has no allowed Alpha methods", async () => {
+    authSpies.getProviders.mockResolvedValue({
+      passkey: true,
+      email: false,
+      sms: false,
+      siwe: true,
+      siws: true,
+      google: false,
+      discord: true,
+      github: false,
+      twitter: false,
+      oauth: ["discord"],
+    });
+    renderSection("/alpha/sign-in", false, ["google", "email", "sms"]);
+    await screen.findByText(
+      "Sign-in is unavailable right now. Please try again.",
+    );
+    expect(
+      screen.getByRole("button", { name: "Retry sign-in options" }),
+    ).toBeTruthy();
+    expect(screen.queryByLabelText("Email")).toBeNull();
+    expect(screen.queryByRole("button", { name: /wallet/i })).toBeNull();
+    authSpies.getProviders.mockResolvedValue({
+      passkey: false,
+      email: true,
+      sms: true,
+      siwe: false,
+      siws: false,
+      google: true,
+      discord: false,
+      github: false,
+      twitter: false,
+      oauth: ["google"],
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Retry sign-in options" }),
+    );
+    await screen.findByRole("button", { name: "Google" });
+    fireEvent.click(screen.getByText("Phone or email"));
+    await screen.findByRole("button", { name: "Email me a link" });
+    expect(screen.getByRole("button", { name: "Google" })).toBeTruthy();
   });
 
   it("offers only phone sign-in on the Network entry without restoring another identity", async () => {
