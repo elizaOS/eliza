@@ -12,6 +12,11 @@ import {
   consumeStewardServerCookieSynced,
   invalidateStewardServerCookieSyncMarker,
 } from "../../lib/steward-session-cookie-sync-marker";
+import {
+  consumeStewardEmailBrowserProof,
+  discardStewardEmailBrowserBinding,
+  prepareStewardEmailBrowserBinding,
+} from "./steward-email-login";
 import { syncStewardSessionCookie } from "./steward-session";
 
 afterEach(() => {
@@ -155,4 +160,95 @@ it("treats abort from a publication listener as committed authority", async () =
   } finally {
     window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, abort);
   }
+});
+
+it("reuses same-email resend proof while isolating sibling email flows and rejecting wrong tenant/redirect", async () => {
+  const first = await prepareStewardEmailBrowserBinding({
+    email: "owner@example.test",
+    tenantId: "tenant-a",
+    redirectUri: `${window.location.origin}/login`,
+    returnTo: "/auth/cli-login?session=local-fixture",
+  });
+  const resend = await prepareStewardEmailBrowserBinding({
+    email: " Owner@Example.Test ",
+    tenantId: "tenant-a",
+    redirectUri: `${window.location.origin}/login`,
+    returnTo: "/changed-during-resend",
+    previousState: first.state,
+  });
+  expect(resend).toEqual(first);
+  const sibling = await prepareStewardEmailBrowserBinding({
+    email: "other@example.test",
+    tenantId: "tenant-a",
+    redirectUri: `${window.location.origin}/login`,
+    returnTo: "/join",
+    previousState: first.state,
+  });
+  expect(sibling.state).not.toBe(first.state);
+  expect(
+    consumeStewardEmailBrowserProof(
+      first.state,
+      "tenant-b",
+      `${window.location.origin}/login`,
+    ),
+  ).toBeNull();
+  expect(
+    consumeStewardEmailBrowserProof(
+      first.state,
+      "tenant-a",
+      "https://other.example/login",
+    ),
+  ).toBeNull();
+  const own = consumeStewardEmailBrowserProof(
+    first.state,
+    "tenant-a",
+    `${window.location.origin}/login`,
+  );
+  expect(own?.returnTo).toBe("/auth/cli-login?session=local-fixture");
+  expect(
+    consumeStewardEmailBrowserProof(
+      first.state,
+      "tenant-a",
+      `${window.location.origin}/login`,
+    ),
+  ).toBeNull();
+  expect(
+    consumeStewardEmailBrowserProof(
+      sibling.state,
+      "tenant-a",
+      `${window.location.origin}/login`,
+    ),
+  ).not.toBeNull();
+});
+
+it("cancels only the chosen email proof and refuses to initiate when browser proof storage is unavailable", async () => {
+  const input = {
+    email: "owner@example.test",
+    tenantId: "tenant-a",
+    redirectUri: `${window.location.origin}/login`,
+    returnTo: "/join",
+  };
+  const first = await prepareStewardEmailBrowserBinding(input);
+  const sibling = await prepareStewardEmailBrowserBinding(input);
+  discardStewardEmailBrowserBinding(first.state);
+  expect(
+    consumeStewardEmailBrowserProof(
+      first.state,
+      input.tenantId,
+      input.redirectUri,
+    ),
+  ).toBeNull();
+  expect(
+    consumeStewardEmailBrowserProof(
+      sibling.state,
+      input.tenantId,
+      input.redirectUri,
+    ),
+  ).not.toBeNull();
+  vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    throw new DOMException("Storage blocked", "SecurityError");
+  });
+  await expect(prepareStewardEmailBrowserBinding(input)).rejects.toThrow(
+    "This browser cannot keep sign-in proof",
+  );
 });

@@ -4,7 +4,12 @@
  */
 // @vitest-environment jsdom
 
-import { STEWARD_SESSION_CHANGE_EVENT } from "@elizaos/plugin-elizacloud/steward-session-client";
+import {
+  createStewardPkceChallenge,
+  peekStewardOAuthState,
+  STEWARD_SESSION_CHANGE_EVENT,
+  storeStewardPkceVerifier,
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import {
   act,
   cleanup,
@@ -23,6 +28,10 @@ import {
   it,
   vi,
 } from "vitest";
+import {
+  consumeStewardEmailBrowserProof,
+  prepareStewardEmailBrowserBinding,
+} from "../../lib/steward-email-login";
 
 beforeAll(() => {
   Element.prototype.hasPointerCapture = () => false;
@@ -170,7 +179,13 @@ vi.mock("../../../shell/CloudI18nProvider", () => ({
     options?.defaultValue ?? _key,
 }));
 
-vi.mock("../../lib/steward-email-login", () => ({
+const callbackSpies = vi.hoisted(() => ({
+  code: null as string | null,
+  state: null as string | null,
+  exchange: vi.fn(),
+}));
+vi.mock("../../lib/steward-email-login", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/steward-email-login")>()),
   StewardEmailLoginError: class StewardEmailLoginError extends Error {},
   startStewardEmailLogin: vi.fn(),
   verifyStewardEmailSignInCode: vi.fn(),
@@ -178,10 +193,11 @@ vi.mock("../../lib/steward-email-login", () => ({
 }));
 
 vi.mock("../../lib/steward-session", () => ({
-  hasStewardOAuthCallbackInUrl: () => false,
-  consumeStewardCodeFromQuery: () => null,
+  hasStewardOAuthCallbackInUrl: () => callbackSpies.code !== null,
+  consumeStewardCodeFromQuery: () => callbackSpies.code,
+  consumeStewardOAuthStateFromCallback: () => callbackSpies.state,
   stripLegacyTokenHashFromAddressBar: () => false,
-  exchangeStewardCodeViaApi: vi.fn(),
+  exchangeStewardCodeViaApi: callbackSpies.exchange,
   recoverStewardSessionViaCookie: sessionSpies.recover,
   refreshStewardSessionViaCookie: vi.fn(),
   syncStewardSessionCookie: sessionSpies.sync,
@@ -243,6 +259,10 @@ async function sendPhoneCode() {
 describe("StewardLoginSection phone login", () => {
   beforeEach(async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    callbackSpies.code = null;
+    callbackSpies.state = null;
+    callbackSpies.exchange.mockReset();
+    window.sessionStorage.clear();
     authSpies.configurations.length = 0;
     authSpies.smsConfigurations.length = 0;
     authSpies.getProviders.mockResolvedValue({
@@ -299,6 +319,97 @@ describe("StewardLoginSection phone login", () => {
     vi.clearAllMocks();
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it.each([null, "foreign-state"])(
+    "rejects an email marker with unmatched state %s without consuming other proofs",
+    async (state) => {
+      const binding = await prepareStewardEmailBrowserBinding({
+        email: "owner@example.test",
+        tenantId: "elizacloud",
+        redirectUri: `${window.location.origin}/login`,
+        returnTo: "/onboarding",
+      });
+      storeStewardPkceVerifier("oauth-verifier", "unrelated-oauth-state");
+      callbackSpies.code = "untrusted-code";
+      callbackSpies.state = state;
+      renderSection("/login#auth=email");
+      await screen.findByText(
+        "This sign-in link is invalid or has expired. Please start sign-in again.",
+      );
+      expect(callbackSpies.exchange).not.toHaveBeenCalled();
+      expect(peekStewardOAuthState()).toBe("unrelated-oauth-state");
+      expect(
+        consumeStewardEmailBrowserProof(
+          binding.state,
+          "elizacloud",
+          `${window.location.origin}/login`,
+        ),
+      ).not.toBeNull();
+    },
+  );
+
+  it("uses new-tab email proof and its stored destination without consuming OAuth", async () => {
+    const binding = await prepareStewardEmailBrowserBinding({
+      email: "owner@example.test",
+      tenantId: "elizacloud",
+      redirectUri: `${window.location.origin}/login`,
+      returnTo: "/onboarding?from=email",
+    });
+    storeStewardPkceVerifier("oauth-verifier", "unrelated-oauth-state");
+    window.sessionStorage.clear();
+    callbackSpies.code = "bound-email-code";
+    callbackSpies.state = binding.state;
+    callbackSpies.exchange.mockResolvedValue({
+      ok: true,
+      token: makeJwt({
+        sub: "email-user",
+        exp: Math.floor(Date.now() / 1000) + 900,
+      }),
+    });
+    renderSection("/login?returnTo=/untrusted-callback-destination#auth=email");
+    await waitFor(() => expect(callbackSpies.exchange).toHaveBeenCalledOnce());
+    const [, options] = callbackSpies.exchange.mock.calls[0];
+    expect(options).toMatchObject({
+      purpose: "email-login",
+      tenantId: "elizacloud",
+      redirectUri: `${window.location.origin}/login`,
+    });
+    expect(await createStewardPkceChallenge(options.codeVerifier)).toBe(
+      binding.codeChallenge,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("login-destination").textContent).toBe(
+        "/onboarding?from=email",
+      ),
+    );
+    expect(peekStewardOAuthState()).toBe("unrelated-oauth-state");
+    expect(
+      consumeStewardEmailBrowserProof(
+        binding.state,
+        "elizacloud",
+        `${window.location.origin}/login`,
+      ),
+    ).toBeNull();
+  });
+
+  it("rejects expired email proof while preserving a current OAuth flow", async () => {
+    const binding = await prepareStewardEmailBrowserBinding({
+      email: "owner@example.test",
+      tenantId: "elizacloud",
+      redirectUri: `${window.location.origin}/login`,
+      returnTo: "/onboarding",
+    });
+    vi.setSystemTime(Date.now() + 10 * 60 * 1000 + 1);
+    storeStewardPkceVerifier("oauth-verifier", "unrelated-oauth-state");
+    callbackSpies.code = "expired-email-code";
+    callbackSpies.state = binding.state;
+    renderSection("/login#auth=email");
+    await screen.findByText(
+      "This sign-in link is invalid or has expired. Please start sign-in again.",
+    );
+    expect(callbackSpies.exchange).not.toHaveBeenCalled();
+    expect(peekStewardOAuthState()).toBe("unrelated-oauth-state");
   });
 
   it("offers only phone sign-in on the Network entry without restoring another identity", async () => {

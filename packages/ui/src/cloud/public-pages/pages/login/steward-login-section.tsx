@@ -94,7 +94,10 @@ import {
   storePendingOAuthReturnTo,
 } from "../../lib/login-return-to";
 import {
+  consumeStewardEmailBrowserProof,
+  discardStewardEmailBrowserBinding,
   pollStewardEmailSignInStatus,
+  prepareStewardEmailBrowserBinding,
   type StewardEmailLoginChallenge,
   StewardEmailLoginError,
   type StewardEmailLoginStatus,
@@ -685,6 +688,7 @@ export default function StewardLoginSection({
   const [passkeyEmailGrant, setPasskeyEmailGrant] = useState<string | null>(
     null,
   );
+  const emailBrowserStateRef = useRef<string | undefined>(undefined);
   const [emailCode, setEmailCode] = useState("");
   const [emailChallenge, setEmailChallenge] =
     useState<StewardEmailLoginChallenge | null>(null);
@@ -1043,8 +1047,18 @@ export default function StewardLoginSection({
       // state matches, so the user's own in-flight flow survives clicking a
       // foreign link.
       const returnedState = consumeStewardOAuthStateFromCallback();
+      const emailProof = returnedState
+        ? consumeStewardEmailBrowserProof(
+            returnedState,
+            STEWARD_TENANT_ID,
+            buildStewardOAuthRedirectUri(window.location.origin),
+          )
+        : null;
       const expectedState = peekStewardOAuthState();
-      if (!returnedState || !expectedState || returnedState !== expectedState) {
+      if (
+        !emailProof &&
+        (!returnedState || !expectedState || returnedState !== expectedState)
+      ) {
         stripLegacyTokenParamsFromAddressBar();
         setCompletingCallback(false);
         setCallbackError(
@@ -1055,7 +1069,7 @@ export default function StewardLoginSection({
         );
         return;
       }
-      const codeVerifier = consumeStewardPkceVerifier();
+      const codeVerifier = emailProof?.verifier ?? consumeStewardPkceVerifier();
       if (!codeVerifier) {
         setCompletingCallback(false);
         setCallbackError(
@@ -1067,9 +1081,12 @@ export default function StewardLoginSection({
         return;
       }
       exchangeStewardCodeViaApi(code, {
-        redirectUri: buildStewardOAuthRedirectUri(window.location.origin),
+        redirectUri:
+          emailProof?.binding.redirectUri ??
+          buildStewardOAuthRedirectUri(window.location.origin),
         tenantId: STEWARD_TENANT_ID,
         codeVerifier,
+        ...(emailProof ? { purpose: "email-login" as const } : {}),
       })
         .then(async (res) => {
           let token = res?.token;
@@ -1087,7 +1104,12 @@ export default function StewardLoginSection({
           await persistStewardToken(token);
           window.dispatchEvent(new CustomEvent("steward-token-sync"));
           setRedirectTo(
-            resolveLoginReturnTo(searchParams, consumePendingOAuthReturnTo()),
+            emailProof
+              ? resolveLoginReturnTo({ get: () => null }, emailProof.returnTo)
+              : resolveLoginReturnTo(
+                  searchParams,
+                  consumePendingOAuthReturnTo(),
+                ),
           );
         })
         .catch((sessionError) => {
@@ -1761,10 +1783,20 @@ export default function StewardLoginSection({
       // The magic link can open in a new same-origin tab. Persist the pending
       // destination before asking Steward to send it so the callback can
       // resume an onboarding continuation instead of falling back to /join.
-      storePendingOAuthReturnTo(searchParams);
+      const browserBinding = Capacitor.isNativePlatform()
+        ? undefined
+        : await prepareStewardEmailBrowserBinding({
+            email: email.trim(),
+            tenantId: STEWARD_TENANT_ID,
+            redirectUri: buildStewardOAuthRedirectUri(window.location.origin),
+            returnTo: searchParams.get("returnTo"),
+            previousState: emailBrowserStateRef.current,
+          });
+      emailBrowserStateRef.current = browserBinding?.state;
       const challenge = await startStewardEmailLogin(
         { baseUrl: stewardApiUrl, tenantId: STEWARD_TENANT_ID },
         email.trim(),
+        browserBinding,
       );
       setEmailChallenge(challenge);
       setEmailCode("");
@@ -1897,6 +1929,9 @@ export default function StewardLoginSection({
           "Additional verification is required to finish signing in.",
         );
       }
+      if (emailBrowserStateRef.current)
+        discardStewardEmailBrowserBinding(emailBrowserStateRef.current);
+      emailBrowserStateRef.current = undefined;
       await handleSuccess(result.token, result.refreshToken);
     } catch (e: unknown) {
       setError(
@@ -1907,6 +1942,9 @@ export default function StewardLoginSection({
   }
 
   function cancelEmailLogin() {
+    if (emailBrowserStateRef.current)
+      discardStewardEmailBrowserBinding(emailBrowserStateRef.current);
+    emailBrowserStateRef.current = undefined;
     setStep("idle");
     setEmailChallenge(null);
     setEmailCode("");

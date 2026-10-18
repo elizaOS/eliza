@@ -60,6 +60,7 @@ import {
   type EmailAuth,
   EmailDeliveryError,
   EmailDeliveryNotConfiguredError,
+  type EmailLoginBrowserBinding,
   type EmailLoginDelivery,
   evaluateSiwePolicy,
   type FarcasterLoginPayload,
@@ -73,6 +74,7 @@ import {
   IdentityJwtConfigurationError,
   InMemoryRecoveryCodeStore,
   isBuiltInProvider,
+  isEmailLoginBrowserBinding,
   isValidE164,
   MockEmailInbox,
   MockSmsInbox,
@@ -3374,6 +3376,28 @@ function setRedirectFragment(
     if (value) fragment.set(key, value);
   }
   url.hash = fragment.toString();
+}
+
+/** Browser email callbacks use a registered login URL, never an arbitrary email-supplied redirect. */
+async function assertBrowserEmailRedirect(
+  binding: EmailLoginBrowserBinding,
+  tenantId: string,
+): Promise<void> {
+  const url = new URL(binding.redirectUri);
+  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  if (
+    (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) ||
+    url.username ||
+    url.password ||
+    url.pathname !== "/login" ||
+    url.search ||
+    url.hash ||
+    url.toString() !== binding.redirectUri
+  )
+    throw new Error("Invalid browser email redirect");
+  if (binding.redirectUri !== buildEmailAuthRedirectUrl()) {
+    await assertAllowedOAuthRedirectUri(binding.redirectUri, tenantId);
+  }
 }
 
 function redirectEmailAuthFailure(c: Context, reason: string): Response {
@@ -9592,6 +9616,7 @@ auth.post("/email/send", async (c) => {
     tenantId?: string;
     captchaToken?: string;
     delivery?: unknown;
+    browserBinding?: unknown;
   }>(c);
   if (!body?.email) {
     return c.json<ApiResponse>({ ok: false, error: "email is required" }, 400);
@@ -9619,12 +9644,39 @@ auth.post("/email/send", async (c) => {
     );
     if (tenantLimited) return tenantLimited;
   }
+  let browserBinding: EmailLoginBrowserBinding | undefined;
+  if (body.browserBinding !== undefined) {
+    if (
+      delivery === "code" ||
+      !isEmailLoginBrowserBinding(body.browserBinding)
+    ) {
+      return c.json<ApiResponse>(
+        { ok: false, error: "Invalid browser email binding" },
+        400,
+      );
+    }
+    browserBinding = {
+      state: body.browserBinding.state,
+      codeChallenge: body.browserBinding.codeChallenge,
+      codeChallengeMethod: body.browserBinding.codeChallengeMethod,
+      redirectUri: body.browserBinding.redirectUri,
+    };
+    try {
+      await assertBrowserEmailRedirect(browserBinding, resolvedTenantId);
+    } catch {
+      return c.json<ApiResponse>(
+        { ok: false, error: "Browser email redirect is not allowed" },
+        400,
+      );
+    }
+  }
   const emailAuth = await getEmailAuthForTenant(resolvedTenantId);
   let sent: Awaited<ReturnType<EmailAuth["sendMagicLink"]>>;
   try {
     sent = await emailAuth.sendMagicLink(email, {
       tenantId: resolvedTenantId,
       delivery,
+      ...(browserBinding ? { browserBinding } : {}),
     });
   } catch (err) {
     // Fail closed: ok:true only after the provider accepted the message. On
@@ -9761,7 +9813,9 @@ auth.get("/callback/email", async (c) => {
   let result: Awaited<ReturnType<EmailAuth["verifyMagicLink"]>>;
   try {
     const emailAuth = await getEmailAuthForTenant(resolvedTenantId);
-    result = await emailAuth.verifyMagicLink(token, email, resolvedTenantId);
+    result = await emailAuth.verifyMagicLink(token, email, resolvedTenantId, {
+      browserCallback: true,
+    });
   } catch {
     return redirectEmailAuthFailure(c, "invalid_link");
   }
@@ -9777,7 +9831,19 @@ auth.get("/callback/email", async (c) => {
     return redirectEmailAuthFailure(c, "email_mismatch");
   }
 
-  const authResult = await completeEmailAuth(c, email, tenantId);
+  const browserBinding = result.browserBinding;
+  if (browserBinding) {
+    try {
+      await assertBrowserEmailRedirect(browserBinding, resolvedTenantId);
+    } catch {
+      return redirectEmailAuthFailure(c, "invalid_link");
+    }
+  }
+  const authResult = await completeEmailAuth(
+    c,
+    email,
+    browserBinding ? result.tenantId : tenantId,
+  );
   if (!authResult.ok) {
     const reason =
       authResult.status === 404 ? "tenant_not_found" : "tenant_forbidden";
@@ -9788,7 +9854,8 @@ auth.get("/callback/email", async (c) => {
     return redirectEmailAuthFailure(c, "mfa_required");
   }
 
-  const emailRedirectUrl = buildEmailAuthRedirectUrl();
+  const emailRedirectUrl =
+    browserBinding?.redirectUri ?? buildEmailAuthRedirectUrl();
   const nonceBytes = new Uint8Array(32);
   crypto.getRandomValues(nonceBytes);
   const exchangeCode = uint8ArrayToBase64url(nonceBytes);
@@ -9800,7 +9867,15 @@ auth.get("/callback/email", async (c) => {
       token: authResult.response.token,
       refreshToken: authResult.response.refreshToken,
       redirectUri: emailRedirectUrl,
-      tenantId: tenantId ?? null,
+      tenantId: browserBinding ? result.tenantId : (tenantId ?? null),
+      ...(browserBinding
+        ? {
+            purpose: "email-login",
+            state: browserBinding.state,
+            codeChallenge: browserBinding.codeChallenge,
+            codeChallengeMethod: browserBinding.codeChallengeMethod,
+          }
+        : {}),
       expiresAt,
       expiresIn: ACCESS_TOKEN_EXPIRY_SECONDS,
     }),
@@ -9809,7 +9884,8 @@ auth.get("/callback/email", async (c) => {
   setRedirectFragment(redirectUrl, {
     code: exchangeCode,
     auth: "email",
-    tenantId,
+    tenantId: browserBinding ? result.tenantId : tenantId,
+    ...(browserBinding ? { state: browserBinding.state } : {}),
   });
   return c.redirect(redirectUrl.toString(), 302);
 });
@@ -11298,6 +11374,7 @@ auth.post("/oauth/exchange", async (c) => {
     tenantId?: unknown;
     code_verifier?: unknown;
     codeVerifier?: unknown;
+    purpose?: unknown;
   }>(c);
 
   const code = typeof body?.code === "string" ? body.code.trim() : "";
@@ -11321,6 +11398,12 @@ auth.post("/oauth/exchange", async (c) => {
         ? body.codeVerifier.trim()
         : "";
 
+  if (body?.purpose !== undefined && body.purpose !== "email-login") {
+    return c.json<ApiResponse>(
+      { ok: false, error: "Invalid exchange purpose" },
+      400,
+    );
+  }
   if (!code || !redirectUri) {
     return c.json<ApiResponse>(
       { ok: false, error: "code and redirect_uri are required" },
@@ -11343,6 +11426,8 @@ auth.post("/oauth/exchange", async (c) => {
 
   let payload: {
     providerName?: string;
+    purpose?: "email-login";
+    state?: string;
     token: string;
     refreshToken: string;
     user?: unknown;
@@ -11365,6 +11450,35 @@ auth.post("/oauth/exchange", async (c) => {
     );
   }
 
+  const emailExchange = body?.purpose === "email-login";
+  if (
+    (payload.purpose === "email-login") !== emailExchange ||
+    (payload.purpose !== undefined && payload.purpose !== "email-login")
+  ) {
+    return c.json(
+      {
+        ok: false,
+        error: "Code purpose mismatch",
+        code: "code_purpose_mismatch",
+      },
+      401,
+    );
+  }
+  if (
+    emailExchange &&
+    (!payload.tenantId ||
+      !isEmailLoginBrowserBinding({
+        state: payload.state,
+        codeChallenge: payload.codeChallenge,
+        codeChallengeMethod: payload.codeChallengeMethod,
+        redirectUri: payload.redirectUri,
+      }))
+  ) {
+    return c.json(
+      { ok: false, error: "Invalid email code binding", code: "code_invalid" },
+      401,
+    );
+  }
   if (Date.now() > payload.expiresAt) {
     return c.json<ApiResponse & { code: string }>(
       { ok: false, error: "Code expired", code: "code_expired" },
@@ -11423,7 +11537,7 @@ auth.post("/oauth/exchange", async (c) => {
   const methodResponse = await requireTenantLoginMethodAllowed(
     c,
     payload.tenantId ?? undefined,
-    "oauth",
+    emailExchange ? "email" : "oauth",
     payload.providerName,
   );
   if (methodResponse) return methodResponse;
@@ -11476,6 +11590,7 @@ auth.post("/oauth/exchange", async (c) => {
 
   return c.json({
     ok: true,
+    ...(emailExchange ? { purpose: "email-login" } : {}),
     token: payload.token,
     refreshToken: payload.refreshToken,
     ...(payload.user ? { user: payload.user } : {}),
@@ -11560,6 +11675,7 @@ auth.post("/oauth/:provider/token", async (c) => {
   if (boundCode) {
     let payload: {
       providerName?: string;
+      purpose?: unknown;
       token: string;
       refreshToken: string;
       user?: unknown;
@@ -11575,6 +11691,16 @@ auth.post("/oauth/:provider/token", async (c) => {
     } catch {
       return c.json<ApiResponse>(
         { ok: false, error: "Malformed OAuth code payload" },
+        401,
+      );
+    }
+    if (payload.purpose !== undefined) {
+      return c.json(
+        {
+          ok: false,
+          error: "Code purpose mismatch",
+          code: "code_purpose_mismatch",
+        },
         401,
       );
     }
