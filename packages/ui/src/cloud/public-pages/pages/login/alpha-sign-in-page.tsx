@@ -49,6 +49,7 @@ const alphaSignInStyles = `
 .alpha-sign-in :focus-visible { outline: 2px solid #0000ff; outline-offset: 3px; }
 .alpha-sign-in [data-login-phone-field]:focus-within { border-color: #000; }
 .alpha-sign-in [data-login-phone-field]:focus-within :is(input, button):focus-visible { outline: none; box-shadow: none; }
+.alpha-sign-in #steward-login-email:focus { border-color: #000; outline: none; box-shadow: none; }
 @media (min-width: 640px) { .alpha-sign-in { padding-top: max(64px, env(safe-area-inset-top)); } }
 `;
 
