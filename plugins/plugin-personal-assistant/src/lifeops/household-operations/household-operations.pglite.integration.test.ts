@@ -1474,4 +1474,51 @@ describe("household operations — real PGlite and runtime graph", () => {
       }),
     ).resolves.toEqual([second.observation]);
   });
+  it("keeps an overdue interval maintenance item in a later weekly brief", async () => {
+    // G29 recorded the completed gutter service on 2027-03-13. The next
+    // service is due 90 days later, in a 14-day window ending 2027-06-25.
+    const recordId = "almanac-gutter-interval";
+    await service.putRevision({
+      principalEntityId: SELF_ENTITY_ID,
+      definition: {
+        kind: "almanac_entry",
+        recordId,
+        householdId,
+        title: "Gutter cleaning every 90 days",
+        subjectKey: maintenanceSubjectKey,
+        category: "maintenance",
+        trigger: {
+          kind: "interval_after_service",
+          serviceKind: "gutter_cleaning",
+          afterDays: 90,
+          windowDays: 14,
+          timezone: "America/Los_Angeles",
+        },
+        vendorProfileRecordId: vendorRecordId,
+        responsibilityAssignmentId: maintenanceAssignmentId,
+        preparationLeadDays: 7,
+        sourceObservationIds: [],
+        active: true,
+        visibility: { kind: "owner_private" },
+      } satisfies AlmanacEntryDefinition,
+      expectedRevision: 0,
+    });
+    // A week in September: the June window has passed with no new service.
+    const brief = await service.generateWeeklyBrief({
+      principalEntityId: SELF_ENTITY_ID,
+      householdId,
+      window: {
+        startsAt: "2027-09-01T00:00:00.000Z",
+        endsAt: "2027-09-08T00:00:00.000Z",
+      },
+      calendarChecks: [],
+    });
+    const overdue = brief.items.find((item) =>
+      item.sourceRefs.some((ref) => ref.startsWith(`almanac:${recordId}:`)),
+    );
+    expect(overdue?.kind).toBe("maintenance_due");
+    expect(Date.parse(overdue?.dueWindow?.endsAt ?? "")).toBeLessThan(
+      Date.parse("2027-09-01T00:00:00.000Z"),
+    );
+  });
 });

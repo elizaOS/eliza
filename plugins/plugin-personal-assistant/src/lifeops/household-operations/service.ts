@@ -851,7 +851,12 @@ export class HouseholdOperationsService {
         revision,
         dueWindow,
       );
-      if (!windowsOverlap(preparationWindow, window)) continue;
+      // An interval item that came due before this week and still has no
+      // newer completion is overdue; it stays in the brief until serviced.
+      const overdue =
+        revision.trigger.kind === "interval_after_service" &&
+        Date.parse(dueWindow.endsAt) <= Date.parse(window.startsAt);
+      if (!overdue && !windowsOverlap(preparationWindow, window)) continue;
       const calendarCheck = findCalendarCheck(
         calendarChecks,
         revision.subjectKey,
