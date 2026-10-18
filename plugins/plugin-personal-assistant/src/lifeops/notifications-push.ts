@@ -55,7 +55,7 @@ export interface SendPushRequest {
   click?: string;
 }
 export interface SendPushResult {
-  messageId: string | null;
+  messageId: string;
   deliveredAt: string;
 }
 // ---------------------------------------------------------------------------
@@ -130,15 +130,31 @@ export async function sendPush(
     span.failure({ statusCode: response.status, errorKind: "http_error" });
     throw new Error(`Ntfy publish failed (${response.status}): ${errorMsg}`);
   }
-  const data = (await response.json().catch(() => ({}))) as {
-    id?: string;
-    time?: number;
-  };
+  let data: { id?: unknown; time?: unknown };
+  try {
+    data = (await response.json()) as { id?: unknown; time?: unknown };
+  } catch (error) {
+    span.failure({
+      statusCode: response.status,
+      errorKind: "invalid_response",
+    });
+    throw new Error(
+      `Ntfy publish returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
   const messageId =
-    typeof data.id === "string" && data.id.length > 0 ? data.id : null;
-  const deliveredAt = data.time
-    ? new Date(data.time * 1000).toISOString()
-    : new Date().toISOString();
+    typeof data.id === "string" && data.id.trim().length > 0 ? data.id : null;
+  if (!messageId) {
+    span.failure({
+      statusCode: response.status,
+      errorKind: "invalid_response",
+    });
+    throw new Error("Ntfy publish returned no message id");
+  }
+  const deliveredAt =
+    typeof data.time === "number" && Number.isFinite(data.time) && data.time > 0
+      ? new Date(data.time * 1000).toISOString()
+      : new Date().toISOString();
   span.success({ statusCode: response.status });
   logger.info(
     { boundary: "lifeops", integration: "ntfy", topic, messageId },
