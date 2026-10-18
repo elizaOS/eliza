@@ -789,8 +789,8 @@ export class IMessageService extends Service implements IIMessageService {
    * message has triggered the lazy load yet.
    */
   private contacts: ContactsMap = new Map();
-  /** Whether the lazy contact load has been attempted this session. */
-  private contactsLoadAttempted = false;
+  /** The lazy contact load of this session, shared by concurrent callers. */
+  private contactsLoad: Promise<void> | null = null;
   /** Message ids currently dispatching, preventing concurrent webhook re-entry. */
   private blooioMessagesInFlight = new Set<string>();
   /** Whether this service has installed the durable receipt cleanup worker. */
@@ -980,7 +980,7 @@ export class IMessageService extends Service implements IIMessageService {
       },
       resolveTargets: async (query: string) => {
         const candidates: MessageConnectorTarget[] = [];
-        const contacts = service.getContacts();
+        const contacts = await service.getResolvedContacts();
         for (const [handle, contact] of contacts) {
           if (matchesQuery(query, contact.name, handle)) {
             candidates.push(
@@ -1019,7 +1019,7 @@ export class IMessageService extends Service implements IIMessageService {
         return candidates;
       },
       listRecentTargets: async () => {
-        const contacts = service.getContacts();
+        const contacts = await service.getResolvedContacts();
         const byKey = new Map<string, MessageConnectorTarget>();
         for (const message of await service.getRecentMessages(50)) {
           const handle = normalizeIMessageConnectorHandle(message.handle);
@@ -1054,7 +1054,7 @@ export class IMessageService extends Service implements IIMessageService {
         return Array.from(byKey.values());
       },
       listRooms: async () => {
-        const contacts = service.getContacts();
+        const contacts = await service.getResolvedContacts();
         return (await service.getChats()).map((chat) => chatTarget(chat, contacts));
       },
       fetchMessages: async (context, params) => {
@@ -1893,17 +1893,28 @@ export class IMessageService extends Service implements IIMessageService {
   }
 
   /**
+   * The Contacts map after the lazy load. Resolving a name for an outbound
+   * send needs the address book as much as an inbound message does; without
+   * the load, a name lookup before the first inbound message finds nothing.
+   */
+  async getResolvedContacts(): Promise<ContactsMap> {
+    await this.ensureContactsLoaded();
+    return this.contacts;
+  }
+
+  /**
    * Lazy-load the Apple Contacts map on first call. Subsequent calls
    * are no-ops. We split this out from `start()` so Contacts permission
    * pressure only appears when the runtime actually needs handle→name
    * resolution, instead of at app launch. Failure is non-fatal; the cached
    * map stays empty and the service falls back to raw handles.
    */
-  private async ensureContactsLoaded(): Promise<void> {
-    if (this.contactsLoadAttempted) {
-      return;
-    }
-    this.contactsLoadAttempted = true;
+  private ensureContactsLoaded(): Promise<void> {
+    this.contactsLoad ??= this.loadContactsOnce();
+    return this.contactsLoad;
+  }
+
+  private async loadContactsOnce(): Promise<void> {
     if (this.settings?.transport === "blooio") return;
     try {
       this.contacts = await loadContacts();
