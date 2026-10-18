@@ -2516,10 +2516,23 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   async deleteMemories(memoryIds: UUID[]): Promise<void> {
     return this.withMemoryMutationLock(async () => {
       if (memoryIds.length === 0) return;
+      // Only memories this adapter owns are deletable. A stored row for
+      // another agent (a restored or shared file) must survive, as with
+      // deleteAllMemories and the room and log deletes in this file; a row
+      // without an agentId belongs to this database.
+      const roots = new Set<UUID>();
+      for (const id of memoryIds) {
+        const row = await this.storage.get<StoredMemory>(
+          COLLECTIONS.MEMORIES,
+          id,
+        );
+        if (row && (row.agentId === undefined || row.agentId === this.agentId))
+          roots.add(id);
+      }
+      if (roots.size === 0) return;
       // Retention and a full wipe delete document rows through this method.
       // deleteDocumentWithSnapshot already removes chunks; this path did not,
       // so a pruned document stayed searchable through its fragments.
-      const roots = new Set(memoryIds);
       const fragments = await this.storage.getWhere<StoredMemory>(
         COLLECTIONS.MEMORIES,
         (memory) => {
@@ -2544,7 +2557,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         },
       );
       const ids = [
-        ...memoryIds,
+        ...roots,
         ...fragments.flatMap((memory) =>
           memory.id ? [memory.id as UUID] : [],
         ),
