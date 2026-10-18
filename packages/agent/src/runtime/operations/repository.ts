@@ -21,6 +21,7 @@
  * process doesn't accumulate state between hydrations.
  */
 
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
@@ -107,17 +108,31 @@ function localExecutorExited(op: RuntimeOperation): boolean {
   }
 }
 
+const PROCESS_INCARNATION = randomUUID();
+
+/** Executor identity stamped on new operations by this process. */
+export function currentProcessOwner(): NonNullable<
+  RuntimeOperation["processOwner"]
+> {
+  return {
+    hostname: hostname(),
+    pid: process.pid,
+    incarnation: PROCESS_INCARNATION,
+  };
+}
+
 /**
- * Hydration runs before this process can create an operation, so a live record
- * stamped with this host and PID was written by an earlier process that had
- * the same PID (a container's PID 1 after a restart).
+ * A live record with this host and PID but another incarnation was written
+ * by an earlier process that had the same PID (a container's PID 1 after a
+ * restart). Records from this process, from any repository, stay live.
  */
 function ownedByEarlierProcess(op: RuntimeOperation): boolean {
   const owner = op.processOwner;
   return (
     owner !== undefined &&
     owner.hostname === hostname() &&
-    owner.pid === process.pid
+    owner.pid === process.pid &&
+    owner.incarnation !== PROCESS_INCARNATION
   );
 }
 
