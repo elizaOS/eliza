@@ -46,5 +46,13 @@ export function emitModelUsageEvent(
     },
   };
 
-  runtime.emitEvent(EventType.MODEL_USED, payload);
+  // Usage accounting must not change the embedding result. An unobserved
+  // rejection here would terminate the process on the default Node policy and
+  // hide the listener failure from the reported-error ring.
+  void Promise.resolve(runtime.emitEvent(EventType.MODEL_USED, payload)).catch((error) => {
+    runtime.reportError("EmbeddingsModelUsage.emitEvent", error, {
+      provider: "embeddings",
+      modelType: String(type),
+    });
+  });
 }
