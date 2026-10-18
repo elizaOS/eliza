@@ -24,6 +24,8 @@ import {
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
   parseBooleanFromText,
+  type SendHandlerOutcome,
+  type SendHandlerReceipt,
   Service,
   type TargetInfo,
   type UUID,
@@ -394,6 +396,17 @@ async function isStoredXGroupDmRoom(
     createUniqueUuid(runtime, `x-dm:${accountId}:${conversationId}`),
   );
   return room?.type === ChannelType.GROUP;
+}
+
+function xDmPartiallySentError(sent: {
+  messageIds: string[];
+  failure?: unknown;
+}): ElizaError {
+  return new ElizaError("X direct message was only partly sent", {
+    code: "X_DM_PARTIALLY_SENT",
+    cause: sent.failure,
+    context: { acceptedMessageIds: sent.messageIds },
+  });
 }
 
 export class XService extends Service {
@@ -777,7 +790,7 @@ export class XService extends Service {
     runtime: IAgentRuntime,
     target: TargetInfo,
     content: Content,
-  ): Promise<void> {
+  ): Promise<SendHandlerOutcome | undefined> {
     const text = typeof content.text === "string" ? content.text : "";
     if (!text.trim()) {
       throw new Error("X DM connector requires non-empty text content.");
@@ -789,7 +802,7 @@ export class XService extends Service {
         ? (metadata as Record<string, unknown>)
         : undefined;
     const accountId = this.resolveAccountId(target.accountId);
-    await this.withDmSession(accountId, async (base, session) => {
+    return this.withDmSession(accountId, async (base, session) => {
       const candidate =
         (typeof metadataRecord?.xUserId === "string"
           ? metadataRecord.xUserId
@@ -824,13 +837,14 @@ export class XService extends Service {
         candidate === target.channelId &&
         (await isStoredXGroupDmRoom(runtime, accountId, candidate))
       ) {
-        await this.sendXDirectMessage(
-          base,
-          session,
-          { conversationId: candidate },
-          text,
+        return this.dmSendOutcome(
+          await this.sendXDirectMessage(
+            base,
+            session,
+            { conversationId: candidate },
+            text,
+          ),
         );
-        return;
       }
       const recipient =
         conversationRecipient ??
@@ -840,11 +854,13 @@ export class XService extends Service {
           "X DM connector requires a resolvable recipient user id.",
         );
       }
-      await this.sendXDirectMessage(
-        base,
-        session,
-        { participantId: recipient },
-        text,
+      return this.dmSendOutcome(
+        await this.sendXDirectMessage(
+          base,
+          session,
+          { participantId: recipient },
+          text,
+        ),
       );
     });
   }
@@ -880,6 +896,7 @@ export class XService extends Service {
         text,
       );
     });
+    if (sent.failure !== undefined) throw xDmPartiallySentError(sent);
     return {
       ok: true,
       status: 201,
@@ -1422,22 +1439,71 @@ export class XService extends Service {
     session: AuthenticatedTwitterSession,
     to: { participantId: string } | { conversationId: string },
     text: string,
-  ): Promise<{ messageId: string | null; messageIds: string[] }> {
+  ): Promise<{
+    messageId: string | null;
+    messageIds: string[];
+    /** Set when a later chunk failed after earlier chunks were sent. */
+    failure?: unknown;
+  }> {
     const messageIds: string[] = [];
+    let sentChunks = 0;
     for (const chunk of splitXDirectMessageContent(text)) {
-      this.assertDmSessionCurrent(base, session);
-      const result =
-        "conversationId" in to
-          ? await session.client.v2.sendDmInConversation(to.conversationId, {
-              text: chunk,
-            })
-          : await session.client.v2.sendDmToParticipant(to.participantId, {
-              text: chunk,
-            });
-      const messageId = normalizeXReceiptId(result.dm_event_id);
-      if (messageId) messageIds.push(messageId);
+      try {
+        this.assertDmSessionCurrent(base, session);
+        const result =
+          "conversationId" in to
+            ? await session.client.v2.sendDmInConversation(to.conversationId, {
+                text: chunk,
+              })
+            : await session.client.v2.sendDmToParticipant(to.participantId, {
+                text: chunk,
+              });
+        sentChunks += 1;
+        const messageId = normalizeXReceiptId(result.dm_event_id);
+        if (messageId) messageIds.push(messageId);
+      } catch (error) {
+        // error-policy:J2 once a chunk is in the conversation, a later
+        // failure must not look like a plain refusal: a retry would send the
+        // whole message again.
+        if (sentChunks === 0) throw error;
+        return { messageId: messageIds[0] ?? null, messageIds, failure: error };
+      }
     }
     return { messageId: messageIds[0] ?? null, messageIds };
+  }
+
+  /** The connector send outcome for a direct message sent in chunks. */
+  private dmSendOutcome(sent: {
+    messageIds: string[];
+    failure?: unknown;
+  }): SendHandlerOutcome | undefined {
+    const [first, ...rest] = sent.messageIds;
+    if (first === undefined) {
+      if (sent.failure !== undefined) throw xDmPartiallySentError(sent);
+      return undefined;
+    }
+    const receipt: SendHandlerReceipt = {
+      providerMessageIds: [first, ...rest],
+      acceptedAt: Date.now(),
+      persistence: {
+        status: "not_attempted",
+        reason: "X accepted the direct message; caller owns local persistence",
+      },
+    };
+    if (sent.failure === undefined) {
+      return { kind: "delivered", receipt, memories: [] };
+    }
+    const reason =
+      sent.failure instanceof Error
+        ? sent.failure.message
+        : String(sent.failure);
+    return {
+      kind: "partially_delivered",
+      receipt,
+      memories: [],
+      code: "X_DM_PARTIALLY_SENT",
+      message: `Some parts were sent before X refused a later part: ${reason}. Do not retry blindly.`,
+    };
   }
 
   private async withDmSession<T>(
