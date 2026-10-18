@@ -1385,11 +1385,15 @@ export class SunoAudioProvider implements AudioGenerationProvider {
         title?: string;
         duration?: number;
       };
+      const audioUrl = data.audio_url?.trim();
+      if (!audioUrl) {
+        return { success: false, error: "No audio returned from Suno" };
+      }
 
       return {
         success: true,
         data: {
-          audioUrl: data.audio_url,
+          audioUrl,
           title: data.title,
           duration: data.duration,
         },
