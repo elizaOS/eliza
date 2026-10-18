@@ -269,13 +269,17 @@ export async function handleToolResponse(
       attachments: hasAttachments && attachments.length > 0 ? [...attachments] : undefined,
     },
   };
-  await runtime.createMemory(replyMemory, "messages");
+  // The host that delivers the callback stores what it sends (Discord,
+  // Telegram and the app chat do), so storing it here too gave the room two
+  // copies of one reply. Store it only when no host will deliver it.
   if (callback) {
     await callback({
       text: reasonedResponse,
       actions: ["CALL_MCP_TOOL"],
       attachments: hasAttachments && attachments.length > 0 ? [...attachments] : undefined,
     });
+  } else {
+    await runtime.createMemory(replyMemory, "messages");
   }
   return replyMemory;
 }

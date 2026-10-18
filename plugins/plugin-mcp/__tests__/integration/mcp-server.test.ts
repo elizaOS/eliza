@@ -287,6 +287,18 @@ describe("MCP tool schema dialects through model argument selection", () => {
           { parameters: { op: "call_tool", serverName: "peer", toolName: tool } },
           async (content) => {
             callbacks.push(content);
+            // A connector stores the reply it delivers, as Discord and
+            // Telegram do with the platform message id.
+            await runtime.createMemory(
+              {
+                id: randomUUID(),
+                entityId: runtime.agentId,
+                agentId: runtime.agentId,
+                roomId,
+                content: { ...content, source: "mcp-integration" },
+              },
+              "messages"
+            );
             return [];
           }
         );
@@ -299,8 +311,12 @@ describe("MCP tool schema dialects through model argument selection", () => {
         const invocations = JSON.parse(readback.text);
         expect(invocations).toEqual(valid ? [{ name: tool, arguments: { pair } }] : []);
         const memories = await runtime.getMemories({ tableName: "messages", roomId, count: 20 });
-        const saved = memories.find((memory) => memory.content.actions?.includes("CALL_MCP_TOOL"));
-        expect(Boolean(saved)).toBe(valid);
+        const replies = memories.filter((memory) =>
+          memory.content.actions?.includes("CALL_MCP_TOOL")
+        );
+        // One reply, stored once: by the host that delivered it.
+        expect(replies).toHaveLength(valid ? 1 : 0);
+        const saved = replies[0];
         if (valid) {
           expect(result.data?.output).toContain(JSON.stringify(pair));
           expect(saved?.content.text).toBe(callbacks.at(-1)?.text);
@@ -475,8 +491,9 @@ describe("MCP argument retry recovery", () => {
         recover ? [{ name: "explicit", arguments: { pair: ["task", 0] } }] : []
       );
       const rows = await runtime.getMemories({ tableName: "messages", roomId, count: 20 });
-      const reply = rows.find((row) => row.content.actions?.includes("CALL_MCP_TOOL"));
-      expect(Boolean(reply)).toBe(recover);
+      // The reply goes to the host callback; the host stores what it delivers.
+      expect(callbacks.some((content) => content.actions?.includes("CALL_MCP_TOOL"))).toBe(recover);
+      expect(rows.filter((row) => row.content.actions?.includes("CALL_MCP_TOOL"))).toEqual([]);
       const large = requests.filter((request) => request.type === ModelType.TEXT_LARGE);
       const firstArgumentIndex = direct ? 0 : 1;
       const retried = first !== '{"toolArguments":{"pair":["task",0]}}';
@@ -504,7 +521,8 @@ describe("MCP argument retry recovery", () => {
         }
       }
       if (recover) {
-        expect(reply?.content.text).toBe(callbacks.at(-1)?.text);
+        expect(callbacks.at(-1)?.actions).toContain("CALL_MCP_TOOL");
+        expect(callbacks.at(-1)?.text).toBe("Received task and integer zero.");
         expect(requests.at(-1)?.type).toBe(ModelType.TEXT_SMALL);
         expect(requests.at(-1)?.prompt).toContain(JSON.stringify(["task", 0]));
       } else {
@@ -514,7 +532,13 @@ describe("MCP argument retry recovery", () => {
       models.assertFixturesConsumed();
       console.info(
         "MCP retry receipt:",
-        JSON.stringify({ direct, first, recover, invocations, storedReply: Boolean(reply) })
+        JSON.stringify({
+          direct,
+          first,
+          recover,
+          invocations,
+          deliveredReply: callbacks.some((content) => content.actions?.includes("CALL_MCP_TOOL")),
+        })
       );
     } finally {
       await runtime.stop();
