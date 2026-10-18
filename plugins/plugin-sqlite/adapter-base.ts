@@ -506,6 +506,14 @@ export class SQLiteAdapterBase extends SQLiteRecordAdapter {
         : undefined;
     }
     if (!account || account.deletedAt != null) return null;
+    // plugin-sql's getAccount applies its agent predicate on every lookup,
+    // the id lookup included, so a stored account for another agent is
+    // invisible here — the provider+key path is scoped by its key, but the
+    // id path must check the row itself. deleteConnectorAccount and the
+    // credential-ref readers resolve through this lookup, so the guard
+    // covers them as in plugin-sql.
+    if (account.agentId !== (params.agentId ?? this.sqlite.agentId))
+      return null;
     return {
       ...account,
       scopes: [...account.scopes],
@@ -542,6 +550,15 @@ export class SQLiteAdapterBase extends SQLiteRecordAdapter {
     const existingByRequestedId = requestedId
       ? this.connectorAccountsById.get(requestedId)
       : undefined;
+    if (existingByRequestedId && existingByRequestedId.agentId !== agentId) {
+      // plugin-sql resolves an id under (agentId, id) and then inserts, so
+      // a foreign row's id surfaces as a conflict instead of being taken
+      // over: stamping this agent on it would re-own and overwrite the
+      // other agent's account.
+      throw new ElizaError("Connector account id belongs to another agent", {
+        code: "SQLITE_CONNECTOR_INVALID",
+      });
+    }
     if (existingByRequestedId?.deletedAt != null) {
       throw new ElizaError(
         "Connector account id already belongs to a deleted account",
@@ -764,7 +781,12 @@ export class SQLiteAdapterBase extends SQLiteRecordAdapter {
   ): Promise<number> {
     let deleted = 0;
     for (const [key, credential] of this.connectorCredentialRefs) {
-      if (credential.accountId === params.accountId) {
+      // plugin-sql deletes by (agentId, accountId) with no account lookup,
+      // so a ref stored for another agent is never this adapter's to remove.
+      if (
+        credential.accountId === params.accountId &&
+        credential.agentId === this.sqlite.agentId
+      ) {
         this.connectorCredentialRefs.delete(key);
         deleted += 1;
       }
