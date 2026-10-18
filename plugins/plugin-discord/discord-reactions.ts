@@ -229,7 +229,17 @@ export async function handleReaction(
 			accountId,
 			callback,
 		};
-		service.runtime.emitEvent(events, reactionPayload);
+		try {
+			await service.runtime.emitEvent(events, reactionPayload);
+		} catch (error) {
+			// error-policy:J7 Reaction listeners are observers. Their failure must
+			// not escape as an unhandled rejection after Discord accepted the event.
+			service.runtime.reportError("DiscordService.emitReaction", error, {
+				accountId,
+				type,
+				messageId: reaction.message.id,
+			});
+		}
 	} catch (error) {
 		service.runtime.logger.error(
 			{
