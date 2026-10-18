@@ -483,6 +483,9 @@ it("executes narrow promoted plugin schemas through authenticated HTTP without c
       { parameters: configureParameters },
     );
     expect(configured).toMatchObject({ success: true });
+    expect(configured?.text).toContain(
+      "Connection test failed: Plugin is not loaded.",
+    );
     expect(JSON.stringify(configured)).not.toContain(secret);
     expect(
       JSON.parse(await readFile(path.join(directory, "eliza.json"), "utf8"))

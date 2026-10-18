@@ -469,12 +469,17 @@ async function doConfigure(params: PluginParams): Promise<ActionResult> {
     const testData = (await testResp.json().catch(() => ({}))) as {
       success?: boolean;
       error?: string;
+      message?: string;
       durationMs?: number;
     };
-    if (testResp.ok && testData.success) {
+    if (testResp.ok && testData.success === true) {
       testSummary = ` Connection test passed (${testData.durationMs ?? 0}ms).`;
-    } else if (testResp.ok && testData.success === false) {
-      testSummary = ` Connection test failed: ${testData.error ?? "unknown"}.`;
+    } else {
+      const detail =
+        (typeof testData.error === "string" && testData.error.trim()) ||
+        (typeof testData.message === "string" && testData.message.trim()) ||
+        (testResp.ok ? "invalid response" : `HTTP ${testResp.status}`);
+      testSummary = ` Connection test failed: ${detail}.`;
     }
   } catch (testErr) {
     testSummary = ` Connection test skipped: ${
