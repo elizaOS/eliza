@@ -861,6 +861,24 @@ export interface TokenizerOptions {
  * Flexible text tokenizer with support for stop words, minimum token length,
  * Unicode normalization, and optional Porter2 stemming with custom rules.
  */
+const UNSPACED_SCRIPT =
+	/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u;
+
+// The pinned runtimes provide Intl.Segmenter, while the declaration library
+// does not expose its type.
+const wordSegmenter = new (
+	Intl as unknown as {
+		Segmenter: new (
+			locale: string,
+			options: { granularity: "word" },
+		) => {
+			segment(
+				text: string,
+			): Iterable<{ segment: string; isWordLike?: boolean }>;
+		};
+	}
+).Segmenter("und", { granularity: "word" });
+
 export class Tokenizer {
 	/** Set of stop words to ignore. */
 	readonly stopWords: Set<string>;
@@ -934,7 +952,7 @@ export class Tokenizer {
 		const cleaned = this.cleanText(text);
 		const tokens = cleaned
 			.split(/\s+/)
-			.filter((token) => this.isValidToken(token))
+			.flatMap((token) => this.splitUnspacedWords(token))
 			.map((token) => (this.stemming ? this.stemWord(token) : token));
 		let stats: TokenizationStats | undefined;
 		if (includeStats) {
@@ -958,7 +976,7 @@ export class Tokenizer {
 	 * - Removes emojis and pictographs.
 	 * - Removes common symbols (™, ®, ©, ℠, ‼).
 	 * - Replaces Unicode punctuation with spaces.
-	 * - Removes characters not matching basic Latin, CJK, Hangul, or whitespace.
+	 * - Removes characters that are not letters, marks or numbers of any script.
 	 * - Collapses multiple spaces into single spaces.
 	 * - Trims leading/trailing whitespace.
 	 *
@@ -976,6 +994,13 @@ export class Tokenizer {
 		return (
 			text
 				.toLowerCase()
+				// Letters with no NFKD decomposition fold like their accented peers.
+				.replace(/ß/g, "ss")
+				.replace(/æ/g, "ae")
+				.replace(/œ/g, "oe")
+				.replace(/ø/g, "o")
+				.replace(/ł/g, "l")
+				.replace(/đ/g, "d")
 				.normalize("NFKD")
 				// biome-ignore lint/suspicious/noControlCharactersInRegex: Intentionally matching control characters to remove them
 				.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, "") // Control characters & zero-width spaces
@@ -983,13 +1008,34 @@ export class Tokenizer {
 				.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, "") // Emojis and pictographs
 				.replace(/[™®©℠‼]/g, "") // Common symbols
 				.replace(/[\p{P}]/gu, " ") // Unicode punctuation to space
-				.replace(
-					/[^a-z0-9\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\s]/gu,
-					" ",
-				) // Keep only latin, cjk, hangul, numbers, whitespace
+				.replace(/[^\p{L}\p{N}\p{M}\s]/gu, " ") // Keep letters and marks of every script, numbers, whitespace
 				.replace(/\s+/g, " ") // Collapse multiple spaces
 				.trim()
 		);
+	}
+
+	/**
+	 * Chinese, Japanese, Thai, Lao, Khmer and Myanmar text has no spaces
+	 * between words, so a whole sentence would be one token and a query word
+	 * would never match inside it. Split those runs into dictionary words. A
+	 * single character is a whole word in these scripts, so `minLength` does
+	 * not apply to them.
+	 */
+	private splitUnspacedWords(token: string): string[] {
+		if (!UNSPACED_SCRIPT.test(token)) {
+			return this.isValidToken(token) ? [token] : [];
+		}
+		const words: string[] = [];
+		for (const part of wordSegmenter.segment(token)) {
+			if (!part.isWordLike) continue;
+			const word = part.segment;
+			if (UNSPACED_SCRIPT.test(word)) {
+				if (!this.stopWords.has(word)) words.push(word);
+			} else if (this.isValidToken(word)) {
+				words.push(word);
+			}
+		}
+		return words;
 	}
 
 	/**

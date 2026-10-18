@@ -119,6 +119,55 @@ it("searches every note while the room is within the scan limit", async () => {
   });
 });
 
+it("finds notes written in any script", async () => {
+  const runtime = await createRuntime();
+  await get(runtime, "/api/memory/search?q=lighthouse");
+  const roomId = stringToUuid(`${AGENT_NAME}-hash-memory-room`) as UUID;
+  const notes = [
+    "Мой любимый цвет — синий",
+    "我住在東京，很喜歡這裡",
+    "ฉันชอบกินข้าวผัดทุกวัน",
+    "Meine Wohnung ist in der Hauptstraße",
+    "Spotkanie w Łodzi w piątek",
+    "the lighthouse keeper",
+  ];
+  await runtime.createMemories(
+    notes.map((text, index) => ({
+      tableName: "messages",
+      memory: {
+        id: randomUUID() as UUID,
+        roomId,
+        entityId: runtime.agentId,
+        agentId: runtime.agentId,
+        createdAt: index + 1,
+        content: {
+          text,
+          source: HASH_MEMORY_SOURCE,
+          channelType: ChannelType.DM,
+        },
+      },
+    })),
+  );
+
+  for (const [query, expected] of [
+    ["цвет", notes[0]],
+    ["東京", notes[1]],
+    ["ข้าวผัด", notes[2]],
+    ["hauptstrasse", notes[3]],
+    ["lodzi", notes[4]],
+  ] as const) {
+    const reply = await get(
+      runtime,
+      `/api/memory/search?q=${encodeURIComponent(query)}`,
+    );
+    expect(reply.status).toBe(200);
+    expect(reply.body, query).toMatchObject({
+      count: 1,
+      results: [{ text: expected }],
+    });
+  }
+});
+
 it("rejects a search that cannot cover every saved note", async () => {
   const runtime = await createRuntime();
   await get(runtime, "/api/memory/search?q=lighthouse");
