@@ -56,34 +56,58 @@ function stateWithRecentMessages(messages: Memory[]): State {
   } as State;
 }
 
+interface ReportErrorCall {
+  scope: string;
+  error: unknown;
+  context: Record<string, unknown> | undefined;
+}
+
 function runtimeWithRoom(room: unknown): {
   runtime: IAgentRuntime;
   getRoomCalls: unknown[];
+  reportErrorCalls: ReportErrorCall[];
 } {
   const getRoomCalls: unknown[] = [];
+  const reportErrorCalls: ReportErrorCall[] = [];
   const runtime = {
     getRoom: async (...args: unknown[]) => {
       getRoomCalls.push(args);
       if (room instanceof Error) throw room;
       return room;
     },
+    reportError: (
+      scope: string,
+      error: unknown,
+      context?: Record<string, unknown>,
+    ) => {
+      reportErrorCalls.push({ scope, error, context });
+    },
   } as IAgentRuntime;
-  return { runtime, getRoomCalls };
+  return { runtime, getRoomCalls, reportErrorCalls };
 }
 
 function runtimeWithMemories(rows: Memory[] | Error): {
   runtime: IAgentRuntime;
   getMemoriesCalls: Array<Record<string, unknown>>;
+  reportErrorCalls: ReportErrorCall[];
 } {
   const getMemoriesCalls: Array<Record<string, unknown>> = [];
+  const reportErrorCalls: ReportErrorCall[] = [];
   const runtime = {
     getMemories: async (params: Record<string, unknown>) => {
       getMemoriesCalls.push(params);
       if (rows instanceof Error) throw rows;
       return rows;
     },
+    reportError: (
+      scope: string,
+      error: unknown,
+      context?: Record<string, unknown>,
+    ) => {
+      reportErrorCalls.push({ scope, error, context });
+    },
   } as IAgentRuntime;
-  return { runtime, getMemoriesCalls };
+  return { runtime, getMemoriesCalls, reportErrorCalls };
 }
 
 describe("loadDialogueWindow completeness", () => {
@@ -171,6 +195,27 @@ describe("resolveChannelType", () => {
     await expect(resolveChannelType(typeless.runtime, message)).resolves.toBe(
       "",
     );
+  });
+
+  it("reports a failed room lookup instead of only resolving empty", async () => {
+    const cause = new Error("room read failed");
+    const { runtime, reportErrorCalls } = runtimeWithRoom(cause);
+    const message = turn(ALICE, 1, { roomId: ROOM });
+    await expect(resolveChannelType(runtime, message)).resolves.toBe("");
+    expect(reportErrorCalls).toEqual([
+      {
+        scope: "GroupConversationSignals.roomType",
+        error: cause,
+        context: { roomId: ROOM },
+      },
+    ]);
+  });
+
+  it("does not report a room row that simply has no type", async () => {
+    const { runtime, reportErrorCalls } = runtimeWithRoom({});
+    const message = turn(ALICE, 1, { roomId: ROOM });
+    await expect(resolveChannelType(runtime, message)).resolves.toBe("");
+    expect(reportErrorCalls).toEqual([]);
   });
 });
 
@@ -269,6 +314,30 @@ describe("loadDialogueWindow", () => {
     inbound.roomId = ROOM;
     const window = await loadDialogueWindow(runtime, inbound, {} as State);
     expect(window.map((entry) => entry.id)).toEqual([inbound.id]);
+  });
+
+  it("reports a failed room scan instead of only returning the inbound turn", async () => {
+    const cause = new Error("scan failed");
+    const { runtime, reportErrorCalls } = runtimeWithMemories(cause);
+    const inbound = turn(ALICE, 1);
+    inbound.roomId = ROOM;
+    const window = await loadDialogueWindow(runtime, inbound, {} as State);
+    expect(window.map((entry) => entry.id)).toEqual([inbound.id]);
+    expect(reportErrorCalls).toEqual([
+      {
+        scope: "GroupConversationSignals.dialogueWindow",
+        error: cause,
+        context: { roomId: ROOM },
+      },
+    ]);
+  });
+
+  it("does not report an empty room scan", async () => {
+    const { runtime, reportErrorCalls } = runtimeWithMemories([]);
+    const inbound = turn(ALICE, 1);
+    inbound.roomId = ROOM;
+    await loadDialogueWindow(runtime, inbound, {} as State);
+    expect(reportErrorCalls).toEqual([]);
   });
 
   it("uses just the inbound turn when there is no state data and no roomId", async () => {

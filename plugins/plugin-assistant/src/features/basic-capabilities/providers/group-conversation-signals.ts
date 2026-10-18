@@ -71,7 +71,13 @@ export async function resolveChannelType(
     // round-trip within a compose fan-out.
     const room = await runtime.getRoom(message.roomId);
     return room?.type ? String(room.type).trim().toUpperCase() : "";
-  } catch {
+  } catch (error) {
+    // error-policy:J4 An unreadable room row must keep this signal inert
+    // (fail open, never mute a group turn), but a failed read is not the same
+    // fact as "no type": report the cause instead of flattening it to "".
+    runtime.reportError("GroupConversationSignals.roomType", error, {
+      roomId: message.roomId,
+    });
     return "";
   }
 }
@@ -133,7 +139,13 @@ export async function loadDialogueWindow(
         roomId: message.roomId,
         unique: false,
       });
-    } catch {
+    } catch (error) {
+      // error-policy:J4 The advisory providers still degrade to the inbound
+      // turn, but a failed room scan must not read as a quiet room: report it
+      // so a storage fault is distinguishable from genuinely empty history.
+      runtime.reportError("GroupConversationSignals.dialogueWindow", error, {
+        roomId: message.roomId,
+      });
       source = [];
     }
   } else {
