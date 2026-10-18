@@ -77,7 +77,7 @@ import {
 	isLocalInferenceUnavailableError,
 	LocalInferenceUnavailableError,
 } from "../provider";
-import { readEffectiveAssignments } from "./assignments";
+import { AssignmentsFileError, readEffectiveAssignments } from "./assignments";
 import { classifyDeviceTier, type DeviceTierAssessment } from "./device-tier";
 import { localInferenceEngine } from "./engine";
 import { handlerRegistry } from "./handler-registry";
@@ -325,10 +325,23 @@ export async function filterUnavailableLocalInference(
 		return candidates;
 	}
 
-	const assignments = await readEffectiveAssignments();
+	let slotAssigned = false;
+	try {
+		slotAssigned = Boolean((await readEffectiveAssignments())[slot]);
+	} catch (error) {
+		if (!(error instanceof AssignmentsFileError)) throw error;
+		// A corrupt assignments store makes the local slot's model unknown, not
+		// every provider unusable: drop local unless a model is already loaded
+		// (or the policy forces local), so cloud candidates still serve the turn.
+		// The store itself stays untouched and the fault stays visible here.
+		logger.error(
+			{ src: "router", slot, code: error.code, path: error.path },
+			`[router] ${error.message}; treating local inference as unassigned for ${slot}`,
+		);
+	}
 	return filterUnavailableLocalInferenceCandidates(
 		candidates,
-		Boolean(assignments[slot]) || localInferenceEngine.hasLoadedModel(),
+		slotAssigned || localInferenceEngine.hasLoadedModel(),
 		shouldForceLocalInference(policy, preferredProvider),
 	);
 }

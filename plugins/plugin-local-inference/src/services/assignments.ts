@@ -14,6 +14,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { readAssignmentsJson } from "./assignments-file-error";
 import { findCatalogModel, isDefaultEligibleId } from "./catalog";
 import { withConfigFileLock } from "./config-file-lock";
 import { manifestPassesActivationGate } from "./manifest";
@@ -21,6 +22,8 @@ import { localInferenceRoot } from "./paths";
 import { defaultManifestLoader, type ManifestLoader } from "./ram-budget";
 import { listInstalledModels } from "./registry";
 import type { AgentModelSlot, InstalledModel, ModelAssignments } from "./types";
+
+export { AssignmentsFileError } from "./assignments-file-error";
 
 const ASSIGNMENTS_FILENAME = "assignments.json";
 
@@ -47,27 +50,6 @@ export class AssignmentRejectedError extends Error {
 interface AssignmentsFile {
 	version: 1;
 	assignments: ModelAssignments;
-}
-
-/**
- * Raised when `assignments.json` exists but cannot be read or parsed.
- *
- * Distinct from an absent file (`ENOENT`), which legitimately means "no saved
- * slots yet". A damaged store must not reach callers as an empty policy:
- * `setAssignment` / `ensureDefaultAssignment` read-modify-write from
- * `readAssignments()`, so an empty read rewrites the file and silently drops
- * every slot the user had already chosen.
- */
-export class AssignmentsFileError extends Error {
-	constructor(
-		message: string,
-		readonly code: "ASSIGNMENTS_UNREADABLE" | "ASSIGNMENTS_CORRUPT",
-		readonly path: string,
-		cause?: unknown,
-	) {
-		super(message, { cause });
-		this.name = "AssignmentsFileError";
-	}
 }
 
 function assignmentsPath(): string {
@@ -109,37 +91,14 @@ async function ensureRoot(): Promise<void> {
 }
 
 export async function readAssignments(): Promise<ModelAssignments> {
-	const file = assignmentsPath();
-	let raw: string;
-	try {
-		raw = await fs.readFile(file, "utf8");
-	} catch (error) {
-		// error-policy:J3 first boot has no assignments.json, so `ENOENT` is the
-		// expected "nothing saved yet" answer. Any other read failure means the
-		// store is there but unusable; keep it visible to the caller.
-		if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return {};
-		throw new AssignmentsFileError(
-			`Cannot read model assignments ${file}`,
-			"ASSIGNMENTS_UNREADABLE",
-			file,
-			error,
-		);
-	}
-	let parsed: AssignmentsFile;
-	try {
-		parsed = JSON.parse(raw) as AssignmentsFile;
-	} catch (error) {
-		// error-policy:J2 context-adding rethrow — a store that exists but does
-		// not parse is corrupt, not an empty assignment policy. Reporting `{}`
-		// here let `setAssignment`'s read-modify-write rewrite the file from the
-		// empty map and drop every other saved slot without a trace.
-		throw new AssignmentsFileError(
-			`Model assignments are corrupt (invalid JSON): ${file}`,
-			"ASSIGNMENTS_CORRUPT",
-			file,
-			error,
-		);
-	}
+	// Missing file → `null` → no saved slots. A damaged file throws
+	// AssignmentsFileError: reporting `{}` for it let `setAssignment`'s
+	// read-modify-write rewrite the file from the empty map and drop every
+	// other saved slot without a trace.
+	const parsed = (await readAssignmentsJson(
+		assignmentsPath(),
+		fs.readFile,
+	)) as AssignmentsFile | null;
 	// An unknown `version` comes from a newer writer, not from damage: keep
 	// falling back to the recommended defaults instead of failing the policy.
 	if (parsed?.version !== 1 || !parsed.assignments) return {};

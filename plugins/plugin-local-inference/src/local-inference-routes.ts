@@ -45,6 +45,10 @@ import {
 	LOCAL_INFERENCE_MODEL_TYPES,
 	LOCAL_INFERENCE_PROVIDER_ID,
 } from "./provider.js";
+import {
+	AssignmentsFileError,
+	readAssignmentsJson,
+} from "./services/assignments-file-error.js";
 import { withConfigFileLock } from "./services/config-file-lock";
 import { classifyDeviceTier } from "./services/device-tier.js";
 import { resolveLocalInferenceStoredPath } from "./services/paths.js";
@@ -441,12 +445,27 @@ async function removeInstalledModel(id: string): Promise<boolean> {
 	);
 }
 async function readAssignments(): Promise<Assignments> {
-	const file = await readJsonFile<{
+	// Not `readJsonFile`: its catch-all fallback turned a corrupt store into `{}`,
+	// and `updateAssignments` then rewrote the file from that empty map, dropping
+	// every other saved slot. A missing file is still "no saved slots".
+	const file = (await readAssignmentsJson(assignmentsPath(), fsp.readFile)) as {
 		assignments?: Assignments;
-	}>(assignmentsPath(), {
-		assignments: {},
-	});
-	return sanitizeAssignments(file.assignments ?? {});
+	} | null;
+	return sanitizeAssignments(file?.assignments ?? {});
+}
+function sendAssignmentsFileError(
+	res: http.ServerResponse,
+	error: AssignmentsFileError,
+): void {
+	logger.error(
+		{ src: "local-inference", code: error.code, path: error.path },
+		`[local-inference] ${error.message}`,
+	);
+	sendJson(
+		res,
+		{ error: error.message, code: error.code, path: error.path },
+		409,
+	);
 }
 async function writeAssignments(
 	assignments: Assignments,
@@ -1396,7 +1415,12 @@ export async function handleLocalInferenceRoutes(
 		return true;
 	}
 	if (method === "GET" && pathname === "/api/local-inference/assignments") {
-		sendJson(res, { assignments: await readAssignments() });
+		try {
+			sendJson(res, { assignments: await readAssignments() });
+		} catch (error) {
+			if (!(error instanceof AssignmentsFileError)) throw error;
+			sendAssignmentsFileError(res, error);
+		}
 		return true;
 	}
 	if (method === "POST" && pathname === "/api/local-inference/assignments") {
@@ -1423,13 +1447,22 @@ export async function handleLocalInferenceRoutes(
 		// readAssignments/writeAssignments pair here loses one of two
 		// concurrent POSTs to the stale pre-write snapshot (issue #25123's
 		// race, on the route that motivated it).
-		const assignments = await updateAssignments((current) => {
-			if (modelId) {
-				current[slot as keyof Assignments] = modelId;
-			} else {
-				delete current[slot as keyof Assignments];
-			}
-		});
+		// A corrupt store rejects inside the lock before any write, so the
+		// damaged bytes stay on disk for the user to inspect or restore.
+		let assignments: Assignments;
+		try {
+			assignments = await updateAssignments((current) => {
+				if (modelId) {
+					current[slot as keyof Assignments] = modelId;
+				} else {
+					delete current[slot as keyof Assignments];
+				}
+			});
+		} catch (error) {
+			if (!(error instanceof AssignmentsFileError)) throw error;
+			sendAssignmentsFileError(res, error);
+			return true;
+		}
 		sendJson(res, { assignments });
 		return true;
 	}

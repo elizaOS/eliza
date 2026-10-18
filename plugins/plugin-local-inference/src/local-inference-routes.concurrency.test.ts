@@ -222,6 +222,40 @@ describe("local-inference concurrent config mutations (#25123)", () => {
 		}
 	});
 
+	it("rejects POST /api/local-inference/assignments on a corrupt file and leaves it intact", async () => {
+		// The route's read used a catch-all JSON fallback, so a truncated file
+		// read as `{}` and the POST rewrote it with only the new slot, dropping
+		// every other saved assignment.
+		const assignmentFile = path.join(localInferenceRoot(), "assignments.json");
+		const corrupt = '{"version":1,"assignments":{"TEXT_SMALL":"eliza-1-4b"';
+		writeFileSync(assignmentFile, corrupt);
+		const server = http.createServer((req, res) => {
+			void handleLocalInferenceRoutes(req, res);
+		});
+		await new Promise<void>((resolve) => server.listen(0, resolve));
+		const { port } = server.address() as { port: number };
+		const url = `http://127.0.0.1:${port}/api/local-inference/assignments`;
+		try {
+			const post = await fetch(url, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ slot: "TEXT_LARGE", modelId: "eliza-1-9b" }),
+			});
+			expect(post.status).toBe(409);
+			expect(await post.json()).toMatchObject({ code: "ASSIGNMENTS_CORRUPT" });
+
+			const get = await fetch(url);
+			expect(get.status).toBe(409);
+			expect(await get.json()).toMatchObject({ code: "ASSIGNMENTS_CORRUPT" });
+
+			expect(readFileSync(assignmentFile, "utf8")).toBe(corrupt);
+		} finally {
+			await new Promise<void>((resolve, reject) =>
+				server.close((error) => (error ? reject(error) : resolve())),
+			);
+		}
+	});
+
 	it("does not race the services module's staging file under concurrent writes", async () => {
 		// services/assignments.ts staged every write to one fixed
 		// `${path}.tmp`, so concurrent writers raced on fs.rename and rejected
