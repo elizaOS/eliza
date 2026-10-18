@@ -253,7 +253,10 @@ export class UAIDResolver {
    *
    * @param query - Search terms (name, capability, protocol)
    * @param options - Optional filters
-   * @returns Array of matching UAIDResolution results
+   * @returns Array of matching UAIDResolution results; empty when the
+   * registry answered and nothing matched
+   * @throws Error when the registry could not answer the search (non-OK
+   * response or transport failure)
    */
   async search(
     query: string,
@@ -263,48 +266,51 @@ export class UAIDResolver {
       minTrustScore?: number;
     },
   ): Promise<UAIDResolution[]> {
-    try {
-      const params = new URLSearchParams({ q: query });
-      if (options?.protocol) params.set("protocol", options.protocol);
-      if (options?.limit) params.set("limit", String(options.limit));
-      if (options?.minTrustScore)
-        params.set("minTrust", String(options.minTrustScore));
+    const params = new URLSearchParams({ q: query });
+    if (options?.protocol) params.set("protocol", options.protocol);
+    if (options?.limit) params.set("limit", String(options.limit));
+    if (options?.minTrustScore)
+      params.set("minTrust", String(options.minTrustScore));
 
-      const response = await this.brokerRequest(
-        "GET",
-        `/agents/search?${params}`,
+    const response = await this.brokerRequest(
+      "GET",
+      `/agents/search?${params}`,
+    );
+    // An answered search with no matches is `agents: []`; a non-OK response
+    // means the registry could not answer (bad key, rate limit, outage) and
+    // must not be reported to callers as "no matching agents".
+    if (!response.ok) {
+      throw new Error(
+        `UAID search failed: registry returned ${response.status}`,
       );
-      if (!response.ok) return [];
-
-      const data = await response.json();
-      const results: UAIDResolution[] = (data.agents ?? []).map(
-        (agent: Record<string, unknown>) => ({
-          resolved: true,
-          uaid: agent.uaid as string,
-          identity: {
-            agentId: String(agent.agentId ?? agent.nativeId ?? ""),
-            owner: (agent.owner ?? agent.controller ?? "") as string,
-            agentURI: (agent.agentURI ?? agent.metadataUri ?? "") as string,
-            paymentAddress: (agent.paymentAddress ??
-              agent.agentWallet ??
-              "") as string,
-            registrationFile: (agent.registrationFile ??
-              null) as AgentRegistrationFile | null,
-            protocol: (agent.protocol ?? "unknown") as UAIDProtocol,
-            chain: (agent.chain ?? "") as string,
-            uaid: agent.uaid as string,
-          },
-          protocol: (agent.protocol ?? "unknown") as UAIDProtocol,
-          chain: agent.chain as string | undefined,
-          trustScore: agent.trustScore as number | undefined,
-          registryVerified: (agent.verified ?? false) as boolean,
-        }),
-      );
-
-      return results;
-    } catch {
-      return [];
     }
+
+    const data = await response.json();
+    const results: UAIDResolution[] = (data.agents ?? []).map(
+      (agent: Record<string, unknown>) => ({
+        resolved: true,
+        uaid: agent.uaid as string,
+        identity: {
+          agentId: String(agent.agentId ?? agent.nativeId ?? ""),
+          owner: (agent.owner ?? agent.controller ?? "") as string,
+          agentURI: (agent.agentURI ?? agent.metadataUri ?? "") as string,
+          paymentAddress: (agent.paymentAddress ??
+            agent.agentWallet ??
+            "") as string,
+          registrationFile: (agent.registrationFile ??
+            null) as AgentRegistrationFile | null,
+          protocol: (agent.protocol ?? "unknown") as UAIDProtocol,
+          chain: (agent.chain ?? "") as string,
+          uaid: agent.uaid as string,
+        },
+        protocol: (agent.protocol ?? "unknown") as UAIDProtocol,
+        chain: agent.chain as string | undefined,
+        trustScore: agent.trustScore as number | undefined,
+        registryVerified: (agent.verified ?? false) as boolean,
+      }),
+    );
+
+    return results;
   }
 
   // ── ERC-8004 ↔ UAID bridge ────────────────────────────────────────────────
