@@ -49,6 +49,7 @@ import {
   googleAccountIdFromGrantId,
   googleSendEmailInput,
   lifeOpsGmailMessageFromGoogle,
+  lifeOpsGmailMessageId,
   requireGoogleServiceMethod,
 } from "../google-plugin-delegates.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
@@ -1012,40 +1013,47 @@ export class GmailDomain {
     const olderThanDays = normalizeGmailUnrespondedOlderThanDays(
       request.olderThanDays,
     );
-    const query = `in:sent older_than:${olderThanDays}d`;
-    const synced = await this.syncGmailMessages({
+    const grant = await this.deps.requireGoogleGmailGrant(
       requestUrl,
-      mode: normalizeOptionalConnectorMode(request.mode, "mode"),
-      side: normalizeOptionalConnectorSide(request.side, "side"),
-      grantId: request.grantId,
-      query,
+      normalizeOptionalConnectorMode(request.mode, "mode"),
+      normalizeOptionalConnectorSide(request.side, "side"),
+      request.grantId,
+    );
+    const listUnrespondedThreads = requireGoogleServiceMethod(
+      this.ctx.runtime,
+      "listGmailUnrespondedThreads",
+    );
+    const providerThreads = await listUnrespondedThreads({
+      accountId: accountIdForGrant(grant),
+      selfEmail: grant.identityEmail,
+      olderThanDays,
       maxResults: explicitMaxResults(request.maxResults),
       now,
     });
-    const threads = synced.messages.map((message) => ({
-      threadId: message.threadId,
-      messageId: message.id,
-      subject: message.subject,
-      to: message.to,
-      cc: message.cc,
-      lastOutboundAt: message.receivedAt,
-      lastInboundAt: null,
-      daysWaiting: Math.max(
-        olderThanDays,
-        Math.floor(
-          (now.getTime() - Date.parse(message.receivedAt)) / 86_400_000,
-        ),
-      ),
-      snippet: message.snippet,
-      labels: message.labels,
-      htmlLink: message.htmlLink,
-      grantId: message.grantId,
-      accountEmail: message.accountEmail,
+    const threads = providerThreads.map((thread) => ({
+      threadId: thread.threadId,
+      messageId: lifeOpsGmailMessageId({
+        agentId: this.ctx.agentId(),
+        grant,
+        externalId: thread.externalMessageId,
+      }),
+      subject: thread.subject,
+      to: thread.to,
+      cc: thread.cc,
+      lastOutboundAt: thread.lastOutboundAt,
+      lastInboundAt: thread.lastInboundAt,
+      daysWaiting: thread.daysWaiting,
+      snippet: thread.snippet,
+      labels: thread.labels,
+      htmlLink: thread.htmlLink,
+      grantId: grant.id,
+      accountEmail: grant.identityEmail ?? undefined,
     }));
+    const syncedAt = now.toISOString();
     return {
       threads,
       source: "synced",
-      syncedAt: synced.syncedAt,
+      syncedAt,
       summary: summarizeGmailUnresponded(threads),
     };
   }
