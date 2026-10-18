@@ -73,22 +73,71 @@ type CorrectionJsonResponse = {
   corrections?: CorrectionJsonField[];
 };
 
-function parseJsonObjectResponse<T>(response: string): T | null {
-  try {
-    const trimmed = response.trim();
-    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-    const candidate = (fenced?.[1] ?? trimmed).trim();
-    const firstBrace = candidate.indexOf("{");
-    const lastBrace = candidate.lastIndexOf("}");
-    if (firstBrace < 0 || lastBrace <= firstBrace) return null;
-    const parsed = JSON.parse(candidate.slice(firstBrace, lastBrace + 1));
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return null;
+/**
+ * Complete top-level `{...}` regions of a model reply. A brace inside a JSON
+ * string does not change the depth, and a nested object is part of the region
+ * that holds it, so a sample in the prose cannot move the cut.
+ */
+function objectRegions(text: string): Array<{ start: number; end: number }> {
+  const regions: Array<{ start: number; end: number }> = [];
+  let depth = 0;
+  let start = 0;
+  let quoted = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (quoted) {
+      if (character === "\\") index += 1;
+      else if (character === '"') quoted = false;
+      continue;
     }
-    return parsed as T;
-  } catch {
-    return null;
+    if (character === '"') quoted = true;
+    else if (character === "{") {
+      if (depth === 0) start = index;
+      depth += 1;
+    } else if (character === "}" && depth > 0) {
+      depth -= 1;
+      if (depth === 0) regions.push({ start, end: index + 1 });
+    }
   }
+  return regions;
+}
+
+/**
+ * Read the reply's one complete JSON object. A brace in the prose, as in
+ * "filled from the {amount} slot", is not a JSON object, so the answer object
+ * is still read. A reply that holds several separate objects does not say
+ * which one is the answer: fail closed instead of filling the form from a
+ * sample the model wrote.
+ */
+function parseJsonObjectResponse<T>(response: string): T | null {
+  const trimmed = response.trim();
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  const candidate = (fenced?.[1] ?? trimmed).trim();
+  const firstBrace = candidate.indexOf("{");
+  const lastBrace = candidate.lastIndexOf("}");
+  // A reply that already reads as one object keeps its current result.
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    try {
+      const whole = JSON.parse(candidate.slice(firstBrace, lastBrace + 1));
+      if (whole && typeof whole === "object" && !Array.isArray(whole)) {
+        return whole as T;
+      }
+    } catch {
+      // The cut includes something other than the answer; read the regions.
+    }
+  }
+  const parsed: unknown[] = [];
+  for (const region of objectRegions(candidate)) {
+    try {
+      const value = JSON.parse(candidate.slice(region.start, region.end));
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        parsed.push(value);
+      }
+    } catch {
+      // A region that is not JSON, such as a brace in the prose, is skipped.
+    }
+  }
+  return parsed.length === 1 ? (parsed[0] as T) : null;
 }
 
 function parseBoolean(value: unknown): boolean {
