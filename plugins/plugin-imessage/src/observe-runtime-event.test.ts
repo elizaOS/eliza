@@ -170,21 +170,14 @@ describe("emitAuxiliaryEvent (call-path)", () => {
     expect(runtime.reportError).not.toHaveBeenCalled();
   });
 
-  it("reports throwing listeners on the reaction path without propagating", async () => {
+  it("reports asynchronously rejecting listeners on the reaction path", async () => {
     const runtime = mockRuntime();
     const asyncError = new Error("reaction listener boom");
-    let rejectEmit!: (err: unknown) => void;
-    runtime.emitEvent.mockImplementation(
-      () =>
-        new Promise<unknown>((_resolve, reject) => {
-          rejectEmit = reject;
-        }),
-    );
+    runtime.emitEvent.mockRejectedValue(asyncError);
     const internal = serviceWithRuntime(runtime);
 
     expect(() => internal.emitAuxiliaryEvent(reactionRow())).not.toThrow();
 
-    rejectEmit(asyncError);
     await flushMicrotasks();
 
     // Both emissions go through observeRuntimeEvent.
@@ -192,6 +185,12 @@ describe("emitAuxiliaryEvent (call-path)", () => {
     expect(runtime.reportError).toHaveBeenCalledTimes(2);
     expect(runtime.reportError).toHaveBeenNthCalledWith(
       1,
+      "IMessageService.emitAuxiliaryEvent",
+      asyncError,
+      expect.objectContaining({ targetGuid: "guid-123" }),
+    );
+    expect(runtime.reportError).toHaveBeenNthCalledWith(
+      2,
       "IMessageService.emitAuxiliaryEvent",
       asyncError,
       expect.objectContaining({ targetGuid: "guid-123" }),
