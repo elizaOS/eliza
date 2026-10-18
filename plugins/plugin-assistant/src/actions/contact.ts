@@ -842,7 +842,7 @@ export function createContactActions(dependencies: ContactActionDependencies): {
       entityId = params.entityId as UUID;
     } else {
       entityId = stringToUuid(
-        `contact-${runtime.agentId}-${name}-${Date.now()}`,
+        `contact-${runtime.agentId}-${name}-${crypto.randomUUID()}`,
       ) as UUID;
     }
 
