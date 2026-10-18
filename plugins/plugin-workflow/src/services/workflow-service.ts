@@ -54,7 +54,43 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function parseJsonObject(text: string): Record<string, unknown> {
+/**
+ * The newest balanced top-level `{...}` region in `text`, and whether the text
+ * ends inside a region that never closed. A brace inside a JSON string does not
+ * change the depth. A quote counts only inside a region: before one the text is
+ * prose, where a lone quote has no partner.
+ */
+function scanTopLevelObjects(text: string): {
+  last?: { start: number; end: number };
+  unfinished: boolean;
+} {
+  let last: { start: number; end: number } | undefined;
+  const open: number[] = [];
+  let quote = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (quote) {
+      if (character === '\\') index += 1;
+      else if (character === '"') quote = false;
+      continue;
+    }
+    if (open.length === 0) {
+      if (character === '{') open.push(index);
+      continue;
+    }
+    if (character === '"') quote = true;
+    else if (character === '{') open.push(index);
+    else if (character === '}') {
+      const start = open.pop();
+      if (start !== undefined && open.length === 0) last = { start, end: index + 1 };
+    }
+  }
+  return { last, unfinished: open.length > 0 };
+}
+
+/** Read the one JSON object a generation reply returns. Exported so regression
+ * tests can drive the same parser the generation path uses. */
+export function parseJsonObject(text: string): Record<string, unknown> {
   const trimmed = text
     .trim()
     .replace(/^```(?:json)?\s*/i, '')
@@ -65,11 +101,22 @@ function parseJsonObject(text: string): Record<string, unknown> {
   } catch {
     // error-policy:J3 the fallback below extracts one explicitly-delimited JSON object.
   }
-  const start = trimmed.indexOf('{');
-  const end = trimmed.lastIndexOf('}');
-  if (start >= 0 && end > start) {
+  const { last, unfinished } = scanTopLevelObjects(trimmed);
+  // The reply ends inside an object, so it was cut off. Its last `}` closes an
+  // earlier object, which is often the example the prose described. A partial
+  // workflow must never be accepted as the draft.
+  if (unfinished) {
+    throw new WorkflowApiError(
+      'The model returned a workflow object that ends before it closes',
+      502
+    );
+  }
+  // Prose can describe the fields with its own braces, as in "uses {name} and
+  // {source}". The draft follows that prose, so only the newest complete
+  // top-level object can be the workflow; an earlier region is an example.
+  if (last) {
     try {
-      const value = JSON.parse(trimmed.slice(start, end + 1));
+      const value = JSON.parse(trimmed.slice(last.start, last.end));
       if (isRecord(value)) return value;
     } catch {
       // error-policy:J3 an invalid model response becomes a visible generation error.
