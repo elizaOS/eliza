@@ -110,7 +110,7 @@ export function isGroupDmEvent(event: DirectMessageEvent): boolean {
 export class TwitterDirectMessageClient {
   private isRunning = false;
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
-  private pollInFlight = false;
+  private pollInFlight: Promise<void> | null = null;
   private readonly isDryRun: boolean;
 
   constructor(
@@ -201,6 +201,10 @@ export class TwitterDirectMessageClient {
       clearTimeout(this.pollTimer);
       this.pollTimer = null;
     }
+    // A scheduled poll can already be past the running check and inside the
+    // reply pipeline. Keep stop as the lifecycle boundary: no DM egress or
+    // cursor write from that poll may occur after stop returns.
+    await this.pollInFlight;
   }
 
   private scheduleNextPoll(): void {
@@ -214,15 +218,18 @@ export class TwitterDirectMessageClient {
 
   private async poll(): Promise<void> {
     if (!this.isRunning || this.pollInFlight) return;
-    this.pollInFlight = true;
-    try {
-      await this.processNewMessages();
-    } catch (error) {
+    const activePoll = this.processNewMessages().catch((error) => {
       this.runtime.reportError("XDirectMessages.poll", error, {
         accountId: this.client.accountId,
       });
+    });
+    this.pollInFlight = activePoll;
+    try {
+      await activePoll;
     } finally {
-      this.pollInFlight = false;
+      if (this.pollInFlight === activePoll) {
+        this.pollInFlight = null;
+      }
       this.scheduleNextPoll();
     }
   }
