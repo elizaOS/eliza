@@ -11,6 +11,7 @@ import {
   type Content,
   createUniqueUuid,
   ElizaError,
+  type EventPayload,
   EventType,
   type HandlerCallback,
   type IAgentRuntime,
@@ -1029,16 +1030,10 @@ ${tweet.text}`;
             await this.runtime.getMemoryById(threadMemoryId);
           if (previousThreadMemory) {
             // This is a reply to an existing thread
-            this.runtime.emitEvent(
-              TwitterEventTypes.THREAD_UPDATED,
-              threadPayload,
-            );
+            this.emitObserved(TwitterEventTypes.THREAD_UPDATED, threadPayload);
           } else if ((tweet.thread[0]?.id ?? tweet.id) === tweet.id) {
             // This is the start of a new thread
-            this.runtime.emitEvent(
-              TwitterEventTypes.THREAD_CREATED,
-              threadPayload,
-            );
+            this.emitObserved(TwitterEventTypes.THREAD_CREATED, threadPayload);
           }
         }
         this.assertCurrentSession(session);
@@ -1052,6 +1047,21 @@ ${tweet.text}`;
         this.client.recordLatestCheckedTweetId(profileId, BigInt(tweet.id));
       }
     }
+  }
+  /**
+   * Emits an interaction event and reports a failing listener instead of
+   * letting the rejection escape. The interaction memory is already persisted,
+   * so the run must continue and the failure must reach the diagnostics.
+   */
+  private emitObserved(eventName: string, payload: EventPayload): void {
+    void Promise.resolve(this.runtime.emitEvent(eventName, payload)).catch(
+      (error) => {
+        this.runtime.reportError("TwitterInteractionClient.emitEvent", error, {
+          accountId: this.client.accountId,
+          eventName,
+        });
+      },
+    );
   }
   /**
    * Handles Twitter interactions such as likes, retweets, and quotes.
@@ -1114,7 +1124,7 @@ ${tweet.text}`;
             },
             source: "twitter",
           };
-          this.runtime.emitEvent(TwitterEventTypes.LIKE_RECEIVED, payload);
+          this.emitObserved(TwitterEventTypes.LIKE_RECEIVED, payload);
           break;
         }
         case "retweet": {
@@ -1129,7 +1139,7 @@ ${tweet.text}`;
             },
             source: "twitter",
           };
-          this.runtime.emitEvent(TwitterEventTypes.RETWEET_RECEIVED, payload);
+          this.emitObserved(TwitterEventTypes.RETWEET_RECEIVED, payload);
           break;
         }
         case "quote": {
@@ -1150,12 +1160,12 @@ ${tweet.text}`;
             },
             source: "twitter",
           };
-          this.runtime.emitEvent(TwitterEventTypes.QUOTE_RECEIVED, payload);
+          this.emitObserved(TwitterEventTypes.QUOTE_RECEIVED, payload);
           break;
         }
       }
       // Also emit generic REACTION_RECEIVED event
-      this.runtime.emitEvent(EventType.REACTION_RECEIVED, {
+      this.emitObserved(EventType.REACTION_RECEIVED, {
         runtime: this.runtime,
         entityId: createUniqueUuid(this.runtime, interaction.userId),
         roomId: createUniqueUuid(
