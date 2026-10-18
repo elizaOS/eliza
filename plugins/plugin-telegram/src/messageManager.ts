@@ -2507,6 +2507,34 @@ export class MessageManager {
   }
 
   /**
+   * Emits an observer event. The update, memory row, or provider send that
+   * produced the event is already durable, so a rejecting listener is
+   * reported and never becomes an unhandled rejection or a retry trigger.
+   */
+  private observeEvent(
+    scope: string,
+    event: string,
+    payload: EventPayload,
+    context: Record<string, unknown> = {},
+  ): void {
+    const reportFailure = (error: unknown) =>
+      this.runtime.reportError(scope, error, {
+        event,
+        accountId: this.accountId,
+        ...context,
+      });
+    try {
+      // error-policy:J7 The effect that produced this event already
+      // succeeded. Event listeners are observers, so a rejected listener is
+      // reported without creating an unhandled rejection or making the
+      // accepted update look retryable.
+      void this.runtime.emitEvent(event, payload).catch(reportFailure);
+    } catch (error) {
+      reportFailure(error);
+    }
+  }
+
+  /**
    * Handles the reaction event triggered by a user reacting to a message.
    * @param {NarrowedContext<Context<Update>, Update.MessageReactionUpdate>} ctx The context of the message reaction update
    * @returns {Promise<void>} A Promise that resolves when the reaction handling is complete
@@ -2663,32 +2691,40 @@ export class MessageManager {
       };
 
       // Let the bootstrap plugin handle the reaction
-      this.runtime.emitEvent(EventType.REACTION_RECEIVED, {
-        runtime: this.runtime,
-        message: memory,
-        callback,
-        source: "telegram",
-        accountId: this.accountId,
-        metadata: { accountId: this.accountId },
-        ctx,
-        originalMessage: syntheticReactionMessage,
-        reactionString: reactionLabel,
-        originalReaction: firstReaction as ReactionType,
-      } as TelegramReactionReceivedPayload);
+      this.observeEvent(
+        "MessageManager.emitReaction",
+        EventType.REACTION_RECEIVED,
+        {
+          runtime: this.runtime,
+          message: memory,
+          callback,
+          source: "telegram",
+          accountId: this.accountId,
+          metadata: { accountId: this.accountId },
+          ctx,
+          originalMessage: syntheticReactionMessage,
+          reactionString: reactionLabel,
+          originalReaction: firstReaction as ReactionType,
+        } as TelegramReactionReceivedPayload,
+      );
 
       // Also emit the platform-specific event
-      this.runtime.emitEvent(TelegramEventTypes.REACTION_RECEIVED, {
-        runtime: this.runtime,
-        message: memory,
-        callback,
-        source: "telegram",
-        accountId: this.accountId,
-        metadata: { accountId: this.accountId },
-        ctx,
-        originalMessage: syntheticReactionMessage,
-        reactionString: reactionLabel,
-        originalReaction: firstReaction as ReactionType,
-      } as TelegramReactionReceivedPayload);
+      this.observeEvent(
+        "MessageManager.emitReaction",
+        TelegramEventTypes.REACTION_RECEIVED,
+        {
+          runtime: this.runtime,
+          message: memory,
+          callback,
+          source: "telegram",
+          accountId: this.accountId,
+          metadata: { accountId: this.accountId },
+          ctx,
+          originalMessage: syntheticReactionMessage,
+          reactionString: reactionLabel,
+          originalReaction: firstReaction as ReactionType,
+        } as TelegramReactionReceivedPayload,
+      );
     } catch (error) {
       logger.error(
         {
@@ -3019,23 +3055,10 @@ export class MessageManager {
       // Emit both generic and platform-specific message sent events
       if (memories.length > 0) {
         const firstMemory = memories[0];
-        const observeEvent = (event: string, payload: EventPayload) => {
-          const reportFailure = (error: unknown) =>
-            this.runtime.reportError("MessageManager.emitMessageSent", error, {
-              event,
-              accountId: this.accountId,
-              chatId: String(chatId),
-            });
-          try {
-            // error-policy:J7 The provider send and memory write are already
-            // durable. Event listeners are observers, so report a rejected
-            // listener without creating an unhandled rejection or making the
-            // accepted message look retryable.
-            void this.runtime.emitEvent(event, payload).catch(reportFailure);
-          } catch (error) {
-            reportFailure(error);
-          }
-        };
+        const observeEvent = (event: string, payload: EventPayload) =>
+          this.observeEvent("MessageManager.emitMessageSent", event, payload, {
+            chatId: String(chatId),
+          });
         observeEvent(EventType.MESSAGE_SENT, {
           runtime: this.runtime,
           message: firstMemory,
