@@ -101,28 +101,55 @@ function createFileStorage(options: BrowserFilesOptions) {
   /** Read, validate, and mutate in one transaction, including across tabs. */
   async function transaction<T>(
     action: (all: Entry[], store: IDBObjectStore) => T,
+    signal?: AbortSignal,
   ) {
+    signal?.throwIfAborted();
     const d = await db();
+    signal?.throwIfAborted();
     return new Promise<T>((resolve, reject) => {
       const tx = d.transaction("entries", "readwrite"),
         store = tx.objectStore("entries");
       let result: T;
       let failure: unknown;
-      tx.oncomplete = () => resolve(result);
-      tx.onabort = tx.onerror = (event) =>
+      const cancel = () => {
+        failure = signal?.reason ?? new DOMException("Cancelled", "AbortError");
+        try {
+          tx.abort();
+        } catch {
+          // The commit already won. Its success receipt remains authoritative.
+        }
+      };
+      const detach = () => signal?.removeEventListener("abort", cancel);
+      tx.oncomplete = () => {
+        detach();
+        resolve(result);
+      };
+      tx.onabort = tx.onerror = (event) => {
+        detach();
         reject(
           failure ||
             (event.target as IDBRequest)?.error ||
             tx.error ||
             Error("File storage failed."),
         );
+      };
+      signal?.addEventListener("abort", cancel, { once: true });
+      if (signal?.aborted) {
+        cancel();
+        return;
+      }
       const request = store.getAll();
       request.onsuccess = () => {
         try {
+          signal?.throwIfAborted();
           result = action(request.result, store);
         } catch (error) {
-          failure = error;
-          tx.abort();
+          failure = signal?.aborted ? (signal.reason ?? error) : error;
+          try {
+            tx.abort();
+          } catch {
+            // Cancellation already started the abort.
+          }
         }
       };
     });
@@ -448,7 +475,6 @@ export class BrowserFiles extends WebPlugin {
       });
     }
     await this.storage.transaction((all, store) => {
-      signal?.throwIfAborted();
       if (all.some((e) => e.parentId === "root" && e.name === folder.name))
         throw Error("A folder with this name already exists.");
       const names = new Set<string>();
@@ -458,7 +484,7 @@ export class BrowserFiles extends WebPlugin {
         names.add(key);
         store.add({ ...row, createdAt: Date.now(), modifiedAt: Date.now() });
       }
-    });
+    }, signal);
     return this.list({ id: folder.id });
   }
   async importFolder() {
@@ -546,7 +572,6 @@ export class BrowserFiles extends WebPlugin {
   }
   private insert(row: Entry, signal?: AbortSignal) {
     return this.storage.transaction((all, store) => {
-      signal?.throwIfAborted();
       if (
         row.parentId !== "root" &&
         !all.some((e) => e.id === row.parentId && e.directory)
@@ -555,7 +580,7 @@ export class BrowserFiles extends WebPlugin {
       if (all.some((e) => e.parentId === row.parentId && e.name === row.name))
         throw Error("Choose a different name.");
       store.add({ ...row, createdAt: Date.now(), modifiedAt: Date.now() });
-    });
+    }, signal);
   }
   async createFolder(input: { id: string; name: string }) {
     await this.insert({
@@ -581,13 +606,10 @@ export class BrowserFiles extends WebPlugin {
       bytes: await waitForFileRead(file.arrayBuffer(), signal),
     };
     await this.insert(row, signal);
-    signal?.throwIfAborted();
-    const selected = await this.select({ id: row.id });
-    if (signal?.aborted) {
-      await this.forgetSelected(selected);
-      signal.throwIfAborted();
-    }
-    return selected;
+    // The IndexedDB commit is the effect boundary. A cancellation that loses
+    // the race with commit must return the selection instead of reporting a
+    // cancellation for a file that now exists.
+    return this.select({ id: row.id });
   }
   async pick(photos = false) {
     const cancelled = {
