@@ -61,13 +61,47 @@ export function collectQwenAsrProvenanceBlockers(input: unknown): string[] {
 	return blockers;
 }
 
+/**
+ * The bundle ships a manifest but it cannot be read or parsed, so ASR
+ * provenance is unknown. Distinct from an absent manifest, which is a
+ * legitimate state the strict-release gate simply does not apply to.
+ */
+export class AsrProvenanceManifestError extends Error {
+	readonly manifestPath: string;
+
+	constructor(
+		manifestPath: string,
+		detail: string,
+		options?: { cause?: unknown },
+	) {
+		super(`cannot verify ASR provenance: ${manifestPath} ${detail}`, options);
+		this.name = "AsrProvenanceManifestError";
+		this.manifestPath = manifestPath;
+	}
+}
+
 export function readBundleAsrProvenanceBlockers(bundleRoot: string): string[] {
 	const manifestPath = path.join(bundleRoot, "eliza-1.manifest.json");
+	let raw: string;
+	try {
+		raw = readFileSync(manifestPath, "utf8");
+	} catch (error) {
+		// No manifest at all is legitimate: the strict-release gate only applies
+		// to bundles that publish one. Every other read failure (EACCES, EISDIR,
+		// EIO) leaves provenance unknown, so surface it instead of reporting
+		// "no Qwen provenance" to the caller.
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+		throw new AsrProvenanceManifestError(manifestPath, "is unreadable", {
+			cause: error,
+		});
+	}
 	let parsed: unknown;
 	try {
-		parsed = JSON.parse(readFileSync(manifestPath, "utf8"));
-	} catch {
-		return [];
+		parsed = JSON.parse(raw);
+	} catch (error) {
+		throw new AsrProvenanceManifestError(manifestPath, "is not valid JSON", {
+			cause: error,
+		});
 	}
 	if (!claimsStrictRelease(parsed, { allowVersionStaging: true })) return [];
 	return collectQwenAsrProvenanceBlockers(parsed);

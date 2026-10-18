@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+	AsrProvenanceManifestError,
 	bundleHasAsrModelFiles,
 	readBundleAsrProvenanceBlockers,
 	readGgufArchitecture,
@@ -107,6 +108,41 @@ describe("bundle ASR provenance", () => {
 		});
 
 		expect(readBundleAsrProvenanceBlockers(root)).toHaveLength(1);
+	});
+
+	it("surfaces a corrupt manifest instead of reporting no provenance blockers", () => {
+		const root = mkdtempSync(path.join(tmpdir(), "eliza-asr-provenance-"));
+		roots.push(root);
+		mkdirSync(path.join(root, "asr"));
+		writeFileSync(
+			path.join(root, "eliza-1.manifest.json"),
+			'{"defaultEligible": tru',
+		);
+
+		expect(() => readBundleAsrProvenanceBlockers(root)).toThrow(
+			AsrProvenanceManifestError,
+		);
+	});
+
+	it("surfaces a manifest read failure other than a missing file", () => {
+		const root = mkdtempSync(path.join(tmpdir(), "eliza-asr-provenance-"));
+		roots.push(root);
+		mkdirSync(path.join(root, "asr"));
+		// A directory where the manifest should be: readFileSync fails with
+		// EISDIR, not ENOENT, so this is damage rather than "no manifest".
+		mkdirSync(path.join(root, "eliza-1.manifest.json"));
+
+		expect(() => readBundleAsrProvenanceBlockers(root)).toThrow(
+			AsrProvenanceManifestError,
+		);
+	});
+
+	it("treats an absent manifest as no provenance metadata", () => {
+		const root = mkdtempSync(path.join(tmpdir(), "eliza-asr-provenance-"));
+		roots.push(root);
+		mkdirSync(path.join(root, "asr"));
+
+		expect(readBundleAsrProvenanceBlockers(root)).toEqual([]);
 	});
 });
 
