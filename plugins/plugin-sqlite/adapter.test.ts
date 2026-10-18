@@ -2146,6 +2146,37 @@ it("rejects a pairing request create that reuses a stored id", async () => {
   ]);
 });
 
+it("reports a pairing allowlist id that already exists without replacing its sender", async () => {
+  const adapter = await open();
+  const entryId = id();
+  const entry = {
+    id: entryId,
+    channel: "telegram",
+    agentId,
+    senderId: "original-sender",
+    createdAt: PAIRING_AT,
+  };
+  expect(await adapter.createPairingAllowlistEntries([entry])).toEqual([
+    entryId,
+  ]);
+
+  // PairingService derives allowlist ids deterministically, so approving
+  // the same sender again reaches create with the same id. plugin-sql
+  // reports the id (onConflictDoNothing + return) and keeps the stored row.
+  expect(
+    await adapter.createPairingAllowlistEntries([
+      { ...entry, senderId: "other-sender" },
+    ]),
+  ).toEqual([entryId]);
+
+  const [page] = await adapter.getPairingAllowlists([
+    { channel: "telegram", agentId },
+  ]);
+  expect(page.entries.map(({ id, senderId }) => ({ id, senderId }))).toEqual([
+    { id: entryId, senderId: "original-sender" },
+  ]);
+});
+
 it("pages newest pairing allowlist entries by UUID when the higher id is uppercase", async () => {
   const adapter = await open();
   await adapter.createPairingAllowlistEntries([
