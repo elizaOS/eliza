@@ -19,6 +19,8 @@ interface ElizaWindow extends Window {
   __ELIZA_API_TOKEN__?: string;
 }
 
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+
 function readConfiguredApiBase(): string | undefined {
   if (typeof window === "undefined") return undefined;
   const base = (window as ElizaWindow).__ELIZAOS_APP_BOOT_CONFIG__?.apiBase;
@@ -167,6 +169,7 @@ export class WebsiteBlockerWeb extends WebPlugin {
     }
     const response = await fetch(`${this.apiBase()}${pathname}`, {
       ...init,
+      signal: init?.signal ?? AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS),
       headers: {
         ...(init?.body ? { "Content-Type": "application/json" } : {}),
         ...this.authHeaders(),
