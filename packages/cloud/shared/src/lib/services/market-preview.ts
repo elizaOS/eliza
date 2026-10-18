@@ -76,19 +76,31 @@ function stringFromUnknown(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value : null;
 }
 
-function parseArray(value: unknown): unknown[] {
+/**
+ * Decode a Polymarket field that is either an array already or a JSON-encoded
+ * array string. A missing or empty field means "no data" and yields `[]`; a
+ * field that is present but cannot be decoded is corrupt input, so it throws
+ * instead of masquerading as an outcome-less market.
+ */
+function parseArray(value: unknown, field: string): unknown[] {
   if (Array.isArray(value)) {
     return value;
   }
 
   if (typeof value !== "string" || value.trim().length === 0) return [];
 
+  let parsed: unknown;
   try {
-    const parsed: unknown = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : [];
+    parsed = JSON.parse(value);
   } catch {
-    return [];
+    throw new Error(`Polymarket market ${field} was not valid JSON`);
   }
+
+  if (!Array.isArray(parsed)) {
+    throw new Error(`Polymarket market ${field} was not a JSON array`);
+  }
+
+  return parsed;
 }
 
 function clampProbability(value: number | null): number | null {
@@ -205,8 +217,10 @@ function mapPolymarketMarket(input: unknown): PolymarketMarketRecord | null {
   const question = stringFromUnknown(record.question);
   if (!question) return null;
 
-  const outcomeLabels = parseArray(record.outcomes).map((value) => stringFromUnknown(value) ?? "");
-  const outcomeProbabilities = parseArray(record.outcomePrices).map((value) =>
+  const outcomeLabels = parseArray(record.outcomes, "outcomes").map(
+    (value) => stringFromUnknown(value) ?? "",
+  );
+  const outcomeProbabilities = parseArray(record.outcomePrices, "outcomePrices").map((value) =>
     clampProbability(numberFromUnknown(value)),
   );
   const volume24hUsd = numberFromUnknown(record.volume24hr);
