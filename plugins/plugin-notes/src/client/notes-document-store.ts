@@ -194,8 +194,13 @@ export class DocumentNotesStore {
       authorized();
       const before = this.raw,
         result = await this.inner.execute(op, id, signal, authorized);
-      if (this.raw !== before) await this.commit(this.raw, signal, authorized);
-      else await this.assertCurrent(signal);
+      if (this.raw !== before) {
+        await this.commit(this.raw, signal, authorized);
+        // The verified CAS receipt is the effect boundary. Cancellation that
+        // loses this race must not report that a durable edit was cancelled.
+        return result;
+      }
+      await this.assertCurrent(signal);
       signal.throwIfAborted();
       authorized();
       return result;
