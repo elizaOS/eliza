@@ -8,7 +8,7 @@ import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { expect, it, vi } from "vitest";
 import { EscalationService } from "../src/services/escalation.ts";
 
-it("stops the retries after an owner reply that 20+ newer group messages follow", async () => {
+async function runScenario(replyRoom: "dm" | "unrelated") {
   const directory = await mkdtemp(path.join(tmpdir(), "escalation-reply-"));
   const configPath = path.join(directory, "eliza.json");
   vi.stubEnv("ELIZA_STATE_DIR", directory);
@@ -89,14 +89,15 @@ it("stops the retries after an owner reply that 20+ newer group messages follow"
       type: ChannelType.GROUP,
     });
 
-    // The owner acknowledges in the DM; then a busy group they are in moves on.
+    // The owner acknowledges in the DM, or writes in a room they are not a
+    // participant of; then a busy group they are in moves on.
     const repliedAt = Date.now() + 1_000;
     await runtime.createMemory(
       {
         id: randomUUID() as UUID,
         entityId: ownerEntityId,
         agentId,
-        roomId: dmRoomId,
+        roomId: replyRoom === "dm" ? dmRoomId : (randomUUID() as UUID),
         content: { text: "ack, looking now", source: "alpha" },
         createdAt: repliedAt,
       },
@@ -117,12 +118,19 @@ it("stops the retries after an owner reply that 20+ newer group messages follow"
     }
 
     await EscalationService.checkEscalation(runtime, started.id);
-    expect(sends).toHaveLength(1);
-    expect(started.resolved).toBe(true);
+    return { sends: sends.length, resolved: started.resolved };
   } finally {
     await EscalationService.stop(runtime);
     await runtime.close();
     vi.unstubAllEnvs();
     await rm(directory, { recursive: true, force: true });
   }
+}
+
+it("stops the retries after an owner reply that 20+ newer group messages follow", async () => {
+  expect(await runScenario("dm")).toEqual({ sends: 1, resolved: true });
+}, 120_000);
+
+it("does not count an owner message in a room the owner is not part of", async () => {
+  expect(await runScenario("unrelated")).toEqual({ sends: 2, resolved: false });
 }, 120_000);
