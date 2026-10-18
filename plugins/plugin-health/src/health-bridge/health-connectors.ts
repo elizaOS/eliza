@@ -309,6 +309,35 @@ function compactSamples(
   );
 }
 
+const STRAVA_ACTIVITIES_PAGE_SIZE = 200;
+
+/** Every activity page in the window; a full page means another may follow. */
+async function fetchStravaActivityPages(args: {
+  token: StoredHealthConnectorToken;
+  query: Record<string, number>;
+  deadlineAt: number;
+}): Promise<Record<string, unknown>[]> {
+  const activities: Record<string, unknown>[] = [];
+  for (let page = 1; ; page += 1) {
+    if (Date.now() >= args.deadlineAt) {
+      throw new HealthConnectorApiError(
+        504,
+        args.token.provider,
+        "Strava pagination exceeded the sync deadline",
+      );
+    }
+    const pageItems = asRecordArray(
+      await fetchHealthValue({
+        token: args.token,
+        path: "/athlete/activities",
+        query: { ...args.query, per_page: STRAVA_ACTIVITIES_PAGE_SIZE, page },
+      }),
+    );
+    activities.push(...pageItems);
+    if (pageItems.length < STRAVA_ACTIVITIES_PAGE_SIZE) return activities;
+  }
+}
+
 async function syncStrava(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
   const after =
     Math.floor(Date.parse(`${args.startDate}T00:00:00.000Z`) / 1_000) -
@@ -316,15 +345,15 @@ async function syncStrava(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
   const before =
     Math.floor(Date.parse(`${args.endDate}T23:59:59.999Z`) / 1_000) +
     STRAVA_LOCAL_DATE_QUERY_PADDING_SECONDS;
-  const [athlete, activitiesJson] = await Promise.all([
+  const deadlineAt = Date.now() + HEALTH_CONNECTOR_SYNC_TIMEOUT_MS;
+  const [athlete, activities] = await Promise.all([
     fetchHealthJson({ token: args.token, path: "/athlete" }),
-    fetchHealthValue({
+    fetchStravaActivityPages({
       token: args.token,
-      path: "/athlete/activities",
-      query: { after, before, per_page: 200 },
+      query: { after, before },
+      deadlineAt,
     }),
   ]);
-  const activities = asRecordArray(activitiesJson);
   const workouts: LifeOpsHealthWorkout[] = [];
   const samples: LifeOpsHealthMetricSample[] = [];
   for (const activity of activities) {
@@ -1076,6 +1105,52 @@ async function withingsPost(
   return fetchHealthJson({ token, path, method: "POST", form });
 }
 
+/**
+ * Every page of a Withings list action. A response with `body.more` set has
+ * further rows from `body.offset`; the pages' `listKey` rows are joined into
+ * the first page's body.
+ */
+async function withingsPostPages(
+  token: StoredHealthConnectorToken,
+  path: string,
+  formValues: Record<string, string | number | null | undefined>,
+  listKey: string,
+  deadlineAt: number,
+): Promise<Record<string, unknown>> {
+  let first: Record<string, unknown> = {};
+  const rows: unknown[] = [];
+  const seenOffsets = new Set<string>();
+  let offset: string | null = null;
+  for (;;) {
+    if (Date.now() >= deadlineAt) {
+      throw new HealthConnectorApiError(
+        504,
+        token.provider,
+        "Withings pagination exceeded the sync deadline",
+      );
+    }
+    const json = await withingsPost(token, path, { ...formValues, offset });
+    const body = getRecord(json, "body") ?? {};
+    if (offset === null) first = json;
+    rows.push(...getArray(body, listKey));
+    const more = body.more;
+    if (!(more === true || (typeof more === "number" && more > 0))) break;
+    offset = getText(body, "offset");
+    if (!offset || seenOffsets.has(offset)) {
+      throw new HealthConnectorApiError(
+        502,
+        token.provider,
+        "Withings pagination did not advance its offset",
+      );
+    }
+    seenOffsets.add(offset);
+  }
+  return {
+    ...first,
+    body: { ...(getRecord(first, "body") ?? {}), [listKey]: rows },
+  };
+}
+
 async function syncWithings(
   args: SyncArgs,
 ): Promise<HealthConnectorSyncPayload> {
@@ -1085,23 +1160,42 @@ async function syncWithings(
   const endUnix = Math.floor(
     Date.parse(`${args.endDate}T23:59:59.999Z`) / 1_000,
   );
+  const deadlineAt = Date.now() + HEALTH_CONNECTOR_SYNC_TIMEOUT_MS;
   const [activityJson, sleepJson, measuresJson] = await Promise.all([
-    withingsPost(args.token, "/v2/measure", {
-      action: "getactivity",
-      startdateymd: ymdCompact(args.startDate),
-      enddateymd: ymdCompact(args.endDate),
-    }),
-    withingsPost(args.token, "/v2/sleep", {
-      action: "getsummary",
-      startdateymd: ymdCompact(args.startDate),
-      enddateymd: ymdCompact(args.endDate),
-    }),
-    withingsPost(args.token, "/measure", {
-      action: "getmeas",
-      startdate: startUnix,
-      enddate: endUnix,
-      meastype: "1,9,10,11,54,71",
-    }),
+    withingsPostPages(
+      args.token,
+      "/v2/measure",
+      {
+        action: "getactivity",
+        startdateymd: ymdCompact(args.startDate),
+        enddateymd: ymdCompact(args.endDate),
+      },
+      "activities",
+      deadlineAt,
+    ),
+    withingsPostPages(
+      args.token,
+      "/v2/sleep",
+      {
+        action: "getsummary",
+        startdateymd: ymdCompact(args.startDate),
+        enddateymd: ymdCompact(args.endDate),
+      },
+      "series",
+      deadlineAt,
+    ),
+    withingsPostPages(
+      args.token,
+      "/measure",
+      {
+        action: "getmeas",
+        startdate: startUnix,
+        enddate: endUnix,
+        meastype: "1,9,10,11,54,71",
+      },
+      "measuregrps",
+      deadlineAt,
+    ),
   ]);
   const samples: LifeOpsHealthMetricSample[] = [];
   const workouts: LifeOpsHealthWorkout[] = [];
