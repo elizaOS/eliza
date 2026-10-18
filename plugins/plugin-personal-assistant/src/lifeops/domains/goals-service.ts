@@ -35,7 +35,10 @@ import {
   GoalsService,
   scoreGoalSimilarity,
 } from "@elizaos/plugin-goals/goals-service";
-import { getGoalsCheckinService } from "@elizaos/plugin-goals/services/checkin";
+import {
+  getGoalsCheckinService,
+  readCheckinLog,
+} from "@elizaos/plugin-goals/services/checkin";
 import {
   type buildGoalSemanticReviewMetadata,
   mergeGoalSemanticReviewMetadata,
@@ -266,15 +269,6 @@ export class GoalsDomain {
     if (goal.status !== "active") {
       return goal.reviewState;
     }
-    if (definitions.length === 0) {
-      return "needs_attention";
-    }
-    if (overdueOccurrences.length > 0) {
-      return "at_risk";
-    }
-    if (!lastActivityAt) {
-      return "needs_attention";
-    }
     const cadenceKind =
       isRecord(goal.cadence) && typeof goal.cadence.kind === "string"
         ? goal.cadence.kind
@@ -287,6 +281,29 @@ export class GoalsDomain {
         : cadenceKind === "weekly"
           ? GOAL_STALE_DAYS_WEEKLY * ONE_DAY_MS
           : GOAL_STALE_DAYS_DEFAULT * ONE_DAY_MS;
+    // The owner's own check-in progress holds until linked activity is newer
+    // or the check-in is stale; otherwise the next review would overwrite it.
+    const checkin = readCheckinLog(goal.metadata)
+      .filter((entry) => entry.progress !== null)
+      .at(-1);
+    const checkinTime = checkin ? Date.parse(checkin.atIso) : Number.NaN;
+    if (
+      checkin?.progress &&
+      Number.isFinite(checkinTime) &&
+      now.getTime() - checkinTime <= staleMs &&
+      (!lastActivityAt || checkinTime >= Date.parse(lastActivityAt))
+    ) {
+      return checkin.progress;
+    }
+    if (definitions.length === 0) {
+      return "needs_attention";
+    }
+    if (overdueOccurrences.length > 0) {
+      return "at_risk";
+    }
+    if (!lastActivityAt) {
+      return "needs_attention";
+    }
     const lastActivityTime = new Date(lastActivityAt).getTime();
     if (!Number.isFinite(lastActivityTime)) {
       return "needs_attention";

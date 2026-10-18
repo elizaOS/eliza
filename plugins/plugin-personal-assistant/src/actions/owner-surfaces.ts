@@ -15,8 +15,12 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  State,
 } from "@elizaos/core";
 import { FOLLOW_UP_CAPABLE_ACTION_TAG } from "@elizaos/core";
+import { ownerGoalsAction as goalsPluginOwnerGoalsAction } from "@elizaos/plugin-goals/actions/goals";
+import { createOwnerGoalsService } from "@elizaos/plugin-goals/goals-runtime";
+import { GOAL_CHECKIN_PROGRESS_STATES } from "@elizaos/plugin-goals/services/checkin";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { isOwnerReminderNonCommandContext } from "../lifeops/reminders/direct-routing.js";
 import { runBookTravelHandler } from "./book-travel.js";
@@ -57,8 +61,15 @@ const OWNER_LIFE_ACTIONS = [
 type OwnerLifeAction =
   | (typeof OWNER_LIFE_ACTIONS)[number]
   | "reopen"
-  | "cancel";
-const OWNER_GOAL_ACTIONS = ["create", "update", "delete", "review"] as const;
+  | "cancel"
+  | "checkin";
+const OWNER_GOAL_ACTIONS = [
+  "create",
+  "update",
+  "delete",
+  "review",
+  "checkin",
+] as const;
 function readParam(options: unknown, key: string): unknown {
   if (!options || typeof options !== "object") return undefined;
   const record = options as Record<string, unknown>;
@@ -126,6 +137,55 @@ function normalizeOwnerActionFromAllowed<TAction extends string>(
   return allowed.includes(normalized as TAction)
     ? (normalized as TAction)
     : undefined;
+}
+
+/**
+ * A goal check-in reply is recorded by plugin-goals' own `checkin` handler;
+ * PA registers plugin-goals without its actions, so this surface forwards it.
+ */
+async function runGoalCheckin(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  options: unknown,
+  callback: HandlerCallback | undefined,
+  args: { target?: string; note?: string; progress?: string },
+): Promise<ActionResult> {
+  const goals = args.target
+    ? await createOwnerGoalsService(runtime).listGoals()
+    : [];
+  const wanted = args.target?.toLowerCase();
+  const byId = goals.filter((record) => record.goal.id === args.target);
+  const matches =
+    byId.length > 0
+      ? byId
+      : goals.filter((record) => record.goal.title.toLowerCase() === wanted);
+  if (matches.length !== 1) {
+    const text =
+      matches.length > 1
+        ? `Multiple goals match — which one?\n${matches.map((record) => `  - ${record.goal.title}`).join("\n")}`
+        : "Which goal is this check-in for?";
+    await callback?.({ text });
+    return {
+      success: false,
+      text,
+      data: { action: "checkin", error: "goal_not_resolved" },
+    };
+  }
+  return (
+    (await goalsPluginOwnerGoalsAction.handler(
+      runtime,
+      message,
+      state,
+      withParameters(options, {
+        action: "checkin",
+        id: matches[0].goal.id,
+        ...(args.note !== undefined ? { note: args.note } : {}),
+        ...(args.progress !== undefined ? { progress: args.progress } : {}),
+      }),
+      callback,
+    )) ?? { success: false, text: "Goal check-in was not recorded." }
+  );
 }
 
 function makeOwnerLifeAction(args: {
@@ -223,6 +283,27 @@ function makeOwnerLifeAction(args: {
       ...(args.defaultKind === "definition"
         ? [TASK_CREATE_PLAN_PARAMETER]
         : []),
+      ...(allowedActions.includes("checkin")
+        ? [
+            {
+              name: "note",
+              subactions: ["checkin"],
+              description: "Owner's check-in note when action=checkin.",
+              required: false,
+              schema: { type: "string" as const },
+            },
+            {
+              name: "progress",
+              subactions: ["checkin"],
+              description: "Reported goal progress when action=checkin.",
+              required: false,
+              schema: {
+                type: "string" as const,
+                enum: [...GOAL_CHECKIN_PROGRESS_STATES],
+              },
+            },
+          ]
+        : []),
     ],
     handler: async (runtime, message, state, options, callback) => {
       const params = readParameters(options);
@@ -251,6 +332,13 @@ function makeOwnerLifeAction(args: {
       const target =
         readStringParam(options, "target")?.trim() ||
         readStringParam(options, "title")?.trim();
+      if (action === "checkin") {
+        return runGoalCheckin(runtime, message, state, options, callback, {
+          target,
+          note: readStringParam(options, "note"),
+          progress: readStringParam(options, "progress"),
+        });
+      }
       const merged: ActionParameters =
         args.name === "OWNER_REMINDERS" && action === "cancel"
           ? {

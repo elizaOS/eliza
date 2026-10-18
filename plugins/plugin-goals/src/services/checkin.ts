@@ -353,7 +353,7 @@ export interface GoalCheckinLogEntry {
   progress: GoalCheckinProgress | null;
 }
 
-function readCheckinLog(
+export function readCheckinLog(
   metadata: Record<string, unknown>,
 ): GoalCheckinLogEntry[] {
   const raw = metadata.checkinLog;
