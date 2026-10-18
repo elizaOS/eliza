@@ -350,7 +350,9 @@ async function fetchAlchemyChainBalances(
       t.tokenBalance && t.tokenBalance !== "0x0" && t.tokenBalance !== "0x",
   );
 
-  const metaResults = await Promise.allSettled(
+  // A token whose metadata cannot be read fails the chain: dropping it would
+  // report a lower balance as complete (and read as an outflow to watchers).
+  const tokens = await Promise.all(
     nonZero.map(async (tok): Promise<EvmTokenBalance> => {
       const meta = (
         await jsonOrThrow<{ result?: AlchemyTokenMeta }>(
@@ -380,12 +382,6 @@ async function fetchAlchemyChainBalances(
       };
     }),
   );
-  const tokens = metaResults
-    .filter(
-      (r): r is PromiseFulfilledResult<EvmTokenBalance> =>
-        r.status === "fulfilled",
-    )
-    .map((r) => r.value);
 
   // Fetch DEX prices for all tokens + native token.
   const allAddresses = tokens.map((t) => t.contractAddress);
