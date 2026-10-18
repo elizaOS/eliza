@@ -161,16 +161,25 @@ describe("resolveChannelType", () => {
     expect(getRoomCalls).toHaveLength(0);
   });
 
-  it("returns empty when the room lookup fails or has no type", async () => {
+  it("rejects when the room lookup fails instead of reporting an unknown channel", async () => {
+    // A failed adapter read is not "this room has no type": reporting "" makes
+    // callers treat an outage as a typeless (DM-like) room and silently skip
+    // the group-chat signals. Only a real absence may collapse to "".
     const failing = runtimeWithRoom(new Error("db down"));
     const message = turn(ALICE, 1, { roomId: ROOM });
-    await expect(resolveChannelType(failing.runtime, message)).resolves.toBe(
-      "",
+    await expect(resolveChannelType(failing.runtime, message)).rejects.toThrow(
+      "db down",
     );
+  });
+
+  it("returns empty when the room row exists but carries no type", async () => {
     const typeless = runtimeWithRoom({});
+    const message = turn(ALICE, 1, { roomId: ROOM });
     await expect(resolveChannelType(typeless.runtime, message)).resolves.toBe(
       "",
     );
+    const absent = runtimeWithRoom(null);
+    await expect(resolveChannelType(absent.runtime, message)).resolves.toBe("");
   });
 });
 

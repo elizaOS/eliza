@@ -54,6 +54,29 @@ import {
 /** Default max consecutive agent turns into a human-free bot exchange. */
 export const DEFAULT_BOT_LOOP_MAX_AGENT_TURNS = 2;
 
+/**
+ * Resolve the room's channel type for the gates. `resolveChannelType` throws
+ * when the room read itself fails (a missing room is `null`, not a throw), and
+ * the gates are suppression-only, so a read failure must fail open instead of
+ * aborting the turn. It is reported and labelled separately so a broken
+ * adapter read is never recorded as "this room is not a group".
+ */
+async function resolveGateChannelType(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<{ channelType: string } | { unavailable: true }> {
+  try {
+    return { channelType: await resolveChannelType(runtime, message) };
+  } catch (error) {
+    // error-policy:J4 This optional suppression gate deliberately degrades to
+    // the ordinary response pipeline when the room-type read is unavailable.
+    runtime.reportError("BotLoopGate.channel", error, {
+      roomId: message.roomId,
+    });
+    return { unavailable: true };
+  }
+}
+
 export interface BotLoopGateResult {
   /** True when the deterministic gate trips: end the turn with IGNORE. */
   ignored: boolean;
@@ -66,7 +89,8 @@ export interface BotLoopGateResult {
     | "not_bot_authored"
     | "not_group_channel"
     | "below_threshold"
-    | "window_unavailable";
+    | "window_unavailable"
+    | "channel_type_unavailable";
 }
 
 export interface BotGroupAddressGateResult {
@@ -76,7 +100,8 @@ export interface BotGroupAddressGateResult {
     | "not_bot_authored"
     | "not_group_channel"
     | "directly_addressed"
-    | "unaddressed_bot";
+    | "unaddressed_bot"
+    | "channel_type_unavailable";
 }
 
 /**
@@ -94,8 +119,11 @@ export async function runBotGroupAddressGate(args: {
   if (!isBotAuthoredMessage(message)) {
     return { ignored: false, reason: "not_bot_authored" };
   }
-  const channelType = await resolveChannelType(runtime, message);
-  if (!isMultiPartyChannel(channelType)) {
+  const channel = await resolveGateChannelType(runtime, message);
+  if ("unavailable" in channel) {
+    return { ignored: false, reason: "channel_type_unavailable" };
+  }
+  if (!isMultiPartyChannel(channel.channelType)) {
     return { ignored: false, reason: "not_group_channel" };
   }
   if (explicitlyAddressesAgent) {
@@ -152,8 +180,11 @@ export async function runBotLoopGate(args: {
     return { ignored: false, reason: "not_bot_authored" };
   }
   // Group chat only. Unknown/missing channel type fails open.
-  const channelType = await resolveChannelType(runtime, message);
-  if (!isMultiPartyChannel(channelType)) {
+  const channel = await resolveGateChannelType(runtime, message);
+  if ("unavailable" in channel) {
+    return { ignored: false, reason: "channel_type_unavailable" };
+  }
+  if (!isMultiPartyChannel(channel.channelType)) {
     return { ignored: false, reason: "not_group_channel" };
   }
   // Direct address has higher precedence than bot-loop suppression. A named

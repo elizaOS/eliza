@@ -380,4 +380,33 @@ describe("runBotLoopGate — deterministic anti-loop floor", () => {
       { roomId: GROUP_ROOM },
     );
   });
+
+  it("reports a failed room-type lookup instead of treating it as a plain non-group channel", async () => {
+    const { runtime, adapter } = await makeRuntime();
+    const reportError = vi.spyOn(runtime, "reportError");
+    const realGetRoomsByIds = adapter.getRoomsByIds.bind(adapter);
+    adapter.getRoomsByIds = async (
+      roomIds: Parameters<SQLiteDatabaseAdapter["getRoomsByIds"]>[0],
+    ) => {
+      if (roomIds.includes(GROUP_ROOM)) {
+        throw new Error("db unavailable");
+      }
+      return realGetRoomsByIds(roomIds);
+    };
+    // No content-level channelType: the gate must fall back to the room row.
+    const result = await runBotLoopGate({
+      runtime,
+      message: botInbound(GROUP_ROOM),
+    });
+    adapter.getRoomsByIds = realGetRoomsByIds;
+    // Still fail-open (an outage must never mute the agent), but the reason
+    // says the lookup broke instead of claiming the room is not a group.
+    expect(result.ignored).toBe(false);
+    expect(result.reason).toBe("channel_type_unavailable");
+    expect(reportError).toHaveBeenCalledWith(
+      "BotLoopGate.channel",
+      expect.any(Error),
+      { roomId: GROUP_ROOM },
+    );
+  });
 });

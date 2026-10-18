@@ -66,14 +66,16 @@ export async function resolveChannelType(
     return fromContent.trim().toUpperCase();
   }
   if (!message.roomId) return "";
-  try {
-    // Coalesced by the runtime's turn-scoped getRoom memo — no extra
-    // round-trip within a compose fan-out.
-    const room = await runtime.getRoom(message.roomId);
-    return room?.type ? String(room.type).trim().toUpperCase() : "";
-  } catch {
-    return "";
-  }
+  // Coalesced by the runtime's turn-scoped getRoom memo — no extra
+  // round-trip within a compose fan-out.
+  //
+  // `getRoom` answers `null` for a room row that does not exist, so "no such
+  // room" and "row carries no type" already collapse to "" below. A throw is
+  // therefore never an absence — it is an adapter/transport failure — and it
+  // propagates so callers cannot mistake an outage for a typeless (DM-like)
+  // channel and silently skip the group-chat signals.
+  const room = await runtime.getRoom(message.roomId);
+  return room?.type ? String(room.type).trim().toUpperCase() : "";
 }
 
 export function isMultiPartyChannel(channelType: string): boolean {
