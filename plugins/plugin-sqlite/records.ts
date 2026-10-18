@@ -2493,6 +2493,9 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           COLLECTIONS.MEMORIES,
           id,
         );
+        // Same results as plugin-sql: a new row is unique unless the caller
+        // says otherwise (as createMemories), and an existing row's metadata
+        // is replaced (as updateMemories), so an upsert can remove a key.
         const stored: StoredMemory = {
           ...(existing ?? {}),
           ...persistableMemory(memory),
@@ -2500,10 +2503,10 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           tableName,
           agentId: memory.agentId ?? existing?.agentId ?? this.agentId,
           createdAt: memory.createdAt ?? existing?.createdAt ?? Date.now(),
-          metadata: {
-            ...(existing?.metadata ?? {}),
-            ...(memory.metadata ?? {}),
-          } as MemoryMetadata,
+          unique: memory.unique ?? existing?.unique ?? true,
+          metadata: (memory.metadata ??
+            existing?.metadata ??
+            {}) as MemoryMetadata,
         };
         await this.storage.set(COLLECTIONS.MEMORIES, id, stored);
         if (memory.embedding && memory.embedding.length > 0) {

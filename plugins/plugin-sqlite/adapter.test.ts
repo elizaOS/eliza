@@ -276,6 +276,37 @@ describe("durable SQLite agent adapter", () => {
     ).toBe(2);
   });
 
+  it("upserts memories like plugin-sql: unique by default, metadata replaced", async () => {
+    const adapter = await open();
+    const plain = (text: string) => ({ ...memory(text), embedding: undefined });
+    const created = plain("created");
+    const upserted = {
+      ...plain("upserted"),
+      metadata: { type: "message", a: 1, b: 2 },
+    } as never as ReturnType<typeof plain>;
+    await adapter.createMemories([{ memory: created, tableName: "messages" }]);
+    await adapter.upsertMemories([{ memory: upserted, tableName: "messages" }]);
+
+    const unique = await adapter.getMemories({
+      roomId,
+      unique: true,
+      tableName: "messages",
+    });
+    expect(unique.map((row) => row.id).sort()).toEqual(
+      [created.id, upserted.id].sort(),
+    );
+
+    // An upsert of the existing row without key "b" removes it.
+    await adapter.upsertMemories([
+      {
+        memory: { ...upserted, metadata: { type: "message", a: 1 } } as never,
+        tableName: "messages",
+      },
+    ]);
+    const [stored] = await adapter.getMemoriesByIds([upserted.id as UUID]);
+    expect(stored?.metadata).toEqual({ type: "message", a: 1 });
+  });
+
   it("pages tasks by creation time when the later id sorts first", async () => {
     const adapter = await open();
     const earlyId = "ffffffff-ffff-4fff-8fff-ffffffffffff" as UUID;
