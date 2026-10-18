@@ -119,4 +119,41 @@ describe("provider failure diagnostic privacy", () => {
     });
     expect(getSafeProviderErrorMetadata(error)).toEqual({});
   });
+  test("near-limit repeated prefixes without a terminal match remain unclassified", () => {
+    for (const prefix of [
+      "tool response ",
+      "tool messages ",
+      "schema ",
+      "parameter ",
+    ]) {
+      const message = prefix.repeat(5000).slice(0, 32768);
+      expect(
+        getSafeProviderErrorMetadata({
+          statusCode: 400,
+          data: { error: { message } },
+        }),
+      ).toEqual({ upstreamStatus: 400 });
+    }
+  });
+
+  test("ordered classification retains supported reasons and rejects reversed words", () => {
+    for (const [message, reasonClass] of [
+      ["Schema field is not supported", "invalid_schema"],
+      ["Parameter value is not supported", "unsupported_parameter"],
+      ["Tool call response is missing", "invalid_tool_history"],
+      ["Tool messages must precede this response", "invalid_tool_history"],
+    ])
+      expect(
+        getSafeProviderErrorMetadata({
+          statusCode: 400,
+          data: { error: { message } },
+        }),
+      ).toEqual({ upstreamStatus: 400, reasonClass });
+    expect(
+      getSafeProviderErrorMetadata({
+        statusCode: 400,
+        data: { error: { message: "missing response tool" } },
+      }),
+    ).toEqual({ upstreamStatus: 400 });
+  });
 });

@@ -73,6 +73,17 @@ function parseBody(value: unknown): unknown {
   }
 }
 
+// A fixed number of forward scans avoids regex backtracking on provider text.
+function containsOrdered(text: string, ...parts: string[]): boolean {
+  let offset = 0;
+  for (const part of parts) {
+    const index = text.indexOf(part, offset);
+    if (index < 0) return false;
+    offset = index + part.length;
+  }
+  return true;
+}
+
 /** Does not return any provider-owned string, path, message, body, or identifier. */
 export function getSafeProviderErrorMetadata(
   error: unknown,
@@ -123,16 +134,22 @@ export function getSafeProviderErrorMetadata(
             message.includes(`"${keyword}"`),
         );
         if (keywords.length) result.schemaKeywords = keywords;
-        if (/invalid (?:json )?schema|schema.*not supported/i.test(message))
+        const normalized = message.toLowerCase();
+        if (
+          normalized.includes("invalid schema") ||
+          normalized.includes("invalid json schema") ||
+          containsOrdered(normalized, "schema", "not supported")
+        )
           result.reasonClass = "invalid_schema";
         else if (
-          /unsupported parameter|parameter.*not supported/i.test(message)
+          normalized.includes("unsupported parameter") ||
+          containsOrdered(normalized, "parameter", "not supported")
         )
           result.reasonClass = "unsupported_parameter";
         else if (
-          /tool_call_id|tool.*response.*missing|tool.*messages.*preced/i.test(
-            message,
-          )
+          normalized.includes("tool_call_id") ||
+          containsOrdered(normalized, "tool", "response", "missing") ||
+          containsOrdered(normalized, "tool", "messages", "preced")
         )
           result.reasonClass = "invalid_tool_history";
       }
