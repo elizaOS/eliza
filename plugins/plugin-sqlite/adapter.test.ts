@@ -1867,13 +1867,27 @@ it("reports no id for a duplicate agent create and keeps the stored row", async 
   expect(stored?.settings).toEqual({ keep: "yes" });
 });
 
-it("keeps the first agent row when a second instance on the same file re-creates it concurrently", async () => {
+it("keeps the first agent row when a second instance on the same file re-creates it", async () => {
   const first = await open();
   expect(
     await first.createAgents([
       { id: agentId, name: "Original", settings: { keep: "yes" } },
     ]),
   ).toEqual([agentId]);
+
+  // A second adapter cannot be open on the same file at the same time:
+  // storage init sets locking_mode=EXCLUSIVE with busy_timeout=0, so the
+  // second open fails with SQLITE_OPEN_FAILED instead of racing the
+  // first adapter. Cross-adapter creates therefore cannot run while the
+  // first adapter is open, by design.
+  const rival = SQLiteDatabaseAdapter.create(
+    join(directory, "agent.sqlite"),
+    agentId,
+  );
+  opened.push(rival);
+  await expect(rival.initialize()).rejects.toThrow(
+    "Cannot open the agent SQLite database",
+  );
   await first.close();
 
   // A second adapter instance over the same file: concurrent duplicate
