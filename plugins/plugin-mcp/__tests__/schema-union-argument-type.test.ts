@@ -57,8 +57,32 @@ describe("tool arguments declared without a top-level type", () => {
     expect(
       convertJsonSchemaToActionParams({ properties: { limit: { const: 1 } } })?.[0].schema.type
     ).toBe("number");
+  });
+
+  it("rejects a value that is not the const value", () => {
+    const schema = { properties: { limit: { const: 1 } } };
+    expect(validateParamsAgainstSchema({ limit: 2 }, schema)).toEqual([
+      "Parameter 'limit' must equal 1",
+    ]);
+    expect(validateParamsAgainstSchema({ limit: 1 }, schema)).toEqual([]);
+  });
+
+  it("rejects a value no const branch allows", () => {
+    const schema = {
+      properties: {
+        mode: { anyOf: [{ const: "fast" }, { const: "slow" }] },
+      },
+    };
+    expect(validateParamsAgainstSchema({ mode: "warp" }, schema)).toEqual([
+      'Parameter \'mode\' must equal "fast" or "slow"',
+    ]);
+    expect(validateParamsAgainstSchema({ mode: "slow" }, schema)).toEqual([]);
+    // One open branch leaves the whole union open, so a free string is allowed.
     expect(
-      validateParamsAgainstSchema({ limit: 2 }, { properties: { limit: { const: 1 } } })
+      validateParamsAgainstSchema(
+        { mode: "warp" },
+        { properties: { mode: { anyOf: [{ const: "fast" }, { type: "string" }] } } }
+      )
     ).toEqual([]);
   });
 });

@@ -1,4 +1,6 @@
 /** Converts MCP JSON Schemas into runtime action parameters without dropping constraints. */
+import { isDeepStrictEqual } from "node:util";
+
 export interface McpInputSchema {
   properties?: Record<string, unknown>;
   required?: string[];
@@ -162,6 +164,36 @@ function declaredParameterSchema(prop: JsonSchemaProperty): ActionParameter["sch
   if (types.length > 1) return { anyOf: types.map((type) => ({ type })) };
   // No branch names a type. Keep the historical object fallback.
   return { type: "object" };
+}
+
+/**
+ * The values a property pins to one fixed answer.
+ *
+ * `const` pins one value. An `anyOf`/`oneOf` whose branches each pin their own
+ * value pins the answer just as tightly, so a discriminator written as a union
+ * of literals is enforced too. A branch that pins nothing leaves the answer
+ * open, and then no list comes back.
+ *
+ * Core's parameter schema has no `const` field, and `enum` is converted to
+ * text, so a numeric `const` cannot be advertised without contradicting its own
+ * type. The fixed value is therefore enforced at this validation boundary: an
+ * invalid tool call must not reach the MCP server.
+ */
+function pinnedValues(prop: JsonSchemaProperty | undefined, depth = 0): unknown[] | undefined {
+  if (!prop || depth > MAX_TYPE_BRANCH_DEPTH) return undefined;
+  if (prop.const !== undefined) return [prop.const];
+
+  for (const key of ["anyOf", "oneOf"] as const) {
+    const variants = prop[key];
+    if (!Array.isArray(variants) || variants.length === 0) continue;
+    const perBranch = variants.map((variant) => pinnedValues(variant, depth + 1));
+    // Every branch must pin a value; one open branch makes the union open.
+    if (perBranch.every((values) => values !== undefined)) {
+      return perBranch.flatMap((values) => values as unknown[]);
+    }
+  }
+
+  return undefined;
 }
 
 /** Readable type names for a description and for validation messages. */
@@ -385,6 +417,16 @@ export function validateParamsAgainstSchema(
     for (const [name, value] of Object.entries(params)) {
       const prop = properties[name];
       if (!prop) continue;
+
+      // A pinned value is checked before the null shortcut: `const: null` must
+      // reject a number just as `const: 1` must reject null.
+      const pinned = pinnedValues(prop);
+      if (pinned && !pinned.some((candidate) => isDeepStrictEqual(candidate, value))) {
+        errors.push(
+          `Parameter '${name}' must equal ${pinned.map((candidate) => JSON.stringify(candidate)).join(" or ")}`
+        );
+        continue;
+      }
 
       if (value === null) {
         continue;
