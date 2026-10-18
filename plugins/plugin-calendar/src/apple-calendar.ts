@@ -735,6 +735,16 @@ export function appleRecurrenceToRrules(
   return lines;
 }
 
+// EventKit gives every occurrence of a series the same identifier, so a series
+// occurrence's stored external id adds its original start. The bridge still
+// takes the bare EventKit identifier.
+const APPLE_OCCURRENCE_SEPARATOR = "#occurrence:";
+
+function appleNativeEventId(externalId: string): string {
+  const separatorAt = externalId.indexOf(APPLE_OCCURRENCE_SEPARATOR);
+  return separatorAt < 0 ? externalId : externalId.slice(0, separatorAt);
+}
+
 export function lifeOpsCalendarEventFromApple(args: {
   event: NativeCalendarEvent;
   agentId: string;
@@ -744,7 +754,7 @@ export function lifeOpsCalendarEventFromApple(args: {
   const { event, agentId } = args;
   const side = args.side ?? "owner";
   const syncedAt = args.syncedAt ?? new Date().toISOString();
-  const externalId = event.externalId || event.id || "";
+  const nativeExternalId = event.externalId || event.id || "";
   const calendarId = event.calendarId || "primary";
   const startAt = event.startAt || syncedAt;
   const endAt = event.endAt || startAt;
@@ -754,8 +764,13 @@ export function lifeOpsCalendarEventFromApple(args: {
   // event identifier and recurrence rules (occurrenceDate is set for one-off
   // events too, so it cannot mark a series). Every occurrence therefore
   // carries the series rule and points at the shared identifier.
-  const seriesId = event.id?.trim() || externalId;
+  const seriesId = event.id?.trim() || nativeExternalId;
   const isSeriesOccurrence = recurrence.length > 0 && seriesId.length > 0;
+  // One stored row per occurrence: the row id and the source-external unique
+  // key both derive from the external id.
+  const externalId = isSeriesOccurrence
+    ? `${nativeExternalId}${APPLE_OCCURRENCE_SEPARATOR}${event.originalStartAt || startAt}`
+    : nativeExternalId;
   return {
     id: `${agentId}:apple_calendar:${side}:calendar:${calendarId}:${externalId}`,
     externalId,
@@ -1000,7 +1015,10 @@ export async function updateNativeAppleCalendarEvent(args: {
 }): Promise<FeatureResult<LifeOpsCalendarEvent>> {
   const bridge = await loadNativeCalendarBridge();
   if (!bridge) return unsupportedFailure();
-  const payload = await bridge.updateEvent(args.eventId, args.request);
+  const payload = await bridge.updateEvent(
+    appleNativeEventId(args.eventId),
+    args.request,
+  );
   if (!payload.ok || !payload.event) {
     return nativeFailure(payload, args.runtime, "calendar.update");
   }
@@ -1020,7 +1038,7 @@ export async function deleteNativeAppleCalendarEvent(
 ): Promise<FeatureResult<{ provider: typeof APPLE_CALENDAR_PROVIDER }>> {
   const bridge = await loadNativeCalendarBridge();
   if (!bridge) return unsupportedFailure();
-  const payload = await bridge.deleteEvent(eventId);
+  const payload = await bridge.deleteEvent(appleNativeEventId(eventId));
   if (!payload.ok) {
     return nativeFailure(payload, options?.runtime, "calendar.delete");
   }
