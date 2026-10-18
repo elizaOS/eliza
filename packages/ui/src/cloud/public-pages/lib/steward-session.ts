@@ -357,13 +357,19 @@ export function stripLegacyTokenHashFromAddressBar(): boolean {
  */
 export async function exchangeStewardCodeViaApi(
   code: string,
-  opts: { redirectUri?: string; tenantId?: string; codeVerifier?: string } = {},
+  opts: {
+    redirectUri?: string;
+    tenantId?: string;
+    codeVerifier?: string;
+    purpose?: "email-login";
+  } = {},
 ): Promise<StewardNonceExchangeResponse> {
   const response = await postAuthJson(STEWARD_NONCE_EXCHANGE_ENDPOINT, {
     code,
     ...(opts.redirectUri ? { redirectUri: opts.redirectUri } : {}),
     ...(opts.tenantId ? { tenantId: opts.tenantId } : {}),
     ...(opts.codeVerifier ? { codeVerifier: opts.codeVerifier } : {}),
+    ...(opts.purpose ? { purpose: opts.purpose } : {}),
   });
 
   if (!response.ok) {

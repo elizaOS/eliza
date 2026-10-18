@@ -10,7 +10,8 @@
  * account is used.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
+import { eq } from "drizzle-orm";
 import type { createLoginApp } from "../app";
 import type { MockEmailInbox as MockEmailInboxType } from "../auth/email-provider";
 import type { createPGLiteDb } from "../db/pglite";
@@ -35,6 +36,7 @@ beforeAll(async () => {
     STEWARD_KDF_SALT: randomBytes(32).toString("hex"),
     STEWARD_AUDIT_HMAC_KEY: randomBytes(32).toString("hex"),
     APP_URL: STEWARD_ORIGIN,
+    EMAIL_AUTH_REDIRECT_BASE_URL: "https://cloud.example.test",
   };
   for (const [key, value] of Object.entries(environment)) {
     previous.set(key, process.env[key]);
@@ -57,6 +59,10 @@ beforeAll(async () => {
   await database.db.insert(tenantConfigs).values({
     tenantId: TENANT_ID,
     joinMode: "open",
+    allowedRedirectUrls: [
+      "https://cloud.example.test/login",
+      "https://other-cloud.example.test/login",
+    ],
   });
   ({ MockEmailInbox: inbox } = await import("../auth/email-provider"));
   const { createLoginApp } = await import("../app");
@@ -111,7 +117,293 @@ function sixDigitCode(text: string): string {
   return match[1];
 }
 
+function browserProof() {
+  const verifier = randomBytes(48).toString("base64url");
+  return {
+    verifier,
+    binding: {
+      state: randomBytes(24).toString("base64url"),
+      codeChallenge: createHash("sha256").update(verifier).digest("base64url"),
+      codeChallengeMethod: "S256" as const,
+      redirectUri: "https://cloud.example.test/login",
+    },
+  };
+}
+
+function deliveredEmailLink(email: string) {
+  // The inbox's convenience magicLink field ends at the token. Exercise the complete delivered URL.
+  const link = inbox
+    .last(email)
+    ?.text.match(/https?:\/\/[^\s<>]+/g)
+    ?.find((value) => value.includes("/callback/email?"));
+  if (!link) throw new Error("No complete email callback was delivered");
+  return new URL(link);
+}
+
+async function emailCallback(email: string) {
+  const url = deliveredEmailLink(email);
+  // Browser query parameters cannot replace the server-held destination or state.
+  url.searchParams.set("redirectUri", "https://attacker.example/login");
+  const response = await app.request(
+    `${ROUTER_ORIGIN}${url.pathname}${url.search}`,
+  );
+  return new URL(response.headers.get("location") ?? "");
+}
+
 describe("native email code sign-in (Alpha Phone)", () => {
+  test("browser email callback preserves its state, exact redirect and S256 proof through one-use exchange", async () => {
+    const email = "bound-browser@example.test";
+    const { verifier, binding } = browserProof();
+    const sent = await nativePost(
+      "/auth/email/send",
+      { email, tenantId: TENANT_ID, browserBinding: binding },
+      "198.51.100.151",
+    );
+    expect(sent.status).toBe(200);
+    const token = deliveredEmailLink(email).searchParams.get("token");
+    const direct = await nativePost(
+      "/auth/email/verify",
+      { token, email, tenantId: TENANT_ID, browserCallback: true },
+      "198.51.100.163",
+    );
+    expect(direct.status).toBe(401);
+    expect((await direct.json()).token).toBeUndefined();
+    const callback = await emailCallback(email);
+    expect(callback.origin + callback.pathname).toBe(binding.redirectUri);
+    const fragment = new URLSearchParams(callback.hash.slice(1));
+    expect(fragment.get("state")).toBe(binding.state);
+    expect(fragment.get("tenantId")).toBe(TENANT_ID);
+    const code = fragment.get("code");
+    expect(code).toBeTruthy();
+    const request = {
+      code,
+      redirectUri: binding.redirectUri,
+      tenantId: TENANT_ID,
+      codeVerifier: verifier,
+      purpose: "email-login",
+    };
+    for (const rejected of [
+      { ...request, purpose: undefined },
+      { ...request, codeVerifier: undefined },
+      { ...request, codeVerifier: randomBytes(48).toString("base64url") },
+      { ...request, tenantId: "wrong-tenant" },
+      { ...request, redirectUri: "https://attacker.example/login" },
+    ]) {
+      const result = await nativePost(
+        "/auth/oauth/exchange",
+        rejected,
+        "198.51.100.152",
+      );
+      expect(result.status).toBe(401);
+      expect((await result.json()).token).toBeUndefined();
+    }
+    const providerRoute = await nativePost(
+      "/auth/oauth/google/token",
+      request,
+      "198.51.100.160",
+    );
+    expect(providerRoute.status).toBe(401);
+    expect((await providerRoute.json()).code).toBe("code_purpose_mismatch");
+    const { tenantConfigs } = await import("../db/schema");
+    await database.db
+      .update(tenantConfigs)
+      .set({ authAbuseConfig: { loginMethods: { email: false } } })
+      .where(eq(tenantConfigs.tenantId, TENANT_ID));
+    try {
+      const disabled = await nativePost(
+        "/auth/oauth/exchange",
+        request,
+        "198.51.100.164",
+      );
+      expect(disabled.status).toBe(403);
+      expect((await disabled.json()).token).toBeUndefined();
+    } finally {
+      await database.db
+        .update(tenantConfigs)
+        .set({ authAbuseConfig: {} })
+        .where(eq(tenantConfigs.tenantId, TENANT_ID));
+    }
+    const exchange = await nativePost(
+      "/auth/oauth/exchange",
+      request,
+      "198.51.100.153",
+    );
+    expect(exchange.status).toBe(200);
+    const session = await exchange.json();
+    expect(session.purpose).toBe("email-login");
+    expect(typeof session.token).toBe("string");
+    expect(
+      (await nativePost("/auth/oauth/exchange", request, "198.51.100.154"))
+        .status,
+    ).toBe(401);
+    const replay = await emailCallback(email);
+    expect(replay.searchParams.get("reason")).toBe("invalid_link");
+  });
+
+  test("a rejected resend cannot replace the last accepted browser proof", async () => {
+    const email = "browser-failed-resend@example.test";
+    const first = browserProof(),
+      second = browserProof();
+    expect(
+      (
+        await nativePost(
+          "/auth/email/send",
+          { email, tenantId: TENANT_ID, browserBinding: first.binding },
+          "198.51.100.165",
+        )
+      ).status,
+    ).toBe(200);
+    const { MockEmailProvider } = await import("../auth/email-provider");
+    const original = MockEmailProvider.prototype.send;
+    MockEmailProvider.prototype.send = async () => {
+      throw new Error("Email transport unavailable");
+    };
+    try {
+      const rejected = await nativePost(
+        "/auth/email/send",
+        { email, tenantId: TENANT_ID, browserBinding: second.binding },
+        "198.51.100.166",
+      );
+      expect(rejected.status).toBe(502);
+    } finally {
+      MockEmailProvider.prototype.send = original;
+    }
+    const callback = await emailCallback(email);
+    const fragment = new URLSearchParams(callback.hash.slice(1));
+    expect(fragment.get("state")).toBe(first.binding.state);
+    const exchange = await nativePost(
+      "/auth/oauth/exchange",
+      {
+        code: fragment.get("code"),
+        redirectUri: first.binding.redirectUri,
+        tenantId: TENANT_ID,
+        codeVerifier: first.verifier,
+        purpose: "email-login",
+      },
+      "198.51.100.167",
+    );
+    expect(exchange.status).toBe(200);
+  });
+
+  test("browser email callback can use an exact tenant-registered login instead of the global default", async () => {
+    const email = "tenant-browser-login@example.test";
+    const { binding, verifier } = browserProof();
+    binding.redirectUri = "https://other-cloud.example.test/login";
+    expect(
+      (
+        await nativePost(
+          "/auth/email/send",
+          { email, tenantId: TENANT_ID, browserBinding: binding },
+          "198.51.100.161",
+        )
+      ).status,
+    ).toBe(200);
+    const callback = await emailCallback(email);
+    expect(callback.origin + callback.pathname).toBe(binding.redirectUri);
+    const code = new URLSearchParams(callback.hash.slice(1)).get("code");
+    const exchange = await nativePost(
+      "/auth/oauth/exchange",
+      {
+        code,
+        redirectUri: binding.redirectUri,
+        tenantId: TENANT_ID,
+        codeVerifier: verifier,
+        purpose: "email-login",
+      },
+      "198.51.100.162",
+    );
+    expect(exchange.status).toBe(200);
+    expect((await exchange.json()).purpose).toBe("email-login");
+  });
+
+  test("browser binding is all-or-nothing and cannot select an unregistered redirect", async () => {
+    const { binding } = browserProof();
+    let index = 0;
+    for (const browserBinding of [
+      null,
+      {},
+      { ...binding, state: "" },
+      { ...binding, codeChallengeMethod: "plain" },
+      { ...binding, codeChallenge: "x" },
+      { ...binding, redirectUri: "https://attacker.example/login" },
+      {
+        ...binding,
+        redirectUri:
+          "https://cloud.example.test/login?returnTo=https://attacker.example",
+      },
+      { ...binding, redirectUri: "https://cloud.example.test/login#x" },
+    ]) {
+      const email = `bad-binding-${index++}@example.test`;
+      const result = await nativePost(
+        "/auth/email/send",
+        { email, tenantId: TENANT_ID, browserBinding },
+        "198.51.100.155",
+      );
+      expect(result.status).toBe(400);
+      expect(inbox.last(email)).toBeUndefined();
+    }
+    const email = "code-only-browser-binding@example.test";
+    expect(
+      (
+        await nativePost(
+          "/auth/email/send",
+          {
+            email,
+            tenantId: TENANT_ID,
+            delivery: "code",
+            browserBinding: binding,
+          },
+          "198.51.100.156",
+        )
+      ).status,
+    ).toBe(400);
+    expect(inbox.last(email)).toBeUndefined();
+  });
+
+  test("resend supersedes the whole browser binding while companion code login stays usable", async () => {
+    const email = "browser-resend@example.test";
+    const first = browserProof(),
+      second = browserProof();
+    expect(
+      (
+        await nativePost(
+          "/auth/email/send",
+          { email, tenantId: TENANT_ID, browserBinding: first.binding },
+          "198.51.100.157",
+        )
+      ).status,
+    ).toBe(200);
+    const oldLink = deliveredEmailLink(email);
+    expect(
+      (
+        await nativePost(
+          "/auth/email/send",
+          { email, tenantId: TENANT_ID, browserBinding: second.binding },
+          "198.51.100.158",
+        )
+      ).status,
+    ).toBe(200);
+    const old = await app.request(
+      `${ROUTER_ORIGIN}${oldLink.pathname}${oldLink.search}`,
+    );
+    expect(
+      new URL(old.headers.get("location") ?? "").searchParams.get("reason"),
+    ).toBe("invalid_link");
+    const code = sixDigitCode(inbox.last(email)?.text ?? "");
+    const login = await nativePost(
+      "/auth/email/code/verify",
+      { email, code, tenantId: TENANT_ID },
+      "198.51.100.159",
+    );
+    expect(login.status).toBe(200);
+    const session = await login.json();
+    expect(session.ok).toBe(true);
+    expect(session.data?.token ?? session.token).toBeTruthy();
+    expect((await emailCallback(email)).searchParams.get("reason")).toBe(
+      "invalid_link",
+    );
+  });
+
   test('delivery "code" sends a code-only email that contains no link and signs in through code verify', async () => {
     const email = "native-code@example.test";
     const sent = await nativePost(

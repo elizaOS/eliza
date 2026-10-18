@@ -259,8 +259,15 @@ describe("native App Link OAuth (Alpha Phone)", () => {
     expect(state).toBe(appState);
     expect(code).toMatch(/^[A-Za-z0-9_-]{43}$/);
 
-    // Wrong verifier, redirect or tenant cannot redeem the code...
+    // Wrong verifier, redirect, tenant or relabelled email purpose cannot redeem the code...
     for (const body of [
+      {
+        code,
+        redirectUri: APP_LINK,
+        tenantId: TENANT_ID,
+        codeVerifier: verifier,
+        purpose: "email-login",
+      },
       {
         code,
         redirectUri: APP_LINK,

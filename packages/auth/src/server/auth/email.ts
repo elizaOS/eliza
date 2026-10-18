@@ -175,12 +175,37 @@ type MagicLinkPayload = {
   tenantId?: string;
 };
 
+/** Public browser proof bound to the same one-use email challenge; the verifier stays in the browser. */
+export interface EmailLoginBrowserBinding {
+  state: string;
+  codeChallenge: string;
+  codeChallengeMethod: "S256";
+  redirectUri: string;
+}
+
+export function isEmailLoginBrowserBinding(
+  value: unknown,
+): value is EmailLoginBrowserBinding {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const binding = value as Record<string, unknown>;
+  return (
+    typeof binding.state === "string" &&
+    /^[A-Za-z0-9_-]{16,256}$/.test(binding.state) &&
+    typeof binding.codeChallenge === "string" &&
+    /^[A-Za-z0-9_-]{43}$/.test(binding.codeChallenge) &&
+    binding.codeChallengeMethod === "S256" &&
+    typeof binding.redirectUri === "string" &&
+    binding.redirectUri.length <= 2048
+  );
+}
+
 type EmailLoginChallengeRecord = {
   status: "delivery_pending" | "active" | "pending";
   challengeId: string;
   emailHash: string;
   tenantId?: string;
   purpose: typeof EMAIL_LOGIN_PURPOSE;
+  browserBinding?: EmailLoginBrowserBinding;
   codeVerifier: string;
   pollSecretHash: string;
   expiresAt: string;
@@ -194,7 +219,13 @@ type EmailLoginStatusRecord = {
 };
 
 export type EmailLoginVerifyResult =
-  | { valid: true; email: string; tenantId?: string; challengeId: string }
+  | {
+      valid: true;
+      email: string;
+      tenantId?: string;
+      challengeId: string;
+      browserBinding?: EmailLoginBrowserBinding;
+    }
   | { valid: false; email: ""; reason?: "invalid" | "locked" };
 
 export type EmailLoginChallengeStatus =
@@ -323,7 +354,9 @@ function parseEmailLoginChallenge(
       parsed.purpose === EMAIL_LOGIN_PURPOSE &&
       typeof parsed.codeVerifier === "string" &&
       typeof parsed.pollSecretHash === "string" &&
-      typeof parsed.expiresAt === "string"
+      typeof parsed.expiresAt === "string" &&
+      (parsed.browserBinding === undefined ||
+        isEmailLoginBrowserBinding(parsed.browserBinding))
     ) {
       return {
         ...(parsed as EmailLoginChallengeRecord),
@@ -781,6 +814,7 @@ export class EmailAuth {
        * The default sends both the magic link and the code.
        */
       delivery?: EmailLoginDelivery;
+      browserBinding?: EmailLoginBrowserBinding;
     } = {},
   ): Promise<{
     tokenHash: string;
@@ -788,6 +822,13 @@ export class EmailAuth {
     challengeId: string;
     pollSecret: string;
   }> {
+    if (
+      context.browserBinding !== undefined &&
+      (!isEmailLoginBrowserBinding(context.browserBinding) ||
+        context.delivery === "code")
+    ) {
+      throw new Error("Invalid browser email binding");
+    }
     this.assertDeliveryConfigured();
     email = email.toLowerCase().trim();
     const token = generateToken();
@@ -813,6 +854,9 @@ export class EmailAuth {
       emailHash: this.emailHash(email, context.tenantId),
       tenantId: context.tenantId,
       purpose: EMAIL_LOGIN_PURPOSE,
+      ...(context.browserBinding
+        ? { browserBinding: { ...context.browserBinding } }
+        : {}),
       codeVerifier,
       pollSecretHash: this.pollSecretHash(challengeId, pollSecret),
       expiresAt: expiresAt.toISOString(),
@@ -1253,6 +1297,7 @@ export class EmailAuth {
     token: string,
     email?: string,
     tenantId?: string,
+    options: { browserCallback?: boolean } = {},
   ): Promise<EmailLoginVerifyResult> {
     const tokenHash = hashToken(token);
     const challengeId = await this.tokenStore.verify(
@@ -1274,6 +1319,10 @@ export class EmailAuth {
       await this.tokenStore.verify(emailLoginChallengeKey(challengeId)),
     );
     if (payload?.status !== "active") {
+      return { email: "", valid: false };
+    }
+    // A browser-bound link may issue only a PKCE-bound callback code, never a direct session.
+    if (payload.browserBinding && options.browserCallback !== true) {
       return { email: "", valid: false };
     }
 
@@ -1310,6 +1359,9 @@ export class EmailAuth {
       tenantId: payload.tenantId,
       valid: true,
       challengeId,
+      ...(consumed.browserBinding
+        ? { browserBinding: consumed.browserBinding }
+        : {}),
     };
   }
 

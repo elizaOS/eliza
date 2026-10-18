@@ -8,6 +8,136 @@
  */
 
 import type { LoginAuthResult, LoginMfaRequiredResult } from "@elizaos/auth";
+import { generateStewardOAuthState } from "@elizaos/plugin-elizacloud/steward-session-client";
+import { sanitizeLoginReturnTo } from "./login-return-to";
+import { createStewardPkcePair } from "./steward-oauth-url";
+
+export interface StewardEmailBrowserBinding {
+  state: string;
+  codeChallenge: string;
+  codeChallengeMethod: "S256";
+  redirectUri: string;
+}
+
+interface StewardEmailBrowserProof {
+  binding: StewardEmailBrowserBinding;
+  verifier: string;
+  email: string;
+  tenantId: string;
+  returnTo: string | null;
+  expiresAt: number;
+}
+
+const EMAIL_PROOF_PREFIX = "eliza.login.email.proof.";
+const EMAIL_PROOF_TTL_MS = 10 * 60 * 1000;
+const EMAIL_STATE = /^[A-Za-z0-9_-]{16,256}$/;
+
+function readEmailProof(state: string): StewardEmailBrowserProof | null {
+  if (!EMAIL_STATE.test(state)) return null;
+  try {
+    const value = JSON.parse(
+      window.localStorage.getItem(EMAIL_PROOF_PREFIX + state) ?? "null",
+    ) as StewardEmailBrowserProof | null;
+    if (
+      !value ||
+      value.binding?.state !== state ||
+      value.binding.codeChallengeMethod !== "S256" ||
+      !/^[A-Za-z0-9_-]{43}$/.test(value.binding.codeChallenge) ||
+      !/^[A-Za-z0-9._~-]{43,128}$/.test(value.verifier) ||
+      typeof value.email !== "string" ||
+      typeof value.tenantId !== "string" ||
+      typeof value.binding.redirectUri !== "string" ||
+      !Number.isFinite(value.expiresAt) ||
+      value.expiresAt <= Date.now() ||
+      (value.returnTo !== null &&
+        sanitizeLoginReturnTo(value.returnTo) === null)
+    )
+      return null;
+    return value;
+  } catch {
+    // An unreadable proof cannot authorize an exchange.
+    return null;
+  }
+}
+
+/** Origin-shared, state-keyed proof lets an emailed link open in a new tab without touching OAuth state. */
+export async function prepareStewardEmailBrowserBinding(input: {
+  email: string;
+  tenantId: string;
+  redirectUri: string;
+  returnTo: string | null;
+  previousState?: string;
+}): Promise<StewardEmailBrowserBinding> {
+  const email = input.email.trim().toLowerCase();
+  const previous = input.previousState
+    ? readEmailProof(input.previousState)
+    : null;
+  let proof: StewardEmailBrowserProof;
+  if (
+    previous &&
+    previous.email === email &&
+    previous.tenantId === input.tenantId &&
+    previous.binding.redirectUri === input.redirectUri
+  ) {
+    proof = { ...previous, expiresAt: Date.now() + EMAIL_PROOF_TTL_MS };
+  } else {
+    const pkce = await createStewardPkcePair();
+    proof = {
+      binding: {
+        state: generateStewardOAuthState(),
+        codeChallenge: pkce.challenge,
+        codeChallengeMethod: "S256",
+        redirectUri: input.redirectUri,
+      },
+      verifier: pkce.verifier,
+      email,
+      tenantId: input.tenantId,
+      returnTo: sanitizeLoginReturnTo(input.returnTo),
+      expiresAt: Date.now() + EMAIL_PROOF_TTL_MS,
+    };
+  }
+  try {
+    window.localStorage.setItem(
+      EMAIL_PROOF_PREFIX + proof.binding.state,
+      JSON.stringify(proof),
+    );
+  } catch {
+    throw new Error(
+      "This browser cannot keep sign-in proof. Enable site storage and try again.",
+    );
+  }
+  return proof.binding;
+}
+
+export function discardStewardEmailBrowserBinding(state: string): void {
+  if (!EMAIL_STATE.test(state)) return;
+  try {
+    window.localStorage.removeItem(EMAIL_PROOF_PREFIX + state);
+  } catch {
+    // An unavailable local store cannot authorize a subsequent exchange.
+  }
+}
+
+export function consumeStewardEmailBrowserProof(
+  state: string,
+  tenantId: string,
+  redirectUri: string,
+): StewardEmailBrowserProof | null {
+  const proof = readEmailProof(state);
+  if (
+    !proof ||
+    proof.tenantId !== tenantId ||
+    proof.binding.redirectUri !== redirectUri
+  )
+    return null;
+  // Remove only the exact matched email proof. The server also consumes the code once.
+  try {
+    window.localStorage.removeItem(EMAIL_PROOF_PREFIX + state);
+    return proof;
+  } catch {
+    return null;
+  }
+}
 
 export type StewardEmailLoginStatus =
   | "pending"
@@ -128,7 +258,7 @@ function isStewardMfaPayload(value: unknown): value is StewardMfaPayload {
 async function request(
   options: StewardEmailLoginOptions,
   path: string,
-  body: Record<string, string>,
+  body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const response = await fetchImpl(
@@ -167,8 +297,12 @@ async function request(
 export async function startStewardEmailLogin(
   options: StewardEmailLoginOptions,
   email: string,
+  browserBinding?: StewardEmailBrowserBinding,
 ): Promise<StewardEmailLoginChallenge> {
-  const data = await request(options, "/auth/email/send", { email });
+  const data = await request(options, "/auth/email/send", {
+    email,
+    ...(browserBinding ? { browserBinding } : {}),
+  });
   const expiresAt =
     string(data.expiresAt) ??
     (typeof data.expiresAt === "number" ? data.expiresAt : undefined);

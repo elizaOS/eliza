@@ -115,6 +115,7 @@ interface StewardExchangeOk {
   ok: true;
   token: string;
   refreshToken: string;
+  purpose?: "email-login";
   expiresIn?: number;
   expiresAt?: number;
 }
@@ -137,6 +138,7 @@ async function callStewardExchange(
     redirect_uri: string;
     tenant_id: string | null;
     code_verifier?: string;
+    purpose?: "email-login";
   },
   pinnedTenantId?: string,
   signingSecret?: string | null,
@@ -250,7 +252,14 @@ app.post("/", async (c) => {
     codeVerifier?: unknown;
     code_verifier?: unknown;
     telegramContinuation?: unknown;
+    purpose?: unknown;
   };
+  if (body.purpose !== undefined && body.purpose !== "email-login") {
+    logExchange("invalid-purpose");
+    return c.json(errorBody("Invalid exchange purpose", "code_invalid"), 400);
+  }
+  const purpose =
+    body.purpose === "email-login" ? ("email-login" as const) : undefined;
   const code = typeof body.code === "string" ? body.code.trim() : "";
   const redirectUri =
     typeof body.redirectUri === "string"
@@ -333,6 +342,7 @@ app.post("/", async (c) => {
       redirect_uri: redirectUri,
       tenant_id: tenantId,
       code_verifier: codeVerifier,
+      ...(purpose ? { purpose } : {}),
     },
     c.env.STEWARD_TENANT_ID,
     c.env.STEWARD_REQUEST_SIGNING_SECRET,
@@ -368,6 +378,13 @@ app.post("/", async (c) => {
       errorBody(exchange.data.error || "Code exchange failed", mapped),
       status,
     );
+  }
+  // The request marker is not authority. Steward attests the stored one-use
+  // code purpose only after its S256, redirect, tenant and method checks.
+  // Both directions fail closed, so an email grant cannot become OAuth.
+  if (exchange.data.purpose !== purpose) {
+    logExchange("code-purpose-mismatch");
+    return c.json(errorBody("Code purpose mismatch", "code_invalid"), 401);
   }
   const { token, refreshToken } = exchange.data;
   const claims = await verifyStewardTokenCached(c.env, token);
