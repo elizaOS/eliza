@@ -68,26 +68,18 @@ describe("observeRuntimeEvent (unit)", () => {
     );
   });
 
-  it("reports an asynchronously rejecting listener without an unhandled rejection", async () => {
+  it("reports an asynchronously rejecting listener", async () => {
     const runtime = mockRuntime();
     const asyncError = new Error("async listener boom");
-    let rejectEmit!: (err: unknown) => void;
-    runtime.emitEvent.mockImplementation(
-      () =>
-        new Promise<unknown>((_resolve, reject) => {
-          rejectEmit = reject;
-        }),
-    );
+    runtime.emitEvent.mockRejectedValue(asyncError);
 
     observeRuntimeEvent(runtime, "IMessageService.test", "TEST_EVENT", {
       source: "imessage",
     } as EventPayload);
 
-    // Reject after the .catch(reportFailure) handler is attached, then flush
-    // microtasks deterministically. No timers, no global unhandledRejection
-    // listener: if the wrapper failed to attach .catch, reportError would not
-    // be called and this test fails on the assertion below.
-    rejectEmit(asyncError);
+    // Flush the .catch(reportFailure) microtask deterministically.
+    // If the wrapper failed to attach .catch, reportError would not be
+    // called and this test fails on the assertion below.
     await flushMicrotasks();
 
     expect(runtime.reportError).toHaveBeenCalledTimes(1);
@@ -170,10 +162,15 @@ describe("emitAuxiliaryEvent (call-path)", () => {
     expect(runtime.reportError).not.toHaveBeenCalled();
   });
 
-  it("reports asynchronously rejecting listeners on the reaction path", async () => {
+  it("reports each asynchronously rejecting listener independently on the reaction path", async () => {
     const runtime = mockRuntime();
-    const asyncError = new Error("reaction listener boom");
-    runtime.emitEvent.mockRejectedValue(asyncError);
+    const firstError = new Error("first listener boom");
+    const secondError = new Error("second listener boom");
+    // Each of the two emissions rejects with its own error, proving that
+    // failures are reported independently per emission site.
+    runtime.emitEvent
+      .mockRejectedValueOnce(firstError)
+      .mockRejectedValueOnce(secondError);
     const internal = serviceWithRuntime(runtime);
 
     expect(() => internal.emitAuxiliaryEvent(reactionRow())).not.toThrow();
@@ -186,13 +183,13 @@ describe("emitAuxiliaryEvent (call-path)", () => {
     expect(runtime.reportError).toHaveBeenNthCalledWith(
       1,
       "IMessageService.emitAuxiliaryEvent",
-      asyncError,
+      firstError,
       expect.objectContaining({ targetGuid: "guid-123" }),
     );
     expect(runtime.reportError).toHaveBeenNthCalledWith(
       2,
       "IMessageService.emitAuxiliaryEvent",
-      asyncError,
+      secondError,
       expect.objectContaining({ targetGuid: "guid-123" }),
     );
   });
