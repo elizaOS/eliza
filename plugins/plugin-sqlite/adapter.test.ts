@@ -409,6 +409,49 @@ describe("durable SQLite agent adapter", () => {
     expect(otherSource).toBeNull();
   });
 
+  it("updates the stored component when an upsert omits world and source", async () => {
+    const adapter = await open();
+    const worldId = id();
+    const componentId = id();
+    await adapter.createAgents([{ id: agentId, name: "Form agent" }]);
+    await adapter.createEntities([{ id: entityId, agentId, names: ["User"] }]);
+    await adapter.createWorlds([{ id: worldId, name: "Forms", agentId }]);
+    await adapter.createComponents([
+      {
+        id: componentId,
+        entityId,
+        agentId,
+        roomId,
+        worldId,
+        sourceEntityId: agentId,
+        type: "form_session",
+        createdAt: 1,
+        data: { status: "active" },
+      },
+    ]);
+
+    // plugin-sql resolves the upsert natural key through getComponent,
+    // where an omitted world/source matches any stored value.
+    await adapter.upsertComponents([
+      {
+        id: id(),
+        entityId,
+        agentId,
+        roomId,
+        type: "form_session",
+        createdAt: 2,
+        data: { status: "updated" },
+      } as never,
+    ]);
+
+    const rows = await adapter.getComponentsForEntities([entityId]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.id).toBe(componentId);
+    expect(rows[0]?.worldId).toBe(worldId);
+    expect(rows[0]?.sourceEntityId).toBe(agentId);
+    expect(rows[0]?.data).toEqual({ status: "updated" });
+  });
+
   it("rejects a duplicate component id with a typed error and keeps the stored row", async () => {
     const adapter = await open();
     const worldId = id();
