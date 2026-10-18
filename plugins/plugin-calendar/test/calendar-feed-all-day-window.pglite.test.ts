@@ -1,4 +1,5 @@
 import { PGlite } from "@electric-sql/pglite";
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
 import { RuntimeMigrator } from "@elizaos/plugin-sql";
 import { drizzle } from "drizzle-orm/pglite";
@@ -11,6 +12,8 @@ import {
   it,
   vi,
 } from "vitest";
+import { calendarEventOccursOn } from "../src/components/calendar/event-days.js";
+import { formatCalendarEventDateTime } from "../src/internal/format.js";
 import { allDayEventIntersectsLocalWindow } from "../src/service/CalendarService.js";
 import {
   type CalendarHostGate,
@@ -317,6 +320,34 @@ describe("all-day event local-day placement", () => {
     expect(
       allDayEventIntersectsLocalWindow(appleJune3, ...losAngelesDay(4)),
     ).toBe(false);
+  });
+
+  it("names and places the Apple Calendar all-day date in replies and the day grid", () => {
+    const event = { ...appleJune3, isAllDay: true } as LifeOpsCalendarEvent;
+    expect(formatCalendarEventDateTime(event, { includeYear: false })).toBe(
+      "Jun 3",
+    );
+    expect(
+      ["2026-06-02", "2026-06-03", "2026-06-04"].filter((day) =>
+        calendarEventOccursOn(event, day, "Asia/Tokyo"),
+      ),
+    ).toEqual(["2026-06-03"]);
+    // Google and ICS rows keep their UTC-midnight dates.
+    const google = {
+      provider: "google",
+      startAt: "2026-06-03T00:00:00.000Z",
+      endAt: "2026-06-04T00:00:00.000Z",
+      timezone: "Asia/Tokyo",
+      isAllDay: true,
+    } as LifeOpsCalendarEvent;
+    expect(formatCalendarEventDateTime(google, { includeYear: false })).toBe(
+      "Jun 3",
+    );
+    expect(
+      ["2026-06-02", "2026-06-03", "2026-06-04"].filter((day) =>
+        calendarEventOccursOn(google, day, "Asia/Tokyo"),
+      ),
+    ).toEqual(["2026-06-03"]);
   });
 
   it("compares the instants of an Apple Calendar event that has no zone", () => {

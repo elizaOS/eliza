@@ -1,5 +1,6 @@
 /** Maps canonical feed events to visible civil days without shifting all-day dates through the viewer's timezone. */
 import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
+import { allDayEventDates } from "../../internal/all-day-dates.js";
 
 function localDay(instant: Date, timeZone: string): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -22,9 +23,8 @@ export function calendarEventOccursOn(
   timeZone: string,
 ): boolean {
   if (event.isAllDay) {
-    const start = event.startAt.split("T")[0];
-    const end = event.endAt.split("T")[0];
-    return day >= start && day < end;
+    const { startDate, endDateExclusive } = allDayEventDates(event, timeZone);
+    return day >= startDate && day < endDateExclusive;
   }
   const startInstant = new Date(event.startAt);
   // An unparseable timestamp must not throw out of a render-time day filter:

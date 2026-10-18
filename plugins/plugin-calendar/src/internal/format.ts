@@ -8,6 +8,7 @@ import type {
   LifeOpsCalendarFeed,
   LifeOpsNextCalendarEventContext,
 } from "@elizaos/contracts";
+import { allDayEventDates } from "./all-day-dates.js";
 import {
   addDaysToLocalDate,
   getTimeZoneOffsetMinutes,
@@ -34,9 +35,10 @@ function getCalendarYearForDisplay(date: Date, timeZone?: string): number {
 }
 
 export function formatCalendarEventDateTime(
-  event: Pick<LifeOpsCalendarEvent, "startAt" | "timezone"> & {
-    isAllDay?: boolean;
-  },
+  event: Pick<LifeOpsCalendarEvent, "startAt" | "timezone"> &
+    Partial<Pick<LifeOpsCalendarEvent, "provider" | "endAt">> & {
+      isAllDay?: boolean;
+    },
   options?: {
     includeYear?: boolean;
     includeTimeZoneName?: boolean;
@@ -52,7 +54,9 @@ export function formatCalendarEventDateTime(
   },
 ): string {
   if (event.isAllDay) {
-    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(event.startAt);
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(
+      allDayEventDates(event, options?.timeZone).startDate,
+    );
     if (match) {
       const year = Number(match[1]);
       const civil = new Date(
