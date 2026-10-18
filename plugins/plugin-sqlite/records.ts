@@ -3463,6 +3463,16 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
 
   async deleteRelationships(relationshipIds: UUID[]): Promise<void> {
     for (const id of relationshipIds) {
+      const existing = await this.storage.get<StoredRelationship>(
+        COLLECTIONS.RELATIONSHIPS,
+        id,
+      );
+      if (!existing) continue;
+      // Only this agent's edges are deletable: every sibling relationship
+      // path in this file scopes on `(agentId ?? this.agentId)`, and a
+      // stored row for another agent is not this adapter's to remove —
+      // the same rule updateRelationships states for rewrites.
+      if ((existing.agentId ?? this.agentId) !== this.agentId) continue;
       await this.storage.delete(COLLECTIONS.RELATIONSHIPS, id);
     }
   }
