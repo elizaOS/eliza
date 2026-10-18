@@ -649,6 +649,14 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     const ids: UUID[] = [];
     for (const entity of entities) {
       const id = (entity.id ?? randomUUID()) as UUID;
+      // plugin-sql inserts an entity with ON CONFLICT DO NOTHING and still
+      // reports the id: a row that already exists is kept, and upsertEntities
+      // is the merge-write path. A blind set here replaced the stored names
+      // and the per-source identity metadata a sparse create omits.
+      if (await this.storage.get<Entity>(COLLECTIONS.ENTITIES, id)) {
+        ids.push(id);
+        continue;
+      }
       // Components live in their own collection, never in the entity row.
       const { components: _components, ...row } = entity;
       await this.storage.set(COLLECTIONS.ENTITIES, id, { ...row, id });
