@@ -64,7 +64,7 @@ export class TravelPostBookingProjectionError extends Error {
     cause: unknown,
   ) {
     super(
-      `Duffel booking ${booking.order.id} succeeded, but itinerary projection failed: ${
+      `Duffel order ${booking.order.id} was created, but a later booking step failed: ${
         cause instanceof Error ? cause.message : String(cause)
       }`,
       { cause },
@@ -401,13 +401,28 @@ export class TravelDomain {
       prepared.orderType === "hold" &&
       refreshedOrder.paymentStatus?.awaitingPayment
     ) {
-      refreshedOrder = await this.getTravelOrder(order.id);
-      payment = await this.payTravelOrder({
-        orderId: refreshedOrder.id,
-        amount: refreshedOrder.totalAmount,
-        currency: refreshedOrder.totalCurrency,
-      });
-      refreshedOrder = await this.getTravelOrder(order.id);
+      try {
+        refreshedOrder = await this.getTravelOrder(order.id);
+        payment = await this.payTravelOrder({
+          orderId: refreshedOrder.id,
+          amount: refreshedOrder.totalAmount,
+          currency: refreshedOrder.totalCurrency,
+        });
+        refreshedOrder = await this.getTravelOrder(order.id);
+      } catch (cause) {
+        // error-policy:J2 The hold order exists, and the payment may already
+        // be captured: carry the order and any payment receipt to the
+        // approval reconciliation boundary, as the calendar step does.
+        throw new TravelPostBookingProjectionError(
+          {
+            offer: prepared.offer,
+            order: refreshedOrder,
+            payment,
+            calendarEvent: null,
+          },
+          cause,
+        );
+      }
     }
 
     let calendarEvent: Awaited<
