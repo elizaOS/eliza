@@ -137,19 +137,11 @@ export class DexInteractionService
     tokenAMint?: string,
     tokenBMint?: string,
   ): Promise<PoolInfo[]> {
-    try {
-      return await this.lpManagementService.listPools({
-        dex: dexName,
-        tokenA: tokenAMint,
-        tokenB: tokenBMint,
-      });
-    } catch (error) {
-      logger.warn(
-        "[DexInteractionService] Failed to list LP pools",
-        error instanceof Error ? error.message : String(error),
-      );
-      return [];
-    }
+    return this.lpManagementService.listPools({
+      dex: dexName,
+      tokenA: tokenAMint,
+      tokenB: tokenBMint,
+    });
   }
 
   async addLiquidity(config: AddLiquidityConfig): Promise<TransactionResult> {

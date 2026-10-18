@@ -29,20 +29,40 @@ import {
 const { BN } = anchor;
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 
-/** Response shape from Meteora DLMM API */
+/** Pool shape from the Meteora DLMM Data API. */
 interface MeteoraPoolResponse {
   address: string;
-  mint_x: string;
-  mint_y: string;
-  name_x?: string;
-  name_y?: string;
-  decimals_x: number;
-  decimals_y: number;
-  apr?: number;
-  liquidity?: string | number;
-  tvl?: number;
-  volume_24h?: number;
-  fee_percentage?: number;
+  name: string;
+  token_x: MeteoraTokenResponse;
+  token_y: MeteoraTokenResponse;
+  apy: number;
+  tvl: number;
+}
+
+interface MeteoraTokenResponse {
+  address: string;
+  symbol: string;
+  decimals: number;
+}
+
+interface MeteoraPoolsPage {
+  current_page: number;
+  pages: number;
+  data: MeteoraPoolResponse[];
+}
+
+/** The Meteora API did not return a usable pool catalog. */
+export class MeteoraPoolDiscoveryError extends Error {
+  public readonly code = "METEORA_POOL_DISCOVERY_FAILED";
+
+  constructor(
+    message: string,
+    public readonly status?: number,
+    options?: ErrorOptions
+  ) {
+    super(message, options);
+    this.name = "MeteoraPoolDiscoveryError";
+  }
 }
 
 export class MeteoraLpService extends Service {
@@ -52,7 +72,7 @@ export class MeteoraLpService extends Service {
   public readonly capabilityDescription =
     "Provides standardized access to DEX liquidity pools." as const;
   private connection: Connection;
-  private readonly METEORA_API_URL = "https://dlmm-api.meteora.ag/pair/all";
+  private readonly METEORA_API_URL = "https://dlmm.datapi.meteora.ag/pools";
 
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
@@ -76,30 +96,32 @@ export class MeteoraLpService extends Service {
 
   public async getPools(tokenAMint?: string, tokenBMint?: string): Promise<PoolInfo[]> {
     try {
-      const response = await fetch(this.METEORA_API_URL, { signal: AbortSignal.timeout(10_000) });
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data = (await response.json()) as MeteoraPoolResponse[];
+      const filters = poolFilters(tokenAMint, tokenBMint);
+      const poolsByAddress = new Map<string, MeteoraPoolResponse>();
 
-      const pools = data.map(
+      for (const filter of filters) {
+        for (const pool of await this.fetchPools(filter)) {
+          poolsByAddress.set(pool.address, pool);
+        }
+      }
+
+      const pools = Array.from(poolsByAddress.values()).map(
         (pool): PoolInfo => ({
           id: pool.address,
+          displayName: pool.name,
           dex: "meteora",
           tokenA: {
-            mint: pool.mint_x,
-            symbol: pool.name_x || "Unknown", // Provide default if symbol is missing
-            decimals: pool.decimals_x,
+            mint: pool.token_x.address,
+            symbol: pool.token_x.symbol,
+            decimals: pool.token_x.decimals,
           },
           tokenB: {
-            mint: pool.mint_y,
-            symbol: pool.name_y || "Unknown", // Provide default if symbol is missing
-            decimals: pool.decimals_y,
+            mint: pool.token_y.address,
+            symbol: pool.token_y.symbol,
+            decimals: pool.token_y.decimals,
           },
-          // The API does not provide APY or TVL directly in this endpoint.
-          // These would need to be fetched from another source or calculated.
-          apy: pool.apr ? pool.apr / 100 : 0, // Handle missing apr field
-          tvl: pool.liquidity ? Number(pool.liquidity) : 0, // Parse liquidity string to number
+          apy: pool.apy / 100,
+          tvl: pool.tvl,
         })
       );
 
@@ -113,9 +135,53 @@ export class MeteoraLpService extends Service {
 
       return pools;
     } catch (error) {
-      console.error("[MeteoraLpService] Error fetching pools from Meteora API:", error);
-      return [];
+      const typedError =
+        error instanceof MeteoraPoolDiscoveryError
+          ? error
+          : new MeteoraPoolDiscoveryError("Meteora returned an unusable pool catalog", undefined, {
+              cause: error,
+            });
+      this.runtime?.reportError("meteora.poolDiscovery", typedError);
+      throw typedError;
     }
+  }
+
+  private async fetchPools(filter?: string): Promise<MeteoraPoolResponse[]> {
+    const firstPage = await this.fetchPoolsPage(1, filter);
+    if (firstPage.current_page !== 1) {
+      throw new Error(`Meteora returned page ${firstPage.current_page} when page 1 was requested`);
+    }
+    const pools = [...firstPage.data];
+
+    for (let page = 2; page <= firstPage.pages; page += 1) {
+      const nextPage = await this.fetchPoolsPage(page, filter);
+      if (nextPage.current_page !== page) {
+        throw new Error(
+          `Meteora returned page ${nextPage.current_page} when page ${page} was requested`
+        );
+      }
+      pools.push(...nextPage.data);
+    }
+
+    return pools;
+  }
+
+  private async fetchPoolsPage(page: number, filter?: string): Promise<MeteoraPoolsPage> {
+    const url = new URL(this.METEORA_API_URL);
+    url.searchParams.set("page", String(page));
+    url.searchParams.set("page_size", "1000");
+    if (filter) {
+      url.searchParams.set("filter_by", filter);
+    }
+
+    const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+    if (!response.ok) {
+      throw new MeteoraPoolDiscoveryError(
+        `Meteora pool request failed with status ${response.status}`,
+        response.status
+      );
+    }
+    return parsePoolsPage(await response.json());
   }
 
   public async addLiquidity(params: {
@@ -401,6 +467,9 @@ export class MeteoraLpService extends Service {
         rewards: [],
       };
     } catch (error) {
+      if (error instanceof MeteoraPoolDiscoveryError) {
+        throw error;
+      }
       console.error("[MeteoraLpService] Error getting LP position details:", error);
       return null;
     }
@@ -409,25 +478,20 @@ export class MeteoraLpService extends Service {
   public async getMarketDataForPools(
     poolIds: string[]
   ): Promise<Record<string, Partial<PoolInfo>>> {
-    try {
-      const allPools = await this.getPools();
-      const marketData: Record<string, Partial<PoolInfo>> = {};
+    const allPools = await this.getPools();
+    const marketData: Record<string, Partial<PoolInfo>> = {};
 
-      for (const poolId of poolIds) {
-        const poolInfo = allPools.find((p) => p.id === poolId);
-        if (poolInfo) {
-          marketData[poolId] = {
-            apy: poolInfo.apy,
-            tvl: poolInfo.tvl,
-          };
-        }
+    for (const poolId of poolIds) {
+      const poolInfo = allPools.find((p) => p.id === poolId);
+      if (poolInfo) {
+        marketData[poolId] = {
+          apy: poolInfo.apy,
+          tvl: poolInfo.tvl,
+        };
       }
-
-      return marketData;
-    } catch (error) {
-      console.error("[MeteoraLpService] Error getting market data for pools:", error);
-      return {};
     }
+
+    return marketData;
   }
 
   private async getTokenBalance(walletAddress: PublicKey, mintAddress: PublicKey): Promise<bigint> {
@@ -446,4 +510,84 @@ function getRuntimeStringSetting(
 ): string | undefined {
   const value = runtime?.getSetting(key);
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function poolFilters(tokenAMint?: string, tokenBMint?: string): Array<string | undefined> {
+  if (!tokenAMint || !tokenBMint) {
+    return [undefined];
+  }
+  const forward = `token_x=${tokenAMint} && token_y=${tokenBMint}`;
+  if (tokenAMint === tokenBMint) {
+    return [forward];
+  }
+  return [forward, `token_x=${tokenBMint} && token_y=${tokenAMint}`];
+}
+
+function parsePoolsPage(value: unknown): MeteoraPoolsPage {
+  if (!isRecord(value)) {
+    throw new Error("Meteora pool response is not an object");
+  }
+  const { current_page: currentPage, pages, data } = value;
+  if (!Number.isSafeInteger(currentPage) || (currentPage as number) < 0) {
+    throw new Error("Meteora pool response has an invalid current_page");
+  }
+  if (!Number.isSafeInteger(pages) || (pages as number) < 0) {
+    throw new Error("Meteora pool response has an invalid pages value");
+  }
+  if (!Array.isArray(data)) {
+    throw new Error("Meteora pool response has no data array");
+  }
+
+  return {
+    current_page: currentPage as number,
+    pages: pages as number,
+    data: data.map(parsePool),
+  };
+}
+
+function parsePool(value: unknown): MeteoraPoolResponse {
+  if (!isRecord(value)) {
+    throw new Error("Meteora pool entry is not an object");
+  }
+  return {
+    address: requiredString(value.address, "pool address"),
+    name: requiredString(value.name, "pool name"),
+    token_x: parseToken(value.token_x, "token_x"),
+    token_y: parseToken(value.token_y, "token_y"),
+    apy: requiredFiniteNumber(value.apy, "pool apy"),
+    tvl: requiredFiniteNumber(value.tvl, "pool tvl"),
+  };
+}
+
+function parseToken(value: unknown, field: string): MeteoraTokenResponse {
+  if (!isRecord(value)) {
+    throw new Error(`Meteora ${field} is not an object`);
+  }
+  const decimals = requiredFiniteNumber(value.decimals, `${field} decimals`);
+  if (!Number.isInteger(decimals) || decimals < 0) {
+    throw new Error(`Meteora ${field} decimals is invalid`);
+  }
+  return {
+    address: requiredString(value.address, `${field} address`),
+    symbol: value.symbol === "" ? "Unknown" : requiredString(value.symbol, `${field} symbol`),
+    decimals,
+  };
+}
+
+function requiredString(value: unknown, field: string): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`Meteora ${field} is invalid`);
+  }
+  return value;
+}
+
+function requiredFiniteNumber(value: unknown, field: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`Meteora ${field} is invalid`);
+  }
+  return value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
