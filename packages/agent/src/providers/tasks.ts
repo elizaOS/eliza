@@ -14,6 +14,7 @@ import type {
   Task,
 } from "@elizaos/core";
 import { readTaskCompleted, toWorkbenchTask } from "@elizaos/host/protocol";
+import { describeIntervalMs } from "../triggers/humanize.ts";
 import { listTriggerTasks, readTriggerConfig } from "../triggers/runtime.ts";
 
 function formatTaskForContext(task: Task): string {
@@ -31,15 +32,22 @@ function formatTriggerForContext(task: Task): string | null {
   if (!trigger) return null;
 
   const status = trigger.enabled ? "active" : "paused";
+  // The agent answers "when does it run?" from this line, so keep the exact
+  // schedule: the interval unrounded, the cron zone, the one-time instant and
+  // the event kind.
   let schedule = "";
   if (trigger.triggerType === "interval" && trigger.intervalMs) {
-    const mins = Math.round(trigger.intervalMs / 60_000);
-    schedule =
-      mins >= 60 ? `every ${Math.round(mins / 60)}h` : `every ${mins}m`;
+    schedule = describeIntervalMs(trigger.intervalMs) ?? "";
   } else if (trigger.triggerType === "cron" && trigger.cronExpression) {
-    schedule = `cron: ${trigger.cronExpression}`;
+    schedule = trigger.timezone
+      ? `cron: ${trigger.cronExpression} in ${trigger.timezone}`
+      : `cron: ${trigger.cronExpression}`;
   } else if (trigger.triggerType === "once") {
-    schedule = "one-time";
+    schedule = trigger.scheduledAtIso
+      ? `once at ${trigger.scheduledAtIso}`
+      : "one-time";
+  } else if (trigger.triggerType === "event" && trigger.eventKind) {
+    schedule = `on event ${trigger.eventKind}`;
   }
 
   return `- [${status}] ${trigger.displayName} (${schedule}) — ${trigger.instructions} (id: ${task.id})`;
