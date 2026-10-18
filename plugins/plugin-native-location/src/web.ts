@@ -55,6 +55,21 @@ export class LocationWeb extends WebPlugin {
     // effective value the same way so an omitted accuracy is not silently
     // low accuracy on web.
     const accuracy = options?.accuracy ?? "high";
+    // Bridge options arrive as untyped JSON, so a value outside the
+    // LocationAccuracy union can reach this point. The Android bridge
+    // rejects it ("accuracy must be best, high, medium, low, or passive"
+    // in LocationFixReader.selectProvider); silently mapping it to low
+    // accuracy here would hide the caller's error and return a coarser
+    // fix than the native bridges report.
+    if (
+      accuracy !== "best" &&
+      accuracy !== "high" &&
+      accuracy !== "medium" &&
+      accuracy !== "low" &&
+      accuracy !== "passive"
+    ) {
+      throw new Error("accuracy must be best, high, medium, low, or passive");
+    }
     return {
       enableHighAccuracy: accuracy === "best" || accuracy === "high",
       maximumAge: Math.trunc(maxAge),
