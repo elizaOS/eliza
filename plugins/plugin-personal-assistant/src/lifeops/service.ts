@@ -202,7 +202,11 @@ import {
   type TelegramReadReceiptResult,
   type TelegramSendMessageResult,
 } from "./domains/telegram-service.js";
-import { TravelDomain } from "./domains/travel-service.js";
+import {
+  finalArrivalAt,
+  firstDepartureAt,
+  TravelDomain,
+} from "./domains/travel-service.js";
 import {
   WhatsAppDomain,
   type WhatsAppMessage,
@@ -2339,21 +2343,23 @@ export class LifeOpsService extends LifeOpsServiceBase {
     // A confirmed itinerary is the strongest travel signal we have: the owner
     // will be away for the booked window. Record it as a first-class travel
     // fact so the `during_travel` scheduling gate can derive `travelActive`.
-    // The window comes from the booked order's own departure/arrival segments;
-    // `calendarSync.timeZone` (when the caller supplied one) is the only
-    // destination-zone signal Duffel exposes — orders carry IATA codes, not
-    // zones. A store-write failure is not swallowed: a silently-dropped travel
-    // fact would leave the gate blind, so we let it surface.
-    const departingAt = result.order.slices[0]?.segments[0]?.departingAt;
+    // The window comes from the booked order's own departure/arrival segments,
+    // read in each airport's zone (Duffel times are airport-local). The
+    // destination zone is the arrival airport's. A store-write failure is not
+    // swallowed: a silently-dropped travel fact would leave the gate blind, so
+    // we let it surface.
+    const firstSegment = result.order.slices[0]?.segments[0];
     const lastSlice = result.order.slices[result.order.slices.length - 1];
-    const arrivingAt =
-      lastSlice?.segments[lastSlice.segments.length - 1]?.arrivingAt;
-    if (departingAt) {
-      const destinationTimezone = args.calendarSync?.timeZone ?? undefined;
+    const lastSegment = lastSlice?.segments[lastSlice.segments.length - 1];
+    if (firstSegment) {
+      const destinationTimezone =
+        lastSegment?.destinationTimeZone ??
+        args.calendarSync?.timeZone ??
+        undefined;
       await resolveOwnerFactStore(this.runtime).setActiveTravel(
         {
-          startIso: departingAt,
-          ...(arrivingAt ? { endIso: arrivingAt } : {}),
+          startIso: firstDepartureAt(result.order),
+          ...(lastSegment ? { endIso: finalArrivalAt(result.order) } : {}),
           ...(destinationTimezone ? { destinationTimezone } : {}),
         },
         { source: "connector_inferred", recordedAt: new Date().toISOString() },

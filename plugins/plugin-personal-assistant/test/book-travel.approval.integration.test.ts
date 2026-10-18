@@ -116,16 +116,28 @@ function installTravelAndCalendarFetchStub() {
                     },
                     slices: [
                       {
-                        origin: { iata_code: "JFK" },
-                        destination: { iata_code: "LHR" },
+                        origin: {
+                          iata_code: "JFK",
+                          time_zone: "America/New_York",
+                        },
+                        destination: {
+                          iata_code: "LHR",
+                          time_zone: "Europe/London",
+                        },
                         duration: "PT7H30M",
                         fare_brand_name: "Economy",
                         segments: [
                           {
-                            origin: { iata_code: "JFK" },
-                            destination: { iata_code: "LHR" },
-                            departing_at: "2026-06-15T09:00:00Z",
-                            arriving_at: "2026-06-15T16:30:00Z",
+                            origin: {
+                              iata_code: "JFK",
+                              time_zone: "America/New_York",
+                            },
+                            destination: {
+                              iata_code: "LHR",
+                              time_zone: "Europe/London",
+                            },
+                            departing_at: "2026-06-15T09:00:00",
+                            arriving_at: "2026-06-15T21:30:00",
                             operating_carrier: { iata_code: "BA" },
                             flight_number: "BA178",
                             duration: "PT7H30M",
@@ -165,16 +177,25 @@ function installTravelAndCalendarFetchStub() {
                 },
                 slices: [
                   {
-                    origin: { iata_code: "JFK" },
-                    destination: { iata_code: "LHR" },
+                    origin: { iata_code: "JFK", time_zone: "America/New_York" },
+                    destination: {
+                      iata_code: "LHR",
+                      time_zone: "Europe/London",
+                    },
                     duration: "PT7H30M",
                     fare_brand_name: "Economy",
                     segments: [
                       {
-                        origin: { iata_code: "JFK" },
-                        destination: { iata_code: "LHR" },
-                        departing_at: "2026-06-15T09:00:00Z",
-                        arriving_at: "2026-06-15T16:30:00Z",
+                        origin: {
+                          iata_code: "JFK",
+                          time_zone: "America/New_York",
+                        },
+                        destination: {
+                          iata_code: "LHR",
+                          time_zone: "Europe/London",
+                        },
+                        departing_at: "2026-06-15T09:00:00",
+                        arriving_at: "2026-06-15T21:30:00",
                         operating_carrier: { iata_code: "BA" },
                         flight_number: "BA178",
                         duration: "PT7H30M",
@@ -202,15 +223,24 @@ function installTravelAndCalendarFetchStub() {
                 total_currency: "USD",
                 slices: [
                   {
-                    origin: { iata_code: "JFK" },
-                    destination: { iata_code: "LHR" },
+                    origin: { iata_code: "JFK", time_zone: "America/New_York" },
+                    destination: {
+                      iata_code: "LHR",
+                      time_zone: "Europe/London",
+                    },
                     duration: "PT7H30M",
                     segments: [
                       {
-                        origin: { iata_code: "JFK" },
-                        destination: { iata_code: "LHR" },
-                        departing_at: "2026-06-15T09:00:00Z",
-                        arriving_at: "2026-06-15T16:30:00Z",
+                        origin: {
+                          iata_code: "JFK",
+                          time_zone: "America/New_York",
+                        },
+                        destination: {
+                          iata_code: "LHR",
+                          time_zone: "Europe/London",
+                        },
+                        departing_at: "2026-06-15T09:00:00",
+                        arriving_at: "2026-06-15T21:30:00",
                         operating_carrier: { iata_code: "BA" },
                         flight_number: "BA178",
                         duration: "PT7H30M",
@@ -249,15 +279,24 @@ function installTravelAndCalendarFetchStub() {
                 total_currency: "USD",
                 slices: [
                   {
-                    origin: { iata_code: "JFK" },
-                    destination: { iata_code: "LHR" },
+                    origin: { iata_code: "JFK", time_zone: "America/New_York" },
+                    destination: {
+                      iata_code: "LHR",
+                      time_zone: "Europe/London",
+                    },
                     duration: "PT7H30M",
                     segments: [
                       {
-                        origin: { iata_code: "JFK" },
-                        destination: { iata_code: "LHR" },
-                        departing_at: "2026-06-15T09:00:00Z",
-                        arriving_at: "2026-06-15T16:30:00Z",
+                        origin: {
+                          iata_code: "JFK",
+                          time_zone: "America/New_York",
+                        },
+                        destination: {
+                          iata_code: "LHR",
+                          time_zone: "Europe/London",
+                        },
+                        departing_at: "2026-06-15T09:00:00",
+                        arriving_at: "2026-06-15T21:30:00",
                         operating_carrier: { iata_code: "BA" },
                         flight_number: "BA178",
                         duration: "PT7H30M",
@@ -519,7 +558,12 @@ describe("BOOK_TRAVEL approval execution", () => {
       "2026-06-16T23:59:59.999Z",
       "owner",
     );
-    expect(events.some((event) => event.title === "London flight")).toBe(true);
+    // 09:00 at JFK (New York, UTC-4) to 21:30 at LHR (London, UTC+1).
+    expect(
+      events
+        .filter((event) => event.title === "London flight")
+        .map((event) => [event.startAt, event.endAt]),
+    ).toEqual([["2026-06-15T13:00:00.000Z", "2026-06-15T20:30:00.000Z"]]);
 
     const calledUrls = fetchMock.mock.calls.map(([input]) => String(input));
     expect(calledUrls.some((url) => url.endsWith("/air/orders"))).toBe(true);

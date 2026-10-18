@@ -23,6 +23,7 @@ import {
   searchFlights,
 } from "@elizaos/plugin-elizacloud/cloud/duffel-client";
 import type { LifeOpsContext } from "../lifeops-context.js";
+import { buildUtcDateFromLocalParts } from "../time.js";
 import type {
   FlightBookingExecutionResult,
   PreparedFlightBooking,
@@ -211,21 +212,45 @@ function buildCalendarLocation(
   return `${firstSlice.origin} -> ${lastSlice.destination}`;
 }
 
-function firstDepartureAt(order: DuffelOrder): string {
+/**
+ * Duffel times are the airport's local wall-clock time without an offset.
+ * Read them in that airport's zone, so a calendar event in the owner's zone
+ * starts at the real departure and ends at the real arrival.
+ */
+function airportLocalToUtcIso(
+  localTime: string,
+  timeZone: string | null,
+): string {
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?$/.exec(
+      localTime,
+    );
+  if (!match || !timeZone) return localTime;
+  return buildUtcDateFromLocalParts(timeZone, {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3]),
+    hour: Number(match[4]),
+    minute: Number(match[5]),
+    second: Number(match[6] ?? "0"),
+  }).toISOString();
+}
+
+export function firstDepartureAt(order: DuffelOrder): string {
   const segment = order.slices[0]?.segments[0];
   if (!segment) {
     throw new Error("Booked flight order has no departure segment");
   }
-  return segment.departingAt;
+  return airportLocalToUtcIso(segment.departingAt, segment.originTimeZone);
 }
 
-function finalArrivalAt(order: DuffelOrder): string {
+export function finalArrivalAt(order: DuffelOrder): string {
   const lastSlice = order.slices[order.slices.length - 1];
   const segment = lastSlice?.segments[lastSlice.segments.length - 1];
   if (!segment) {
     throw new Error("Booked flight order has no arrival segment");
   }
-  return segment.arrivingAt;
+  return airportLocalToUtcIso(segment.arrivingAt, segment.destinationTimeZone);
 }
 
 /**
