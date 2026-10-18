@@ -67,6 +67,16 @@ export function resolveGitHubAccountSelection(
   };
 }
 
+function jsonErrorLocation(error: unknown): Record<string, unknown> {
+  if (!(error instanceof Error)) return { parseError: "UnknownError" };
+  const location: Record<string, unknown> = { parseError: error.name };
+  for (const key of ["position", "line", "column"] as const) {
+    const match = new RegExp(`\\b${key} (\\d+)\\b`).exec(error.message);
+    if (match) location[key] = Number(match[1]);
+  }
+  return location;
+}
+
 function parseAccountsJson(raw: string | undefined): RawAccountRecord[] {
   if (!raw) return [];
   try {
@@ -85,11 +95,12 @@ function parseAccountsJson(raw: string | undefined): RawAccountRecord[] {
           accountId: (value as RawAccountRecord).accountId ?? id,
         }));
     }
-  } catch (cause) {
+  } catch (error) {
+    // GITHUB_ACCOUNTS holds PATs and V8 SyntaxError messages quote the input,
+    // so keep only the error name and numeric location — never the message.
     throw new ElizaError("GitHub accounts config is not valid JSON.", {
       code: "GITHUB_ACCOUNTS_CONFIG_INVALID",
-      cause,
-      context: { setting: "GITHUB_ACCOUNTS" },
+      context: { setting: "GITHUB_ACCOUNTS", ...jsonErrorLocation(error) },
       severity: "fatal",
     });
   }

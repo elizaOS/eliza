@@ -112,6 +112,35 @@ describe("GitHub account resolution", () => {
     },
   );
 
+  it("rejects malformed GITHUB_ACCOUNTS without leaking token text", () => {
+    const secret = "ghp_SECRETtokenValue123";
+    let thrown: unknown;
+    try {
+      readGitHubAccounts(
+        runtime({ GITHUB_ACCOUNTS: `{"agent":{"token":${secret}}}` }),
+      );
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toMatchObject({
+      code: "GITHUB_ACCOUNTS_CONFIG_INVALID",
+      context: { setting: "GITHUB_ACCOUNTS", parseError: "SyntaxError" },
+    });
+    const chain: unknown[] = [];
+    for (let e: unknown = thrown; e; e = (e as { cause?: unknown }).cause) {
+      chain.push(e);
+    }
+    const serialized = chain
+      .map((e) =>
+        e instanceof Error
+          ? `${e.name} ${e.message} ${e.stack ?? ""} ${JSON.stringify(e)}`
+          : String(e),
+      )
+      .join("\n");
+    expect(serialized).not.toContain("ghp_SECRET");
+    expect(serialized).not.toContain(secret.slice(4));
+  });
+
   it("disables the loopback endpoint seam outside test processes", () => {
     const priorNodeEnv = process.env.NODE_ENV;
     process.env.NODE_ENV = "production";
