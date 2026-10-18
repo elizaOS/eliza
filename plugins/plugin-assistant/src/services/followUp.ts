@@ -7,6 +7,7 @@
  * task worker writes a reminder memory and emits `follow_up:due` when a task fires.
  */
 
+import { randomUUID } from "node:crypto";
 import type {
   IAgentRuntime,
   JsonValue,
@@ -155,7 +156,10 @@ export class FollowUpService extends Service {
 
     // Create follow-up task. WHY queue + dueAt: scheduler runs one-shot queue tasks when now >= dueAt, then deletes (run at time X).
     const task: Task = {
-      id: createUniqueUuid(this.runtime, `followup-${entityId}-${Date.now()}`),
+      id: createUniqueUuid(
+        this.runtime,
+        `followup-${entityId}-${randomUUID()}`,
+      ),
       name: "follow_up",
       description: `Follow-up with contact: ${reason}`,
       entityId: this.runtime.agentId,
