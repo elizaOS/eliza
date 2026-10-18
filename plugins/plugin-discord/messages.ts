@@ -122,6 +122,7 @@ import {
 	buildDiscordComponents,
 	buildOutboundDiscordAttachment,
 	canSendMessage,
+	type DiscordChunkSendOutcome,
 	extractUrls,
 	getMessageService,
 	getMessagingAPI,
@@ -997,6 +998,7 @@ export async function sendDmInChunks(
 	textContent: string,
 	files: AttachmentBuilder[],
 	components: ActionRowBuilder<MessageActionRowComponentBuilder>[] | undefined,
+	outcomeObserver?: (outcome: DiscordChunkSendOutcome) => void,
 ): Promise<DiscordMessage[]> {
 	const chunks =
 		textContent.trim().length > 0
@@ -1009,15 +1011,24 @@ export async function sendDmInChunks(
 	const sent: DiscordMessage[] = [];
 	for (let i = 0; i < chunks.length; i++) {
 		const isLast = i === chunks.length - 1;
-		sent.push(
-			await user.send(
-				buildDmSendOptions(
-					chunks[i],
-					isLast ? files : [],
-					isLast ? components : undefined,
+		try {
+			sent.push(
+				await user.send(
+					buildDmSendOptions(
+						chunks[i],
+						isLast ? files : [],
+						isLast ? components : undefined,
+					),
 				),
-			),
-		);
+			);
+		} catch (error) {
+			// error-policy:J1 once a chunk is delivered, a later failure keeps the
+			// accepted receipts (as sendMessageInChunks does) so the reply is
+			// committed as partially delivered instead of being sent again.
+			if (sent.length === 0) throw error;
+			outcomeObserver?.({ messages: sent, failure: error });
+			return sent;
+		}
 	}
 	return sent;
 }
@@ -2782,7 +2793,15 @@ export class MessageManager {
 							? buildDiscordComponents(rendered.components)
 							: undefined;
 						messages = await runResponseDispatch(() =>
-							sendDmInChunks(user, textContent, files, dmComponents),
+							sendDmInChunks(
+								user,
+								textContent,
+								files,
+								dmComponents,
+								(outcome) => {
+									providerSendFailure = outcome.failure;
+								},
+							),
 						);
 					} else {
 						if (!message.id) {
