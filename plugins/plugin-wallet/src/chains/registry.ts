@@ -291,6 +291,9 @@ function transactionToExecution(
       value: tx.value.toString(),
       data: tx.data,
       chainId: tx.chainId ?? chain.id,
+      ...(tx.confirmationStatus === "unconfirmed"
+        ? { confirmationStatus: "unconfirmed" }
+        : {}),
     },
   };
 }
