@@ -41,6 +41,7 @@ import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import {
   applyCommitmentClassGuarantees,
   createDocumentObligationLedgerRecord,
+  guaranteeWarnDays,
   installCommitmentClassGuarantee,
   normalizeObligationClass,
 } from "../lifeops/commitments/index.js";
@@ -449,14 +450,19 @@ async function handleGuaranteeClass(
     ...(warnDaysBefore ? { warnDaysBefore } : {}),
   });
 
-  const effectiveWarnDays = warnDaysBefore ?? 60;
+  // An existing guarantee for this class is reused as is, so report the
+  // warning period it actually has.
+  const effectiveWarnDays = guaranteeWarnDays(task);
   logger.info(
     `[OWNER_DOCUMENTS] guarantee_class class=${obligationClass} warnDays=${effectiveWarnDays} task=${task.taskId}`,
   );
 
   return {
     success: true,
-    text: `Standing guarantee installed: every new ${obligationClass} obligation will be tracked automatically with a ${effectiveWarnDays}-day warning before its deadline.`,
+    text:
+      warnDaysBefore !== undefined && warnDaysBefore !== effectiveWarnDays
+        ? `A standing guarantee for ${obligationClass} obligations already exists with a ${effectiveWarnDays}-day warning before each deadline. Its warning period was not changed.`
+        : `Standing guarantee installed: every new ${obligationClass} obligation will be tracked automatically with a ${effectiveWarnDays}-day warning before its deadline.`,
     data: {
       subaction,
       obligationClass,
