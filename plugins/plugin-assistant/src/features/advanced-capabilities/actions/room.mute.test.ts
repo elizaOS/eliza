@@ -253,6 +253,58 @@ describe("ROOM action — timed mute persistence (durationMinutes)", () => {
   });
 });
 
+describe("ROOM action — after a timed mute expired", () => {
+  it("accepts a new mute and a follow before any message clears the expired mute", async () => {
+    const expired = new Date(Date.now() - 10 * 60_000).toISOString();
+    const { runtime, states, rooms } = makeRuntime({
+      states: { [`${ROOM_ID}:${AGENT_ID}`]: "MUTED" },
+      rooms: [{ ...room(ROOM_ID), metadata: { agentMuteUntilIso: expired } }],
+      worlds: [world()],
+    });
+
+    const muted = await roomOpAction.handler(
+      runtime,
+      msg("mute this channel for 2 hours"),
+      state,
+      opts({ action: "mute", durationMinutes: 120 }),
+    );
+    expect(muted.success).toBe(true);
+    expect(
+      Date.parse(rooms.get(ROOM_ID)?.metadata?.agentMuteUntilIso as string),
+    ).toBeGreaterThan(Date.now() + 119 * 60_000);
+
+    // Expire the new mute too, then follow the room.
+    rooms.set(ROOM_ID, {
+      ...room(ROOM_ID),
+      metadata: { agentMuteUntilIso: expired },
+    });
+    const followed = await roomOpAction.handler(
+      runtime,
+      msg("follow this channel"),
+      state,
+      opts({ action: "follow" }),
+    );
+    expect(followed.success).toBe(true);
+    expect(states.get(`${ROOM_ID}:${AGENT_ID}`)).toBe("FOLLOWED");
+  });
+
+  it("still refuses a second mute while a timed mute is active", async () => {
+    const active = new Date(Date.now() + 10 * 60_000).toISOString();
+    const { runtime } = makeRuntime({
+      states: { [`${ROOM_ID}:${AGENT_ID}`]: "MUTED" },
+      rooms: [{ ...room(ROOM_ID), metadata: { agentMuteUntilIso: active } }],
+      worlds: [world()],
+    });
+    const result = await roomOpAction.handler(
+      runtime,
+      msg("mute this channel"),
+      state,
+      opts({ action: "mute" }),
+    );
+    expect(result.success).toBe(false);
+  });
+});
+
 describe("ROOM action — scope=server (guild-wide mute)", () => {
   it("mutes the world; a sibling room in the same world then drops via the inbound gate", async () => {
     const { runtime, worlds } = makeRuntime({

@@ -23,10 +23,12 @@ import {
   type Memory,
   ModelType,
   parseBooleanFromText,
+  type Room,
   type State,
   type UUID,
 } from "@elizaos/core";
 import {
+  roomMuteActive,
   setRoomMuteUntil,
   setWorldMuteState,
   worldMuteActive,
@@ -218,6 +220,26 @@ function preconditionMet(op: RoomOp, current: ParticipantState): boolean {
     case "unmute":
       return current === "MUTED";
   }
+}
+/**
+ * The room's state for a mute or follow request. A timed mute that has
+ * expired is cleared only when the next message arrives in that room; until
+ * then it must not block a new mute or a follow, as the listings already
+ * report the room as not muted.
+ */
+async function roomStateForOp(
+  runtime: IAgentRuntime,
+  op: RoomOp,
+  roomId: UUID,
+  room?: Room | null,
+): Promise<ParticipantState> {
+  const current = (await runtime.getParticipantUserState(
+    roomId,
+    runtime.agentId,
+  )) as ParticipantState;
+  if (current !== "MUTED" || (op !== "mute" && op !== "follow")) return current;
+  const target = room ?? (await runtime.getRoom(roomId));
+  return roomMuteActive(current, target) ? current : null;
 }
 function readRoomOpParams(options?: HandlerOptions): RoomOpParams {
   return ((
@@ -849,10 +871,12 @@ export const roomOpAction: Action = {
           success: false,
         };
       }
-      const current = (await runtime.getParticipantUserState(
+      const current = await roomStateForOp(
+        runtime,
+        op,
         targetRoom.id,
-        runtime.agentId,
-      )) as ParticipantState;
+        targetRoom,
+      );
       if (!preconditionMet(op, current)) {
         return roomPreconditionFailureResult({
           op,
@@ -904,10 +928,7 @@ export const roomOpAction: Action = {
       };
     }
     const roomId = (explicitRoomId ?? message.roomId) as UUID;
-    const current = (await runtime.getParticipantUserState(
-      roomId,
-      runtime.agentId,
-    )) as ParticipantState;
+    const current = await roomStateForOp(runtime, op, roomId);
     if (!preconditionMet(op, current)) {
       return roomPreconditionFailureResult({ op, current, roomId });
     }
