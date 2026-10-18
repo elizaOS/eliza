@@ -212,10 +212,16 @@ class ElizaCloudVisionProvider implements VisionAnalysisProvider {
     }
 
     const data = (await response.json()) as {
-      description: string;
+      description?: string;
       labels?: string[];
       confidence?: number;
     };
+    if (!data.description) {
+      return {
+        success: false,
+        error: "No description returned from Eliza Cloud",
+      };
+    }
     return {
       success: true,
       data: {
