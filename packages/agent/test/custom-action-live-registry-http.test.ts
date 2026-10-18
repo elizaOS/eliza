@@ -8,7 +8,10 @@ import { captureHostExecutionBaseline } from "@elizaos/host";
 import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { startApiServer } from "../src/api/server.ts";
-import { setCustomActionsRuntime } from "../src/runtime/custom-actions.ts";
+import {
+  __setPinnedFetchImplForTests,
+  setCustomActionsRuntime,
+} from "../src/runtime/custom-actions.ts";
 
 let directory: string;
 let harness: Awaited<ReturnType<typeof createTestRuntime>>;
@@ -143,4 +146,51 @@ it("moves the live action to the new name on rename", async () => {
   expect(renamed.status).toBe(200);
   expect(liveAction("LIVE_RENAME_OLD")).toBeUndefined();
   expect(await invoke(liveAction("LIVE_RENAME_NEW"))).toBe("alpha");
+}, 60_000);
+
+it("fills {{param}} in HTTP header values on the Test route", async () => {
+  const sent: Array<{ url: string; headers: Record<string, string> }> = [];
+  // Only the outbound transport is replaced; the URL safety check still runs.
+  __setPinnedFetchImplForTests(async ({ url, init }) => {
+    sent.push({
+      url: String(url),
+      headers: { ...(init.headers as Record<string, string>) },
+    });
+    return new Response("ok", { status: 200 });
+  });
+  try {
+    const created = await call("POST", "/api/custom-actions", {
+      name: "LIVE_HEADER_PARAMS",
+      description: "Posts to a notification hook",
+      parameters: [
+        { name: "channel", description: "Channel", required: true },
+        { name: "token", description: "API token", required: true },
+      ],
+      handler: {
+        type: "http",
+        method: "POST",
+        url: "https://93.184.215.14/notify/{{channel}}",
+        headers: {
+          Authorization: "Bearer {{token}}",
+          "X-Channel": "{{channel}}",
+        },
+        bodyTemplate: "{}",
+      },
+      enabled: true,
+    });
+    expect(created.status, JSON.stringify(created.json)).toBe(200);
+    const id = (created.json.action as { id: string }).id;
+
+    const tested = await call("POST", `/api/custom-actions/${id}/test`, {
+      params: { channel: "ops", token: "abc123" },
+    });
+    expect(tested.status).toBe(200);
+    expect(tested.json.ok).toBe(true);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.url).toBe("https://93.184.215.14/notify/ops");
+    expect(sent[0]?.headers.Authorization).toBe("Bearer abc123");
+    expect(sent[0]?.headers["X-Channel"]).toBe("ops");
+  } finally {
+    __setPinnedFetchImplForTests(null);
+  }
 }, 60_000);
