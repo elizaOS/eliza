@@ -297,9 +297,11 @@ export class TwitterClientInstance implements ITwitterClient {
     }
 
     // Mentions and interactions
-    const repliesEnabled =
-      (getSetting(runtime, "TWITTER_ENABLE_REPLIES") ??
-        process.env.TWITTER_ENABLE_REPLIES) !== "false";
+    const repliesEnabled = parseBooleanFromText(
+      getSetting(runtime, "TWITTER_ENABLE_REPLIES") ??
+        process.env.TWITTER_ENABLE_REPLIES ??
+        "true",
+    );
 
     if (repliesEnabled) {
       logger.info("Twitter replies/interactions are ENABLED");
@@ -330,9 +332,10 @@ export class TwitterClientInstance implements ITwitterClient {
     }
 
     // Timeline actions (likes, retweets, replies)
-    const actionsEnabled =
-      (getSetting(runtime, "TWITTER_ENABLE_ACTIONS") ??
-        process.env.TWITTER_ENABLE_ACTIONS) === "true";
+    const actionsEnabled = parseBooleanFromText(
+      getSetting(runtime, "TWITTER_ENABLE_ACTIONS") ??
+        process.env.TWITTER_ENABLE_ACTIONS,
+    );
 
     if (actionsEnabled) {
       logger.info("Twitter timeline actions are ENABLED");
@@ -342,12 +345,13 @@ export class TwitterClientInstance implements ITwitterClient {
     }
 
     // Discovery service for autonomous content discovery
+    const discoverySetting =
+      getSetting(runtime, "TWITTER_ENABLE_DISCOVERY") ??
+      process.env.TWITTER_ENABLE_DISCOVERY;
     const discoveryEnabled =
-      (getSetting(runtime, "TWITTER_ENABLE_DISCOVERY") ??
-        process.env.TWITTER_ENABLE_DISCOVERY) === "true" ||
-      (actionsEnabled &&
-        (getSetting(runtime, "TWITTER_ENABLE_DISCOVERY") ??
-          process.env.TWITTER_ENABLE_DISCOVERY) !== "false");
+      discoverySetting === undefined
+        ? actionsEnabled
+        : parseBooleanFromText(discoverySetting);
 
     if (discoveryEnabled) {
       logger.info("Twitter discovery service is ENABLED");
