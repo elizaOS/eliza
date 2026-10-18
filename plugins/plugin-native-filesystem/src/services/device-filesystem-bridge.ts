@@ -119,6 +119,7 @@ export class DeviceFilesystemBridge extends Service {
 	private readonly useCapacitor: boolean;
 	private capacitorModule: CapacitorFilesystemModule | null = null;
 	private nodeRoot: string | null = null;
+	private readonly nodeWrites = new Map<string, Promise<void>>();
 
 	constructor(runtime?: IAgentRuntime) {
 		super(runtime);
@@ -203,12 +204,25 @@ export class DeviceFilesystemBridge extends Service {
 		const absolute = this.resolveNodePath(relative);
 		const canonicalParent = await this.materializeWritableParent(absolute);
 		const canonicalTarget = path.join(canonicalParent, path.basename(absolute));
-		const handle = await this.openWritableFile(canonicalTarget);
+		const write = async () => {
+			const handle = await this.openWritableFile(canonicalTarget);
+			try {
+				await handle.truncate(0);
+				await handle.writeFile(content, nodeEncodingFor(encoding));
+			} finally {
+				await handle.close();
+			}
+		};
+		// Keep each overwrite whole when FILE calls share this service and path.
+		const previous = this.nodeWrites.get(canonicalTarget);
+		const pending = previous ? previous.then(write, write) : write();
+		this.nodeWrites.set(canonicalTarget, pending);
 		try {
-			await handle.truncate(0);
-			await handle.writeFile(content, nodeEncodingFor(encoding));
+			await pending;
 		} finally {
-			await handle.close();
+			if (this.nodeWrites.get(canonicalTarget) === pending) {
+				this.nodeWrites.delete(canonicalTarget);
+			}
 		}
 	}
 

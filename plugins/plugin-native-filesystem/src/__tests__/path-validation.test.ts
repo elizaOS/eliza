@@ -165,6 +165,21 @@ describe("DeviceFilesystemBridge (Node backend)", () => {
 		).resolves.toBe("ok");
 	});
 
+	it("keeps concurrent overwrites of the same file whole", async () => {
+		const left = "A".repeat(1024 * 1024);
+		const right = "short";
+		for (let index = 0; index < 10; index += 1) {
+			const file = `overwrite-${index}.txt`;
+			await bridge.write(file, "seed");
+			await Promise.all([
+				bridge.write(file, left),
+				bridge.write(`./${file}`, right),
+			]);
+			const actual = await readFile(path.join(tempRoot, file), "utf8");
+			expect(actual === left || actual === right).toBe(true);
+		}
+	});
+
 	it("allows concurrent writers to materialize the same missing parent", async () => {
 		for (let index = 0; index < 25; index += 1) {
 			const parent = `concurrent-${index}/nested`;
