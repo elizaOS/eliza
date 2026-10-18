@@ -8,6 +8,7 @@ import { createTestRuntime } from "@elizaos/testing/runtime";
 import { describe, expect, it } from "vitest";
 import { TaskService } from "../src/services/task";
 import type { UUID } from "../src/types/primitives";
+import { BatchQueue } from "../src/utils/batch-queue";
 
 const T0 = 1_800_000_000_000;
 
@@ -172,5 +173,58 @@ describe("TaskService pause racing a run on PGlite", () => {
 				}
 			}, 120_000);
 		}
+	}
+});
+
+it("queue shutdown waits for an active SQL write before flushing pending work", async () => {
+	const { runtime, cleanup } = await createTestRuntime({
+		characterName: "QueueDrainStop",
+	});
+	const entered = barrier();
+	const finish = barrier();
+	const order: string[] = [];
+	const queue = new BatchQueue<string>({
+		name: "QUEUE_STOP_RACE",
+		batchSize: 1,
+		drainIntervalMs: 60_000,
+		getPriority: () => "high",
+		process: async (item) => {
+			if (item === "active") {
+				entered.release();
+				await finish.reached;
+			}
+			await runtime.setCache(`queue-stop-${item}`, item);
+			order.push(item);
+		},
+	});
+	let drain: Promise<number> | undefined;
+	let stop: Promise<void> | undefined;
+	try {
+		await queue.start(runtime);
+		queue.enqueue("active");
+		drain = queue.drain();
+		await entered.reached;
+		queue.enqueue("pending");
+		let stopped = false;
+		stop = queue.dispose(runtime).then(() => {
+			stopped = true;
+		});
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		expect(stopped).toBe(false);
+		expect(queue.enqueue("late")).toBe(false);
+		finish.release();
+		await drain;
+		await stop;
+		expect(order).toEqual(["active", "pending"]);
+		expect(await runtime.getCache("queue-stop-active")).toBe("active");
+		expect(await runtime.getCache("queue-stop-pending")).toBe("pending");
+		expect(await runtime.getTasksByName("QUEUE_STOP_RACE")).toEqual([]);
+		expect(queue.size).toBe(0);
+	} finally {
+		finish.release();
+		await drain;
+		await stop;
+		await queue.dispose(runtime);
+		await cleanup();
 	}
 });
