@@ -3362,7 +3362,11 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         COLLECTIONS.RELATIONSHIPS,
         id,
       );
-      if (r) relationships.push(relationshipFromStored(r, this.agentId));
+      // Only this agent's edges: plugin-sql filters the same query on
+      // agentId, and a stored row for another agent is not this adapter's
+      // to hand out (the worlds/rooms guard pattern in this file).
+      if (r && (r.agentId ?? this.agentId) === this.agentId)
+        relationships.push(relationshipFromStored(r, this.agentId));
     }
     return relationships;
   }
