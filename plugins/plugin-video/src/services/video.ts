@@ -107,6 +107,13 @@ function loggableError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** yt-dlp replaces the requested extension after MP3 post-processing. */
+function audioOutputPath(outputPath: string): string {
+  const extension = path.extname(outputPath);
+  if (extension === ".mp3") return outputPath;
+  return `${extension ? outputPath.slice(0, -extension.length) : outputPath}.mp3`;
+}
+
 function invalidFormatField(
   index: number,
   field: string,
@@ -265,8 +272,11 @@ export class VideoService extends IVideoService {
     options?: VideoDownloadOptions,
   ): Promise<string> {
     const videoId = this.getVideoId(url);
-    const outputFile =
+    const requestedOutputFile =
       options?.outputPath || path.join(this.dataDir, `${videoId}.mp4`);
+    const outputFile = options?.audioOnly
+      ? audioOutputPath(requestedOutputFile)
+      : requestedOutputFile;
 
     // if it already exists, return it
     if (fs.existsSync(outputFile)) {

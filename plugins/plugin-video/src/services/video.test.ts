@@ -394,4 +394,29 @@ describe("VideoService deterministic behavior", () => {
       embedSubs: true,
     });
   });
+
+  it("returns the MP3 path produced by an audio-only download", async () => {
+    const { service, runYtDlp } = createServiceWithYtDlp([{}]);
+    const requestedPath = path.join(
+      tmpdir(),
+      `eliza-video-audio-${randomUUID()}.mp4`,
+    );
+    const mp3Path = requestedPath.replace(/\.mp4$/, ".mp3");
+
+    await expect(
+      service.downloadVideo("https://youtu.be/audio-test", {
+        outputPath: requestedPath,
+        audioOnly: true,
+        writeInfoJson: false,
+      }),
+    ).resolves.toBe(mp3Path);
+
+    expect(runYtDlp).toHaveBeenCalledWith("https://youtu.be/audio-test", {
+      verbose: true,
+      output: mp3Path,
+      writeInfoJson: false,
+      extractAudio: true,
+      audioFormat: "mp3",
+    });
+  });
 });
