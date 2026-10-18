@@ -10,7 +10,8 @@
  *
  * Hydration:
  *   1. Reap abandoned ops — `pending`/`running` with a confirmed dead local
- *      executor or older than `ABANDONED_AFTER_MS` are marked `failed` with code
+ *      executor, an earlier process with this host and PID, or older than
+ *      `ABANDONED_AFTER_MS` are marked `failed` with code
  *      `"abandoned"` (the process died mid-flight).
  *   2. Prune terminal ops — `succeeded`/`failed`/`rolled-back` records older
  *      than `RETENTION_MS` or beyond the `MAX_RECORDS` cap are deleted from
@@ -106,6 +107,20 @@ function localExecutorExited(op: RuntimeOperation): boolean {
   }
 }
 
+/**
+ * Hydration runs before this process can create an operation, so a live record
+ * stamped with this host and PID was written by an earlier process that had
+ * the same PID (a container's PID 1 after a restart).
+ */
+function ownedByEarlierProcess(op: RuntimeOperation): boolean {
+  const owner = op.processOwner;
+  return (
+    owner !== undefined &&
+    owner.hostname === hostname() &&
+    owner.pid === process.pid
+  );
+}
+
 function operationsDirFor(stateDir: string): string {
   return path.join(stateDir, "runtime-operations");
 }
@@ -180,7 +195,12 @@ export class FilesystemRuntimeOperationRepository
       // Reap abandoned operations: a process died with this op still "live".
       const isLive = op.status === "pending" || op.status === "running";
       const isStale = now - op.startedAt > ABANDONED_AFTER_MS;
-      if (isLive && (op.processOwner ? localExecutorExited(op) : isStale)) {
+      if (
+        isLive &&
+        (op.processOwner
+          ? ownedByEarlierProcess(op) || localExecutorExited(op) || isStale
+          : isStale)
+      ) {
         const reaped: RuntimeOperation = {
           ...op,
           status: "failed",
