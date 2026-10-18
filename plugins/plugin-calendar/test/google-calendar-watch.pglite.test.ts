@@ -172,6 +172,7 @@ class FakeGoogleCalendar {
   sendSyncBeforeWatchResponse = true;
   expirationMsFromNow = 7 * 24 * 60 * 60 * 1000;
   failNextIncrementalWith503 = false;
+  failWatchWith503 = false;
   failNextIncrementalWith403Quota = false;
   expireNextIncrementalCursor = false;
   private syncGeneration = 0;
@@ -250,6 +251,9 @@ class FakeGoogleCalendar {
 
   async watchEvents(request: WatchRequest) {
     this.watchRequests.push({ ...request });
+    if (this.failWatchWith503) {
+      throw { response: { status: 503 } };
+    }
     const resourceId = `resource-${this.watchRequests.length}`;
     if (this.sendSyncBeforeWatchResponse) {
       if (!this.loopbackBaseUrl) {
@@ -970,6 +974,34 @@ describe("Google Calendar push lifecycle", { timeout: 30_000 }, () => {
         WHERE metadata_json::jsonb ->> 'calendarGoogleWatchOperation' = 'stop'`,
     );
     expect(stopTasks.rows).toHaveLength(1);
+  });
+
+  it("retries a failed watch creation once per run instead of doubling", async () => {
+    const google = new FakeGoogleCalendar();
+    google.failWatchWith503 = true;
+    const harness = await createHarness({ google });
+    harnesses.push(harness);
+    await forceInitialSync(harness).catch(() => undefined);
+    const maintenanceTaskId = await waitForMaintenanceTask(harness);
+    const runner = getScheduledTaskRunner(harness.runtime, {
+      agentId: AGENT_ID,
+    });
+    expect(google.watchRequests).toHaveLength(1);
+
+    for (let run = 1; run <= 3; run += 1) {
+      // Each run is past the error row's retry time.
+      await harness.pg.query(
+        `UPDATE app_calendar.google_calendar_watch_channels
+            SET next_retry_at = '2000-01-01T00:00:00.000Z'
+          WHERE state = 'error'`,
+      );
+      await runner.fireWithResult(maintenanceTaskId);
+    }
+    const rows = await watchRows(harness.pg);
+
+    // One Google call per run, and one live error row.
+    expect(google.watchRequests).toHaveLength(4);
+    expect(rows.filter((row) => row.state === "error")).toHaveLength(1);
   });
 
   it("revokes live channels through the runner before connector-account deletion", async () => {

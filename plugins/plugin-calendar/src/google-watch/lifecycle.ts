@@ -1156,6 +1156,15 @@ export class GoogleCalendarWatchLifecycle {
               await this.createWatch(channel);
             }
           } else {
+            // Creation failed before Google returned a resource, so there is
+            // nothing to stop there. Retire this row before the retry inserts
+            // its replacement, or each failed retry doubles the error rows.
+            await this.repo.markStopped({
+              agentId: this.runtime.agentId,
+              channelId: channel.channelId,
+              state: "stopped",
+              updatedAt: this.now().toISOString(),
+            });
             await this.createWatch(channel);
           }
         }
