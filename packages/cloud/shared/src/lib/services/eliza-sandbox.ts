@@ -385,7 +385,11 @@ export class ElizaSandboxService {
       ? root.agents
       : Array.isArray(data.agents)
         ? data.agents
-        : [];
+        : null;
+
+    if (!rawAgents) {
+      throw new Error("Runtime agent list response was missing agents");
+    }
 
     return rawAgents
       .map((item): RuntimeAgentSummary | null => {
@@ -439,9 +443,15 @@ export class ElizaSandboxService {
     if (!agentsRes.ok) {
       throw new Error(`Runtime agent list returned HTTP ${agentsRes.status}`);
     }
+    // error-policy:J3 a successful but unreadable list cannot prove that no
+    // runtime agent exists, so it must not authorize the create/start effects.
+    const body = await agentsRes.json().catch(() => null);
+    if (!body) {
+      throw new Error("Runtime agent list response was not valid JSON");
+    }
     return {
       supported: true,
-      agents: this.getRuntimeAgentsFromBody(await agentsRes.json().catch(() => ({}))),
+      agents: this.getRuntimeAgentsFromBody(body),
     };
   }
 

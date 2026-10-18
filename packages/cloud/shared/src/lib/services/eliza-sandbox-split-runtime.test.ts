@@ -1,6 +1,7 @@
 /** Exercises actual HTTP delivery to separate health and bridge listeners through the production sandbox transport. */
 import { expect, test } from "bun:test";
 import { runWithCloudBindings } from "../runtime/cloud-bindings";
+import { ElizaSandboxService } from "./eliza-sandbox";
 import { SandboxTransport } from "./eliza-sandbox/bridge/transport";
 
 test("snapshot reaches the authenticated bridge while health reaches the web listener", async () => {
@@ -95,6 +96,58 @@ test("snapshot reaches the authenticated bridge while health reaches the web lis
   } finally {
     foreign.stop(true);
     web.stop(true);
+    bridge.stop(true);
+  }
+});
+
+test("an unreadable runtime-agent list cannot trigger agent creation", async () => {
+  let createRequests = 0;
+  const bridge = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch(request) {
+      const url = new URL(request.url);
+      if (request.method === "GET" && url.pathname === "/api/agents") {
+        return new Response("upstream gateway returned HTML", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        });
+      }
+      if (request.method === "POST" && url.pathname === "/api/agents") {
+        createRequests += 1;
+        return Response.json({ data: { id: "duplicate-agent" } });
+      }
+      return new Response("not found", { status: 404 });
+    },
+  });
+
+  try {
+    const record = {
+      id: "a4a55512-29e6-4674-a0fe-49b1e5bc946c",
+      agent_name: "Existing Agent",
+      agent_config: { name: "Existing Agent" },
+      node_id: "owned-node",
+      headscale_ip: "127.0.0.1",
+      web_ui_port: bridge.port,
+      bridge_port: bridge.port,
+      health_url: `${bridge.url}health`,
+      bridge_url: null,
+      sandbox_id: "owned",
+      organization_id: "8f66509d-8d9a-4ed8-a535-9f54fe5f763a",
+      user_id: null,
+      environment_vars: { ELIZA_API_TOKEN: "synthetic-test-token" },
+    };
+    const service = new ElizaSandboxService() as unknown as {
+      ensureRuntimeAgentStarted(value: typeof record): Promise<unknown>;
+    };
+
+    await runWithCloudBindings({ ELIZA_CLOUD_AGENT_BASE_DOMAIN: "" }, async () => {
+      await expect(service.ensureRuntimeAgentStarted(record)).rejects.toThrow(
+        "Runtime agent list response was not valid JSON",
+      );
+    });
+    expect(createRequests).toBe(0);
+  } finally {
     bridge.stop(true);
   }
 });
