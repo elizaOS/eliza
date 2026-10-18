@@ -258,6 +258,10 @@ export class GoalsService {
     }
     await this.releaseGoalReferences?.(goalId);
     await this.repository.deleteGoal(this.agentId(), goalId);
+    // The goal row is already gone. Finish its required scheduler cleanup
+    // before the audit observer runs, so an audit write failure cannot leave
+    // a live check-in that will later notify the owner about a deleted goal.
+    await this.resolveCheckinSync()?.removeGoalCheckins(goalId);
     await this.recordAudit(
       "goal_deleted",
       "goal",
@@ -266,7 +270,6 @@ export class GoalsService {
       { title: goal.title },
       {},
     );
-    await this.resolveCheckinSync()?.removeGoalCheckins(goalId);
   }
 
   async listGoals(): Promise<LifeOpsGoalRecord[]> {

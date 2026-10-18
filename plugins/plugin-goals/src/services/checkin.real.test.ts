@@ -467,6 +467,43 @@ describe("goals check-ins on the scheduling spine (deterministic model-provider 
     expect(after.state.status).toBe("dismissed");
   });
 
+  it("dismisses a deleted goal's check-ins before a later audit failure", async () => {
+    const harness = await makeHarness();
+    const goals = createOwnerGoalsService(harness.runtime);
+    const record = await goals.createGoal({
+      title: "Review the household budget",
+      cadence: { kind: "daily", windows: ["evening"] },
+    });
+
+    await executeRawSql(
+      harness.runtime,
+      `CREATE FUNCTION app_goals.reject_goal_deleted_audit()
+       RETURNS trigger
+       LANGUAGE plpgsql
+       AS $$
+       BEGIN
+         IF NEW.event_type = 'goal_deleted' THEN
+           RAISE EXCEPTION 'forced goal delete audit failure';
+         END IF;
+         RETURN NEW;
+       END;
+       $$`,
+    );
+    await executeRawSql(
+      harness.runtime,
+      `CREATE TRIGGER reject_goal_deleted_audit
+       BEFORE INSERT ON app_goals.life_goal_audit_events
+       FOR EACH ROW EXECUTE FUNCTION app_goals.reject_goal_deleted_audit()`,
+    );
+
+    await expect(goals.deleteGoal(record.goal.id)).rejects.toThrow();
+    expect(
+      await goals.repository.getGoal(harness.runtime.agentId, record.goal.id),
+    ).toBeNull();
+    const [task] = await listGoalCheckinTasks(harness, record.goal.id);
+    expect(task.state.status).toBe("dismissed");
+  });
+
   it("stops an answered daily check-in when its goal is deleted", async () => {
     const harness = await makeHarness();
     const goals = createOwnerGoalsService(harness.runtime);
