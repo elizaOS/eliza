@@ -65,6 +65,7 @@ type RuntimeLike = Pick<
   | "getService"
   | "getEntityById"
   | "getRoomsForParticipant"
+  | "getMemories"
   | "getMemoriesByRoomIds"
 >;
 
@@ -339,41 +340,60 @@ export async function loadOwnerContactRoutingHints(
       }
     }
 
+    // The hint reports the owner's newest message in the contact's own room
+    // (roomId, or channelId when no roomId is set). With neither set, no
+    // message can match, so the history lookup cannot produce a hint.
+    const targetRoomId = contact.roomId || contact.channelId || null;
     if (
       runtime?.getRoomsForParticipant &&
-      runtime.getMemoriesByRoomIds &&
-      contact.entityId
+      (runtime.getMemories || runtime.getMemoriesByRoomIds) &&
+      contact.entityId &&
+      targetRoomId
     ) {
       try {
         const rooms = await runtime.getRoomsForParticipant(
           contact.entityId as UUID,
         );
-        if (rooms.length > 0) {
-          const messages = await runtime.getMemoriesByRoomIds({
-            roomIds: rooms as UUID[],
-            tableName: "messages",
-            limit: 20,
-          });
-          const ownerMessages = messages
-            .filter((message) => message.entityId === contact.entityId)
-            .sort((left, right) => {
-              const leftTime = Number(left.createdAt ?? 0);
-              const rightTime = Number(right.createdAt ?? 0);
-              return rightTime - leftTime;
+        // Only a room the owner takes part in can hold their response; the
+        // old query searched exactly those rooms.
+        if (rooms.includes(targetRoomId as UUID)) {
+          let latestCreatedAt: number | null = null;
+          if (runtime.getMemories) {
+            // Filter by author and room in the store. One newest-first
+            // window across every room the owner is in, from all authors,
+            // lets newer messages push the owner's newest message in this
+            // room out of view, and the hint then reports no response. The
+            // escalation service queries room by room for the same reason.
+            const replies = await runtime.getMemories({
+              tableName: "messages",
+              roomId: targetRoomId as UUID,
+              authorEntityIds: [contact.entityId as UUID],
+              limit: 1,
             });
-          const latest = ownerMessages.find((message) => {
-            const roomId =
-              typeof message.roomId === "string" ? message.roomId : null;
-            if (contact.roomId) {
-              return roomId === contact.roomId;
+            for (const reply of replies) {
+              if (reply.createdAt == null) continue;
+              const time = Number(reply.createdAt);
+              if (latestCreatedAt === null || time > latestCreatedAt) {
+                latestCreatedAt = time;
+              }
             }
-            if (contact.channelId) {
-              return roomId === contact.channelId;
+          } else if (runtime.getMemoriesByRoomIds) {
+            const messages = await runtime.getMemoriesByRoomIds({
+              roomIds: [targetRoomId as UUID],
+              tableName: "messages",
+              limit: 20,
+            });
+            for (const message of messages) {
+              if (message.entityId !== contact.entityId) continue;
+              if (message.createdAt == null) continue;
+              const time = Number(message.createdAt);
+              if (latestCreatedAt === null || time > latestCreatedAt) {
+                latestCreatedAt = time;
+              }
             }
-            return false;
-          });
-          if (latest?.createdAt !== undefined && latest.createdAt !== null) {
-            lastResponseAt = String(latest.createdAt);
+          }
+          if (latestCreatedAt !== null) {
+            lastResponseAt = String(latestCreatedAt);
             lastResponseChannel = source;
           }
         }
