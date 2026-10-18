@@ -2595,13 +2595,19 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     metadata?: Record<string, unknown>;
   }): Promise<number> {
     const roomSet = params.roomIds ? new Set(params.roomIds) : null;
+    // plugin-sql always scopes its COUNT with
+    // `agent_id = params.agentId ?? this.agentId`; most runtime callers pass
+    // no agentId, so an omitted scope must still mean this agent. Rows stored
+    // without an agentId belong to this database, as in the relationship
+    // reads above.
+    const effectiveAgentId = params.agentId ?? this.agentId;
     return this.storage.count<StoredMemory>(COLLECTIONS.MEMORIES, (m) => {
       if (roomSet && !roomSet.has(m.roomId as UUID)) return false;
       if (params.unique && !m.unique) return false;
       if (params.tableName && storedMemoryTableName(m) !== params.tableName)
         return false;
       if (params.entityId && m.entityId !== params.entityId) return false;
-      if (params.agentId && m.agentId !== params.agentId) return false;
+      if ((m.agentId ?? this.agentId) !== effectiveAgentId) return false;
       if (params.metadata) {
         const md = (m.metadata ?? {}) as Record<string, unknown>;
         for (const [k, v] of Object.entries(params.metadata)) {
