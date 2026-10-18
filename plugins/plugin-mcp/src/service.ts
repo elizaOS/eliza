@@ -84,6 +84,7 @@ export class McpService extends Service {
   private toolCompatibility: McpToolCompatibility | null = null;
   private compatibilityInitialized = false;
   private initializationPromise: Promise<void> | null = null;
+  private stopped = false;
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
     if (runtime) {
@@ -103,6 +104,11 @@ export class McpService extends Service {
     }
   }
   async stop(): Promise<void> {
+    // Mark the lifecycle as stopped before the first await. A reconnect can be
+    // waiting for async config validation while no connection exists in the
+    // map, so clearing the current maps alone cannot stop that work from
+    // publishing a new connection after this method returns.
+    this.stopped = true;
     for (const [name] of this.connections) {
       await this.deleteConnection(name);
     }
@@ -239,10 +245,12 @@ export class McpService extends Service {
       readonly preserveReconnectAttempts?: boolean;
     } = {}
   ): Promise<void> {
+    if (this.stopped) return;
     const carriedReconnectAttempts = options.preserveReconnectAttempts
       ? (this.connectionStates.get(name)?.reconnectAttempts ?? 0)
       : 0;
     await this.deleteConnection(name);
+    if (this.stopped) return;
     const state: ConnectionState = {
       status: "connecting",
       reconnectAttempts: carriedReconnectAttempts,
@@ -264,6 +272,10 @@ export class McpService extends Service {
       client,
       transport,
     };
+    if (this.stopped || this.connectionStates.get(name) !== state) {
+      await this.closeConnectionResources(name, connection);
+      return;
+    }
     this.connections.set(name, connection);
     this.setupTransportHandlers(name, connection, state);
     try {
@@ -274,6 +286,14 @@ export class McpService extends Service {
       const resourceTemplates = capabilities?.resources
         ? await this.fetchResourceTemplatesList(name)
         : [];
+      if (
+        this.stopped ||
+        this.connectionStates.get(name) !== state ||
+        this.connections.get(name) !== connection
+      ) {
+        await this.closeConnectionResources(name, connection);
+        return;
+      }
       connection.server = {
         status: "connected",
         name,
@@ -303,6 +323,7 @@ export class McpService extends Service {
       state.status = "disconnected";
       state.lastError = error instanceof Error ? error : new Error(String(error));
       connection.server.error = state.lastError.message;
+      if (this.stopped || this.connectionStates.get(name) !== state) return;
       if (this.connectionStates.get(name) === state && !this.connections.has(name)) {
         this.connections.set(name, connection);
       }
@@ -401,6 +422,7 @@ export class McpService extends Service {
     }
   }
   private handleDisconnection(name: string, error: Error | unknown): void {
+    if (this.stopped) return;
     const state = this.connectionStates.get(name);
     if (!state) return;
     state.status = "disconnected";
@@ -420,6 +442,7 @@ export class McpService extends Service {
     }
     const delay = INITIAL_RETRY_DELAY * BACKOFF_MULTIPLIER ** state.reconnectAttempts;
     state.reconnectTimeout = setTimeout(async () => {
+      if (this.stopped || this.connectionStates.get(name) !== state) return;
       state.reconnectAttempts++;
       // Reconnect from the config persisted on the ConnectionState, never from
       // `this.connections.get(name)`: `initializeConnection` begins by calling
