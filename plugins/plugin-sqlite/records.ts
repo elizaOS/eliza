@@ -3925,9 +3925,15 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         request.id,
       );
       if (!existing) continue;
+      // plugin-sql's updatePairingRequest sets only lastSeenAt and
+      // metadata: an update refreshes a pending request, it does not
+      // re-issue it. Spreading the whole caller object here let an
+      // update replace the stored code, sender and channel, which
+      // changes who can pair and with which code.
       await this.storage.set(COLLECTIONS.PAIRING_REQUESTS, request.id, {
         ...existing,
-        ...request,
+        lastSeenAt: request.lastSeenAt,
+        metadata: request.metadata || {},
       });
     }
   }
