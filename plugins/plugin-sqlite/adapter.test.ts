@@ -1803,6 +1803,51 @@ it("keeps another agent's worlds out of listing, updates, and metadata swaps", a
   });
 });
 
+it("keeps another agent's relationships out of every relationship read", async () => {
+  const adapter = await open();
+  const otherAgentId = id();
+  const source = id();
+  const target = id();
+  const foreignId = id();
+  const storage = await adapter.getConnection();
+  // Stored first so a scan in insertion order would see it ahead of ours.
+  await storage.set("relationships", foreignId, {
+    id: foreignId,
+    sourceEntityId: source,
+    targetEntityId: target,
+    agentId: otherAgentId,
+    tags: ["b-edge"],
+    metadata: {},
+    createdAt: new Date().toISOString(),
+  });
+  expect(
+    await adapter.getRelationshipsByPairs([
+      { sourceEntityId: source, targetEntityId: target },
+    ]),
+  ).toEqual([null]);
+  expect(await adapter.getRelationshipsByIds([foreignId])).toEqual([]);
+  expect(await adapter.getRelationships({ entityIds: [source] })).toEqual([]);
+
+  const [ownedId] = await adapter.createRelationships([
+    { sourceEntityId: source, targetEntityId: target, tags: ["a-edge"] },
+  ]);
+  expect(ownedId).toBeDefined();
+
+  expect(await adapter.getRelationshipsByIds([foreignId, ownedId])).toEqual([
+    expect.objectContaining({ id: ownedId, tags: ["a-edge"] }),
+  ]);
+  expect(
+    (await adapter.getRelationships({ entityIds: [source] })).map((r) => r.id),
+  ).toEqual([ownedId]);
+  expect(await adapter.getRelationships({ tags: ["b-edge"] })).toEqual([]);
+  expect(
+    await adapter.getRelationshipsByPairs([
+      { sourceEntityId: source, targetEntityId: target },
+      { sourceEntityId: target, targetEntityId: source },
+    ]),
+  ).toEqual([expect.objectContaining({ id: ownedId, tags: ["a-edge"] }), null]);
+});
+
 it("keeps another agent's tasks out of name lookup, id lookup, and writes", async () => {
   const adapter = await open();
   const otherAgentId = id();

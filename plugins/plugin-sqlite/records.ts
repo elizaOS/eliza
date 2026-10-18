@@ -3266,6 +3266,13 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
 
   // ── Relationship CRUD ─────────────────────────────────────────────────
 
+  private relationshipIsVisibleToOwner(r: StoredRelationship): boolean {
+    // Edges stored without an agentId belong to this database. A stored
+    // agentId for someone else matches the plugin-sql relationship
+    // `agent_id` predicate on every read path.
+    return (r.agentId ?? this.agentId) === this.agentId;
+  }
+
   async getRelationshipsByPairs(
     pairs: Array<{ sourceEntityId: UUID; targetEntityId: UUID }>,
   ): Promise<(Relationship | null)[]> {
@@ -3275,7 +3282,8 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         COLLECTIONS.RELATIONSHIPS,
         (r) =>
           r.sourceEntityId === pair.sourceEntityId &&
-          r.targetEntityId === pair.targetEntityId,
+          r.targetEntityId === pair.targetEntityId &&
+          this.relationshipIsVisibleToOwner(r),
       );
       const first = matches[0];
       result.push(first ? relationshipFromStored(first, this.agentId) : null);
@@ -3293,6 +3301,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     let stored = await this.storage.getWhere<StoredRelationship>(
       COLLECTIONS.RELATIONSHIPS,
       (r) => {
+        if (!this.relationshipIsVisibleToOwner(r)) return false;
         if (entitySet) {
           if (
             !entitySet.has(r.sourceEntityId as UUID) &&
@@ -3334,7 +3343,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         (r) =>
           r.sourceEntityId === rel.sourceEntityId &&
           r.targetEntityId === rel.targetEntityId &&
-          (r.agentId ?? this.agentId) === this.agentId,
+          this.relationshipIsVisibleToOwner(r),
       );
       if (existing.length > 0) continue;
       const id = randomUUID() as UUID;
@@ -3362,10 +3371,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         COLLECTIONS.RELATIONSHIPS,
         id,
       );
-      // Only this agent's edges: plugin-sql filters the same query on
-      // agentId, and a stored row for another agent is not this adapter's
-      // to hand out (the worlds/rooms guard pattern in this file).
-      if (r && (r.agentId ?? this.agentId) === this.agentId)
+      if (r && this.relationshipIsVisibleToOwner(r))
         relationships.push(relationshipFromStored(r, this.agentId));
     }
     return relationships;
