@@ -1557,6 +1557,50 @@ describe("durable SQLite agent adapter", () => {
     ).toBeNull();
   });
 
+  it("lists appended connector audit events with the plugin-sql filters", async () => {
+    const adapter = await open();
+    const account = await adapter.upsertConnectorAccount({
+      provider: "google",
+      accountKey: "audit-account",
+      agentId,
+    });
+    await adapter.appendConnectorAccountAuditEvent({
+      accountId: account.id,
+      action: "credential.set",
+      outcome: "success",
+      metadata: { client_secret: "shh", note: "rotated" },
+    });
+    await adapter.appendConnectorAccountAuditEvent({
+      accountId: account.id,
+      action: "credential.set",
+      outcome: "failure",
+      metadata: { reason: "rejected" },
+    });
+    await adapter.appendConnectorAccountAuditEvent({
+      accountId: account.id,
+      action: "account.connected",
+      metadata: {},
+    });
+    const all = await adapter.listConnectorAccountAuditEvents({
+      provider: "google",
+    });
+    expect(all).toHaveLength(3);
+    expect(
+      await adapter.listConnectorAccountAuditEvents({
+        provider: "google",
+        outcome: "failure",
+      }),
+    ).toHaveLength(1);
+    expect(
+      await adapter.listConnectorAccountAuditEvents({
+        provider: "google",
+        action: "account.connected",
+      }),
+    ).toHaveLength(1);
+    const redacted = all.find((entry) => "client_secret" in entry.metadata);
+    expect(redacted?.metadata.client_secret).toBe("[REDACTED]");
+  });
+
   it("persists OAuth invalidation and refuses expired or wrong-provider state", async () => {
     const adapter = await open();
     await adapter.createOAuthFlowState({
