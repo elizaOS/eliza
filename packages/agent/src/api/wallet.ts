@@ -117,6 +117,8 @@ const SOLANA_WRAPPED_NATIVE_MINT =
   "So11111111111111111111111111111111111111112";
 const SOLANA_SPL_TOKEN_PROGRAM_ID =
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+const SOLANA_TOKEN_2022_PROGRAM_ID =
+  "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
 
 /** Module-level cache for steward wallet addresses (avoids process.env mutation). */
 let stewardAddressCache: { evm: string | null; solana: string | null } | null =
@@ -1182,29 +1184,37 @@ export async function fetchSolanaNativeBalanceViaRpc(
       if (balanceData.error?.message)
         throw new Error(balanceData.error.message);
 
-      const tokenAccounts = await jsonOrThrow<SolanaParsedTokenAccountResponse>(
-        await fetch(
-          rpcUrl,
-          rpcJsonRequest(
-            FETCH_TIMEOUT_MS,
-            JSON.stringify({
-              jsonrpc: "2.0",
-              id: 2,
-              method: "getTokenAccountsByOwner",
-              params: [
-                address,
-                { programId: SOLANA_SPL_TOKEN_PROGRAM_ID },
-                { encoding: "jsonParsed" },
-              ],
-            }),
-          ),
-        ),
-      );
-      if (tokenAccounts.error?.message) {
-        throw new Error(tokenAccounts.error.message);
+      // Token accounts are owned by the classic SPL Token program or by
+      // Token-2022 (for example PYUSD); a balance must read both.
+      const tokenAccountValues: NonNullable<
+        NonNullable<SolanaParsedTokenAccountResponse["result"]>["value"]
+      > = [];
+      for (const [index, programId] of [
+        SOLANA_SPL_TOKEN_PROGRAM_ID,
+        SOLANA_TOKEN_2022_PROGRAM_ID,
+      ].entries()) {
+        const tokenAccounts =
+          await jsonOrThrow<SolanaParsedTokenAccountResponse>(
+            await fetch(
+              rpcUrl,
+              rpcJsonRequest(
+                FETCH_TIMEOUT_MS,
+                JSON.stringify({
+                  jsonrpc: "2.0",
+                  id: 2 + index,
+                  method: "getTokenAccountsByOwner",
+                  params: [address, { programId }, { encoding: "jsonParsed" }],
+                }),
+              ),
+            ),
+          );
+        if (tokenAccounts.error?.message) {
+          throw new Error(tokenAccounts.error.message);
+        }
+        tokenAccountValues.push(...(tokenAccounts.result?.value ?? []));
       }
 
-      const rawTokens = (tokenAccounts.result?.value ?? [])
+      const rawTokens = tokenAccountValues
         .map((item) => {
           const info = item.account?.data?.parsed?.info;
           const mint = info?.mint?.trim();
