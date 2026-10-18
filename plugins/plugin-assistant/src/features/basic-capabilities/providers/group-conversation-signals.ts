@@ -66,14 +66,12 @@ export async function resolveChannelType(
     return fromContent.trim().toUpperCase();
   }
   if (!message.roomId) return "";
-  try {
-    // Coalesced by the runtime's turn-scoped getRoom memo — no extra
-    // round-trip within a compose fan-out.
-    const room = await runtime.getRoom(message.roomId);
-    return room?.type ? String(room.type).trim().toUpperCase() : "";
-  } catch {
-    return "";
-  }
+  // Coalesced by the runtime's turn-scoped getRoom memo — no extra
+  // round-trip within a compose fan-out. A failed room read must stay
+  // distinguishable from a room that simply has no type: `""` is the valid
+  // "unknown channel" answer, so an IO fault propagates to the caller.
+  const room = await runtime.getRoom(message.roomId);
+  return room?.type ? String(room.type).trim().toUpperCase() : "";
 }
 
 export function isMultiPartyChannel(channelType: string): boolean {

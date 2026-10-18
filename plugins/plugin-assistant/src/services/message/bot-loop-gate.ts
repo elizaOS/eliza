@@ -65,6 +65,7 @@ export interface BotLoopGateResult {
     | "directly_addressed"
     | "not_bot_authored"
     | "not_group_channel"
+    | "channel_unavailable"
     | "below_threshold"
     | "window_unavailable";
 }
@@ -75,8 +76,32 @@ export interface BotGroupAddressGateResult {
   reason:
     | "not_bot_authored"
     | "not_group_channel"
+    | "channel_unavailable"
     | "directly_addressed"
     | "unaddressed_bot";
+}
+
+/**
+ * Room type for the gates. An unresolved lookup is an IO fault, not an
+ * unknown channel: `resolveChannelType` propagates it so the gate can report
+ * it instead of logging a real read failure as an ordinary DM. Both gates
+ * still fail OPEN — the suppression floor never mutes a turn it cannot
+ * verify.
+ */
+async function gateChannelType(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<string | null> {
+  try {
+    return await resolveChannelType(runtime, message);
+  } catch (error) {
+    // error-policy:J4 This optional suppression gate deliberately degrades to
+    // the ordinary response pipeline when the room row is unavailable.
+    runtime.reportError("BotLoopGate.channel", error, {
+      roomId: message.roomId,
+    });
+    return null;
+  }
 }
 
 /**
@@ -94,7 +119,10 @@ export async function runBotGroupAddressGate(args: {
   if (!isBotAuthoredMessage(message)) {
     return { ignored: false, reason: "not_bot_authored" };
   }
-  const channelType = await resolveChannelType(runtime, message);
+  const channelType = await gateChannelType(runtime, message);
+  if (channelType === null) {
+    return { ignored: false, reason: "channel_unavailable" };
+  }
   if (!isMultiPartyChannel(channelType)) {
     return { ignored: false, reason: "not_group_channel" };
   }
@@ -152,7 +180,10 @@ export async function runBotLoopGate(args: {
     return { ignored: false, reason: "not_bot_authored" };
   }
   // Group chat only. Unknown/missing channel type fails open.
-  const channelType = await resolveChannelType(runtime, message);
+  const channelType = await gateChannelType(runtime, message);
+  if (channelType === null) {
+    return { ignored: false, reason: "channel_unavailable" };
+  }
   if (!isMultiPartyChannel(channelType)) {
     return { ignored: false, reason: "not_group_channel" };
   }
