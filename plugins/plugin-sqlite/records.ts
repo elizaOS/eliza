@@ -3253,7 +3253,20 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         COLLECTIONS.ENTITIES,
         p.entityId,
       );
-      if (entity) participants.push({ id: p.id as UUID, entity });
+      if (!entity) continue;
+      // plugin-sql scopes this query with participant.agentId =
+      // this.agentId. Participant rows here carry no agentId, so ownership
+      // runs through the entity and the room: another agent's entity, and a
+      // participant row in another agent's room, are not this adapter's to
+      // return. An entity stored without an agentId and a participant whose
+      // room row is absent are legacy rows of this database and stay
+      // visible, matching the log-read convention in this file.
+      if (entity.agentId !== undefined && entity.agentId !== this.agentId) {
+        continue;
+      }
+      const room = await this.storage.get<Room>(COLLECTIONS.ROOMS, p.roomId);
+      if (room && !this.roomIsVisibleToOwner(room)) continue;
+      participants.push({ id: p.id as UUID, entity });
     }
     return participants;
   }
