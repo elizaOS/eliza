@@ -443,6 +443,14 @@ export function buildActiveReminders(
   return reminders;
 }
 
+function ownerDeclinedEvent(event: LifeOpsCalendarEvent): boolean {
+  return event.attendees.some(
+    (attendee) =>
+      attendee.self &&
+      attendee.responseStatus?.trim().toLowerCase() === "declined",
+  );
+}
+
 export function buildActiveCalendarEventReminders(
   events: LifeOpsCalendarEvent[],
   plansByEventId: Map<string, LifeOpsReminderPlan>,
@@ -453,8 +461,14 @@ export function buildActiveCalendarEventReminders(
   for (const event of events) {
     const plan = plansByEventId.get(event.id);
     if (!plan) continue;
-    // All-day events have no start time to remind before.
-    if (event.status === "cancelled" || event.isAllDay) {
+    // All-day events have no start time to remind before. An event the owner
+    // declined is not attended (the scheduler skips it too), so it gets no
+    // reminder in the overview either.
+    if (
+      event.status === "cancelled" ||
+      event.isAllDay ||
+      ownerDeclinedEvent(event)
+    ) {
       continue;
     }
     const startAt = new Date(event.startAt);
