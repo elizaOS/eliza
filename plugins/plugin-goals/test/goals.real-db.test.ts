@@ -147,6 +147,17 @@ describe("GoalsService + GoalsRepository — real PGLite", () => {
     expect((await service.listGoals()).length).toBe(before);
   });
 
+  it("short-circuits a decomposed duplicate goal via dedup (real DB read)", async () => {
+    const title = "Méditer chaque matin";
+    const first = await service.createGoal({ title });
+    const before = (await service.listGoals()).length;
+    // The same goal as a different byte sequence: the accent stored as a
+    // combining mark. It must resolve to the existing row, not a second goal.
+    const dup = await service.createGoal({ title: title.normalize("NFD") });
+    expect(dup.goal.id).toBe(first.goal.id);
+    expect((await service.listGoals()).length).toBe(before);
+  });
+
   it("rejects a times_per_day cadence that repeats a slot key on create and update", async () => {
     const duplicateSlots = {
       kind: "times_per_day",
