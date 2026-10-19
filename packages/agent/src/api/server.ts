@@ -1139,7 +1139,9 @@ async function applyRuntimeRestart(
   if (state.runtimeStopPromise) {
     return false;
   }
-  if (state.agentState === "restarting") {
+  // A start in flight builds through the same handler; a second build would
+  // leave its runtime running and undisposed.
+  if (state.agentState === "restarting" || state.agentState === "starting") {
     return false;
   }
   const previousState = state.agentState;

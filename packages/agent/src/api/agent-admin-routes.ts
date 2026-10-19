@@ -162,6 +162,12 @@ export async function handleAgentAdminRoutes(
       error(res, "A restart is already in progress", 409);
       return true;
     }
+    // A start builds its runtime through the same handler. A second build
+    // now would activate two runtimes and never dispose the first.
+    if (state.agentState === "starting") {
+      error(res, "The agent is starting; retry when it is running", 409);
+      return true;
+    }
 
     const previousState = state.agentState;
     state.agentState = "restarting";
