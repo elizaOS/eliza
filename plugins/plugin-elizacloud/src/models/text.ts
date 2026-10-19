@@ -49,6 +49,7 @@ import {
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { extractResponsesOutputText } from "../utils/responses-output";
+import { recordCloudInferenceFailure } from "../utils/inference-diagnostics";
 import { createCloudApiClient } from "../utils/sdk-client";
 
 const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO ?? "TEXT_NANO") as ModelTypeName;
@@ -1623,7 +1624,10 @@ async function generateTextWithModel(
     },
     "responses",
     params.signal
-  );
+  ).catch((error) => {
+    if (!params.signal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, error);
+    throw error;
+  });
   let data: ResponsesApiResponse = {};
   if (responseText) {
     try {
@@ -1638,7 +1642,9 @@ async function generateTextWithModel(
   }
 
   if (!response.ok) {
-    throw cloudTextRequestError(response, data);
+    const error = cloudTextRequestError(response, data);
+    if (!params.signal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, error);
+    throw error;
   }
 
 
@@ -1743,7 +1749,10 @@ export async function generateNativeChatCompletion(
     },
     "chat/completions",
     params.signal
-  );
+  ).catch((error) => {
+    if (!params.signal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, error);
+    throw error;
+  });
   let data: ChatCompletionsResponse = {};
   if (responseText) {
     try {
@@ -1758,7 +1767,9 @@ export async function generateNativeChatCompletion(
   }
 
   if (!response.ok) {
-    throw cloudTextRequestError(response, data);
+    const error = cloudTextRequestError(response, data);
+    if (!params.signal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, error);
+    throw error;
   }
 
   const usage = convertNativeUsage(data.usage);
@@ -2181,6 +2192,7 @@ export async function streamNativeChatCompletion(
       });
     } catch (err) {
       releasePermit();
+      if (!abortSignal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, err);
       throw err;
     }
     if (response.status !== 503) break;
@@ -2200,12 +2212,16 @@ export async function streamNativeChatCompletion(
     }
     if (delayMs === undefined) {
       if (isWarmingUnavailableResponse(response.status, warmingBodyText)) {
-        throw new ElizaCloudGatewayWarmingExhaustedError(
+        const error = new ElizaCloudGatewayWarmingExhaustedError(
           "chat/completions:stream",
           warmingRetryState.attempt + 1
         );
+        if (!abortSignal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, error);
+        throw error;
       }
-      throw cloudTextRequestError(response, parseJsonRecord(warmingBodyText));
+      const error = cloudTextRequestError(response, parseJsonRecord(warmingBodyText));
+      if (!abortSignal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, error);
+      throw error;
     }
     logger.warn(
       `[ELIZAOS_CLOUD] cloud gateway is warming (503) on chat/completions:stream; retrying in ${delayMs}ms (attempt ${warmingRetryState.attempt}/${WARMING_RETRY_DELAYS_MS.length})`
@@ -2226,7 +2242,9 @@ export async function streamNativeChatCompletion(
       // status (and the Retry-After header) through the error below.
     }
     releasePermit();
-    throw cloudTextRequestError(response, errorBody);
+    const error = cloudTextRequestError(response, errorBody);
+    if (!abortSignal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, error);
+    throw error;
   }
 
   const contentType = response.headers.get("content-type") ?? "";
@@ -2457,6 +2475,7 @@ export async function streamNativeChatCompletion(
       // them before the original error propagates to the stream consumer.
       failed = true;
       const failure = nativeFundingFailure(selectedFundingSlot, error);
+      if (!abortSignal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, error);
       rejectDeferreds(failure);
       throw failure;
     } finally {
