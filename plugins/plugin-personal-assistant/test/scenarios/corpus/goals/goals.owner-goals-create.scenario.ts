@@ -78,7 +78,7 @@ function goalsRouteFixtures(): DeterministicModelFixture[] {
         response: null,
         title: "Run a marathon",
         description: "Train for and complete a marathon within the next year.",
-        cadence: { kind: "weekly" },
+        cadence: { kind: "weekly", weekdays: [0], windows: ["evening"] },
         successCriteria: {
           summary: "Finish a full 42.2km marathon within the next year.",
         },
