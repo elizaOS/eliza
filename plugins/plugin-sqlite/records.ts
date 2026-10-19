@@ -2404,6 +2404,13 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       const ids: UUID[] = [];
       for (const { memory, tableName, unique } of memories) {
         const id = (memory.id ?? randomUUID()) as UUID;
+        // plugin-sql inserts with ON CONFLICT DO NOTHING: a create that reuses
+        // an existing id keeps the stored row and still reports the id, so a
+        // duplicate delivery cannot replace stored text or its timestamp.
+        if (await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, id)) {
+          ids.push(id);
+          continue;
+        }
         const stored: StoredMemory = {
           ...persistableMemory(memory),
           id,
