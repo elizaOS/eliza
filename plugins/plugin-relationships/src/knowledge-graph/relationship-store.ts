@@ -502,6 +502,39 @@ export class RelationshipStore {
     });
   }
   /**
+   * A recorded interaction with one entity is also an interaction on that
+   * entity's cadence edges. The daily follow-up watcher resolves a cadence
+   * follow-up only when the edge itself gets a new interaction, so a contact
+   * whose entity recency advanced would stay cadence-overdue and be re-nagged
+   * forever. Only edges that declare `metadata.cadenceDays` drive follow-ups;
+   * other edges keep their count and evidence.
+   */
+  async recordEntityInteraction(
+    entityId: string,
+    interaction: { platform: string; occurredAt: string },
+  ): Promise<void> {
+    const seen = new Set<string>();
+    for (const filter of [
+      { fromEntityId: entityId },
+      { toEntityId: entityId },
+    ] satisfies RelationshipFilter[]) {
+      for (const edge of await this.listOperation(filter)) {
+        if (seen.has(edge.relationshipId)) continue;
+        seen.add(edge.relationshipId);
+        if (readCadenceDays(edge.metadata) === null) continue;
+        await this.observe({
+          fromEntityId: edge.fromEntityId,
+          toEntityId: edge.toEntityId,
+          type: edge.type,
+          evidence: [`interaction:${interaction.platform}`],
+          confidence: edge.confidence,
+          occurredAt: interaction.occurredAt,
+          source: edge.source,
+        });
+      }
+    }
+  }
+  /**
    * After an entity merge, fold the active edges of `entityId` that now share
    * from, to and type into one edge, and retire edges from the entity to
    * itself. The kept edge is one of `keepIds` (the target's own edges before
