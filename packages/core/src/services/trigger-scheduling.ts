@@ -13,7 +13,14 @@ export const MAX_TRIGGER_INTERVAL_MS = 31 * 24 * 60 * 60 * 1000;
 export const DISABLED_TRIGGER_INTERVAL_MS = 365 * 24 * 60 * 60 * 1000;
 
 const CRON_FIELDS = 5;
-const CRON_SCAN_WINDOW_MS = 366 * 24 * 60 * 60 * 1000;
+// Long enough to reach the next Feb 29 from any start (a `29 2` schedule).
+// Days whose date fields cannot match are skipped whole, so the scan stays
+// bounded even though the window spans several years.
+const CRON_SCAN_WINDOW_MS = 8 * 366 * 24 * 60 * 60 * 1000;
+const CRON_DAY_MS = 24 * 60 * 60 * 1000;
+// Land this far before the next local midnight when skipping a day, so a DST
+// change on the way (at most an hour) cannot skip the next day's first minutes.
+const CRON_DAY_SKIP_MARGIN_MS = 90 * 60 * 1000;
 const CRON_MINUTE_MS = 60_000;
 const CRON_HOUR_MS = 60 * CRON_MINUTE_MS;
 const CRON_FALLBACK_LOOKBACKS_MS = [
@@ -168,8 +175,9 @@ export function parseCronExpression(expression: string): CronSchedule | null {
 	};
 }
 
-function cronMatchesUTC(schedule: CronSchedule, candidateMs: number): boolean {
-	const candidate = new Date(candidateMs);
+/** Whether the calendar day of a wall-clock instant can match the schedule. */
+function cronDayMatchesUTC(schedule: CronSchedule, wallMs: number): boolean {
+	const candidate = new Date(wallMs);
 	const dayOfMonthMatches = schedule.dayOfMonth.has(candidate.getUTCDate());
 	const dayOfWeekMatches = schedule.dayOfWeek.has(candidate.getUTCDay());
 	// POSIX/Vixie cron: when BOTH day fields are restricted, a day matching
@@ -179,11 +187,15 @@ function cronMatchesUTC(schedule: CronSchedule, candidateMs: number): boolean {
 		schedule.dayOfMonthRestricted && schedule.dayOfWeekRestricted
 			? dayOfMonthMatches || dayOfWeekMatches
 			: dayOfMonthMatches && dayOfWeekMatches;
+	return dayMatches && schedule.month.has(candidate.getUTCMonth() + 1);
+}
+
+function cronMatchesUTC(schedule: CronSchedule, candidateMs: number): boolean {
+	const candidate = new Date(candidateMs);
 	return (
 		schedule.minute.has(candidate.getUTCMinutes()) &&
 		schedule.hour.has(candidate.getUTCHours()) &&
-		dayMatches &&
-		schedule.month.has(candidate.getUTCMonth() + 1)
+		cronDayMatchesUTC(schedule, candidateMs)
 	);
 }
 
@@ -287,28 +299,40 @@ export function computeNextCronRunAtMs(
 	const schedule = parseCronExpression(expression);
 	if (!schedule) return null;
 	// Bail on a non-representable base: scanning forward from a timestamp at/over
-	// the max Date value would build ~366 days of Invalid Dates before returning
-	// null (a ~26s pathological scan).
+	// the max Date value would build years of Invalid Dates before returning
+	// null (a pathological scan).
 	if (!Number.isFinite(fromMs) || fromMs >= MAX_REPRESENTABLE_MS) return null;
 
 	const start = Math.floor(fromMs / CRON_MINUTE_MS) * CRON_MINUTE_MS;
 	// Cap the window at the max representable Date so a base near the ceiling
-	// scans only the representable remainder, not ~527k Invalid-Date candidates.
+	// scans only the representable remainder, not years of Invalid-Date candidates.
 	const cutoff = Math.min(start + CRON_SCAN_WINDOW_MS, MAX_REPRESENTABLE_MS);
 	// Hoist ONE formatter for the entire scan: a per-candidate-minute
-	// Intl.DateTimeFormat would allocate up to ~527k times across the 366-day
-	// window.
+	// Intl.DateTimeFormat would allocate once per scanned minute.
 	const formatter =
 		timezone && timezone !== "UTC" ? buildTzFormatter(timezone) : null;
 
-	for (
-		let candidate = start + CRON_MINUTE_MS;
-		candidate <= cutoff;
-		candidate += CRON_MINUTE_MS
-	) {
+	let candidate = start + CRON_MINUTE_MS;
+	while (candidate <= cutoff) {
+		const wallMs = formatter
+			? candidate + offsetMsFromFormatter(formatter, candidate)
+			: candidate;
+		if (!cronDayMatchesUTC(schedule, wallMs)) {
+			// No minute of this local day can match: move to just before the
+			// next local midnight instead of testing each minute.
+			const nextWallMidnightMs = wallMs - (wallMs % CRON_DAY_MS) + CRON_DAY_MS;
+			const margin = formatter ? CRON_DAY_SKIP_MARGIN_MS : 0;
+			const skipMs = nextWallMidnightMs - wallMs - margin;
+			candidate +=
+				skipMs > CRON_MINUTE_MS
+					? Math.floor(skipMs / CRON_MINUTE_MS) * CRON_MINUTE_MS
+					: CRON_MINUTE_MS;
+			continue;
+		}
 		if (cronMatches(schedule, candidate, timezone, formatter)) {
 			return candidate;
 		}
+		candidate += CRON_MINUTE_MS;
 	}
 
 	return null;
