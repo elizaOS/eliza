@@ -138,9 +138,14 @@ export function readGgufArchitecture(file: string): string | null {
 			}
 		}
 		return null;
-	} catch {
-		// error-policy:J3 unreadable file is "not a parakeet GGUF".
-		return null;
+	} catch (error) {
+		// error-policy:J3 a file that vanished is "not a parakeet GGUF", but a
+		// file that is present and unreadable (EACCES/EISDIR/EIO/ELOOP) must
+		// not be reported as a model that simply is not Parakeet.
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+		throw new Error(`failed to read ASR GGUF header at ${file}`, {
+			cause: error,
+		});
 	} finally {
 		if (fd !== undefined) closeSync(fd);
 	}
@@ -161,7 +166,13 @@ export function bundleHasAsrModelFiles(bundleRoot: string): boolean {
 				readGgufArchitecture(path.join(asrDir, entry.name)) ===
 					PARAKEET_TDT_ARCHITECTURE,
 		);
-	} catch {
-		return false;
+	} catch (error) {
+		// `asr/` disappearing after the existence check still means this bundle
+		// ships no ASR artifacts; any other failure means artifacts are there
+		// but could not be inspected, which must not read as "no ASR model".
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+		throw new Error(`failed to inspect ASR model files under ${asrDir}`, {
+			cause: error,
+		});
 	}
 }

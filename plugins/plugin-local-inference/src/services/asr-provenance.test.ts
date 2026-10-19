@@ -1,6 +1,13 @@
 /** Covers strict-versus-candidate ASR provenance enforcement against real manifest files. */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -163,6 +170,41 @@ describe("bundle ASR artifacts", () => {
 		const root = writeManifest({});
 		writeFileSync(path.join(root, "asr", "README.md"), "not a model");
 
+		expect(bundleHasAsrModelFiles(root)).toBe(false);
+	});
+
+	it("propagates an unreadable ASR GGUF instead of reporting no model", () => {
+		const root = writeManifest({});
+		// A self-referential symlink opens as ELOOP: the header cannot be read.
+		const broken = path.join(root, "asr", "broken.gguf");
+		symlinkSync("broken.gguf", broken);
+
+		expect(() => readGgufArchitecture(broken)).toThrow(
+			/failed to read ASR GGUF header/,
+		);
+	});
+
+	// chmod 000 only denies reads to a non-root user; CI runs unprivileged.
+	it.skipIf(process.getuid?.() === 0)(
+		"propagates an ASR artifact directory it cannot read",
+		() => {
+			const root = writeManifest({});
+			const model = path.join(root, "asr", "phonon-2-fv5.gguf");
+			writeFileSync(model, gguf("parakeet-tdt"));
+			chmodSync(model, 0o000);
+
+			expect(() => bundleHasAsrModelFiles(root)).toThrow(
+				/failed to inspect ASR model files/,
+			);
+		},
+	);
+
+	it("still treats a missing ASR GGUF path as not a GGUF", () => {
+		const root = writeManifest({});
+
+		expect(
+			readGgufArchitecture(path.join(root, "asr", "absent.gguf")),
+		).toBeNull();
 		expect(bundleHasAsrModelFiles(root)).toBe(false);
 	});
 });
