@@ -524,15 +524,17 @@ export class NotesStore {
     }
   }
 
+  /**
+   * A failed atomic write leaves the published file and the cached document
+   * unchanged, so the store stays ready: the caller gets the typed failure and
+   * the next read or write works when the cause is gone.
+   */
   private writeFailure(error: unknown): ElizaError {
-    const failure = toStoreError(
+    return toStoreError(
       error,
       "NOTES_STORE_WRITE_FAILED",
       "Notes state could not be written atomically.",
       this.filePath,
     );
-    this.shared.failure = failure;
-    this.shared.phase = "error";
-    return failure;
   }
 }
