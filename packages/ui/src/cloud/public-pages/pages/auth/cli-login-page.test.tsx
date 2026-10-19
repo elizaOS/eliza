@@ -78,48 +78,68 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("CLI sign-in presentation and consent", () => {
-  it.each([true, false])(
-    "keeps the canonical CLI continuation when Alpha presentation is %s",
-    async (alpha) => {
-      const query = `session=${SESSION}&returnTo=${encodeURIComponent("https://example.invalid/app?x=1&y=2")}`;
+  it.each([
+    { alpha: true, hint: "", path: "/alpha/sign-in" },
+    { alpha: false, hint: "", path: "/login" },
+    { alpha: false, hint: "&app=alpha", path: "/alpha/sign-in" },
+    { alpha: false, hint: "&app=other", path: "/login" },
+    { alpha: false, hint: "&app=ALPHA", path: "/login" },
+  ])(
+    "keeps canonical continuation for Alpha route=$alpha hint=$hint",
+    async ({ alpha, hint, path }) => {
+      const query = `session=${SESSION}&returnTo=${encodeURIComponent("https://example.invalid/app?x=1&y=2")}${hint}`;
       mount(alpha, query);
       const location = await screen.findByTestId("location");
       const url = new URL(location.textContent ?? "", "https://eliza.app");
-      expect(url.pathname).toBe(alpha ? "/alpha/sign-in" : "/login");
+      expect(url.pathname).toBe(path);
       expect(url.searchParams.get("returnTo")).toBe(
         `/auth/cli-login?${new URLSearchParams(query)}`,
       );
       expect(state.complete).not.toHaveBeenCalled();
     },
   );
-  it("does not let the Alpha route authorize a session on page load or on cancel", async () => {
-    state.authenticated = true;
-    mount();
-    await screen.findByRole("button", { name: "Authorize" });
-    expect(state.complete).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    await screen.findByText(
-      "No API key was created and the requesting app was not granted access.",
-    );
-    expect(state.complete).not.toHaveBeenCalled();
-  });
-  it("completes the same server-issued session only after Authorize", async () => {
-    state.authenticated = true;
-    state.complete.mockResolvedValue(
-      new Response(JSON.stringify({ keyPrefix: "qa-prefix" }), { status: 200 }),
-    );
-    mount();
-    fireEvent.click(await screen.findByRole("button", { name: "Authorize" }));
-    await waitFor(() => expect(state.complete).toHaveBeenCalledTimes(1));
-    expect(state.complete).toHaveBeenCalledWith(
-      `/api/auth/cli-session/${SESSION}/complete`,
-      expect.objectContaining({ method: "POST", json: {} }),
-    );
-  });
-  it("does not begin login or authorization for an invalid session", async () => {
-    mount(true, "session=not-a-session");
-    await screen.findByText("Invalid authentication link. Missing session ID.");
-    expect(screen.queryByTestId("location")).toBeNull();
-    expect(state.complete).not.toHaveBeenCalled();
-  });
+  it.each([true, false])(
+    "does not authorize on page load or cancel with Alpha route=%s",
+    async (alpha) => {
+      state.authenticated = true;
+      mount(alpha, `session=${SESSION}&app=alpha`);
+      await screen.findByRole("button", { name: "Authorize" });
+      expect(state.complete).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+      await screen.findByText(
+        "No API key was created and the requesting app was not granted access.",
+      );
+      expect(state.complete).not.toHaveBeenCalled();
+    },
+  );
+  it.each([true, false])(
+    "completes the same session only after Authorize with Alpha route=%s",
+    async (alpha) => {
+      state.authenticated = true;
+      state.complete.mockResolvedValue(
+        new Response(JSON.stringify({ keyPrefix: "qa-prefix" }), {
+          status: 200,
+        }),
+      );
+      mount(alpha, `session=${SESSION}&app=alpha`);
+      expect(state.complete).not.toHaveBeenCalled();
+      fireEvent.click(await screen.findByRole("button", { name: "Authorize" }));
+      await waitFor(() => expect(state.complete).toHaveBeenCalledTimes(1));
+      expect(state.complete).toHaveBeenCalledWith(
+        `/api/auth/cli-session/${SESSION}/complete`,
+        expect.objectContaining({ method: "POST", json: {} }),
+      );
+    },
+  );
+  it.each([true, false])(
+    "does not begin login or authorize invalid session with Alpha route=%s",
+    async (alpha) => {
+      mount(alpha, "session=not-a-session&app=alpha");
+      await screen.findByText(
+        "Invalid authentication link. Missing session ID.",
+      );
+      expect(screen.queryByTestId("location")).toBeNull();
+      expect(state.complete).not.toHaveBeenCalled();
+    },
+  );
 });

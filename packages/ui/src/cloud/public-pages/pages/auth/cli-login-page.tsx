@@ -333,7 +333,15 @@ export function AlphaCliLoginPage() {
 }
 
 export default function CliLoginPage() {
-  return <CliLogin signInPath="/login" />;
+  const [searchParams] = useSearchParams();
+  // A public presentation hint never changes session trust or authorization.
+  return (
+    <CliLogin
+      signInPath={
+        searchParams.get("app") === "alpha" ? "/alpha/sign-in" : "/login"
+      }
+    />
+  );
 }
 
 function CliLogin({ signInPath }: { signInPath: "/login" | "/alpha/sign-in" }) {
