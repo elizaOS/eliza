@@ -13,6 +13,7 @@ import type http from "node:http";
 import {
   AGENT_TRANSFER_MAX_PASSWORD_BYTES,
   AGENT_TRANSFER_MIN_PASSWORD_LENGTH,
+  AgentTransferPasswordSchema,
   PostAgentExportRequestSchema,
 } from "@elizaos/contracts";
 import type { AgentRuntime } from "@elizaos/core";
@@ -170,14 +171,6 @@ export async function handleAgentTransferRoutes(
     }
 
     const passwordLength = rawBody.readUInt32BE(0);
-    if (passwordLength < AGENT_TRANSFER_MIN_PASSWORD_LENGTH) {
-      error(
-        res,
-        `Password must be at least ${AGENT_TRANSFER_MIN_PASSWORD_LENGTH} characters.`,
-        400,
-      );
-      return true;
-    }
     if (passwordLength > AGENT_TRANSFER_MAX_PASSWORD_BYTES) {
       error(
         res,
@@ -196,6 +189,19 @@ export async function handleAgentTransferRoutes(
     }
 
     const password = rawBody.subarray(4, 4 + passwordLength).toString("utf-8");
+    // The frame declares the password length in UTF-8 bytes, so a byte count is
+    // not the 12-character minimum the export schema enforces: four CJK
+    // characters are twelve bytes. Validate the decoded password with the same
+    // schema the export route uses.
+    const parsedPassword = AgentTransferPasswordSchema.safeParse(password);
+    if (!parsedPassword.success) {
+      error(
+        res,
+        parsedPassword.error.issues[0]?.message ?? "Password is invalid.",
+        400,
+      );
+      return true;
+    }
     const fileBuffer = rawBody.subarray(4 + passwordLength);
 
     try {
