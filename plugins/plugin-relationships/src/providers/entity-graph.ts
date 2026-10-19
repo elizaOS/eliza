@@ -92,7 +92,9 @@ export const entityGraphProvider: Provider = {
             entity.platforms.length > 0
               ? ` [${entity.platforms.join(", ")}]`
               : "";
-          lines.push(`- ${entity.preferredName} (${entity.type})${platforms}`);
+          lines.push(
+            `- ${entity.preferredName} (${entity.type}, id ${entity.entityId})${platforms}`,
+          );
         }
       }
       if (edgeProjections.length > 0) {

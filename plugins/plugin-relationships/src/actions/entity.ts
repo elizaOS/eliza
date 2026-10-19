@@ -355,6 +355,27 @@ export const entityAction: Action = {
           });
         }
         const fromEntityId = trimmed(params.fromEntityId) ?? SELF_ENTITY_ID;
+        // An edge to an id that is not an entity is never seen by merges or
+        // the entity's own edges, so both ends must exist.
+        const [fromEntity, toEntity] = await Promise.all(
+          [fromEntityId, toEntityId].map((id) =>
+            id === SELF_ENTITY_ID
+              ? entityStore.ensureSelf()
+              : entityStore.get(id),
+          ),
+        );
+        const missingId = !fromEntity
+          ? fromEntityId
+          : !toEntity
+            ? toEntityId
+            : null;
+        if (missingId) {
+          return reply({
+            success: false,
+            text: `No entity found with id ${missingId}. Use an entity id from the known entities list.`,
+            data: { op, error: "NOT_FOUND", entityId: missingId },
+          });
+        }
         const evidence = trimmed(params.evidence) ?? "user_chat";
         // Restating an edge updates the active one instead of adding a duplicate.
         const edge = await relationshipStore.assertEdge({
@@ -367,7 +388,7 @@ export const entityAction: Action = {
         });
         return reply({
           success: true,
-          text: `Recorded ${fromEntityId} -[${relationshipType}]-> ${toEntityId}.`,
+          text: `Recorded ${fromEntity?.preferredName ?? fromEntityId} -[${relationshipType}]-> ${toEntity?.preferredName ?? toEntityId}.`,
           data: { op, relationship: edge },
         });
       }

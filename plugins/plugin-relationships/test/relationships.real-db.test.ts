@@ -136,7 +136,16 @@ describe("relationships KnowledgeGraph backing — real PGLite", () => {
     if (!action) throw new Error("External graph action was not registered");
     const relationships = service?.getRelationshipStore();
     if (!relationships) throw new Error("RelationshipStore unavailable");
-    const toEntityId = `ent_${stringToUuid("relationships-set-relationship-target")}`;
+    const store = service?.getEntityStore();
+    if (!store) throw new Error("EntityStore unavailable");
+    const { entityId: toEntityId } = await store.upsert({
+      type: "person",
+      preferredName: "Pat",
+      identities: [],
+      tags: [],
+      visibility: "owner_only",
+      state: {},
+    });
     const request = (evidence: string) => ({
       parameters: {
         op: "set_relationship",
@@ -172,6 +181,78 @@ describe("relationships KnowledgeGraph backing — real PGLite", () => {
     const edges = await relationships.list({ toEntityId, type: "manages" });
     expect(edges).toHaveLength(1);
     expect(edges[0]?.evidence).toEqual(["first chat", "second chat"]);
+  });
+
+  it("set_relationship refuses a target that is not an entity id, and the provider lists ids", async () => {
+    const action = runtime.actions.find(
+      (candidate) => candidate.name === "KNOWLEDGE_GRAPH",
+    );
+    if (!action) throw new Error("External graph action was not registered");
+    const relationships = service?.getRelationshipStore();
+    if (!relationships) throw new Error("RelationshipStore unavailable");
+    const message: Memory = {
+      id: stringToUuid("relationships-set-relationship-name-target"),
+      entityId: runtime.agentId,
+      roomId: runtime.agentId,
+      content: { text: "Robin is my colleague", source: "test" },
+    };
+    const created = await action.handler(
+      runtime,
+      message,
+      undefined,
+      { parameters: { op: "create", kind: "person", name: "Robin" } },
+      undefined,
+    );
+    const robinId = (created as { data?: { entity?: { entityId?: string } } })
+      ?.data?.entity?.entityId;
+    if (!robinId) throw new Error("create returned no entity id");
+
+    const byName = await action.handler(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          op: "set_relationship",
+          toEntityId: "Robin",
+          relationshipType: "colleague_of",
+        },
+      },
+      undefined,
+    );
+    expect(byName).toMatchObject({
+      success: false,
+      data: { error: "NOT_FOUND", entityId: "Robin" },
+    });
+    expect(await relationships.list({ toEntityId: "Robin" })).toHaveLength(0);
+
+    const provider = runtime.providers.find(
+      (candidate) => candidate.name === "ENTITY_GRAPH",
+    );
+    if (!provider) throw new Error("ENTITY_GRAPH provider was not registered");
+    const context = await provider.get(runtime, message, {} as never);
+    expect(context.text).toContain(`Robin (person, id ${robinId})`);
+
+    const byId = await action.handler(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          op: "set_relationship",
+          toEntityId: robinId,
+          relationshipType: "colleague_of",
+        },
+      },
+      undefined,
+    );
+    expect(byId).toMatchObject({
+      success: true,
+      text: "Recorded self -[colleague_of]-> Robin.",
+    });
+    expect(
+      await relationships.list({ toEntityId: robinId, type: "colleague_of" }),
+    ).toHaveLength(1);
   });
 
   it("concurrent assertions and observations of one edge keep one edge with every evidence", async () => {
