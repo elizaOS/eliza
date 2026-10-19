@@ -824,7 +824,7 @@ function buildHandler(
         for (const p of paramDefs) {
           const value = params[p.name] ?? "";
           url = url.replaceAll(`{{${p.name}}}`, encodeURIComponent(value));
-          body = body.replaceAll(`{{${p.name}}}`, value);
+          body = body.replaceAll(`{{${p.name}}}`, () => value);
           // The editor offers "value or {{param}}" for header values too.
           for (const [name, template] of Object.entries(headers)) {
             headers[name] = template.replaceAll(`{{${p.name}}}`, () => value);

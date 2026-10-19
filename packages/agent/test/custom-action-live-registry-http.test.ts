@@ -149,12 +149,17 @@ it("moves the live action to the new name on rename", async () => {
 }, 60_000);
 
 it("fills {{param}} in HTTP header values on the Test route", async () => {
-  const sent: Array<{ url: string; headers: Record<string, string> }> = [];
+  const sent: Array<{
+    url: string;
+    headers: Record<string, string>;
+    body: unknown;
+  }> = [];
   // Only the outbound transport is replaced; the URL safety check still runs.
   __setPinnedFetchImplForTests(async ({ url, init }) => {
     sent.push({
       url: String(url),
       headers: { ...(init.headers as Record<string, string>) },
+      body: init.body,
     });
     return new Response("ok", { status: 200 });
   });
@@ -174,7 +179,7 @@ it("fills {{param}} in HTTP header values on the Test route", async () => {
           Authorization: "Bearer {{token}}",
           "X-Channel": "{{channel}}",
         },
-        bodyTemplate: "{}",
+        bodyTemplate: '{"channel":"{{channel}}"}',
       },
       enabled: true,
     });
@@ -186,10 +191,19 @@ it("fills {{param}} in HTTP header values on the Test route", async () => {
     });
     expect(tested.status).toBe(200);
     expect(tested.json.ok).toBe(true);
-    expect(sent).toHaveLength(1);
     expect(sent[0]?.url).toBe("https://93.184.215.14/notify/ops");
     expect(sent[0]?.headers.Authorization).toBe("Bearer abc123");
     expect(sent[0]?.headers["X-Channel"]).toBe("ops");
+
+    // Each call fills a fresh copy of the header templates.
+    const second = await call("POST", `/api/custom-actions/${id}/test`, {
+      params: { channel: "alerts$&", token: "xyz789" },
+    });
+    expect(second.status).toBe(200);
+    expect(sent[1]?.headers.Authorization).toBe("Bearer xyz789");
+    expect(sent[1]?.headers["X-Channel"]).toBe("alerts$&");
+    // A "$" pattern in a value is inserted as written, not expanded.
+    expect(sent[1]?.body).toBe('{"channel":"alerts$&"}');
   } finally {
     __setPinnedFetchImplForTests(null);
   }
