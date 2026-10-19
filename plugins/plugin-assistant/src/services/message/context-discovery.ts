@@ -142,15 +142,28 @@ export function withAvailableContextRequests(
     (name) =>
       !Array.isArray(items.enum) || items.enum.some((value) => value === name),
   );
+  if (!names.length) {
+    const properties = { ...schema.properties };
+    delete properties.contextRequests;
+    return {
+      ...schema,
+      properties,
+      ...(schema.required
+        ? {
+            required: schema.required.filter(
+              (name) => name !== "contextRequests",
+            ),
+          }
+        : {}),
+    };
+  }
   return {
     ...schema,
     properties: {
       ...schema.properties,
       contextRequests: {
         ...requests,
-        ...(names.length
-          ? { items: { ...items, enum: names } }
-          : { maxItems: 0 }),
+        items: { ...items, enum: names },
       },
     },
   };

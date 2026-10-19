@@ -14,6 +14,11 @@ import {
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../runtime/builtin-field-evaluators.ts";
+import {
+  createContextReadTool,
+  readContextRequests,
+  withAvailableContextRequests,
+} from "./context-discovery.ts";
 import { runV5MessageRuntimeStage1 } from "./pipeline.ts";
 
 const message: Memory = {
@@ -139,6 +144,100 @@ function fixture(responses: unknown[]) {
 }
 
 describe("invalid context read recovery", () => {
+  it("offers no context read when this turn has no authorized references", async () => {
+    const { contextRequests: _requests, ...argumentsWithoutRead } =
+      decision.toolCalls[0].arguments;
+    const reply = {
+      ...decision,
+      toolCalls: [
+        { ...decision.toolCalls[0], arguments: argumentsWithoutRead },
+      ],
+    };
+    const f = fixture([reply]);
+    f.state.data = { ...f.state.data, providers: {} };
+    f.runtime.providers = [];
+    const result = await runV5MessageRuntimeStage1({
+      runtime: f.runtime,
+      state: f.state,
+      message,
+      responseId: "00000000-0000-4000-8000-000000000005" as UUID,
+      stage1DecisionOnly: true,
+    });
+    expect(result.kind).toBe("decision");
+    const tools = (
+      f.useModel.mock.calls[0] as unknown as [
+        unknown,
+        {
+          tools: Array<{
+            name: string;
+            strict: boolean;
+            parameters: {
+              properties: Record<string, unknown>;
+              required: string[];
+              additionalProperties: boolean;
+            };
+          }>;
+        },
+      ]
+    )[1].tools;
+    const handle = tools.find((tool) => tool.name === "HANDLE_RESPONSE");
+    expect(handle?.strict).toBe(true);
+    expect(handle?.parameters.additionalProperties).toBe(false);
+    expect(handle?.parameters.properties).not.toHaveProperty("contextRequests");
+    expect(handle?.parameters.required).not.toContain("contextRequests");
+    expect(tools.some((tool) => tool.name === "READ_CONTEXT")).toBe(false);
+    expect(readContextRequests({}, new Set())).toEqual([]);
+    expect(() =>
+      readContextRequests({ contextRequests: ["unadvertised"] }, new Set()),
+    ).toThrow(
+      expect.objectContaining({ code: "CONTEXT_DISCOVERY_INVALID_REQUEST" }),
+    );
+    expect(f.useModel).toHaveBeenCalledTimes(1);
+    expect(f.dispatch).toHaveBeenCalledTimes(1);
+    expect(f.action).not.toHaveBeenCalled();
+  });
+
+  it("keeps available-reference constraints and rejects names outside this turn", () => {
+    const schema = {
+      type: "object" as const,
+      additionalProperties: false,
+      properties: {
+        contextRequests: {
+          type: "array" as const,
+          items: { type: "string" as const, enum: ["CHOICE", "other"] },
+        },
+        replyText: { type: "string" as const },
+      },
+      required: ["contextRequests", "replyText"],
+    };
+    const projected = withAvailableContextRequests(schema, new Set(["CHOICE"]));
+    expect(projected).toEqual({
+      ...schema,
+      properties: {
+        ...schema.properties,
+        contextRequests: {
+          ...schema.properties.contextRequests,
+          items: { type: "string", enum: ["CHOICE"] },
+        },
+      },
+    });
+    expect(createContextReadTool(projected)).toBeDefined();
+    expect(
+      readContextRequests({ contextRequests: ["CHOICE"] }, new Set(["CHOICE"])),
+    ).toEqual(["CHOICE"]);
+    expect(() =>
+      readContextRequests({ contextRequests: ["other"] }, new Set(["CHOICE"])),
+    ).toThrow(
+      expect.objectContaining({ code: "CONTEXT_DISCOVERY_INVALID_REQUEST" }),
+    );
+    expect(schema.properties.contextRequests.items.enum).toEqual([
+      "CHOICE",
+      "other",
+    ]);
+    expect(
+      createContextReadTool(withAvailableContextRequests(schema, new Set())),
+    ).toBeUndefined();
+  });
   it.each([ChannelType.DM, ChannelType.VOICE_DM])(
     "repairs unavailable references without reading providers or running effects on %s",
     async (channelType) => {
