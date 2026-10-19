@@ -125,7 +125,11 @@ export const historyRetentionEvaluator: Evaluator<
     type: "object",
     additionalProperties: false,
     properties: {
-      sourceSetId: { type: "string", pattern: "^[0-9a-f]{64}$" },
+      // The prompt prints this review's exact source set identity and the host
+      // binds it (applyHistoryRetentionReview rejects any other value). A regex
+      // is not a literal choice, so a strict provider cannot enforce it and
+      // rejects the whole section schema.
+      sourceSetId: { type: "string" },
       complete: { type: "boolean" },
       retainSourceIds: ids,
       deferSourceIds: ids,

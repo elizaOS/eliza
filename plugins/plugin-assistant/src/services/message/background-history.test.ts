@@ -15,6 +15,7 @@ import {
   ACTION_CONTEXT_ARG,
   runPlannerLoop,
 } from "../../runtime/planner-loop.ts";
+import { historyRetentionEvaluator } from "../history-retention.ts";
 import {
   loadHistoryReferences,
   projectBackgroundHistory,
@@ -65,8 +66,24 @@ function fixture(owner = "owner") {
   });
   const history = projectReviewedHistory(context, scope, checkpoint);
   if (!history) throw new Error("Missing validated projection");
-  return { context, history, checkpoint, scope };
+  return { context, history, checkpoint, scope, prepared };
 }
+
+it("offers provider-compatible source set identity without weakening host binding", () => {
+  const schema = historyRetentionEvaluator.schema;
+  expect(schema?.properties?.sourceSetId).toEqual({ type: "string" });
+  const { prepared } = fixture();
+  expect(() =>
+    applyHistoryRetentionReview(prepared, {
+      sourceSetId: "0".repeat(64),
+      complete: true,
+      retainSourceIds: prepared.candidates.map((source) => source.id),
+      deferSourceIds: [],
+      uncertainSourceIds: [],
+      dependencyGroups: [],
+    }),
+  ).toThrow();
+});
 it("renders a validated background checkpoint in plain dialogue without a foreground source-selection task", () => {
   const { context, history } = fixture();
   const before = structuredClone(context);
