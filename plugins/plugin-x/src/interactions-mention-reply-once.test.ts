@@ -195,6 +195,33 @@ describe("mention reply is posted at most once", () => {
     expect(handleMessageOf(runtime)).toHaveBeenCalledTimes(1);
   });
 
+  it("replies to the mention when the reply comes from an action", async () => {
+    const runtime = createRuntime();
+    // Core action settlement delivers an action's reply as
+    // callback(content, actionName).
+    vi.mocked(handleMessageOf(runtime)).mockImplementation((async (
+      _runtime: unknown,
+      _message: unknown,
+      callback: (c: { text: string }, actionName?: string) => Promise<unknown>,
+    ) => {
+      await callback({ text: "Here is what I found." }, "WEB_SEARCH");
+      return { responseMessages: [] };
+    }) as never);
+    const send = vi.fn(async (_text: string, _replyTo?: string) => ({
+      data: { data: { id: "2000000000000000001", text: "1" } },
+    }));
+    const interactions = new TwitterInteractionClient(
+      createClient(runtime, send),
+      runtime,
+      {} as TwitterClientState,
+    );
+
+    await poll(interactions);
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls[0]?.[1]).toBe("1000000000000000500");
+  });
+
   it("retries a reply whose first chunk X explicitly refused", async () => {
     const runtime = replyingRuntime();
     let sends = 0;

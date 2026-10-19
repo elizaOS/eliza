@@ -1260,10 +1260,10 @@ ${tweet.text}`;
     let deliveryError: unknown = null;
     let egressAttempted = false;
     // Create a callback for handling the response
-    const callback: HandlerCallback = async (
-      response: Content,
-      tweetId?: string,
-    ) => {
+    // The callback's second argument is the producing action's name (core
+    // HandlerCallback), not a tweet id: a mention reply always targets the
+    // mention itself.
+    const callback: HandlerCallback = async (response: Content) => {
       if (!response.text) {
         logger.warn("No text content in response, skipping tweet reply");
         return [];
@@ -1275,7 +1275,7 @@ ${tweet.text}`;
         return [];
       }
       egressAttempted = true;
-      const tweetToReplyTo = tweetId || tweet.id;
+      const tweetToReplyTo = tweet.id;
       if (this.isDryRun) {
         logger.info(
           `[DRY RUN] Would have replied to ${tweet.username} with: ${response.text}`,
