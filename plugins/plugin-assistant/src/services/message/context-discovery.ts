@@ -52,13 +52,8 @@ export function createContextReadTool(
               },
             }
           : {}),
-        contextRequests: {
-          ...requests,
-          minItems: Math.max(
-            1,
-            typeof requests.minItems === "number" ? requests.minItems : 1,
-          ),
-        },
+        // extractContextRead enforces nonempty reads before any provider access.
+        contextRequests: { ...requests },
       },
       required: includeAcknowledgment
         ? ["contextRequests", "acknowledgment"]
