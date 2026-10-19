@@ -118,4 +118,48 @@ describe("processDueScheduledTasks — no-reply retry keeps recurring triggers a
     expect(day2Fire?.status).toBe("fired");
     expect(day2Fire?.reason).toBe("cron_due");
   });
+  it("daily cron reminder: each occurrence gets its own no-reply retry", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const repo = new LifeOpsRepository(runtime);
+    const task: ScheduledTask = {
+      taskId: "st_recurring_retry_budget",
+      kind: "reminder",
+      promptInstructions: "Take medication.",
+      trigger: { kind: "cron", expression: "0 11 * * *", tz: "UTC" },
+      priority: "high",
+      respectsGlobalPause: false,
+      source: "user_chat",
+      createdBy: runtime.agentId,
+      ownerVisible: true,
+      completionCheck: { kind: "user_acknowledged", followupAfterMinutes: 30 },
+      metadata: { createdAtIso: "2026-05-08T00:00:00.000Z" },
+      state: {
+        status: "fired",
+        followupCount: 0,
+        firedAt: "2026-05-09T11:00:00.000Z",
+      },
+    };
+    await repo.upsertScheduledTask(runtime.agentId, task);
+
+    // Day 1: no reply uses the one retry, then the reminder is skipped.
+    for (const nowIso of [
+      "2026-05-09T11:31:00.000Z",
+      "2026-05-09T12:32:00.000Z",
+      "2026-05-09T13:03:00.000Z",
+    ]) {
+      expect((await tick(runtime, nowIso)).errors).toEqual([]);
+    }
+
+    // Day 2: the new occurrence fires, and its first no-reply timeout must
+    // retry again rather than skip at once.
+    const day2Fire = await tick(runtime, "2026-05-10T11:01:00.000Z");
+    expect(
+      day2Fire.fires.find((fire) => fire.taskId === task.taskId)?.reason,
+    ).toBe("cron_due");
+    const day2Timeout = await tick(runtime, "2026-05-10T11:32:00.000Z");
+    expect(day2Timeout.completionTimeouts).toMatchObject([
+      { taskId: task.taskId, status: "scheduled", reason: "no_reply_retry_1" },
+    ]);
+  });
 });

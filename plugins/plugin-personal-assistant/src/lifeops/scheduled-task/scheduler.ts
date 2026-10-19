@@ -1059,10 +1059,23 @@ async function handleFireResult(args: {
         agentId: request.agentId,
         now: () => request.now,
       });
+      // A new occurrence of a recurring trigger starts with a fresh no-reply
+      // retry budget; only a retry (fired through its snooze override)
+      // continues the old one.
+      let metadataPatch = windowMetadata;
+      if (
+        isRecurringTrigger(fireResult.task.trigger) &&
+        decision.reason !== "scheduled_override_due" &&
+        fireResult.task.metadata?.noReplyState !== undefined
+      ) {
+        const { noReplyState: _previousOccurrence, ...rest } =
+          metadataPatch ?? fireResult.task.metadata;
+        metadataPatch = rest;
+      }
       const persisted =
-        windowMetadata !== null
+        metadataPatch !== null
           ? await runner.apply(fireResult.task.taskId, "edit", {
-              metadata: windowMetadata,
+              metadata: metadataPatch,
             })
           : fireResult.task;
       result.fires.push({
