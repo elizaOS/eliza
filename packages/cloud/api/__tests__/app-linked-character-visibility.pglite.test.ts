@@ -186,3 +186,23 @@ test("a linked character leaves the app list when its owner makes it private", a
     expect.objectContaining({ id: CHAR, is_public: true }),
   ]);
 });
+
+test("the app list returns the linked character's avatar", async () => {
+  await dbWrite
+    .update(userCharacters)
+    .set({ avatar_url: "https://cdn.example.test/persona.png" })
+    .where(eq(userCharacters.id, CHAR));
+  const listed = (await (
+    await app.request(
+      `/api/v1/apps/${APP}/characters`,
+      { method: "GET" },
+      workerEnv,
+    )
+  ).json()) as { characters: Array<{ id: string; avatar_url: string | null }> };
+  expect(listed.characters).toEqual([
+    expect.objectContaining({
+      id: CHAR,
+      avatar_url: "https://cdn.example.test/persona.png",
+    }),
+  ]);
+});

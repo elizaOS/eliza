@@ -97,7 +97,10 @@ async function __hono_GET(
           id: character.id,
           name: character.name,
           username: character.username,
-          avatar_url: character.settings?.avatar || null,
+          // The avatar lives in the avatar_url column; settings.avatar is
+          // an older shape some rows still carry.
+          avatar_url:
+            character.avatar_url || character.settings?.avatar || null,
           bio: character.bio,
           is_public: character.is_public,
         };
