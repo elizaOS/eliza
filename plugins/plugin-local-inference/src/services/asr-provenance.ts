@@ -100,7 +100,8 @@ const GGUF_SCALAR_BYTES: Readonly<Record<number, number>> = {
 /**
  * Read `general.architecture` from a GGUF header, or null when the file is
  * not a GGUF or the key is not among the leading scalar/string entries
- * (converters write it first). Reads at most the first 64 KiB.
+ * (converters write it first). Reads at most the first 64 KiB. A file that
+ * exists but cannot be read throws instead of masquerading as "not a GGUF".
  */
 export function readGgufArchitecture(file: string): string | null {
 	let fd: number | undefined;
@@ -138,9 +139,17 @@ export function readGgufArchitecture(file: string): string | null {
 			}
 		}
 		return null;
-	} catch {
-		// error-policy:J3 unreadable file is "not a parakeet GGUF".
-		return null;
+	} catch (error) {
+		const code = (error as NodeJS.ErrnoException).code;
+		// ENOENT/ENOTDIR: the entry vanished between readdir and open, and
+		// EISDIR: the entry is not a file at all — both are legitimately
+		// "not a staged model". Anything else (EACCES, EIO, EMFILE) means we
+		// could not read a file that is there: do not let callers report a
+		// staged-but-unreadable install as "no ASR model staged".
+		if (code === "ENOENT" || code === "ENOTDIR" || code === "EISDIR") {
+			return null;
+		}
+		throw new Error(`failed to read GGUF header at ${file}`, { cause: error });
 	} finally {
 		if (fd !== undefined) closeSync(fd);
 	}
@@ -161,7 +170,13 @@ export function bundleHasAsrModelFiles(bundleRoot: string): boolean {
 				readGgufArchitecture(path.join(asrDir, entry.name)) ===
 					PARAKEET_TDT_ARCHITECTURE,
 		);
-	} catch {
-		return false;
+	} catch (error) {
+		const code = (error as NodeJS.ErrnoException).code;
+		// existsSync saw asr/ just above: ENOENT/ENOTDIR means it vanished (or
+		// became a file) since, which is "no ASR dir". Anything else — an
+		// unreadable dir, or readGgufArchitecture's unreadable-header error —
+		// must not be reported as "no ASR model staged".
+		if (code === "ENOENT" || code === "ENOTDIR") return false;
+		throw error;
 	}
 }

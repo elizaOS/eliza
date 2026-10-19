@@ -1,6 +1,12 @@
 /** Covers strict-versus-candidate ASR provenance enforcement against real manifest files. */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -164,5 +170,41 @@ describe("bundle ASR artifacts", () => {
 		writeFileSync(path.join(root, "asr", "README.md"), "not a model");
 
 		expect(bundleHasAsrModelFiles(root)).toBe(false);
+	});
+
+	it("propagates an unreadable GGUF header instead of reporting no staged ASR model", () => {
+		const root = writeManifest({});
+		const model = path.join(root, "asr", "phonon-2-fv5.gguf");
+		writeFileSync(model, gguf("parakeet-tdt"));
+		chmodSync(model, 0o000);
+		try {
+			// A staged-but-unreadable model is a broken install (EACCES/EIO),
+			// not an install without ASR: callers must not downgrade it to
+			// "no ASR model artifacts are staged" (engine.ts:1161,
+			// bionic-host-loader.ts:432).
+			expect(() => readGgufArchitecture(model)).toThrow(
+				/failed to read GGUF header/,
+			);
+			expect(() => bundleHasAsrModelFiles(root)).toThrow(
+				/failed to read GGUF header/,
+			);
+		} finally {
+			chmodSync(model, 0o600);
+		}
+	});
+
+	it("propagates an unreadable ASR dir instead of reporting no staged ASR model", () => {
+		const root = writeManifest({});
+		writeFileSync(
+			path.join(root, "asr", "phonon-2-fv5.gguf"),
+			gguf("parakeet-tdt"),
+		);
+		const asrDir = path.join(root, "asr");
+		chmodSync(asrDir, 0o000);
+		try {
+			expect(() => bundleHasAsrModelFiles(root)).toThrow(/EACCES/);
+		} finally {
+			chmodSync(asrDir, 0o700);
+		}
 	});
 });
