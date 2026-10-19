@@ -15,6 +15,7 @@ import static org.junit.Assert.*;
 
 /** Real app-private filesystem proof only. Does not qualify the renderer or resident startup. */
 public final class IpcRecoveryReviewInstrumentedTest {
+    static String hardlinkFixtureOutcome="not-run";
     private File home() throws Exception {
         File value=new File(InstrumentationRegistry.getInstrumentation().getTargetContext().getFilesDir().getCanonicalFile(),"ir-"+UUID.randomUUID().toString().substring(0,8));
         Os.mkdir(value.getPath(),0700);Os.mkdir(new File(value,"ipc").getPath(),0700);return value;
@@ -65,8 +66,8 @@ public final class IpcRecoveryReviewInstrumentedTest {
                 assertArrayEquals(bytes.get(old.getName()+"/a.sock.lock"),Files.readAllBytes(new File(retained,"a.sock.lock").toPath()));
                 assertEquals((long)inodes.get(old.getName()+"/a.sock.lock"),Os.lstat(new File(retained,"a.sock.lock").getPath()).st_ino);
             }
-            assertEquals("must remain exact",Files.readString(unrelated.toPath()));assertEquals(liveInode,Os.lstat(liveMarker.getPath()).st_ino);
-            assertEquals("synthetic current IPC remains untouched by archive",Files.readString(liveMarker.toPath()));
+            assertEquals("must remain exact",new String(Files.readAllBytes(unrelated.toPath()),StandardCharsets.UTF_8));assertEquals(liveInode,Os.lstat(liveMarker.getPath()).st_ino);
+            assertEquals("synthetic current IPC remains untouched by archive",new String(Files.readAllBytes(liveMarker.toPath()),StandardCharsets.UTF_8));
             assertEquals("unavailable",recovery.archiveRetained("stale").getString("status"));
             // A separate, explicit normal recovery can now retire the current IPC namespace.
             recovery.recover();assertEquals(0,Objects.requireNonNull(new File(home,"ipc").list()).length);
@@ -81,12 +82,23 @@ public final class IpcRecoveryReviewInstrumentedTest {
             assertEquals(0,Objects.requireNonNull(home.listFiles(f->f.getName().startsWith("ipc-reviewed-"))).length);
         } finally {removeFixture(home);}
     }
-    @Test public void replacementSymlinkAndHardlinkAreNeverArchived() throws Exception {
+    @Test public void replacementSymlinkIsRefusedAndHardlinkPlatformPolicyIsRecorded() throws Exception {
         File home=home();List<File> dirs=seed(home);
         try(IpcStartupRecovery recovery=IpcStartupRecovery.acquire(home)) {
             File original=new File(dirs.get(0),"a.sock.generation"),replacement=new File(home,"synthetic-replacement");write(replacement,"other synthetic bytes");
             assertTrue(original.delete());Os.symlink(replacement.getPath(),original.getPath());assertEquals("unavailable",recovery.reviewRetained().getString("status"));assertTrue(original.delete());
-            Os.link(replacement.getPath(),original.getPath());assertEquals("unavailable",recovery.reviewRetained().getString("status"));
+            try {
+                Os.link(replacement.getPath(),original.getPath());
+                assertEquals(2,Os.lstat(original.getPath()).st_nlink);
+                assertEquals("unavailable",recovery.reviewRetained().getString("status"));
+                hardlinkFixtureOutcome="archive-link-count-guard-exercised";
+            } catch(android.system.ErrnoException denied) {
+                // Some Android SELinux policies prohibit app-created hardlinks. That is a
+                // platform protection, NOT execution evidence for our archive link-count guard.
+                if(denied.errno!=android.system.OsConstants.EACCES && denied.errno!=android.system.OsConstants.EPERM)throw denied;
+                assertFalse(original.exists());assertEquals(1,Os.lstat(replacement.getPath()).st_nlink);
+                hardlinkFixtureOutcome="platform-denied-"+(denied.errno==android.system.OsConstants.EACCES ? "EACCES" : "EPERM")+"; archive-link-count-guard-not-exercised";
+            }
         } finally {removeFixture(home);}
     }
     @Test public void unexpectedOrOversizeMarkerAndInvalidUuidRefuseWithoutContentsRead() throws Exception {
