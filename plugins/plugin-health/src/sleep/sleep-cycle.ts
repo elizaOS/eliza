@@ -211,6 +211,31 @@ function hasActiveSignalAfter(
     return Number.isFinite(observedAt) && observedAt > thresholdMs;
   });
 }
+/**
+ * Whether a health snapshot observed after `observedAtMs` reports the same
+ * sleep (same `asleepAt`) as over. Phone health snapshots never carry the
+ * `active` state, so this is how the device's own wake ends a current sleep.
+ */
+function hasLaterHealthWake(
+  signals: LifeOpsActivitySignal[],
+  asleepAtMs: number,
+  observedAtMs: number,
+): boolean {
+  return signals.some((signal) => {
+    const observedAt = Date.parse(signal.observedAt);
+    if (!Number.isFinite(observedAt) || observedAt <= observedAtMs) {
+      return false;
+    }
+    const health = resolveHealthSignal(signal);
+    const sleep = health && isRecord(health.sleep) ? health.sleep : null;
+    return (
+      sleep !== null &&
+      sleep.isSleeping !== true &&
+      typeof sleep.asleepAt === "string" &&
+      Date.parse(sleep.asleepAt) === asleepAtMs
+    );
+  });
+}
 function parseHealthSleepEpisodes(args: {
   signals: LifeOpsActivitySignal[];
   nowMs: number;
@@ -258,6 +283,15 @@ function parseHealthSleepEpisodes(args: {
     const healthProvider = health
       ? _signalSourceToHealthProvider(health.source)
       : null;
+    // A later snapshot of this same sleep reports the wake and carries the
+    // completed episode; this "asleep" snapshot is superseded by it.
+    if (
+      sleep.isSleeping === true &&
+      Number.isFinite(asleepAt) &&
+      hasLaterHealthWake(args.signals, asleepAt, observedAt)
+    ) {
+      continue;
+    }
     if (
       sleep.isSleeping === true &&
       Number.isFinite(asleepAt) &&
