@@ -646,7 +646,15 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     const embeddedMemories = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
       (memory) =>
-        Array.isArray(memory.embedding) && memory.embedding.length > 0,
+        // plugin-sql restricts this sweep to memories whose agent_id is
+        // this.agentId; a row stored for another agent (import, restore,
+        // shared file) must keep its embedding and must not be reported
+        // for re-embedding under this agent. A missing agentId is this
+        // database owner's legacy row, matching the other memory reads
+        // in this file.
+        (memory.agentId ?? this.agentId) === this.agentId &&
+        Array.isArray(memory.embedding) &&
+        memory.embedding.length > 0,
     );
     const reclaimed: UUID[] = [];
 
