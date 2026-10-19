@@ -214,6 +214,13 @@ export default smithers(()=><Workflow name="receipt-proof"><Task id="calculate" 
       expect(delivered[0].text).toBe(read.text);
       expect(delivered[0].effectReceiptIds).toBeUndefined();
     }
+    // A result limit is a count. A fractional planner value must not reach the
+    // database LIMIT as a bigint, where it fails the whole read.
+    for (const action of ['executions', 'revisions']) {
+      const fractional = await invoke({ action, workflowId: row.id, limit: 2.5 });
+      expect(fractional.success).toBe(true);
+      expect(fractional.text).toMatch(/^Found \d+ (run|revision)/);
+    }
     facade.modifyWorkflowDraft = async () => ({
       ...definition,
       name: 'Edited synthetic definition',
