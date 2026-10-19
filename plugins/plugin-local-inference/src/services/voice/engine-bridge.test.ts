@@ -326,6 +326,32 @@ describe("EngineVoiceBridge direct synthesis guard", () => {
 		rmSync(bundleRoot, { recursive: true, force: true });
 	});
 
+	it("fails startup when the asr path exists but cannot be listed as a directory", () => {
+		// A regular file at `asr/` is a corrupt bundle, not a TTS-only bundle.
+		// `readdirSync` raises ENOTDIR; reporting `asrAvailable = false` here
+		// told callers "no ASR model shipped" and silently downgraded voice-on.
+		writeFileSync(path.join(bundleRoot, "asr"), "not a directory");
+
+		expect(() =>
+			EngineVoiceBridge.start({
+				bundleRoot,
+				useFfiBackend: false,
+				lifecycleLoaders: lifecycleLoadersOk(),
+			}),
+		).toThrow();
+	});
+
+	it("still reports asrAvailable=false when no asr directory ships", async () => {
+		// Legitimate absence: a TTS-only bundle must keep starting.
+		const bridge = EngineVoiceBridge.start({
+			bundleRoot,
+			useFfiBackend: false,
+			lifecycleLoaders: lifecycleLoadersOk(),
+		});
+		expect(bridge.asrAvailable).toBe(false);
+		await bridge.arm();
+	});
+
 	it("rejects direct WAV synthesis on the silent backend", async () => {
 		const bridge = EngineVoiceBridge.start({
 			bundleRoot,

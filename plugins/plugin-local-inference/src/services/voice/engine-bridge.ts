@@ -2397,11 +2397,17 @@ function directoryHasRegularFile(dir: string): boolean {
 }
 
 function bundleHasRegularFile(dir: string): boolean {
-	if (!existsSync(dir)) return false;
 	try {
 		return directoryHasRegularFile(dir);
-	} catch {
-		return false;
+	} catch (err) {
+		// A bundle without an `asr/` directory is a legitimate TTS-only bundle,
+		// so ENOENT stays "absent". Every other errno (EACCES, EIO, ENOTDIR
+		// from a corrupt layout, ELOOP) means the bundle could not be read:
+		// reporting `false` there downgraded voice-on to "no ASR model
+		// shipped" and hid the real failure. `bundleMmapRegion` already
+		// propagates the same errno, so startup fails consistently.
+		if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return false;
+		throw err;
 	}
 }
 
