@@ -3002,6 +3002,31 @@ export class AcpService extends Service {
           skipped += 1;
           continue;
         }
+        // A native reattach opens a new protocol session (`session/new`), so
+        // the agent's conversation is gone. A "continue" prompt would run with
+        // no task and its reply would read as the task result. Report the
+        // state loss instead; the router respawns the original task.
+        this.logSubAgentStateLost(session, "orphan-resume");
+        const message =
+          "Sub-agent state was lost (runtime restarted mid-turn). No automatic action taken.";
+        try {
+          await this.store.updateStatus(session.id, "errored", message);
+        } catch (err) {
+          // error-policy:J7 status-write in the boot scan; warn and skip so
+          // the session is not reported lost while still marked busy.
+          this.log("warn", "orphan resume: failed to mark errored", {
+            sessionId: session.id,
+            err,
+          });
+          skipped += 1;
+          continue;
+        }
+        this.emitSessionEvent(session.id, "error", {
+          message,
+          failureKind: "session_state_lost",
+        });
+        skipped += 1;
+        continue;
       } else {
         if (!session.acpxSessionId) {
           skipped += 1;
