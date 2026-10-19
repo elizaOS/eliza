@@ -63,7 +63,8 @@ interface AppSubscriptionCredentials {
  * file/keychain reader.
  */
 export function getClaudeOAuthToken(opts?: { accountId?: string }): OAuthToken {
-  const appToken = readAppManagedAnthropicToken();
+  const appRead = readAppManagedAnthropicToken();
+  const appToken = appRead.token;
   if (appToken) {
     tokenCache.set(APP_CREDENTIAL_CACHE_KEY, appToken);
     return appToken;
@@ -87,6 +88,7 @@ export function getClaudeOAuthToken(opts?: { accountId?: string }): OAuthToken {
 
   const credentials = readFromCredentialStore();
   if (!credentials?.claudeAiOauth?.accessToken) {
+    if (appRead.error) throw appRead.error;
     throw new Error(
       "[Anthropic] Could not read Claude OAuth token. " +
         "Either set CLAUDE_CODE_OAUTH_TOKEN env var (via `claude setup-token`), " +
@@ -113,7 +115,7 @@ export async function getClaudeOAuthTokenAsync(opts?: {
   sessionKey?: string;
   exclude?: string[];
 }): Promise<OAuthToken> {
-  const appToken = readAppManagedAnthropicToken();
+  const appToken = readAppManagedAnthropicToken().token;
   if (appToken) {
     tokenCache.set(APP_CREDENTIAL_CACHE_KEY, appToken);
     return appToken;
@@ -185,7 +187,7 @@ export function reportClaudeOAuthRateLimited(
 }
 
 export function getClaudeOAuthMeta(): ClaudeCredentials["claudeAiOauth"] | null {
-  const appToken = readAppManagedAnthropicToken();
+  const appToken = readAppManagedAnthropicToken().token;
   if (appToken) {
     return {
       accessToken: appToken.accessToken,
@@ -216,10 +218,20 @@ function getEnvVar(key: string): string | undefined {
   return process.env[key];
 }
 
-function readAppManagedAnthropicToken(): OAuthToken | null {
+interface AppManagedTokenRead {
+  token: OAuthToken | null;
+  /**
+   * Set when a credential file exists but cannot be read or parsed. The caller
+   * reports it only after every other token source failed, so an unreadable
+   * file is never silently reported as "no credentials".
+   */
+  error?: ElizaError;
+}
+
+function readAppManagedAnthropicToken(): AppManagedTokenRead {
   const cached = tokenCache.get(APP_CREDENTIAL_CACHE_KEY);
   if (cached && Date.now() < cached.expiresAt - 60_000) {
-    return cached;
+    return { token: cached };
   }
 
   const { join } = require("node:path") as typeof import("node:path");
@@ -232,35 +244,62 @@ function readAppManagedAnthropicToken(): OAuthToken | null {
     join(homedir(), ".eliza", "auth", "anthropic-subscription", `${accountId}.json`),
     join(homedir(), ".eliza", "auth", "anthropic-subscription.json"),
   ];
+  let unreadable: ElizaError | undefined;
 
   for (const credentialPath of paths) {
+    let raw: string;
     try {
-      const parsed = JSON.parse(
-        readFileSync(credentialPath, "utf-8")
-      ) as AppSubscriptionCredentials;
-      const access = parsed.credentials?.access?.trim();
-      if (!access) continue;
-      const expires = parsed.credentials?.expires;
-      const token: OAuthToken = {
-        accessToken: access,
-        expiresAt:
-          typeof expires === "number" && Number.isFinite(expires)
-            ? expires
-            : Number.POSITIVE_INFINITY,
-      };
-      if (Date.now() < token.expiresAt - 60_000) {
-        return token;
+      raw = readFileSync(credentialPath, "utf-8");
+    } catch (error) {
+      // A missing file is the expected "not here" signal and moves to the next
+      // location. Any other read failure (permissions, I/O) is a real problem.
+      if ((error as NodeJS.ErrnoException)?.code !== "ENOENT" && !unreadable) {
+        unreadable = new ElizaError("Failed to read app-managed Anthropic credential file", {
+          code: "CREDENTIALS_UNREADABLE",
+          cause: error,
+          context: { credentialPath },
+        });
       }
-    } catch {
-      // error-policy:J3 untrusted-input sanitizing — this probes a fixed list of
-      // known app-managed credential locations of which at most one exists;
-      // a read/parse miss at one location is the expected "not here" signal and
-      // moves to the next. Exhausting all yields the honest null below.
+      continue;
+    }
+
+    let parsed: AppSubscriptionCredentials;
+    try {
+      parsed = JSON.parse(raw) as AppSubscriptionCredentials;
+    } catch (error) {
+      // error-policy:J2 context-adding rethrow — a file that exists but does
+      // not parse is corrupt, not absent. It is reported once every other
+      // credential source has failed.
+      if (!unreadable) {
+        unreadable = new ElizaError(
+          "App-managed Anthropic credential file is corrupt (invalid JSON)",
+          {
+            code: "CREDENTIALS_CORRUPT",
+            cause: error,
+            context: { credentialPath },
+          }
+        );
+      }
+      continue;
+    }
+
+    const access = parsed.credentials?.access?.trim();
+    if (!access) continue;
+    const expires = parsed.credentials?.expires;
+    const token: OAuthToken = {
+      accessToken: access,
+      expiresAt:
+        typeof expires === "number" && Number.isFinite(expires)
+          ? expires
+          : Number.POSITIVE_INFINITY,
+    };
+    if (Date.now() < token.expiresAt - 60_000) {
+      return { token };
     }
   }
 
   tokenCache.delete(APP_CREDENTIAL_CACHE_KEY);
-  return null;
+  return { token: null, error: unreadable };
 }
 
 function readFromCredentialStore(): ClaudeCredentials | null {
