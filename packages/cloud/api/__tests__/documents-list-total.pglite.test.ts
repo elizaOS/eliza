@@ -161,3 +161,21 @@ test("a PDF upload is refused instead of being stored as undecodable bytes", asy
   const readme = await upload(new File(["Read me first."], "README"));
   expect(readme.status).toBe(200);
 });
+
+test("a document with an emoji across the 4000-character fragment boundary is stored once", async () => {
+  const before = (await list("?limit=1&offset=0")).total;
+  const response = await app.request(
+    "/api/v1/documents",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        content: `${"a".repeat(3999)}😀 tail text`,
+        filename: "notes.txt",
+      }),
+    },
+    workerEnv,
+  );
+  expect(response.status).toBe(200);
+  expect((await list("?limit=1&offset=0")).total).toBe(before + 1);
+});
