@@ -507,8 +507,9 @@ export function verifyCsrfToken(
 // ── Cookie serialize / parse ─────────────────────────────────────────────────
 /**
  * Cookie deadline: the stored expiry, extended for browser sessions to the
- * absolute cap (bounded by the 12h sliding window it replaced, so ordinary
- * hosts keep their historical cookie lifetime).
+ * absolute cap. The stored expiry carries only the sliding idle window here,
+ * and the cookie is set once at login, so the cookie bounds the absolute
+ * lifetime instead: 12h, or the 30-day cap for "remember device".
  */
 function sessionCookieExpiresAt(session: SessionCookieSource): number {
   if (session.kind !== "browser" || typeof session.createdAt !== "number") {
@@ -521,10 +522,7 @@ function sessionCookieExpiresAt(session: SessionCookieSource): number {
     },
     resolveBrowserSessionPolicy(),
   );
-  return Math.max(
-    session.expiresAt,
-    Math.min(hardExpiry, session.createdAt + BROWSER_SESSION_TTL_MS),
-  );
+  return Math.max(session.expiresAt, hardExpiry);
 }
 /**
  * Should the cookie carry the `Secure` attribute? Plan §4.1: drop `Secure`
