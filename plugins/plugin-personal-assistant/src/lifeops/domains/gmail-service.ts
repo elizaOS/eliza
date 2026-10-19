@@ -49,6 +49,7 @@ import {
   googleAccountIdFromGrantId,
   googleSendEmailInput,
   lifeOpsGmailMessageFromGoogle,
+  lifeOpsGmailMessageId,
   requireGoogleServiceMethod,
 } from "../google-plugin-delegates.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
@@ -1113,21 +1114,35 @@ export class GmailDomain {
     }
 
     const max = explicitMaxResults(request.maxResults);
+    // Messages with no cached row for this account. They are sent to the
+    // provider, but a blank placeholder must never be written to the cache.
+    const uncachedIds = new Set<string>();
     const messages: LifeOpsGmailMessageSummary[] =
       messageIds.length > 0
         ? await Promise.all(
             messageIds.map(async (messageId) => {
-              const cached = await this.ctx.repository.getGmailMessage(
-                this.ctx.agentId(),
-                "google",
-                messageId,
-                grant.side,
-                grant.id,
-              );
-              if (cached) {
-                return cached;
-              }
               const externalId = externalMessageIdFromInput(messageId);
+              // Callers pass either the local id or the Gmail provider id.
+              for (const id of new Set([
+                messageId,
+                lifeOpsGmailMessageId({
+                  agentId: this.ctx.agentId(),
+                  grant,
+                  externalId,
+                }),
+              ])) {
+                const cached = await this.ctx.repository.getGmailMessage(
+                  this.ctx.agentId(),
+                  "google",
+                  id,
+                  grant.side,
+                  grant.id,
+                );
+                if (cached) {
+                  return cached;
+                }
+              }
+              uncachedIds.add(messageId);
               return {
                 id: messageId,
                 externalId,
@@ -1209,17 +1224,20 @@ export class GmailDomain {
       if (receipt.failures.length > 0) {
         status = affectedMessages.length > 0 ? "partial" : "failed";
       }
+      const cachedAffected = affectedMessages.filter(
+        (message) => !uncachedIds.has(message.id),
+      );
 
       if (operation === "delete") {
         await this.ctx.repository.deleteGmailMessages(
           this.ctx.agentId(),
           "google",
-          affectedMessages.map((message) => message.id),
+          cachedAffected.map((message) => message.id),
           grant.side,
           grant.id,
         );
       } else {
-        for (const message of affectedMessages) {
+        for (const message of cachedAffected) {
           const labels = labelsAfterGmailManage(
             message.labels,
             operation,
