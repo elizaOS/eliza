@@ -1307,20 +1307,20 @@ export class CalendarRepository {
           updated_at = excluded.updated_at
         WHERE
           COALESCE(
-            (excluded.metadata_json::jsonb ->> 'icsSequence')::integer,
+            (excluded.metadata_json::jsonb ->> 'icsSequence')::numeric,
             0
           ) > COALESCE(
             (app_calendar.life_calendar_events.metadata_json::jsonb
-              ->> 'icsSequence')::integer,
+              ->> 'icsSequence')::numeric,
             0
           )
           OR (
             COALESCE(
-              (excluded.metadata_json::jsonb ->> 'icsSequence')::integer,
+              (excluded.metadata_json::jsonb ->> 'icsSequence')::numeric,
               0
             ) = COALESCE(
               (app_calendar.life_calendar_events.metadata_json::jsonb
-                ->> 'icsSequence')::integer,
+                ->> 'icsSequence')::numeric,
               0
             )
             AND COALESCE(

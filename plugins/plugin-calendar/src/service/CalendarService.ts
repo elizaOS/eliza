@@ -118,6 +118,7 @@ import {
   expandIcsCalendarEvents,
   icsCalendarSummary,
   lifeOpsCalendarEventFromIcs,
+  newestIcsEventPerIdentity,
   publicIcsCalendarSource,
 } from "../ics/source.js";
 import {
@@ -3421,7 +3422,7 @@ export class CalendarService extends Service {
           "ICS_FEED_PARSE_ERROR",
         );
       }
-      const events = parsed.events.map((event) =>
+      const events = newestIcsEventPerIdentity(parsed.events).map((event) =>
         lifeOpsCalendarEventFromIcs({
           event,
           source: lease.source,
