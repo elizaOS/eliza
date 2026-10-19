@@ -266,6 +266,36 @@ describe("deferred MESSAGE scheduling — durable ScheduledTask path", () => {
     });
   });
 
+  it("refuses to send a scheduled draft now, so the schedule delivers it once", async () => {
+    const pg = new PGlite();
+    databases.push(pg);
+    const adapter = new DurableDraftAdapter();
+    const harness = await bootRuntime(pg, "agent-send-now", adapter);
+    harnesses.push(harness);
+    saveDraft(harness.runtime);
+    const service = getDefaultTriageService();
+    const scheduled = await service.scheduleDraftSend(
+      harness.runtime,
+      "durable-draft-1",
+      Date.parse("2026-07-28T09:00:00.000Z"),
+    );
+
+    // "Actually, send it now": no adapter can cancel the durable task.
+    await expect(
+      service.sendDraft(harness.runtime, "durable-draft-1"),
+    ).rejects.toMatchObject({ code: "MESSAGE_DRAFT_ALREADY_SCHEDULED" });
+    expect(adapter.sendCount).toBe(0);
+
+    const runner = getScheduledTaskRunner(harness.runtime, {
+      agentId: "agent-send-now",
+      now: () => new Date("2026-07-28T09:01:00.000Z"),
+    });
+    expect(
+      (await runner.fireWithResult(scheduled.scheduledId ?? "")).kind,
+    ).toBe("fired");
+    expect(adapter.sendCount).toBe(1);
+  });
+
   it("fails a tampered task whose persisted draft snapshot is missing", async () => {
     const pg = new PGlite();
     databases.push(pg);
