@@ -100,7 +100,9 @@ const GGUF_SCALAR_BYTES: Readonly<Record<number, number>> = {
 /**
  * Read `general.architecture` from a GGUF header, or null when the file is
  * not a GGUF or the key is not among the leading scalar/string entries
- * (converters write it first). Reads at most the first 64 KiB.
+ * (converters write it first). Reads at most the first 64 KiB. Throws when the
+ * file exists but its header cannot be read (EACCES/EIO/EMFILE): "I could not
+ * look" is not "not a parakeet GGUF".
  */
 export function readGgufArchitecture(file: string): string | null {
 	let fd: number | undefined;
@@ -138,9 +140,14 @@ export function readGgufArchitecture(file: string): string | null {
 			}
 		}
 		return null;
-	} catch {
-		// error-policy:J3 unreadable file is "not a parakeet GGUF".
-		return null;
+	} catch (error) {
+		// error-policy:J3 a file that vanished between `readdir` and `open` is
+		// legitimately "not a parakeet GGUF". EACCES/EIO/EMFILE mean the header
+		// could not be read at all, and reporting that as "not an ASR model"
+		// hides a broken bundle.
+		const code = (error as NodeJS.ErrnoException).code;
+		if (code === "ENOENT" || code === "ENOTDIR") return null;
+		throw new Error(`failed to read GGUF header at ${file}`, { cause: error });
 	} finally {
 		if (fd !== undefined) closeSync(fd);
 	}
@@ -148,7 +155,9 @@ export function readGgufArchitecture(file: string): string | null {
 
 /**
  * True when `<bundle>/asr/` holds a model the fused library can load: a
- * Parakeet-TDT GGUF (Phonon-2). No other local ASR is supported.
+ * Parakeet-TDT GGUF (Phonon-2). No other local ASR is supported. Throws when
+ * the directory or a staged GGUF cannot be inspected, so a permission or I/O
+ * fault is never reported as "this bundle stages no ASR model".
  */
 export function bundleHasAsrModelFiles(bundleRoot: string): boolean {
 	const asrDir = path.join(bundleRoot, "asr");
@@ -161,7 +170,14 @@ export function bundleHasAsrModelFiles(bundleRoot: string): boolean {
 				readGgufArchitecture(path.join(asrDir, entry.name)) ===
 					PARAKEET_TDT_ARCHITECTURE,
 		);
-	} catch {
-		return false;
+	} catch (error) {
+		// error-policy:J3 no `asr/` directory (also when `asr` is a plain file)
+		// means the bundle stages no ASR model. Anything else means the staged
+		// bytes could not be inspected at all.
+		const code = (error as NodeJS.ErrnoException).code;
+		if (code === "ENOENT" || code === "ENOTDIR") return false;
+		throw new Error(`failed to inspect ASR model files under ${asrDir}`, {
+			cause: error,
+		});
 	}
 }

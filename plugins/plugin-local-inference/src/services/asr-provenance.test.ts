@@ -1,6 +1,12 @@
 /** Covers strict-versus-candidate ASR provenance enforcement against real manifest files. */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -164,5 +170,44 @@ describe("bundle ASR artifacts", () => {
 		writeFileSync(path.join(root, "asr", "README.md"), "not a model");
 
 		expect(bundleHasAsrModelFiles(root)).toBe(false);
+	});
+
+	it("propagates an unlistable asr/ directory instead of reporting no ASR model", () => {
+		const root = writeManifest({});
+		const asrDir = path.join(root, "asr");
+		writeFileSync(path.join(asrDir, "phonon-2-fv5.gguf"), gguf("parakeet-tdt"));
+		chmodSync(asrDir, 0o000);
+		try {
+			expect(() => bundleHasAsrModelFiles(root)).toThrow(
+				/failed to inspect ASR model files/,
+			);
+		} finally {
+			chmodSync(asrDir, 0o755);
+		}
+	});
+
+	it("propagates an unreadable GGUF instead of calling it 'not a parakeet GGUF'", () => {
+		const root = writeManifest({});
+		const model = path.join(root, "asr", "phonon-2-fv5.gguf");
+		writeFileSync(model, gguf("parakeet-tdt"));
+		chmodSync(model, 0o000);
+		try {
+			expect(() => readGgufArchitecture(model)).toThrow(
+				/failed to read GGUF header/,
+			);
+			expect(() => bundleHasAsrModelFiles(root)).toThrow(
+				/failed to inspect ASR model files/,
+			);
+		} finally {
+			chmodSync(model, 0o644);
+		}
+	});
+
+	it("keeps a model file that vanished before the open as absent", () => {
+		const root = writeManifest({});
+
+		expect(
+			readGgufArchitecture(path.join(root, "asr", "deleted.gguf")),
+		).toBeNull();
 	});
 });
