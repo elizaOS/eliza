@@ -2422,7 +2422,7 @@ export class IMessageService extends Service implements IIMessageService {
       // don't flow through messageService.handleMessage (which is
       // for conversational turns only).
       if (row.kind !== "text") {
-        this.emitAuxiliaryEvent(row);
+        await this.emitAuxiliaryEvent(row);
         continue;
       }
 
@@ -2543,36 +2543,21 @@ export class IMessageService extends Service implements IIMessageService {
   }
 
   /**
-   * Turn a single chat.db row into a `Memory`, wire up a reply callback,
-   * and hand the whole thing to `runtime.messageService.handleMessage`.
-   *
-   * Mirrors the shape used by @elizaos/plugin-telegram so the bootstrap
-   * plugin's message pipeline picks up inbound iMessages the same way it
-   * picks up Telegram messages — same entity/room/world creation, same
-   * `source: "imessage"` tag on content, same HandlerCallback signature
-   * for the reply path.
+   * Ensure the entity, room and world for a chat.db row exist, so Memories
+   * written for it (messages and reactions) satisfy the store's foreign keys.
    */
-  private async dispatchInboundMessage(
-    row: ChatDbMessage,
-    externalMedia: Media[] = []
-  ): Promise<void> {
-    if (!this.runtime) return;
+  private async ensureChatRowConnection(row: ChatDbMessage) {
+    const runtime = this.runtime;
     const accountId = IMESSAGE_LOCAL_ACCOUNT_ID;
-
     // chat_identifier is stable across messages in the same chat; use it
     // as the room key. Fall back to the handle for the edge case where
     // chat_message_join is empty (shouldn't happen on a healthy chat.db).
     const roomKey = row.chatId || row.handle || `imessage-room-${row.rowId}`;
     const entityKey = row.handle || roomKey;
 
-    const entityId = createUniqueUuid(this.runtime, entityKey);
-    const roomId = createUniqueUuid(this.runtime, roomKey);
-    const worldId = createUniqueUuid(this.runtime, `imessage-world-${roomKey}`);
-    // Key the Memory id by the chat.db message guid, not the ROWID —
-    // guids are stable across restarts and CloudKit syncs, so reply
-    // threading (which targets guids) can resolve via createUniqueUuid
-    // against the same key.
-    const messageId = createUniqueUuid(this.runtime, `imessage-guid-${row.guid}`);
+    const entityId = createUniqueUuid(runtime, entityKey);
+    const roomId = createUniqueUuid(runtime, roomKey);
+    const worldId = createUniqueUuid(runtime, `imessage-world-${roomKey}`);
 
     const channelType: ChannelType = row.chatType === "group" ? ChannelType.GROUP : ChannelType.DM;
 
@@ -2588,7 +2573,7 @@ export class IMessageService extends Service implements IIMessageService {
     // Make sure the agent's memory store knows about this entity + room +
     // world before we try to persist a Memory into it — otherwise FK
     // constraints fire downstream.
-    await this.runtime.ensureConnection({
+    await runtime.ensureConnection({
       entityId,
       roomId,
       worldId,
@@ -2605,11 +2590,11 @@ export class IMessageService extends Service implements IIMessageService {
       worldName: row.displayName ? `imessage-chat-${row.displayName}` : `imessage-chat-${roomKey}`,
       userName: resolvedName ?? row.handle,
     });
-    if (typeof this.runtime.ensureRoomExists === "function") {
-      await this.runtime.ensureRoomExists({
+    if (typeof runtime.ensureRoomExists === "function") {
+      await runtime.ensureRoomExists({
         id: roomId,
         name: row.displayName ?? roomKey,
-        agentId: this.runtime.agentId,
+        agentId: runtime.agentId,
         source: "imessage",
         type: channelType,
         channelId: roomKey,
@@ -2621,6 +2606,34 @@ export class IMessageService extends Service implements IIMessageService {
         },
       });
     }
+
+    return { roomKey, entityKey, entityId, roomId, worldId, channelType, resolvedName };
+  }
+
+  /**
+   * Turn a single chat.db row into a `Memory`, wire up a reply callback,
+   * and hand the whole thing to `runtime.messageService.handleMessage`.
+   *
+   * Mirrors the shape used by @elizaos/plugin-telegram so the bootstrap
+   * plugin's message pipeline picks up inbound iMessages the same way it
+   * picks up Telegram messages — same entity/room/world creation, same
+   * `source: "imessage"` tag on content, same HandlerCallback signature
+   * for the reply path.
+   */
+  private async dispatchInboundMessage(
+    row: ChatDbMessage,
+    externalMedia: Media[] = []
+  ): Promise<void> {
+    if (!this.runtime) return;
+    const accountId = IMESSAGE_LOCAL_ACCOUNT_ID;
+
+    const { roomKey, entityKey, entityId, roomId, worldId, channelType, resolvedName } =
+      await this.ensureChatRowConnection(row);
+    // Key the Memory id by the chat.db message guid, not the ROWID —
+    // guids are stable across restarts and CloudKit syncs, so reply
+    // threading (which targets guids) can resolve via createUniqueUuid
+    // against the same key.
+    const messageId = createUniqueUuid(this.runtime, `imessage-guid-${row.guid}`);
 
     // Lifecycle events — WORLD_JOINED + ENTITY_JOINED fire ONCE per
     // room/entity per service lifetime. These are the architectural
@@ -2941,7 +2954,7 @@ export class IMessageService extends Service implements IIMessageService {
    *   - The generic `EventType.REACTION_RECEIVED` from core when the
    *     row is a reaction, so core-level handlers see it.
    */
-  private emitAuxiliaryEvent(row: ChatDbMessage): void {
+  private async emitAuxiliaryEvent(row: ChatDbMessage): Promise<void> {
     if (!this.runtime) return;
     const accountId = IMESSAGE_LOCAL_ACCOUNT_ID;
 
@@ -2961,15 +2974,66 @@ export class IMessageService extends Service implements IIMessageService {
         emoji: row.reaction.emoji,
         service: row.service,
       } as EventPayload);
-      this.runtime.emitEvent(EventType.REACTION_RECEIVED, {
-        runtime: this.runtime,
-        source: "imessage",
-        accountId,
-        targetGuid: row.reaction.targetGuid,
-        reactionKind: row.reaction.kind,
-        add: row.reaction.add,
-        emoji: row.reaction.emoji,
-      } as EventPayload);
+      // Core reaction handlers store `message` as a Memory, so the tapback
+      // needs one, in the same chat and linked to the message it targets.
+      try {
+        const { entityId, roomId, channelType, resolvedName } =
+          await this.ensureChatRowConnection(row);
+        const targetMessageId = createUniqueUuid(
+          this.runtime,
+          `imessage-guid-${row.reaction.targetGuid}`
+        );
+        const label = row.reaction.emoji ?? row.reaction.kind;
+        const message: Memory = {
+          id: createUniqueUuid(this.runtime, `imessage-guid-${row.guid}`),
+          entityId,
+          agentId: this.runtime.agentId,
+          roomId,
+          content: {
+            text: row.reaction.add ? `*Reacted ${label}*` : `*Removed reaction ${label}*`,
+            source: "imessage",
+            inReplyTo: targetMessageId,
+            channelType,
+          },
+          metadata: {
+            type: MemoryType.MESSAGE,
+            source: "imessage",
+            provider: "imessage",
+            accountId,
+            timestamp: row.timestamp || Date.now(),
+            entityName: resolvedName ?? row.displayName ?? row.handle,
+            entityUserName: row.handle,
+            fromBot: row.isFromMe,
+            fromId: row.handle,
+            imessageReaction: {
+              action: row.reaction.add ? "add" : "remove",
+              kind: row.reaction.kind,
+              emoji: row.reaction.emoji,
+              targetMessageId,
+            },
+            imessageGuid: row.guid,
+            imessageRowId: row.rowId,
+          } as Memory["metadata"],
+          createdAt: row.timestamp || Date.now(),
+        };
+        await this.runtime.emitEvent(EventType.REACTION_RECEIVED, {
+          runtime: this.runtime,
+          source: "imessage",
+          accountId,
+          message,
+          targetGuid: row.reaction.targetGuid,
+          reactionKind: row.reaction.kind,
+          add: row.reaction.add,
+          emoji: row.reaction.emoji,
+        } as EventPayload);
+      } catch (error) {
+        // error-policy:J7 a failed reaction write is reported; it must not
+        // stop the poll from reading the rows after it.
+        this.runtime.reportError("IMessageService.reactionReceived", error, {
+          guid: row.guid,
+          chatId: row.chatId,
+        });
+      }
       return;
     }
 
