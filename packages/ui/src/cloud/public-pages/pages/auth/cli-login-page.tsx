@@ -329,14 +329,14 @@ function CliLoginPanel({
 /** Fixed Alpha entry selects presentation only. The canonical CLI page still owns
  * confirmation, cancellation and session completion after sign-in. */
 export function AlphaCliLoginPage() {
-  return <CliLoginPage signInPath="/alpha/sign-in" />;
+  return <CliLogin signInPath="/alpha/sign-in" />;
 }
 
-export default function CliLoginPage({
-  signInPath = "/login",
-}: {
-  signInPath?: "/login" | "/alpha/sign-in";
-} = {}) {
+export default function CliLoginPage() {
+  return <CliLogin signInPath="/login" />;
+}
+
+function CliLogin({ signInPath }: { signInPath: "/login" | "/alpha/sign-in" }) {
   const t = useCloudT();
   const { authenticated, ready } = useSessionAuth();
   const [searchParams] = useSearchParams();
