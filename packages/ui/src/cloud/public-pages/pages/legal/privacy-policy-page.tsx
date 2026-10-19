@@ -8,6 +8,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useDocumentTitle } from "../../../lib/use-document-title";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { alphaSignInLinks } from "../../lib/alpha-sign-in-links";
+import { AlphaLegalHeader } from "./alpha-legal-header";
 
 type TFn = ReturnType<typeof useCloudT>;
 
@@ -119,7 +120,9 @@ function buildSections(t: TFn): Array<{ title: string; body: string }> {
 export function AlphaPrivacyPolicyPage() {
   const [searchParams] = useSearchParams();
   const links = alphaSignInLinks(searchParams);
-  return <PrivacyPolicy loginHref={links.login} termsHref={links.terms} />;
+  return (
+    <PrivacyPolicy alpha loginHref={links.login} termsHref={links.terms} />
+  );
 }
 
 export default function PrivacyPolicyPage() {
@@ -127,9 +130,11 @@ export default function PrivacyPolicyPage() {
 }
 
 function PrivacyPolicy({
+  alpha = false,
   loginHref,
   termsHref,
 }: {
+  alpha?: boolean;
   loginHref: string;
   termsHref: string;
 }) {
@@ -140,17 +145,24 @@ function PrivacyPolicy({
     }),
   );
   const sections = buildSections(t);
+  const backLink = (
+    <Link
+      to={loginHref}
+      className="inline-flex items-center gap-2 text-sm text-muted transition-opacity hover:opacity-75"
+    >
+      <ArrowLeft className="size-4" />
+      {t("cloud.privacy.backToLogin", { defaultValue: "Back to login" })}
+    </Link>
+  );
   return (
-    <div className="theme-cloud flex min-h-[100dvh] w-full flex-col bg-bg font-sans text-txt">
+    <div
+      className={`${alpha ? "alpha-legal" : "theme-cloud"} flex min-h-[100dvh] w-full flex-col bg-bg font-sans text-txt`}
+    >
       <main id="main" className="flex-1 px-6 pt-16 pb-16 sm:px-8 lg:px-12">
-        <div className="mx-auto w-full max-w-4xl space-y-10">
-          <Link
-            to={loginHref}
-            className="inline-flex items-center gap-2 text-sm text-muted transition-opacity hover:opacity-75"
-          >
-            <ArrowLeft className="size-4" />
-            {t("cloud.privacy.backToLogin", { defaultValue: "Back to login" })}
-          </Link>
+        <div
+          className={`${alpha ? "alpha-legal-content" : "max-w-4xl"} mx-auto w-full space-y-10`}
+        >
+          {alpha ? <AlphaLegalHeader>{backLink}</AlphaLegalHeader> : backLink}
 
           <div className="space-y-3 border-b border-border pb-6">
             <h1 className="text-4xl font-bold tracking-tight text-txt sm:text-5xl">
@@ -174,7 +186,9 @@ function PrivacyPolicy({
             ))}
           </div>
 
-          <div className="flex flex-col items-center justify-between gap-4 border-t border-border pt-8 sm:flex-row">
+          <div
+            className={`${alpha ? "alpha-legal-footer " : ""}flex flex-col items-center justify-between gap-4 border-t border-border pt-8 sm:flex-row`}
+          >
             <Link
               to={termsHref}
               className="text-sm text-muted underline underline-offset-4 transition-opacity hover:opacity-75"
