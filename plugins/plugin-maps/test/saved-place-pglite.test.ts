@@ -10,7 +10,10 @@ import {
 } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { MapsService } from "../src/service.js";
-import { MAX_SAVED_PLACES_PER_OWNER } from "../src/store.js";
+import {
+  MAX_SAVED_PLACE_OPERATIONS_PER_OWNER,
+  MAX_SAVED_PLACES_PER_OWNER,
+} from "../src/store.js";
 
 const OWNER_ID = "22222222-2222-4222-a222-222222222222";
 const ROOM_ID = "44444444-4444-4444-a444-444444444444";
@@ -347,4 +350,34 @@ describe("saved-place durable CAS on PGlite", () => {
     // Repeating the current state is still a replay.
     expect((await save("Work")).replayed).toBe(true);
   });
+
+  it("keeps saving after the operation ledger is full", async () => {
+    const service = new MapsService(harness.runtime);
+    const owner = "77777777-7777-4777-a777-777777777777";
+    const save = (label: string, providerPlaceId = place.providerPlaceId) =>
+      service.savePlace({
+        ownerEntityId: owner,
+        roomId: ROOM_ID,
+        place: { ...place, providerPlaceId },
+        label,
+      });
+
+    // One place, relabeled once per save: one operation each.
+    for (
+      let index = 0;
+      index < MAX_SAVED_PLACE_OPERATIONS_PER_OWNER;
+      index += 1
+    ) {
+      await save(`Label ${index}`);
+    }
+
+    const relabeled = await save("Home");
+    const added = await save("Gym", "pglite-place-2");
+
+    expect(relabeled.replayed).toBe(false);
+    expect(added.replayed).toBe(false);
+    expect(
+      (await service.listSavedPlaces(owner)).map((saved) => saved.label),
+    ).toEqual(["Home", "Gym"]);
+  }, 180_000);
 });

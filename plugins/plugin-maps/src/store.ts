@@ -28,6 +28,7 @@ export const SAVED_PLACES_TABLE = "documents";
 const SAVED_PLACE_SOURCE = "plugin-maps.saved-place-state.v1";
 const MAX_CAS_ATTEMPTS = 16;
 export const MAX_SAVED_PLACES_PER_OWNER = 64;
+/** Idempotency window: the ledger keeps the newest operations only. */
 export const MAX_SAVED_PLACE_OPERATIONS_PER_OWNER = 256;
 export const MAX_SAVED_PLACE_STATE_BYTES = 512 * 1024;
 
@@ -278,16 +279,12 @@ function assertMutationCapacity(
   addsPlace: boolean,
 ): void {
   if (
-    (state?.operations.length ?? 0) >= MAX_SAVED_PLACE_OPERATIONS_PER_OWNER ||
-    (addsPlace &&
-      (state?.savedPlaces.length ?? 0) >= MAX_SAVED_PLACES_PER_OWNER)
+    addsPlace &&
+    (state?.savedPlaces.length ?? 0) >= MAX_SAVED_PLACES_PER_OWNER
   ) {
     throw new MapsError("Saved-place storage quota is full for this owner.", {
       code: "MAPS_STORAGE_LIMIT",
-      context: {
-        maxPlaces: MAX_SAVED_PLACES_PER_OWNER,
-        maxOperations: MAX_SAVED_PLACE_OPERATIONS_PER_OWNER,
-      },
+      context: { maxPlaces: MAX_SAVED_PLACES_PER_OWNER },
     });
   }
 }
@@ -416,10 +413,12 @@ export class RuntimeSavedPlaceStore implements SavedPlaceStore {
         revision: (state?.revision ?? -1) + 1,
         ownerEntityId: request.ownerEntityId,
         savedPlaces,
+        // The oldest operation leaves the window, so a full ledger never
+        // blocks the next save.
         operations: [
           ...(state?.operations ?? []).filter((entry) => entry !== prior),
           operation,
-        ],
+        ].slice(-MAX_SAVED_PLACE_OPERATIONS_PER_OWNER),
       };
       assertSerializedCapacity(replacement);
 
