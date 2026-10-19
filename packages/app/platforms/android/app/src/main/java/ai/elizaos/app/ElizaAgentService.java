@@ -223,6 +223,7 @@ public class ElizaAgentService extends Service {
     private static final long AGENT_BOOT_GRACE_MS = 120_000L;
 
     private final Object processLock = new Object();
+    private volatile long recoveryMaintenanceEpoch;
     private final Object notificationLock = new Object();
     private Process agentProcess;
     private IpcStartupRecovery ipcRecovery;
@@ -299,6 +300,35 @@ public class ElizaAgentService extends Service {
      * the dashboard at the pairing screen. Fall back to the recovery file that
      * {@link #writeLocalAgentTokenFile} persists, and cache it for this process.
      */
+    @FunctionalInterface public interface RecoveryOperation { JSONObject run() throws JSONException; }
+    @FunctionalInterface public interface RecoveryAuthority { JSONObject run(RecoveryOperation operation) throws JSONException; }
+
+    /** Explicit evidence review; no process is stopped or started by either operation.
+     * Host authority is acquired AFTER processLock, matching runtime environment callbacks. */
+    public static JSONObject reviewIpcRecovery(RecoveryAuthority authority) throws JSONException {
+        ElizaAgentService instance=activeInstance;
+        if(instance==null || authority==null)return IpcStartupRecovery.recoveryResult("unavailable",0,0,"unsupported-state");
+        synchronized(instance.processLock) {
+            if(!instance.canReviewIpcRecovery())return IpcStartupRecovery.recoveryResult("unavailable",0,0,"unsupported-state");
+            return authority.run(() -> instance.ipcRecovery.reviewRetained());
+        }
+    }
+    public static JSONObject archiveIpcRecovery(String reviewToken,RecoveryAuthority authority) throws JSONException {
+        ElizaAgentService instance=activeInstance;
+        if(instance==null || authority==null)return IpcStartupRecovery.recoveryResult("unavailable",0,0,"unsupported-state");
+        synchronized(instance.processLock) {
+            if(!instance.canReviewIpcRecovery())return IpcStartupRecovery.recoveryResult("unavailable",0,0,"unsupported-state");
+            // A start queued before or during maintenance must not silently run afterward.
+            instance.recoveryMaintenanceEpoch++;
+            try {return authority.run(() -> instance.ipcRecovery.archiveRetained(reviewToken));}
+            finally {instance.recoveryMaintenanceEpoch++;}
+        }
+    }
+    private boolean canReviewIpcRecovery() {
+        return IpcStartupRecovery.RETENTION_LIMIT.equals(currentStatus) && !shuttingDown && ipcRecovery!=null &&
+            (startWorker==null || !startWorker.isAlive()) && (agentProcess==null || !agentProcess.isAlive());
+    }
+
     public static JSONObject getLocalAgentBootState(Context context) throws JSONException {
         initializeLocalAgentTransport(context);
         ElizaAgentService instance = activeInstance;
@@ -2104,12 +2134,13 @@ public class ElizaAgentService extends Service {
     }
 
     private void requestAgentStart(boolean restartFirst) {
+        long requestedRecoveryEpoch=recoveryMaintenanceEpoch;
         try { invalidateCredentialShutdown(); }
         catch (IllegalStateException retiring) { currentStatus = "stopping"; return; }
         // Bring up the local-voice (Paradee TTS) bionic host on every service
         // start, before the agent-already-running guards below — so it binds
         // even when the agent is adopted rather than freshly spawned.
-        ensureBionicVoiceHost();
+        // Host startup is serialized below with explicit recovery maintenance.
 
         // Android may redeliver the sticky service start while a cold boot is
         // still extracting assets. That worker holds processLock, so waiting
@@ -2120,6 +2151,8 @@ public class ElizaAgentService extends Service {
             return;
         }
         synchronized (processLock) {
+            if(requestedRecoveryEpoch!=recoveryMaintenanceEpoch)return;
+            ensureBionicVoiceHost();
             if (!restartFirst && agentProcess != null && agentProcess.isAlive()) {
                 return;
             }
