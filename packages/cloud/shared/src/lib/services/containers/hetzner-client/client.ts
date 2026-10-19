@@ -726,13 +726,23 @@ export class HetznerContainersClient {
         .join(" "),
     );
 
-    await this.execOnNode(meta, async (ssh) => {
-      await this.removeContainerRuntime(ssh, meta);
+    try {
+      await this.execOnNode(meta, async (ssh) => {
+        await this.removeContainerRuntime(ssh, meta);
 
-      await ssh.exec(buildEnsureNetworkCmd(DEFAULT_NODE_NETWORK), 30_000);
-      await ssh.execStdin(createTransport.command, createTransport.input, 60_000);
-      await ssh.exec(`docker start ${shellQuote(meta.containerName)}`, 60_000);
-    });
+        await ssh.exec(buildEnsureNetworkCmd(DEFAULT_NODE_NETWORK), 30_000);
+        await ssh.execStdin(createTransport.command, createTransport.input, 60_000);
+        await ssh.exec(`docker start ${shellQuote(meta.containerName)}`, 60_000);
+      });
+    } catch (error) {
+      // The old runtime may already be removed, and the monitor cannot settle
+      // a row whose container is absent: record the failure, as restart does.
+      await containersRepository.update(containerId, organizationId, {
+        status: "failed",
+        error_message: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
 
     const updated = await containersRepository.update(containerId, organizationId, {
       environment_vars: environmentVars,

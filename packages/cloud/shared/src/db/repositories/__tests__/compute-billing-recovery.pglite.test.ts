@@ -3050,6 +3050,67 @@ describe("compute billing recovery", () => {
     expect(intent.provider_confirmed_at).toEqual(providerCutoff);
   });
 
+  test("an env update whose replacement container fails to start marks the container failed", async () => {
+    const { org, user } = await seed("10.000000");
+    const containerId = crypto.randomUUID();
+    const lastBilledAt = new Date(Date.now() - 60 * 60 * 1000);
+    await dbWrite.insert(containers).values({
+      id: containerId,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "api",
+      project_name: "api",
+      status: "running",
+      billing_status: "active",
+      desired_count: 1,
+      cpu: 1024,
+      memory: 2048,
+      environment_vars: { OLD: "1" },
+      last_billed_at: lastBilledAt,
+      created_at: lastBilledAt,
+      updated_at: lastBilledAt,
+      metadata: {
+        provider: "hetzner-docker",
+        nodeId: "n1",
+        hostname: "n1.test",
+        containerName: "app-x",
+        hostPort: 31234,
+        image: "ghcr.io/acme/api:1",
+        containerPort: 3000,
+      },
+    });
+    await dbWrite.insert(computeBillingRateSegments).values({
+      organization_id: org.id,
+      workload_kind: "container",
+      workload_id: containerId,
+      lifecycle_revision: 1,
+      billing_state: "running",
+      rate_per_hour: "0.027917",
+      effective_at: lastBilledAt,
+    });
+    const client = getHetznerContainersClient();
+    // The node removed the old container, then `docker create` was refused.
+    const node = spyOn(
+      client as unknown as { execOnNode: () => Promise<never> },
+      "execOnNode",
+    ).mockRejectedValue(
+      new Error("Error response from daemon: pull access denied for ghcr.io/acme/api"),
+    );
+    try {
+      await expect(client.setEnv(containerId, org.id, { NEW: "2" })).rejects.toThrow(
+        "pull access denied",
+      );
+    } finally {
+      node.mockRestore();
+    }
+
+    const [row] = await dbWrite.select().from(containers).where(eq(containers.id, containerId));
+    expect(row).toMatchObject({
+      status: "failed",
+      error_message: "Error response from daemon: pull access denied for ghcr.io/acme/api",
+    });
+  });
+
   test("funded restart refuses a terminal removed runtime before debit or status mutation", async () => {
     const { org, user } = await seed("10.000000");
     const containerId = crypto.randomUUID();
