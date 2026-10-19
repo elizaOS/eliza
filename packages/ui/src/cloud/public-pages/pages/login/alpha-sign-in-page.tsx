@@ -1,7 +1,8 @@
 import { lazy, Suspense } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useDocumentTitle } from "../../../lib/use-document-title";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
+import { alphaSignInLinks } from "../../lib/alpha-sign-in-links";
 
 const StewardLoginSection = lazy(() => import("./steward-login-section"));
 
@@ -55,6 +56,8 @@ const alphaSignInStyles = `
 
 export default function AlphaSignInPage(): React.JSX.Element {
   const t = useCloudT();
+  const [searchParams] = useSearchParams();
+  const links = alphaSignInLinks(searchParams);
   const title = t("cloud.login.alphaSignIn", {
     defaultValue: "Sign in to Alpha",
   });
@@ -97,10 +100,10 @@ export default function AlphaSignInPage(): React.JSX.Element {
             })}
           </p>
           <div className="alpha-legal-links">
-            <Link to="/terms-of-service">
+            <Link to={links.terms}>
               {t("cloud.login.termsLink", { defaultValue: "Terms" })}
             </Link>
-            <Link to="/privacy-policy">
+            <Link to={links.privacy}>
               {t("cloud.login.privacyPolicy", {
                 defaultValue: "Privacy Policy",
               })}

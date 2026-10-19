@@ -36,6 +36,16 @@ const PublicChatPage = lazy(() => import("./pages/public-chat-page"));
 const InviteAcceptPage = lazy(() => import("./pages/invite-accept-page"));
 const LoginPage = lazy(() => import("./pages/login/login-page"));
 const AlphaSignInPage = lazy(() => import("./pages/login/alpha-sign-in-page"));
+const AlphaTermsOfServicePage = lazy(() =>
+  import("./pages/legal/terms-of-service-page").then((module) => ({
+    default: module.AlphaTermsOfServicePage,
+  })),
+);
+const AlphaPrivacyPolicyPage = lazy(() =>
+  import("./pages/legal/privacy-policy-page").then((module) => ({
+    default: module.AlphaPrivacyPolicyPage,
+  })),
+);
 const NetworkSignInPage = lazy(
   () => import("./pages/login/network-sign-in-page"),
 );
@@ -143,6 +153,18 @@ export function registerPublicPages(): void {
   });
 
   // ── Login + Steward auth surfaces ──
+  registerCloudRoute({
+    path: "alpha/terms-of-service",
+    element: AlphaTermsOfServicePage,
+    ...PUBLIC_ROUTE_ACCESS,
+    group: "auth",
+  });
+  registerCloudRoute({
+    path: "alpha/privacy-policy",
+    element: AlphaPrivacyPolicyPage,
+    ...PUBLIC_ROUTE_ACCESS,
+    group: "auth",
+  });
   registerCloudRoute({
     path: "alpha/sign-in",
     element: AlphaSignInPage,

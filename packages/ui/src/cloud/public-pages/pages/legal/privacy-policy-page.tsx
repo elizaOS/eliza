@@ -4,9 +4,10 @@
  */
 
 import { ArrowLeft } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useDocumentTitle } from "../../../lib/use-document-title";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
+import { alphaSignInLinks } from "../../lib/alpha-sign-in-links";
 
 type TFn = ReturnType<typeof useCloudT>;
 
@@ -115,7 +116,23 @@ function buildSections(t: TFn): Array<{ title: string; body: string }> {
   ];
 }
 
+export function AlphaPrivacyPolicyPage() {
+  const [searchParams] = useSearchParams();
+  const links = alphaSignInLinks(searchParams);
+  return <PrivacyPolicy loginHref={links.login} termsHref={links.terms} />;
+}
+
 export default function PrivacyPolicyPage() {
+  return <PrivacyPolicy loginHref="/login" termsHref="/terms-of-service" />;
+}
+
+function PrivacyPolicy({
+  loginHref,
+  termsHref,
+}: {
+  loginHref: string;
+  termsHref: string;
+}) {
   const t = useCloudT();
   useDocumentTitle(
     t("cloud.privacy.metaTitle", {
@@ -128,7 +145,7 @@ export default function PrivacyPolicyPage() {
       <main id="main" className="flex-1 px-6 pt-16 pb-16 sm:px-8 lg:px-12">
         <div className="mx-auto w-full max-w-4xl space-y-10">
           <Link
-            to="/login"
+            to={loginHref}
             className="inline-flex items-center gap-2 text-sm text-muted transition-opacity hover:opacity-75"
           >
             <ArrowLeft className="size-4" />
@@ -159,7 +176,7 @@ export default function PrivacyPolicyPage() {
 
           <div className="flex flex-col items-center justify-between gap-4 border-t border-border pt-8 sm:flex-row">
             <Link
-              to="/terms-of-service"
+              to={termsHref}
               className="text-sm text-muted underline underline-offset-4 transition-opacity hover:opacity-75"
             >
               {t("cloud.privacy.termsOfService", {
@@ -167,7 +184,7 @@ export default function PrivacyPolicyPage() {
               })}
             </Link>
             <Link
-              to="/login"
+              to={loginHref}
               className="text-sm text-muted transition-opacity hover:opacity-75"
             >
               {t("cloud.privacy.returnToLogin", {
