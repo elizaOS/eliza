@@ -539,4 +539,41 @@ describe("goals check-ins on the scheduling spine (deterministic model-provider 
       { kind: "cron", expression: "0 18 * * 1", tz: OWNER_LOCAL_TZ },
     ]);
   });
+  it("moves an answered daily check-in to a later time without firing that time's slot already past today", async () => {
+    const harness = await makeHarness();
+    const goals = createOwnerGoalsService(harness.runtime);
+    const record = await goals.createGoal({
+      title: "Stretch every day",
+      cadence: { kind: "daily", windows: ["morning"] },
+    });
+    const goalId = record.goal.id;
+    const { occurrenceAtIso } = await fireAndAnswerCheckin(harness, goalId);
+
+    // At 19:00 owner-local, after today's 18:00 evening slot, the owner moves
+    // the check-in from mornings to evenings.
+    const changedAt = Date.parse(occurrenceAtIso) + 10 * 60 * 60 * 1000;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(changedAt);
+    try {
+      await goals.updateGoal(goalId, {
+        cadence: { kind: "daily", windows: ["evening"] },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const live = (await listGoalCheckinTasks(harness, goalId)).filter(
+      (task) => task.state.status !== "dismissed",
+    );
+    expect(live.map((task) => task.trigger)).toEqual([
+      { kind: "cron", expression: "0 18 * * *", tz: OWNER_LOCAL_TZ },
+    ]);
+    const dueAt = (offsetMs: number) =>
+      isScheduledTaskDue(live[0], {
+        now: new Date(changedAt + offsetMs),
+        ownerFacts: { timezone: OWNER_TZ },
+      });
+    expect(await dueAt(60 * 1000)).toMatchObject({ due: false });
+    expect(await dueAt(23 * 60 * 60 * 1000)).toMatchObject({ due: true });
+  });
 });

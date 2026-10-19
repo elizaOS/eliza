@@ -576,6 +576,23 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
           ? Date.parse(current.trigger.atIso) !==
             Date.parse(input.trigger.atIso)
           : JSON.stringify(current.trigger) !== JSON.stringify(input.trigger);
+      if (triggerChanged && input.trigger.kind !== "once") {
+        // The spine counts a recurring trigger from the task's last fire (or
+        // creation), so an edited trigger would fire at once for a slot of
+        // the new cadence that passed under the old one. Retire the task and
+        // schedule its successor from now, as a resume does.
+        await runner.apply(current.taskId, "dismiss", {
+          reason: GOAL_CHECKIN_SYNC_DISMISS_REASON,
+        });
+        dismissedTaskIds.push(current.taskId);
+        scheduled.push(
+          await runner.schedule({
+            ...input,
+            idempotencyKey: `${input.idempotencyKey}${RESUMED_KEY_SEPARATOR}${currentGeneration + 1}`,
+          }),
+        );
+        continue;
+      }
       const titleChanged = current.metadata?.goalTitle !== goal.title;
       if (triggerChanged || titleChanged) {
         edited.push(
