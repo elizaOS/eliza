@@ -828,6 +828,34 @@ async function handleCollectId(
   };
 }
 
+/**
+ * Settle the commitment-ledger row `persistDocumentObligation` wrote for this
+ * document, so the brief and prioritize stop listing a closed request as an
+ * open (and later overdue) commitment.
+ */
+async function closeDocumentObligation(
+  scope: RunnerScope,
+  documentId: string,
+  resolution: DocumentRequestStatus,
+): Promise<void> {
+  const adapter = (scope.runtime as { adapter?: { db?: unknown } }).adapter;
+  if (!adapter?.db) return;
+  const repository = new LifeOpsRepository(scope.runtime);
+  const open = await repository.listCommitmentLedgerRecords(scope.agentId, {
+    source: "document",
+    statuses: ["open", "tracked"],
+  });
+  const updatedAt = new Date().toISOString();
+  for (const record of open) {
+    if (record.sourceKey !== documentId) continue;
+    await repository.upsertCommitmentLedgerRecord({
+      ...record,
+      status: resolution === "completed" ? "completed" : "dismissed",
+      updatedAt,
+    });
+  }
+}
+
 async function handleCloseRequest(
   scope: RunnerScope,
   params: DocActionParameters,
@@ -866,6 +894,8 @@ async function handleCloseRequest(
       );
     }
   }
+
+  await closeDocumentObligation(scope, patched.id, resolution);
 
   logger.info(
     `[OWNER_DOCUMENTS] close_request id=${patched.id} resolution=${resolution}`,

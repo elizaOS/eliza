@@ -1,6 +1,7 @@
 import type { ActionResult, Memory, UUID } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { ownerDocumentsAction } from "../src/actions/document.ts";
+import { LifeOpsRepository } from "../src/lifeops/repository.ts";
 import { getScheduledTaskRunner } from "../src/lifeops/scheduled-task/service.ts";
 import {
   createLifeOpsTestRuntime,
@@ -97,5 +98,56 @@ describe("OWNER_DOCUMENTS deadline tracking", () => {
       kind: "once",
       atIso: "2026-11-08T17:00:00.000Z",
     });
+  });
+  it("settles the document's commitment when the request is closed", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const created = await ownerDocumentsAction.handler?.(
+      runtime,
+      ownerMessage(runtime.agentId, "Track the vendor contract approval"),
+      undefined,
+      {
+        parameters: {
+          subaction: "request_approval",
+          documentTitle: "Vendor contract",
+          deadline: "2026-11-01T17:00:00.000Z",
+        },
+      },
+      undefined,
+      [],
+    );
+    const documentRequestId = (
+      created?.data as { documentRequestId?: string } | undefined
+    )?.documentRequestId;
+    if (!documentRequestId) throw new Error("no document request created");
+    const repository = new LifeOpsRepository(runtime);
+    const ledger = () =>
+      repository.listCommitmentLedgerRecords(String(runtime.agentId), {
+        source: "document",
+      });
+    expect((await ledger()).map((record) => record.status)).toEqual([
+      "tracked",
+    ]);
+
+    const closed = await ownerDocumentsAction.handler?.(
+      runtime,
+      ownerMessage(runtime.agentId, "The vendor contract is done"),
+      undefined,
+      {
+        parameters: {
+          subaction: "close_request",
+          documentRequestId,
+          resolution: "completed",
+        },
+      },
+      undefined,
+      [],
+    );
+    expect(closed?.success).toBe(true);
+
+    // The brief and prioritize read only open/tracked rows.
+    expect((await ledger()).map((record) => record.status)).toEqual([
+      "completed",
+    ]);
   });
 });
