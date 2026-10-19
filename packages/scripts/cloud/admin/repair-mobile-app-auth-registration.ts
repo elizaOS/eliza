@@ -6,13 +6,18 @@
  */
 import { randomUUID } from "node:crypto";
 import pg from "pg";
+import { readDatabaseIdentityReceipt } from "../../../cloud/scripts/admin/database-identity-receipt.ts";
 import {
+  ALPHA_PHONE_MOBILE_APP_AUTH_CLIENT_ID,
+  type MobileAppAuthRegistrationRow,
   type MobileAppAuthRegistrationTarget,
   mobileAppAuthDatabaseConnection,
   PRIMARY_MOBILE_APP_AUTH_TARGET,
+  queryMobileAppAuthRegistration,
   requireMobileAppAuthAppId,
   requireRegisteredMobileClientAppId,
   resolveMobileAppAuthRegistrationTarget,
+  validateMobileAppAuthRegistrationRow,
   verifyDatabaseMobileAppAuthRegistration,
 } from "./verify-mobile-app-auth-registration.ts";
 
@@ -20,7 +25,7 @@ const { Client } = pg;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-type Operation = "diagnose" | "repair";
+type Operation = "diagnose" | "repair" | "repair-from-primary";
 
 class RegistrationRepairError extends Error {
   override readonly name = "RegistrationRepairError";
@@ -131,18 +136,89 @@ export interface RegistrationRepairClient {
   ): Promise<{ rows: T[] }>;
 }
 
+async function primaryCreationAuthority(
+  client: RegistrationRepairClient,
+  appId: string,
+  target: MobileAppAuthRegistrationTarget,
+) {
+  const env = process.env;
+  if (
+    env.ELIZA_MOBILE_APP_AUTH_ENVIRONMENT !== "production" ||
+    env.GITHUB_REF !== "refs/heads/main" ||
+    target.clientId !== ALPHA_PHONE_MOBILE_APP_AUTH_CLIENT_ID ||
+    target.redirectUri !== "https://eliza.app/alphaphone/auth/callback"
+  )
+    fail("authority.primary_opt_in_scope");
+  const primaryId = requireUuid(
+    env.ELIZA_MOBILE_APP_AUTH_APP_ID,
+    "authority.primary_app_required",
+  );
+  if (primaryId === appId) fail("authority.distinct_app_required");
+  const cluster = env.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256;
+  const authority = env.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256;
+  if (
+    !/^[a-f0-9]{64}$/.test(cluster ?? "") ||
+    !/^[a-f0-9]{64}$/.test(authority ?? "")
+  )
+    fail("authority.identity_pin_required");
+  const receipt = await readDatabaseIdentityReceipt(client, "production");
+  if (
+    receipt.clusterSha256 !== cluster ||
+    receipt.authoritySha256 !== authority
+  )
+    fail("authority.identity_mismatch");
+  const primary = await client.query<{
+    organization_id: string;
+    created_by_user_id: string;
+  }>(
+    `SELECT organization_id::text, created_by_user_id::text FROM apps WHERE id = $1::uuid FOR UPDATE`,
+    [primaryId],
+  );
+  const row = primary.rows[0];
+  if (!row) fail("authority.primary_registration");
+  // Hold the exact existing authority stable through verification and Alpha creation.
+  await client.query(
+    `SELECT id FROM organizations WHERE id = $1::uuid FOR SHARE`,
+    [row.organization_id],
+  );
+  await client.query(`SELECT id FROM users WHERE id = $1::uuid FOR SHARE`, [
+    row.created_by_user_id,
+  ]);
+  try {
+    const registration = await queryMobileAppAuthRegistration(
+      (text, values) =>
+        client.query<MobileAppAuthRegistrationRow & Record<string, unknown>>(
+          text,
+          values,
+        ),
+      primaryId,
+    );
+    validateMobileAppAuthRegistrationRow(registration, primaryId);
+  } catch {
+    fail("authority.primary_registration");
+  }
+  return row;
+}
+
 export async function repairRegistrationTransaction(
   client: RegistrationRepairClient,
   appId: string,
   protectedOrganizationId?: string,
   protectedOwnerUserId?: string,
   target: MobileAppAuthRegistrationTarget = PRIMARY_MOBILE_APP_AUTH_TARGET,
+  usePrimaryAuthority = false,
 ): Promise<void> {
   try {
     await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
       "eliza-mobile-app-auth-registration",
     ]);
+
+    if (usePrimaryAuthority) {
+      const authority = await primaryCreationAuthority(client, appId, target);
+      protectedOrganizationId = authority.organization_id;
+      protectedOwnerUserId = authority.created_by_user_id;
+    }
 
     const existing = await client.query<{
       organization_id: string;
@@ -285,6 +361,7 @@ async function repair(
   organizationId: string | undefined,
   ownerUserId: string | undefined,
   target: MobileAppAuthRegistrationTarget,
+  usePrimaryAuthority = false,
 ): Promise<void> {
   const { url, ssl } = mobileAppAuthDatabaseConnection(databaseUrl);
   const client = new Client({ connectionString: url, ...(ssl ? { ssl } : {}) });
@@ -296,6 +373,7 @@ async function repair(
       organizationId,
       ownerUserId,
       target,
+      usePrimaryAuthority,
     );
   } finally {
     await client.end().catch(() => undefined);
@@ -337,7 +415,12 @@ export function resolveTargetRegistration(env: NodeJS.ProcessEnv): {
 }
 
 function parseOperation(value: string | undefined): Operation {
-  if (value === "diagnose" || value === "repair") return value;
+  if (
+    value === "diagnose" ||
+    value === "repair" ||
+    value === "repair-from-primary"
+  )
+    return value;
   return fail("input.operation");
 }
 
@@ -350,6 +433,9 @@ async function main(): Promise<void> {
   if (operation === "diagnose") {
     await diagnoseRequiredRegistrationSchema(databaseUrl);
     return await diagnose(databaseUrl, appId, undefined, target);
+  }
+  if (operation === "repair-from-primary") {
+    return await repair(databaseUrl, appId, undefined, undefined, target, true);
   }
   const organizationId = optionalUuid(
     process.env.ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID,

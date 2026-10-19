@@ -11,6 +11,7 @@ import {
   test,
 } from "bun:test";
 import { PGlite } from "@electric-sql/pglite";
+import { readDatabaseIdentityReceipt } from "../../../cloud/scripts/admin/database-identity-receipt";
 import {
   repairRegistrationTransaction,
   resolveTargetRegistration,
@@ -307,5 +308,132 @@ describe("Alpha Phone registration repair transaction", () => {
         PRODUCTION,
       ),
     ).rejects.toThrow("registration.unique_callback_owner");
+  });
+  async function withPrimaryOptIn(run: () => Promise<void>) {
+    const receipt = await readDatabaseIdentityReceipt(client, "production");
+    const values = {
+      ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: "production",
+      GITHUB_REF: "refs/heads/main",
+      ELIZA_MOBILE_APP_AUTH_APP_ID: PRIMARY_APP_ID,
+      DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: receipt.clusterSha256,
+      DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: receipt.authoritySha256,
+    };
+    const previous = Object.fromEntries(
+      Object.keys(values).map((key) => [key, process.env[key]]),
+    );
+    Object.assign(process.env, values);
+    try {
+      await run();
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  }
+  const createFromPrimary = () =>
+    repairRegistrationTransaction(
+      client,
+      ALPHA_APP_ID,
+      undefined,
+      undefined,
+      PRODUCTION,
+      true,
+    );
+  const createPrimary = () =>
+    repairRegistrationTransaction(
+      client,
+      PRIMARY_APP_ID,
+      ORGANIZATION_ID,
+      OWNER_ID,
+    );
+
+  test("explicit primary authority creates Alpha without changing primary, organization or owner", async () => {
+    await createPrimary();
+    const before = await database.query(
+      "SELECT row_to_json(apps) AS row FROM apps WHERE id = $1",
+      [PRIMARY_APP_ID],
+    );
+    const authorityBefore = await database.query(
+      "SELECT row_to_json(users) AS row FROM users UNION ALL SELECT row_to_json(organizations) FROM organizations",
+    );
+    await withPrimaryOptIn(createFromPrimary);
+    const alpha = await read(ALPHA_APP_ID);
+    validateMobileAppAuthRegistrationRow(alpha, ALPHA_APP_ID, PRODUCTION);
+    expect(
+      (
+        await database.query(
+          "SELECT row_to_json(apps) AS row FROM apps WHERE id = $1",
+          [PRIMARY_APP_ID],
+        )
+      ).rows,
+    ).toEqual(before.rows);
+    expect(
+      (
+        await database.query(
+          "SELECT row_to_json(users) AS row FROM users UNION ALL SELECT row_to_json(organizations) FROM organizations",
+        )
+      ).rows,
+    ).toEqual(authorityBefore.rows);
+  });
+
+  test("primary authority refuses absent or invalid primary and creates no Alpha row", async () => {
+    await withPrimaryOptIn(async () => {
+      await expect(createFromPrimary()).rejects.toThrow(
+        "authority.primary_registration",
+      );
+      await createPrimary();
+      await database.query(
+        "UPDATE apps SET is_approved = FALSE WHERE id = $1",
+        [PRIMARY_APP_ID],
+      );
+      await expect(createFromPrimary()).rejects.toThrow(
+        "authority.primary_registration",
+      );
+      expect(await read(ALPHA_APP_ID)).toBeUndefined();
+    });
+  });
+
+  test("primary authority refuses existing Alpha ownership mismatch and rolls back", async () => {
+    await createPrimary();
+    await repairRegistrationTransaction(
+      client,
+      ALPHA_APP_ID,
+      ORGANIZATION_ID,
+      OWNER_ID,
+      PRODUCTION,
+    );
+    await database.query("UPDATE apps SET organization_id = $2 WHERE id = $1", [
+      ALPHA_APP_ID,
+      PRIMARY_APP_ID,
+    ]);
+    const before = await database.query(
+      "SELECT row_to_json(apps) AS row FROM apps WHERE id = $1",
+      [ALPHA_APP_ID],
+    );
+    await withPrimaryOptIn(async () => {
+      await expect(createFromPrimary()).rejects.toThrow(
+        "registration.explicit_ownership_match",
+      );
+    });
+    expect(
+      (
+        await database.query(
+          "SELECT row_to_json(apps) AS row FROM apps WHERE id = $1",
+          [ALPHA_APP_ID],
+        )
+      ).rows,
+    ).toEqual(before.rows);
+  });
+
+  test("primary authority refuses a database identity mismatch before creation", async () => {
+    await createPrimary();
+    await withPrimaryOptIn(async () => {
+      process.env.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 = "0".repeat(64);
+      await expect(createFromPrimary()).rejects.toThrow(
+        "authority.identity_mismatch",
+      );
+      expect(await read(ALPHA_APP_ID)).toBeUndefined();
+    });
   });
 });

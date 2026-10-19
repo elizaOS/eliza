@@ -96,3 +96,13 @@ reports booleans for app approval, organization/owner validity, and whether the
 protected creation organization and owner match that existing app. It shares the
 inventory's database identity guard and read-only transaction. It does not select
 another organization, reveal identifiers, activate records, or change ownership.
+
+The separate `repair-from-primary` operation is an explicit production-only opt-in
+for Alpha registration creation authority. It requires `main`, the protected
+primary APP_ID, and both database identity pins. Within the same serializable
+transaction and advisory lock, it locks the primary app and authority records,
+verifies the full primary registration, and uses that existing authority for Alpha.
+It refuses an existing Alpha ownership mismatch. It never activates organizations,
+changes users or ownership, or prints the selected identifiers. Ordinary `repair`
+continues to use the configured creation authority. Select this operation only
+after the owner approves using the primary app's organization and owner.

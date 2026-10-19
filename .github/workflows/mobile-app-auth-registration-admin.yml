@@ -19,6 +19,7 @@ on:
           - inventory
           - compare-primary
           - repair
+          - repair-from-primary
       client:
         description: First-party native client whose apps registration to inspect or repair
         required: false
@@ -69,8 +70,10 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: bun packages/scripts/cloud/admin/inventory-mobile-app-auth.ts
       - name: Diagnose or repair protected registration
-        if: inputs.operation == 'diagnose' || inputs.operation == 'repair'
+        if: inputs.operation == 'diagnose' || inputs.operation == 'repair' || inputs.operation == 'repair-from-primary'
         env:
+          DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
+          DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
           ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID }}
