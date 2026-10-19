@@ -452,6 +452,12 @@ export async function ensureConnections(
 			// A connection that omits `type` keeps the stored room's type;
 			// the DM default applies only when no type is recorded at all.
 			type: roomExplicitTypes.get(r.id) ?? stored?.type ?? r.type,
+			// The connector server and message-server ids are optional on a
+			// connection. A sparse connection must not blank the ids an earlier
+			// connection stored: destination authorization compares
+			// `room.serverId` and the platform context reads both.
+			serverId: r.serverId ?? stored?.serverId,
+			messageServerId: r.messageServerId ?? stored?.messageServerId,
 			agentId,
 		};
 	});
