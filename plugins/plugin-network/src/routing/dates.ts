@@ -219,7 +219,11 @@ export interface DateWindow {
 }
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
-const END = String.raw`(?:until|till|til|'til|thru|through|back\s+(?:on|by|in)?|by)`;
+// "back" ends a stay with a preposition or right before "the": "back on the
+// 5th" and "back the 5th" alike. authz.ts END_MARKER treats "back the" as an
+// end marker, so this must resolve it. The old `back\s+(?:on|by|in)?` needed a
+// second space after "back" whenever the preposition was left out.
+const END = String.raw`(?:until|till|til|'til|thru|through|back(?:\s+(?:on|by|in)|(?=\s+the\s))|by)`;
 
 /**
  * The start a member states for a stay ("from Monday", "starting December
