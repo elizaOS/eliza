@@ -2031,37 +2031,36 @@ it("keeps entity name lookups inside the requested agent and honors an explicit 
     }),
   ).toHaveLength(1);
 
-it("keeps another agent's memories when deleteAllMemories wipes a room", async () => {
-  const adapter = await open();
-  await adapter.ensureEmbeddingDimension(3);
-  const otherAgentId = id();
-  const ownedId = id();
-  const foreignId = id();
-  await adapter.createMemories([
-    {
-      memory: { ...memory("owned message"), id: ownedId },
+  it("keeps another agent's memories when deleteAllMemories wipes a room", async () => {
+    const adapter = await open();
+    await adapter.ensureEmbeddingDimension(3);
+    const otherAgentId = id();
+    const ownedId = id();
+    const foreignId = id();
+    await adapter.createMemories([
+      {
+        memory: { ...memory("owned message"), id: ownedId },
+        tableName: "messages",
+      },
+    ]);
+    const storage = await adapter.getConnection();
+    await storage.set("memories", foreignId, {
+      id: foreignId,
+      agentId: otherAgentId,
+      entityId,
+      roomId,
       tableName: "messages",
-    },
-  ]);
-  const storage = await adapter.getConnection();
-  await storage.set("memories", foreignId, {
-    id: foreignId,
-    agentId: otherAgentId,
-    entityId,
-    roomId,
-    tableName: "messages",
-    content: { text: "foreign message" },
-    createdAt: Date.now(),
+      content: { text: "foreign message" },
+      createdAt: Date.now(),
+    });
+
+    await adapter.deleteAllMemories([roomId], "messages");
+
+    expect(await storage.get("memories", ownedId)).toBeNull();
+    expect(await storage.get("memories", foreignId)).toMatchObject({
+      id: foreignId,
+      agentId: otherAgentId,
+      content: { text: "foreign message" },
+    });
   });
-
-  await adapter.deleteAllMemories([roomId], "messages");
-
-  expect(await storage.get("memories", ownedId)).toBeNull();
-  expect(await storage.get("memories", foreignId)).toMatchObject({
-    id: foreignId,
-    agentId: otherAgentId,
-    content: { text: "foreign message" },
-  });
-});
-
 });
