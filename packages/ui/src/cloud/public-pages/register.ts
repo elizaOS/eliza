@@ -42,6 +42,11 @@ const NetworkSignInPage = lazy(
 const AuthSuccessPage = lazy(() => import("./pages/auth/auth-success-page"));
 const AuthErrorPage = lazy(() => import("./pages/auth/auth-error-page"));
 const CliLoginPage = lazy(() => import("./pages/auth/cli-login-page"));
+const AlphaCliLoginPage = lazy(() =>
+  import("./pages/auth/cli-login-page").then((module) => ({
+    default: module.AlphaCliLoginPage,
+  })),
+);
 const EmailCallbackPage = lazy(
   () => import("./pages/auth/email-callback-page"),
 );
@@ -165,6 +170,13 @@ export function registerPublicPages(): void {
   registerCloudRoute({
     path: "auth/error",
     element: AuthErrorPage,
+    ...PUBLIC_ROUTE_ACCESS,
+    group: "auth",
+  });
+  // Fixed branded entry only; completion returns to the canonical CLI route.
+  registerCloudRoute({
+    path: "alpha/auth/cli-login",
+    element: AlphaCliLoginPage,
     ...PUBLIC_ROUTE_ACCESS,
     group: "auth",
   });

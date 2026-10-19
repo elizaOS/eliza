@@ -283,6 +283,7 @@ export default defineConfig({
       "src/**/__e2e__/**/*.test.{ts,tsx}",
       "test/cloud/network-site-handoff.test.ts",
       "src/cloud/public-pages/pages/login/steward-login-section.phone-login.test.tsx",
+      "src/cloud/public-pages/pages/auth/cli-login-page.test.tsx",
       "src/cloud/public-pages/pages/login/steward-login-methods.test.ts",
     ],
     exclude: ["dist/**", "**/node_modules/**"],

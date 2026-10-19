@@ -326,7 +326,17 @@ function CliLoginPanel({
     </main>
   );
 }
-export default function CliLoginPage() {
+/** Fixed Alpha entry selects presentation only. The canonical CLI page still owns
+ * confirmation, cancellation and session completion after sign-in. */
+export function AlphaCliLoginPage() {
+  return <CliLoginPage signInPath="/alpha/sign-in" />;
+}
+
+export default function CliLoginPage({
+  signInPath = "/login",
+}: {
+  signInPath?: "/login" | "/alpha/sign-in";
+} = {}) {
   const t = useCloudT();
   const { authenticated, ready } = useSessionAuth();
   const [searchParams] = useSearchParams();
@@ -476,7 +486,7 @@ export default function CliLoginPage() {
   });
   const returnToQuery = searchParams.toString();
   const returnTo = `/auth/cli-login${returnToQuery ? `?${returnToQuery}` : ""}`;
-  const signInHref = `/login?returnTo=${encodeURIComponent(returnTo)}`;
+  const signInHref = `${signInPath}?returnTo=${encodeURIComponent(returnTo)}`;
   // No pre-auth interstitial: when the user isn't signed in yet, forward
   // straight to the Steward login. `returnTo` brings the browser back here
   // once authenticated, where the confirmation interstitial waits for the
