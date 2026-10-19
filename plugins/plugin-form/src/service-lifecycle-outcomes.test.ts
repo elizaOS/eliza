@@ -279,6 +279,39 @@ describe("form lifecycle outcomes", () => {
     },
   );
 
+  it("asks again before a later cancel after the user declined and kept filling the form", async () => {
+    const session = await service.startSession("signup", entityId, roomId);
+    const stored = await service.getActiveSession(entityId, roomId);
+    assert(stored);
+    // Effort is measured from the first interaction, 15 minutes ago.
+    stored.effort.firstInteractionAt = Date.now() - 15 * 60 * 1000;
+    stored.effort.timeSpentMs = 15 * 60 * 1000;
+    await service.saveSession(stored);
+    await cancelThroughEvaluator();
+    expect(
+      (await service.getActiveSession(entityId, roomId))
+        ?.cancelConfirmationAsked,
+    ).toBe(true);
+
+    // Declined: the user keeps working on the form.
+    await service.updateField(
+      session.id,
+      entityId,
+      "name",
+      "Alice",
+      1,
+      "manual",
+    );
+    const resumed = await formContextProvider.get(runtime, message, state);
+    expect(resumed.data?.pendingCancelConfirmation).not.toBe(true);
+
+    // A later single cancel asks again instead of deleting the answers.
+    await cancelThroughEvaluator();
+    expect((await service.getActiveSession(entityId, roomId))?.id).toBe(
+      session.id,
+    );
+  });
+
   it("cancels a low-effort ready form immediately", async () => {
     const session = await service.startSession("signup", entityId, roomId);
     await service.updateField(

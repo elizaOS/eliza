@@ -677,6 +677,9 @@ export class FormService extends Service {
       }
     }
 
+    // Working on the form again ends a declined cancel: the next cancel
+    // asks for confirmation again instead of deleting the answers.
+    session.cancelConfirmationAsked = false;
     session.updatedAt = now;
     await storageSaveSession(this.runtime, session);
 
@@ -764,6 +767,7 @@ export class FormService extends Service {
       }
     }
 
+    session.cancelConfirmationAsked = false;
     session.updatedAt = Date.now();
     await storageSaveSession(this.runtime, session);
 
@@ -964,6 +968,7 @@ export class FormService extends Service {
     session.effort.lastInteractionAt = now;
     session.effort.timeSpentMs = now - session.effort.firstInteractionAt;
 
+    session.cancelConfirmationAsked = false;
     session.updatedAt = now;
     await storageSaveSession(this.runtime, session);
 
@@ -1425,6 +1430,7 @@ export class FormService extends Service {
     }
 
     session.status = "active";
+    session.cancelConfirmationAsked = false;
     session.updatedAt = Date.now();
 
     // Recalculate TTL on restore
