@@ -498,6 +498,10 @@ export class HetznerContainersClient {
       }
     }
 
+    // The runtime is gone and the daily bill skips a stopped row
+    // (next_billing_at is cleared below): charge what it ran since the last
+    // daily bill now, as a delete does.
+    await containersRepository.settleAccruedCompute(containerId, organizationId, new Date());
     const updated = await containersRepository.update(containerId, organizationId, {
       status: "stopped",
       next_billing_at: null,
