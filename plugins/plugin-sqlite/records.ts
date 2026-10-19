@@ -1707,6 +1707,12 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       COLLECTIONS.MEMORIES,
       (m) => {
         if (!roomSet.has(m.roomId as UUID)) return false;
+        // plugin-sql restricts this read with `agent_id = this.agentId`; a
+        // row stored for another agent (import, restore, shared file) must
+        // not surface through this agent's room read. A missing agentId is
+        // this database owner's legacy row, matching the other memory reads
+        // in this file.
+        if ((m.agentId ?? this.agentId) !== this.agentId) return false;
         if (params.tableName && storedMemoryTableName(m) !== params.tableName)
           return false;
         // Same case-insensitive `includes` semantics the SQL adapter pushes
