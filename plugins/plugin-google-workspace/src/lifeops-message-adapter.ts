@@ -227,6 +227,46 @@ async function searchGmailChannels(
   return sortGmailMessages(newest);
 }
 
+/**
+ * Search with the result limit applied after the exact `untilMs` bound.
+ * Gmail's `before:` has whole-second precision, so only messages in the final
+ * second can come back past `untilMs`; ask for that many more until the limit
+ * is met or the results run out, instead of reading every match.
+ */
+async function searchGmailUntil(
+  service: GoogleGmailAdapterService,
+  params: {
+    accountId: string;
+    query: string;
+    limit?: number;
+    untilMs?: number;
+    channelIds: readonly string[] | undefined;
+  }
+): Promise<GoogleGmailMessageSummary[]> {
+  const search = (maxResults: number | undefined) =>
+    searchGmailChannels(
+      service,
+      {
+        accountId: params.accountId,
+        query: params.query,
+        includeSpamTrash: true,
+        maxResults,
+      },
+      params.channelIds
+    );
+  const { limit, untilMs } = params;
+  if (limit === undefined || untilMs === undefined) return search(limit);
+  let maxResults = limit;
+  for (;;) {
+    const messages = await search(maxResults);
+    const late = messages.filter((message) => asReceivedAtMs(message.receivedAt) > untilMs).length;
+    if (messages.length - late >= limit || messages.length < maxResults) {
+      return messages;
+    }
+    maxResults = limit + late;
+  }
+}
+
 // Gmail's `after:` accepts epoch seconds and is exclusive. Step back one full
 // indexed second so the provider returns every message at sinceMs even if its
 // search index truncates message timestamps; cacheAndFilter still applies the
@@ -667,18 +707,13 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
     const service = this.requireService(runtime);
     const refs: MessageRef[] = [];
     for (const accountId of requestedAccounts(filters.worldIds)) {
-      const messages = await searchGmailChannels(
-        service,
-        {
-          accountId,
-          query: searchQuery(filters),
-          includeSpamTrash: true,
-          // Gmail rounds before: to seconds; apply the exact bound before
-          // consuming the result limit, including within its final second.
-          maxResults: filters.untilMs === undefined ? filters.limit : undefined,
-        },
-        filters.channelIds
-      );
+      const messages = await searchGmailUntil(service, {
+        accountId,
+        query: searchQuery(filters),
+        limit: filters.limit,
+        untilMs: filters.untilMs,
+        channelIds: filters.channelIds,
+      });
       for (const message of messages) {
         refs.push(mapGmailMessage(String(runtime.agentId), accountId, message));
       }
