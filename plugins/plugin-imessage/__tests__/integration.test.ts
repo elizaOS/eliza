@@ -832,6 +832,42 @@ describe("openChatDb + ChatDbReader (bun:sqlite backed)", { timeout: 60_000 }, (
     }
   });
 
+  it("rejects a tip read that fails instead of reporting an empty database", async ({ skip }) => {
+    const { path, cleanup } = await makeFixtureDb(skip);
+    try {
+      const reader = await openChatDb(path);
+      expect(reader).not.toBeNull();
+      if (!reader) return;
+
+      const openDatabase = await getDatabase();
+      if (!openDatabase) return;
+      const mutator = openDatabase(path);
+      try {
+        mutator.run("DELETE FROM message");
+      } finally {
+        mutator.close();
+      }
+      // An empty database has a real tip of 0, so the cursor starts at the beginning.
+      expect(reader.getLatestRowId()).toBe(0);
+
+      const broken = openDatabase(path);
+      try {
+        broken.run("DROP TABLE message");
+      } finally {
+        broken.close();
+      }
+      // A failed tip query is not an empty database. Reporting 0 would seed the
+      // polling cursor at the start of the history and replay every message.
+      expect(() => reader.getLatestRowId()).toThrow(
+        expect.objectContaining({ code: "IMESSAGE_TIP_READ_FAILED" })
+      );
+
+      reader.close();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("reads the nanosecond Apple dates modern macOS writes", async ({ skip }) => {
     // macOS 10.13+ stores chat.db dates as nanoseconds since 2001-01-01.
     // Any date after 2001-04-15 is past Number.MAX_SAFE_INTEGER there.
