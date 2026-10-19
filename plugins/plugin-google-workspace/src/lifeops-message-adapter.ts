@@ -165,6 +165,9 @@ function mapGmailMessage(
       accountId,
       htmlLink: message.htmlLink,
       replyTo: message.replyTo,
+      ...(message.replyToAll && message.replyToAll.length > 1
+        ? { replyToAll: message.replyToAll }
+        : {}),
       likelyReplyNeeded: message.likelyReplyNeeded,
       triageReason: message.triageReason,
     },
@@ -292,6 +295,15 @@ function gmailReplyRecipients(message: MessageRef): string[] {
   if (message.tags?.includes("SENT")) {
     const recipients = (message.to ?? [])
       .map((recipient) => recipient.identifier.trim())
+      .filter(Boolean);
+    if (recipients.length > 0) return recipients;
+  }
+  // Reply-To is an address list (RFC 5322 §3.6.2): reply to all of it.
+  const replyToAll = message.metadata?.replyToAll;
+  if (Array.isArray(replyToAll)) {
+    const recipients = replyToAll
+      .filter((address): address is string => typeof address === "string")
+      .map((address) => address.trim())
       .filter(Boolean);
     if (recipients.length > 0) return recipients;
   }

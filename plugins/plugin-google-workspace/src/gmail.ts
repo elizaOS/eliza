@@ -1054,7 +1054,8 @@ function mapRichMessage(
   const subject = decodeBasicHtmlEntities(headerValue(headers, "Subject") || "") || "(no subject)";
   const fromMailbox = parseEmailAddresses(headerValue(headers, "From"))[0] ?? null;
   const replyTo = headerValue(headers, "Reply-To");
-  const replyToMailbox = parseEmailAddresses(replyTo)[0] ?? null;
+  const replyToMailboxes = parseEmailAddresses(replyTo);
+  const replyToMailbox = replyToMailboxes[0] ?? null;
   const to = parseEmailAddresses(headerValue(headers, "To")).map(formatAddressValue);
   const cc = parseEmailAddresses(headerValue(headers, "Cc")).map(formatAddressValue);
   const labels = (message.labelIds ?? []).map((label) => label.trim()).filter(Boolean);
@@ -1080,6 +1081,9 @@ function mapRichMessage(
     from: fromMailbox?.name || fromMailbox?.email || "Unknown sender",
     fromEmail: fromMailbox?.email ? fromMailbox.email.toLowerCase() : null,
     replyTo: replyToMailbox?.email ?? replyToMailbox?.name ?? null,
+    replyToAll: replyToMailboxes
+      .map((mailbox) => mailbox.email)
+      .filter((email): email is string => Boolean(email)),
     to,
     cc,
     snippet: normalizeSnippet(message.snippet),

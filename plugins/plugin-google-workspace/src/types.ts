@@ -149,6 +149,8 @@ export interface GoogleGmailMessageSummary {
   from: string;
   fromEmail: string | null;
   replyTo: string | null;
+  /** Every address in the Reply-To list (RFC 5322 address-list), in order. */
+  replyToAll?: string[];
   to: string[];
   cc: string[];
   snippet: string;
