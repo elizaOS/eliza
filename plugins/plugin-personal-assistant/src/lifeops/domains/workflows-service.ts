@@ -19,6 +19,7 @@ import type {
 } from "@elizaos/contracts";
 import { LIFEOPS_WORKFLOW_STATUSES } from "@elizaos/contracts";
 import { computeNextCronRunAtMs } from "@elizaos/core";
+import { calendarEventOccurrenceKey } from "@elizaos/plugin-calendar";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {
   type AnyWorkflowStepContribution,
@@ -626,7 +627,9 @@ export class WorkflowsDomain {
         const candidates =
           await this.ctx.repository.listCalendarEventsEndedAfterCursor({
             agentId: this.ctx.agentId(),
-            provider: "google",
+            // Every connected calendar except Eliza-native events: a native
+            // event can be linked to its Google copy without a shared iCalUID.
+            provider: ["google", "microsoft", "apple_calendar", "ics"],
             side: "owner",
             cursorEndAt: schedulerState.lastFiredEventEndAt ?? null,
             cursorEventId: schedulerState.lastFiredEventId ?? null,
@@ -653,6 +656,9 @@ export class WorkflowsDomain {
             stateChanged = true;
             continue;
           }
+          // Copies of one meeting in several connected calendars share the
+          // occurrence key, so the workflow runs once per meeting.
+          const occurrenceKey = calendarEventOccurrenceKey(event);
           const { run, error, disposition } =
             await this.executeWorkflowDefinition(nextWorkflow, {
               startedAt: event.endAt,
@@ -669,7 +675,9 @@ export class WorkflowsDomain {
                   htmlLink: event.htmlLink,
                 },
               },
-              idempotencyKey: `event:${nextWorkflow.id}:${event.id}:${event.endAt}`,
+              idempotencyKey: occurrenceKey
+                ? `event:${nextWorkflow.id}:occurrence:${encodeURIComponent(occurrenceKey)}`
+                : `event:${nextWorkflow.id}:${event.id}:${event.endAt}`,
             });
           if (disposition === "in_progress") {
             // Same unrecoverable shape as the scheduled path above: the claim
@@ -690,6 +698,18 @@ export class WorkflowsDomain {
               },
             );
             break;
+          }
+          if (disposition === "replayed" && occurrenceKey) {
+            // Another calendar's copy of this meeting already ran the
+            // workflow and nudged the owner; only advance the cursor.
+            schedulerState = {
+              ...schedulerState,
+              lastFiredEventEndAt: event.endAt,
+              lastFiredEventId: event.id,
+              updatedAt: new Date().toISOString(),
+            };
+            stateChanged = true;
+            continue;
           }
           runs.push(run);
           await this.deps.emitWorkflowRunNudge(nextWorkflow, run);

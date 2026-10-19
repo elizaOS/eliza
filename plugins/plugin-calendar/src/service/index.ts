@@ -27,6 +27,7 @@ export {
 } from "./CalendarRepository.js";
 export {
   CalendarService,
+  calendarEventOccurrenceKey,
   mergeAggregatedCalendarFeedEvents,
 } from "./CalendarService.js";
 export {

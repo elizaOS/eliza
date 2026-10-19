@@ -759,7 +759,10 @@ export class CalendarRepository {
    */
   async listCalendarEventsEndedAfterCursor(args: {
     agentId: string;
-    provider: LifeOpsCalendarProvider | LifeOpsConnectorGrant["provider"];
+    provider:
+      | LifeOpsCalendarProvider
+      | LifeOpsConnectorGrant["provider"]
+      | readonly LifeOpsCalendarProvider[];
     side?: LifeOpsConnectorSide;
     cursorEndAt: string | null;
     cursorEventId: string | null;
@@ -767,6 +770,8 @@ export class CalendarRepository {
     limit: number;
   }): Promise<LifeOpsCalendarEvent[]> {
     const sideClause = args.side ? `AND side = ${sqlQuote(args.side)}` : "";
+    const providers: readonly string[] =
+      typeof args.provider === "string" ? [args.provider] : args.provider;
     let cursorClause = "";
     if (args.cursorEndAt) {
       cursorClause = args.cursorEventId
@@ -779,7 +784,7 @@ export class CalendarRepository {
       `SELECT *
          FROM app_calendar.life_calendar_events
         WHERE agent_id = ${sqlQuote(args.agentId)}
-          AND provider = ${sqlQuote(args.provider)}
+          AND provider IN (${providers.map((provider) => sqlQuote(provider)).join(", ")})
           ${sideClause}
           AND end_at <= ${sqlQuote(args.upToIso)}
           ${cursorClause}

@@ -43,6 +43,7 @@ export default defineConfig({
       `${packageRootFromRepo}/test/global-pause.integration.test.ts`,
       `${packageRootFromRepo}/test/work-threads.integration.test.ts`,
       `${packageRootFromRepo}/test/workflow-resume-schedule.integration.test.ts`,
+      `${packageRootFromRepo}/test/workflow-calendar-ended-providers.integration.test.ts`,
       `${packageRootFromRepo}/test/approval-queue.integration.test.ts`,
       `${packageRootFromRepo}/test/approval-queue.toctou.integration.test.ts`,
       `${packageRootFromRepo}/test/approval-queue-notify-error.integration.test.ts`,

@@ -1027,6 +1027,70 @@ function shouldIncludeAppleCalendar(request: {
   return true;
 }
 
+function eventUid(event: LifeOpsCalendarEvent): string | null {
+  for (const key of ["iCalUID", "iCalUId", "icalUid", "icsUid"]) {
+    const value = event.metadata[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function recurrenceIdentity(event: LifeOpsCalendarEvent): string {
+  for (const key of ["originalStartTime", "icsRecurrenceId", "originalStart"]) {
+    const value = event.metadata[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return event.startAt;
+}
+
+function allDayDateIdentity(
+  value: string,
+  event: LifeOpsCalendarEvent,
+): string | null {
+  if (/^\d{4}-\d{2}-\d{2}$/u.test(value)) return value;
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return null;
+  if (event.timezone) {
+    try {
+      const parts = getZonedDateParts(parsed, event.timezone);
+      return [parts.year, parts.month, parts.day]
+        .map((part, index) =>
+          index === 0 ? String(part) : String(part).padStart(2, "0"),
+        )
+        .join("-");
+    } catch {
+      // error-policy:J3 An invalid source timezone makes portable all-day
+      // identity unavailable; keeping both events is safer than collapsing.
+      return null;
+    }
+  }
+  return parsed.toISOString().slice(0, 10);
+}
+
+/**
+ * Portable identity of one calendar occurrence across providers: the
+ * iCalUID plus the original (recurrence) start. Null without an iCalUID.
+ */
+export function calendarEventOccurrenceKey(
+  event: LifeOpsCalendarEvent,
+): string | null {
+  const uid = eventUid(event);
+  if (!uid) return null;
+  const identity = recurrenceIdentity(event);
+  const normalizedIdentity = event.isAllDay
+    ? allDayDateIdentity(identity, event)
+    : Number.isFinite(Date.parse(identity))
+      ? new Date(identity).toISOString()
+      : null;
+  if (!normalizedIdentity) return null;
+  // RECURRENCE-ID/originalStartTime identifies a moved exception; current
+  // DTSTART does not. Timed values are normalized to an instant, while
+  // all-day values retain their local calendar date.
+  return `${uid}\u0000${normalizedIdentity}\u0000${event.isAllDay ? "all-day" : "timed"}`;
+}
+
 export function mergeAggregatedCalendarFeedEvents(
   sources: readonly AggregatedCalendarFeedSource[],
   links: readonly LinkedCalendarEventRecord[] = [],
@@ -1036,64 +1100,6 @@ export function mergeAggregatedCalendarFeedEvents(
     source: AggregatedCalendarFeedSource["calendar"];
   };
 
-  const eventUid = (event: LifeOpsCalendarEvent): string | null => {
-    for (const key of ["iCalUID", "iCalUId", "icalUid", "icsUid"]) {
-      const value = event.metadata[key];
-      if (typeof value === "string" && value.trim()) {
-        return value.trim();
-      }
-    }
-    return null;
-  };
-  const recurrenceIdentity = (event: LifeOpsCalendarEvent): string => {
-    for (const key of [
-      "originalStartTime",
-      "icsRecurrenceId",
-      "originalStart",
-    ]) {
-      const value = event.metadata[key];
-      if (typeof value === "string" && value.trim()) return value.trim();
-    }
-    return event.startAt;
-  };
-  const allDayDateIdentity = (
-    value: string,
-    event: LifeOpsCalendarEvent,
-  ): string | null => {
-    if (/^\d{4}-\d{2}-\d{2}$/u.test(value)) return value;
-    const parsed = new Date(value);
-    if (!Number.isFinite(parsed.getTime())) return null;
-    if (event.timezone) {
-      try {
-        const parts = getZonedDateParts(parsed, event.timezone);
-        return [parts.year, parts.month, parts.day]
-          .map((part, index) =>
-            index === 0 ? String(part) : String(part).padStart(2, "0"),
-          )
-          .join("-");
-      } catch {
-        // error-policy:J3 An invalid source timezone makes portable all-day
-        // identity unavailable; keeping both events is safer than collapsing.
-        return null;
-      }
-    }
-    return parsed.toISOString().slice(0, 10);
-  };
-  const occurrenceKey = (event: LifeOpsCalendarEvent): string | null => {
-    const uid = eventUid(event);
-    if (!uid) return null;
-    const identity = recurrenceIdentity(event);
-    const normalizedIdentity = event.isAllDay
-      ? allDayDateIdentity(identity, event)
-      : Number.isFinite(Date.parse(identity))
-        ? new Date(identity).toISOString()
-        : null;
-    if (!normalizedIdentity) return null;
-    // RECURRENCE-ID/originalStartTime identifies a moved exception; current
-    // DTSTART does not. Timed values are normalized to an instant, while
-    // all-day values retain their local calendar date.
-    return `${uid}\u0000${normalizedIdentity}\u0000${event.isAllDay ? "all-day" : "timed"}`;
-  };
   const accessRank = (accessRole: string): number => {
     switch (accessRole.toLowerCase()) {
       case "owner":
@@ -1206,7 +1212,7 @@ export function mergeAggregatedCalendarFeedEvents(
     if (!local || !remote) continue;
     // Only the canonical mapping can connect a local event without an iCalUID
     // to its provider copy. Matching titles or times never establish identity.
-    const portableKey = occurrenceKey(remote);
+    const portableKey = calendarEventOccurrenceKey(remote);
     const key = portableKey
       ? `portable\u0000${portableKey}`
       : `linked\u0000${link.id}`;
@@ -1231,7 +1237,7 @@ export function mergeAggregatedCalendarFeedEvents(
           calendarSummary: event.calendarSummary ?? source.calendar.summary,
         },
       };
-      const semanticKey = occurrenceKey(candidate.event);
+      const semanticKey = calendarEventOccurrenceKey(candidate.event);
       const groupKey =
         linkedKeys.get(event.id) ??
         (semanticKey

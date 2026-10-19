@@ -103,15 +103,11 @@ export class LifeOpsCalendarRepository {
     );
   }
 
-  async listCalendarEventsEndedAfterCursor(args: {
-    agentId: string;
-    provider: LifeOpsConnectorGrant["provider"];
-    side?: LifeOpsConnectorSide;
-    cursorEndAt: string | null;
-    cursorEventId: string | null;
-    upToIso: string;
-    limit: number;
-  }): Promise<LifeOpsCalendarEvent[]> {
+  async listCalendarEventsEndedAfterCursor(
+    args: Parameters<
+      CalendarRepository["listCalendarEventsEndedAfterCursor"]
+    >[0],
+  ): Promise<LifeOpsCalendarEvent[]> {
     return this.calendar.listCalendarEventsEndedAfterCursor(args);
   }
 
