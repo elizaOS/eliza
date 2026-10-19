@@ -740,16 +740,31 @@ async function replyToEntry(args: {
     send = consent === "confirmed";
   }
 
+  // Claim before drafting: a retried or concurrent approve of a body that
+  // was already sent must not reach the connector again.
+  if (send && !(await args.repo.claimReplySend(args.entry.id, args.body))) {
+    return {
+      success: false,
+      text: "This reply was already sent. Nothing was sent again.",
+      data: {
+        subaction: "reply",
+        entryId: args.entry.id,
+        alreadySent: true,
+      },
+    };
+  }
+
   seedMessageRefForEntry(args.runtime, args.entry);
   const service = getDefaultTriageService();
-  const draft = await service.draftReply(
-    args.runtime,
-    sourceMessageId,
-    args.body,
-  );
-  await args.repo.updateDraftResponse(args.entry.id, args.body);
-
+  let draft: Awaited<ReturnType<typeof service.draftReply>>;
+  try {
+    draft = await service.draftReply(args.runtime, sourceMessageId, args.body);
+  } catch (error) {
+    if (send) await args.repo.releaseReplySend(args.entry.id, args.entry);
+    throw error;
+  }
   if (!send) {
+    await args.repo.updateDraftResponse(args.entry.id, args.body);
     return {
       success: true,
       text: appendInboxDraftChoiceMarker(
@@ -767,11 +782,13 @@ async function replyToEntry(args: {
     };
   }
 
-  const sent = await service.sendDraft(args.runtime, draft.draftId);
-  await args.repo.markResolved(args.entry.id, {
-    draftResponse: args.body,
-    autoReplied: true,
-  });
+  let sent: Awaited<ReturnType<typeof service.sendDraft>>;
+  try {
+    sent = await service.sendDraft(args.runtime, draft.draftId);
+  } catch (error) {
+    await args.repo.releaseReplySend(args.entry.id, args.entry);
+    throw error;
+  }
   return {
     success: true,
     text: `Sent reply on ${sent.source}.`,
