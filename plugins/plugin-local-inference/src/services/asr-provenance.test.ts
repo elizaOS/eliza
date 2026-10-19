@@ -1,6 +1,12 @@
 /** Covers strict-versus-candidate ASR provenance enforcement against real manifest files. */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -164,5 +170,36 @@ describe("bundle ASR artifacts", () => {
 		writeFileSync(path.join(root, "asr", "README.md"), "not a model");
 
 		expect(bundleHasAsrModelFiles(root)).toBe(false);
+	});
+
+	it("surfaces an unreadable staged ASR model instead of reporting none", () => {
+		// The catalog staged `phonon-2-fv5.gguf`, but the file cannot be opened
+		// (e.g. it landed with a mode the runtime cannot read, or the volume is
+		// throwing EIO). That is not "no ASR artifacts are staged": reporting
+		// false here tells the caller to re-download a model that is present.
+		const root = writeManifest({});
+		const model = path.join(root, "asr", "phonon-2-fv5.gguf");
+		writeFileSync(model, gguf("parakeet-tdt"));
+		chmodSync(model, 0o000);
+		try {
+			expect(() => readGgufArchitecture(model)).toThrow(
+				/failed to read ASR model header/,
+			);
+			expect(() => bundleHasAsrModelFiles(root)).toThrow(
+				/failed to read ASR model header/,
+			);
+		} finally {
+			chmodSync(model, 0o600);
+		}
+	});
+
+	it("keeps a vanished ASR file as no-model rather than an error", () => {
+		// A file that disappears between the directory scan and the open is
+		// legitimately absent; only unreadable-but-present files are failures.
+		const root = writeManifest({});
+
+		expect(
+			readGgufArchitecture(path.join(root, "asr", "gone.gguf")),
+		).toBeNull();
 	});
 });

@@ -83,6 +83,19 @@ export function readBundleAsrProvenanceBlockers(bundleRoot: string): string[] {
 /** GGUF `general.architecture` of the fused library's Parakeet-TDT backend. */
 export const PARAKEET_TDT_ARCHITECTURE = "parakeet-tdt";
 
+/**
+ * A staged ASR artifact is present but its header could not be read. Distinct
+ * from "no ASR model staged": reporting the latter sends the caller to
+ * re-download a model that is already on disk (and lets the strict-provenance
+ * gate skip a bundle it could not inspect).
+ */
+export class AsrModelReadError extends Error {
+	constructor(file: string, cause: unknown) {
+		super(`failed to read ASR model header at ${file}`, { cause });
+		this.name = "AsrModelReadError";
+	}
+}
+
 const GGUF_SCALAR_BYTES: Readonly<Record<number, number>> = {
 	0: 1,
 	1: 1,
@@ -101,6 +114,10 @@ const GGUF_SCALAR_BYTES: Readonly<Record<number, number>> = {
  * Read `general.architecture` from a GGUF header, or null when the file is
  * not a GGUF or the key is not among the leading scalar/string entries
  * (converters write it first). Reads at most the first 64 KiB.
+ *
+ * Bytes that are absent/truncated are a legitimate "no architecture"; an
+ * artifact that exists but cannot be read is not, so it throws
+ * `AsrModelReadError` instead of masquerading as a non-ASR file.
  */
 export function readGgufArchitecture(file: string): string | null {
 	let fd: number | undefined;
@@ -138,9 +155,12 @@ export function readGgufArchitecture(file: string): string | null {
 			}
 		}
 		return null;
-	} catch {
-		// error-policy:J3 unreadable file is "not a parakeet GGUF".
-		return null;
+	} catch (error) {
+		// A file that disappeared between the directory scan and this open is
+		// legitimately absent ("no ASR model"). EACCES / EIO / EMFILE / EISDIR
+		// mean an artifact is staged but unreadable — not "not a parakeet GGUF".
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+		throw new AsrModelReadError(file, error);
 	} finally {
 		if (fd !== undefined) closeSync(fd);
 	}
@@ -161,7 +181,10 @@ export function bundleHasAsrModelFiles(bundleRoot: string): boolean {
 				readGgufArchitecture(path.join(asrDir, entry.name)) ===
 					PARAKEET_TDT_ARCHITECTURE,
 		);
-	} catch {
-		return false;
+	} catch (error) {
+		// `asr/` vanishing after the existsSync probe is legitimately model-free;
+		// an unreadable directory or artifact is not, so it propagates.
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+		throw error;
 	}
 }
