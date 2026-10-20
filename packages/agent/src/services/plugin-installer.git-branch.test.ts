@@ -52,8 +52,8 @@ vi.mock("../config/config.js", () => ({
 vi.mock("./registry-client.js", () => ({ getPluginInfo: vi.fn() }));
 vi.mock("@elizaos/host/protocol", () => ({ requestRestart: vi.fn() }));
 
-import type { RegistryPluginInfo } from "./registry-client-types.js";
 import { resolveGitBranch } from "./plugin-installer.js";
+import type { RegistryPluginInfo } from "./registry-client-types.js";
 
 const UNREACHABLE = {
   code: 128,
