@@ -10,6 +10,7 @@ import {
   requireUserOrApiKeyWithOrg,
 } from "@elizaos/cloud-shared/auth";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { getCloudAwareEnv } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import {
   AgentGoogleConnectorError,
   initiateManagedGoogleConnection,
@@ -17,6 +18,7 @@ import {
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
+import { resolveAppOAuthReturn } from "../../../../oauth/app-oauth-return";
 
 const app = new Hono<AppEnv>();
 
@@ -84,7 +86,18 @@ app.post("/", async (c) => {
         ? { personalContextPurpose: parsed.data.purpose }
         : {}),
     });
-    return c.json(result);
+    const alphaReturn = resolveAppOAuthReturn(
+      {
+        providerId: "google",
+        organizationId: user.organization_id,
+        userId: user.id,
+        createdAt: Date.now(),
+        redirectUrl: parsed.data.redirectUrl,
+      },
+      "google",
+      getCloudAwareEnv().ALPHA_OAUTH_RETURN_URLS,
+    );
+    return c.json(alphaReturn ? { ...result, alphaReturn: 2 } : result);
   } catch (error) {
     if (error instanceof AgentGoogleConnectorError) {
       return c.json({ error: error.message }, error.status as 400);

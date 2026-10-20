@@ -45,6 +45,16 @@ The default tests also verify the built deployment package. The login tests use
 local OpenSSL to generate ephemeral attestation certificates and verify that
 untrusted chains cannot trigger revocation requests.
 
+## Alpha-owned OAuth returns
+
+`GET /auth/oauth/google/alpha-readiness` checks the exact Alpha tenant/return
+pair, tenant policy, registered redirect, existing Google credentials and app
+error returns. It returns `{ok:true, alphaAuth:1, tenantId, redirectUri}` without
+creating a challenge. Configure `STEWARD_OAUTH_APP_ERROR_REDIRECTS` with the exact
+registered Alpha HTTPS callback for each environment. Validated-state failures
+then return a bounded error/state fragment. Other clients keep existing behavior.
+Unknown state cannot select an app return. Google uses the existing Cloud client.
+
 ## Native enrollment
 
 `createNativeCloudAuth` accepts a registered application binding, encrypted pending

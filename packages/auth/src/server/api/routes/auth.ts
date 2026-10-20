@@ -37,6 +37,7 @@ import {
   trustedClientIp,
 } from "../services/auth-rate-limit";
 import { verifySolanaMessageSignature } from "../services/wallet-proof";
+import { buildOAuthAppErrorReturn } from "./oauth-app-error-return";
 /**
  * Serves identity login, account enrollment, MFA and session lifecycle endpoints.
  * Tenant policy gates every login method; one-time challenges and refresh tokens
@@ -3501,6 +3502,15 @@ function oauthCallbackFailure(
   c: Context,
   options: OAuthCallbackFailureOptions,
 ): Response {
+  if (options.redirectUrl && options.appState) {
+    const target = buildOAuthAppErrorReturn(
+      options.redirectUrl.toString(),
+      options.appState,
+      options.code,
+      process.env.STEWARD_OAUTH_APP_ERROR_REDIRECTS,
+    );
+    if (target) return c.redirect(target, 302);
+  }
   if (!oauthCallbackPrefersHtml(c)) {
     return c.json<ApiResponse>(
       {
@@ -10713,6 +10723,49 @@ export function resolveOAuthPromptPassthrough(
  * Generates an OAuth authorization URL, stores the CSRF state in the challenge
  * store (keyed as `oauth:<state>`), then redirects the user to the provider.
  */
+// Alpha readiness is read-only: no challenge, credential or provider navigation.
+auth.get("/oauth/google/alpha-readiness", async (c) => {
+  c.header("Cache-Control", "no-store");
+  const tenantId = c.req.query("tenant_id");
+  const redirectUri = c.req.query("redirect_uri");
+  const expected =
+    tenantId === "elizacloud"
+      ? "https://alphacompute.ai/alphaphone/auth/callback"
+      : tenantId === "elizacloud-staging"
+        ? "https://alphacompute.ai/alphaphone/auth/staging/callback"
+        : undefined;
+  if (!expected || redirectUri !== expected) {
+    return c.json({ ok: false, error: "Alpha Phone sign-in unavailable" }, 400);
+  }
+  const rl = await checkAuthRateLimit(c, "alpha-auth-readiness", 60_000, 30);
+  if (!rl.allowed) return c.json({ ok: false, error: "Try again later" }, 429);
+  try {
+    const denied = await requireTenantLoginMethodAllowed(
+      c,
+      tenantId,
+      "oauth",
+      "google",
+    );
+    if (denied)
+      return c.json(
+        { ok: false, error: "Alpha Phone sign-in unavailable" },
+        403,
+      );
+    await assertAllowedOAuthRedirectUri(redirectUri, tenantId);
+    getProviderConfig("google");
+    const errorReturn = buildOAuthAppErrorReturn(
+      redirectUri,
+      "s".repeat(43),
+      "access_denied",
+      process.env.STEWARD_OAUTH_APP_ERROR_REDIRECTS,
+    );
+    if (!errorReturn) throw new Error("App error returns are not configured");
+    return c.json({ ok: true, alphaAuth: 1, tenantId, redirectUri });
+  } catch {
+    return c.json({ ok: false, error: "Alpha Phone sign-in unavailable" }, 503);
+  }
+});
+
 auth.get("/oauth/:provider/authorize", async (c) => {
   const providerName = c.req.param("provider");
   if (!isBuiltInProvider(providerName)) {

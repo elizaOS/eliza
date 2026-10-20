@@ -84,6 +84,17 @@ The release workflow publishes the registry from the protected
 additional clients take their app UUID from the same registry entry, which must
 be enabled and bound to that environment's callback.
 
+### Alpha-owned managed Google returns
+
+The Alpha-owned callback rollout uses `ALPHA_OAUTH_RETURN_URLS` for exact HTTPS
+Gmail return addresses. Initiation accepts the app nonce as the only `state`
+query parameter and returns `alphaReturn: 2` when configured. The callback uses
+server-owned state and returns only state/result plus `connectionId` on success.
+The app must verify that connection through its authenticated connector list.
+Denial retires state and creates no grant. Unknown state keeps existing recovery.
+Google credentials and token refresh behavior are unchanged. The Alpha domain's
+callback assets and Android association must be deployed before live acceptance.
+
 ### Alpha Phone in-app sign-in
 
 Alpha Phone signs in natively: email codes go straight to Steward, and Google

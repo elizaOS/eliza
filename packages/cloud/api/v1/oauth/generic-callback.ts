@@ -1,4 +1,5 @@
 // Handles v1 cloud API v1 oauth generic callback route traffic with route-local auth expectations.
+import { cache } from "@elizaos/cloud-shared/lib/cache/client";
 import { getCloudAwareEnv } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import {
   getDefaultPlatformRedirectOrigins,
@@ -18,6 +19,7 @@ import {
   mintOAuthSuccessProof,
 } from "@elizaos/cloud-shared/lib/services/oauth/success-proof";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { buildAppOAuthReturn, resolveAppOAuthReturn } from "./app-oauth-return";
 
 function appendParam(url: string, param: string): string {
   return url.includes("?") ? `${url}&${param}` : `${url}?${param}`;
@@ -53,8 +55,29 @@ export async function handleGenericOAuthCallback(
     );
   }
 
+  // Resolve an opt-in application return from cached state, never request redirect parameters.
+  const state = searchParams.get("state");
+  let appReturn: ReturnType<typeof resolveAppOAuthReturn> = null;
+  let appReturnLookupFailed = false;
+  if (state && /^[0-9a-f-]{36}$/i.test(state)) {
+    try {
+      appReturn = resolveAppOAuthReturn(
+        await cache.get(`oauth2:${provider.id}:${state}`),
+        provider.id,
+        getCloudAwareEnv().ALPHA_OAUTH_RETURN_URLS,
+      );
+    } catch {
+      appReturnLookupFailed = true;
+      logger.warn("[OAuth] Application return state unavailable");
+    }
+  }
+
   // Check if provider is configured
   if (!isProviderConfigured(provider)) {
+    if (appReturn) {
+      await cache.del(`oauth2:${provider.id}:${state}`);
+      return Response.redirect(buildAppOAuthReturn(appReturn, "failed"));
+    }
     logger.error(`[OAuth ${platform}] Provider not configured in callback`);
     return Response.redirect(
       appendParam(defaultRedirect, `oauth_error=not_configured`),
@@ -65,6 +88,10 @@ export async function handleGenericOAuthCallback(
   const error = searchParams.get("error");
   const errorDescription = searchParams.get("error_description");
   if (error) {
+    if (appReturn) {
+      await cache.del(`oauth2:${provider.id}:${state}`);
+      return Response.redirect(buildAppOAuthReturn(appReturn, "denied"));
+    }
     logger.warn(`[OAuth ${platform}] Authorization denied by user`, {
       error,
       errorDescription,
@@ -77,9 +104,12 @@ export async function handleGenericOAuthCallback(
 
   // Get required parameters
   const code = searchParams.get("code");
-  const state = searchParams.get("state");
 
   if (!code || !state) {
+    if (appReturn) {
+      await cache.del(`oauth2:${provider.id}:${state}`);
+      return Response.redirect(buildAppOAuthReturn(appReturn, "failed"));
+    }
     logger.error(`[OAuth ${platform}] Missing code or state in callback`);
     return Response.redirect(
       appendParam(defaultRedirect, `${platform}_error=missing_params`),
@@ -93,20 +123,34 @@ export async function handleGenericOAuthCallback(
 
   try {
     const result = await handleOAuth2Callback(provider, code, state);
+    // A completed provider exchange is also authoritative if the preliminary cache read failed.
+    if (appReturnLookupFailed)
+      appReturn = resolveAppOAuthReturn(
+        { ...result, providerId: provider.id, createdAt: Date.now() },
+        provider.id,
+        getCloudAwareEnv().ALPHA_OAUTH_RETURN_URLS,
+      );
+    if (appReturn && result.redirectUrl !== appReturn.source)
+      throw new Error("OAuth return binding changed");
 
     const allowedAbsoluteOrigins = [
       ...getDefaultPlatformRedirectOrigins(),
       ...LOOPBACK_REDIRECT_ORIGINS,
     ];
 
-    const { target: redirectTarget, rejected } = resolveOAuthSuccessRedirectUrl(
-      {
-        value: result.redirectUrl,
-        baseUrl,
-        fallbackPath: "/cloud/connectors",
-        allowedAbsoluteOrigins,
-      },
-    );
+    const { target: redirectTarget, rejected } = appReturn
+      ? {
+          target: new URL(
+            buildAppOAuthReturn(appReturn, "connected", result.connectionId),
+          ),
+          rejected: false,
+        }
+      : resolveOAuthSuccessRedirectUrl({
+          value: result.redirectUrl,
+          baseUrl,
+          fallbackPath: "/cloud/connectors",
+          allowedAbsoluteOrigins,
+        });
 
     if (rejected) {
       logger.error(
@@ -125,28 +169,30 @@ export async function handleGenericOAuthCallback(
     // Replace only reserved OAuth success markers (known provider `*_connected`,
     // proof/platform/connection_id). Unrelated caller query state such as
     // `socket_connected` is preserved.
-    clearOAuthSuccessParams(redirectTarget);
-    redirectTarget.searchParams.set(`${platformLower}_connected`, "true");
-    redirectTarget.searchParams.set("platform", platformLower);
-    redirectTarget.searchParams.set("connection_id", result.connectionId);
-    // Proofs are only consumed by `/auth/success`. Do not attach transferable
-    // tokens to dashboard/settings or other callback consumers that strip
-    // markers but historically leave unknown query keys in history/Referer.
-    if (isOAuthSuccessLandingPath(redirectTarget.pathname)) {
-      const proof = await mintOAuthSuccessProof({
-        platform: platformLower,
-        connectionId: result.connectionId,
-        organizationId: result.organizationId,
-        userId: result.userId,
-      });
-      if (proof) {
-        redirectTarget.searchParams.set("proof", proof);
-      } else {
-        // connection_id remains for sessioned ownership; without a mintable
-        // ticket the success page cannot claim Connected from a proof alone.
-        logger.error(
-          `[OAuth ${platform}] success proof secret/ticket unavailable; /auth/success will require a browser session to verify connection_id`,
-        );
+    if (!appReturn) {
+      clearOAuthSuccessParams(redirectTarget);
+      redirectTarget.searchParams.set(`${platformLower}_connected`, "true");
+      redirectTarget.searchParams.set("platform", platformLower);
+      redirectTarget.searchParams.set("connection_id", result.connectionId);
+      // Proofs are only consumed by `/auth/success`. Do not attach transferable
+      // tokens to dashboard/settings or other callback consumers that strip
+      // markers but historically leave unknown query keys in history/Referer.
+      if (isOAuthSuccessLandingPath(redirectTarget.pathname)) {
+        const proof = await mintOAuthSuccessProof({
+          platform: platformLower,
+          connectionId: result.connectionId,
+          organizationId: result.organizationId,
+          userId: result.userId,
+        });
+        if (proof) {
+          redirectTarget.searchParams.set("proof", proof);
+        } else {
+          // connection_id remains for sessioned ownership; without a mintable
+          // ticket the success page cannot claim Connected from a proof alone.
+          logger.error(
+            `[OAuth ${platform}] success proof secret/ticket unavailable; /auth/success will require a browser session to verify connection_id`,
+          );
+        }
       }
     }
     const finalUrl = redirectTarget.toString();
@@ -183,6 +229,10 @@ export async function handleGenericOAuthCallback(
       stack: error instanceof Error ? error.stack : undefined,
     });
 
+    if (appReturn) {
+      await cache.del(`oauth2:${provider.id}:${state}`);
+      return Response.redirect(buildAppOAuthReturn(appReturn, "failed"));
+    }
     const errorMessage =
       error instanceof Error
         ? encodeURIComponent(error.message)
