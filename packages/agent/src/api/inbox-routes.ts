@@ -1753,6 +1753,31 @@ function applyInboxChatMemory(
     existing.latestDiscordMessageId = discordMessageId;
   }
 }
+/**
+ * A runtime whose `messages` table does not exist yet (boot before the storage
+ * plugin migrated it) has no messages to read, so the truthful answer is "no
+ * messages". Every other storage failure — I/O, dropped connection,
+ * permission — means the messages could not be read at all and must surface,
+ * otherwise the caller cannot tell "this chat is empty" from "this chat's
+ * history is unreadable".
+ */
+function isMissingMessagesTableError(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  const messages: string[] = [];
+  let current: unknown = error;
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    if (current instanceof Error) messages.push(current.message);
+    current = (current as { cause?: unknown }).cause;
+  }
+  return messages.some(
+    (message) =>
+      /no such table:?\s*["']?(?:\w+\.)?messages["']?/i.test(message) ||
+      /(?:relation|table)\s+["']?(?:\w+\.)?messages["']?\s+does not exist/i.test(
+        message,
+      ),
+  );
+}
 async function loadLatestRoomMemory(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -1786,8 +1811,9 @@ async function loadLatestRoomMemory(
         );
       });
     return candidates[0] ?? null;
-  } catch {
-    return null;
+  } catch (error) {
+    if (isMissingMessagesTableError(error)) return null;
+    throw error;
   }
 }
 async function augmentRoomsFromRecentMemories(
