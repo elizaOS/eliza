@@ -12,10 +12,6 @@ import {
 } from "@elizaos/core";
 import { listConversationAttachments } from "../../working-memory/attachmentContext.ts";
 
-const ATTACHMENT_REFERENCE_RE =
-  /\b(?:attachments?|files?|documents?|pdfs?|images?|photos?|pictures?|screenshots?|videos?|audio|recordings?|links?|urls?)\b|https?:\/\/\S+/iu;
-const ATTACHMENT_INSPECTION_RE =
-  /\b(?:what|see|view|look(?:ing)?(?:\s+at)?|read|open|inspect|analy[sz]e|describe|summari[sz]e|transcribe|ocr|shown?|showing|contains?|content|find|found|anything|result|results|thoughts?|think|opinion|take)\b/iu;
 /**
  * Render an attachment URL for the prompt without dumping raw bytes into
  * context. Inline `data:` URLs (e.g. a TTS audio clip stored as
@@ -32,40 +28,17 @@ function formatAttachmentUrlForPrompt(url: string | undefined): string {
   }
   return toWellFormedUnicode(url);
 }
-function contentString(message: Memory, key: string): string {
-  const value = (message.content as Record<string, unknown> | undefined)?.[key];
-  return typeof value === "string" ? value : "";
-}
-function messageTextForAttachmentRelevance(message: Memory): string {
-  return [
-    contentString(message, "currentMessageText"),
-    typeof message.content.text === "string" ? message.content.text : "",
-    contentString(message, "replyToMessageText"),
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-/**
- * The half of the render gate decidable from the current message alone —
- * before any conversation-history fetch. When this is false the provider
- * skips `listConversationAttachments` entirely (the room-history scan plus
- * access-context resolution), which on a text-only turn was the single
- * largest composeState provider wall.
- */
-function couldRenderAttachmentPromptText(message: Memory): boolean {
-  if ((message.content.attachments ?? []).length > 0) return true;
-  if (message.content.source === MESSAGE_SOURCE_SUB_AGENT) return false;
-  const text = messageTextForAttachmentRelevance(message);
+
+function isImageMedia(attachment: Media): boolean {
   return (
-    ATTACHMENT_REFERENCE_RE.test(text) && ATTACHMENT_INSPECTION_RE.test(text)
+    attachment.contentType === ContentType.IMAGE ||
+    (typeof attachment.contentType === "string" &&
+      attachment.contentType.startsWith("image/")) ||
+    (typeof attachment.source === "string" &&
+      attachment.source.toLowerCase() === "image")
   );
 }
-function shouldRenderAttachmentPromptText(
-  message: Memory,
-  allAttachments: readonly Media[],
-): boolean {
-  return allAttachments.length > 0 && couldRenderAttachmentPromptText(message);
-}
+
 export const attachmentsProvider: Provider = {
   name: "ATTACHMENTS",
   description: "Media attachments in the current message",
@@ -79,9 +52,7 @@ export const attachmentsProvider: Provider = {
     runtime: IAgentRuntime,
     message: Memory,
   ): Promise<ProviderResult> => {
-    // When the message-side half of the render gate already fails, no
-    // history result could make the provider relevant. Skip the room scan.
-    if (!couldRenderAttachmentPromptText(message)) {
+    if (message.content.source === MESSAGE_SOURCE_SUB_AGENT) {
       return {
         values: { attachments: "" },
         data: {
@@ -95,10 +66,7 @@ export const attachmentsProvider: Provider = {
     const allAttachments = await listConversationAttachments(runtime, message);
     const visibleAttachments = allAttachments;
     const omittedCount = 0;
-    const shouldRenderText = shouldRenderAttachmentPromptText(
-      message,
-      allAttachments,
-    );
+    const shouldRenderText = visibleAttachments.length > 0;
     // Format attachments for display
     const formattedAttachments = shouldRenderText
       ? visibleAttachments
@@ -114,11 +82,11 @@ export const attachmentsProvider: Provider = {
       // which must not advertise an unsatisfiable ATTACHMENT read. Images are
       // the exception: the read action re-describes them at read time
       // (working-memory/attachmentContext), so the read is satisfiable
-      // whenever an IMAGE_DESCRIPTION model is registered.
+      // whenever an IMAGE_DESCRIPTION model is registered (#37027).
       attachment.text ||
       (
-        attachment.contentType === ContentType.IMAGE &&
-          typeof runtime.getModel(ModelType.IMAGE_DESCRIPTION) === "function"
+        isImageMedia(attachment) &&
+        typeof runtime.getModel(ModelType.IMAGE_DESCRIPTION) === "function"
       )
         ? "available via ATTACHMENT action=read"
         : "none"

@@ -115,23 +115,32 @@ function ownerPrivateAttachmentMemory(granted = false): Memory {
 }
 
 describe("attachmentsProvider", () => {
-  it("keeps stale room attachments out of unrelated prompt text without fetching history", async () => {
-    // The render gate is decidable from the message alone here, so the
-    // provider must not pay the conversation-history scan at all — that scan
-    // was the largest composeState provider wall on text-only turns.
-    let historyFetches = 0;
+  it("shows room attachments whatever the wording or language of the request (#37027)", async () => {
+    const runtime = makeRuntime([attachmentMemory()]);
+
+    const nonEnglishResult = await attachmentsProvider.get(
+      runtime,
+      makeMessage({ text: "¿puedes volver a generar esa imagen?" }),
+    );
+    expect(nonEnglishResult.text).toContain("# Attachments");
+    expect(nonEnglishResult.text).toContain("webpage-old");
+
+    const noInspectionVerbResult = await attachmentsProvider.get(
+      runtime,
+      makeMessage({ text: "can u try to gen that image again pls" }),
+    );
+    expect(noInspectionVerbResult.text).toContain("# Attachments");
+    expect(noInspectionVerbResult.text).toContain("webpage-old");
+  });
+
+  it("returns empty attachments when conversation has no attachments", async () => {
     const result = await attachmentsProvider.get(
-      makeRuntime([attachmentMemory()], {
-        onHistoryFetch: () => {
-          historyFetches += 1;
-        },
-      }),
+      makeRuntime([]),
       makeMessage({ text: "can you try this?" }),
     );
 
     expect(result.text).toBe("");
     expect(result.data?.visibleAttachments).toHaveLength(0);
-    expect(historyFetches).toBe(0);
   });
 
   it("renders attachment prompt text when the current message asks about a link", async () => {
@@ -243,6 +252,29 @@ describe("attachmentsProvider", () => {
             source: "Image",
             contentType: "image",
             description: "An image attachment (recognition failed)",
+            text: "",
+          },
+        ],
+      }),
+    );
+
+    expect(result.text).toContain(
+      "Stored Content: available via ATTACHMENT action=read",
+    );
+  });
+
+  it("advertises a read for an image with image/png contentType when a vision model is registered (#37027)", async () => {
+    const result = await attachmentsProvider.get(
+      makeRuntime([], { hasImageDescriptionModel: true }),
+      makeMessage({
+        text: "¿puedes volver a generar esa imagen?",
+        attachments: [
+          {
+            id: "png-image",
+            url: "https://example.test/photo.png",
+            title: "photo.png",
+            source: "Image",
+            contentType: "image/png",
             text: "",
           },
         ],
