@@ -2124,6 +2124,10 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         (memory) =>
           (!params.tableName ||
             storedMemoryTableName(memory) === params.tableName) &&
+          // plugin-sql scopes this read with `agent_id = this.agentId`.
+          // Rows stored without an agentId belong to this database, as in
+          // the other tenant checks.
+          (memory.agentId ?? this.agentId) === this.agentId &&
           (!params.roomId || memory.roomId === params.roomId) &&
           !excludedRooms.has(memory.roomId) &&
           (!params.worldId || memory.worldId === params.worldId) &&
