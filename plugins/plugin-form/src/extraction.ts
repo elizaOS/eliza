@@ -73,22 +73,78 @@ type CorrectionJsonResponse = {
   corrections?: CorrectionJsonField[];
 };
 
+interface JsonObjectRegion {
+  start: number;
+  end: number;
+}
+
+/**
+ * Find each complete top-level `{...}` region in one pass. A brace inside a
+ * JSON string does not change the depth, so a value such as `"a{b}c"` stays
+ * inside its region. A region left open at the end of the text is reported
+ * through `unfinished`; it is a cut-off reply, not a value.
+ */
+function topLevelObjectRegions(text: string): {
+  regions: JsonObjectRegion[];
+  unfinished: boolean;
+} {
+  const regions: JsonObjectRegion[] = [];
+  let depth = 0;
+  let start = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === '"') inString = false;
+      continue;
+    }
+    if (character === '"' && depth > 0) {
+      inString = true;
+    } else if (character === "{") {
+      if (depth === 0) start = index;
+      depth += 1;
+    } else if (character === "}" && depth > 0) {
+      depth -= 1;
+      if (depth === 0) regions.push({ start, end: index + 1 });
+    }
+  }
+  return { regions, unfinished: depth > 0 };
+}
+
 function parseJsonObjectResponse<T>(response: string): T | null {
-  try {
-    const trimmed = response.trim();
-    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-    const candidate = (fenced?.[1] ?? trimmed).trim();
-    const firstBrace = candidate.indexOf("{");
-    const lastBrace = candidate.lastIndexOf("}");
-    if (firstBrace < 0 || lastBrace <= firstBrace) return null;
-    const parsed = JSON.parse(candidate.slice(firstBrace, lastBrace + 1));
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+  const acrossRegions = (candidate: string): T | null => {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return null;
+      }
+      return parsed as T;
+    } catch {
       return null;
     }
-    return parsed as T;
-  } catch {
-    return null;
-  }
+  };
+  const trimmed = String(response ?? "").trim();
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  const candidate = (fenced?.[1] ?? trimmed).trim();
+  const { regions, unfinished } = topLevelObjectRegions(candidate);
+  const first = regions[0];
+  const last = regions[regions.length - 1];
+  if (!first || !last) return null;
+  // The reply ends inside an unclosed object, so its last `}` closed an
+  // earlier object. That earlier object is often the shape restated from the
+  // prompt, and reading it stored the schema text as the user's answer.
+  if (unfinished) return null;
+  // A single region parses exactly as before, including the fences and the
+  // braces of a string value.
+  if (regions.length === 1)
+    return acrossRegions(candidate.slice(first.start, last.end));
+  // Prose can hold its own complete braces, as in "treat {city} as text". The
+  // answer is the newest region, so read that one and never join the prose
+  // between two regions into one object.
+  return acrossRegions(candidate.slice(last.start, last.end));
 }
 
 function parseBoolean(value: unknown): boolean {
