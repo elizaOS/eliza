@@ -25,6 +25,7 @@ export type FirstPartyAgentContext =
 	| "goals"
 	| "todos"
 	| "productivity"
+	| "reminders"
 	| "health"
 	| "screen_time"
 	| "subscriptions"

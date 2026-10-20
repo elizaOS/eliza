@@ -3723,6 +3723,7 @@ export const OWNER_OPERATION_CONTEXTS: AgentContext[] = [
   "productivity",
   "calendar",
   "health",
+  "reminders",
 ];
 
 export const OWNER_OPERATION_ROLE_GATE = { minRole: "OWNER" } as const;
