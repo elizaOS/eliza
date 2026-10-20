@@ -63,6 +63,10 @@ export interface ProductionDatabaseAuditReport {
     railwayTarget: MatchVerdict;
     protectedDatabaseAuthority: MatchVerdict;
   };
+  postgresMajor: {
+    canonical: "18" | "other" | "unavailable";
+    protected: "18" | "other" | "unavailable";
+  };
   requiredTables: {
     canonical: Record<RequiredRelation, PresenceVerdict>;
     protected: Record<RequiredRelation, PresenceVerdict>;
@@ -152,6 +156,7 @@ export function unavailableAuditReport(
       railwayTarget,
       protectedDatabaseAuthority: "unavailable",
     },
+    postgresMajor: { canonical: "unavailable", protected: "unavailable" },
     requiredTables: {
       canonical: unavailablePresence(),
       protected: unavailablePresence(),
@@ -433,6 +438,10 @@ export async function auditProductionDatabaseAuthority(input: {
       checks: {
         railwayTarget: "match",
         protectedDatabaseAuthority: authorityMatches ? "match" : "mismatch",
+      },
+      postgresMajor: {
+        canonical: canonicalIdentity.postgresMajor === 18 ? "18" : "other",
+        protected: protectedIdentity.postgresMajor === 18 ? "18" : "other",
       },
       requiredTables: {
         canonical: canonicalRequiredTables,

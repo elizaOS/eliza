@@ -52,6 +52,48 @@ function timestamp(value: unknown) {
   return Date.parse(normalized);
 }
 
+// Categories describe evidence only. They never relax the release evaluator.
+function serviceImageClass(evidence: ResilienceEvidence, serviceId: string) {
+  const matches = evidence.services.filter(
+    (service) => service.id === serviceId,
+  );
+  if (matches.length !== 1) return "service_missing_or_ambiguous";
+  const image = matches[0].source?.image;
+  if (typeof image !== "string" || image.length === 0) return "image_missing";
+  if (/^(?:[^\s]+\/)?postgres[^:@\s]*@sha256:[a-f0-9]{64}$/.test(image))
+    return "postgres_digest_pinned";
+  if (/(?:^|\/)postgres[^:]*:18(?:$|[-.])/.test(image))
+    return "postgres18_tag_matches_release_gate";
+  if (/(?:^|\/)postgres[^:]*:[0-9]+(?:$|[-.])/.test(image))
+    return "other_postgres_major_tag";
+  return "unrecognized_image_metadata";
+}
+function observedBoolean(value: unknown) {
+  return typeof value === "boolean" ? value : null;
+}
+function majorCategory(value: unknown) {
+  return value === "18" || value === "other" ? value : "unavailable";
+}
+function liveProbeCategory(live: Record<string, unknown>) {
+  const reason = live.unavailableReason;
+  // Exact pinned Railway 5.38.0 preflight text; arbitrary provider text is never returned.
+  if (
+    reason ===
+    "no SSH keys found in your SSH agent or ~/.ssh/\n\ngenerate one with `ssh-keygen -t ed25519`, then register it with `railway ssh keys add`"
+  )
+    return "ssh_key_unavailable";
+  if (
+    typeof reason === "string" &&
+    /^probe timed out after [0-9]+s$/.test(reason)
+  )
+    return "probe_timeout";
+  if (live.available !== true) return "unavailable_or_unknown";
+  if (reason !== undefined) return "inconsistent_available_evidence";
+  if (live.backupCoverageError !== undefined) return "backup_coverage_error";
+  if (live.archiverError !== undefined) return "archiver_probe_error";
+  return "available";
+}
+
 export function productionBackupReadiness(input: {
   evidence: ResilienceEvidence;
   expected: ResilienceExpectation;
@@ -109,6 +151,44 @@ export function productionBackupReadiness(input: {
     verdict: Object.values(checks).every(Boolean) ? "pass" : "fail",
     checks,
     resilienceChecks: resilience.checks,
+    diagnostics: {
+      serviceImage: serviceImageClass(input.evidence, input.expected.serviceId),
+      postgresMajor: {
+        canonical: majorCategory(
+          object(object(input.authorityAudit).postgresMajor).canonical,
+        ),
+        protected: majorCategory(
+          object(object(input.authorityAudit).postgresMajor).protected,
+        ),
+      },
+      pitrEnabled: observedBoolean(input.evidence.pitr.enabled),
+      bucketWired: observedBoolean(input.evidence.pitr.bucketWired),
+      blockersPresent: Array.isArray(input.evidence.pitr.blockers)
+        ? input.evidence.pitr.blockers.length > 0
+        : null,
+      blockerKinds: Array.isArray(input.evidence.pitr.blockers)
+        ? {
+            unsupportedImage: input.evidence.pitr.blockers.includes(
+              "Image is not an official Railway Postgres image -- PITR is not supported.",
+            ),
+            minorVersionPinned: input.evidence.pitr.blockers.includes(
+              "Image is pinned to a minor version -- unpin to the major tag (e.g. `:16`) before enabling PITR.",
+            ),
+            customStartCommand: input.evidence.pitr.blockers.includes(
+              "A custom start command overrides the entrypoint that turns on WAL archiving -- clear it before enabling PITR.",
+            ),
+            unknown: input.evidence.pitr.blockers.some(
+              (value) =>
+                ![
+                  "Image is not an official Railway Postgres image -- PITR is not supported.",
+                  "Image is pinned to a minor version -- unpin to the major tag (e.g. `:16`) before enabling PITR.",
+                  "A custom start command overrides the entrypoint that turns on WAL archiving -- clear it before enabling PITR.",
+                ].includes(value),
+            ),
+          }
+        : null,
+      liveProbe: liveProbeCategory(live),
+    },
     receipts: { ...resilience.receipts, targetUtc: hash(input.targetUtc) },
     // CLI coverage is explicitly best-effort, not an archive continuity proof.
     archiveContinuityProven: false,

@@ -101,6 +101,14 @@ list still fails readiness; it does not authorize a migration or prove that the
 served application supports the new schema. The workflow retains its exact-main
 freshness check and prints no database identities, credentials or customer rows.
 
+The authority report exposes the already-read server major as `18`, `other`, or
+`unavailable`. A passing authority check already requires PostgreSQL 18 on both
+connections. The optional backup report separates that live observation from
+service-image metadata. It reports PITR enabled/bucket/blocker booleans, known
+blocker kinds, and a fixed live-probe category. Unknown provider errors remain
+unknown; raw image names, blocker text and SSH errors are never published.
+These observations do not relax any readiness check or authorize a restore.
+
 The optional `restore_target_utc` dispatch input adds read-only backup evidence
 for one fixed past UTC time (`YYYY-MM-DDTHH:MM:SSZ`). Leave it empty to retain the
 existing audit behavior. The same pinned Railway 5.38.0 CLI captures private

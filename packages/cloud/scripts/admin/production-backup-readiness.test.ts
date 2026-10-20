@@ -22,6 +22,7 @@ function fixture() {
     targetUtc: "2026-10-19T21:00:00Z",
     now: new Date("2026-10-19T22:00:00Z"),
     authorityAudit: {
+      postgresMajor: { canonical: "18", protected: "18" },
       checks: { railwayTarget: "match", protectedDatabaseAuthority: "match" },
     },
     evidence: {
@@ -195,6 +196,164 @@ test("CLI scrubs malformed private evidence and exits unsuccessfully", () => {
     expect(JSON.parse(output).failure).toBe(
       "private_evidence_invalid_or_unavailable",
     );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("separates actual PG18 from image metadata and PITR prerequisites without exposing private failures", () => {
+  const input = fixture();
+  input.evidence.services[0].source.image =
+    "private-registry/private-image:private-tag";
+  input.evidence.pitr.enabled = false;
+  input.evidence.pitr.bucketWired = false;
+  const pitr = input.evidence.pitr as Record<string, unknown>;
+  pitr.blockers = [
+    "Image is not an official Railway Postgres image -- PITR is not supported.",
+    "private-provider-blocker",
+  ];
+  pitr.live = {
+    available: false,
+    unavailableReason:
+      "no SSH keys found in your SSH agent or ~/.ssh/\n\ngenerate one with `ssh-keygen -t ed25519`, then register it with `railway ssh keys add`",
+  };
+  const report = productionBackupReadiness(input);
+  expect(report.diagnostics).toEqual({
+    serviceImage: "unrecognized_image_metadata",
+    postgresMajor: { canonical: "18", protected: "18" },
+    pitrEnabled: false,
+    bucketWired: false,
+    blockersPresent: true,
+    blockerKinds: {
+      unsupportedImage: true,
+      minorVersionPinned: false,
+      customStartCommand: false,
+      unknown: true,
+    },
+    liveProbe: "ssh_key_unavailable",
+  });
+  expect(report.checks.protectedAuthorityMatches).toBe(true);
+  expect(report.resilienceChecks.exactPostgres18Service).toBe(false);
+  expect(report.verdict).toBe("fail");
+  for (const privateText of [
+    "private-registry",
+    "private-image",
+    "private-tag",
+    "private-provider-blocker",
+    "ssh-keygen",
+  ])
+    expect(JSON.stringify(report)).not.toContain(privateText);
+  pitr.live = {
+    available: false,
+    unavailableReason: "private failure with token and resource",
+  };
+  expect(productionBackupReadiness(input).diagnostics.liveProbe).toBe(
+    "unavailable_or_unknown",
+  );
+  expect(JSON.stringify(productionBackupReadiness(input))).not.toContain(
+    "private failure",
+  );
+  pitr.enabled = "private-invalid-boolean";
+  pitr.bucketWired = null;
+  pitr.blockers = "private-invalid-blockers";
+  const malformed = productionBackupReadiness(input);
+  expect(malformed.diagnostics.pitrEnabled).toBeNull();
+  expect(malformed.diagnostics.bucketWired).toBeNull();
+  expect(malformed.diagnostics.blockersPresent).toBeNull();
+  expect(malformed.diagnostics.blockerKinds).toBeNull();
+  expect(malformed.verdict).toBe("fail");
+});
+
+test("finite diagnostic categories cannot turn missing or contradictory evidence into readiness", () => {
+  const input = fixture();
+  for (const [image, expected] of [
+    [`postgres@sha256:${"a".repeat(64)}`, "postgres_digest_pinned"],
+    ["postgres:17", "other_postgres_major_tag"],
+    ["", "image_missing"],
+  ]) {
+    input.evidence.services[0].source.image = image;
+    const report = productionBackupReadiness(input);
+    expect(report.diagnostics.serviceImage).toBe(expected);
+    expect(report.verdict).toBe("fail");
+    expect(report.productionMigrationReady).toBe(false);
+  }
+  input.evidence.services.push(input.evidence.services[0]);
+  expect(productionBackupReadiness(input).diagnostics.serviceImage).toBe(
+    "service_missing_or_ambiguous",
+  );
+  for (const [live, category] of [
+    [
+      { available: false, unavailableReason: "probe timed out after 30s" },
+      "probe_timeout",
+    ],
+    [
+      { available: true, unavailableReason: "private contradiction" },
+      "inconsistent_available_evidence",
+    ],
+    [
+      { available: true, backupCoverageError: "private backup" },
+      "backup_coverage_error",
+    ],
+    [
+      { available: true, archiverError: "private archiver" },
+      "archiver_probe_error",
+    ],
+  ] as const) {
+    (input.evidence.pitr as Record<string, unknown>).live = live;
+    const report = productionBackupReadiness(input);
+    expect(report.diagnostics.liveProbe).toBe(category);
+    expect(report.verdict).toBe("fail");
+    expect(JSON.stringify(report)).not.toContain("private contradiction");
+  }
+});
+
+test("CLI publishes split diagnostics from private fixture files without publishing raw values", () => {
+  const directory = mkdtempSync(join(tmpdir(), "backup-diagnostics-"));
+  try {
+    const input = fixture();
+    input.evidence.services[0].source.image = "PRIVATE_IMAGE";
+    input.evidence.pitr.enabled = false;
+    (input.evidence.pitr as Record<string, unknown>).live = {
+      available: false,
+      unavailableReason: "PRIVATE_ERROR_WITH_TOKEN",
+    };
+    for (const [name, value] of Object.entries(input.evidence))
+      writeFileSync(join(directory, `${name}.json`), JSON.stringify(value));
+    writeFileSync(
+      join(directory, "report.json"),
+      JSON.stringify(input.authorityAudit),
+    );
+    writeFileSync(
+      join(directory, "resolved-service-id"),
+      input.expected.serviceId,
+    );
+    const result = Bun.spawnSync(
+      [
+        process.execPath,
+        "--no-env-file",
+        new URL("./production-backup-readiness.ts", import.meta.url).pathname,
+      ],
+      {
+        env: {
+          BACKUP_EVIDENCE_DIR: directory,
+          RAILWAY_PROJECT_ID: input.expected.projectId,
+          RAILWAY_ENVIRONMENT_ID: input.expected.environmentId,
+          RESTORE_TARGET_UTC: "2020-01-01T00:00:00Z",
+        },
+      },
+    );
+    const output = new TextDecoder().decode(result.stdout);
+    expect(result.exitCode).toBe(1);
+    expect(new TextDecoder().decode(result.stderr)).toBe("");
+    expect(output).not.toContain("PRIVATE_");
+    expect(output).not.toContain(input.expected.serviceId);
+    const report = JSON.parse(output);
+    expect(report.diagnostics.postgresMajor.canonical).toBe("18");
+    expect(report.diagnostics.serviceImage).toBe("unrecognized_image_metadata");
+    expect(report.diagnostics.pitrEnabled).toBe(false);
+    expect(report.diagnostics.liveProbe).toBe("unavailable_or_unknown");
+    expect(report.productionMigrationReady).toBe(false);
+    expect(report.privateEvidenceSha256["pitr.json"]).toMatch(/^[a-f0-9]{64}$/);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

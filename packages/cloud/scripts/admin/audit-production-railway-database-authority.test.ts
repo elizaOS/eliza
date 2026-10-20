@@ -18,7 +18,12 @@ const ledger = migrations.map((migration, index) => ({
   hash: migration.hash,
   created_at: migration.entry.when,
 }));
-function client(rows: AppliedMigration[], cluster = "12345", present = true) {
+function client(
+  rows: AppliedMigration[],
+  cluster = "12345",
+  present = true,
+  version = "180000",
+) {
   const queries: string[] = [];
   return {
     queries,
@@ -31,7 +36,7 @@ function client(rows: AppliedMigration[], cluster = "12345", present = true) {
             system_identifier: cluster,
             database_name: "private_db",
             role_name: "private_role",
-            server_version_num: "180000",
+            server_version_num: version,
           },
         ];
       } else if (sql.includes("to_regclass")) {
@@ -299,4 +304,33 @@ test("0387 probe is gated by matching authority and never changes divergent read
       expect(report.funding0387).toEqual({ canonical: null, protected: null });
     expect(JSON.stringify(report)).not.toContain("private_unknown_hash");
   }
+});
+
+test("reports finite actual server major from existing read-only identity queries", async () => {
+  for (const [version, expected] of [
+    ["180003", "18"],
+    ["170009", "other"],
+  ] as const) {
+    const canonicalClient = client(ledger, "12345", true, version);
+    const protectedClient = client(ledger, "12345", true, version);
+    const report = await auditProductionDatabaseAuthority({
+      canonicalClient,
+      protectedClient,
+      canonicalMigrations: migrations,
+    });
+    expect(report.postgresMajor).toEqual({
+      canonical: expected,
+      protected: expected,
+    });
+    for (const c of [canonicalClient, protectedClient])
+      expect(
+        c.queries.filter((query) => query.includes("pg_control_system")),
+      ).toHaveLength(1);
+    if (expected === "other") expect(report.verdict).toBe("fail");
+    expect(JSON.stringify(report)).not.toContain(version);
+  }
+  expect(unavailableAuditReport().postgresMajor).toEqual({
+    canonical: "unavailable",
+    protected: "unavailable",
+  });
 });
