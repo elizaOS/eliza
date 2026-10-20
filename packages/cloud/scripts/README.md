@@ -151,3 +151,31 @@ migration plan. Stored row IDs, timestamps and hashes are never published.
 The Gmail receipt diagnostic checks fixed table presence/kind and the authentic
 0509 function body/properties and trigger definition/enabled state. It reads no
 receipt data and does not claim full table-schema or operational equivalence.
+
+### Exact Gmail ledger recovery rehearsal primitives
+
+`exact-gmail-ledger-recovery.ts` admits only the observed370-entry prefix plus
+0509/0535 effects recorded at0387/0388 times. Its519-entry source fingerprint
+pins journal entries, hashes and parsed statements for this one recovery. It is
+not a generic migration limit or a relaxation of normal ledger validation.
+There is no production entry point or runnable repair command yet.
+
+The transaction boundary requires an exclusively owned idle connection, actual
+PostgreSQL command tags and protocol transaction status. Work must not issue
+transaction control or share the connection. Lost commit replies stay uncertain;
+no automatic retry or speculative rollback is performed after commit submission.
+
+The Gmail catalog fixture covers authentic0509+0535 and requires an explicit
+reviewed table/function owner-role policy. It currently comes from PGlite17.5;
+it does not qualify PostgreSQL18. Default ACLs are required by this fixture;
+nondefault deployment grants need explicit review, not silent acceptance.
+Preexisting0500 retirement relations are refused because the observed ledger
+contains no retirement evidence. Synthetic tests prove frozen balances and
+rollback boundaries, not complete147-migration recovery or live acceptance.
+
+Remaining gates: pinned PostgreSQL18 synthetic baseline with representative
+financial data, full transaction orchestration, same-session identity/source
+checks and advisory locking, private exception archival and canonical receipt
+order, uncertain-outcome read-only reconciliation, protected backup/restore
+rehearsal, maintenance fencing and reviewed business impact. Production readiness
+must remain failed until recovery and normal release verification pass.
