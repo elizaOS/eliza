@@ -25,7 +25,7 @@ const alphaSignInStyles = `
   --muted-foreground: #6b6b6b; --border: #e3e3e3; --border-hover: #000;
   --input: #fff; --bg-hover: #f3f3f3; --bg-accent: #f3f3f3;
   --surface: #f3f3f3; --accent: #000; --accent-hover: #262626;
-  --accent-foreground: #fff; --accent-subtle: #f3f3f3; --ring: #0000ff;
+  --accent-foreground: #fff; --accent-subtle: #f3f3f3; --ring: #000;
   --font-sans: 'Alpha Public Sans', system-ui, sans-serif;
   height: 100dvh; min-height: 0; width: 100%; overflow-y: auto;
   background: #fff; color: #000; font-family: var(--font-sans);
@@ -47,7 +47,7 @@ const alphaSignInStyles = `
 .alpha-sign-in footer p { margin: 0; }
 .alpha-sign-in .alpha-legal-links { display: flex; justify-content: center; flex-wrap: wrap; gap: 0 24px; }
 .alpha-sign-in footer a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px; color: #000; text-decoration: underline; text-underline-offset: 3px; }
-.alpha-sign-in :focus-visible { outline: 2px solid #0000ff; outline-offset: 3px; }
+.alpha-sign-in :focus-visible { outline: 2px solid #000; outline-offset: 3px; }
 .alpha-sign-in [data-login-phone-field]:focus-within { border-color: #000; }
 .alpha-sign-in [data-login-phone-field]:focus-within :is(input, button):focus-visible { outline: none; box-shadow: none; }
 .alpha-sign-in #steward-login-email:focus { border-color: #000; outline: none; box-shadow: none; }
