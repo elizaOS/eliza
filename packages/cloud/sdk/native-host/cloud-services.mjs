@@ -1471,7 +1471,7 @@ export function createCloudRoutes({
         return true;
       }
       const nativeMatch = path.match(
-        /^\/cloud\/native\/(config|start|verify|mfa|resume|cancel)$/,
+        /^\/cloud\/native\/(config|start|verify|mfa|resume|cancel|google\/return)$/,
       );
       if (
         nativeMatch &&
@@ -1480,14 +1480,21 @@ export function createCloudRoutes({
       ) {
         if (!nativeAuth)
           throw fail(message("nativeAccountStorageIsUnavailable"), 503);
-        const operation = nativeMatch[1],
+        // `google/return` relays the app-owned Google return address; the
+        // private attempt checks its state and callback binding.
+        const operation =
+            nativeMatch[1] === "google/return"
+              ? "google-return"
+              : nativeMatch[1],
           input = method === "POST" ? await body(req, 4096) : {};
         const fields =
           operation === "start"
             ? ["email", "phone", "method"]
             : ["verify", "mfa"].includes(operation)
               ? ["sessionId", "code"]
-              : [];
+              : operation === "google-return"
+                ? ["callbackUrl"]
+                : [];
         if (Object.keys(input).some((key) => !fields.includes(key)))
           throw fail(message("unexpectedSignInFields"));
         if (operation === "cancel") {

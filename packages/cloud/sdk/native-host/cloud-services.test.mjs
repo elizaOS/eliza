@@ -564,6 +564,68 @@ test("a sign-in 429 answer carries the reported wait in seconds, and nothing inv
   assert.deepEqual(await unavailable.json(), { error: "Unavailable." });
 });
 
+test("native Google sign-in relays only the return address to the private attempt", async (t) => {
+  const handled = [];
+  const routes = createCloudRoutes({
+    hostPolicy: {
+      ...policy,
+      createNativeCloudAuth: () => ({
+        handle: async (operation, input) => {
+          handled.push([operation, input]);
+          return { status: "ok" };
+        },
+        cancel: async () => ({ status: "cancelled" }),
+      }),
+    },
+    pendingCredentialStore: { read: async () => null },
+    speechVoice: { voiceId: "voice", modelId: "model" },
+    fetchImpl: async () => {
+      throw Error("Unexpected provider request");
+    },
+  });
+  const server = http.createServer((req, res) =>
+    routes(req, res, new URL(req.url, "http://localhost")),
+  );
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const post = (path, value) =>
+    fetch(`http://127.0.0.1:${server.address().port}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(value),
+    });
+  const callbackUrl = "http://127.0.0.1:9/return#code=c&state=s";
+  assert.equal(
+    (await post("/cloud/native/start", { method: "google" })).status,
+    200,
+  );
+  assert.equal(
+    (await post("/cloud/native/google/return", { callbackUrl })).status,
+    200,
+  );
+  for (const value of [
+    { callbackUrl, sessionId: "x" },
+    { callbackUrl, code: "c" },
+  ])
+    assert.equal(
+      (await post("/cloud/native/google/return", value)).status,
+      400,
+    );
+  // Only the route form is served; the operation name is not a path.
+  assert.notEqual(
+    (await post("/cloud/native/google-return", { callbackUrl })).status,
+    200,
+  );
+  assert.deepEqual(handled, [
+    ["start", { method: "google" }],
+    ["google-return", { callbackUrl }],
+  ]);
+});
+
 test("a service-only host composes CLI login and provider-default voice without billing routes", async (t) => {
   const calls = [];
   let cloudSaysCreated;
