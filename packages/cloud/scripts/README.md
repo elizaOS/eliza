@@ -279,3 +279,12 @@ Private captures are destroyed in the final workflow step. This workflow has no
 stage, commit, restore, deletion or database-write operation. A completed safety
 backup is not an isolated populated restore rehearsal, and does not authorize the
 subsequent provisioning or migration phases.
+
+The named safety backup workflow also accepts `reconcile_operation_receipt`.
+Set it to the exact operation-name SHA256 from an uncertain run to select a
+read-only backup-list reconciliation. Keep the reviewed volume receipt and a
+fresh review expiry. This mode never creates a backup and never falls back to
+creation. A unique retained list entry does not prove provider workflow Complete;
+no automatic retry, PITR stage or restore is authorized by its result.
+Creation receipts distinguish the final preflight from an invoked provider API.
+`requestSubmitted` records API invocation, not confirmed provider acceptance.
