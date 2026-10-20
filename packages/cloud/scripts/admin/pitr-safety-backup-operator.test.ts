@@ -213,9 +213,14 @@ test("exact operation reconciliation reads only, distinguishes absent/unique/amb
       );
       expect(result.requestSubmitted).toBe(false);
       expect(result.workflowComplete).toBe(false);
-      expect(calls.every((op) => ["volumes", "backupList"].includes(op))).toBe(
-        true,
+      expect("apiContract" in result && result.apiContract.available).toBe(
+        false,
       );
+      expect(
+        calls.every((op) =>
+          ["volumes", "backupList", "backupContract"].includes(op),
+        ),
+      ).toBe(true);
     }
   });
 });

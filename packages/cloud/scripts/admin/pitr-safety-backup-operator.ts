@@ -2,6 +2,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { observeBackupContract } from "./pitr-backup-contract";
 import {
   type BackupBinding,
   type BackupItem,
@@ -126,9 +127,11 @@ export async function runSafetyBackup(input: {
         : entry && typeof entry.expiresAt === "string"
           ? Date.parse(entry.expiresAt)
           : NaN;
+    const apiContract = await observeBackupContract(input.api, input.signal);
     if (!(await input.sourceFresh()))
       throw Error("source_or_operation_unavailable");
     return {
+      apiContract,
       purpose: "production_named_safety_backup_reconciliation",
       state: "observed_read_only",
       operationReceipt: input.reconcileOperationReceipt,

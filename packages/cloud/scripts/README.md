@@ -294,3 +294,9 @@ timeouts, output limits, invalid JSON, HTTP status classes and allowlisted Graph
 extension codes. Provider text, arbitrary codes and request values remain private.
 A CLI nonzero exit always fails, even if its JSON includes data. An unknown refusal
 stays unknown; no category establishes non-acceptance or permits automatic retry.
+Reconciliation also observes the live backup mutation's argument and return-type
+contract through fixed read-only introspection. It reports booleans only. Disabled
+or malformed introspection does not discard the backup-list observation. Contract
+agreement does not authorize creation. GraphQL document validation and provider
+`BAD_USER_INPUT` now have distinct finite categories; no further create is needed
+to inspect the deployed schema.

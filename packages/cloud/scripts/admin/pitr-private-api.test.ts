@@ -117,7 +117,8 @@ test("nonzero structured errors classify only fixed codes and never succeed", as
   for (const [code, expected] of [
     ["FORBIDDEN", "permission"],
     ["UNAUTHENTICATED", "authentication"],
-    ["BAD_USER_INPUT", "validation"],
+    ["BAD_USER_INPUT", "bad_user_input"],
+    ["GRAPHQL_VALIDATION_FAILED", "graphql_document"],
     ["RATE_LIMITED", "rate_limit"],
     ["private-fixture-secret", "graphql_unknown"],
   ])

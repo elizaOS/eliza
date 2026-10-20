@@ -3,6 +3,8 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { OBSERVED_TEMPLATE } from "./pitr-reviewed-stage";
 export const PITR_QUERIES = {
+  backupContract:
+    'query BackupContract { mutation: __type(name: "Mutation") { fields(includeDeprecated: true) { name args { name defaultValue type { kind name ofType { kind name ofType { kind name } } } } type { kind name ofType { kind name ofType { kind name } } } } } workflow: __type(name: "WorkflowId") { fields(includeDeprecated: true) { name type { kind name ofType { kind name } } } } }',
   volumes:
     "query Volumes($id: String!) { environment(id: $id) { id volumeInstances { edges { node { id volumeId environmentId serviceId mountPath state deletedAt isPendingDeletion sizeMB } } } } }",
   backupList:
@@ -37,6 +39,8 @@ export const PRIVATE_PROVIDER_FAILURES = [
   "private_provider_authentication",
   "private_provider_permission",
   "private_provider_validation",
+  "private_provider_graphql_document",
+  "private_provider_bad_user_input",
   "private_provider_rate_limit",
   "private_provider_http_client",
   "private_provider_http_server",
@@ -56,11 +60,13 @@ function graphqlFailure(value: unknown): Failure | null {
         ? "private_provider_authentication"
         : code === "FORBIDDEN"
           ? "private_provider_permission"
-          : code === "GRAPHQL_VALIDATION_FAILED" || code === "BAD_USER_INPUT"
-            ? "private_provider_validation"
-            : code === "TOO_MANY_REQUESTS" || code === "RATE_LIMITED"
-              ? "private_provider_rate_limit"
-              : "private_provider_graphql_unknown",
+          : code === "GRAPHQL_VALIDATION_FAILED"
+            ? "private_provider_graphql_document"
+            : code === "BAD_USER_INPUT"
+              ? "private_provider_bad_user_input"
+              : code === "TOO_MANY_REQUESTS" || code === "RATE_LIMITED"
+                ? "private_provider_rate_limit"
+                : "private_provider_graphql_unknown",
     );
   }
   return classes.size === 1
