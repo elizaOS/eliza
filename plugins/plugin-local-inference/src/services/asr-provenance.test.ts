@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+	AsrBundleInspectionError,
 	bundleHasAsrModelFiles,
 	readBundleAsrProvenanceBlockers,
 	readGgufArchitecture,
@@ -157,6 +158,24 @@ describe("bundle ASR artifacts", () => {
 		expect(readGgufArchitecture(path.join(other, "asr", "not-gguf.gguf"))).toBe(
 			null,
 		);
+	});
+
+	it("propagates an asr/ path that cannot be inspected instead of reporting no model", () => {
+		const root = mkdtempSync(path.join(tmpdir(), "eliza-asr-provenance-"));
+		roots.push(root);
+		// A bundle whose staged `asr` is a file, not the model directory the
+		// loader needs (truncated extract, wrong artifact, bad symlink).
+		writeFileSync(path.join(root, "asr"), "not a directory");
+
+		// A bundle with no `asr/` at all is still the legitimate empty answer.
+		const empty = mkdtempSync(path.join(tmpdir(), "eliza-asr-provenance-"));
+		roots.push(empty);
+		expect(bundleHasAsrModelFiles(empty)).toBe(false);
+
+		expect(() => bundleHasAsrModelFiles(root)).toThrow(
+			AsrBundleInspectionError,
+		);
+		expect(() => bundleHasAsrModelFiles(root)).toThrow(/cannot list .*asr/);
 	});
 
 	it("does not treat unrelated ASR-directory files as a loadable model", () => {

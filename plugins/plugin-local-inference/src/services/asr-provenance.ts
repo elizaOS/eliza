@@ -16,6 +16,7 @@
  */
 import {
 	closeSync,
+	type Dirent,
 	existsSync,
 	openSync,
 	readdirSync,
@@ -147,21 +148,51 @@ export function readGgufArchitecture(file: string): string | null {
 }
 
 /**
+ * Thrown when `<bundle>/asr` exists but cannot be listed: it is a file, a
+ * dangling mount, or unreadable. Unlike a missing directory, this is a broken
+ * bundle, so it must not read as "the bundle has no ASR model".
+ */
+export class AsrBundleInspectionError extends Error {
+	readonly asrDir: string;
+
+	constructor(asrDir: string, cause: unknown) {
+		super(
+			`failed to inspect bundle asr directory: cannot list ${asrDir}: ${
+				cause instanceof Error ? cause.message : String(cause)
+			}`,
+			{ cause },
+		);
+		this.name = "AsrBundleInspectionError";
+		this.asrDir = asrDir;
+	}
+}
+
+/**
  * True when `<bundle>/asr/` holds a model the fused library can load: a
  * Parakeet-TDT GGUF (Phonon-2). No other local ASR is supported.
+ *
+ * Returns false only for a genuine absence of `asr/`. When the directory is
+ * present but cannot be listed, this throws `AsrBundleInspectionError`:
+ * callers gate voice on this answer, and "unreadable" must not pass as
+ * "no model" (which silently skips the provenance gate).
  */
 export function bundleHasAsrModelFiles(bundleRoot: string): boolean {
 	const asrDir = path.join(bundleRoot, "asr");
 	if (!existsSync(asrDir)) return false;
+	let entries: Dirent[];
 	try {
-		return readdirSync(asrDir, { withFileTypes: true }).some(
-			(entry) =>
-				entry.isFile() &&
-				entry.name.toLowerCase().endsWith(".gguf") &&
-				readGgufArchitecture(path.join(asrDir, entry.name)) ===
-					PARAKEET_TDT_ARCHITECTURE,
-		);
-	} catch {
-		return false;
+		entries = readdirSync(asrDir, { withFileTypes: true });
+	} catch (error) {
+		// `asr/` was there a moment ago: a failed listing is a broken bundle,
+		// not an absent one. A concurrent delete is still a legitimate "no".
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+		throw new AsrBundleInspectionError(asrDir, error);
 	}
+	return entries.some(
+		(entry) =>
+			entry.isFile() &&
+			entry.name.toLowerCase().endsWith(".gguf") &&
+			readGgufArchitecture(path.join(asrDir, entry.name)) ===
+				PARAKEET_TDT_ARCHITECTURE,
+	);
 }
