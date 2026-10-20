@@ -16,6 +16,7 @@ import { vector } from "@electric-sql/pglite/vector";
 import { logger } from "@elizaos/core";
 import type { IDatabaseClientManager } from "../types";
 import { createPgliteInitError, PGLITE_ERROR_CODES } from "./errors";
+import { readPgliteMemoryTemplate } from "./memory-template";
 
 type PglitePidFileStatus =
   | "missing"
@@ -330,6 +331,12 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     // Translate to the URL form so in-memory actually stays in memory.
     if ((options as { dataDir?: unknown }).dataDir === ":memory:") {
       options = { ...options, dataDir: "memory://" };
+    }
+    // An in-memory database has no cluster to resume, so PGlite would run initdb on every start
+    // (and keep the closed initdb instance's memory). A verified packaged template replaces that.
+    if ((options as { dataDir?: unknown }).dataDir === "memory://" && !options.loadDataDir) {
+      const template = readPgliteMemoryTemplate();
+      if (template) options = { ...options, loadDataDir: new Blob([template]) };
     }
     if (process.env.ELIZA_PGLITE_DISABLE_EXTENSIONS === "1") {
       return new PGlite(options);

@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import {
   copyFile,
@@ -12,7 +13,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 /**
  * Builds self-contained Android and iOS agent bundles with their PGlite assets.
  * Mobile plugin policy determines the inlined plugin set; models are not bundled.
@@ -1611,6 +1612,35 @@ for (const asset of [
   const sz = (await stat(src)).size;
   console.log(`[build-mobile] copied ${asset} (${(sz / 1024).toFixed(1)} KB)`);
 }
+// An empty cluster made by this PGlite, so an in-memory agent starts from it instead of
+// running initdb on every boot (plugin-sql pglite/memory-template.ts). The stamp is checked
+// at runtime; a template that does not match it is not used.
+const pgliteVersion = JSON.parse(
+  readFileSync(path.join(pgliteDist, "..", "package.json"), "utf8"),
+).version as string;
+{
+  const { PGlite } = (await import(
+    pathToFileURL(path.join(pgliteDist, "index.js")).href
+  )) as typeof import("@electric-sql/pglite");
+  const fresh = await PGlite.create({ dataDir: "memory://" });
+  const template = new Uint8Array(
+    await (await fresh.dumpDataDir("gzip")).arrayBuffer(),
+  );
+  await fresh.close();
+  await writeFile(path.join(outDir, "pglite-template.tar.gz"), template);
+  await writeFile(
+    path.join(outDir, "pglite-template.json"),
+    `${JSON.stringify({
+      format: 1,
+      pglite: pgliteVersion,
+      bytes: template.byteLength,
+      sha256: createHash("sha256").update(template).digest("hex"),
+    })}\n`,
+  );
+  console.log(
+    `[build-mobile] wrote pglite-template.tar.gz (${(template.byteLength / 1024 / 1024).toFixed(2)} MB, pglite ${pgliteVersion})`,
+  );
+}
 const generatedUtc = new Date().toISOString();
 const manifest = {
   generatedAt: generatedUtc,
@@ -1624,6 +1654,7 @@ const manifest = {
     wasm: "pglite.wasm",
     initdb: "initdb.wasm",
     data: "pglite.data",
+    template: { file: "pglite-template.tar.gz", stamp: "pglite-template.json" },
     extensions: {
       pg_trgm: { file: "pg_trgm.tar.gz", expectedAt: "../pg_trgm.tar.gz" },
       vector: { file: "vector.tar.gz", expectedAt: "../vector.tar.gz" },
