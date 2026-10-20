@@ -1,0 +1,26 @@
+# Registration only on the default branch. The protected implementation is on main.
+name: Production PITR Named Safety Backup
+run-name: Refused named safety backup registration dispatch ${{ github.sha }}
+on:
+  workflow_dispatch:
+    inputs:
+      review_expires_utc:
+        description: Reviewed UTC expiry, within one hour; does not authorize stage or commit
+        required: true
+        type: string
+      approved_volume_receipt:
+        description: SHA256 of the exact reviewed immutable volume instance ID
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  registration_only:
+    name: Refuse default-branch execution
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Require the reviewed main implementation
+        run: |
+          echo '::error::Registration only. Dispatch production-pitr-safety-backup.yml with --ref main after reviewing that exact main commit and protected inputs.'
+          exit 1
