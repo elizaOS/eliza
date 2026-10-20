@@ -1320,6 +1320,10 @@ export function stageAndroidPgliteAssets({
     "vector.tar.gz",
     "fuzzystrmatch.tar.gz",
     "pg_trgm.tar.gz",
+    // Empty cluster for in-memory databases (plugin-sql pglite/memory-template.ts). Not `.gz`:
+    // aapt2 would unpack it and its stamp's checksum would no longer match.
+    "pglite-template.tgz",
+    "pglite-template.json",
     "plugins-manifest.json",
   ];
   for (const name of pgliteAssets) {

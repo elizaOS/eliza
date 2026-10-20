@@ -6,7 +6,7 @@
  * WebAssembly memory stays reachable afterwards, so an in-memory agent pays initdb's time on every
  * boot and keeps roughly twice the PGlite memory it needs (on the host: about 1,070 MB RSS against
  * 525 MB, and 780 ms against 200 ms to the first query). A packaged build can ship an empty cluster
- * made by the same PGlite (`pglite-template.tar.gz`) and start from it with `loadDataDir` instead.
+ * made by the same PGlite (`pglite-template.tgz`) and start from it with `loadDataDir` instead.
  *
  * PGlite reports a template it cannot read as an unhandled rejection, which ends the process, so
  * the template is used only when its stamp (`pglite-template.json`, written with it) matches its
@@ -18,7 +18,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
 
-export const PGLITE_TEMPLATE_FILE = "pglite-template.tar.gz";
+export const PGLITE_TEMPLATE_FILE = "pglite-template.tgz";
 export const PGLITE_TEMPLATE_STAMP = "pglite-template.json";
 /** Largest template accepted (an empty PostgreSQL 17 cluster is about 4 MB gzipped). */
 const MAX_TEMPLATE_BYTES = 64 * 1024 * 1024;

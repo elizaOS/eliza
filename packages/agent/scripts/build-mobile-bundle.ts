@@ -1627,7 +1627,7 @@ const pgliteVersion = JSON.parse(
     await (await fresh.dumpDataDir("gzip")).arrayBuffer(),
   );
   await fresh.close();
-  await writeFile(path.join(outDir, "pglite-template.tar.gz"), template);
+  await writeFile(path.join(outDir, "pglite-template.tgz"), template);
   await writeFile(
     path.join(outDir, "pglite-template.json"),
     `${JSON.stringify({
@@ -1638,7 +1638,7 @@ const pgliteVersion = JSON.parse(
     })}\n`,
   );
   console.log(
-    `[build-mobile] wrote pglite-template.tar.gz (${(template.byteLength / 1024 / 1024).toFixed(2)} MB, pglite ${pgliteVersion})`,
+    `[build-mobile] wrote pglite-template.tgz (${(template.byteLength / 1024 / 1024).toFixed(2)} MB, pglite ${pgliteVersion})`,
   );
 }
 const generatedUtc = new Date().toISOString();
@@ -1654,7 +1654,7 @@ const manifest = {
     wasm: "pglite.wasm",
     initdb: "initdb.wasm",
     data: "pglite.data",
-    template: { file: "pglite-template.tar.gz", stamp: "pglite-template.json" },
+    template: { file: "pglite-template.tgz", stamp: "pglite-template.json" },
     extensions: {
       pg_trgm: { file: "pg_trgm.tar.gz", expectedAt: "../pg_trgm.tar.gz" },
       vector: { file: "vector.tar.gz", expectedAt: "../vector.tar.gz" },
