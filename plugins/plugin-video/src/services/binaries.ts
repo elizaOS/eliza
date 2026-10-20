@@ -18,6 +18,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import {
+  ElizaError,
   elizaLogger,
   resolveStateDir,
   toWellFormedUnicode,
@@ -86,6 +87,18 @@ interface YtDlpMeta {
   assetName: string;
   downloadedAt: number;
   lastUpdateAttemptedAt: number;
+}
+
+/**
+ * A ledger only counts as present when the field the throttle reads is a real
+ * number; anything else is a damaged file, not a "never attempted" record.
+ */
+function isYtDlpMeta(value: unknown): value is YtDlpMeta {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const lastAttempt = (value as Record<string, unknown>).lastUpdateAttemptedAt;
+  return typeof lastAttempt === "number" && Number.isFinite(lastAttempt);
 }
 
 type YtDlpSource = "env" | "path" | "cache" | "bundled";
@@ -342,7 +355,18 @@ export class BinaryResolver {
   }
 
   private async runUpdate(): Promise<boolean> {
-    const meta = await this.readMeta();
+    let meta: YtDlpMeta | null;
+    try {
+      meta = await this.readMeta();
+    } catch (err) {
+      // A damaged ledger used to parse as `null` → "never attempted", which
+      // reset the throttle, overwrote the file, and hid the corruption. Report
+      // it and skip the update; the caller keeps its own extractor error.
+      elizaLogger.error(
+        `[plugin-video] yt-dlp auto-update skipped: ${describeError(err)}`,
+      );
+      return false;
+    }
     // No metadata yet means we have never attempted an update; first failure
     // should always be allowed to try.
     if (meta) {
@@ -383,12 +407,51 @@ export class BinaryResolver {
   }
 
   private async readMeta(): Promise<YtDlpMeta | null> {
+    let raw: string;
     try {
-      const raw = await fsp.readFile(this.metaPath, "utf8");
-      return JSON.parse(raw) as YtDlpMeta;
-    } catch {
-      return null;
+      raw = await fsp.readFile(this.metaPath, "utf8");
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      // A missing ledger is the legitimate "no managed binary installed
+      // yet" state. Every other read failure (EACCES, EIO, EISDIR) means
+      // the cache directory exists but is unusable, which the caller must
+      // not mistake for a first run.
+      if (code === "ENOENT") return null;
+      throw new ElizaError(
+        `yt-dlp metadata at ${this.metaPath} is unreadable (${code ?? "unknown"}): ${describeError(err)}`,
+        {
+          code: "VIDEO_YTDLP_META_UNREADABLE",
+          cause: err,
+          context: { metaPath: this.metaPath, code },
+          severity: "ephemeral",
+        },
+      );
     }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (cause) {
+      throw new ElizaError(
+        `yt-dlp metadata at ${this.metaPath} is not valid JSON: ${describeError(cause)}`,
+        {
+          code: "VIDEO_YTDLP_META_UNREADABLE",
+          cause,
+          context: { metaPath: this.metaPath },
+          severity: "ephemeral",
+        },
+      );
+    }
+    if (!isYtDlpMeta(parsed)) {
+      throw new ElizaError(
+        `yt-dlp metadata at ${this.metaPath} has no usable lastUpdateAttemptedAt`,
+        {
+          code: "VIDEO_YTDLP_META_UNREADABLE",
+          context: { metaPath: this.metaPath },
+          severity: "ephemeral",
+        },
+      );
+    }
+    return parsed;
   }
 
   private async writeMeta(meta: YtDlpMeta): Promise<void> {
