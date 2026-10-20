@@ -8,6 +8,13 @@ Source-consumed cloud backend library. Tenant scoping, billing arithmetic, datab
 schemas, migrations, and shared services live here. Apply additive migrations through
 the host; never create production tables on a request path.
 
+MiniMax text choices use OpenRouter's `minimax/minimax-m3.1-flash:free`
+for the fast tier and offer `minimax/minimax-m3` as an alternative. The free
+route keeps its `:free` suffix when requests are sent. Existing fast-tier
+environment overrides and saved model IDs still work. Legacy MiniMax text
+models are hidden from new-choice lists; their request and metadata paths
+remain available. Image, audio, video, and embedding choices are unchanged.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

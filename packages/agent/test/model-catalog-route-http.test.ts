@@ -126,6 +126,44 @@ it("refreshes OpenAI-compatible models from the configured endpoint", async () =
   expect(upstreamRequests).toEqual(["/v1/models"]);
 });
 
+it("hides legacy MiniMax text choices on fresh and cached HTTP lists", async () => {
+  upstreamStatus = 200;
+  upstreamModels = [
+    { id: "minimax/minimax-m3.1-flash:free", name: "Flash", type: "chat" },
+    { id: "minimax/minimax-m3", name: "M3", type: "chat" },
+    { id: "minimax/minimax-m2.7", name: "Legacy", type: "chat" },
+    { id: "minimax/minimax-01", name: "Legacy 01", type: "chat" },
+    { id: "minimax/minimax-m2-image", name: "Image", type: "image" },
+    { id: "minimax/speech-2.8-hd", name: "Speech", type: "tts" },
+    { id: "other/chat", name: "Other", type: "chat" },
+  ];
+  upstreamRequests = [];
+  for (const suffix of ["&refresh=true", ""]) {
+    const response = await fetch(
+      `${apiOrigin}/api/models?provider=openai${suffix}`,
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.models.map((model: { id: string }) => model.id)).toEqual([
+      "minimax/minimax-m2-image",
+      "minimax/minimax-m3.1-flash:free",
+      "minimax/minimax-m3",
+      "minimax/speech-2.8-hd",
+      "other/chat",
+    ]);
+  }
+  expect(upstreamRequests).toEqual(["/v1/models"]);
+  // The full upstream catalog remains available as metadata for explicit requests.
+  const cache = JSON.parse(
+    fs.readFileSync(providerCachePath("openai"), "utf8"),
+  );
+  expect(
+    cache.models.some(
+      (model: { id: string }) => model.id === "minimax/minimax-m2.7",
+    ),
+  ).toBe(true);
+});
+
 it("returns a typed gateway failure when the provider rejects refresh", async () => {
   upstreamStatus = 401;
   upstreamRequests = [];

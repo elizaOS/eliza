@@ -6,6 +6,7 @@
 
 import { getCurrentUser } from "@elizaos/cloud-shared/auth";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { isLegacyMiniMaxTextModel } from "@elizaos/cloud-shared/lib/models";
 import {
   getAiProviderConfigurationError,
   hasAnyAiProviderConfigured,
@@ -36,7 +37,19 @@ app.get("/", async (c) => {
       );
     }
 
-    const data = await getCachedMergedModelCatalog();
+    const data = (await getCachedMergedModelCatalog()).filter(
+      (model) => !isLegacyMiniMaxTextModel(model),
+    );
+    // A cached pre-Flash catalog can put M3 before the new static Flash row.
+    const flashIndex = data.findIndex(
+      (model) => model.id === "minimax/minimax-m3.1-flash:free",
+    );
+    const m3Index = data.findIndex(
+      (model) => model.id === "minimax/minimax-m3",
+    );
+    if (m3Index >= 0 && flashIndex > m3Index) {
+      [data[m3Index], data[flashIndex]] = [data[flashIndex], data[m3Index]];
+    }
     c.header(
       "Cache-Control",
       "public, s-maxage=3600, stale-while-revalidate=7200",

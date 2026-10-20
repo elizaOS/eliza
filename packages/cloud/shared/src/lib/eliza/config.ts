@@ -64,14 +64,19 @@ export function getDefaultModels() {
  */
 export const ALLOWED_CHAT_MODELS: readonly string[] = [
   ...FALLBACK_TEXT_SELECTOR_MODELS.map((model) => model.modelId),
-  "minimax/minimax-m2.7",
   "anthropic/claude-sonnet-4.6",
   "deepseek/deepseek-v3.2-exp",
   "deepseek/deepseek-r1",
 ];
 
+// Keep previously offered IDs valid for saved characters and older API clients.
 const ALLOWED_CHAT_MODEL_CANDIDATES = new Set<string>(
-  ALLOWED_CHAT_MODELS.flatMap((id) => expandBitRouterModelIdCandidates(id)),
+  [
+    ...ALLOWED_CHAT_MODELS,
+    "minimax/minimax-m2.7",
+    "minimax/minimax-m2.5",
+    "minimax/minimax-m2.1-lightning",
+  ].flatMap((id) => expandBitRouterModelIdCandidates(id)),
 );
 
 /**
