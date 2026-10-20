@@ -165,19 +165,38 @@ function readBooleanParam(
 }
 
 /**
+ * Detects technical/infrastructure references to images (e.g. docker/container images, tags, digests)
+ * that should not trigger creative media generation (#37021).
+ */
+const TECHNICAL_IMAGE_RE =
+  /\b(?:docker|container|podman|containerd|kaniko|buildah|vm|virtualbox|qemu|iso|ami|disk|kernel|os|system|boot|tarball|binary)\s+images?\b|\bimages?\s+(?:tag|tags|digest|digests|layer|layers|cache|registry|registries|repo|repos|repository|repositories|tarball|tarballs|id|ids|hash|hashes|build|builds|push|pull|manifest|manifests|scan|scans)\b/i;
+
+/**
+ * Capability inquiries asking whether the bot has/supports a generator, which
+ * should not trigger media generation (#37021).
+ */
+const GENERATOR_CAPABILITY_INQUIRY_RE =
+  /\b(?:do you (?:have|support|access)|have you (?:got)?|is there|are there|does (?:it|this|the agent) (?:have|support)|what (?:is|(?:kind of\s+)?(?:image|media|video|audio)\s*gen))\b[^.!?]{0,40}\b(?:image|media|video|audio|picture)?\s*gen(?:eration|erator|s)?\b|\bis\s+(?:the\s+)?(?:image|media|video|audio)\s*gen(?:eration|erator)?\s+(?:available|enabled|hooked up|supported|set up|working|connected)\b/i;
+
+const MEDIA_GENERATION_REQUEST_SHAPE_RE =
+  /\b(?:generate|regenerate|make|remake|draw|redraw|create|recreate|render|rerender|paint|repaint|produce|design|redo)\b[^.!?]{0,64}\b(?:image|picture|photo|portrait|art(?:work)?|illustration|logo|sticker|wallpaper|drawing|painting|meme|gif|video|animation|clip|music|song|audio|sound(?:\s?effect)?|sfx|voice(?:over)?|speech)s?\b|\b(?:use|using|try|with|via|run|do)\b[^.!?]{0,40}\b(?:image|video|audio|media|picture)\s*gen(?:eration|erator)?\b|\b(?:image|video|audio|media)\s*gen(?:eration|erator)?\b[^.!?]{0,20}\b(?:please|pls)\b/iu;
+
+/**
  * True when the message text is an explicit request to generate a visual or
  * audio artifact ("make me a pixel-art castle image", "generate a picture of a
- * lighthouse"). A generation verb must pair with a media-artifact noun so
- * incidental mentions ("send me the image you saved", "make a plan") never
- * match. Module-local by design: validate() must not depend on the message
+ * lighthouse", "remake the image without the watermark", "try urself with image gen").
+ * A generation verb must pair with a media-artifact noun, or explicitly invoke
+ * the generator tool. Technical infrastructure phrases and capability questions
+ * are excluded (#37021).
+ * Module-local by design: validate() must not depend on the message
  * service's Stage-1 heuristics (that is a higher layer).
  */
-function looksLikeExplicitMediaGenerationRequest(text: string): boolean {
+export function looksLikeExplicitMediaGenerationRequest(text: string): boolean {
   const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
   if (!normalized) return false;
-  return /\b(?:generate|make|draw|create|render|paint|produce|design)\b[^.!?]{0,64}\b(?:image|picture|photo|art(?:work)?|illustration|logo|sticker|wallpaper|drawing|painting|meme|gif|video|animation|clip|music|song|audio|sound(?:\s?effect)?|sfx|voice(?:over)?|speech)s?\b/iu.test(
-    normalized,
-  );
+  if (TECHNICAL_IMAGE_RE.test(normalized)) return false;
+  if (GENERATOR_CAPABILITY_INQUIRY_RE.test(normalized)) return false;
+  return MEDIA_GENERATION_REQUEST_SHAPE_RE.test(normalized);
 }
 
 function normalizeMediaType(

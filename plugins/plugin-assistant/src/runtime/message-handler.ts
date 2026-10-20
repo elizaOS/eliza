@@ -242,13 +242,35 @@ function parseExtract(raw: unknown): MessageHandlerExtract | undefined {
   return result;
 }
 
+/**
+ * Detects technical/infrastructure references to images (e.g. docker/container images, tags, digests)
+ * that should not trigger creative media generation (#37021).
+ */
+const TECHNICAL_IMAGE_RE =
+  /\b(?:docker|container|podman|containerd|kaniko|buildah|vm|virtualbox|qemu|iso|ami|disk|kernel|os|system|boot|tarball|binary)\s+images?\b|\bimages?\s+(?:tag|tags|digest|digests|layer|layers|cache|registry|registries|repo|repos|repository|repositories|tarball|tarballs|id|ids|hash|hashes|build|builds|push|pull|manifest|manifests|scan|scans)\b/i;
+
+/**
+ * Capability inquiries asking whether the bot has/supports a generator, which
+ * should not trigger media generation (#37021).
+ */
+const GENERATOR_CAPABILITY_INQUIRY_RE =
+  /\b(?:do you (?:have|support|access)|have you (?:got)?|is there|are there|does (?:it|this|the agent) (?:have|support)|what (?:is|(?:kind of\s+)?(?:image|media|video|audio)\s*gen))\b[^.!?]{0,40}\b(?:image|media|video|audio|picture)?\s*gen(?:eration|erator|s)?\b|\bis\s+(?:the\s+)?(?:image|media|video|audio)\s*gen(?:eration|erator)?\s+(?:available|enabled|hooked up|supported|set up|working|connected)\b/i;
+
 /** Explicit media-generation request shape: a generation verb paired with a
- * media-artifact noun within one clause. Self-contained mirror of
- * GENERATE_MEDIA's own explicit-request detector — validate() and routing
- * deliberately own their layers separately (#20174), but they must agree on
- * what an explicit ask looks like. */
-const EXPLICIT_MEDIA_GENERATION_REQUEST_RE =
-  /\b(?:generate|make|draw|create|render|paint|produce|design)\b[^.!?]{0,64}\b(?:image|picture|photo|art(?:work)?|illustration|logo|sticker|wallpaper|drawing|painting|meme|gif|video|animation|clip|music|song|audio|sound(?:\s?effect)?|sfx|voice(?:over)?|speech)s?\b/i;
+ * media-artifact noun within one clause, or a request naming the generator tool.
+ * Self-contained mirror of GENERATE_MEDIA's own explicit-request detector —
+ * validate() and routing deliberately own their layers separately (#20174),
+ * but they must agree on what an explicit ask looks like (#37021). */
+export const EXPLICIT_MEDIA_GENERATION_REQUEST_RE =
+  /\b(?:generate|regenerate|make|remake|draw|redraw|create|recreate|render|rerender|paint|repaint|produce|design|redo)\b[^.!?]{0,64}\b(?:image|picture|photo|portrait|art(?:work)?|illustration|logo|sticker|wallpaper|drawing|painting|meme|gif|video|animation|clip|music|song|audio|sound(?:\s?effect)?|sfx|voice(?:over)?|speech)s?\b|\b(?:use|using|try|with|via|run|do)\b[^.!?]{0,40}\b(?:image|video|audio|media|picture)\s*gen(?:eration|erator)?\b|\b(?:image|video|audio|media)\s*gen(?:eration|erator)?\b[^.!?]{0,20}\b(?:please|pls)\b/i;
+
+export function looksLikeExplicitMediaGenerationRequest(text: string): boolean {
+  const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+  if (!normalized) return false;
+  if (TECHNICAL_IMAGE_RE.test(normalized)) return false;
+  if (GENERATOR_CAPABILITY_INQUIRY_RE.test(normalized)) return false;
+  return EXPLICIT_MEDIA_GENERATION_REQUEST_RE.test(normalized);
+}
 
 /** Capability-denial reply shape ("can't do that here — no video tools in
  * this setup", "I don't have an image generator", "that's a private
@@ -260,7 +282,7 @@ const EXPLICIT_MEDIA_GENERATION_REQUEST_RE =
  * (services/message.ts) — every owner-private decline it can ship must match
  * one arm here. */
 const CAPABILITY_DENIAL_REPLY_RE =
-  /\b(?:can'?t|cannot|unable to|no|don'?t have|lack)\b[^.!?]{0,80}\b(?:tool|generat|capabilit|action|model|service|setup|environment)|private surface|owner'?s private info|(?:limited|only available) to (?:the owner|them)|don'?t have access to that|can'?t pull it up in a shared channel|can'?t share that private information/i;
+  /\b(?:can'?t|cannot|unable to|no|don'?t have|lack)\b[^.!?]{0,80}\b(?:tool|generat|gen\b|capabilit|action|model|service|setup|environment|hooked up)|private surface|owner'?s private info|(?:limited|only available) to (?:the owner|them)|don'?t have access to that|can'?t pull it up in a shared channel|can'?t share that private information/i;
 
 /** Reminder wording supports scheduling votes and denial recovery, not intent on its own. */
 const EXPLICIT_REMINDER_REQUEST_RE =
@@ -345,7 +367,7 @@ export function routeMessageHandlerOutput(
     options?.candidateActionsClearedByEvaluators !== true;
   const isExplicitMediaAsk =
     allowTextOnlyFallback &&
-    EXPLICIT_MEDIA_GENERATION_REQUEST_RE.test(messageTextForRouting);
+    looksLikeExplicitMediaGenerationRequest(messageTextForRouting);
   // Seeding is applied ONLY on routes that enter the planner: a simple-path
   // clarify ("a picture of what exactly?") must stay a final reply, so the
   // seed never by itself converts a simple turn into planning.
