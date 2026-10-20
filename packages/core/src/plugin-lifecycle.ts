@@ -215,23 +215,30 @@ function getCapturingOwnership(
 	return pluginName ? getOwnershipTarget(runtime, pluginName) : null;
 }
 
-function pushUniqueConnector(
-	items: PluginOwnership["messageConnectors"],
+/**
+ * The connector registry keeps the latest registration for a
+ * (source, accountId) key, so the plugin that made it owns the key: an
+ * earlier owner's unload must not remove a connector it no longer provides.
+ */
+function claimConnector(
+	runtime: RuntimeWithPluginLifecycle,
+	kind: "messageConnectors" | "postConnectors",
 	registration: MessageConnectorRegistration | PostConnectorRegistration,
 ): void {
 	const source = registration.source.trim();
 	const accountId =
 		normalizeConnectorAccountId(registration.accountId) ??
 		normalizeConnectorAccountId(registration.account?.accountId);
-	if (
-		items.some(
-			(existing) =>
-				existing.source === source && existing.accountId === accountId,
-		)
-	) {
-		return;
+	const sameKey = (connector: { source: string; accountId?: string }) =>
+		connector.source === source && connector.accountId === accountId;
+	const ownership = getCapturingOwnership(runtime);
+	for (const other of getPluginOwnershipStore(runtime).values()) {
+		if (other === ownership) continue;
+		const index = other[kind].findIndex(sameKey);
+		if (index >= 0) other[kind].splice(index, 1);
 	}
-	items.push(accountId ? { source, accountId } : { source });
+	if (!ownership || ownership[kind].some(sameKey)) return;
+	ownership[kind].push(accountId ? { source, accountId } : { source });
 }
 
 function pushUniqueRef<T extends object>(items: T[], item: T): void {
@@ -1096,16 +1103,12 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 
 	runtimeWithLifecycle.registerMessageConnector = ((registration) => {
 		originalRegisterMessageConnector(registration);
-		const ownership = getCapturingOwnership(runtimeWithLifecycle);
-		if (!ownership) return;
-		pushUniqueConnector(ownership.messageConnectors, registration);
+		claimConnector(runtimeWithLifecycle, "messageConnectors", registration);
 	}) as typeof runtimeWithLifecycle.registerMessageConnector;
 
 	runtimeWithLifecycle.registerPostConnector = ((registration) => {
 		originalRegisterPostConnector(registration);
-		const ownership = getCapturingOwnership(runtimeWithLifecycle);
-		if (!ownership) return;
-		pushUniqueConnector(ownership.postConnectors, registration);
+		claimConnector(runtimeWithLifecycle, "postConnectors", registration);
 	}) as typeof runtimeWithLifecycle.registerPostConnector;
 
 	if (originalRunServiceStart) {

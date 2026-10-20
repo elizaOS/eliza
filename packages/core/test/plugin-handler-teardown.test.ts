@@ -247,3 +247,71 @@ it("unloadPlugin removes the message and post connectors its service registered"
 		).rejects.toMatchObject({ code: SEND_HANDLER_NOT_FOUND });
 	}
 });
+
+/** Registers the same connector keys as another fixture plugin; each send
+ * records which plugin's handler the registry routed it to. */
+function sharedConnectorPlugin(name: string, delivered: string[]): Plugin {
+	class SharedConnectorService extends Service {
+		static serviceType = `${name}_service`;
+		capabilityDescription = "Shared connector key fixture";
+		static async start(runtime: IAgentRuntime): Promise<Service> {
+			return new SharedConnectorService(runtime);
+		}
+		async stop(): Promise<void> {}
+		static registerSendHandlers(runtime: IAgentRuntime): void {
+			runtime.registerMessageConnector({
+				source: "shared-chat",
+				accountId: "T1",
+				sendHandler: async () => {
+					delivered.push(name);
+				},
+			});
+			runtime.registerPostConnector({ source: "shared-feed" });
+		}
+	}
+	return {
+		name,
+		description: "Registers connector keys another plugin also registers",
+		services: [SharedConnectorService],
+	};
+}
+
+it("unloading a plugin keeps a connector another plugin registered later under the same key", async () => {
+	const { createInitializedRuntime } = await import("./initialized-runtime");
+	const runtime = await createInitializedRuntime({
+		character: { name: "Teardown shared connector", bio: [] },
+		logLevel: "fatal",
+	});
+	const delivered: string[] = [];
+	const target = { source: "shared-chat", accountId: "T1" };
+
+	await runtime.registerPlugin(
+		sharedConnectorPlugin("connector-earlier", delivered),
+	);
+	await runtime.getServiceLoadPromise("connector-earlier_service");
+	await runtime.registerPlugin(
+		sharedConnectorPlugin("connector-later", delivered),
+	);
+	await runtime.getServiceLoadPromise("connector-later_service");
+	// The registry keeps the later registration for a (source, accountId) key.
+	await runtime.sendMessageToTarget(target, { text: "both loaded" });
+	expect(delivered).toEqual(["connector-later"]);
+
+	await runtime.unloadPlugin("connector-earlier");
+
+	// The earlier plugin's entry was already replaced, so its unload must not
+	// remove the live connector of the plugin that is still loaded.
+	expect(connectorSources(runtime)).toEqual({
+		message: ["shared-chat:T1"],
+		post: ["shared-feed"],
+	});
+	await runtime.sendMessageToTarget(target, { text: "earlier unloaded" });
+	expect(delivered).toEqual(["connector-later", "connector-later"]);
+
+	await runtime.unloadPlugin("connector-later");
+
+	expect(connectorSources(runtime)).toEqual({ message: [], post: [] });
+	await expect(
+		runtime.sendMessageToTarget(target, { text: "both unloaded" }),
+	).rejects.toMatchObject({ code: SEND_HANDLER_NOT_FOUND });
+});
