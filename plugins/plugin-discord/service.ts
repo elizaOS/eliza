@@ -154,6 +154,7 @@ import {
 	type ReactionServiceInternals,
 } from "./discord-reactions";
 import { DmChannelRegistry } from "./dm-channel-registry";
+import { emitEventObserved } from "./emit-event-observed";
 import { getDiscordSettings } from "./environment";
 import {
 	executeGuildManagement,
@@ -4962,7 +4963,8 @@ export class DiscordService extends Service implements IDiscordService {
 		const worldId = createUniqueUuid(this.runtime, guild.id);
 		const entityId = this.resolveDiscordEntityId(member.id);
 
-		this.runtime.emitEvent(
+		emitEventObserved(
+			this.runtime,
 			[DiscordEventTypes.ENTITY_JOINED] as string[],
 			{
 				runtime: this.runtime,
