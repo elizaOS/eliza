@@ -79,6 +79,25 @@ describe("resolveKokoroEngineConfig", () => {
 		expect(resolveKokoroEngineConfig()).toBeNull();
 	});
 
+	it("throws when a staged `voices` path exists but cannot be enumerated", () => {
+		// A broken staging layout is not an absent artifact: `voices` exists (as a
+		// plain file here, so readdir fails with ENOTDIR) but the voice packs
+		// cannot be listed. Reporting `null` would tell the caller "no Kokoro
+		// artifacts are staged" and silently degrade to the stub TTS backend.
+		const root = mkdtempSync(path.join(os.tmpdir(), "kokoro-engine-test-"));
+		writeFileSync(path.join(root, "kokoro-82m-v1_0.gguf"), Buffer.alloc(4));
+		writeFileSync(path.join(root, "voices"), "not a directory");
+		cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+		process.env.ELIZA_KOKORO_MODEL_DIR = root;
+
+		expect(() => resolveKokoroEngineConfig()).toThrow(/voices/);
+		try {
+			resolveKokoroEngineConfig();
+		} catch (err) {
+			expect((err as NodeJS.ErrnoException).code).toBe("ENOTDIR");
+		}
+	});
+
 	it("returns the canonical Samantha default when staged", () => {
 		const fx = makeStaged({
 			modelFile: "kokoro-82m-v1_0.gguf",

@@ -87,7 +87,9 @@ export function kokoroEngineModelDir(rootOverride?: string): string {
 /**
  * Probe disk for a usable Kokoro layout. Returns null when any required
  * piece is missing — the engine then falls back to its existing behaviour
- * (fused omnivoice or `StubTtsBackend`).
+ * (fused omnivoice or `StubTtsBackend`). A required piece that exists but
+ * cannot be read (e.g. an unreadable `voices/`) throws instead, so a broken
+ * staging layout is never reported as a missing one.
  */
 export function resolveKokoroEngineConfig(
 	rootOverride?: string,
@@ -169,7 +171,13 @@ function listStagedVoiceIds(voicesDir: string): string[] {
 		return KOKORO_VOICE_PACKS.filter((v) => present.has(v.file)).map(
 			(v) => v.id,
 		);
-	} catch {
-		return [];
+	} catch (err) {
+		// `resolveKokoroEngineConfig` only reaches this readdir after confirming
+		// the directory exists, so `ENOENT` here means it vanished between the
+		// probe and the read — a legitimate "nothing staged". Any other failure
+		// (ENOTDIR, EACCES, EIO) means the layout is present but unreadable, and
+		// reporting `[]` would turn it into "no voice packs staged".
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+		throw err;
 	}
 }
