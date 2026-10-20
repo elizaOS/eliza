@@ -54,7 +54,51 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function parseJsonObject(text: string): Record<string, unknown> {
+/**
+ * Complete top-level `{...}` regions in one model reply, and whether the reply
+ * ends inside an object that never closed. A brace inside a JSON string does
+ * not open a region, so the braces in the generated TSX `source` value stay
+ * data.
+ */
+interface ModelJsonScan {
+  /** Every balanced top-level `{...}` region, in text order. */
+  readonly regions: { readonly start: number; readonly end: number }[];
+  /** The text ends inside a region that never closed (a cut-off reply). */
+  readonly unfinished: boolean;
+}
+
+/** A quote right after an identifier character, as in "workflow's", is prose:
+ * outside a string, JSON puts a quote only after whitespace or punctuation. */
+const MODEL_JSON_IDENTIFIER_CHARACTER = /[A-Za-z0-9_$]/;
+
+function scanModelJsonObjects(text: string): ModelJsonScan {
+  const regions: { start: number; end: number }[] = [];
+  const open: number[] = [];
+  let quote: string | undefined;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (quote) {
+      if (character === '\\') index += 1;
+      else if (character === quote) quote = undefined;
+      continue;
+    }
+    if (open.length === 0) {
+      if (character === '{') open.push(index);
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      if (!MODEL_JSON_IDENTIFIER_CHARACTER.test(text[index - 1] ?? '')) quote = character;
+    } else if (character === '{') {
+      open.push(index);
+    } else if (character === '}') {
+      const start = open.pop();
+      if (start !== undefined && open.length === 0) regions.push({ start, end: index + 1 });
+    }
+  }
+  return { regions, unfinished: open.length > 0 };
+}
+
+export function parseJsonObject(text: string): Record<string, unknown> {
   const trimmed = text
     .trim()
     .replace(/^```(?:json)?\s*/i, '')
@@ -65,6 +109,15 @@ function parseJsonObject(text: string): Record<string, unknown> {
   } catch {
     // error-policy:J3 the fallback below extracts one explicitly-delimited JSON object.
   }
+  const { regions, unfinished } = scanModelJsonObjects(trimmed);
+  // A reply that ends inside an unclosed object is a cut-off call. Its last `}`
+  // closes an earlier object, often an example from the prose, so fail instead
+  // of authoring that example.
+  if (unfinished) {
+    throw new WorkflowApiError('The model reply ends inside an unclosed JSON object', 502);
+  }
+  // The whole first-brace..last-brace range is tried first, so every complete
+  // reply that parsed before parses the same way.
   const start = trimmed.indexOf('{');
   const end = trimmed.lastIndexOf('}');
   if (start >= 0 && end > start) {
@@ -73,6 +126,18 @@ function parseJsonObject(text: string): Record<string, unknown> {
       if (isRecord(value)) return value;
     } catch {
       // error-policy:J3 an invalid model response becomes a visible generation error.
+    }
+  }
+  // The prompt spells fields as brace notation ("{cron, timezone, enabled}"), so
+  // the prose around the draft can hold its own braces and those regions are not
+  // JSON. The draft follows the prose, so read the newest region that parses.
+  for (let index = regions.length - 1; index >= 0; index -= 1) {
+    const region = regions[index];
+    try {
+      const value = JSON.parse(trimmed.slice(region.start, region.end));
+      if (isRecord(value)) return value;
+    } catch {
+      // error-policy:J3 a region that is not JSON is not the draft.
     }
   }
   throw new WorkflowApiError('The model did not return a valid Smithers workflow object', 502);
