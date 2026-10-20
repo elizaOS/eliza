@@ -23,7 +23,7 @@ jobs:
       - name: Run the OpenRouter fallback wire test
         working-directory: plugins/plugin-openai
         run: |
-          cat > vitest.config.focus.ts <<"EOF"
+          cat > vitest.config.focus.ts <<'FOCUS'
           import path from "node:path";
           import base from "./vitest.config";
 
@@ -36,11 +36,11 @@ jobs:
               alias: [
                 ...(base.resolve?.alias ?? []),
                 {
-                  find: "@elizaos/host/protocol",/,
+                  find: "@elizaos/host/protocol",
                   replacement: path.join(elizaRoot, "packages/host/src/protocol.ts"),
                 },
               ],
             },
           };
-          EOF
+          FOCUS
           bunx vitest run --config ./vitest.config.focus.ts __tests__/openrouter-fallback.wire.test.ts
