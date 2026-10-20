@@ -280,3 +280,23 @@ test("unique malformed backup identity cannot produce a retained reconciliation 
     expect(calls).not.toContain("backupCreate");
   });
 });
+
+test("finite transport refusal survives the public receipt without retry", async () => {
+  await fixture(async (input, calls) => {
+    const original = input.api;
+    input.api = async (op, vars, signal) => {
+      if (op === "backupCreate") {
+        calls.push(op);
+        throw Error("private_provider_permission");
+      }
+      return original(op, vars, signal);
+    };
+    const result = await runSafetyBackup(input);
+    expect(result.state).toBe("unconfirmed");
+    expect("failureCategory" in result && result.failureCategory).toBe(
+      "private_provider_permission",
+    );
+    expect(result.automaticRetryAllowed).toBe(false);
+    expect(calls.filter((v) => v === "backupCreate")).toHaveLength(1);
+  });
+});

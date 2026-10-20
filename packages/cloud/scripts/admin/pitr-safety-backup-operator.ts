@@ -7,7 +7,7 @@ import {
   type BackupItem,
   createPitrSafetyBackup,
 } from "./pitr-backup-proof";
-import { privatePitrApi } from "./pitr-private-api";
+import { PRIVATE_PROVIDER_FAILURES, privatePitrApi } from "./pitr-private-api";
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -234,10 +234,7 @@ export async function runSafetyBackup(input: {
             "source_or_operation_unavailable",
             "review_expired_before_creation",
             "workflow_missing",
-            "private_provider_cleanup_unconfirmed",
-            "private_provider_request_unconfirmed",
-            "private_provider_input_refused",
-            "private_provider_configuration_missing",
+            ...PRIVATE_PROVIDER_FAILURES,
           ]);
           failureCategory =
             error instanceof Error && categories.has(error.message)

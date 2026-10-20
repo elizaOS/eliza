@@ -288,3 +288,9 @@ creation. A unique retained list entry does not prove provider workflow Complete
 no automatic retry, PITR stage or restore is authorized by its result.
 Creation receipts distinguish the final preflight from an invoked provider API.
 `requestSubmitted` records API invocation, not confirmed provider acceptance.
+
+Transport failure receipts use finite categories for invocation failures, aborts,
+timeouts, output limits, invalid JSON, HTTP status classes and allowlisted GraphQL
+extension codes. Provider text, arbitrary codes and request values remain private.
+A CLI nonzero exit always fails, even if its JSON includes data. An unknown refusal
+stays unknown; no category establishes non-acceptance or permits automatic retry.
