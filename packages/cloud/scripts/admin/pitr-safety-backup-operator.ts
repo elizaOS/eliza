@@ -114,6 +114,8 @@ export async function runSafetyBackup(input: {
       );
     const observedAt = Date.now();
     const entry = matching.length === 1 ? matching[0] : undefined;
+    if (entry && (typeof entry.id !== "string" || entry.id.length === 0))
+      throw Error("reconcile_backup_identity_invalid");
     const created =
       entry && typeof entry.createdAt === "string"
         ? Date.parse(entry.createdAt)

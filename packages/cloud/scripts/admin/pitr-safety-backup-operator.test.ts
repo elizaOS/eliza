@@ -249,3 +249,34 @@ test("create uncertainty reports invocation boundary and finite failure only", a
     expect(calls.filter((v) => v === "backupCreate")).toHaveLength(1);
   });
 });
+
+test("unique malformed backup identity cannot produce a retained reconciliation receipt", async () => {
+  await fixture(async (input, calls) => {
+    const original = input.api,
+      name = `alpha-pitr-safety-${"b".repeat(32)}`;
+    input.reconcileOperationReceipt = createHash("sha256")
+      .update(name)
+      .digest("hex");
+    for (const id of [undefined, null, "", 42]) {
+      input.api = async (op, vars, signal) =>
+        op === "backupList"
+          ? {
+              data: {
+                volumeInstanceBackupList: [
+                  {
+                    id,
+                    name,
+                    createdAt: new Date(Date.now() - 1000).toISOString(),
+                    expiresAt: null,
+                  },
+                ],
+              },
+            }
+          : original(op, vars, signal);
+      await expect(runSafetyBackup(input)).rejects.toThrow(
+        "reconcile_backup_identity_invalid",
+      );
+    }
+    expect(calls).not.toContain("backupCreate");
+  });
+});
