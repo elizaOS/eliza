@@ -855,6 +855,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     expect((echoed?.data?.replyContext as { facts: string })?.facts).toBe(
       "Created “Optometrist appointment” for Friday, Sep 18 at 3pm EDT.",
     );
+    expect(echoed?.data?.replyContext).not.toHaveProperty("context.event");
     // Keep the independent content case free of a deliberate scheduling conflict.
     const echoedEvent = echoed?.data?.event as LifeOpsCalendarEvent;
     await service.deleteCalendarEvent(INTERNAL_URL, {
@@ -945,6 +946,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
           ? "Moved “Notary appointment” to Friday, Sep 18 at 4pm EDT."
           : "Updated “Notary appointment” for Sep 25, 4:00 PM EDT.",
       );
+      expect(result?.data?.replyContext).not.toHaveProperty("context.event");
       const moved = (
         result?.data as { event?: { startAt: string; endAt: string } }
       )?.event;

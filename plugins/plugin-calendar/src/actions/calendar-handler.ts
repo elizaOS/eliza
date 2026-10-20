@@ -6035,9 +6035,7 @@ const calendarAction: CalendarHandlerAction = {
             )}.`;
           return respond({
             success: true,
-            text: await renderReply("create_event_completed", fallback, {
-              event: createdEvent,
-            }),
+            text: await renderReply("create_event_completed", fallback),
             effectReceipt: calendarEventMutationReceipt({
               event: createdEvent,
               idempotencyKey,
@@ -6563,9 +6561,7 @@ const calendarAction: CalendarHandlerAction = {
             )}.${builtInNotifyNote(details, targetEvent)}`;
           return respond({
             success: true,
-            text: await renderReply("update_event_completed", fallback, {
-              event: updatedEvent,
-            }),
+            text: await renderReply("update_event_completed", fallback),
             effectReceipt: calendarEventMutationReceipt({
               event: updatedEvent,
               idempotencyKey,
@@ -6854,9 +6850,7 @@ const calendarAction: CalendarHandlerAction = {
             `Deleted “${targetEvent.title}” from your calendar.${builtInNotifyNote(details, targetEvent)}`;
           return respond({
             success: true,
-            text: await renderReply("delete_event_completed", fallback, {
-              event: targetEvent,
-            }),
+            text: await renderReply("delete_event_completed", fallback),
             effectReceipt: calendarEventMutationReceipt({
               event: targetEvent,
               idempotencyKey,
