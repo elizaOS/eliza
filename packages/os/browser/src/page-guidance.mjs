@@ -430,7 +430,10 @@ export function pageGuidance(request) {
   window.addEventListener("pagehide", invalidate);
   document.addEventListener("beforeinput", invalidate, true);
   document.addEventListener("change", invalidate, true);
-  let barInset = 0;
+  // The navigation bar's inset last seen without a keyboard, kept for this document in the
+  // isolated world: a guide shown after the keyboard opened (each show is a new renderer) still
+  // knows it.
+  const insetKey = "__elizaGuideBarInsetV1";
   const state = {
     id: request.id,
     nodeId: request.nodeId,
@@ -559,11 +562,14 @@ export function pageGuidance(request) {
     // Chromium on Android draws the page under the navigation bar and, when the keyboard opens,
     // shrinks the visual viewport by the keyboard's height less that bar. The reported bottom is
     // then under the keyboard by the bar's inset, which env(safe-area-inset-bottom) no longer
-    // reports. The inset last seen without a keyboard is taken off again.
+    // reports. The inset last seen without a keyboard in this document is taken off again.
     const bottomInset =
       Number.parseFloat(getComputedStyle(inset).paddingBottom) || 0;
     const keyboard = view.height * view.scale < innerHeight - 1;
-    if (!keyboard) barInset = bottomInset;
+    if (!keyboard) globalThis[insetKey] = bottomInset;
+    const barInset = Number.isFinite(globalThis[insetKey])
+      ? globalThis[insetKey]
+      : 0;
     view.height = Math.max(
       0,
       view.height -
