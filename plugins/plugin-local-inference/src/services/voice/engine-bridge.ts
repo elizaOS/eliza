@@ -2397,11 +2397,21 @@ function directoryHasRegularFile(dir: string): boolean {
 }
 
 function bundleHasRegularFile(dir: string): boolean {
-	if (!existsSync(dir)) return false;
 	try {
 		return directoryHasRegularFile(dir);
-	} catch {
-		return false;
+	} catch (err) {
+		// "No ASR staged in this bundle" is the only benign answer: the
+		// directory is absent (ENOENT), or the path is not a directory at all
+		// (ENOTDIR). Anything else — EACCES on a bundle the process cannot
+		// read, EIO on a damaged filesystem, EMFILE under fd pressure — means
+		// the probe itself failed. Returning `false` there reports a broken
+		// bundle as an empty one, so the bridge silently pins the batch
+		// adapter (and skips the timed-ASR path) instead of failing startup.
+		const code = (err as NodeJS.ErrnoException)?.code;
+		if (code === "ENOENT" || code === "ENOTDIR") {
+			return false;
+		}
+		throw err;
 	}
 }
 

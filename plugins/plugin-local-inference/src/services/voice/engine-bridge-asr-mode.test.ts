@@ -6,7 +6,13 @@
  * `ELIZA_VOICE_STREAMING_ASR` kill switch yields the interim batch adapter.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -158,6 +164,52 @@ describe("EngineVoiceBridge ASR drive mode (#12254)", () => {
 		const transcriber = bridge.createStreamingTranscriber();
 		expect(transcriber).toBeInstanceOf(FfiBatchTranscriber);
 		transcriber.dispose();
+		bridge.dispose();
+	});
+
+	it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+		"surfaces an unreadable asr/ directory instead of reporting ASR absent",
+		() => {
+			// A probe that cannot read `asr/` (EACCES in a container that does
+			// not own the staged weights, EIO, EMFILE) is a broken bundle, not
+			// an empty one: reporting `asrAvailable === false` pins the batch
+			// adapter for a build that does stage ASR weights.
+			const asrDir = path.join(bundleRoot, "asr");
+			chmodSync(asrDir, 0o000);
+			let bridge: EngineVoiceBridge | undefined;
+			try {
+				ffiHolder.current = fakeFfi("hello", { asrStreamSupported: true });
+				let caught: unknown;
+				try {
+					bridge = EngineVoiceBridge.start({
+						bundleRoot,
+						useFfiBackend: true,
+						lifecycleLoaders: lifecycleLoadersOk(),
+					});
+				} catch (error) {
+					caught = error;
+				}
+				// Before the fix this resolved a bridge with
+				// `asrAvailable === false` and no error at all.
+				expect((caught as NodeJS.ErrnoException | undefined)?.code).toBe(
+					"EACCES",
+				);
+			} finally {
+				chmodSync(asrDir, 0o755);
+				bridge?.dispose();
+			}
+		},
+	);
+
+	it("keeps treating a genuinely absent asr/ directory as not available", () => {
+		rmSync(path.join(bundleRoot, "asr"), { recursive: true, force: true });
+		ffiHolder.current = fakeFfi("hello", { asrStreamSupported: true });
+		const bridge = EngineVoiceBridge.start({
+			bundleRoot,
+			useFfiBackend: true,
+			lifecycleLoaders: lifecycleLoadersOk(),
+		});
+		expect(bridge.asrAvailable).toBe(false);
 		bridge.dispose();
 	});
 
