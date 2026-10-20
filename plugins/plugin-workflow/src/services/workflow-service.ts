@@ -71,40 +71,57 @@ function looksLikeObjectBody(text: string, openIndex: number): boolean {
 }
 
 /**
- * Every balanced top-level `{...}` region in `text`, in order, and whether the
- * text ends inside an object body. A brace inside a JSON string does not change
- * the depth. A quote counts only inside a region: before one the text is prose,
- * where a lone quote has no partner.
+ * Every complete top-level `{...}` region in `text`, in order, and whether the
+ * reply ends inside an object body.
+ *
+ * A region starts only at a brace whose first non-space character opens an
+ * object body. Prose such as "Use {name as a placeholder" therefore never
+ * becomes a region, so it cannot leave a brace on the scan stack and swallow
+ * the draft that follows it. Braces and quotes inside a region are tracked
+ * together; outside a region the text is prose, where a lone quote has no
+ * partner.
  */
 function scanTopLevelObjects(text: string): {
   regions: Array<{ start: number; end: number }>;
   unclosedObject: boolean;
 } {
   const regions: Array<{ start: number; end: number }> = [];
-  const open: number[] = [];
-  let quote = false;
-  for (let index = 0; index < text.length; index += 1) {
-    const character = text[index];
-    if (quote) {
-      if (character === '\\') index += 1;
-      else if (character === '"') quote = false;
+  let unclosedObject = false;
+  let index = 0;
+  while (index < text.length) {
+    if (text[index] !== '{' || !looksLikeObjectBody(text, index)) {
+      index += 1;
       continue;
     }
-    if (open.length === 0) {
-      if (character === '{') open.push(index);
-      continue;
+    const start = index;
+    let depth = 0;
+    let quote = false;
+    let closedAt = -1;
+    for (; index < text.length; index += 1) {
+      const character = text[index];
+      if (quote) {
+        if (character === '\\') index += 1;
+        else if (character === '"') quote = false;
+        continue;
+      }
+      if (character === '"') quote = true;
+      else if (character === '{') depth += 1;
+      else if (character === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          closedAt = index;
+          break;
+        }
+      }
     }
-    if (character === '"') quote = true;
-    else if (character === '{') open.push(index);
-    else if (character === '}') {
-      const start = open.pop();
-      if (start !== undefined && open.length === 0) regions.push({ start, end: index + 1 });
+    if (closedAt < 0) {
+      unclosedObject = true;
+      break;
     }
+    regions.push({ start, end: closedAt + 1 });
+    index = closedAt + 1;
   }
-  return {
-    regions,
-    unclosedObject: open.length > 0 && looksLikeObjectBody(text, open[0]),
-  };
+  return { regions, unclosedObject };
 }
 
 /** Read the one JSON object a generation reply returns. Exported so regression

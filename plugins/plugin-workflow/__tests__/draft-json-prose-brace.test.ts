@@ -52,6 +52,29 @@ describe('workflow draft JSON is read from the reply, not from prose braces', ()
     expect(parseJsonObject(reply)).toEqual(DRAFT);
   });
 
+  test('an unmatched prose brace before the object does not hide the draft', () => {
+    const reply = `Use {name as a placeholder, then create this draft: ${JSON.stringify(DRAFT)}`;
+
+    expect(parseJsonObject(reply)).toEqual(DRAFT);
+  });
+
+  test('an unmatched prose brace with a nested placeholder does not hide the draft', () => {
+    const reply = `Use {name (the same {source} as before) as a placeholder: ${JSON.stringify(
+      DRAFT
+    )}`;
+
+    expect(parseJsonObject(reply)).toEqual(DRAFT);
+  });
+
+  test('an unmatched prose brace does not hide a cut-off draft', () => {
+    const cutOff = `Use {name as a placeholder, then this draft:\n${JSON.stringify(DRAFT).slice(
+      0,
+      -40
+    )}`;
+
+    expect(() => parseJsonObject(cutOff)).toThrow('ends before it closes');
+  });
+
   test('a cut-off reply rejects instead of reading the object in the prose', () => {
     const example = JSON.stringify({ name: 'example', language: 'tsx', source: 'export {};' });
     const cutOff = `${example}\nNow the real draft:\n${JSON.stringify(DRAFT).slice(0, -40)}`;
