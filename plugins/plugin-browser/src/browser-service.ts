@@ -240,6 +240,34 @@ export class BrowserService extends Service {
       : { connected: false };
   }
 
+  /**
+   * Fast, non-network check deciding whether any registered browser target can act.
+   *
+   * Decides availability without issuing network requests:
+   * - Desktop workspace bridge is configured (`isBrowserWorkspaceBridgeConfigured` or runtime setting)
+   * - A native browser profile is connected (`getNativeDeviceStatus().connected`)
+   * - A native client transport is available
+   * - Another target is registered (e.g. Stagehand, ComputerUse, custom targets)
+   */
+  hasActableTarget(): boolean {
+    if (
+      isBrowserWorkspaceBridgeConfigured() ||
+      (typeof this.runtime?.getSetting === "function" &&
+        Boolean(this.runtime.getSetting("ELIZA_BROWSER_WORKSPACE_URL")?.toString().trim()))
+    ) {
+      return true;
+    }
+    if (this.getNativeDeviceStatus().connected) {
+      return true;
+    }
+    if (this.nativeClientTransport !== null) {
+      return true;
+    }
+    return this.targetOrder.some(
+      (id) => id !== "workspace" && id !== "chromium-device",
+    );
+  }
+
   async stop(): Promise<void> {
     await this.nativeSocketTarget?.stop();
     this.nativeSocketTarget = null;

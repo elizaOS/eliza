@@ -8,6 +8,7 @@ import type {
   Content,
   HandlerCallback,
   HandlerOptions,
+  IAgentRuntime,
   Memory,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
@@ -29,6 +30,7 @@ import {
   type BrowserWorkspaceCommandResult,
   executeBrowserWorkspaceCommand,
   getBrowserWorkspaceMode,
+  isBrowserWorkspaceBridgeConfigured,
 } from "../workspace/browser-workspace.js";
 import {
   WAIT_FOR_URL_DEFAULT_POLL_INTERVAL_MS,
@@ -845,7 +847,22 @@ export const browserAction: Action = {
   // Wait for the browser result before the model writes its reply. A speculative
   // Stage-1 acknowledgement would race the result and duplicate text/voice.
   suppressEarlyReply: true,
-  validate: async () => true,
+  validate: async (runtime?: IAgentRuntime) => {
+    if (
+      isBrowserWorkspaceBridgeConfigured() ||
+      (typeof runtime?.getSetting === "function" &&
+        Boolean(runtime.getSetting("ELIZA_BROWSER_WORKSPACE_URL")?.toString().trim()))
+    ) {
+      return true;
+    }
+    const service = runtime?.getService<BrowserService>(BROWSER_SERVICE_TYPE);
+    if (!service) {
+      return false;
+    }
+    return typeof service.hasActableTarget === "function"
+      ? service.hasActableTarget()
+      : false;
+  },
   handler: async (
     runtime,
     message,
