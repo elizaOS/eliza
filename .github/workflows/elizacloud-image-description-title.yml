@@ -27,23 +27,20 @@ jobs:
           import fs from "node:fs";
           import path from "node:path";
           import base from "./vitest.config";
-
+          
           const elizaRoot = path.resolve(import.meta.dirname, "../..");
-
+          
           const workspaceSource = {
             name: "eliza-workspace-source",
             enforce: "pre" as const,
             resolveId(source: string) {
-              const match = /^@elizaos/([^/]+)(?:\/(.+))?$/.exec(source);
+              const match = /^@elizaos/([^/]+)(?:/(.+))?$/.exec(source);
               if (!match) return null;
-              const [, pkg, sub] = match;
+              const pkg = match[1];
+              const sub = match[2];
               const srcRoot = path.join(elizaRoot, "packages", pkg, "src");
               const candidates = sub
-                ? [
-                    path.join(srcRoot, `${sub}.ts`),
-                    path.join(srcRoot, sub, "index.ts"),
-                    path.join(srcRoot, sub),
-                  ]
+                ? [path.join(srcRoot, sub + ".ts"), path.join(srcRoot, sub, "index.ts"), path.join(srcRoot, sub)]
                 : [path.join(srcRoot, "index.ts")];
               for (const candidate of candidates) {
                 if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
@@ -51,12 +48,13 @@ jobs:
                 }
               }
               return null;
-            },
+            }
           };
-
+          
           export default {
             ...base,
             plugins: [...(base.plugins ?? []), workspaceSource],
           };
+          
           FOCUS
           bunx vitest run --config ./vitest.config.focus.ts __tests__/image-description-title.test.ts
