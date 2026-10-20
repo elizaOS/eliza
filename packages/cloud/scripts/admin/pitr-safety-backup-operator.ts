@@ -4,6 +4,10 @@ import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { observeBackupContract } from "./pitr-backup-contract";
 import {
+  backupRetentionInventory,
+  observeBackupSchedules,
+} from "./pitr-backup-inventory";
+import {
   type BackupBinding,
   type BackupItem,
   createPitrSafetyBackup,
@@ -166,10 +170,18 @@ export async function runSafetyBackup(input: {
           ? Date.parse(entry.expiresAt)
           : NaN;
     const apiContract = await observeBackupContract(input.api, input.signal);
+    const retentionInventory = backupRetentionInventory(entries, observedAt);
+    const schedulePolicy = await observeBackupSchedules(
+      input.api,
+      binding.volumeId,
+      input.signal,
+    );
     if (!(await input.sourceFresh()))
       throw Error("source_or_operation_unavailable");
     return {
       apiContract,
+      retentionInventory,
+      schedulePolicy,
       volumeCapacity: capacityObservation,
       backupInventory: {
         listedCount: entries.length,

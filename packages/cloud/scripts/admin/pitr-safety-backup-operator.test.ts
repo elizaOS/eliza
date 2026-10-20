@@ -218,7 +218,12 @@ test("exact operation reconciliation reads only, distinguishes absent/unique/amb
       );
       expect(
         calls.every((op) =>
-          ["volumes", "backupList", "backupContract"].includes(op),
+          [
+            "volumes",
+            "backupList",
+            "backupContract",
+            "backupSchedules",
+          ].includes(op),
         ),
       ).toBe(true);
     }
@@ -351,7 +356,9 @@ test("read-only exact-volume capacity reports the documented half-capacity bound
     }
     expect(
       calls.every((op) =>
-        ["volumes", "backupList", "backupContract"].includes(op),
+        ["volumes", "backupList", "backupContract", "backupSchedules"].includes(
+          op,
+        ),
       ),
     ).toBe(true);
   });

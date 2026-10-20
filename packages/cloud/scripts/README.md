@@ -319,3 +319,7 @@ private working directory is cleaned even after failure. No response data, raw
 stderr, arbitrary extensions or environment dump is captured. The private key
 stays with the local operator. Evidence capture never retries or converts a failed
 provider operation to success; it does not authorize stage, resize or migration.
+
+### Bounded backup retention observations
+
+The protected named-backup workflow's existing read-only reconciliation also reports at most 15 backup hash receipts, creation/expiry dates, scheduled/manual classification and finite sizes. It marks every tie for the newest valid creation time for preservation and distinguishes expired entries. Larger or ambiguous inventories refuse detailed output. Schedule metadata is limited to the provider enum, creation time and retention seconds; unavailable schedule observations do not invalidate reconciliation. No raw IDs, names, cron expressions or external IDs are printed. These observations support a concrete retention review; they do not authorize deletion/locking or prove backup completion/restorability. This production operator addition targets main because its protected workflow requires refs/heads/main, continuing user-authorized Cloud recovery; it does not change product runtime requirements or the MVP.

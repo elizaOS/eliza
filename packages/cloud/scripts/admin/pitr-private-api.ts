@@ -8,7 +8,9 @@ export const PITR_QUERIES = {
   volumes:
     "query Volumes($id: String!) { environment(id: $id) { id volumeInstances { edges { node { id volumeId environmentId serviceId mountPath state deletedAt isPendingDeletion currentSizeMB sizeMB } } } } }",
   backupList:
-    "query BackupList($id: String!) { volumeInstanceBackupList(volumeInstanceId: $id) { id name createdAt expiresAt } }",
+    "query BackupList($id: String!) { volumeInstanceBackupList(volumeInstanceId: $id) { id name createdAt expiresAt scheduleId usedMB referencedMB volumeInstanceSizeMB } }",
+  backupSchedules:
+    "query BackupSchedules($id: String!) { volumeInstanceBackupScheduleList(volumeInstanceId: $id) { kind createdAt retentionSeconds } }",
   backupCreate:
     "mutation BackupCreate($id: String!, $name: String!) { volumeInstanceBackupCreate(volumeInstanceId: $id, name: $name) { workflowId } }",
   workflowStatus:
