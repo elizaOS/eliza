@@ -76,7 +76,7 @@ function fixture(change: (v: WeatherFixtureState) => void = () => {}) {
   const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input));
     calls.push(url.href);
-    expect(init?.redirect).toBe("error");
+    expect(init?.redirect).toBe("manual");
     expect(new Headers(init?.headers).get("User-Agent")).toContain("elizaOS-public-weather");
     let body: unknown;
     if (url.hostname === "dashboard.waterdata.usgs.gov") {

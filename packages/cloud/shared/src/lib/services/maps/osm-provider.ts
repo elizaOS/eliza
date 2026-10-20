@@ -8,6 +8,7 @@
  * configured endpoints and are never logged.
  */
 import { boundedProviderFetch } from "../../utils/bounded-provider-fetch";
+import { NO_FOLLOW_REDIRECT, withoutRedirects } from "../../utils/no-redirect-fetch";
 import {
   insideRegion,
   type MapsBounds,
@@ -551,14 +552,16 @@ export class OsmMapsProvider implements MapsProviderAdapter {
         {
           ...init,
           headers: { ...(init.headers as Record<string, string>), "user-agent": USER_AGENT },
-          redirect: "error",
+          redirect: NO_FOLLOW_REDIRECT,
           signal,
         },
         {
           provider: "maps",
           timeoutMs: REQUEST_TIMEOUT_MS,
           maxResponseBytes: MAX_RESPONSE_BYTES,
-          fetchImpl: this.fetchImpl,
+          // A 3xx rejects like the former redirect: "error" (refused by workerd)
+          // and is reported as an outage below; the location is never followed.
+          fetchImpl: withoutRedirects(this.fetchImpl),
         },
       );
     } catch (error) {
