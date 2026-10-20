@@ -62,6 +62,26 @@ export async function handleReaction(
 			return;
 		}
 
+		if (user.partial && typeof (user as PartialUser).fetch === "function") {
+			try {
+				user = await (user as PartialUser).fetch();
+			} catch (error) {
+				service.runtime.logger.warn(
+					{
+						src: "plugin:discord",
+						agentId: service.runtime.agentId,
+						error: error instanceof Error ? error.message : String(error),
+					},
+					"Failed to fetch partial reaction user",
+				);
+			}
+		}
+
+		// Status reactions and dialogue from other bots must not be stored as dialogue (#37031)
+		if ("bot" in user && Boolean(user.bot)) {
+			return;
+		}
+
 		// Get emoji info
 		let emoji = reaction.emoji.name;
 		if (!emoji && reaction.emoji.id) {
@@ -113,7 +133,7 @@ export async function handleReaction(
 
 		// Process message content
 		const messageContent = reaction.message.content || "";
-		const reactionMessage = `*${actionText} <${emoji}> ${preposition}: \\"${messageContent}\\"*`;
+		const reactionMessage = `*${actionText} <${emoji}> ${preposition}: "${messageContent}"*`;
 
 		// Get user info from the reacting user (not the message author)
 		const reactionMessageAuthor = reaction.message.author;

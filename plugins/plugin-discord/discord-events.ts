@@ -619,6 +619,9 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 		if (clientUser && user.id === clientUser.id) {
 			return;
 		}
+		if ("bot" in user && Boolean(user.bot)) {
+			return;
+		}
 		if (
 			service.allowedChannelIds &&
 			reaction.message.channel &&
@@ -644,6 +647,9 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 	service.client.on("messageReactionRemove", async (reaction, user) => {
 		const clientUser = service.client?.user;
 		if (clientUser && user.id === clientUser.id) {
+			return;
+		}
+		if ("bot" in user && Boolean(user.bot)) {
 			return;
 		}
 		if (
