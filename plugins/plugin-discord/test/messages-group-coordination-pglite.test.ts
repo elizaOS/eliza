@@ -139,6 +139,11 @@ function makeRuntime(
 			memories.set(id, { ...memory, id: id as UUID });
 			return id as UUID;
 		}),
+		updateMemory: vi.fn(async (patch: Partial<Memory> & { id: UUID }) => {
+			const existing = memories.get(patch.id as string);
+			if (existing) memories.set(patch.id as string, { ...existing, ...patch });
+			return true;
+		}),
 		getMemories: vi.fn(async () => []),
 		messageService: {
 			handleMessage: async (
