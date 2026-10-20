@@ -97,10 +97,20 @@ const GGUF_SCALAR_BYTES: Readonly<Record<number, number>> = {
 	12: 8,
 };
 
+/** True for the fs codes that mean "there is nothing there", not "read failed". */
+function isAbsentError(error: unknown): boolean {
+	const code = (error as NodeJS.ErrnoException).code;
+	return code === "ENOENT" || code === "ENOTDIR";
+}
+
 /**
  * Read `general.architecture` from a GGUF header, or null when the file is
  * not a GGUF or the key is not among the leading scalar/string entries
  * (converters write it first). Reads at most the first 64 KiB.
+ *
+ * A file that cannot be read (EACCES/EIO/EMFILE) throws instead of returning
+ * null: callers gate local ASR on this value, so "I could not read the bytes"
+ * must not be reported as "this is not an ASR model".
  */
 export function readGgufArchitecture(file: string): string | null {
 	let fd: number | undefined;
@@ -138,9 +148,13 @@ export function readGgufArchitecture(file: string): string | null {
 			}
 		}
 		return null;
-	} catch {
-		// error-policy:J3 unreadable file is "not a parakeet GGUF".
-		return null;
+	} catch (error) {
+		// A missing file is "not a parakeet GGUF": the model was never staged
+		// (or was removed between `readdirSync` and `openSync`). Any other
+		// failure means the staged bytes could not be inspected at all, so it
+		// must surface rather than read as "no ASR model here".
+		if (isAbsentError(error)) return null;
+		throw new Error(`failed to read GGUF header at ${file}`, { cause: error });
 	} finally {
 		if (fd !== undefined) closeSync(fd);
 	}
@@ -149,6 +163,10 @@ export function readGgufArchitecture(file: string): string | null {
 /**
  * True when `<bundle>/asr/` holds a model the fused library can load: a
  * Parakeet-TDT GGUF (Phonon-2). No other local ASR is supported.
+ *
+ * A bundle with no `asr/` directory stages no local ASR (false), but an
+ * `asr/` directory or GGUF that exists and cannot be read keeps throwing:
+ * "could not look" is not "there is nothing to load".
  */
 export function bundleHasAsrModelFiles(bundleRoot: string): boolean {
 	const asrDir = path.join(bundleRoot, "asr");
@@ -161,7 +179,8 @@ export function bundleHasAsrModelFiles(bundleRoot: string): boolean {
 				readGgufArchitecture(path.join(asrDir, entry.name)) ===
 					PARAKEET_TDT_ARCHITECTURE,
 		);
-	} catch {
-		return false;
+	} catch (error) {
+		if (isAbsentError(error)) return false;
+		throw error;
 	}
 }

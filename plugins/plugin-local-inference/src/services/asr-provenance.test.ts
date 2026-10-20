@@ -1,6 +1,12 @@
 /** Covers strict-versus-candidate ASR provenance enforcement against real manifest files. */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -165,4 +171,28 @@ describe("bundle ASR artifacts", () => {
 
 		expect(bundleHasAsrModelFiles(root)).toBe(false);
 	});
+
+	it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+		"surfaces an ASR GGUF that exists but cannot be read instead of reporting no model",
+		() => {
+			const root = writeManifest({});
+			const model = path.join(root, "asr", "phonon-2-fv5.gguf");
+			writeFileSync(model, gguf("parakeet-tdt"));
+
+			// A mode-0 file makes openSync/readSync fail with EACCES while the
+			// Phonon-2 GGUF is still staged. "I could not read it" must not be
+			// reported as "this bundle stages no ASR model".
+			chmodSync(model, 0o000);
+			try {
+				expect(() => readGgufArchitecture(model)).toThrow(
+					/failed to read GGUF header/,
+				);
+				expect(() => bundleHasAsrModelFiles(root)).toThrow(
+					/failed to read GGUF header/,
+				);
+			} finally {
+				chmodSync(model, 0o644);
+			}
+		},
+	);
 });
