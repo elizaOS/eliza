@@ -2396,12 +2396,28 @@ function directoryHasRegularFile(dir: string): boolean {
 	return false;
 }
 
+/**
+ * True only when `dir` exists and holds at least one regular file.
+ *
+ * A missing directory is the legitimate "this bundle ships no ASR"
+ * case and reports `false`. Any other listing failure (EACCES on a
+ * broken mount, EPERM after a partial extract, EIO) means the bundle is
+ * broken, not empty — throwing keeps startup from reporting a
+ * present-but-unreadable region as "no local ASR model" until the
+ * session fails much later in `createStreamingTranscriber`
+ * (AGENTS.md §3 + §9: no log-and-continue).
+ */
 function bundleHasRegularFile(dir: string): boolean {
 	if (!existsSync(dir)) return false;
 	try {
 		return directoryHasRegularFile(dir);
-	} catch {
-		return false;
+	} catch (err) {
+		const code = (err as NodeJS.ErrnoException).code;
+		if (code === "ENOENT") return false;
+		throw new VoiceStartupError(
+			"unreadable-asr-region",
+			`[voice] ASR region ${dir} exists but cannot be read (${code ?? (err as Error).message}). Refusing to report an unreadable bundle region as "no ASR model".`,
+		);
 	}
 }
 
