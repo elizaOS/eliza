@@ -2396,12 +2396,29 @@ function directoryHasRegularFile(dir: string): boolean {
 	return false;
 }
 
+/**
+ * True when `<dir>` holds at least one regular file.
+ *
+ * An absent directory (`ENOENT`) or a path that is not a directory
+ * (`ENOTDIR`) is legitimately "no ASR bundle staged here" and stays
+ * `false`. Any other listing failure (`EACCES`, `EIO`, `EMFILE`) means the
+ * directory exists but cannot be read: that is a broken bundle, not an
+ * absent one, and `start()` must not record `asrAvailable === false` for it
+ * (that made `createStreamingTranscriber()` throw `AsrUnavailableError`
+ * "... no bundled ASR model ..." for a bundle that stages one).
+ */
 function bundleHasRegularFile(dir: string): boolean {
-	if (!existsSync(dir)) return false;
 	try {
 		return directoryHasRegularFile(dir);
-	} catch {
-		return false;
+	} catch (error) {
+		const code = (error as NodeJS.ErrnoException | null)?.code;
+		// error-policy:J3 a directory removed mid-probe is legitimately
+		// "no ASR bundle"; an unlistable one must surface its real cause.
+		if (code === "ENOENT" || code === "ENOTDIR") return false;
+		throw new VoiceStartupError(
+			"missing-asr-model",
+			`[voice] ASR bundle directory ${dir} exists but cannot be listed (${code ?? "unknown"}: ${(error as Error | null)?.message ?? String(error)}). A staged-but-unreadable ASR directory is a broken bundle, not a bundle without an ASR model.`,
+		);
 	}
 }
 
