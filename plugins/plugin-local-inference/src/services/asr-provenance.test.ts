@@ -1,6 +1,12 @@
 /** Covers strict-versus-candidate ASR provenance enforcement against real manifest files. */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -164,5 +170,21 @@ describe("bundle ASR artifacts", () => {
 		writeFileSync(path.join(root, "asr", "README.md"), "not a model");
 
 		expect(bundleHasAsrModelFiles(root)).toBe(false);
+	});
+
+	it("propagates an unreadable asr/ directory instead of reporting no model", () => {
+		const root = writeManifest({});
+		const asrDir = path.join(root, "asr");
+		writeFileSync(path.join(asrDir, "phonon-2-fv5.gguf"), gguf("parakeet-tdt"));
+		chmodSync(asrDir, 0o000);
+		try {
+			// The directory exists but cannot be listed: that is a broken
+			// bundle, not a bundle with no ASR artifacts staged.
+			expect(() => bundleHasAsrModelFiles(root)).toThrow(
+				/failed to read ASR model directory/,
+			);
+		} finally {
+			chmodSync(asrDir, 0o700);
+		}
 	});
 });

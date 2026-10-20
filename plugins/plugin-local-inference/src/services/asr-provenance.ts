@@ -16,6 +16,7 @@
  */
 import {
 	closeSync,
+	type Dirent,
 	existsSync,
 	openSync,
 	readdirSync,
@@ -153,15 +154,25 @@ export function readGgufArchitecture(file: string): string | null {
 export function bundleHasAsrModelFiles(bundleRoot: string): boolean {
 	const asrDir = path.join(bundleRoot, "asr");
 	if (!existsSync(asrDir)) return false;
+	let entries: Dirent[];
 	try {
-		return readdirSync(asrDir, { withFileTypes: true }).some(
-			(entry) =>
-				entry.isFile() &&
-				entry.name.toLowerCase().endsWith(".gguf") &&
-				readGgufArchitecture(path.join(asrDir, entry.name)) ===
-					PARAKEET_TDT_ARCHITECTURE,
-		);
-	} catch {
-		return false;
+		entries = readdirSync(asrDir, { withFileTypes: true });
+	} catch (error) {
+		// A directory that vanished between the existsSync and the readdir is
+		// "no ASR model". A directory that exists but cannot be listed
+		// (EACCES, ENOTDIR, EIO) is a broken bundle: callers turn `false` into
+		// "no ASR model artifacts are staged" and would send the user to
+		// re-download instead of surfacing the unreadable bundle.
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+		throw new Error(`failed to read ASR model directory at ${asrDir}`, {
+			cause: error,
+		});
 	}
+	return entries.some(
+		(entry) =>
+			entry.isFile() &&
+			entry.name.toLowerCase().endsWith(".gguf") &&
+			readGgufArchitecture(path.join(asrDir, entry.name)) ===
+				PARAKEET_TDT_ARCHITECTURE,
+	);
 }
