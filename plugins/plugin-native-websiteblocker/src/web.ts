@@ -30,12 +30,15 @@ function readConfiguredApiBase(): string | undefined {
 // plugins/plugin-blocker/src/services/website-blocker/engine.ts validates
 // each label against [a-z0-9-] with hyphen edges rejected — including the TLD,
 // so punycode TLDs such as xn--p1ai (пример.рф) pass on the server while a
-// letters-only TLD rule rejects them here. The TLD must still carry at least
-// one letter: the engine rejects IP literals (node:net isIP), and an
-// all-numeric dotted quad is the only punycode-reachable shape the engine
-// refuses — verified that node's domainToASCII itself returns "" for
-// all-numeric TLDs (e.g. café.123), so the letter test keeps web at parity
-// without a node:net import in browser code. One path, one grammar: every
+// letters-only TLD rule rejects them here. The final label must still carry
+// at least one letter: the engine refuses IP literals via node:net isIP, and
+// the shapes that reach this grammar as a letterless dotted quad are the ones
+// the URL parser folds to canonical IPv4 form ("0x7f.0x0.0x0.0x1" parses to
+// "127.0.0.1"), so the letter test is the browser-code proxy for isIP.
+// All-numeric TLDs never reach the grammar at all: a numeric final label
+// routes the host into IPv4 parsing and the URL parser throws, on both
+// sides. Parity with the engine is pinned by the recorded fixture in
+// src/web.test.ts, not by this comment. One path, one grammar: every
 // bare hostname below punycode-encodes through the WHATWG URL parser (IDNA
 // ToASCII — the same primitive the engine's domainToASCII uses), so the ASCII
 // and unicode spellings of an IDN name ("xn--e1afmkfd.xn--p1ai" and "пример.рф")
@@ -60,6 +63,9 @@ export function normalizeHostname(value: unknown): string | null {
   // The engine's scheme check requires "://" (engine.ts normalizeWebsiteTarget),
   // so "example.com:8080" is a bare hostname with a port — not a URL — and
   // punycode-encodes through the shared path below exactly like the engine.
+  // The same fall-through covers "mailto:someone@example.com": the engine
+  // takes the identical branch and returns "example.com" (pinned in
+  // src/web.test.ts), so the boundary the "://" guard draws is parity.
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) {
     if (!/^https?:\/\//i.test(trimmed)) return null;
     try {
