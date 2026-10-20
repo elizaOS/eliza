@@ -66,6 +66,7 @@ import type { ElizaConfig } from "@elizaos/host/protocol";
 import { z } from "zod";
 import { resolveConfigPath } from "../config/paths.ts";
 import { maybeInjectFault } from "../runtime/crash-injection.ts";
+import { isMemoryPgliteDataDir } from "../runtime/database-selection.ts";
 import { cancelAndDrainDeferredBoot } from "../runtime/deferred-boot-owner.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import {
@@ -663,6 +664,11 @@ function makeStateFileInclude(
 async function resolvePgliteDir(): Promise<string> {
   const configured = process.env.PGLITE_DATA_DIR?.trim();
   if (configured) {
+    // An in-memory setting is a PGlite URL, not a path (#37089): resolving it
+    // would mangle `memory://` into a `<cwd>/memory:` directory, and the
+    // filesystem guards in this file (`=== ":memory:" || includes("://")`)
+    // could never fire on the resolved value. Return it unchanged.
+    if (isMemoryPgliteDataDir(configured)) return configured;
     return configured.startsWith("~")
       ? path.join(process.cwd(), configured.slice(1))
       : path.resolve(configured);
@@ -3466,7 +3472,14 @@ function pgliteDumpSource(
 }
 function resolveCapturePgliteDir(config: ElizaConfig): string {
   const configured = process.env.PGLITE_DATA_DIR?.trim();
-  if (configured) return resolveUserPath(configured);
+  // Same in-memory rule as resolvePgliteDir: keep the sentinel unchanged so
+  // the filesystem-backed check in createDefaultAgentBackupV2CaptureSources
+  // can refuse it instead of resolving a bogus `<cwd>/memory:` directory.
+  if (configured) {
+    return isMemoryPgliteDataDir(configured)
+      ? configured
+      : resolveUserPath(configured);
+  }
   const workspace =
     config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
   return path.join(resolveUserPath(workspace), DEFAULT_PGLITE_DIR_NAME);
