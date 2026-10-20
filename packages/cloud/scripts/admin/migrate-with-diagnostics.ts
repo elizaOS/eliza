@@ -52,7 +52,7 @@ const { Client } = pg;
 
 const MIGRATIONS_SCHEMA = "drizzle";
 const MIGRATIONS_TABLE = "__drizzle_migrations";
-const MIGRATION_ADVISORY_LOCK_KEY = "eliza:cloud:migrations:v1";
+export const MIGRATION_ADVISORY_LOCK_KEY = "eliza:cloud:migrations:v1";
 const DEFAULT_LOCK_TIMEOUT_MS = 5_000;
 const DEFAULT_LOCK_MAX_ATTEMPTS = 5;
 const DEFAULT_LOCK_RETRY_BASE_MS = 250;
@@ -317,7 +317,9 @@ function parseConcurrentIndexStatement(
   };
 }
 
-function planMigrationExecution(migration: Migration): MigrationExecutionPlan {
+export function planMigrationExecution(
+  migration: Migration,
+): MigrationExecutionPlan {
   const directiveLines = migration.statements.flatMap((statement) =>
     statement
       .split(/\r?\n/)

@@ -7,7 +7,7 @@ const QUERY = `WITH target AS (SELECT to_regclass('public.managed_gmail_operatio
 SELECT jsonb_build_object(
  'table',(SELECT jsonb_build_object('kind',relkind,'persistence',relpersistence,'rowSecurity',relrowsecurity,'forceRowSecurity',relforcerowsecurity,'defaultAcl',relacl IS NULL,'ownedByExpectedRole',relowner=(SELECT oid FROM pg_roles WHERE rolname=$1),'partition',relispartition) FROM pg_class WHERE oid=(SELECT oid FROM target)),
  'columns',(SELECT COALESCE(jsonb_agg(jsonb_build_object('name',a.attname,'type',format_type(a.atttypid,a.atttypmod),'notNull',a.attnotnull,'default',pg_get_expr(d.adbin,d.adrelid),'identity',a.attidentity,'generated',a.attgenerated,'collation',a.attcollation::regcollation::text,'defaultAcl',a.attacl IS NULL) ORDER BY a.attnum),'[]'::jsonb) FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum WHERE a.attrelid=(SELECT oid FROM target) AND a.attnum>0 AND NOT a.attisdropped),
- 'constraints',(SELECT COALESCE(jsonb_agg(jsonb_build_object('name',conname,'definition',pg_get_constraintdef(oid),'validated',convalidated,'deferrable',condeferrable,'deferred',condeferred) ORDER BY conname),'[]'::jsonb) FROM pg_constraint WHERE conrelid=(SELECT oid FROM target)),
+ 'constraints',(SELECT COALESCE(jsonb_agg(jsonb_build_object('name',conname,'definition',pg_get_constraintdef(oid),'validated',convalidated,'enforced',COALESCE((to_jsonb(pg_constraint)->>'conenforced')::boolean,true),'deferrable',condeferrable,'deferred',condeferred) ORDER BY conname),'[]'::jsonb) FROM pg_constraint WHERE conrelid=(SELECT oid FROM target)),
  'indexes',(SELECT COALESCE(jsonb_agg(jsonb_build_object('name',c.relname,'definition',pg_get_indexdef(i.indexrelid),'valid',i.indisvalid,'ready',i.indisready,'unique',i.indisunique) ORDER BY c.relname),'[]'::jsonb) FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid WHERE i.indrelid=(SELECT oid FROM target)),
  'triggers',(SELECT COALESCE(jsonb_agg(jsonb_build_object('name',tgname,'definition',pg_get_triggerdef(oid),'enabled',tgenabled) ORDER BY tgname),'[]'::jsonb) FROM pg_trigger WHERE tgrelid=(SELECT oid FROM target) AND NOT tgisinternal),
  'internalTriggers',(SELECT COALESCE(jsonb_agg(jsonb_build_object('relation',t.tgrelid::regclass::text,'function',t.tgfoid::regprocedure::text,'type',t.tgtype,'enabled',t.tgenabled,'constraint',c.conname,'deferrable',t.tgdeferrable,'deferred',t.tginitdeferred,'args',encode(t.tgargs,'hex'),'qual',pg_get_expr(t.tgqual,t.tgrelid)) ORDER BY t.tgrelid::regclass::text,c.conname,t.tgtype,t.tgfoid::regprocedure::text),'[]'::jsonb) FROM pg_trigger t LEFT JOIN pg_constraint c ON c.oid=t.tgconstraint WHERE t.tgisinternal AND (t.tgrelid=(SELECT oid FROM target) OR t.tgconstraint IN(SELECT oid FROM pg_constraint WHERE conrelid=(SELECT oid FROM target)))),
@@ -49,11 +49,18 @@ export async function assertGmailRecoveryCatalog(
   policy: GmailOwnershipPolicy,
 ): Promise<void> {
   try {
+    const version = await client.query<{ major: number }>(
+      "SELECT current_setting('server_version_num')::integer / 10000 AS major",
+    );
+    const major = version.rows[0]?.major;
+    if (version.rows.length !== 1 || (major !== 17 && major !== 18))
+      throw Error("unsupported_catalog_version");
+    const fixturePath =
+      major === 18
+        ? "./fixtures/gmail-recovery-catalog-pg18.json"
+        : "./fixtures/gmail-recovery-catalog.json";
     const fixture = JSON.parse(
-      await readFile(
-        new URL("./fixtures/gmail-recovery-catalog.json", import.meta.url),
-        "utf8",
-      ),
+      await readFile(new URL(fixturePath, import.meta.url), "utf8"),
     );
     const sourceTags = fixture.sources
       .map((source: { tag: string }) => source.tag)

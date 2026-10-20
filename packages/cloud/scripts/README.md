@@ -158,7 +158,7 @@ receipt data and does not claim full table-schema or operational equivalence.
 0509/0535 effects recorded at0387/0388 times. Its519-entry source fingerprint
 pins journal entries, hashes and parsed statements for this one recovery. It is
 not a generic migration limit or a relaxation of normal ledger validation.
-There is no production entry point or runnable repair command yet.
+There is no production entry point or runnable production repair command.
 
 The transaction boundary requires an exclusively owned idle connection, actual
 PostgreSQL command tags and protocol transaction status. Work must not issue
@@ -166,16 +166,39 @@ transaction control or share the connection. Lost commit replies stay uncertain;
 no automatic retry or speculative rollback is performed after commit submission.
 
 The Gmail catalog fixture covers authentic0509+0535 and requires an explicit
-reviewed table/function owner-role policy. It currently comes from PGlite17.5;
-it does not qualify PostgreSQL18. Default ACLs are required by this fixture;
+reviewed table/function owner-role policy. Actual server major selects either the PGlite 17.5 fixture or the pinned
+PostgreSQL 18 fixture. Other versions are refused. The PG18 fixture retains
+its eight explicit NOT NULL constraints and constraint enforcement flags. Default ACLs are required by this fixture;
 nondefault deployment grants need explicit review, not silent acceptance.
 Preexisting0500 retirement relations are refused because the observed ledger
 contains no retirement evidence. Synthetic tests prove frozen balances and
-rollback boundaries, not complete147-migration recovery or live acceptance.
+rollback boundaries. The PG18 synthetic run also exercises the complete
+147-migration recovery; it does not establish live acceptance.
 
-Remaining gates: pinned PostgreSQL18 synthetic baseline with representative
-financial data, full transaction orchestration, same-session identity/source
-checks and advisory locking, private exception archival and canonical receipt
-order, uncertain-outcome read-only reconciliation, protected backup/restore
+The local-only `admin/run-local-gmail-recovery.py` launcher uses a pinned PG18
+image already present in Docker. It creates an owned loopback container with
+synthetic credentials, a 1 GiB temporary data filesystem, a 3 GiB memory limit,
+and a 22 GiB free-disk reserve. Bun runs with `--no-env-file` and a cleared
+provider environment. It never accepts an external database URL. Choose a fresh
+ignored `test-results/` output directory and pass the absolute Bun 1.4.2 path:
+
+```sh
+python3 packages/cloud/scripts/admin/run-local-gmail-recovery.py \
+  --bun /absolute/path/to/bun \
+  --output test-results/gmail-recovery/run-unique
+```
+
+The synthetic worker builds the normal 370-entry baseline, adds the observed
+Gmail anomaly and representative financial/Gmail rows, then exercises late SQL
+failure rollback, partial retirement refusal, successful recovery and repeat
+refusal. Its executor uses the same source/identity admission, advisory lock,
+canonical SQL parser and validator, and a private exception archive. The pinned PG18 synthetic run passed: all 147 missing SQL migrations executed,
+a real SQL failure after final ledger validation rolled them back, and the
+successful recovery left the normal runner with no pending work. Server-side
+ordered full-row hashes preserve microsecond timestamps and bigint values;
+those private hashes never enter operator receipts.
+
+Remaining gates: populated restore coverage beyond the synthetic financial
+fixtures, uncertain-outcome read-only reconciliation, protected backup/restore
 rehearsal, maintenance fencing and reviewed business impact. Production readiness
 must remain failed until recovery and normal release verification pass.

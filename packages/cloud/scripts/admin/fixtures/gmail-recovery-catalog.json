@@ -175,63 +175,72 @@
         "deferred": false,
         "validated": true,
         "deferrable": false,
-        "definition": "CHECK ((((state = 'prepared'::text) AND (dispatched_at IS NULL) AND (finished_at IS NULL)) OR ((state = 'dispatched'::text) AND (dispatched_at IS NOT NULL) AND (finished_at IS NULL)) OR ((state = ANY (ARRAY['succeeded'::text, 'rejected'::text, 'outcome-unknown'::text])) AND (dispatched_at IS NOT NULL) AND (finished_at IS NOT NULL))))"
+        "definition": "CHECK ((((state = 'prepared'::text) AND (dispatched_at IS NULL) AND (finished_at IS NULL)) OR ((state = 'dispatched'::text) AND (dispatched_at IS NOT NULL) AND (finished_at IS NULL)) OR ((state = ANY (ARRAY['succeeded'::text, 'rejected'::text, 'outcome-unknown'::text])) AND (dispatched_at IS NOT NULL) AND (finished_at IS NOT NULL))))",
+        "enforced": true
       },
       {
         "name": "managed_gmail_operation_receipts_check1",
         "deferred": false,
         "validated": true,
         "deferrable": false,
-        "definition": "CHECK (((state = 'succeeded'::text) = (provider_result IS NOT NULL)))"
+        "definition": "CHECK (((state = 'succeeded'::text) = (provider_result IS NOT NULL)))",
+        "enforced": true
       },
       {
         "name": "managed_gmail_operation_receipts_check2",
         "deferred": false,
         "validated": true,
         "deferrable": false,
-        "definition": "CHECK (((rejection_code IS NULL) OR (state = 'rejected'::text)))"
+        "definition": "CHECK (((rejection_code IS NULL) OR (state = 'rejected'::text)))",
+        "enforced": true
       },
       {
         "name": "managed_gmail_operation_receipts_kind_check",
         "deferred": false,
         "validated": true,
         "deferrable": false,
-        "definition": "CHECK ((kind = ANY (ARRAY['send'::text, 'draft-create'::text, 'draft-replace'::text, 'draft-delete'::text, 'archive'::text, 'unarchive'::text, 'trash'::text, 'untrash'::text, 'mark-read'::text, 'mark-unread'::text])))"
+        "definition": "CHECK ((kind = ANY (ARRAY['send'::text, 'draft-create'::text, 'draft-replace'::text, 'draft-delete'::text, 'archive'::text, 'unarchive'::text, 'trash'::text, 'untrash'::text, 'mark-read'::text, 'mark-unread'::text])))",
+        "enforced": true
       },
       {
         "name": "managed_gmail_operation_receipts_organization_id_fkey",
         "deferred": false,
         "validated": true,
         "deferrable": false,
-        "definition": "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE"
+        "definition": "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE",
+        "enforced": true
       },
       {
         "name": "managed_gmail_operation_receipts_pkey",
         "deferred": false,
         "validated": true,
         "deferrable": false,
-        "definition": "PRIMARY KEY (organization_id, user_id, grant_id, request_id)"
+        "definition": "PRIMARY KEY (organization_id, user_id, grant_id, request_id)",
+        "enforced": true
       },
       {
         "name": "managed_gmail_operation_receipts_review_digest_check",
         "deferred": false,
         "validated": true,
         "deferrable": false,
-        "definition": "CHECK ((review_digest ~ '^[a-f0-9]{64}$'::text))"
+        "definition": "CHECK ((review_digest ~ '^[a-f0-9]{64}$'::text))",
+        "enforced": true
       },
       {
         "name": "managed_gmail_operation_receipts_state_check",
         "deferred": false,
         "validated": true,
         "deferrable": false,
-        "definition": "CHECK ((state = ANY (ARRAY['prepared'::text, 'dispatched'::text, 'succeeded'::text, 'rejected'::text, 'outcome-unknown'::text])))"
+        "definition": "CHECK ((state = ANY (ARRAY['prepared'::text, 'dispatched'::text, 'succeeded'::text, 'rejected'::text, 'outcome-unknown'::text])))",
+        "enforced": true
       },
       {
         "name": "managed_gmail_operation_receipts_user_id_fkey",
         "deferred": false,
         "validated": true,
         "deferrable": false,
-        "definition": "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"
+        "definition": "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
+        "enforced": true
       }
     ],
     "inheritance": [],
