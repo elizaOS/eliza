@@ -36,8 +36,12 @@ jobs:
               alias: [
                 ...(base.resolve?.alias ?? []),
                 {
-                  find: "@elizaos/host/protocol",
-                  replacement: path.join(elizaRoot, "packages/host/src/protocol.ts"),
+                  find: /^@elizaos\/host\/(.*)$/,
+                  replacement: path.join(elizaRoot, "packages/host/src/$1.ts"),
+                },
+                {
+                  find: /^@elizaos\/core\/(.*)$/,
+                  replacement: path.join(elizaRoot, "packages/core/src/$1.ts"),
                 },
               ],
             },
