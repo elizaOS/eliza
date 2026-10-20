@@ -3727,9 +3727,26 @@ async function generateTextAtEndpoint(
         (failure as { statusCode?: number; status?: number }).statusCode ??
         (failure as { status?: number }).status;
       if (status === 429) {
+        // A rate-limited attempt that produced no output is a failed call, not
+        // a successful empty one. Without a finish reason and the provider
+        // error the trajectory record reads as a call that succeeded and
+        // returned no text, so the failure is invisible to anyone reading the
+        // trajectory. Record it the way every other failed stream records.
+        const failureMessage =
+          failure instanceof Error ? failure.message : String(failure);
+        const redactedFailure = composeToolDiagnosticRedactor(
+          runtime ?? undefined,
+        )(failureMessage);
+        details.providerMetadata = {
+          ...(details.providerMetadata && typeof details.providerMetadata === "object"
+            ? details.providerMetadata
+            : {}),
+          error: redactedFailure,
+        };
+        details.finishReason = "error";
         logActiveTrajectoryLlmCall(runtime, {
           ...details,
-          response: "",
+          response: `[model call failed] ${redactedFailure}`,
           latencyMs: Math.max(0, Math.round(performance.now() - startedAt)),
         });
         throw capturedStreamError;
