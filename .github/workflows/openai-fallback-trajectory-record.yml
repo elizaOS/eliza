@@ -24,27 +24,39 @@ jobs:
         working-directory: plugins/plugin-openai
         run: |
           cat > vitest.config.focus.ts <<'FOCUS'
+          import fs from "node:fs";
           import path from "node:path";
           import base from "./vitest.config";
 
           const elizaRoot = path.resolve(import.meta.dirname, "../..");
 
+          const workspaceSource = {
+            name: "eliza-workspace-source",
+            enforce: "pre" as const,
+            resolveId(source: string) {
+              const match = /^@elizaos\/([^/]+)(?:\/(.+))?$/.exec(source);
+              if (!match) return null;
+              const [, pkg, sub] = match;
+              const srcRoot = path.join(elizaRoot, "packages", pkg, "src");
+              const candidates = sub
+                ? [
+                    path.join(srcRoot, `${sub}.ts`),
+                    path.join(srcRoot, sub, "index.ts"),
+                    path.join(srcRoot, sub),
+                  ]
+                : [path.join(srcRoot, "index.ts")];
+              for (const candidate of candidates) {
+                if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+                  return candidate;
+                }
+              }
+              return null;
+            },
+          };
+
           export default {
             ...base,
-            resolve: {
-              ...base.resolve,
-              alias: [
-                ...(base.resolve?.alias ?? []),
-                {
-                  find: /^@elizaos\/host\/(.*)$/,
-                  replacement: path.join(elizaRoot, "packages/host/src/$1.ts"),
-                },
-                {
-                  find: /^@elizaos\/core\/(.*)$/,
-                  replacement: path.join(elizaRoot, "packages/core/src/$1.ts"),
-                },
-              ],
-            },
+            plugins: [...(base.plugins ?? []), workspaceSource],
           };
           FOCUS
           bunx vitest run --config ./vitest.config.focus.ts __tests__/openrouter-fallback.wire.test.ts
