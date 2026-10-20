@@ -236,11 +236,15 @@ export function renderMessageHandlerModelInput(
     taskIndex > 0 ? instructions.slice(0, taskIndex).trim() : "";
   const taskInstructions =
     taskIndex >= 0 ? instructions.slice(taskIndex) : `# Task\n${instructions}`;
+  const replyReferenceSegments = turnTailSegments.filter(
+    (segment) => segment.label === "reply_reference",
+  );
   const currentMessages = turnTailSegments.filter(
     (segment) => segment.label === "message:user",
   );
   const otherTurnSegments = turnTailSegments.filter(
-    (segment) => segment.label !== "message:user",
+    (segment) =>
+      segment.label !== "message:user" && segment.label !== "reply_reference",
   );
   const orderedDynamicSegments = [
     ...compactHistoricalReceiptSegments(historicalNavigationSegments),
@@ -282,6 +286,7 @@ export function renderMessageHandlerModelInput(
       ].join("\n\n"),
       stable: false,
     },
+    ...replyReferenceSegments,
     ...currentMessages,
     ...(options?.responseHandlerContext?.trim()
       ? [
