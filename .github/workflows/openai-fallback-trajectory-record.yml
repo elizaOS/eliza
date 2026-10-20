@@ -17,7 +17,7 @@ jobs:
         with:
           bun-version: "1.3.0"
       - name: Install workspace dependencies
-        run: bun install --frozen-lockfile --ignore-scripts
+        run: bun install --frozen-lockfile
       - name: Run the OpenRouter fallback wire test
         working-directory: plugins/plugin-openai
         run: bunx vitest run --config ./vitest.config.ts __tests__/openrouter-fallback.wire.test.ts
