@@ -226,6 +226,18 @@ describe("measureDirBytes", () => {
     const total = await measureDirBytes(join(tmpdir(), "does-not-exist-13773"));
     expect(total).toBe(0);
   });
+
+  it("rejects a path that exists but is not a readable directory", async () => {
+    const root = tmpRoot("wsreg-measure-notdir-");
+    const filePath = join(root, "not-a-dir.txt");
+    await writeFile(filePath, "x", "utf8");
+
+    // ENOTDIR is a corrupt registry entry, not a vanished workspace: reporting
+    // 0 bytes would let the cap gate under-count and admit a spawn on a full disk.
+    await expect(measureDirBytes(filePath)).rejects.toMatchObject({
+      code: "ENOTDIR",
+    });
+  });
 });
 
 describe("workspaceDiskBudgetError", () => {
