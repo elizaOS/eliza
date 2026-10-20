@@ -1347,19 +1347,36 @@ export function isChatGenerationTimeoutError(err: unknown): boolean {
     err instanceof Error ? err.message : typeof err === "string" ? err : "";
   return CHAT_GENERATION_TIMEOUT_PATTERN.test(msg);
 }
+function invalidOllamaEndpoint(endpoint: string, cause: unknown): ElizaError {
+  return new ElizaError(
+    "Configured Ollama endpoint (OLLAMA_BASE_URL/OLLAMA_API_ENDPOINT) is not a valid URL; expected e.g. http://host:11434",
+    {
+      code: "OLLAMA_ENDPOINT_INVALID",
+      cause,
+      context: { endpoint },
+    },
+  );
+}
 function isRemoteOllamaEndpointConfigured(): boolean {
   const raw =
     readAliasedEnv("OLLAMA_BASE_URL") ?? readAliasedEnv("OLLAMA_API_ENDPOINT");
+  // Legitimate "no endpoint configured": neither variable is set, so Ollama
+  // stays on its localhost default and the local deadline applies.
   if (!raw?.trim()) return false;
   try {
     const normalized = raw.trim().replace(/\/api\/?$/i, "");
     const host = new URL(normalized).hostname.toLowerCase();
     return host !== "localhost" && host !== "127.0.0.1" && host !== "::1";
-  } catch {
-    return false;
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow — the caller only uses this
+    // answer to pick a generation deadline, so reporting an unparseable
+    // endpoint as "not configured" silently downgraded a remote Ollama
+    // (600s) to the local deadline (180s) and the client saw a bogus
+    // "Chat generation timed out" turn instead of the broken configuration.
+    throw invalidOllamaEndpoint(raw.trim(), error);
   }
 }
-function resolveChatGenerationTimeoutMs(explicit?: number): number {
+export function resolveChatGenerationTimeoutMs(explicit?: number): number {
   if (
     typeof explicit === "number" &&
     Number.isFinite(explicit) &&
