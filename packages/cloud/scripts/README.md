@@ -101,6 +101,22 @@ list still fails readiness; it does not authorize a migration or prove that the
 served application supports the new schema. The workflow retains its exact-main
 freshness check and prints no database identities, credentials or customer rows.
 
+The optional `restore_target_utc` dispatch input adds read-only backup evidence
+for one fixed past UTC time (`YYYY-MM-DDTHH:MM:SSZ`). Leave it empty to retain the
+existing audit behavior. The same pinned Railway 5.38.0 CLI captures private
+volume, PITR, schedule and backup metadata. The existing resilience evaluator is
+enforced for this report even if the release gate is off. Its backup-age policy
+uses the same protected setting and 36-hour fallback as the release workflow.
+
+The report checks protected authority, volume binding, backup freshness, live
+archiver health and whether the target falls within the observed CLI window.
+Railway's live window is best-effort: a passing candidate does not prove archive
+continuity or restore success. `archiveContinuityProven`, `restoreProven` and
+`productionMigrationReady` remain false. Only booleans and receipt hashes are
+published; raw files are destroyed after the run. The audit can report backup
+observations while its existing divergent-ledger readiness still fails. No
+backup, restore, configuration change or database write occurs.
+
 For a divergent ledger, `migrationLedgerDiagnostics` reports a fixed reason and
 a canonical tag only when the journal uniquely identifies it. Raw database row
 IDs, timestamps, hashes and exception messages are excluded. Unknown failures
