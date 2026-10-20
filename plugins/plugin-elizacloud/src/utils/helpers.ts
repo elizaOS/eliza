@@ -104,9 +104,9 @@ export async function webStreamToNodeStream(webStream: ReadableStream<Uint8Array
 
 export function parseImageDescriptionResponse(responseText: string): ImageDescriptionResult {
   // Vision models often answer with a bold label, for example
-  // "**Title:** Red jacket at the zoo". The plain label, the bold label and
-  // the bold label with a space before the colon are all accepted, and the
-  // emphasis marks around the title value are removed.
+  // "**Title:** Red jacket at the zoo". The regex matches the label with potential 
+  // whitespace/asterisks and captures the remainder as the title, cleaning 
+  // trailing asterisks from the result.
   const titleMatch = responseText.match(/^[ \t]*\**[ \t]*Title[ \t]*\**[ \t]*:[ \t]*([^\r\n]+)/i);
   const title =
     titleMatch?.[1]?.trim().replace(/^\*+|\*+$/g, "").trim() || "Image Analysis";
