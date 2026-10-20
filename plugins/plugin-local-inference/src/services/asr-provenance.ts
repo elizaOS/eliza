@@ -14,9 +14,9 @@
  * `asr/voice-files.json` record, and the Eliza-1 manifest says nothing about
  * it. A strict Eliza-1 text bundle can therefore transcribe with Phonon-2.
  */
+import type { Dirent } from "node:fs";
 import {
 	closeSync,
-	existsSync,
 	openSync,
 	readdirSync,
 	readFileSync,
@@ -147,21 +147,49 @@ export function readGgufArchitecture(file: string): string | null {
 }
 
 /**
+ * `<bundle>/asr/` exists but could not be listed (EACCES, EIO, ELOOP, EMFILE).
+ * The bundle's ASR bytes are unknown, which is not the same as absent: callers
+ * must not downgrade a read failure into "this bundle ships no ASR model".
+ */
+export class AsrArtifactListingError extends Error {
+	readonly asrDir: string;
+	readonly code: string;
+	constructor(asrDir: string, code: string, cause: unknown) {
+		super(
+			`failed to list ASR artifacts in ${asrDir} (${code}): the bundle's asr/ directory could not be read, so its ASR model is unknown rather than absent`,
+			{ cause },
+		);
+		this.name = "AsrArtifactListingError";
+		this.asrDir = asrDir;
+		this.code = code;
+	}
+}
+
+/**
  * True when `<bundle>/asr/` holds a model the fused library can load: a
  * Parakeet-TDT GGUF (Phonon-2). No other local ASR is supported.
+ *
+ * A missing `asr/` directory (or `asr` being a plain file) reports false — the
+ * bundle genuinely ships no ASR model. An `asr/` that exists but cannot be
+ * enumerated throws `AsrArtifactListingError` instead, because callers turn
+ * false into `missing-asr-model` and would send an operator to re-download a
+ * model that is already on disk.
  */
 export function bundleHasAsrModelFiles(bundleRoot: string): boolean {
 	const asrDir = path.join(bundleRoot, "asr");
-	if (!existsSync(asrDir)) return false;
+	let entries: Dirent<string>[];
 	try {
-		return readdirSync(asrDir, { withFileTypes: true }).some(
-			(entry) =>
-				entry.isFile() &&
-				entry.name.toLowerCase().endsWith(".gguf") &&
-				readGgufArchitecture(path.join(asrDir, entry.name)) ===
-					PARAKEET_TDT_ARCHITECTURE,
-		);
-	} catch {
-		return false;
+		entries = readdirSync(asrDir, { withFileTypes: true });
+	} catch (error) {
+		const code = (error as NodeJS.ErrnoException).code;
+		if (code === "ENOENT" || code === "ENOTDIR") return false;
+		throw new AsrArtifactListingError(asrDir, code ?? "unknown", error);
 	}
+	return entries.some(
+		(entry) =>
+			entry.isFile() &&
+			entry.name.toLowerCase().endsWith(".gguf") &&
+			readGgufArchitecture(path.join(asrDir, entry.name)) ===
+				PARAKEET_TDT_ARCHITECTURE,
+	);
 }

@@ -1,6 +1,12 @@
 /** Covers strict-versus-candidate ASR provenance enforcement against real manifest files. */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -165,4 +171,37 @@ describe("bundle ASR artifacts", () => {
 
 		expect(bundleHasAsrModelFiles(root)).toBe(false);
 	});
+
+	it("treats a missing or non-directory asr/ as no ASR model", () => {
+		const root = mkdtempSync(path.join(tmpdir(), "eliza-asr-provenance-"));
+		roots.push(root);
+		// No asr/ at all: the bundle ships no ASR model, not a read failure.
+		expect(bundleHasAsrModelFiles(root)).toBe(false);
+		// asr/ replaced by a file: still a legitimate "no ASR directory".
+		writeFileSync(path.join(root, "asr"), "not a directory");
+		expect(bundleHasAsrModelFiles(root)).toBe(false);
+	});
+
+	it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+		"propagates an asr/ listing failure instead of reporting no ASR model",
+		() => {
+			const root = writeManifest({});
+			const asrDir = path.join(root, "asr");
+			writeFileSync(
+				path.join(asrDir, "phonon-2-fv5.gguf"),
+				gguf("parakeet-tdt"),
+			);
+
+			// A mode-0 asr/ makes readdirSync fail with EACCES while the Phonon-2
+			// GGUF is still staged. Callers that read `false` here report
+			// "missing-asr-model" and tell the operator to re-download a model
+			// that is already on disk; the failure must surface instead.
+			chmodSync(asrDir, 0o000);
+			try {
+				expect(() => bundleHasAsrModelFiles(root)).toThrow(/EACCES/);
+			} finally {
+				chmodSync(asrDir, 0o755);
+			}
+		},
+	);
 });
