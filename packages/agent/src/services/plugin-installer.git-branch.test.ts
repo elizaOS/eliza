@@ -52,6 +52,7 @@ vi.mock("../config/config.js", () => ({
 vi.mock("./registry-client.js", () => ({ getPluginInfo: vi.fn() }));
 vi.mock("@elizaos/host/protocol", () => ({ requestRestart: vi.fn() }));
 
+import type { RegistryPluginInfo } from "./registry-client-types.js";
 import { resolveGitBranch } from "./plugin-installer.js";
 
 const UNREACHABLE = {
@@ -62,15 +63,28 @@ const UNREACHABLE = {
 
 function plugin(
   git: { v2Branch?: string | null; v1Branch?: string | null } = {},
-) {
+): RegistryPluginInfo {
   return {
     name: "plugin-x",
+    gitRepo: "elizaOS/plugin-x",
     gitUrl: "https://github.com/elizaOS/plugin-x.git",
+    description: "Fixture plugin",
+    homepage: null,
+    topics: [],
+    stars: 0,
+    language: "TypeScript",
+    npm: {
+      package: "@elizaos/plugin-x",
+      v0Version: null,
+      v1Version: null,
+      v2Version: null,
+    },
     git: {
       v0Branch: null,
       v1Branch: git.v1Branch ?? null,
       v2Branch: git.v2Branch ?? null,
     },
+    supports: { v0: false, v1: false, v2: true },
   };
 }
 
