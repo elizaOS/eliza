@@ -6,6 +6,7 @@
 import { createServer, type Server } from "node:http";
 import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { withStandaloneTrajectory } from "@elizaos/core";
 import { handleTextSmall } from "../models/text";
 import type { TextStreamResult } from "../types";
 
@@ -127,6 +128,24 @@ afterEach(() => {
 });
 
 function runtime(overrides: Record<string, string> = {}) {
+  const llmCalls: {
+    finishReason?: string;
+    response?: string;
+    providerMetadata?: Record<string, unknown>;
+  }[] = [];
+  const trajectoriesService = {
+    isEnabled: () => true,
+    startTrajectory: () => "trajectory-fixture",
+    startStep: () => "step-fixture",
+    endTrajectory: () => undefined,
+    logLlmCall: (call: {
+      finishReason?: string;
+      response?: string;
+      providerMetadata?: Record<string, unknown>;
+    }) => {
+      llmCalls.push(call);
+    },
+  };
   const settings: Record<string, string> = {
     ELIZA_PROVIDER: "cerebras",
     OPENAI_BASE_URL: `${baseURL}/primary/v1`,
@@ -145,10 +164,13 @@ function runtime(overrides: Record<string, string> = {}) {
       emitEvent: async (_name: string, event: unknown) => {
         events.push(event);
       },
-      getService: () => null,
+      getService: (name: string) => (name === "trajectories" ? trajectoriesService : null),
       getServicesByType: () => [],
+      agentId: "agent-fixture",
+      reportError: () => undefined,
     } as unknown as IAgentRuntime,
     events,
+    llmCalls,
   };
 }
 
@@ -205,6 +227,28 @@ describe("explicit OpenRouter fallback", () => {
     vi.spyOn(Date, "now").mockReturnValue(now + 61_000);
     await handleTextSmall(agent, params);
     expect(requests[3].path).toContain("/primary/");
+  });
+
+  it("records a rate-limited attempt as a failed call, not a successful empty one", async () => {
+    const { runtime: agent, llmCalls } = runtime();
+    const response = (await withStandaloneTrajectory(
+      agent,
+      { source: "test" },
+      async () =>
+        (await handleTextSmall(agent, {
+          ...params,
+          stream: true,
+          onStreamChunk: () => {},
+        })) as TextStreamResult,
+    )) as TextStreamResult;
+    for await (const _chunk of response.textStream) {
+      /* Consume the fallback frames. */
+    }
+    expect(llmCalls.length).toBeGreaterThan(0);
+    const first = llmCalls[0];
+    expect(first.finishReason).toBe("error");
+    expect(String(first.response)).toContain("Tokens per minute limit exceeded");
+    expect(String(first.providerMetadata?.error)).toContain("Tokens per minute limit exceeded");
   });
 
   it.each([false, true])("recovers before streaming output, structured=%s", async (structured) => {
