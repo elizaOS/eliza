@@ -22,4 +22,25 @@ jobs:
           bun packages/scripts/ensure-workspace-symlinks.ts
       - name: Run the OpenRouter fallback wire test
         working-directory: plugins/plugin-openai
-        run: bunx vitest run --config ./vitest.config.ts __tests__/openrouter-fallback.wire.test.ts
+        run: |
+          cat > vitest.config.focus.ts <<"EOF"
+          import path from "node:path";
+          import base from "./vitest.config";
+
+          const elizaRoot = path.resolve(import.meta.dirname, "../..");
+
+          export default {
+            ...base,
+            resolve: {
+              ...base.resolve,
+              alias: [
+                ...(base.resolve?.alias ?? []),
+                {
+                  find: /^@elizaos/host/protocol$/,
+                  replacement: path.join(elizaRoot, "packages/host/src/protocol.ts"),
+                },
+              ],
+            },
+          };
+          EOF
+          bunx vitest run --config ./vitest.config.focus.ts __tests__/openrouter-fallback.wire.test.ts
