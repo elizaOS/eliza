@@ -6,7 +6,7 @@ export const PITR_QUERIES = {
   backupContract:
     'query BackupContract { mutation: __type(name: "Mutation") { fields(includeDeprecated: true) { name args { name defaultValue type { kind name ofType { kind name ofType { kind name } } } } type { kind name ofType { kind name ofType { kind name } } } } } workflow: __type(name: "WorkflowId") { fields(includeDeprecated: true) { name type { kind name ofType { kind name } } } } }',
   volumes:
-    "query Volumes($id: String!) { environment(id: $id) { id volumeInstances { edges { node { id volumeId environmentId serviceId mountPath state deletedAt isPendingDeletion sizeMB } } } } }",
+    "query Volumes($id: String!) { environment(id: $id) { id volumeInstances { edges { node { id volumeId environmentId serviceId mountPath state deletedAt isPendingDeletion currentSizeMB sizeMB } } } } }",
   backupList:
     "query BackupList($id: String!) { volumeInstanceBackupList(volumeInstanceId: $id) { id name createdAt expiresAt } }",
   backupCreate:

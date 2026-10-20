@@ -65,6 +65,19 @@ export async function runSafetyBackup(input: {
       throw Error("authority_not_fresh");
   };
   authorityFresh();
+  const capacityObservation: {
+    observedAt: string;
+    usedMB: number | null;
+    capacityMB: number | null;
+    usageKnown: boolean;
+    aboveManualBackupHalfCapacity: boolean | null;
+  } = {
+    observedAt: new Date().toISOString(),
+    usedMB: null,
+    capacityMB: null,
+    usageKnown: false,
+    aboveManualBackupHalfCapacity: null,
+  };
   const bind = async (): Promise<BackupBinding> => {
     if (input.signal.aborted || !(await input.sourceFresh()))
       throw Error("source_or_operation_unavailable");
@@ -95,6 +108,28 @@ export async function runSafetyBackup(input: {
       sha(nodes[0].id) !== input.volumeReceipt
     )
       throw Error("volume_binding_mismatch");
+    // Pinned CLI5.38 volume.rs labels currentSizeMB/sizeMB as storage used/total.
+    // This is diagnostic only: neither capacity metadata nor absence admits a retry.
+    const used = nodes[0].currentSizeMB,
+      capacity = nodes[0].sizeMB;
+    const known =
+      typeof capacity === "number" &&
+      Number.isInteger(capacity) &&
+      capacity > 0 &&
+      capacity <= 2147483647 &&
+      typeof used === "number" &&
+      Number.isFinite(used) &&
+      used >= 0 &&
+      used <= capacity;
+    Object.assign(capacityObservation, {
+      observedAt: new Date().toISOString(),
+      usedMB: known ? (used as number) : null,
+      capacityMB: known ? (capacity as number) : null,
+      usageKnown: known,
+      aboveManualBackupHalfCapacity: known
+        ? (used as number) > (capacity as number) / 2
+        : null,
+    });
     return { ...bindingBase, volumeId: nodes[0].id };
   };
   const binding = await bind();
@@ -132,6 +167,21 @@ export async function runSafetyBackup(input: {
       throw Error("source_or_operation_unavailable");
     return {
       apiContract,
+      volumeCapacity: capacityObservation,
+      backupInventory: {
+        listedCount: entries.length,
+        retainedCount: entries
+          .map(object)
+          .filter(
+            (item) =>
+              typeof item.createdAt === "string" &&
+              Number.isFinite(Date.parse(item.createdAt)) &&
+              Date.parse(item.createdAt) <= observedAt &&
+              (item.expiresAt === null ||
+                (typeof item.expiresAt === "string" &&
+                  Date.parse(item.expiresAt) > observedAt)),
+          ).length,
+      },
       purpose: "production_named_safety_backup_reconciliation",
       state: "observed_read_only",
       operationReceipt: input.reconcileOperationReceipt,

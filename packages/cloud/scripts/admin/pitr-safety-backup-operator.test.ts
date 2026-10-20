@@ -213,7 +213,7 @@ test("exact operation reconciliation reads only, distinguishes absent/unique/amb
       );
       expect(result.requestSubmitted).toBe(false);
       expect(result.workflowComplete).toBe(false);
-      expect("apiContract" in result && result.apiContract.available).toBe(
+      expect("apiContract" in result && result.apiContract?.available).toBe(
         false,
       );
       expect(
@@ -303,5 +303,56 @@ test("finite transport refusal survives the public receipt without retry", async
     );
     expect(result.automaticRetryAllowed).toBe(false);
     expect(calls.filter((v) => v === "backupCreate")).toHaveLength(1);
+  });
+});
+
+test("read-only exact-volume capacity reports the documented half-capacity boundary without mutation", async () => {
+  await fixture(async (input, calls) => {
+    input.reconcileOperationReceipt = "a".repeat(64);
+    const original = input.api;
+    for (const [used, total, known, above] of [
+      [49, 100, true, false],
+      [50, 100, true, false],
+      [51, 100, true, true],
+      [101, 100, false, null],
+      [-1, 100, false, null],
+      [null, 100, false, null],
+      [1, 0, false, null],
+      [1, 2147483648, false, null],
+      [Infinity, 100, false, null],
+    ] as const) {
+      input.api = async (op, vars, signal) => {
+        const result = await original(op, vars, signal);
+        if (op === "volumes") {
+          const value = result as {
+            data: {
+              environment: {
+                volumeInstances: { edges: { node: Record<string, unknown> }[] };
+              };
+            };
+          };
+          value.data.environment.volumeInstances.edges[0].node.currentSizeMB =
+            used;
+          value.data.environment.volumeInstances.edges[0].node.sizeMB = total;
+        }
+        return result;
+      };
+      const result = await runSafetyBackup(input);
+      expect("matchingBackup" in result && result.matchingBackup).toBe(
+        "absent",
+      );
+      const capacity =
+        "volumeCapacity" in result ? result.volumeCapacity : null;
+      expect(capacity?.usageKnown).toBe(known);
+      expect(capacity?.aboveManualBackupHalfCapacity).toBe(above);
+      expect(capacity?.usedMB).toBe(known ? used : null);
+      expect(capacity?.capacityMB).toBe(known ? total : null);
+      expect(JSON.stringify(result)).not.toContain("volumeId");
+    }
+    expect(
+      calls.every((op) =>
+        ["volumes", "backupList", "backupContract"].includes(op),
+      ),
+    ).toBe(true);
   });
 });

@@ -300,3 +300,10 @@ or malformed introspection does not discard the backup-list observation. Contrac
 agreement does not authorize creation. GraphQL document validation and provider
 `BAD_USER_INPUT` now have distinct finite categories; no further create is needed
 to inspect the deployed schema.
+Reconciliation reports storage used and total MB from the same verified volume
+instance, plus listed/retained backup counts. Pinned CLI5.38 labels
+`currentSizeMB/sizeMB` as storage used/total. Missing, non-finite or impossible
+amounts remain unknown. The above-half flag compares observed usage with Railway's
+[documented manual-backup limit](https://docs.railway.com/volumes/backups).
+It is diagnostic only: being below that limit does not prove creation eligibility,
+and the operator never resizes a volume or retries a backup from this observation.
