@@ -1,7 +1,10 @@
 /** Plugin unload must tear down chat pre-handlers and response-handler
  * (field) evaluators, not only actions/providers/evaluators. */
 import { expect, it } from "vitest";
+import { SEND_HANDLER_NOT_FOUND } from "../src/types/messaging";
 import type { Plugin } from "../src/types/plugin";
+import type { IAgentRuntime } from "../src/types/runtime";
+import { Service } from "../src/types/service";
 
 /** The chat pre-handler registry is internal to the concrete runtime; the test
  * reads it directly to assert the real post-unload state, not just bookkeeping. */
@@ -178,4 +181,69 @@ it("unloading a plugin whose same-name response-handler evaluators were skipped 
 	expect(runtime.responseHandlerFieldEvaluators).toContain(
 		incumbent.responseHandlerFieldEvaluators?.[0],
 	);
+});
+
+/** Registers connectors from its started service, through the same
+ * registerSendHandlers hook plugin-telegram, plugin-discord and plugin-slack use. */
+class ConnectorFixtureService extends Service {
+	static serviceType = "connector_teardown_fixture";
+	capabilityDescription = "Connector teardown fixture";
+	static async start(runtime: IAgentRuntime): Promise<Service> {
+		return new ConnectorFixtureService(runtime);
+	}
+	async stop(): Promise<void> {}
+	static registerSendHandlers(runtime: IAgentRuntime): void {
+		const sendHandler = async () => undefined;
+		runtime.registerMessageConnector({ source: "fixture-chat", sendHandler });
+		runtime.registerMessageConnector({
+			source: "fixture-chat",
+			accountId: "second",
+			sendHandler,
+		});
+		runtime.registerPostConnector({ source: "fixture-feed" });
+		runtime.registerSendHandler("fixture-legacy", sendHandler);
+	}
+}
+
+function connectorSources(runtime: IAgentRuntime) {
+	return {
+		message: runtime
+			.getMessageConnectors()
+			.map(({ source, accountId }) => `${source}:${accountId ?? ""}`),
+		post: runtime.getPostConnectors().map(({ source }) => source),
+	};
+}
+
+it("unloadPlugin removes the message and post connectors its service registered", async () => {
+	const { createInitializedRuntime } = await import("./initialized-runtime");
+	const runtime = await createInitializedRuntime({
+		character: { name: "Teardown connectors", bio: [] },
+		logLevel: "fatal",
+	});
+
+	await runtime.registerPlugin({
+		name: "connector-teardown-fixture",
+		description: "Registers message and post connectors from a service",
+		services: [ConnectorFixtureService],
+	});
+	await runtime.getServiceLoadPromise("connector_teardown_fixture");
+	expect(connectorSources(runtime)).toEqual({
+		message: ["fixture-chat:", "fixture-chat:second", "fixture-legacy:"],
+		post: ["fixture-feed"],
+	});
+
+	await runtime.unloadPlugin("connector-teardown-fixture");
+
+	// A connector that outlives its plugin still looks available to MESSAGE,
+	// POST and scheduled dispatch, and routes sends to the stopped service.
+	expect(connectorSources(runtime)).toEqual({ message: [], post: [] });
+	for (const target of [
+		{ source: "fixture-chat" },
+		{ source: "fixture-chat", accountId: "second" },
+		{ source: "fixture-legacy" },
+	]) {
+		await expect(
+			runtime.sendMessageToTarget(target, { text: "after unload" }),
+		).rejects.toMatchObject({ code: SEND_HANDLER_NOT_FOUND });
+	}
 });

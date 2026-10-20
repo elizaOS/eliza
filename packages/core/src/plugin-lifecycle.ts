@@ -4,6 +4,7 @@
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { unregisterConnectorSourceMetadataOwner } from "./connectors";
+import { normalizeConnectorAccountId } from "./runtime/connector-registration";
 import { roleRank } from "./runtime/context-gates";
 import type { ContextRegistry } from "./runtime/context-registry";
 import type { AgentContext, RoleGate, RoleGateRole } from "./types/contexts";
@@ -16,7 +17,11 @@ import type {
 	PluginOwnership,
 	PluginServiceRegistration,
 } from "./types/plugin";
-import type { IAgentRuntime } from "./types/runtime";
+import type {
+	IAgentRuntime,
+	MessageConnectorRegistration,
+	PostConnectorRegistration,
+} from "./types/runtime";
 import type { Service, ServiceTypeName } from "./types/service";
 import {
 	lookupProviderCatalogContexts,
@@ -198,6 +203,35 @@ function getOwnershipTarget(
 		return activeCapture.ownership;
 	}
 	return getPluginOwnershipStore(runtime).get(pluginName) ?? null;
+}
+
+/** Ownership of the plugin whose registration or service start is running. */
+function getCapturingOwnership(
+	runtime: RuntimeWithPluginLifecycle,
+): PluginOwnership | null {
+	const pluginName =
+		pluginServiceStartContext.getStore()?.pluginName ??
+		pluginRegistrationContext.getStore()?.ownership.pluginName;
+	return pluginName ? getOwnershipTarget(runtime, pluginName) : null;
+}
+
+function pushUniqueConnector(
+	items: PluginOwnership["messageConnectors"],
+	registration: MessageConnectorRegistration | PostConnectorRegistration,
+): void {
+	const source = registration.source.trim();
+	const accountId =
+		normalizeConnectorAccountId(registration.accountId) ??
+		normalizeConnectorAccountId(registration.account?.accountId);
+	if (
+		items.some(
+			(existing) =>
+				existing.source === source && existing.accountId === accountId,
+		)
+	) {
+		return;
+	}
+	items.push(accountId ? { source, accountId } : { source });
 }
 
 function pushUniqueRef<T extends object>(items: T[], item: T): void {
@@ -452,6 +486,8 @@ function createEmptyOwnership(plugin: Plugin): PluginOwnership {
 		models: [],
 		services: [],
 		sendHandlerSources: [],
+		messageConnectors: [],
+		postConnectors: [],
 		hasAdapter: false,
 		chatPreHandlerIds: [],
 		responseHandlerEvaluatorNames: [],
@@ -638,12 +674,20 @@ function removeOwnedPlugins(
 	}
 }
 
-function removeOwnedSendHandlers(
-	privateState: RuntimePrivateState,
+/** Unregistering through the connector registry also drops the connector
+ * entry that MESSAGE, POST and scheduled dispatch read, not only the handler. */
+function removeOwnedConnectors(
+	runtime: RuntimeWithPluginLifecycle,
 	ownership: PluginOwnership,
 ): void {
 	for (const source of ownership.sendHandlerSources) {
-		privateState.sendHandlers.delete(source);
+		runtime.unregisterMessageConnector(source);
+	}
+	for (const { source, accountId } of ownership.messageConnectors) {
+		runtime.unregisterMessageConnector(source, accountId);
+	}
+	for (const { source, accountId } of ownership.postConnectors) {
+		runtime.unregisterPostConnector(source, accountId);
 	}
 }
 
@@ -721,7 +765,7 @@ async function teardownPluginOwnership(
 	}
 
 	try {
-		removeOwnedSendHandlers(privateState, ownership);
+		removeOwnedConnectors(runtime, ownership);
 	} catch (error) {
 		// error-policy:J6 Teardown attempts every owned resource and aggregates failures.
 		errors.push(error instanceof Error ? error : new Error(String(error)));
@@ -812,6 +856,10 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		runtimeWithLifecycle.registerResponseHandlerFieldEvaluator.bind(
 			runtimeWithLifecycle,
 		);
+	const originalRegisterMessageConnector =
+		runtimeWithLifecycle.registerMessageConnector.bind(runtimeWithLifecycle);
+	const originalRegisterPostConnector =
+		runtimeWithLifecycle.registerPostConnector.bind(runtimeWithLifecycle);
 	const originalRegisterSendHandler =
 		typeof privateState.registerSendHandler === "function"
 			? privateState.registerSendHandler.bind(runtimeWithLifecycle)
@@ -1040,15 +1088,25 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 			originalRegisterSendHandler(source, handler);
 			if (hadSourceAlready) return;
 
-			const pluginName =
-				pluginServiceStartContext.getStore()?.pluginName ??
-				pluginRegistrationContext.getStore()?.ownership.pluginName;
-			if (!pluginName) return;
-			const ownership = getOwnershipTarget(runtimeWithLifecycle, pluginName);
+			const ownership = getCapturingOwnership(runtimeWithLifecycle);
 			if (!ownership) return;
 			pushUniqueString(ownership.sendHandlerSources, source);
 		}) as typeof privateState.registerSendHandler;
 	}
+
+	runtimeWithLifecycle.registerMessageConnector = ((registration) => {
+		originalRegisterMessageConnector(registration);
+		const ownership = getCapturingOwnership(runtimeWithLifecycle);
+		if (!ownership) return;
+		pushUniqueConnector(ownership.messageConnectors, registration);
+	}) as typeof runtimeWithLifecycle.registerMessageConnector;
+
+	runtimeWithLifecycle.registerPostConnector = ((registration) => {
+		originalRegisterPostConnector(registration);
+		const ownership = getCapturingOwnership(runtimeWithLifecycle);
+		if (!ownership) return;
+		pushUniqueConnector(ownership.postConnectors, registration);
+	}) as typeof runtimeWithLifecycle.registerPostConnector;
 
 	if (originalRunServiceStart) {
 		privateState._runServiceStart = (async (key, serviceType, serviceClass) => {
@@ -1115,6 +1173,8 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 				capture.ownership.models.length > 0 ||
 				capture.ownership.services.length > 0 ||
 				capture.ownership.sendHandlerSources.length > 0 ||
+				capture.ownership.messageConnectors.length > 0 ||
+				capture.ownership.postConnectors.length > 0 ||
 				capture.ownership.chatPreHandlerIds.length > 0 ||
 				capture.ownership.responseHandlerEvaluatorNames.length > 0 ||
 				capture.ownership.responseHandlerFieldEvaluatorNames.length > 0 ||
