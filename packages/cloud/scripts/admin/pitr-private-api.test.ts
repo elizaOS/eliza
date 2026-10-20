@@ -188,3 +188,25 @@ test("exact pinned HTTP lines classify without leaking stderr; arbitrary text do
       },
     );
 });
+
+test("failure evidence callback is backup-error-only and never changes rejection", async () => {
+  const script =
+    'import sys,json\nprint(json.dumps({"data":{"secret":"never-captured"},"errors":[{"message":"constraint","extensions":{"code":"BAD_USER_INPUT"}}]}))\nsys.exit(1)';
+  await fakeCli(script, async () => {
+    const captured: unknown[] = [];
+    await expect(
+      privatePitrApi("backupCreate", {}, undefined, (e) => captured.push(e)),
+    ).rejects.toThrow("private_provider_bad_user_input");
+    expect(captured).toHaveLength(1);
+    expect(JSON.stringify(captured)).not.toContain("never-captured");
+    await expect(
+      privatePitrApi("backupList", {}, undefined, (e) => captured.push(e)),
+    ).rejects.toThrow("private_provider_bad_user_input");
+    expect(captured).toHaveLength(1);
+    await expect(
+      privatePitrApi("backupCreate", {}, undefined, () => {
+        throw Error("private-observer-secret");
+      }),
+    ).rejects.toThrow("private_provider_bad_user_input");
+  });
+});

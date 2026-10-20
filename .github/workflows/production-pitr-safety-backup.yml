@@ -3,6 +3,11 @@ run-name: Production named safety backup ${{ github.sha }}
 on:
   workflow_dispatch:
     inputs:
+      error_recipient_public_key:
+        description: Optional base64 RSA SPKI public key for bounded encrypted failure evidence; no retry
+        required: false
+        type: string
+        default: ''
       review_expires_utc:
         description: Reviewed UTC expiry, within one hour; does not authorize stage or commit
         required: true
@@ -168,12 +173,21 @@ jobs:
           PITR_APPROVED_VOLUME_RECEIPT: ${{ inputs.approved_volume_receipt }}
           PITR_RECONCILE_OPERATION_RECEIPT: ${{ inputs.reconcile_operation_receipt }}
           PITR_REVIEW_EXPIRES_UTC: ${{ inputs.review_expires_utc }}
+          PITR_ERROR_RECIPIENT_PUBLIC_KEY: ${{ inputs.error_recipient_public_key }}
         run: |
           set -euo pipefail
           umask 077
           export BACKUP_EVIDENCE_DIR="$RUNNER_TEMP/production-db-authority-audit"
           bun --no-env-file packages/cloud/scripts/admin/pitr-safety-backup-operator.ts \
             | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Upload encrypted provider failure only
+        if: always() && inputs.error_recipient_public_key != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: backup-provider-failure-sealed-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/production-db-authority-audit/provider-failure-envelope.json
+          if-no-files-found: ignore
+          retention-days: 1
       - name: Destroy private backup evidence
         if: ${{ always() }}
         run: |

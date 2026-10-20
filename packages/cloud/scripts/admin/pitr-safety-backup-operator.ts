@@ -9,6 +9,7 @@ import {
   createPitrSafetyBackup,
 } from "./pitr-backup-proof";
 import { PRIVATE_PROVIDER_FAILURES, privatePitrApi } from "./pitr-private-api";
+import { prepareProviderErrorEnvelope } from "./pitr-provider-error-envelope";
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -26,6 +27,8 @@ export async function runSafetyBackup(input: {
   expiry: number;
   /** Nonempty selects read-only reconciliation; never falls back to creation. */
   reconcileOperationReceipt?: string;
+  errorRecipientPublicKey?: string;
+  knownPrivateTokens?: string[];
   signal: AbortSignal;
   api: typeof privatePitrApi;
   sourceFresh: () => Promise<boolean>;
@@ -213,6 +216,21 @@ export async function runSafetyBackup(input: {
   let requestSubmitted = false;
   let failureCategory: string | null = null;
   const operationName = `alpha-pitr-safety-${randomUUID().replaceAll("-", "")}`;
+  const errorEvidence = input.errorRecipientPublicKey
+    ? prepareProviderErrorEnvelope({
+        recipientPublicKey: input.errorRecipientPublicKey,
+        file: join(input.directory, "provider-failure-envelope.json"),
+        operationReceipt: sha(operationName),
+        knownPrivateValues: [
+          input.projectId,
+          input.environmentId,
+          input.serviceId,
+          binding.volumeId,
+          operationName,
+          ...(input.knownPrivateTokens ?? []),
+        ],
+      })
+    : null;
   const persist = (name: string, value: unknown) =>
     writeFileSync(join(input.directory, name), JSON.stringify(value), {
       mode: 0o600,
@@ -271,7 +289,12 @@ export async function runSafetyBackup(input: {
           phase = "create_request";
           requestSubmitted = true;
           const response = object(
-            await input.api("backupCreate", { id, name }, input.signal),
+            await input.api(
+              "backupCreate",
+              { id, name },
+              input.signal,
+              errorEvidence?.capture,
+            ),
           );
           const operation = object(
             object(response.data).volumeInstanceBackupCreate,
@@ -335,6 +358,7 @@ export async function runSafetyBackup(input: {
     phase,
     requestSubmitted,
     failureCategory: failureCategory as string | null,
+    providerErrorEvidence: errorEvidence?.receipt() ?? null,
     purpose: "production_named_safety_backup",
     operationReceipt: sha(operationName),
     workflowReceipt: workflowReceipt ?? null,
@@ -392,6 +416,12 @@ if (import.meta.main) {
       expiry: Date.parse(process.env.PITR_REVIEW_EXPIRES_UTC ?? ""),
       reconcileOperationReceipt:
         process.env.PITR_RECONCILE_OPERATION_RECEIPT || undefined,
+      errorRecipientPublicKey:
+        process.env.PITR_ERROR_RECIPIENT_PUBLIC_KEY || undefined,
+      knownPrivateTokens: [
+        process.env.RAILWAY_TOKEN ?? "",
+        process.env.GITHUB_TOKEN ?? "",
+      ],
       signal: abort.signal,
       api: privatePitrApi,
       publishIntent: (receipt) => console.log(JSON.stringify(receipt)),

@@ -307,3 +307,15 @@ amounts remain unknown. The above-half flag compares observed usage with Railway
 [documented manual-backup limit](https://docs.railway.com/volumes/backups).
 It is diagnostic only: being below that limit does not prove creation eligibility,
 and the operator never resizes a volume or retries a backup from this observation.
+For a separately reviewed single reproduction, `error_recipient_public_key` can
+select encrypted provider failure evidence. The existing RSA-OAEP/AES-GCM helper
+validates the public recipient before backup creation. Only GraphQL error messages
+and fixed code values are selected, with known request identifiers, operation name
+and tokens scrubbed before encryption. At most16 messages of4096 characters and
+64KiB of selected plaintext are accepted; oversized evidence is refused, not
+truncated. Plaintext stays in memory. Only a ciphertext digest and finite status
+enter the public receipt. The encrypted artifact has one-day retention and the
+private working directory is cleaned even after failure. No response data, raw
+stderr, arbitrary extensions or environment dump is captured. The private key
+stays with the local operator. Evidence capture never retries or converts a failed
+provider operation to success; it does not authorize stage, resize or migration.

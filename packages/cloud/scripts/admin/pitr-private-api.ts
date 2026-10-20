@@ -78,6 +78,7 @@ export function privatePitrApi(
   operation: keyof typeof PITR_QUERIES,
   variables: Record<string, unknown>,
   signal?: AbortSignal,
+  observeFailure?: (errors: unknown) => void,
 ): Promise<unknown> {
   if (!Object.hasOwn(PITR_QUERIES, operation))
     return Promise.reject(Error("private_provider_configuration_missing"));
@@ -297,6 +298,19 @@ export function privatePitrApi(
       const graphFailure = graphqlFailure(value);
       if (code !== 0 || graphFailure || httpFailure) {
         failure = httpFailure ?? graphFailure ?? "private_provider_cli_exit";
+        if (
+          operation === "backupCreate" &&
+          observeFailure &&
+          value &&
+          typeof value === "object" &&
+          "errors" in value
+        ) {
+          try {
+            observeFailure(value.errors);
+          } catch {
+            /* Evidence never changes failure or leaks an observer error. */
+          }
+        }
         finish(undefined, true);
       } else finish(value);
     });

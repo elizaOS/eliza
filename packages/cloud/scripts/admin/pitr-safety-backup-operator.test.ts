@@ -356,3 +356,15 @@ test("read-only exact-volume capacity reports the documented half-capacity bound
     ).toBe(true);
   });
 });
+
+test("invalid diagnostic recipient prevents backup creation", async () => {
+  await fixture(async (input, calls) => {
+    await expect(
+      runSafetyBackup({
+        ...input,
+        errorRecipientPublicKey: "invalid-private-key",
+      }),
+    ).rejects.toThrow("provider_evidence_recipient_invalid");
+    expect(calls).not.toContain("backupCreate");
+  });
+});
