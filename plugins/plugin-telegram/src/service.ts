@@ -332,6 +332,15 @@ function parseTelegramTargetParts(
   return { chatId: channelId, threadId: explicitThreadNumber };
 }
 
+/**
+ * Bot API `error_code` of a Telegraf rejection, when the failure came back from
+ * Telegram rather than the transport. `undefined` for network/socket errors.
+ */
+function telegramApiErrorCode(error: unknown): number | undefined {
+  return (error as { response?: { error_code?: number } } | undefined)?.response
+    ?.error_code;
+}
+
 function telegramChatKind(chat: Chat): MessageConnectorTarget["kind"] {
   if (chat.type === "private") {
     return "user";
@@ -2648,8 +2657,15 @@ export class TelegramService extends Service {
         chat,
       );
       return chat;
-    } catch {
-      return null;
+    } catch (error) {
+      // Only "this chat does not exist" is legitimate absence. A rejected bot
+      // token (401/403), a rate limit (429) or a Telegram outage (5xx) is not:
+      // returning null made listConnectorTargets() report no match for a chat
+      // that exists and getConnectorChatContext() fall back to the raw chat id.
+      if (telegramApiErrorCode(error) === 400) {
+        return null;
+      }
+      throw error;
     }
   }
 
