@@ -185,6 +185,66 @@ describe("attachmentsProvider", () => {
     expect(historyFetches).toBe(0);
   });
 
+  it("renders sub-agent own message attachments without fetching room history", async () => {
+    let historyFetches = 0;
+    const result = await attachmentsProvider.get(
+      makeRuntime([attachmentMemory()], {
+        onHistoryFetch: () => {
+          historyFetches += 1;
+        },
+      }),
+      makeMessage({
+        source: "sub_agent",
+        text: "[sub-agent: app-build — task_complete]",
+        attachments: [
+          {
+            id: "sub-agent-report",
+            url: "https://example.test/report.pdf",
+            title: "report.pdf",
+            source: "Document",
+            contentType: "application/pdf",
+            text: "build report text",
+          },
+        ],
+      }),
+    );
+
+    expect(result.text).toContain("# Attachments");
+    expect(result.text).toContain("sub-agent-report");
+    expect(result.text).not.toContain("webpage-old");
+    expect(historyFetches).toBe(0);
+  });
+
+  it("caps visible attachments to MAX_RENDERED_ATTACHMENTS and tracks omittedCount", async () => {
+    const manyAttachments: Memory[] = Array.from({ length: 8 }, (_, i) => ({
+      id: `00000000-0000-0000-0000-0000000000${10 + i}` as UUID,
+      entityId: userId,
+      roomId,
+      createdAt: i + 1,
+      content: {
+        text: `attachment ${i}`,
+        attachments: [
+          {
+            id: `att-${i}`,
+            url: `https://example.test/file-${i}`,
+            title: `File ${i}`,
+            source: "Web",
+            contentType: "link",
+            text: `text ${i}`,
+          },
+        ],
+      },
+    } as Memory));
+
+    const result = await attachmentsProvider.get(
+      makeRuntime(manyAttachments),
+      makeMessage({ text: "check the files" }),
+    );
+
+    expect(result.data?.visibleAttachments).toHaveLength(5);
+    expect(result.data?.omittedCount).toBe(3);
+  });
+
   it("does not advertise an ATTACHMENT read for a failure-prose description without stored text", async () => {
     // 2026-06-10 incident: mp4 transcription failed (no ffprobe) so the
     // attachment carried only placeholder prose in description with empty
@@ -284,6 +344,28 @@ describe("attachmentsProvider", () => {
     expect(result.text).toContain(
       "Stored Content: available via ATTACHMENT action=read",
     );
+  });
+
+  it("does not advertise a read for image/svg+xml even when a vision model is registered", async () => {
+    const result = await attachmentsProvider.get(
+      makeRuntime([], { hasImageDescriptionModel: true }),
+      makeMessage({
+        text: "¿puedes ver este icono?",
+        attachments: [
+          {
+            id: "svg-icon",
+            url: "https://example.test/icon.svg",
+            title: "icon.svg",
+            source: "Image",
+            contentType: "image/svg+xml",
+            text: "",
+          },
+        ],
+      }),
+    );
+
+    expect(result.text).toContain("Stored Content: none");
+    expect(result.text).not.toContain("available via ATTACHMENT action=read");
   });
 
   it("does not advertise a read for a failed-ingest image without a vision model", async () => {
