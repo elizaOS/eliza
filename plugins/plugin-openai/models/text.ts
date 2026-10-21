@@ -3731,7 +3731,7 @@ async function generateTextAtEndpoint(
         // a successful empty one. Without a finish reason and the provider
         // error the trajectory record reads as a call that succeeded and
         // returned no text, so the failure is invisible to anyone reading the
-        // trajectory. Record it the way every other failed stream records.
+        // trajectory. Record it as a failed call before the error is rethrown.
         const failureMessage =
           failure instanceof Error ? failure.message : String(failure);
         const redactedFailure = composeToolDiagnosticRedactor(
