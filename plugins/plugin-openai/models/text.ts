@@ -45,6 +45,7 @@ import {
   jsonSchema,
   type LanguageModelUsage,
   type ModelMessage,
+  NoObjectGeneratedError,
   Output,
   RetryError,
   type StreamTextTransform,
@@ -3962,6 +3963,30 @@ async function generateTextAtEndpoint(
       beforeAttempt: () => assertPreparedAttempt(details),
     }).catch((error: unknown) => {
       noteRateLimitCooldown(modelCooldowns, modelName, error);
+      if (NoObjectGeneratedError.isInstance(error)) {
+        // generateText parses `output` itself and throws before this lane sees
+        // the result. The provider billed the answer anyway: report its usage,
+        // and reject a cut-off answer like the plain-text lane below does.
+        applyUsageToDetails(details, error.usage);
+        if (error.usage) {
+          emitModelUsageEvent(
+            runtime,
+            modelType,
+            params.prompt ?? "",
+            error.usage,
+            modelName,
+            retryState,
+            usageProvider
+          );
+        }
+        assertModelOutputComplete({
+          finishReason: error.finishReason,
+          provider: usageProvider,
+          model: modelName,
+          maxTokens: outputCap,
+          usage: convertUsage(error.usage),
+        });
+      }
       throw error;
     });
     observeStreamTiming(runtime, () => {
