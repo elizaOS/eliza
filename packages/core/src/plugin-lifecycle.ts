@@ -682,19 +682,22 @@ function removeOwnedPlugins(
 }
 
 /** Unregistering through the connector registry also drops the connector
- * entry that MESSAGE, POST and scheduled dispatch read, not only the handler. */
+ * entry that MESSAGE, POST and scheduled dispatch read, not only the handler.
+ * `exactAccount` keeps a default-account unload from removing the other
+ * accounts that other plugins registered on the same source. */
 function removeOwnedConnectors(
 	runtime: RuntimeWithPluginLifecycle,
 	ownership: PluginOwnership,
 ): void {
+	const exact = { exactAccount: true };
 	for (const source of ownership.sendHandlerSources) {
-		runtime.unregisterMessageConnector(source);
+		runtime.unregisterMessageConnector(source, undefined, exact);
 	}
 	for (const { source, accountId } of ownership.messageConnectors) {
-		runtime.unregisterMessageConnector(source, accountId);
+		runtime.unregisterMessageConnector(source, accountId, exact);
 	}
 	for (const { source, accountId } of ownership.postConnectors) {
-		runtime.unregisterPostConnector(source, accountId);
+		runtime.unregisterPostConnector(source, accountId, exact);
 	}
 }
 
