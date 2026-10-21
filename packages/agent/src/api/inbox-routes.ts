@@ -1772,7 +1772,7 @@ function isMissingMessagesTableError(error: unknown): boolean {
   }
   return messages.some(
     (message) =>
-      /no such table:?\s*["']?(?:\w+\.)?messages["']?/i.test(message) ||
+      /no such table:?\s*["']?(?:\w+\.)?messages["']?(?![\w])/i.test(message) ||
       /(?:relation|table)\s+["']?(?:\w+\.)?messages["']?\s+does not exist/i.test(
         message,
       ),

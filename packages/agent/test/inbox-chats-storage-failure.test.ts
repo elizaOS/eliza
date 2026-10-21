@@ -88,3 +88,20 @@ it("keeps a runtime without a messages table as an empty chat", async () => {
   expect(chats).toHaveLength(1);
   expect(chats[0]?.messageCount).toBe(0);
 });
+
+it("does not read a missing sibling table as a missing messages table", async () => {
+  // `messages_archive` is a different table. Only a missing `messages` table is
+  // the benign pre-migration case; anything else is a real storage failure.
+  const { status, body } = await listChats(async () => {
+    throw new Error("no such table: messages_archive");
+  });
+  expect(status).toBe(500);
+  expect(body.error).toContain("failed to load inbox chats");
+});
+
+it("keeps a qualified messages table name as the benign pre-migration case", async () => {
+  const { status } = await listChats(async () => {
+    throw new Error("no such table: main.messages");
+  });
+  expect(status).toBe(200);
+});
