@@ -180,8 +180,19 @@ export function buildLegacyShim(args: {
     if (Buffer.isBuffer(args.body)) return args.body.toString("utf8");
     try {
       return JSON.stringify(args.body);
-    } catch {
-      return "";
+    } catch (cause) {
+      // error-policy:J2 context-adding rethrow: the shim's only job is to
+      // reproduce the bytes the transport received. When the caller's body
+      // cannot be encoded there are no such bytes, and falling back to ""
+      // would tell a stream-reading legacy handler that the client sent an
+      // empty body — the handler's own missing-field validation would then
+      // hide the dispatcher-side encode failure. Surface it instead.
+      throw new ElizaError("Request body could not be serialized to JSON", {
+        code: "ROUTE_REQUEST_BODY_UNSERIALIZABLE",
+        cause,
+        context: { method: args.method, path: args.path },
+        severity: "fatal",
+      });
     }
   })();
   const readable = Readable.from(
