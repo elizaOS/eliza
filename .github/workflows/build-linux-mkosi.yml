@@ -232,7 +232,7 @@ jobs:
 
       - name: Download checksum-pinned Syft
         id: syft
-        uses: anchore/sbom-action/download-syft@3f46e6c23709f2b35c9c5182affe8ef3d6e32b71
+        uses: anchore/sbom-action/download-syft@f8706fc06deabb1adc34978fc92896fdcd3d17fe
 
       - name: Build clean snapshot-pinned mkosi release disk
         env:
