@@ -115,7 +115,7 @@
 		"adze": "^2.2.5",
 		"json5": "^2.2.3",
 		"file-type": "^22.0.0",
-		"markdown-it": "^14.1.0",
+		"markdown-it": "^14.3.3",
 		"yaml": "^2.9.1"
 	},
 	"publishConfig": {

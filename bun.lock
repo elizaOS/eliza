@@ -24,7 +24,7 @@
         "clsx": "^2.1.1",
         "dotenv": "^17.4.2",
         "elysia": "^1.4.21",
-        "hono": "^4.13.8",
+        "hono": "^4.13.11",
         "node-edge-tts": "^1.2.9",
         "pg": "^8.23.0",
         "tailwind-merge": "3.7.0",
@@ -134,7 +134,7 @@
         "es-module-lexer": "^2.3.2",
         "esbuild": "^0.28.0",
         "ethers": "^6.16.0",
-        "hono": "^4.13.8",
+        "hono": "^4.13.11",
         "isomorphic-git": "^1.42.2",
         "jpeg-js": "^0.4.4",
         "json5": "^2.2.3",
@@ -432,7 +432,7 @@
         "bs58": "^6.0.0",
         "drizzle-orm": "0.45.3",
         "graphene-pk11": "^2.2.0",
-        "hono": "^4.13.8",
+        "hono": "^4.13.11",
         "ioredis": "^5.6.1",
         "jose": "^6.2.1",
         "postgres": "^3.4.7",
@@ -778,7 +778,7 @@
         "ai": "^6.0.170",
         "drizzle-orm": "0.45.3",
         "file-type": "^22.0.1",
-        "hono": "4.13.8",
+        "hono": "4.13.11",
         "jose": "^6.0.0",
         "music-metadata": "^11.16.1",
         "nanoid": "^6.0.0",
@@ -930,7 +930,7 @@
       "version": "1.0.0",
       "dependencies": {
         "@elizaos/cloud-shared": "workspace:*",
-        "hono": "4.13.8",
+        "hono": "4.13.11",
       },
       "devDependencies": {
         "@types/node": "22.19.2",
@@ -951,7 +951,7 @@
         "@upstash/redis": "^1.37.0",
         "discord.js": "^14.26.4",
         "hashring": "^3.2.0",
-        "hono": "4.13.8",
+        "hono": "4.13.11",
         "ioredis": "^5.10.1",
         "libsodium-wrappers": "^0.8.0",
         "prism-media": "1.3.5",
@@ -976,7 +976,7 @@
         "@elizaos/plugin-network": "workspace:*",
         "@upstash/redis": "^1.37.0",
         "hashring": "^3.2.0",
-        "hono": "4.13.8",
+        "hono": "4.13.11",
         "ioredis": "^5.10.1",
         "zod": "^4.6.5",
       },
@@ -1071,7 +1071,7 @@
         "drizzle-orm": "0.45.3",
         "exceljs": "^4.4.0",
         "expletives": "^0.1.5",
-        "hono": "4.13.8",
+        "hono": "4.13.11",
         "jose": "^6.0.0",
         "libphonenumber-js": "^1.13.14",
         "nanoid": "^6.0.0",
@@ -1118,7 +1118,7 @@
         "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/testing": "workspace:*",
-        "hono": "4.13.8",
+        "hono": "4.13.11",
       },
       "devDependencies": {
         "@typescript/native": "npm:typescript@^7.0.2",
@@ -1147,7 +1147,7 @@
         "adze": "^2.2.5",
         "file-type": "^22.0.0",
         "json5": "^2.2.3",
-        "markdown-it": "^14.1.0",
+        "markdown-it": "^14.3.3",
         "yaml": "^2.9.1",
         "zod": "^4.6.5",
       },
@@ -7613,7 +7613,7 @@
 
     "hmac-drbg": ["hmac-drbg@1.0.1", "", { "dependencies": { "hash.js": "^1.0.3", "minimalistic-assert": "^1.0.0", "minimalistic-crypto-utils": "^1.0.1" } }, "sha512-Tti3gMqLdZfhOQY1Mzf/AanLiqh1WTiJgEj26ZuYQ9fbkLomzGchCws4FyrSd4VkpBfiNhaE1On+lOz894jvXg=="],
 
-    "hono": ["hono@4.13.9", "", {}, "sha512-7dMkQmZoC4E6F7AtaQSPhlWAdnBti+j7rreMZl8QB4jFiEhP9TWbGWUMi8WYzBCgmgulxuvLQupKqo+Co6Omyg=="],
+    "hono": ["hono@4.13.13", "", {}, "sha512-CQ46U0ZkAGmbT/4UxdzzGJpacP2IeKgY4a5/tOI9AABbpOMfK739wfDXmv1usCk+3RkKj1hQy4/fjhiwa2xlrA=="],
 
     "hookified": ["hookified@1.15.1", "", {}, "sha512-MvG/clsADq1GPM2KGo2nyfaWVyn9naPiXrqIe4jYjXNZQt238kWyOGrsyc/DmRAQ+Re6yeo6yX/yoNCG5KAEVg=="],
 
@@ -8079,7 +8079,7 @@
 
     "markdown-extensions": ["markdown-extensions@2.0.0", "", {}, "sha512-o5vL7aDWatOTX8LzaS1WMoaoxIiLRQJuIKKe2wAw6IeULDHaqbiqiggmx+pKvZDb1Sj+pE46Sn1T7lCqfFtg1Q=="],
 
-    "markdown-it": ["markdown-it@14.3.2", "", { "dependencies": { "argparse": "^2.0.1", "entities": "^4.5.0", "linkify-it": "^5.0.2", "mdurl": "^2.0.0", "punycode.js": "^2.3.1", "uc.micro": "^2.1.0" }, "bin": { "markdown-it": "bin/markdown-it.mjs" } }, "sha512-sHHjZ5fJKlgrG4qns2YwVcdNep35h5fERrfkD2YNsb9UFk0UIHarbiTaHKVMlPuWAoiilyK8Fv/jAm11slsY7Q=="],
+    "markdown-it": ["markdown-it@14.3.3", "", { "dependencies": { "argparse": "^2.0.1", "entities": "^4.5.0", "linkify-it": "^5.0.2", "mdurl": "^2.0.0", "punycode.js": "^2.3.1", "uc.micro": "^2.1.0" }, "bin": { "markdown-it": "bin/markdown-it.mjs" } }, "sha512-L//tDAkjTjJCU6pBUSBTgs3Kg4InVaZuUZog/b6V12UKhcDQ7S78877ibbCanRExwPuYP1CZD7Gd2dxSy1GXRg=="],
 
     "markdown-table": ["markdown-table@3.0.4", "", {}, "sha512-wiYz4+JrLyb/DqW2hkFJxP7Vd7JuTDm77fvbM8VfEQdmSMqcImWeeRbHwZjBjIFki/VaMK2BhFi7oUUZeM5bqw=="],
 
@@ -9801,19 +9801,19 @@
 
     "@elizaos/capacitor-websiteblocker/@capacitor/core": ["@capacitor/core@8.5.2", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-agnQbGdhGw/KZFuLf7H9SY2o+oE7upkr/WPQsYaokXP6f9chaE8iVmbKkfN6SVl4w3pmz7oZ3Ur1hbkmy1hx+w=="],
 
-    "@elizaos/cloud-api/hono": ["hono@4.13.8", "", {}, "sha512-/Gng7NfoykZl2pjukW5Z6+8Yxm3BPRf86GTbQnt0SbySkvax4fyL4H3HhY1cCpBGmiW9XDRFzRV+CXK2W8QudQ=="],
+    "@elizaos/cloud-api/hono": ["hono@4.13.11", "", {}, "sha512-/SMX/RQNJn7oNmFwH6DtwDqcrzZU2otm1FD6OJe2cWF6cfy/F8hq0XVBv7xW3FTJshRQwuBnXHDq2kNsdZnshg=="],
 
     "@elizaos/cloud-e2e/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
-    "@elizaos/cloud-shared/hono": ["hono@4.13.8", "", {}, "sha512-/Gng7NfoykZl2pjukW5Z6+8Yxm3BPRf86GTbQnt0SbySkvax4fyL4H3HhY1cCpBGmiW9XDRFzRV+CXK2W8QudQ=="],
+    "@elizaos/cloud-shared/hono": ["hono@4.13.11", "", {}, "sha512-/SMX/RQNJn7oNmFwH6DtwDqcrzZU2otm1FD6OJe2cWF6cfy/F8hq0XVBv7xW3FTJshRQwuBnXHDq2kNsdZnshg=="],
 
-    "@elizaos/cloud-test-mocks/hono": ["hono@4.13.8", "", {}, "sha512-/Gng7NfoykZl2pjukW5Z6+8Yxm3BPRf86GTbQnt0SbySkvax4fyL4H3HhY1cCpBGmiW9XDRFzRV+CXK2W8QudQ=="],
+    "@elizaos/cloud-test-mocks/hono": ["hono@4.13.11", "", {}, "sha512-/SMX/RQNJn7oNmFwH6DtwDqcrzZU2otm1FD6OJe2cWF6cfy/F8hq0XVBv7xW3FTJshRQwuBnXHDq2kNsdZnshg=="],
 
-    "@elizaos/container-control-plane/hono": ["hono@4.13.8", "", {}, "sha512-/Gng7NfoykZl2pjukW5Z6+8Yxm3BPRf86GTbQnt0SbySkvax4fyL4H3HhY1cCpBGmiW9XDRFzRV+CXK2W8QudQ=="],
+    "@elizaos/container-control-plane/hono": ["hono@4.13.11", "", {}, "sha512-/SMX/RQNJn7oNmFwH6DtwDqcrzZU2otm1FD6OJe2cWF6cfy/F8hq0XVBv7xW3FTJshRQwuBnXHDq2kNsdZnshg=="],
 
-    "@elizaos/gateway-discord/hono": ["hono@4.13.8", "", {}, "sha512-/Gng7NfoykZl2pjukW5Z6+8Yxm3BPRf86GTbQnt0SbySkvax4fyL4H3HhY1cCpBGmiW9XDRFzRV+CXK2W8QudQ=="],
+    "@elizaos/gateway-discord/hono": ["hono@4.13.11", "", {}, "sha512-/SMX/RQNJn7oNmFwH6DtwDqcrzZU2otm1FD6OJe2cWF6cfy/F8hq0XVBv7xW3FTJshRQwuBnXHDq2kNsdZnshg=="],
 
-    "@elizaos/gateway-webhook/hono": ["hono@4.13.8", "", {}, "sha512-/Gng7NfoykZl2pjukW5Z6+8Yxm3BPRf86GTbQnt0SbySkvax4fyL4H3HhY1cCpBGmiW9XDRFzRV+CXK2W8QudQ=="],
+    "@elizaos/gateway-webhook/hono": ["hono@4.13.11", "", {}, "sha512-/SMX/RQNJn7oNmFwH6DtwDqcrzZU2otm1FD6OJe2cWF6cfy/F8hq0XVBv7xW3FTJshRQwuBnXHDq2kNsdZnshg=="],
 
     "@elizaos/lifeops-quality-bench/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
