@@ -281,7 +281,15 @@ export function validateToolSelectionName(
       error: `Server "${data.serverName}" not found or not connected`,
     };
   }
-  const toolInfo = server.tools?.[data.toolName];
+  // The tool keys come from the server, but `data.toolName` comes from the
+  // model. Indexing alone reads inherited Object.prototype members, so the
+  // name "constructor" or "toString" looked like a real tool and the runtime
+  // sent a call the server cannot serve. Own keys only: the contract is that
+  // the selected tool exists on the server.
+  const toolInfo =
+    server.tools && Object.hasOwn(server.tools, data.toolName)
+      ? server.tools[data.toolName]
+      : undefined;
   if (!toolInfo) {
     return {
       success: false,
