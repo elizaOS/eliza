@@ -179,7 +179,10 @@ describe("bundle ASR artifacts", () => {
 		() => {
 			const root = writeManifest({});
 			const asrDir = path.join(root, "asr");
-			writeFileSync(path.join(asrDir, "phonon-2-fv5.gguf"), gguf("parakeet-tdt"));
+			writeFileSync(
+				path.join(asrDir, "phonon-2-fv5.gguf"),
+				gguf("parakeet-tdt"),
+			);
 			chmodSync(asrDir, 0o000);
 			try {
 				// The directory exists but cannot be listed: that is a broken
