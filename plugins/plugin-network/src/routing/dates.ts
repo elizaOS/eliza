@@ -227,7 +227,13 @@ export function resolveWindow(
   const today = startOfDay(now);
   const out: DateWindow = { from: null, until: null };
 
-  const range = new RegExp(String.raw`\bfrom\s+(.+?)\s+${END}\s+(.+)$`).exec(t);
+  // A range word. "to" only closes a range it can see a start for ("from
+  // Monday to Friday"): on its own it is a preposition that appears in almost
+  // every sentence ("I need to fly out Monday"), so the standalone end pattern
+  // below keeps using END alone.
+  const range = new RegExp(
+    String.raw`\bfrom\s+(.+?)\s+(?:${END}|to)\s+(.+)$`,
+  ).exec(t);
   if (range?.[1] && range[2]) {
     const from = parseDateExpr(range[1], now);
     let until = parseDateExpr(range[2], now);

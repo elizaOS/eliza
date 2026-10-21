@@ -99,6 +99,55 @@ describe("Network own-word boundary", () => {
   });
 });
 
+describe("Network two-ended range", () => {
+  it("reads the end of a range stated with to", () => {
+    const now = new Date("2026-10-14T15:00:00Z"); // Wednesday
+    for (const [text, from, until] of [
+      ["I'm in Lisbon from Monday to Friday", "2026-10-19", "2026-10-23"],
+      [
+        "I'm in Lisbon from October 30 to November 2",
+        "2026-10-30",
+        "2026-11-02",
+      ],
+    ]) {
+      assert.deepEqual(
+        authorizeSetState(
+          {
+            state: "traveling",
+            from: "2026-11-01",
+            until: "2026-11-05",
+            evidence: text,
+          },
+          text,
+          now,
+        ),
+        {
+          allowed: true,
+          state: "traveling",
+          from: `${from}T00:00:00.000Z`,
+          until: `${until}T00:00:00.000Z`,
+        },
+        text,
+      );
+    }
+    // "to" between two places is not a date range: the model's end stands.
+    const places = "I'm flying from Boston to New York";
+    assert.deepEqual(
+      authorizeSetState(
+        { state: "traveling", until: "2026-11-01", evidence: places },
+        places,
+        now,
+      ),
+      {
+        allowed: true,
+        state: "traveling",
+        from: null,
+        until: "2026-11-01T00:00:00.000Z",
+      },
+    );
+  });
+});
+
 describe("Network stated duration", () => {
   it("counts a stated duration from the start the member gave", () => {
     const now = new Date("2026-10-14T15:00:00Z");
