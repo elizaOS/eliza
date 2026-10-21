@@ -3911,7 +3911,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             embeddingSpaceCondition(this.embeddingSpace)
           )
         )
-        .where(eq(memoryTable.id, id))
+        .where(and(eq(memoryTable.id, id), eq(memoryTable.agentId, this.agentId)))
         .limit(1);
 
       if (result.length === 0) return null;
@@ -3946,7 +3946,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.withDatabase(async () => {
       if (memoryIds.length === 0) return [];
 
-      const conditions = [inArray(memoryTable.id, memoryIds)];
+      const conditions = [
+        inArray(memoryTable.id, memoryIds),
+        // ID lookups stay inside this adapter's tenant: without the agent
+        // predicate one adapter could read another agent's rows outright
+        // (e.g. a forged id on a shared database).
+        eq(memoryTable.agentId, this.agentId),
+      ];
 
       if (tableName) {
         conditions.push(eq(memoryTable.type, tableName));
@@ -4858,22 +4864,25 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.withDatabase(async () => {
       try {
         await this.db.transaction(async (tx) => {
+          // Tenant guard: only rows owned by this adapter's agent are
+          // mutable here. A missing or foreign row is a no-op, matching the
+          // previous behavior for unknown ids.
+          const [existing] = await tx
+            .select({ type: memoryTable.type })
+            .from(memoryTable)
+            .where(and(eq(memoryTable.id, memory.id), eq(memoryTable.agentId, this.agentId)))
+            .for("update");
+          if (!existing) return;
           // Update memory content if provided
           if (memory.content) {
             // The stored row owns its content policy; caller-supplied metadata
             // cannot select a different stored document policy. Memory source
             // text is preserved independently of that policy.
-            // Lock the row so its identity/type stays fixed through this write.
-            const [existing] = await tx
-              .select({ type: memoryTable.type })
-              .from(memoryTable)
-              .where(eq(memoryTable.id, memory.id))
-              .for("update");
             const contentToUpdate =
-              existing?.type === "document_fragments"
+              existing.type === "document_fragments"
                 ? serializeDocumentJsonb(memory.content)
                 : serializeJsonb(memory.content, {
-                    documentText: existing?.type === "documents",
+                    documentText: existing.type === "documents",
                     memoryContent: true,
                   });
 
@@ -4887,7 +4896,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
                   metadata: sql`${metadataToUpdate}::jsonb`,
                 }),
               })
-              .where(eq(memoryTable.id, memory.id));
+              .where(and(eq(memoryTable.id, memory.id), eq(memoryTable.agentId, this.agentId)));
           } else if (memory.metadata) {
             // Update only metadata if content is not provided
             const metadataToUpdate = serializeJsonb(memory.metadata);
@@ -4897,7 +4906,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
               .set({
                 metadata: sql`${metadataToUpdate}::jsonb`,
               })
-              .where(eq(memoryTable.id, memory.id));
+              .where(and(eq(memoryTable.id, memory.id), eq(memoryTable.agentId, this.agentId)));
           }
 
           // Update embedding if provided
@@ -4976,6 +4985,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async deleteMemory(memoryId: UUID): Promise<void> {
     return this.withDatabase(async () => {
       await this.db.transaction(async (tx) => {
+        // Tenant guard: a foreign or missing row is a no-op, so one adapter
+        // can never wipe another agent's memories by id.
+        const [owned] = await tx
+          .select({ id: memoryTable.id })
+          .from(memoryTable)
+          .where(and(eq(memoryTable.id, memoryId), eq(memoryTable.agentId, this.agentId)))
+          .limit(1);
+        if (!owned) return;
+
         // See if there are any fragments that we need to delete
         await this.deleteMemoryFragments(tx, memoryId);
 
@@ -4983,7 +5001,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         await tx.delete(embeddingTable).where(eq(embeddingTable.memoryId, memoryId));
 
         // Finally delete the memory itself
-        await tx.delete(memoryTable).where(eq(memoryTable.id, memoryId));
+        await tx
+          .delete(memoryTable)
+          .where(and(eq(memoryTable.id, memoryId), eq(memoryTable.agentId, this.agentId)));
       });
     });
   }
@@ -5005,18 +5025,27 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         for (let i = 0; i < memoryIds.length; i += BATCH_SIZE) {
           const batch = memoryIds.slice(i, i + BATCH_SIZE);
 
+          // Tenant guard: only ids owned by this adapter's agent are
+          // deletable, mirroring the sqlite deleteMemories scope.
+          const ownedRows = await tx
+            .select({ id: memoryTable.id })
+            .from(memoryTable)
+            .where(and(inArray(memoryTable.id, batch), eq(memoryTable.agentId, this.agentId)));
+          const ownedIds = ownedRows.map((r) => r.id as UUID);
+          if (ownedIds.length === 0) continue;
+
           // Delete any fragments for document memories in this batch
           await Promise.all(
-            batch.map(async (memoryId) => {
+            ownedIds.map(async (memoryId) => {
               await this.deleteMemoryFragments(tx, memoryId);
             })
           );
 
           // Delete embeddings for the batch
-          await tx.delete(embeddingTable).where(inArray(embeddingTable.memoryId, batch));
+          await tx.delete(embeddingTable).where(inArray(embeddingTable.memoryId, ownedIds));
 
           // Delete the memories themselves
-          await tx.delete(memoryTable).where(inArray(memoryTable.id, batch));
+          await tx.delete(memoryTable).where(inArray(memoryTable.id, ownedIds));
         }
       });
     });
@@ -8023,6 +8052,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             .where(eq(memoryTable.id, headId))
             .limit(1);
           const current = currentRows[0];
+          // A head row owned by another agent is never replaceable through
+          // this adapter, mirroring the SQLite publication guard.
+          if (current && (current.agentId as UUID) !== this.agentId) {
+            throw new ElizaError("Atomic publication cannot replace another owner's head", {
+              code: "CONTENT_CONTINUITY_IMMUTABLE_COLLISION",
+              context: { memoryId: headId },
+            });
+          }
           const currentRevision = (current?.metadata as Record<string, unknown> | undefined)
             ?.revision;
           if (
