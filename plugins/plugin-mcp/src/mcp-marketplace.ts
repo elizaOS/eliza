@@ -9,6 +9,17 @@ export const DEFAULT_MCP_MARKETPLACE_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const MAX_MCP_MARKETPLACE_TIMEOUT_MS = 2 * 60_000;
 const MAX_MCP_MARKETPLACE_RESPONSE_BYTES = 8 * 1024 * 1024;
 const MAX_MCP_MARKETPLACE_RESULTS = 50;
+/**
+ * A text query is filtered in this process, so a match can sit deep in the
+ * latest catalog. The walk therefore stops after this many pages instead of
+ * paging the whole catalog: one page of 50 entries is about 42 KB and 0.2-0.6 s
+ * on the public Registry, so 20 pages stay inside the default request budget
+ * and inside the response-byte budget. A search that stops on this bound
+ * reports `truncated` instead of spending the deadline and failing.
+ */
+const MAX_MCP_MARKETPLACE_SCAN_PAGES = 20;
+/** Share of the request timeout the page walk may use, leaving time for the last response. */
+const MCP_MARKETPLACE_SCAN_BUDGET_SHARE = 0.6;
 
 export type McpMarketplaceErrorCode =
   | "aborted"
@@ -488,8 +499,10 @@ export async function searchMcpMarketplace(
   query?: string,
   limit = 30,
   options: McpMarketplaceRequestOptions = {}
-): Promise<{ results: McpMarketplaceSearchItem[] }> {
+): Promise<{ results: McpMarketplaceSearchItem[]; truncated: boolean }> {
   const requestedLimit = resolveSearchLimit(limit);
+  const timeoutMs = options.timeoutMs ?? DEFAULT_MCP_MARKETPLACE_TIMEOUT_MS;
+  const scanDeadline = Date.now() + Math.floor(timeoutMs * MCP_MARKETPLACE_SCAN_BUDGET_SHARE);
   const resolved = resolveRequestOptions(options);
   try {
     const results: McpMarketplaceSearchItem[] = [];
@@ -499,6 +512,7 @@ export async function searchMcpMarketplace(
     // matches, so use the largest public result bound to minimize round trips.
     const pageLimit = normalizedQuery ? MAX_MCP_MARKETPLACE_RESULTS : requestedLimit;
     let cursor: string | undefined;
+    let pagesRead = 0;
     const seenCursors = new Set<string>();
 
     do {
@@ -507,6 +521,7 @@ export async function searchMcpMarketplace(
         parseListResponse,
         resolved
       );
+      pagesRead += 1;
       cursor = page.nextCursor;
       if (cursor && seenCursors.has(cursor)) {
         invalidResponse("MCP registry response repeated a pagination cursor");
@@ -550,9 +565,19 @@ export async function searchMcpMarketplace(
         });
         if (results.length >= requestedLimit) break;
       }
-    } while (cursor && results.length < requestedLimit);
+    } while (
+      cursor &&
+      results.length < requestedLimit &&
+      pagesRead < MAX_MCP_MARKETPLACE_SCAN_PAGES &&
+      Date.now() < scanDeadline
+    );
 
-    return { results };
+    // The catalog walk stopped while the Registry still had pages, so the
+    // match set is a prefix of the catalog, not the whole of it.
+    return {
+      results,
+      truncated: Boolean(cursor) && results.length < requestedLimit,
+    };
   } finally {
     resolved.dispose();
   }
