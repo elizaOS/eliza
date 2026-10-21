@@ -3727,9 +3727,21 @@ async function generateTextAtEndpoint(
         (failure as { statusCode?: number; status?: number }).statusCode ??
         (failure as { status?: number }).status;
       if (status === 429) {
+        const streamError = capturedStreamError;
+        const providerMetadata = {
+          ...(details.providerMetadata && typeof details.providerMetadata === "object"
+            ? details.providerMetadata
+            : {}),
+          providerFinishReason: details.finishReason,
+          error: composeToolDiagnosticRedactor(runtime)(
+            streamError instanceof Error ? streamError.message : String(streamError)
+          ),
+        };
         logActiveTrajectoryLlmCall(runtime, {
           ...details,
           response: "",
+          finishReason: "error",
+          providerMetadata,
           latencyMs: Math.max(0, Math.round(performance.now() - startedAt)),
         });
         throw capturedStreamError;
