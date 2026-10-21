@@ -856,6 +856,10 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       "Created “Optometrist appointment” for Friday, Sep 18 at 3pm EDT.",
     );
     expect(echoed?.data?.replyContext).not.toHaveProperty("context.event");
+    expect(
+      (echoed?.data?.replyContext as { context?: Record<string, unknown> })
+        ?.context,
+    ).toEqual({});
     // Keep the independent content case free of a deliberate scheduling conflict.
     const echoedEvent = echoed?.data?.event as LifeOpsCalendarEvent;
     await service.deleteCalendarEvent(INTERNAL_URL, {
@@ -947,6 +951,10 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
           : "Updated “Notary appointment” for Sep 25, 4:00 PM EDT.",
       );
       expect(result?.data?.replyContext).not.toHaveProperty("context.event");
+      expect(
+        (result?.data?.replyContext as { context?: Record<string, unknown> })
+          ?.context,
+      ).toEqual({});
       const moved = (
         result?.data as { event?: { startAt: string; endAt: string } }
       )?.event;
@@ -964,6 +972,54 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       expect(persisted.events[0]).toMatchObject(moved);
     },
   );
+
+  it("omits duplicate event payload from replyContext on delete_event (#37037)", async () => {
+    await service.createCalendarEventMutation(INTERNAL_URL, {
+      title: "Dentist appointment",
+      startAt: "2026-09-18T14:00:00.000Z",
+      endAt: "2026-09-18T14:30:00.000Z",
+      timeZone: "America/New_York",
+      idempotencyKey: "dentist-delete-test",
+    });
+    const action = createCalendarActionRunner({
+      runTextModel: vi.fn(async () => null),
+      runJsonModel: vi.fn(async () => null),
+      recentConversationTexts: vi.fn(async () => []),
+    });
+    const result = await action.handler(
+      runtime,
+      {
+        id: "00000000-0000-0000-0000-000000000301",
+        entityId: "00000000-0000-0000-0000-000000000102",
+        roomId: "00000000-0000-0000-0000-000000000103",
+        createdAt: Date.parse("2026-09-15T22:00:00.000Z"),
+        content: { text: "delete my dentist appointment" },
+      } as Memory,
+      undefined,
+      {
+        parameters: {
+          subaction: "delete_event",
+          query: "dentist appointment",
+          details: {
+            grantId: ELIZA_CALENDAR_GRANT_ID,
+            calendarId: ELIZA_CALENDAR_ID,
+            timeZone: "America/New_York",
+          },
+        },
+      },
+    );
+    expect(result?.success, JSON.stringify(result)).toBe(true);
+    expect(result?.modelReplyRequired, JSON.stringify(result)).toBe(true);
+    expect(result?.data?.replyContext).toMatchObject({
+      domain: "calendar",
+      scenario: "delete_event_completed",
+    });
+    expect(result?.data?.replyContext).not.toHaveProperty("context.event");
+    expect(
+      (result?.data?.replyContext as { context?: Record<string, unknown> })
+        ?.context,
+    ).toEqual({});
+  });
 
   it("keeps the duration when moving an event saved without a time zone", async () => {
     // Google events without start.timeZone and Apple floating events are
