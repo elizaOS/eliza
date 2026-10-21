@@ -171,7 +171,27 @@ async function graphApiRequest<T>(
       },
     });
 
-    const json = await response.json();
+    const json = (await response.json().catch(() => null)) as GraphApiError | null;
+
+    if (json === null) {
+      lastError = new Error(`Meta API Error: non-JSON response (status ${response.status})`);
+
+      if (attempt < RETRY_CONFIG.maxAttempts) {
+        const delay = Math.min(
+          RETRY_CONFIG.baseDelayMs * 2 ** (attempt - 1),
+          RETRY_CONFIG.maxDelayMs,
+        );
+        logger.info("[MetaAds] Retrying after non-JSON response", {
+          status: response.status,
+          attempt,
+          delay,
+        });
+        await sleep(delay);
+        continue;
+      }
+
+      throw lastError;
+    }
 
     if ((json as GraphApiError).error) {
       const error = (json as GraphApiError).error!;
