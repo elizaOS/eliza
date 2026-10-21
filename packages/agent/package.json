@@ -298,7 +298,7 @@
     "@elizaos/plugin-relationships": "workspace:*",
     "@elizaos/plugin-sqlite": "workspace:*",
     "@elizaos/plugin-embeddings": "workspace:*",
-    "react": "^19.0.0",
+    "react": "^19.3.1",
     "@elizaos/capacitor-system": "workspace:*",
     "@elizaos/host": "workspace:*",
     "@elizaos/contracts": "workspace:*"
