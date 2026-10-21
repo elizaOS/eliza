@@ -32,7 +32,7 @@ const isMemoryDataDir = (dataDir: unknown): boolean =>
 export function initdbSnapshotPath(
   options: PGliteOptions,
   env: Record<string, string | undefined> = process.env,
-  bundleUrl: string = import.meta.url
+  bundleUrl: string = import.meta.url,
 ): string | null {
   const withData = options as PGliteOptions & {
     dataDir?: unknown;
@@ -60,11 +60,12 @@ export function readInitdbSnapshot(
     } catch {
       return null;
     }
-  }
+  },
 ): Blob | null {
   if (!path) return null;
   const bytes = size(path);
-  if (bytes === null || bytes < 2 || bytes > MAX_INITDB_SNAPSHOT_BYTES) return null;
+  if (bytes === null || bytes < 2 || bytes > MAX_INITDB_SNAPSHOT_BYTES)
+    return null;
   const data = read(path);
   // gzip magic: a file that is not a gzip archive is not a snapshot.
   if (
