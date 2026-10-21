@@ -43,6 +43,7 @@ import {
   isRateLimitError,
   isTextGenerationModelType,
   type AgentLogEntry as LogEntry,
+  logger,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Media,
   type Memory,
@@ -1351,15 +1352,26 @@ function isRemoteOllamaEndpointConfigured(): boolean {
   const raw =
     readAliasedEnv("OLLAMA_BASE_URL") ?? readAliasedEnv("OLLAMA_API_ENDPOINT");
   if (!raw?.trim()) return false;
+  const configured = raw.trim();
+  let host: string;
   try {
-    const normalized = raw.trim().replace(/\/api\/?$/i, "");
-    const host = new URL(normalized).hostname.toLowerCase();
-    return host !== "localhost" && host !== "127.0.0.1" && host !== "::1";
-  } catch {
+    host = new URL(configured.replace(/\/api\/?$/i, "")).hostname.toLowerCase();
+  } catch (error) {
+    // An operator-supplied endpoint is intentional configuration, so a value we
+    // cannot parse must not read as "no endpoint configured": that silently
+    // drops the deadline to the local default and the misconfiguration only
+    // resurfaces as "chat generation timed out after 180000ms". Report it and
+    // keep the classification unchanged.
+    logger.warn(
+      `[chat-routes] OLLAMA_BASE_URL/OLLAMA_API_ENDPOINT is not a parseable URL (${JSON.stringify(configured)}): ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
     return false;
   }
+  return host !== "localhost" && host !== "127.0.0.1" && host !== "::1";
 }
-function resolveChatGenerationTimeoutMs(explicit?: number): number {
+export function resolveChatGenerationTimeoutMs(explicit?: number): number {
   if (
     typeof explicit === "number" &&
     Number.isFinite(explicit) &&
