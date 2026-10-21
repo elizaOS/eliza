@@ -17,7 +17,7 @@ jobs:
           submodules: false
           persist-credentials: false
       - name: Setup Java 21
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
         with:
           distribution: temurin
           java-version: 21
