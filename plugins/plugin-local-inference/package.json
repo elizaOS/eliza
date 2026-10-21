@@ -143,7 +143,7 @@
 		"@types/ws": "^8.18.1",
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"typescript": "^6.0.3",
-		"vitest": "^5.0.3",
+		"vitest": "^5.0.5",
 		"@elizaos/testing": "workspace:*",
 		"@elizaos/plugin-sqlite": "workspace:*"
 	},

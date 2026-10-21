@@ -105,8 +105,8 @@
   "devDependencies": {
     "typescript": "^6.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "tsup": "^8.5.1",
-    "vitest": "^5.0.3",
+    "tsup": "^9.0.0",
+    "vitest": "^5.0.5",
     "@elizaos/testing": "workspace:*",
     "@biomejs/biome": "2.5.15",
     "@elizaos/plugin-sql": "workspace:*",
