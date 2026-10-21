@@ -67,6 +67,14 @@ export function readInitdbSnapshot(
   if (bytes === null || bytes < 2 || bytes > MAX_INITDB_SNAPSHOT_BYTES) return null;
   const data = read(path);
   // gzip magic: a file that is not a gzip archive is not a snapshot.
-  if (data.length < 2 || data[0] !== 0x1f || data[1] !== 0x8b) return null;
+  if (
+    data.byteLength < 2 ||
+    data.byteLength > MAX_INITDB_SNAPSHOT_BYTES ||
+    data[0] !== 0x1f ||
+    data[1] !== 0x8b
+  )
+    return null;
+  // Copy only the view into an ArrayBuffer-backed array. A Buffer can point
+  // into a larger pool; its backing buffer is not necessarily the payload.
   return new Blob([new Uint8Array(data)], { type: "application/x-gzip" });
 }

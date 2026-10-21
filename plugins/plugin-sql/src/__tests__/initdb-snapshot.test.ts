@@ -51,15 +51,24 @@ describe("initdbSnapshotPath", () => {
 
 describe("readInitdbSnapshot", () => {
   const gzip = new Uint8Array([0x1f, 0x8b, 8, 0, 0, 0]);
-  it("returns a gzip blob for a present snapshot", async () => {
-    const blob = readInitdbSnapshot(
-      "/snap",
-      () => gzip,
-      () => gzip.length
-    );
-    expect(blob).not.toBeNull();
-    expect(new Uint8Array(await (blob as Blob).arrayBuffer())).toEqual(gzip);
-  });
+  for (const Backing of [ArrayBuffer, SharedArrayBuffer]) {
+    it(`keeps a snapshot view complete and immutable with ${Backing.name}`, async () => {
+      const backing = new Uint8Array(new Backing(gzip.length + 6));
+      backing.fill(0xa5);
+      backing.set(gzip, 3);
+      const view = backing.subarray(3, 3 + gzip.length);
+      const blob = readInitdbSnapshot(
+        "/snap",
+        () => view,
+        () => view.byteLength
+      );
+      if (!blob) throw new Error("Expected a snapshot blob");
+      expect(blob.type).toBe("application/x-gzip");
+      expect(new Uint8Array(await blob.arrayBuffer())).toEqual(gzip);
+      backing.fill(0);
+      expect(new Uint8Array(await blob.arrayBuffer())).toEqual(gzip);
+    });
+  }
 
   it("returns null when absent, oversized or not gzip", () => {
     expect(readInitdbSnapshot(null)).toBeNull();
@@ -82,6 +91,15 @@ describe("readInitdbSnapshot", () => {
         "/text",
         () => new Uint8Array([0x7b, 0x7d]),
         () => 2
+      )
+    ).toBeNull();
+    const grown = new Uint8Array(MAX_INITDB_SNAPSHOT_BYTES + 1);
+    grown.set(gzip);
+    expect(
+      readInitdbSnapshot(
+        "/grown",
+        () => grown,
+        () => gzip.length
       )
     ).toBeNull();
   });
