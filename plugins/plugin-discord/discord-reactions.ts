@@ -74,6 +74,7 @@ export async function handleReaction(
 					},
 					"Failed to fetch partial reaction user",
 				);
+				return;
 			}
 		}
 

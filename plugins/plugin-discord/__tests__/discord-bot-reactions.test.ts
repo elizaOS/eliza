@@ -160,4 +160,20 @@ describe("Discord bot reaction filtering and quote formatting (issue #37031)", (
     expect(payload.message.content.text).toBe('*Removed <⏳> from: "ship it"*');
     expect(payload.message.content.text).not.toContain('\\"');
   });
+
+  it("drops reactions when partial user fetch fails (fail-closed for uncached bots)", async () => {
+    const { service, ensureConnection, emitEvent } = createMockService();
+    const reaction = createMockReaction();
+    const partialUserWithFailedFetch = {
+      id: botUserId,
+      partial: true,
+      fetch: vi.fn().mockRejectedValue(new Error("Discord API rate limit")),
+    } as unknown as User;
+
+    await handleReactionAdd(service, reaction, partialUserWithFailedFetch);
+
+    expect(partialUserWithFailedFetch.fetch).toHaveBeenCalled();
+    expect(ensureConnection).not.toHaveBeenCalled();
+    expect(emitEvent).not.toHaveBeenCalled();
+  });
 });
