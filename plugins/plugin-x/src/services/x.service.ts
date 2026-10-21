@@ -296,10 +296,15 @@ export class TwitterClientInstance implements ITwitterClient {
       );
     }
 
-    // Mentions and interactions
-    const repliesEnabled =
-      (getSetting(runtime, "TWITTER_ENABLE_REPLIES") ??
-        process.env.TWITTER_ENABLE_REPLIES) !== "false";
+    // Mentions and interactions. Read the same source order as the DM toggle:
+    // the account state first, then the runtime setting, then the environment.
+    // The shared parser turns "off", "0" and "FALSE" off.
+    const repliesEnabled = parseBooleanFromText(
+      state.TWITTER_ENABLE_REPLIES ??
+        getSetting(runtime, "TWITTER_ENABLE_REPLIES") ??
+        process.env.TWITTER_ENABLE_REPLIES ??
+        "true",
+    );
 
     if (repliesEnabled) {
       logger.info("Twitter replies/interactions are ENABLED");
