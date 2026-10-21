@@ -116,16 +116,12 @@ function resolveInstalledPluginDir(packageName: string): string | null {
     : null;
 }
 async function readPackageName(packageDir: string): Promise<string | null> {
-  try {
-    const packageJson = JSON.parse(
-      await fs.promises.readFile(path.join(packageDir, "package.json"), "utf8"),
-    ) as {
-      name?: unknown;
-    };
-    return typeof packageJson.name === "string" ? packageJson.name : null;
-  } catch {
-    return null;
-  }
+  // Only a genuinely absent manifest means "not this package"; a BOM-prefixed
+  // or corrupt one must not be silently dropped by the workspace scan.
+  const packageJson = await readJsonFile<{ name?: unknown }>(
+    path.join(packageDir, "package.json"),
+  );
+  return typeof packageJson?.name === "string" ? packageJson.name : null;
 }
 async function resolveWorkspacePackageDirs(
   packageName: string,
@@ -157,15 +153,34 @@ async function resolveWorkspacePackageDirs(
     }
   }
   const matches: string[] = [];
+  let manifestFailure: ElizaError | null = null;
   for (const candidateDir of uniquePaths(candidateDirs)) {
     if (!fs.existsSync(path.join(candidateDir, "package.json"))) {
       continue;
     }
-    const discoveredName = await readPackageName(candidateDir);
+    let discoveredName: string | null;
+    try {
+      discoveredName = await readPackageName(candidateDir);
+    } catch (cause) {
+      // error-policy:J3 a corrupt/unreadable manifest is only fatal when it is
+      // the last thing between us and an answer: remember it, keep scanning the
+      // remaining candidates, so a damaged copy cannot hide a healthy copy of
+      // the same package in another workspace root.
+      manifestFailure ??= new ElizaError(
+        "Failed to read an app package manifest",
+        {
+          code: "APP_MODULE_RESOLUTION_FAILED",
+          context: { packageDir: candidateDir },
+          cause,
+        },
+      );
+      continue;
+    }
     if (discoveredName === packageName) {
       matches.push(candidateDir);
     }
   }
+  if (matches.length === 0 && manifestFailure) throw manifestFailure;
   return matches;
 }
 export async function resolveWorkspacePackageDir(
