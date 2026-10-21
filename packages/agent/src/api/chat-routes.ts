@@ -1348,6 +1348,13 @@ export function isChatGenerationTimeoutError(err: unknown): boolean {
     err instanceof Error ? err.message : typeof err === "string" ? err : "";
   return CHAT_GENERATION_TIMEOUT_PATTERN.test(msg);
 }
+const ENDPOINT_USERINFO_PATTERN = /^([a-z][a-z0-9+.-]*:\/\/)[^/?#@]*@/i;
+// The raw value is what the operator needs to identify, but it can embed
+// basic-auth credentials (`http://user:token@host`) and this warning is written
+// to logs. Keep the scheme and host, drop the userinfo segment.
+function redactEndpointUserinfo(value: string): string {
+  return value.replace(ENDPOINT_USERINFO_PATTERN, "$1***@");
+}
 function isRemoteOllamaEndpointConfigured(): boolean {
   const raw =
     readAliasedEnv("OLLAMA_BASE_URL") ?? readAliasedEnv("OLLAMA_API_ENDPOINT");
@@ -1363,9 +1370,9 @@ function isRemoteOllamaEndpointConfigured(): boolean {
     // resurfaces as "chat generation timed out after 180000ms". Report it and
     // keep the classification unchanged.
     logger.warn(
-      `[chat-routes] OLLAMA_BASE_URL/OLLAMA_API_ENDPOINT is not a parseable URL (${JSON.stringify(configured)}): ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `[chat-routes] OLLAMA_BASE_URL/OLLAMA_API_ENDPOINT is not a parseable URL (${JSON.stringify(
+        redactEndpointUserinfo(configured),
+      )}): ${error instanceof Error ? error.message : String(error)}`,
     );
     return false;
   }

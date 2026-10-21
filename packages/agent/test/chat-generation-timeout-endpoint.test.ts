@@ -59,6 +59,23 @@ it("reports an unparseable Ollama endpoint instead of silently using the local t
   expect(reported).toContain("192.168.1.50:11434");
 });
 
+it("names the misconfigured variable without copying endpoint credentials into the log", () => {
+  const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+  // Userinfo without a host is the shape that carries credentials *and* fails
+  // `new URL()`, so it reaches the warning path with the secret still attached.
+  expect(() => new URL("http://user:sup3rtoken@")).toThrow();
+  process.env.OLLAMA_BASE_URL = "http://user:sup3rtoken@";
+
+  expect(resolveChatGenerationTimeoutMs()).toBe(DEFAULT_TIMEOUT_MS);
+  expect(warn).toHaveBeenCalledTimes(1);
+  const reported = String(warn.mock.calls[0]?.[0] ?? "");
+  expect(reported).toContain("OLLAMA_BASE_URL");
+  expect(reported).not.toContain("sup3rtoken");
+  expect(reported).not.toContain("user:");
+  // Still identifiable as the operator's setting, minus the credential.
+  expect(reported).toContain("http://***@");
+});
+
 it("keeps a valid remote endpoint on the long timeout without warning", () => {
   const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
   process.env.OLLAMA_BASE_URL = "http://pi.lan:11434/api";
