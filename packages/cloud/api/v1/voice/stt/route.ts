@@ -532,6 +532,16 @@ async function __hono_POST(c: AppContext) {
         { status: 400 },
       );
     }
+    const requestedProviders = formData.getAll("provider");
+    if (
+      requestedProviders.length > 1 ||
+      (requestedProviders.length === 1 && requestedProviders[0] !== "cartesia")
+    ) {
+      return Response.json(
+        { error: "Invalid speech-to-text provider" },
+        { status: 400 },
+      );
+    }
     const audioFile = formData.get("audio") as File | null;
     const languageCodeValue = formData.get("languageCode");
     const languageCode =
@@ -671,6 +681,7 @@ async function __hono_POST(c: AppContext) {
         { status: 503 },
       );
     }
+    if (requestedProviders.length === 1) batchSttProvider = "cartesia";
     const deepgramApiKey = env.DEEPGRAM_API_KEY?.trim();
     const cartesiaApiKey = env.CARTESIA_API_KEY?.trim();
     if (batchSttProvider === "deepgram" && !deepgramApiKey) {
@@ -1145,11 +1156,19 @@ async function __hono_POST(c: AppContext) {
       if (executionCtx) executionCtx.waitUntil(billingTask);
       else void billingTask;
 
-      return Response.json({
-        transcript: transcription.transcript,
-        duration_ms: cartesiaDuration,
-        ...(transcription.words ? { words: transcription.words } : {}),
-      });
+      return Response.json(
+        {
+          transcript: transcription.transcript,
+          duration_ms: cartesiaDuration,
+          ...(transcription.words ? { words: transcription.words } : {}),
+        },
+        {
+          headers: {
+            "X-Eliza-STT-Provider": "cartesia",
+            "X-Eliza-STT-Model": CARTESIA_BATCH_STT_MODEL,
+          },
+        },
+      );
     }
 
     // -------------------------------------------------------------------------
