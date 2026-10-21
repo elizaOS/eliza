@@ -12,24 +12,22 @@ const options = (value: Record<string, unknown>) => value as PGliteOptions;
 
 describe("initdbSnapshotPath", () => {
   it("uses the file beside the bundle for an in-memory database", () => {
-    expect(
-      initdbSnapshotPath(options({ dataDir: "memory://" }), {}, bundleUrl),
-    ).toBe(`/data/app/bundle/${INITDB_SNAPSHOT_FILE}`);
+    expect(initdbSnapshotPath(options({ dataDir: "memory://" }), {}, bundleUrl)).toBe(
+      `/data/app/bundle/${INITDB_SNAPSHOT_FILE}`
+    );
     expect(initdbSnapshotPath(options({}), {}, bundleUrl)).toBe(
-      `/data/app/bundle/${INITDB_SNAPSHOT_FILE}`,
+      `/data/app/bundle/${INITDB_SNAPSHOT_FILE}`
     );
   });
 
   it("leaves on-disk databases and explicit loadDataDir alone", () => {
-    expect(
-      initdbSnapshotPath(options({ dataDir: "/data/db" }), {}, bundleUrl),
-    ).toBeNull();
+    expect(initdbSnapshotPath(options({ dataDir: "/data/db" }), {}, bundleUrl)).toBeNull();
     expect(
       initdbSnapshotPath(
         options({ dataDir: "memory://", loadDataDir: new Blob([]) }),
         {},
-        bundleUrl,
-      ),
+        bundleUrl
+      )
     ).toBeNull();
   });
 
@@ -38,15 +36,15 @@ describe("initdbSnapshotPath", () => {
       initdbSnapshotPath(
         options({ dataDir: "memory://" }),
         { PGLITE_INITDB_SNAPSHOT: "/opt/snap.bin" },
-        bundleUrl,
-      ),
+        bundleUrl
+      )
     ).toBe("/opt/snap.bin");
     expect(
       initdbSnapshotPath(
         options({ dataDir: "memory://" }),
         { PGLITE_INITDB_SNAPSHOT: "snap.bin" },
-        bundleUrl,
-      ),
+        bundleUrl
+      )
     ).toBeNull();
   });
 });
@@ -62,7 +60,7 @@ describe("readInitdbSnapshot", () => {
       const blob = readInitdbSnapshot(
         "/snap",
         () => view,
-        () => view.byteLength,
+        () => view.byteLength
       );
       if (!blob) throw new Error("Expected a snapshot blob");
       expect(blob.type).toBe("application/x-gzip");
@@ -78,22 +76,22 @@ describe("readInitdbSnapshot", () => {
       readInitdbSnapshot(
         "/missing",
         () => gzip,
-        () => null,
-      ),
+        () => null
+      )
     ).toBeNull();
     expect(
       readInitdbSnapshot(
         "/big",
         () => gzip,
-        () => MAX_INITDB_SNAPSHOT_BYTES + 1,
-      ),
+        () => MAX_INITDB_SNAPSHOT_BYTES + 1
+      )
     ).toBeNull();
     expect(
       readInitdbSnapshot(
         "/text",
         () => new Uint8Array([0x7b, 0x7d]),
-        () => 2,
-      ),
+        () => 2
+      )
     ).toBeNull();
     const grown = new Uint8Array(MAX_INITDB_SNAPSHOT_BYTES + 1);
     grown.set(gzip);
@@ -101,8 +99,8 @@ describe("readInitdbSnapshot", () => {
       readInitdbSnapshot(
         "/grown",
         () => grown,
-        () => gzip.length,
-      ),
+        () => gzip.length
+      )
     ).toBeNull();
   });
 });
