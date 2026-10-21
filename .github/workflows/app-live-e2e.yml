@@ -180,7 +180,7 @@ jobs:
 
       - name: Upload live-chat artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: app-live-e2e-chat
           # The harness projects backend stdout/stderr into a fixed category +
@@ -258,7 +258,7 @@ jobs:
 
       - name: Upload walkthrough screenshots + recording + verdicts
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: app-live-e2e-walkthrough
           path: |
@@ -442,7 +442,7 @@ jobs:
 
       - name: Upload production Cloud progress diagnostic
         if: ${{ always() && steps.production-cloud-smoke.outcome != 'skipped' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: app-live-e2e-cloud-production-progress
           path: test-results/app/**/privacy-safe-trajectory-history-network-diagnostics.json
@@ -668,7 +668,7 @@ jobs:
 
       - name: Upload cloud-live staging artifacts
         if: ${{ always() && steps.staging-cloud-smoke.outcome != 'skipped' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: app-live-e2e-cloud-staging
           path: |
@@ -802,7 +802,7 @@ jobs:
 
       - name: Upload desktop-packaged artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: app-live-e2e-desktop
           path: |
@@ -900,7 +900,7 @@ jobs:
         run: node --import tsx packages/auth/native-host/staging-acceptance.mjs
       - name: Upload closed native lifecycle receipt
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: native-staging-credential-receipt
           path: test-results/native-staging-acceptance/receipt.json

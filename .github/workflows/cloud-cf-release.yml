@@ -2610,7 +2610,7 @@ jobs:
           node --check web-dist/_worker.js
 
       - name: Upload consolidated frontend artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: pages-app-${{ steps.pages-artifact.outputs.run_id }}-${{ steps.pages-artifact.outputs.run_attempt }}
           path: |
@@ -3234,7 +3234,7 @@ jobs:
 
       - name: Publish closed Pages deployment authority
         if: steps.cf.outputs.configured == 'true' && inputs.target_environment == 'staging' && steps.freshness.outputs.should_deploy == 'true' && steps.pages-deploy.outputs.deployed == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: pages-deployment-authority-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pages-deployment-authority/pages-deployment-authority.json
@@ -3444,7 +3444,7 @@ jobs:
 
       - name: Upload privacy-safe deployed renderer failure diagnostics
         if: ${{ failure() && steps.deployed-browser.outcome == 'failure' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: deployed-renderer-failure-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/app/**/privacy-safe-*-history-network-diagnostics.json
@@ -3495,7 +3495,7 @@ jobs:
             --deployed-proof-file "$DEPLOYED_PROOF_PATH"
 
       - name: Upload closed deployed staging receipt
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: app-live-e2e-cloud-staging-deployed-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/deployed-renderer-proof-${{ github.run_id }}-${{ github.run_attempt }}/cloud-staging-deployed-receipt.json

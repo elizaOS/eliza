@@ -161,7 +161,7 @@ jobs:
         run: bundle exec fastlane publish_aab
 
       - name: Upload Android release evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: eliza-google-play-${{ inputs.version }}
           path: packages/app/platforms/android/app/build/outputs/bundle/release/app-release.aab
@@ -305,7 +305,7 @@ jobs:
         run: bundle exec fastlane "$APPLE_LANE"
 
       - name: Upload iOS release evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: eliza-ios-${{ inputs.version }}
           path: packages/app/ios/build/Eliza.ipa

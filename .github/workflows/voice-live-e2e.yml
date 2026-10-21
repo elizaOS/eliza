@@ -96,7 +96,7 @@ jobs:
 
       - name: Upload matrix probe report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: voice-platform-matrix-index
           path: |
@@ -312,7 +312,7 @@ jobs:
 
       - name: Upload web Railway voice evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: voice-web-live-railway
           path: ${{ runner.temp }}/voice-web-final
@@ -392,7 +392,7 @@ jobs:
           file "$LIB"
 
       - name: Upload fused lib artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: voice-fused-lib-linux-x64-cpu
           path: fused-lib
@@ -627,7 +627,7 @@ jobs:
 
       - name: Upload privacy-safe real voice matrix proof
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: voice-real-acoustic-matrix
           path: ${{ runner.temp }}/voice-real-proof
@@ -712,7 +712,7 @@ jobs:
 
       - name: Upload macOS Electrobun matrix
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: voice-macos-electrobun-matrix
           path: ${{ runner.temp }}/voice-macos-electrobun-final
@@ -796,7 +796,7 @@ jobs:
 
       - name: Upload Windows Electrobun matrix
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: voice-windows-electrobun-matrix
           path: ${{ runner.temp }}/voice-windows-electrobun-final
@@ -841,7 +841,7 @@ jobs:
 
       - name: Upload iOS matrix
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: voice-ios-matrix
           path: |
@@ -893,7 +893,7 @@ jobs:
 
       - name: Upload Android matrix
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: voice-android-matrix
           path: |
