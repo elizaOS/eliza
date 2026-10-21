@@ -15,4 +15,11 @@ describe("parseImageDescriptionResponse", () => {
     );
     expect(result.title).toBe("Red jacket at the zoo");
   });
+
+  it("handles trailing asterisks in the title", () => {
+    const result = parseImageDescriptionResponse(
+      "**Title: Red jacket**\n\nA man stands by an enclosure."
+    );
+    expect(result.title).toBe("Red jacket");
+  });
 });
