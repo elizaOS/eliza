@@ -33,7 +33,7 @@
     "@elizaos/plugin-assistant": "workspace:*",
     "@elizaos/plugin-google-workspace": "workspace:*",
     "@elizaos/ui": "workspace:*",
-    "drizzle-orm": "0.45.3",
+    "drizzle-orm": "0.45.4",
     "lucide-react": "^1.0.0",
     "@elizaos/contracts": "workspace:*"
   },

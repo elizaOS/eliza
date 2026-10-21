@@ -28,7 +28,7 @@
   },
   "devDependencies": {
     "vite": "^8.3.0",
-    "drizzle-orm": "0.45.3",
+    "drizzle-orm": "0.45.4",
     "@playwright/test": "^1.64.0",
     "bun-types": "1.4.2",
     "@types/node": "^22.0.0",

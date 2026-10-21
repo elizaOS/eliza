@@ -766,7 +766,7 @@
     "bs58": "^6.0.0",
     "decimal.js": "^10.6.0",
     "dotenv": "^17.4.2",
-    "drizzle-orm": "0.45.3",
+    "drizzle-orm": "0.45.4",
     "exceljs": "^4.4.0",
     "expletives": "^0.1.5",
     "hono": "4.13.8",
