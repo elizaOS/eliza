@@ -172,19 +172,24 @@ describe("bundle ASR artifacts", () => {
 		expect(bundleHasAsrModelFiles(root)).toBe(false);
 	});
 
-	it("propagates an unreadable asr/ directory instead of reporting no model", () => {
-		const root = writeManifest({});
-		const asrDir = path.join(root, "asr");
-		writeFileSync(path.join(asrDir, "phonon-2-fv5.gguf"), gguf("parakeet-tdt"));
-		chmodSync(asrDir, 0o000);
-		try {
-			// The directory exists but cannot be listed: that is a broken
-			// bundle, not a bundle with no ASR artifacts staged.
-			expect(() => bundleHasAsrModelFiles(root)).toThrow(
-				/failed to read ASR model directory/,
-			);
-		} finally {
-			chmodSync(asrDir, 0o700);
-		}
-	});
+	// chmod cannot remove read access for uid 0 or on Windows, where the
+	// listing succeeds and this assertion would fail despite correct behaviour.
+	it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+		"propagates an unreadable asr/ directory instead of reporting no model",
+		() => {
+			const root = writeManifest({});
+			const asrDir = path.join(root, "asr");
+			writeFileSync(path.join(asrDir, "phonon-2-fv5.gguf"), gguf("parakeet-tdt"));
+			chmodSync(asrDir, 0o000);
+			try {
+				// The directory exists but cannot be listed: that is a broken
+				// bundle, not a bundle with no ASR artifacts staged.
+				expect(() => bundleHasAsrModelFiles(root)).toThrow(
+					/failed to read ASR model directory/,
+				);
+			} finally {
+				chmodSync(asrDir, 0o700);
+			}
+		},
+	);
 });
