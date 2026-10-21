@@ -77,9 +77,23 @@ is the existing broad user/organization capability, not a narrower permission cl
 The release workflow publishes the registry from the protected
 `ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON` environment secret. The
 `Mobile App Auth Registration Admin` workflow diagnoses or repairs a client's
-`apps` row: choose the client (`ai.elizaresearch.alphaphone` for Alpha Phone);
+`apps` row: choose the client (`ai.elizaresearch.alphaphone` for Alpha Phone,
+`ai.elizaresearch.seniorcare` for Senior Care, whose callback is
+`https://cloud.eliza.app/auth/senior-care/callback`, staging:
+`https://cloud-staging.eliza.app/auth/senior-care/callback`);
 additional clients take their app UUID from the same registry entry, which must
 be enabled and bound to that environment's callback.
+
+### Alpha-owned managed Google returns
+
+The Alpha-owned callback rollout uses `ALPHA_OAUTH_RETURN_URLS` for exact HTTPS
+Gmail return addresses. Initiation accepts the app nonce as the only `state`
+query parameter and returns `alphaReturn: 2` when configured. The callback uses
+server-owned state and returns only state/result plus `connectionId` on success.
+The app must verify that connection through its authenticated connector list.
+Denial retires state and creates no grant. Unknown state keeps existing recovery.
+Google credentials and token refresh behavior are unchanged. The Alpha domain's
+callback assets and Android association must be deployed before live acceptance.
 
 ### Alpha Phone in-app sign-in
 

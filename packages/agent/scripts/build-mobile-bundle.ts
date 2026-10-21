@@ -12,7 +12,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 /**
  * Builds self-contained Android and iOS agent bundles with their PGlite assets.
  * Mobile plugin policy determines the inlined plugin set; models are not bundled.
@@ -1594,6 +1594,34 @@ for (const asset of ["pglite.wasm", "initdb.wasm", "pglite.data"]) {
     `[build-mobile] copied ${asset} (${(sz / 1024 / 1024).toFixed(2)} MB)`,
   );
 }
+// An empty database made by this same PGlite, right after initdb. The bundled
+// plugin-sql loads it for in-memory databases (plugins/plugin-sql/src/pglite/
+// initdb-snapshot.ts), so the device never runs initdb: PGlite 0.4.x keeps the
+// temporary initdb instance's WebAssembly memory (about 184 MB) for the life
+// of the process. A child process makes it, because PGlite keeps the event
+// loop alive after the dump.
+{
+  const snapshotPath = path.join(outDir, "pglite-initdb.bin");
+  const script = [
+    `const { PGlite } = await import(${JSON.stringify(pathToFileURL(path.join(pgliteDist, "index.js")).href)});`,
+    "const db = await PGlite.create({ dataDir: 'memory://' });",
+    "const dump = await db.dumpDataDir('gzip');",
+    `await Bun.write(${JSON.stringify(snapshotPath)}, dump);`,
+    "process.exit(0);",
+  ].join("\n");
+  const made = spawnSync(process.execPath, ["--eval", script], {
+    stdio: "inherit",
+    timeout: 120_000,
+  });
+  if (made.status !== 0 || !existsSync(snapshotPath)) {
+    console.error("[build-mobile] FATAL: could not make the PGlite initdb snapshot");
+    process.exit(1);
+  }
+  const sz = (await stat(snapshotPath)).size;
+  console.log(
+    `[build-mobile] wrote pglite-initdb.bin (${(sz / 1024 / 1024).toFixed(2)} MB)`,
+  );
+}
 // Copy contrib extension tarballs. They live one dir above the bundle on
 // device (Phase A handles placement); we surface them in dist-mobile/ so the
 // asset pipeline can pick them up.
@@ -1624,6 +1652,7 @@ const manifest = {
     wasm: "pglite.wasm",
     initdb: "initdb.wasm",
     data: "pglite.data",
+    initdbSnapshot: "pglite-initdb.bin",
     extensions: {
       pg_trgm: { file: "pg_trgm.tar.gz", expectedAt: "../pg_trgm.tar.gz" },
       vector: { file: "vector.tar.gz", expectedAt: "../vector.tar.gz" },

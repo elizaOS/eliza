@@ -22,6 +22,8 @@ import type { createLoginApp } from "../app";
 import type { createPGLiteDb } from "../db/pglite";
 
 const TENANT_ID = "elizacloud";
+const ALPHA_LINK = "https://alphacompute.ai/alphaphone/auth/callback";
+const alphaTokenClients: string[] = [];
 const APP_LINK = "https://eliza.app/alphaphone/auth/callback";
 // Public base the Cloud API proxies to Steward; the router itself is unprefixed.
 const STEWARD_ORIGIN = "https://api.eliza.app/steward";
@@ -55,6 +57,8 @@ beforeAll(async () => {
     if (PROVIDER_TOKEN_URLS.has(request.url)) {
       const body = new URLSearchParams(await request.text());
       const code = body.get("code") ?? "";
+      if (body.get("client_id") === "synthetic-google-web-client")
+        alphaTokenClients.push(code);
       if (!identities.has(code))
         return Response.json({ error: "invalid_grant" }, { status: 400 });
       return Response.json({
@@ -84,6 +88,7 @@ beforeAll(async () => {
     STEWARD_AUDIT_HMAC_KEY: randomBytes(32).toString("hex"),
     APP_URL: STEWARD_ORIGIN,
     GOOGLE_CLIENT_ID: "synthetic-google-web-client",
+    STEWARD_OAUTH_APP_ERROR_REDIRECTS: ALPHA_LINK,
     GOOGLE_CLIENT_SECRET: "synthetic-google-secret",
     DISCORD_CLIENT_ID: "synthetic-discord-client",
     DISCORD_CLIENT_SECRET: "synthetic-discord-secret",
@@ -117,7 +122,7 @@ beforeAll(async () => {
   });
   await database.db.insert(tenantConfigs).values({
     tenantId: TENANT_ID,
-    allowedRedirectUrls: [APP_LINK],
+    allowedRedirectUrls: [APP_LINK, ALPHA_LINK],
     // Eliza Cloud accepts new members on first sign-in.
     joinMode: "open",
   });
@@ -196,6 +201,82 @@ function readHandOff(handOff: URL) {
 }
 
 describe("native App Link OAuth (Alpha Phone)", () => {
+  test("Alpha readiness, shared Google exchange and denial return stay bound to the app", async () => {
+    const query = new URLSearchParams({
+      tenant_id: TENANT_ID,
+      redirect_uri: ALPHA_LINK,
+    });
+    const ready = await nativeGet(
+      `/auth/oauth/google/alpha-readiness?${query}`,
+    );
+    expect(ready.status).toBe(200);
+    expect(ready.headers.get("cache-control")).toBe("no-store");
+    expect(await ready.json()).toEqual({
+      ok: true,
+      alphaAuth: 1,
+      tenantId: TENANT_ID,
+      redirectUri: ALPHA_LINK,
+    });
+    const verifier = base64url(randomBytes(32));
+    const state = base64url(randomBytes(32));
+    const authorize = await nativeGet(
+      `/auth/oauth/google/authorize?${authorizeQuery({ redirect_uri: ALPHA_LINK, state, code_challenge: s256(verifier) })}`,
+    );
+    expect(authorize.status).toBe(302);
+    const provider = new URL(authorize.headers.get("location") ?? "");
+    expect(provider.searchParams.get("client_id")).toBe(
+      "synthetic-google-web-client",
+    );
+    const code = base64url(randomBytes(16));
+    identities.set(code, {
+      sub: "alpha-dedicated-user",
+      email: "alpha@example.test",
+      email_verified: true,
+    });
+    const callback = await nativeGet(
+      `/auth/oauth/google/callback?code=${code}&state=${provider.searchParams.get("state")}`,
+    );
+    expect(callback.status).toBe(302);
+    expect(alphaTokenClients).toContain(code);
+    const handoff = new URL(callback.headers.get("location") ?? "");
+    expect(handoff.origin + handoff.pathname).toBe(ALPHA_LINK);
+    const exchange = await nativePost("/auth/oauth/exchange", {
+      code: readHandOff(handoff).code,
+      redirectUri: ALPHA_LINK,
+      tenantId: TENANT_ID,
+      codeVerifier: verifier,
+    });
+    expect(exchange.status).toBe(200);
+    expect(typeof (await exchange.json()).token).toBe("string");
+    const second = await nativeGet(
+      `/auth/oauth/google/authorize?${authorizeQuery({ redirect_uri: ALPHA_LINK, state })}`,
+    );
+    const secondProvider = new URL(second.headers.get("location") ?? "");
+    const denied = await nativeGet(
+      `/auth/oauth/google/callback?error=access_denied&state=${secondProvider.searchParams.get("state")}`,
+    );
+    expect(denied.status).toBe(302);
+    const denial = new URL(denied.headers.get("location") ?? "");
+    expect(denial.origin + denial.pathname).toBe(ALPHA_LINK);
+    expect(new URLSearchParams(denial.hash.slice(1)).get("state")).toBe(state);
+    expect(new URLSearchParams(denial.hash.slice(1)).has("error")).toBe(true);
+    const secret = process.env.GOOGLE_CLIENT_SECRET;
+    try {
+      delete process.env.GOOGLE_CLIENT_SECRET;
+      const unavailable = await nativeGet(
+        `/auth/oauth/google/alpha-readiness?${query}`,
+      );
+      expect(unavailable.status).toBe(503);
+      const refused = await nativeGet(
+        `/auth/oauth/google/authorize?${authorizeQuery({ redirect_uri: ALPHA_LINK })}`,
+      );
+      expect(refused.status).toBe(503);
+      expect(refused.headers.get("location")).toBeNull();
+    } finally {
+      process.env.GOOGLE_CLIENT_SECRET = secret;
+    }
+  }, 30_000);
+
   test("authorize forwards prompt=select_account to Google and accepts no Origin", async () => {
     const appState = base64url(randomBytes(32));
     const response = await nativeGet(

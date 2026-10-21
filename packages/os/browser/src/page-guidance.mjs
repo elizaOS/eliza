@@ -211,6 +211,7 @@ export function pageGuidance(request) {
       "button{font:700 22px/1 var(--face);color:#141414;border:0;border-radius:20px;background:#fff;box-shadow:inset 0 0 0 1.5px #4a342899;cursor:pointer;margin:0}button:focus-visible{outline:3px solid #141414;outline-offset:3px}.answered button{cursor:default}" +
       ".cards{display:flex;flex-direction:column;gap:10px}.card{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;min-height:64px;padding:12px 20px;border-radius:16px;text-align:left}.value{font:700 22px/28px var(--face);overflow-wrap:anywhere}.purpose{font:500 17px/22px var(--face);color:#4a3428}" +
       ".actions{display:flex;gap:10px}.actions button{flex:1 1 0}.actions button,.close{height:64px;padding:0 28px;white-space:nowrap}.actions .primary{background:#b3aad3;box-shadow:none}[hidden]{display:none!important}" +
+      ".inset{position:fixed;left:0;bottom:0;width:0;height:0;padding-bottom:env(safe-area-inset-bottom,0px);visibility:hidden;pointer-events:none}" +
       ".pointer{position:fixed;left:0;top:0;width:28px;height:32px;pointer-events:none;transition:left 1.4s cubic-bezier(.45,0,.25,1),top 1.4s cubic-bezier(.45,0,.25,1)}.pointer svg{display:block;fill:#141414;filter:drop-shadow(0 2px 3px #14141359)}" +
       ".tag{position:absolute;left:24px;top:28px;display:flex;align-items:center;gap:8px;height:34px;padding:0 12px 0 8px;border-radius:9px;background:#b3aad3;color:#141414;box-shadow:0 3px 10px #14141340;font:700 18px/1 var(--face);white-space:nowrap}.initial{display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:5px;background:#141414;color:#b3aad3;font-size:12px}" +
       ".pointer.paused{transition:none}.paused svg{fill:#73726c}.paused .tag{background:#4a4a47;color:#fff}.paused .initial{background:#fff;color:#4a4a47}" +
@@ -333,7 +334,9 @@ export function pageGuidance(request) {
   close.hidden =
     !request.action && buttons.some((answer) => answer.kind === "secondary");
   label.append(...offered, close);
-  root.append(ring, label, pointer, tap);
+  // Measures the bottom inset the page is drawn under (the navigation bar on Android).
+  const inset = element("div", "inset");
+  root.append(ring, label, pointer, tap, inset);
   shadow.adoptedStyleSheets = [style];
   shadow.append(root);
   pointer.style.display = "none";
@@ -427,6 +430,10 @@ export function pageGuidance(request) {
   window.addEventListener("pagehide", invalidate);
   document.addEventListener("beforeinput", invalidate, true);
   document.addEventListener("change", invalidate, true);
+  // The navigation bar's inset last seen without a keyboard, kept for this document in the
+  // isolated world: a guide shown after the keyboard opened (each show is a new renderer) still
+  // knows it.
+  const insetKey = "__elizaGuideBarInsetV1";
   const state = {
     id: request.id,
     nodeId: request.nodeId,
@@ -552,6 +559,22 @@ export function pageGuidance(request) {
       height: viewport?.height ?? innerHeight,
       scale: viewport?.scale ?? 1,
     };
+    // Chromium on Android draws the page under the navigation bar and, when the keyboard opens,
+    // shrinks the visual viewport by the keyboard's height less that bar. The reported bottom is
+    // then under the keyboard by the bar's inset, which env(safe-area-inset-bottom) no longer
+    // reports. The inset last seen without a keyboard in this document is taken off again.
+    const bottomInset =
+      Number.parseFloat(getComputedStyle(inset).paddingBottom) || 0;
+    const keyboard = view.height * view.scale < innerHeight - 1;
+    if (!keyboard) globalThis[insetKey] = bottomInset;
+    const barInset = Number.isFinite(globalThis[insetKey])
+      ? globalThis[insetKey]
+      : 0;
+    view.height = Math.max(
+      0,
+      view.height -
+        (keyboard ? Math.max(bottomInset, barInset) : bottomInset) / view.scale,
+    );
     const geometry = JSON.stringify([
       rect.x,
       rect.y,

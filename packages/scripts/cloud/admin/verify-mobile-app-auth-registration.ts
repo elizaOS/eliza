@@ -15,14 +15,16 @@ export const MOBILE_APP_AUTH_SCOPE = "cloud:user";
 export const MOBILE_APP_AUTH_CONFIG_MAX_BYTES = 16_384;
 export const ALPHA_PHONE_MOBILE_APP_AUTH_CLIENT_ID =
   "ai.elizaresearch.alphaphone";
+export const SENIOR_CARE_MOBILE_APP_AUTH_CLIENT_ID =
+  "ai.elizaresearch.seniorcare";
 export const MOBILE_APP_AUTH_CLIENTS_JSON_MAX_BYTES = 16_384;
 const MOBILE_CLIENT_MIN_CREDENTIAL_TTL_SECONDS = 24 * 60 * 60;
 const MOBILE_CLIENT_MAX_CREDENTIAL_TTL_SECONDS = 90 * 24 * 60 * 60;
 
 /**
  * One server-owned native client whose `apps` row this tooling verifies and
- * repairs. The primary Eliza app is fixed; additional clients (Alpha Phone)
- * are selected from `ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON` and bound to an
+ * repairs. The primary Eliza app is fixed; additional clients (Alpha Phone,
+ * Senior Care) are selected from `ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON` and bound to an
  * environment-specific App Link callback.
  */
 export interface MobileAppAuthRegistrationTarget {
@@ -191,6 +193,28 @@ export function alphaPhoneMobileAppAuthTarget(
   });
 }
 
+/**
+ * Senior Care (Grace) returns to its Cloud site callback: production
+ * `https://cloud.eliza.app/auth/senior-care/callback`, staging
+ * `https://cloud-staging.eliza.app/auth/senior-care/callback`.
+ */
+export function seniorCareMobileAppAuthTarget(
+  environment: MobileAppAuthDeploymentEnvironment,
+): MobileAppAuthRegistrationTarget {
+  const redirectOrigin =
+    environment === "production"
+      ? "https://cloud.eliza.app"
+      : "https://cloud-staging.eliza.app";
+  return Object.freeze({
+    clientId: SENIOR_CARE_MOBILE_APP_AUTH_CLIENT_ID,
+    redirectUri: `${redirectOrigin}/auth/senior-care/callback`,
+    redirectOrigin,
+    appName: "Senior Care",
+    appDescription: "First-party Senior Care native sign-in client",
+    slugPrefix: "senior-care-auth",
+  });
+}
+
 /** Unset selects the primary client; any other value must be a known client. */
 export function resolveMobileAppAuthRegistrationTarget(
   clientId: unknown,
@@ -205,6 +229,11 @@ export function resolveMobileAppAuthRegistrationTarget(
   }
   if (clientId === ALPHA_PHONE_MOBILE_APP_AUTH_CLIENT_ID) {
     return alphaPhoneMobileAppAuthTarget(
+      requireMobileAppAuthEnvironment(environment),
+    );
+  }
+  if (clientId === SENIOR_CARE_MOBILE_APP_AUTH_CLIENT_ID) {
+    return seniorCareMobileAppAuthTarget(
       requireMobileAppAuthEnvironment(environment),
     );
   }

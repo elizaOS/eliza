@@ -1,5 +1,5 @@
 /**
- * Alpha Phone registration: target selection, Worker registry validation, and
+ * Additional client registration (Alpha Phone, Senior Care): target selection, Worker registry validation, and
  * the real repair transaction against in-process PGlite. Synthetic UUIDs only.
  */
 import {
@@ -24,6 +24,8 @@ import {
   queryMobileAppAuthRegistration,
   requireRegisteredMobileClientAppId,
   resolveMobileAppAuthRegistrationTarget,
+  SENIOR_CARE_MOBILE_APP_AUTH_CLIENT_ID,
+  seniorCareMobileAppAuthTarget,
   validateMobileAppAuthConfigPayload,
   validateMobileAppAuthRegistrationRow,
 } from "./verify-mobile-app-auth-registration";
@@ -32,8 +34,11 @@ const ALPHA_APP_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const PRIMARY_APP_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const ORGANIZATION_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const OWNER_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const SENIOR_APP_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const PRODUCTION = alphaPhoneMobileAppAuthTarget("production");
 const STAGING = alphaPhoneMobileAppAuthTarget("staging");
+const SENIOR_PRODUCTION = seniorCareMobileAppAuthTarget("production");
+const SENIOR_STAGING = seniorCareMobileAppAuthTarget("staging");
 
 const registry = (entry: Record<string, unknown>) =>
   JSON.stringify([
@@ -158,6 +163,74 @@ describe("Alpha Phone registration target", () => {
     expect(() =>
       validateMobileAppAuthConfigPayload(payload, "production"),
     ).toThrow(/release contract/);
+  });
+});
+
+describe("Senior Care registration target", () => {
+  test("binds each environment to its own Cloud site callback", () => {
+    expect(SENIOR_PRODUCTION).toMatchObject({
+      clientId: "ai.elizaresearch.seniorcare",
+      redirectUri: "https://cloud.eliza.app/auth/senior-care/callback",
+      redirectOrigin: "https://cloud.eliza.app",
+    });
+    expect(SENIOR_STAGING).toMatchObject({
+      redirectUri: "https://cloud-staging.eliza.app/auth/senior-care/callback",
+      redirectOrigin: "https://cloud-staging.eliza.app",
+    });
+    expect(
+      resolveMobileAppAuthRegistrationTarget(
+        SENIOR_CARE_MOBILE_APP_AUTH_CLIENT_ID,
+        "staging",
+      ),
+    ).toEqual(SENIOR_STAGING);
+    expect(() =>
+      resolveMobileAppAuthRegistrationTarget(
+        SENIOR_CARE_MOBILE_APP_AUTH_CLIENT_ID,
+        undefined,
+      ),
+    ).toThrow(/staging or production/);
+  });
+
+  test("selects the Senior Care entry from a registry shared with Alpha Phone", () => {
+    const shared = JSON.stringify([
+      {
+        clientId: ALPHA_PHONE_MOBILE_APP_AUTH_CLIENT_ID,
+        appId: ALPHA_APP_ID,
+        redirectUri: PRODUCTION.redirectUri,
+        enabled: true,
+      },
+      {
+        clientId: SENIOR_CARE_MOBILE_APP_AUTH_CLIENT_ID,
+        appId: SENIOR_APP_ID,
+        redirectUri: SENIOR_PRODUCTION.redirectUri,
+        enabled: true,
+      },
+    ]);
+    expect(
+      resolveTargetRegistration({
+        ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID:
+          SENIOR_CARE_MOBILE_APP_AUTH_CLIENT_ID,
+        ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: "production",
+        ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: shared,
+      }),
+    ).toEqual({ target: SENIOR_PRODUCTION, appId: SENIOR_APP_ID });
+    expect(
+      resolveTargetRegistration({
+        ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID:
+          ALPHA_PHONE_MOBILE_APP_AUTH_CLIENT_ID,
+        ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: "production",
+        ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: shared,
+      }),
+    ).toEqual({ target: PRODUCTION, appId: ALPHA_APP_ID });
+    // The production entry does not satisfy the staging callback.
+    expect(() =>
+      resolveTargetRegistration({
+        ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID:
+          SENIOR_CARE_MOBILE_APP_AUTH_CLIENT_ID,
+        ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: "staging",
+        ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: shared,
+      }),
+    ).toThrow(/^input\.The target client registry entry must use exactly/);
   });
 });
 
@@ -288,6 +361,39 @@ describe("Alpha Phone registration repair transaction", () => {
       validateMobileAppAuthRegistrationRow(row, ALPHA_APP_ID, STAGING),
     ).not.toThrow();
     expect(row?.allowed_origins).toEqual([STAGING.redirectUri]);
+  });
+
+  test("repairs Senior Care beside Alpha Phone, bound only to its own callback", async () => {
+    await repairRegistrationTransaction(
+      client,
+      ALPHA_APP_ID,
+      ORGANIZATION_ID,
+      OWNER_ID,
+      PRODUCTION,
+    );
+    for (const target of [SENIOR_STAGING, SENIOR_PRODUCTION]) {
+      await repairRegistrationTransaction(
+        client,
+        SENIOR_APP_ID,
+        ORGANIZATION_ID,
+        OWNER_ID,
+        target,
+      );
+      const row = await read(SENIOR_APP_ID, target);
+      expect(() =>
+        validateMobileAppAuthRegistrationRow(row, SENIOR_APP_ID, target),
+      ).not.toThrow();
+      expect(row?.app_url).toBe(target.redirectOrigin);
+      expect(row?.allowed_origins).toEqual([target.redirectUri]);
+    }
+    const senior = await read(SENIOR_APP_ID, SENIOR_PRODUCTION);
+    expect(() =>
+      validateMobileAppAuthRegistrationRow(senior, SENIOR_APP_ID, PRODUCTION),
+    ).toThrow();
+    const alpha = await read(ALPHA_APP_ID);
+    expect(() =>
+      validateMobileAppAuthRegistrationRow(alpha, ALPHA_APP_ID, PRODUCTION),
+    ).not.toThrow();
   });
 
   test("refuses to give the Alpha callback to a second active app", async () => {

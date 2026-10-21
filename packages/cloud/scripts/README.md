@@ -66,5 +66,39 @@ bun packages/cloud/scripts/admin/recipient-envelope.ts open --private-key key.pe
 The mint script's stdout is piped only into the sealer (RSA-OAEP-256 wrapping
 an AES-256-GCM key), and only the sealed envelope is uploaded. Defaults: 5
 single-use `alpha-staging-qa` codes and one 50-redemption `alpha-staging-shared`
-code, 183 days each. The pepper is the staging Environment secret
-`ELIZA_SUBSCRIPTION_GRANT_CODE_PEPPER`. Delete the artifact after download.
+code, 183 days each, family `alpha_phone`, plan `plus_monthly`. The pepper is
+the staging Environment secret `ELIZA_SUBSCRIPTION_GRANT_CODE_PEPPER`. Delete
+the artifact after download.
+
+Optional inputs set the campaign: `family` (`alpha_phone` or `grace_pilot`),
+`plan` (`plus_monthly` or `pro_monthly`), `duration_days` (1 to 731) or
+`duration_months` (1 to 24, not both), `requires_no_paid_plan`, and
+`expires_at` (`YYYY-MM-DD` or `YYYY-MM-DDTHH:MM:SSZ`, in the future). For
+example, a Grace pilot wave of single-use codes:
+
+```sh
+gh workflow run cloud-staging-mint-grant-codes.yml --ref staging \
+  -f expected_cloud_commit=<staging head> -f recipient_public_key="$(cat key.pub.b64)" \
+  -f family=grace_pilot -f duration_months=6 -f requires_no_paid_plan=true \
+  -f single_use_count=20 -f single_use_label=grace-pilot-wave-1 -f shared_max_redemptions=0
+```
+
+## Production test grant
+
+`Cloud production test grant` runs only on an exact reviewed `main` commit and
+uses the protected `production` Environment. Its default run reads only database
+identity and column metadata. The existing reviewed cluster and authority digest
+variables must match; missing variables refuse the run. It reports booleans or
+fixed error codes, without database names, credentials, SQL parameters or grants.
+
+Explicit `mint=true` issues exactly one single-use Plus grant, with 7 days by
+default and a maximum of 31 days. It refuses redemption by an organization with
+an open paid plan. The unredeemed code expires after one day. The mint transaction
+rechecks production identity and migration 0547 columns on its own database
+session. This does not apply migrations or change Stripe objects.
+
+Supply the recipient public key made by `recipient-envelope.ts keygen`, as in
+the staging procedure above. Only the sealed envelope is uploaded for one day.
+Open it locally with the matching private key. Never put plaintext codes in logs
+or issue comments. The workflow is not a payment, redemption, or service-acceptance
+check. Do not dispatch the staging workflow against production.

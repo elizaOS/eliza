@@ -5,6 +5,7 @@
  * Absent, malformed or stale selections preserve the complete original context.
  */
 
+import { ElizaError } from "../errors";
 import type {
 	ActionParameterSchema,
 	CompletionContextSelection,
@@ -79,42 +80,68 @@ export const COMPLETION_CONTEXT_SCHEMA = {
 	],
 } satisfies JSONSchema & ActionParameterSchema;
 
-/** A labeled history always supplies its source-set identity. Keep the schema
- * static across such turns, but do not offer an empty-ID escape hatch that
- * silently forces both later stages back to full history. Empty-history and
- * custom callers retain the general schema. An explicit identity-repair call
- * alone binds the schema to the required value; ordinary turns keep cacheable
- * schemas. This never substitutes a model ID or relaxes source validation. */
+/** Initial and repair requests both offer the exact current identity. The
+ * third argument remains accepted for existing callers; host validation and
+ * request-local token binding still decide whether a selection can apply. */
 export function withRequiredCompletionSourceIdentity(
 	schema: JSONSchema,
 	context: ContextObject,
-	exactRepair = false,
+	_exactRepair = false,
 ): JSONSchema {
 	const completion = schema.properties?.completionContext;
 	const identity = completion?.properties?.sourceSetId;
+	if (!completion || identity?.type !== "string") return schema;
+	const snapshot = completionContextSources(context);
+	if (snapshot.sources.length === 0) return schema;
 	if (
-		!completion ||
-		identity?.type !== "string" ||
-		collectCompletionContextSources(context).length === 0
-	)
-		return schema;
+		identity.enum !== undefined &&
+		(!Array.isArray(identity.enum) ||
+			!identity.enum.some((id) => id === snapshot.sourceSetId))
+	) {
+		throw new ElizaError(
+			"Source identity schema does not authorize this request.",
+			{
+				code: "COMPLETION_CONTEXT_IDENTITY_CONFLICT",
+			},
+		);
+	}
+	// Offer only this request's authorized identities. Keep canonical host
+	// parsers unchanged; strict providers need literal choices instead of regexes.
+	const sourceIds = snapshot.sources.map(({ id }) => id);
+	const properties = { ...completion.properties };
+	for (const name of SOURCE_LIST_FIELDS) {
+		const field = properties[name];
+		const items = field?.items;
+		if (
+			!field ||
+			!items ||
+			Array.isArray(items) ||
+			items.type !== "string" ||
+			(items.pattern !== undefined &&
+				items.pattern !== SOURCE_ID_PATTERN.source)
+		)
+			continue;
+		const { pattern: _pattern, ...literalItems } = items;
+		properties[name] = {
+			...field,
+			items: {
+				...literalItems,
+				enum: Array.isArray(items.enum)
+					? items.enum.filter(
+							(id): id is string =>
+								typeof id === "string" && sourceIds.includes(id),
+						)
+					: sourceIds,
+			},
+		};
+	}
+	const { pattern: _pattern, ...literalIdentity } = identity;
+	properties.sourceSetId = { ...literalIdentity, enum: [snapshot.sourceSetId] };
 	return {
 		...schema,
 		properties: {
 			...schema.properties,
-			completionContext: {
-				...completion,
-				properties: {
-					...completion.properties,
-					sourceSetId: {
-						...identity,
-						pattern: "^[0-9a-f]{64}$",
-						...(exactRepair
-							? { enum: [completionContextSources(context).sourceSetId] }
-							: {}),
-					},
-				},
-			},
+			completionContext: { ...completion, properties },
 		},
 	};
 }

@@ -610,6 +610,7 @@ binding = "AI"
 binding = "BROWSER"
 
 [env.staging.vars]
+ALPHA_OAUTH_RETURN_URLS = "https://alphacompute.ai/alphaphone/gmail/staging/callback"
 NODE_ENV = "production"
 LOGIN_API_URL = "https://steward-api-staging.up.railway.app"
 # Signed Twilio callbacks and media-stream URLs must use the externally routed
@@ -944,6 +945,7 @@ binding = "AI"
 binding = "BROWSER"
 
 [env.production.vars]
+ALPHA_OAUTH_RETURN_URLS = "https://alphacompute.ai/alphaphone/gmail/callback"
 LOGIN_API_URL = "https://steward-api-production-115d.up.railway.app"
 NODE_ENV = "production"
 # Signed Twilio callbacks and media-stream URLs must use the externally routed

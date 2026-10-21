@@ -1,0 +1,48 @@
+name: Production PITR Reviewed Stage Only
+run-name: Production PITR stage only ${{ github.sha }}
+on:
+  workflow_dispatch:
+    inputs:
+      reviewed_stage_source_head:
+        description: Exact reviewed main commit; must equal the actual run head
+        required: true
+        type: string
+      review_expires_utc:
+        description: Reviewed UTC expiry within one hour; no commit or deployment authorization
+        required: true
+        type: string
+      approved_volume_receipt:
+        description: SHA256 of the reviewed immutable production volume instance
+        required: true
+        type: string
+      approved_image_receipt:
+        description: SHA256 of the exact reviewed current image string; image changes are refused
+        required: true
+        type: string
+      writer_maintenance_receipt:
+        description: SHA256 receipt of the reviewed exclusive-writer maintenance arrangement
+        required: true
+        type: string
+      completed_backup_run_id:
+        description: Successful protected named-backup run with Complete and retained proof
+        required: true
+        type: string
+      completed_backup_source_head:
+        description: Exact independently reviewed source of that completed backup run
+        required: true
+        type: string
+      stage_recipient_public_key:
+        description: Base64 RSA SPKI public key for private stage evidence; RSA >=3072 bits
+        required: true
+        type: string
+permissions: {}
+jobs:
+  refuse_default_branch:
+    name: Registration only; use reviewed main implementation
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Refuse execution on the registration stub
+        run: |
+          echo "::error::Registration only. Use --ref main with independently reviewed inputs; provider execution requires separate authorization."
+          exit 1

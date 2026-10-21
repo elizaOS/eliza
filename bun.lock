@@ -860,6 +860,7 @@
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/testing": "workspace:*",
+        "drizzle-orm": "0.45.3",
       },
       "devDependencies": {
         "playwright": "^1.64.0",

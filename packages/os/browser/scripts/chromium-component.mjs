@@ -17,6 +17,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { androidNativeHost } from "./android-host.mjs";
 import { applyAutofillFullOrigin } from "./chromium/autofill-full-origin.mjs";
 import { applyIndexedDBLockOrder } from "./chromium/indexeddb-lock-order.mjs";
+import { applyNoEarlyConnection } from "./chromium/no-early-connection.mjs";
 import { applyStandaloneCredMan } from "./chromium/standalone-credman.mjs";
 import { applyStandaloneCredManTests } from "./chromium/standalone-credman-tests.mjs";
 
@@ -380,6 +381,7 @@ export async function generateComponentOverlay({
   applyIndexedDBLockOrder(edit, replaceOnce);
   if (platform === "android") {
     applyAutofillFullOrigin(edit, replaceOnce);
+    applyNoEarlyConnection(edit, replaceOnce);
     applyStandaloneCredMan(edit, replaceOnce);
     applyStandaloneCredManTests(edit, replaceOnce);
     if (embedHost) {

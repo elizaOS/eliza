@@ -192,6 +192,54 @@ test("both platforms emit the reviewed order-independent IndexedDB fix and nativ
   }
 });
 
+test("Android connects to an address only through a navigation the protection rules see", async () => {
+  const warmup =
+    "chrome/android/java/src/org/chromium/chrome/browser/WarmupManager.java";
+  const customTabs =
+    "chrome/android/java/src/org/chromium/chrome/browser/customtabs/CustomTabsConnection.java";
+  const prefs = "chrome/browser/preloading/preloading_prefs.cc";
+  const android = await generateComponentOverlay(request());
+  // No preloading by default: LoadingPredictor's navigation-start preconnect follows this pref.
+  assert.match(
+    android.files[prefs],
+    /prefs::kNetworkPredictionOptions,\n.*\n\s+static_cast<int>\(NetworkPredictionOptions::kDisabled\)/,
+  );
+  assert.doesNotMatch(
+    android.files[prefs],
+    /NetworkPredictionOptions::kDefault\)/,
+  );
+  // Intent and Custom Tab speculation: DNS prefetch, preconnect, hidden tabs, prefetch, parallel requests.
+  assert.match(
+    android.files[warmup],
+    /public static boolean isEarlyConnectionAllowed\(\) \{\n\s+return false;/,
+  );
+  assert.equal(
+    android.files[warmup].match(/if \(!isEarlyConnectionAllowed\(\)\) return;/g)
+      .length,
+    3,
+  );
+  assert.equal(
+    android.files[customTabs].match(
+      /if \(!WarmupManager\.isEarlyConnectionAllowed\(\)\) return/g,
+    ).length,
+    4,
+  );
+  for (const filename of [warmup, customTabs, prefs])
+    assert.equal(
+      android.report.outputs[filename],
+      sha256(android.files[filename]),
+    );
+  // Desktop builds keep Chromium's behavior: none of these files is changed.
+  const input = request();
+  input.platform = "linux";
+  input.assets["runtime-config.mjs"] = Buffer.from(
+    'export const nativeHost = "ai.elizaos.browser";\n',
+  );
+  const linux = await generateComponentOverlay(input);
+  for (const filename of [warmup, customTabs, prefs])
+    assert.equal(linux.files[filename], undefined);
+});
+
 test("source mutations, unsupported revisions, identity changes, and unexpected resources fail before output", async () => {
   await assert.rejects(
     generateComponentOverlay({ ...request(), revision: "0".repeat(40) }),

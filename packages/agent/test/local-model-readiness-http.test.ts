@@ -12,6 +12,7 @@ import {
 import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import WebSocket from "ws";
+import { recordCloudInferenceFailure } from "../../../plugins/plugin-elizacloud/src/utils/inference-diagnostics.ts";
 import { installRouterHandler } from "../../../plugins/plugin-local-inference/src/services/router-handler.ts";
 import { detectRuntimeModel } from "../src/api/agent-model.ts";
 import {
@@ -281,3 +282,39 @@ it("includes the local readiness reason on initial and periodic WebSocket status
     ws.close();
   }
 }, 20_000);
+
+it("exposes only finite Cloud failure facts through authenticated existing status", async () => {
+  recordCloudInferenceFailure(
+    runtime,
+    "ACTION_PLANNER",
+    { tools: [] },
+    Object.assign(new Error("PRIVATE_PROVIDER_ERROR"), {
+      status: 400,
+      error: { param: "PRIVATE_PARAM" },
+    }),
+  );
+  const response = await fetch(`http://127.0.0.1:${server.port}/api/status`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(response.status).toBe(200);
+  const status = await response.json();
+  expect(status.cloudInferenceFailure).toEqual({
+    version: 1,
+    at: expect.any(Number),
+    stage: "action-planner",
+    status: 400,
+    reason: "unknown",
+    strictTools: [],
+    schemaKeywords: [],
+    schemaScanTruncated: false,
+    schemaDepth: 0,
+    schemaProperties: 0,
+    schemaEnumValues: 0,
+    schemaTextChars: 0,
+  });
+  expect(JSON.stringify(status.cloudInferenceFailure)).not.toContain("PRIVATE");
+  const unauthenticated = await fetch(
+    `http://127.0.0.1:${server.port}/api/status`,
+  );
+  expect(unauthenticated.status).toBe(401);
+});

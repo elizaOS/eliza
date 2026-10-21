@@ -1040,9 +1040,18 @@ export async function executeCommand(
   else if (action === "reload") await effect(() => api.tabs.reload(tabId));
   else if (action === "snapshot") {
     const snapshotId = crypto.randomUUID();
-    const before = (
-      await read(() => api.webNavigation.getAllFrames({ tabId }))
-    )?.filter((frame) => !command.taskPolicy || frame.frameId === 0);
+    // The page she sees is the tab's active document. Chromium also lists documents it has
+    // not shown (a prerendered search warmup, a cached page); script injection never reaches
+    // them, so counting them failed every read while one was attached.
+    const pageFrames = (inventory) =>
+      inventory?.filter(
+        (frame) =>
+          (frame.documentLifecycle ?? "active") === "active" &&
+          (!command.taskPolicy || frame.frameId === 0),
+      );
+    const before = pageFrames(
+      await read(() => api.webNavigation.getAllFrames({ tabId })),
+    );
     if (
       !before?.length ||
       before.some((frame) => frame.errorOccurred || !frame.documentId)
@@ -1061,9 +1070,9 @@ export async function executeCommand(
         world: "ISOLATED",
       }),
     );
-    const after = (
-      await read(() => api.webNavigation.getAllFrames({ tabId }))
-    )?.filter((frame) => !command.taskPolicy || frame.frameId === 0);
+    const after = pageFrames(
+      await read(() => api.webNavigation.getAllFrames({ tabId })),
+    );
     if (
       !after ||
       before.length !== after.length ||

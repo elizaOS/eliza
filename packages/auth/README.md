@@ -45,6 +45,16 @@ The default tests also verify the built deployment package. The login tests use
 local OpenSSL to generate ephemeral attestation certificates and verify that
 untrusted chains cannot trigger revocation requests.
 
+## Alpha-owned OAuth returns
+
+`GET /auth/oauth/google/alpha-readiness` checks the exact Alpha tenant/return
+pair, tenant policy, registered redirect, existing Google credentials and app
+error returns. It returns `{ok:true, alphaAuth:1, tenantId, redirectUri}` without
+creating a challenge. Configure `STEWARD_OAUTH_APP_ERROR_REDIRECTS` with the exact
+registered Alpha HTTPS callback for each environment. Validated-state failures
+then return a bounded error/state fragment. Other clients keep existing behavior.
+Unknown state cannot select an app return. Google uses the existing Cloud client.
+
 ## Native enrollment
 
 `createNativeCloudAuth` accepts a registered application binding, encrypted pending
@@ -56,7 +66,26 @@ A finished sign-in returns `{status: "authenticated", connected: true, created}`
 this sign-in made the Cloud account, `false` when it existed. It is kept with the
 pending receipt for `resume`, and it is absent when Cloud did not send it.
 
-The stored app credential stays inference-only. A successful code `verify`/`mfa`
+Google sign-in is API-only and off by default. Configure `googleRedirectUri`
+(an https address, or loopback `http://127.0.0.1|localhost|[::1]` with its exact
+port) that the host owns and that is on the Auth tenant's redirect allowlist;
+pass `authClientId` (`/^[a-z0-9][a-z0-9_-]{2,63}$/`) to use an app client's own
+allowlist. `config` then adds `methods: ["email", "phone", "google"]`.
+`start` (`{method: "google"}`) returns `{status: "browser", sessionId, url,
+expiresAt}`: open `url` (Auth's `/auth/oauth/google/authorize` with S256 PKCE,
+`state` and `mfa=exchange`) in a browser. The verifier and state never leave the
+attempt, which lasts as long as Auth's authorize state (five minutes).
+`google-return` (`{callbackUrl}` only) takes the full return address, including
+the fragment Auth puts the one-time `code` and `state` in. It requires the exact
+configured origin, path and query; a different `state` is refused with
+`google_state_mismatch` and leaves the attempt alone. A matched return is single
+use: the host calls `POST /auth/oauth/exchange` with the verifier, then enrolls
+through the same mobile PKCE grant, acknowledgement and activation as a code
+sign-in. Auth's failure link (`?error=…&state=…`) ends the attempt with
+`google_sign_in_failed`. A second factor returns `{status: "mfa"}` for the
+existing `mfa` operation. The SDK route is `POST /cloud/native/google/return`.
+
+The stored app credential stays inference-only. A successful code `verify`/`mfa` (or `google-return`)
 also keeps that Steward session in memory as billing authority, bound to the
 activated credential. `await auth.billingAuthority()` returns `{token, expiresAt}`
 or `null`. Use it only as `Authorization: Bearer` on organization billing routes

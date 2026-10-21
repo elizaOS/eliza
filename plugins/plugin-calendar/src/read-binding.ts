@@ -29,7 +29,9 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
       additionalProperties: false,
       required: ["intentId", "operation", "execution"],
       properties: {
-        intentId: { type: "string", pattern: "^intent:[1-9][0-9]*$" },
+        // Intents are generated in this same response, so no finite ID enum exists.
+        // The host parser below validates the canonical ID and handle binds its index.
+        intentId: { type: "string" },
         operation: { type: "string", enum: Object.keys(CALENDAR_READ_ACTIONS) },
         execution: { type: "string", enum: ["required", "conditional"] },
       },

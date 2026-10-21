@@ -1,0 +1,104 @@
+name: Cloud production test grant
+
+# Read-only by default. Minting creates exactly one bounded Plus grant and seals it.
+on:
+  workflow_dispatch:
+    inputs:
+      expected_cloud_commit:
+        description: Exact reviewed main commit
+        required: true
+        type: string
+      mint:
+        description: Issue one single-use test grant after the read-only checks
+        type: boolean
+        default: false
+      recipient_public_key:
+        description: Base64 SPKI DER RSA public key (3072 bits or more); required for mint
+        type: string
+      duration_days:
+        description: Plus entitlement duration (1 to 31 days)
+        type: string
+        default: "7"
+
+permissions:
+  contents: read
+
+jobs:
+  grant:
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    concurrency:
+      group: cloud-production-test-grant
+      cancel-in-progress: false
+    steps:
+      - name: Admit exact production source and bounded term
+        env:
+          EXPECTED_COMMIT: ${{ inputs.expected_cloud_commit }}
+          DURATION_DAYS: ${{ inputs.duration_days }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_COMMIT" =~ ^[a-f0-9]{40}$ && "$EXPECTED_COMMIT" == "$GITHUB_SHA" ]]
+          [[ "$DURATION_DAYS" =~ ^[0-9]{1,2}$ ]]
+          (( 10#$DURATION_DAYS >= 1 && 10#$DURATION_DAYS <= 31 ))
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          submodules: false
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: 1.4.2
+          setup-python: "false"
+          install-protoc: "false"
+          install-native-deps: "false"
+          run-postinstall: "false"
+
+      - name: Build required linked runtime
+        run: bun run build:core
+
+      - name: Check production identity and grant schema without reading grants
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ELIZA_OPERATOR_ENVIRONMENT: production
+          DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
+          DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
+        run: bun --conditions=eliza-source packages/cloud/scripts/admin/production-test-grant-admission.ts
+
+      - name: Mint and seal one exclusive test grant
+        if: inputs.mint == true
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ELIZA_OPERATOR_ENVIRONMENT: production
+          ELIZA_PRODUCTION_TEST_GRANT: "1"
+          DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
+          DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
+          ELIZA_SUBSCRIPTION_GRANT_CODE_PEPPER: ${{ secrets.ELIZA_SUBSCRIPTION_GRANT_CODE_PEPPER }}
+          ELIZA_ENVELOPE_RECIPIENT_PUBLIC_KEY: ${{ inputs.recipient_public_key }}
+          DURATION_DAYS: ${{ inputs.duration_days }}
+        run: |
+          set -euo pipefail
+          umask 077
+          # Reject an invalid recipient before any database write.
+          printf probe | bun packages/cloud/scripts/admin/recipient-envelope.ts seal > /dev/null
+          mkdir -p test-results/cloud-production-test-grant
+          # Admission is repeated on the exact transaction that inserts the row.
+          bun --conditions=eliza-source packages/cloud/scripts/admin/mint-subscription-grant-codes.ts \
+            --count 1 --max-redemptions 1 --plan plus_monthly --family production_qa \
+            --duration-days "$DURATION_DAYS" --requires-no-paid-plan \
+            --expires-at "$(date -u -d '+1 day' +%Y-%m-%dT%H:%M:%SZ)" \
+            --label "production-test-${GITHUB_RUN_ID}" | \
+            bun packages/cloud/scripts/admin/recipient-envelope.ts seal \
+            > test-results/cloud-production-test-grant/grant-code.envelope.json
+
+      - name: Upload sealed grant only
+        if: always() && inputs.mint == true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: production-test-grant-sealed-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/cloud-production-test-grant/grant-code.envelope.json
+          if-no-files-found: ignore
+          retention-days: 1
