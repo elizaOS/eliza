@@ -176,7 +176,12 @@ async function graphApiRequest<T>(
     if (json === null) {
       lastError = new Error(`Meta API Error: non-JSON response (status ${response.status})`);
 
-      if (attempt < RETRY_CONFIG.maxAttempts) {
+      // A non-JSON response does not prove the request failed: a write may
+      // have committed before its response was lost or replaced by a gateway
+      // error page. Replaying a non-idempotent write could duplicate the
+      // resource, so only reads are retried on an undecodable response.
+      const method = (options.method ?? "GET").toUpperCase();
+      if (method === "GET" && attempt < RETRY_CONFIG.maxAttempts) {
         const delay = Math.min(
           RETRY_CONFIG.baseDelayMs * 2 ** (attempt - 1),
           RETRY_CONFIG.maxDelayMs,
