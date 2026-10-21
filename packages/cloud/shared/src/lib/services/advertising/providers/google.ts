@@ -74,7 +74,7 @@ async function googleAdsRequest<T>(
     },
   });
 
-  const json = await response.json();
+  const json = await response.json().catch(() => ({}));
 
   if (!response.ok) {
     const error = json as GoogleAdsError;
