@@ -87,6 +87,9 @@ describe("explicit media request detector (issue #37021)", () => {
       "do you support image generation?",
       "have you got image gen?",
       "what image gen do you have?",
+      "do you use image gen?",
+      "do you know about image gen?",
+      "can you use image gen?",
     ];
 
     it.each(inquiryCases)("message-handler detector rejects: %s", (text) => {
@@ -94,6 +97,25 @@ describe("explicit media request detector (issue #37021)", () => {
     });
 
     it.each(inquiryCases)("generateMedia action detector rejects: %s", (text) => {
+      expect(actionLooksLikeExplicitMediaRequest(text)).toBe(false);
+    });
+  });
+
+  describe("rejects prohibitions and negations against generator use", () => {
+    const prohibitionCases = [
+      "no image gen please",
+      "please don't use image gen",
+      "stop using image gen",
+      "never use image gen",
+      "don't generate images",
+      "do not create pictures",
+    ];
+
+    it.each(prohibitionCases)("message-handler detector rejects: %s", (text) => {
+      expect(looksLikeExplicitMediaGenerationRequest(text)).toBe(false);
+    });
+
+    it.each(prohibitionCases)("generateMedia action detector rejects: %s", (text) => {
       expect(actionLooksLikeExplicitMediaRequest(text)).toBe(false);
     });
   });
