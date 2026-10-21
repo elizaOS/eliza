@@ -770,9 +770,11 @@ export const metaAdsProvider: AdProvider = {
         },
         META_UPLOAD_TIMEOUT_MS,
       );
-      const data = (await response.json()) as GraphApiError & MetaAdImagesResponse;
-      if (!response.ok || data.error) {
-        throw new Error(data.error?.message || `Meta image upload failed (${response.status})`);
+      const data = (await response.json().catch(() => null)) as
+        | (GraphApiError & MetaAdImagesResponse)
+        | null;
+      if (!response.ok || !data || data.error) {
+        throw new Error(data?.error?.message || `Meta image upload failed (${response.status})`);
       }
 
       const uploaded = Object.values(data.images ?? {})[0];
