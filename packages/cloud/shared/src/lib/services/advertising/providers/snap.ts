@@ -104,7 +104,16 @@ async function snapRequest<T>(
   });
 
   const text = await response.text();
-  const data = text ? (JSON.parse(text) as T & SnapEnvelope) : ({} as T & SnapEnvelope);
+  let data = {} as T & SnapEnvelope;
+  if (text) {
+    try {
+      data = JSON.parse(text) as T & SnapEnvelope;
+    } catch {
+      // error-policy:J3 untrusted Snap response body; a non-JSON payload is
+      // invalid input, surfaced with its status (never a raw SyntaxError).
+      throw new Error(`Snap Marketing API error: non-JSON response (status ${response.status})`);
+    }
+  }
 
   if (!response.ok || isSnapFailure(data.request_status)) {
     throw new Error(
