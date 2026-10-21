@@ -39,6 +39,28 @@ function isPastOnceSchedule(
   const scheduledAt = draft.scheduledAtIso ? Date.parse(draft.scheduledAtIso) : Number.NaN;
   return Number.isFinite(scheduledAt) && scheduledAt <= nowMs;
 }
+
+/**
+ * Canonicalize an IANA timezone identifier for schedule-equivalence
+ * comparison. The cron runtime resolves the raw stored string through
+ * `Intl.DateTimeFormat` (see buildTzFormatter in @elizaos/core), which
+ * accepts and normalizes equivalent spellings: `utc` and `Etc/UTC` both
+ * resolve to `UTC`, and `US/Eastern` resolves to `America/New_York`. A raw
+ * string comparison would therefore miss duplicate schedules whose
+ * timezones are spelled differently, so compare the resolved canonical
+ * names instead.
+ */
+function canonicalizeTimezoneForComparison(timezone?: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone: timezone ?? 'UTC' }).resolvedOptions()
+      .timeZone;
+  } catch {
+    // Draft validation already rejects invalid identifiers. On any
+    // construction failure fall back to the raw string (fail closed:
+    // a missed duplicate is safer than blocking a legitimate trigger).
+    return timezone ?? 'UTC';
+  }
+}
 export type TriggerRouteHelpers = RouteHelpers;
 export interface TriggerTaskMetadata {
   updatedAt?: number;
@@ -304,6 +326,29 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     (await listTriggerTasks(currentRuntime)).filter((task) =>
       isTriggerTaskOwnedBy(task, ownerEntityId, localOwnerEntityId, currentRuntime.agentId)
     );
+  /**
+   * Another enabled trigger with the same schedule identity. Creation and update
+   * both use this scan: an edit must not introduce the duplicate that creation
+   * refuses, or two triggers dispatch the same workflow on the same schedule.
+   */
+  const findEquivalentEnabledTrigger = (
+    tasks: Task[],
+    trigger: TriggerConfig,
+    excludeTaskId?: string
+  ): Task | undefined =>
+    tasks.find((task) => {
+      if (excludeTaskId !== undefined && task.id === excludeTaskId) return false;
+      if (isAgentOwnedHeartbeat(task, runtime.agentId)) return false;
+      const existing = readTriggerConfig(task);
+      return (
+        existing?.enabled === true &&
+        existing.dedupeKey !== undefined &&
+        existing.dedupeKey === trigger.dedupeKey &&
+        (trigger.triggerType !== 'cron' ||
+          canonicalizeTimezoneForComparison(existing.timezone) ===
+            canonicalizeTimezoneForComparison(trigger.timezone))
+      );
+    });
   if (method === 'GET' && pathname === '/api/triggers/health') {
     json(res, await getTriggerHealthSnapshot(runtime));
     return true;
@@ -400,15 +445,14 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     }
     const triggerId = stringToUuid(crypto.randomUUID());
     const trigger = buildTriggerConfig({ draft: normalized.draft, triggerId });
-    const duplicate = existingTasks.find((task) => {
-      if (isAgentOwnedHeartbeat(task, runtime.agentId)) return false;
-      const existingTrigger = readTriggerConfig(task);
-      return (
-        existingTrigger?.enabled &&
-        existingTrigger.dedupeKey &&
-        existingTrigger.dedupeKey === trigger.dedupeKey
-      );
-    });
+    // An omitted cron timezone is documented to mean UTC
+    // (packages/agent/src/triggers/scheduling.ts), and the route stores it as
+    // undefined, so the equivalence scan canonicalizes before comparing to
+    // avoid treating legacy timezone-less triggers as different from
+    // explicit-UTC ones, and to avoid missing duplicates whose timezones are
+    // spelled differently (e.g. `utc` vs `UTC`, `US/Eastern` vs
+    // `America/New_York`).
+    const duplicate = findEquivalentEnabledTrigger(existingTasks, trigger);
     if (duplicate?.id) {
       error(res, 'Equivalent trigger already exists', 409);
       return true;
@@ -706,6 +750,24 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       triggerId: current.triggerId,
       previous: current,
     });
+    // An edit must not create the duplicate that creation refuses. Only an edit
+    // that newly makes the trigger runnable with another enabled trigger's
+    // schedule identity is refused, so renaming a pre-existing duplicate still
+    // works and the owner can tell the two apart before deleting one.
+    const addsRunnableDuplicate =
+      nextTrigger.enabled &&
+      (!current.enabled ||
+        nextTrigger.dedupeKey !== current.dedupeKey ||
+        (nextTrigger.triggerType === 'cron' &&
+          canonicalizeTimezoneForComparison(nextTrigger.timezone) !==
+            canonicalizeTimezoneForComparison(current.timezone)));
+    if (
+      addsRunnableDuplicate &&
+      findEquivalentEnabledTrigger(await listOwnedTriggerTasks(runtime), nextTrigger, task.id)
+    ) {
+      error(res, 'Equivalent trigger already exists', 409);
+      return true;
+    }
     const existingMeta = (task.metadata ?? {}) as TriggerTaskMetadata;
     const existingRuns = readTriggerRuns(task);
     let nextMeta: TriggerTaskMetadata;
@@ -730,7 +792,24 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
         error(res, 'Unable to compute trigger schedule', 400);
         return true;
       }
-      nextMeta = built;
+      // An interval counts from its anchor. An edit that keeps an enabled
+      // interval (a rename, new instructions) keeps the anchor and the next
+      // run; rebuilding would restart the countdown from now.
+      const keepsInterval =
+        current.enabled &&
+        current.triggerType === 'interval' &&
+        nextTrigger.triggerType === 'interval' &&
+        nextTrigger.intervalMs === current.intervalMs &&
+        typeof current.nextRunAtMs === 'number';
+      nextMeta =
+        keepsInterval && built.trigger
+          ? {
+              ...built,
+              updatedAt: existingMeta.updatedAt,
+              updateInterval: existingMeta.updateInterval,
+              trigger: { ...built.trigger, nextRunAtMs: current.nextRunAtMs },
+            }
+          : built;
     }
     await runtime.updateTask(task.id, {
       description: nextTrigger.displayName,
