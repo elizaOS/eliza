@@ -47,7 +47,9 @@ const alphaSignInStyles = `
 .alpha-sign-in footer p { margin: 0; }
 .alpha-sign-in .alpha-legal-links { display: flex; justify-content: center; flex-wrap: wrap; gap: 0 24px; }
 .alpha-sign-in footer a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px; color: #000; text-decoration: underline; text-underline-offset: 3px; }
-.alpha-sign-in :focus-visible { outline: 2px solid #000; outline-offset: 3px; }
+.alpha-sign-in .alpha-alternative-sign-in > summary:focus-visible,
+.alpha-sign-in footer a:focus-visible { background-color: #f3f3f3; color: #000; text-decoration-line: underline; text-decoration-thickness: 2px; text-underline-offset: 0.2em; }
+.alpha-sign-in .alpha-alternative-sign-in > summary:focus-visible { border-color: #000; }
 .alpha-sign-in [data-login-phone-field]:focus-within { border-color: #000; }
 .alpha-sign-in [data-login-phone-field]:focus-within :is(input, button):focus-visible { outline: none; box-shadow: none; }
 .alpha-sign-in #steward-login-email:focus { border-color: #000; outline: none; box-shadow: none; }

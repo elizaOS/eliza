@@ -26,7 +26,7 @@ const styles = `
 .alpha-legal h2 { font-size: 20px; line-height: 1.4; font-weight: 500; }
 .alpha-legal p, .alpha-legal li { overflow-wrap: anywhere; }
 .alpha-legal-footer { align-items: flex-start; }
-.alpha-legal :focus-visible { outline: 2px solid #0000ff; outline-offset: 3px; }
+.alpha-legal a:focus-visible { background-color: #f3f3f3; color: #000; text-decoration-line: underline; text-decoration-thickness: 2px; text-underline-offset: 0.2em; }
 @media (min-width: 640px) { .alpha-legal main { padding-top: max(48px, env(safe-area-inset-top)); } }
 `;
 
