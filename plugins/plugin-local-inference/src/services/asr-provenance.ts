@@ -163,10 +163,12 @@ export function bundleHasAsrModelFiles(bundleRoot: string): boolean {
 		// (EACCES, ENOTDIR, EIO) is a broken bundle: callers turn `false` into
 		// "no ASR model artifacts are staged" and would send the user to
 		// re-download instead of surfacing the unreadable bundle.
-		if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
-		throw new Error(`failed to read ASR model directory at ${asrDir}`, {
-			cause: error,
-		});
+		const code = (error as NodeJS.ErrnoException).code;
+		if (code === "ENOENT") return false;
+		throw new Error(
+			`failed to read ASR model directory at ${asrDir}${code ? ` (${code})` : ""}`,
+			{ cause: error },
+		);
 	}
 	return entries.some(
 		(entry) =>

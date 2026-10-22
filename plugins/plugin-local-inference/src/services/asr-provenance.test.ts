@@ -195,4 +195,17 @@ describe("bundle ASR artifacts", () => {
 			}
 		},
 	);
+
+	it("propagates an asr/ path that cannot be listed without relying on mode bits", () => {
+		const root = writeManifest({});
+		// `asr` exists but is a regular file, so readdirSync fails with ENOTDIR
+		// for any uid and on Windows. This keeps the regression covered where the
+		// chmod-based case above is skipped (root containers, win32).
+		rmSync(path.join(root, "asr"), { recursive: true, force: true });
+		writeFileSync(path.join(root, "asr"), "not a directory");
+
+		expect(() => bundleHasAsrModelFiles(root)).toThrow(
+			/failed to read ASR model directory at .*\(ENOTDIR\)/,
+		);
+	});
 });
