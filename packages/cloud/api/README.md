@@ -46,7 +46,8 @@ It must not point to a production database.
 
 Authentication nonces, token revocations, voice session mappings and connection claims can use the
 private `AUTHENTICATION_STATE` Durable Object binding with
-`CLOUD_AUTH_STATE_BACKEND=cloudflare`. The default remains `redis` until a
+protected deployment variable `CLOUD_AUTH_STATE_BACKEND=cloudflare`. The
+canonical release validates this selection. The default remains `redis` until a
 quiesced transfer preserves each live key's original expiration. A missing
 selected binding fails closed; the host never falls back to Redis after activation.
 The operator-only private-binding import preserves absolute expirations, rejects
