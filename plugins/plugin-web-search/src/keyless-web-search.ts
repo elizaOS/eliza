@@ -366,7 +366,13 @@ export async function searchKeylessWeb(
         "parallel",
         PARALLEL_MCP_URL,
         "web_search",
-        { objective: normalizedQuery, search_queries: [normalizedQuery] },
+        {
+            objective: normalizedQuery,
+            search_queries: [normalizedQuery],
+            ...(options.sessionId && /^[A-Za-z0-9_-]{1,100}$/.test(options.sessionId)
+                ? { session_id: options.sessionId }
+                : {}),
+        },
         transport
     );
     if (text === undefined || isEmptyParallelResult(text)) return undefined;
