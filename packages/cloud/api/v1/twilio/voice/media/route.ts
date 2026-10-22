@@ -3,7 +3,7 @@
  * realtime voice session while preserving metering, interruption, and tenancy.
  */
 
-import { buildRedisClient } from "@elizaos/cloud-shared/lib/cache/redis-factory";
+import { buildAuthenticationState } from "@elizaos/cloud-shared/lib/auth/authentication-state";
 import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import type { BridgeExecutionContext } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
 import {
@@ -154,8 +154,9 @@ app.get("/", async (c) => {
     logger.error("[twilio-media] invalid bootstrap admission configuration");
     return c.json({ error: "voice realtime session misconfigured" }, 503);
   }
-  const rawRedis = buildRedisClient(
-    env as unknown as Parameters<typeof buildRedisClient>[0],
+  const authenticationState = buildAuthenticationState(
+    c.env,
+    c.env.AUTHENTICATION_STATE,
   );
   if (getVoiceSessionRegistry().size() >= resolveMaxSessions(env)) {
     return c.json(
@@ -372,7 +373,11 @@ app.get("/", async (c) => {
     }
     const tokenVerifiedAt = Date.now();
     const claim = await awaitTwilioBootstrapPhase(
-      claimVoiceSessionToken(claims.jti, claims.exp, rawRedis ?? undefined),
+      claimVoiceSessionToken(
+        claims.jti,
+        claims.exp,
+        authenticationState ?? undefined,
+      ),
       () => closed,
     );
     if (claim.status === "closed") return;
@@ -445,7 +450,7 @@ app.get("/", async (c) => {
       usageStore,
       usageLimits: resolveVoiceUsageLimits(env),
       isRevoked: (jti) =>
-        isVoiceSessionTokenRevoked(jti, rawRedis ?? undefined),
+        isVoiceSessionTokenRevoked(jti, authenticationState ?? undefined),
       onTeardownRevoke: (jti, expSeconds) =>
         revokeVoiceSessionToken(jti, expSeconds),
       onTeardown: (reason) => {

@@ -5,7 +5,7 @@
  */
 
 import { hasDbCacheContext } from "@elizaos/cloud-shared/db/client";
-import { buildRedisClient } from "@elizaos/cloud-shared/lib/cache/redis-factory";
+import { buildAuthenticationState } from "@elizaos/cloud-shared/lib/auth/authentication-state";
 import { hasCloudBindingsContext } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import type { BridgeExecutionContext } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
 import {
@@ -168,8 +168,9 @@ app.get("/", (c) => {
     logger.error("[voice-session-ws] atomic usage admission unavailable");
     return c.json({ error: "voice realtime metering unavailable" }, 503);
   }
-  const rawRedis = buildRedisClient(
-    env as unknown as Parameters<typeof buildRedisClient>[0],
+  const authenticationState = buildAuthenticationState(
+    c.env,
+    c.env.AUTHENTICATION_STATE,
   );
 
   const WebSocketPairCtor = (
@@ -231,10 +232,10 @@ app.get("/", (c) => {
     verifyToken: (token, expected, options) =>
       verifyVoiceSessionToken(token, expected, {
         ...options,
-        ...(rawRedis ? { store: rawRedis } : {}),
+        ...(authenticationState ? { store: authenticationState } : {}),
       }),
     claimToken: (jti, expSeconds) =>
-      claimVoiceSessionToken(jti, expSeconds, rawRedis ?? undefined),
+      claimVoiceSessionToken(jti, expSeconds, authenticationState ?? undefined),
     // Enforce the per-worker ceiling against the LIVE registry at start time,
     // closing the race where many upgrades pass the earlier route-level check.
     admitSession: () => getVoiceSessionRegistry().size() < maxSessions,
@@ -323,7 +324,7 @@ app.get("/", (c) => {
         // connection per tick on Workers — the exact churn #16636 removed
         // from verify/claim (#16663).
         isRevoked: (jti) =>
-          isVoiceSessionTokenRevoked(jti, rawRedis ?? undefined),
+          isVoiceSessionTokenRevoked(jti, authenticationState ?? undefined),
         // A successful hello atomically claimed this jti until expiry, so it
         // cannot be replayed. Avoid a redundant denylist write during abrupt
         // disconnect: it contended with the immediate replacement hello.

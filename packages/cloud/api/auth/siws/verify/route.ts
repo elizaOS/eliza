@@ -5,7 +5,7 @@
  * address, and issues an API key. Solana counterpart to siwe/verify.
  */
 
-import { buildRedisClient } from "@elizaos/cloud-shared/lib/cache/redis-factory";
+import { buildAuthenticationState } from "@elizaos/cloud-shared/lib/auth/authentication-state";
 import {
   RateLimitPresets,
   rateLimit,
@@ -29,7 +29,7 @@ const app = new Hono<AppEnv>();
 app.use("*", rateLimit(RateLimitPresets.STRICT));
 
 app.post("/", async (c) => {
-  const redis = buildRedisClient(c.env);
+  const redis = buildAuthenticationState(c.env, c.env.AUTHENTICATION_STATE);
   if (!redis) {
     return c.json({ error: "Service temporarily unavailable" }, 503);
   }

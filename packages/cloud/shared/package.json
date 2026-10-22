@@ -151,6 +151,7 @@
     "./lib/auth/cookie-mutation-guard": "./src/lib/auth/cookie-mutation-guard.ts",
     "./lib/auth/cron": "./src/lib/auth/cron.ts",
     "./lib/auth/jwks": "./src/lib/auth/jwks.ts",
+    "./lib/auth/authentication-state": "./src/lib/auth/authentication-state.ts",
     "./lib/auth/jwt-internal": "./src/lib/auth/jwt-internal.ts",
     "./lib/auth/mobile-api-key": "./src/lib/auth/mobile-api-key.ts",
     "./lib/auth/playwright-test-session": "./src/lib/auth/playwright-test-session.ts",

@@ -135,6 +135,10 @@ namespace_id = "1615304"
 simple = { limit = 120, period = 60 }
 
 [[durable_objects.bindings]]
+name = "AUTHENTICATION_STATE"
+class_name = "AuthenticationState"
+
+[[durable_objects.bindings]]
 name = "SHARED_RUNTIME_CONVERSATIONS"
 class_name = "SharedRuntimeConversation"
 
@@ -168,6 +172,10 @@ class_name = "PersonalTelegramDelivery"
 
 # Declarative exports preserve the existing namespaces without replaying the
 # Worker's historical migration tags. Do not mix this with `[[migrations]]`.
+[exports.AuthenticationState]
+type = "durable-object"
+storage = "sqlite"
+
 [exports.SharedRuntimeConversation]
 type = "durable-object"
 storage = "sqlite"
@@ -236,6 +244,8 @@ storage = "sqlite"
 # transition the database control durable -> paused, then remove/false this
 # secondary switch; keep the durable binary deployed so recovery can converge.
 [vars]
+# Switch only after quiescing and transferring live auth state.
+CLOUD_AUTH_STATE_BACKEND = "redis"
 NODE_ENV = "production"
 # Compact Shared-runtime receipts contain timings and routing decisions only,
 # never prompt/response text. Keep a bounded production sample so first-turn,
@@ -610,6 +620,8 @@ binding = "AI"
 binding = "BROWSER"
 
 [env.staging.vars]
+# Switch only after quiescing and transferring live auth state.
+CLOUD_AUTH_STATE_BACKEND = "redis"
 APP_OAUTH_RETURN_URLS = "https://alphacompute.ai/alphaphone/gmail/staging/callback"
 NODE_ENV = "production"
 LOGIN_API_URL = "https://steward-api-staging.up.railway.app"
@@ -841,6 +853,10 @@ binding = "CACHE_KV"
 id = "f7e24faaff734e7c8cd8e12b093c3571"
 
 [[env.staging.durable_objects.bindings]]
+name = "AUTHENTICATION_STATE"
+class_name = "AuthenticationState"
+
+[[env.staging.durable_objects.bindings]]
 name = "SHARED_RUNTIME_CONVERSATIONS"
 class_name = "SharedRuntimeConversation"
 
@@ -939,6 +955,8 @@ binding = "AI"
 binding = "BROWSER"
 
 [env.production.vars]
+# Switch only after quiescing and transferring live auth state.
+CLOUD_AUTH_STATE_BACKEND = "redis"
 APP_OAUTH_RETURN_URLS = "https://alphacompute.ai/alphaphone/gmail/callback"
 LOGIN_API_URL = "https://steward-api-production-115d.up.railway.app"
 NODE_ENV = "production"
@@ -1146,6 +1164,10 @@ id = "9f59e4ec65f048f7b87e29e7b9c5d728"
 [[env.production.kv_namespaces]]
 binding = "CACHE_KV"
 id = "1dafabf1293d4b6b97f61c5cc22d6fec"
+
+[[env.production.durable_objects.bindings]]
+name = "AUTHENTICATION_STATE"
+class_name = "AuthenticationState"
 
 [[env.production.durable_objects.bindings]]
 name = "SHARED_RUNTIME_CONVERSATIONS"

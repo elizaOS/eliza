@@ -44,6 +44,16 @@ bun --no-install --conditions=eliza-source test packages/cloud/shared/src/lib/se
 The suite creates and removes a unique schema and loads migrations 0544–0545.
 It must not point to a production database.
 
+Authentication nonces, token revocations, voice session mappings and connection claims can use the
+private `AUTHENTICATION_STATE` Durable Object binding with
+`CLOUD_AUTH_STATE_BACKEND=cloudflare`. The default remains `redis` until a
+quiesced transfer preserves each live key's original expiration. A missing
+selected binding fails closed; the host never falls back to Redis after activation.
+The operator-only private-binding import preserves absolute expirations, rejects
+conflicts, and closes permanently for a shard once it serves an auth operation.
+Finish and verify imports before sending normal reads or writes to the target.
+This does not replace rate limits, gateway queues, or other Redis state.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

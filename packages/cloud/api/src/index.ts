@@ -47,6 +47,7 @@ import { knownRouteShardKey } from "./router-shards";
 import { isThinStewardPath } from "./steward/public-paths";
 
 export { AnonymousChatGate } from "./anonymous-chat-gate";
+export { AuthenticationState } from "./authentication-state";
 export { isThinCliSessionPath } from "./cli-session-paths";
 export { DoorDashCheckoutGate } from "./doordash-checkout-gate";
 export { InferenceAdmissionGate } from "./inference-admission-gate";

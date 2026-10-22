@@ -77,6 +77,19 @@ describe("Miniflare Durable Object integration", () => {
         {
           name: "admission-runtime-boundaries",
           setup(build) {
+            // This suite exercises admission serialization, not delegated primary
+            // funding. Do not bundle its PostgreSQL/provider graph into the fixture.
+            build.onLoad(
+              { filter: /[\\/]inference-funded-budget-controller\.ts$/ },
+              () => ({
+                loader: "ts",
+                contents: `export class InferenceFundedBudgetController {
+                  constructor() {
+                    throw new Error("delegated funding is outside this serialization test");
+                  }
+                }`,
+              }),
+            );
             build.onLoad(
               { filter: ADMISSION_RUNTIME_BOUNDARY_FILTERS.dbClient },
               () => ({
@@ -95,6 +108,9 @@ describe("Miniflare Durable Object integration", () => {
               () => ({
                 loader: "ts",
                 contents: `
+                export function getCloudAwareEnv(): never {
+                  throw new Error("environment policy reads are outside this serialization test");
+                }
                 export async function runWithCloudBindingsAsync<T>(
                   _bindings: Record<string, unknown>,
                   operation: () => Promise<T>,
