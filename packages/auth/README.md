@@ -187,3 +187,18 @@ that the recipient received the code. No webhook, agent history, model call,
 new login token, or database migration is added. Real delivery and Cloud account
 continuity still require separate testing with the existing authorized key and
 sender after review.
+
+## Cloudflare login service
+
+`cloudflare/wrangler.toml` runs the same Bun login server in a Cloudflare
+Container. Deploy staging with `bun run --cwd packages/auth cloudflare:deploy:staging`.
+Copy the existing environment's identity, vault, signing, provider, and database
+secrets with Wrangler secret bulk input; retain their exact values so accounts,
+sessions, passkeys, and encrypted data remain compatible. Never commit that input.
+The container owns no durable files. PostgreSQL remains the authoritative store;
+use a restored and reconciled non-Railway database before retiring Railway.
+
+The edge overwrites forwarding headers and the container trusts one proxy hop.
+Point Cloud's `LOGIN_API_URL` at the verified login Worker only after login,
+refresh, logout, provider callbacks, and database readiness pass in staging.
+Preserve the original service until production acceptance and rollback checks pass.
