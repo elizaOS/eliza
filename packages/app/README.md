@@ -249,7 +249,7 @@ They hash every pinned asset before loading native code, do not download
 assets, and have no cloud fallback.
 
 - Speech output: `ELIZA_PARADEE_ENABLED=1` and an absolute
-  `ELIZA_PARADEE_MODEL_DIR` with the pinned `paradee-8m-v1_0.gguf` and
+  `ELIZA_PARADEE_MODEL_DIR` with the pinned `paradee-8m-v1_1.gguf` and
   `misaki-en-us.lex`. Text is phonemized by the native misaki G2P.
   `GET /api/tts/paradee/status` reports readiness. `POST /api/tts/paradee`
   accepts only `{ "text": "..." }` (1–500 characters) and returns mono PCM16
