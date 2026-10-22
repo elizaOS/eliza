@@ -257,7 +257,7 @@ export function createWebFetchAction(
           message: "WEB_FETCH is disabled via ELIZA_WEB_FETCH",
         });
       }
-      const url = readStringParam(options, "url")?.trim();
+      let url = readStringParam(options, "url")?.trim();
       const extract = readStringParam(options, "extract")?.trim();
       if (!url) {
         return failureToActionResult({
@@ -274,6 +274,8 @@ export function createWebFetchAction(
         const signal = input?.abortSignal ?? input?.signal;
         signal?.throwIfAborted();
         const parsedUrl = new URL(url);
+        // Canonicalize the caller URL before the reader applies its existing safety policy.
+        url = parsedUrl.href;
         if (parsedUrl.hostname.toLowerCase() === "wttr.in") {
           const location = parsedUrl.pathname.slice(1);
           const match = location.match(
