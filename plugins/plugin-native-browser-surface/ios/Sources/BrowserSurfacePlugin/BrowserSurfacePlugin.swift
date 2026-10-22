@@ -26,6 +26,7 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
         CAPPluginMethod(name: "reloadSurface", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "goBack", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "readPage", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "controlPage", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "presentSurface", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "destroySurface", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getSurfaceState", returnType: CAPPluginReturnPromise),
@@ -392,6 +393,10 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
             if surface.webView.canGoBack { surface.webView.goBack() }
             call.resolve()
         }
+    }
+
+    @objc func controlPage(_ call: CAPPluginCall) {
+        call.reject("Isolated page control is not available on this platform", "UNSUPPORTED")
     }
 
     @objc func readPage(_ call: CAPPluginCall) {

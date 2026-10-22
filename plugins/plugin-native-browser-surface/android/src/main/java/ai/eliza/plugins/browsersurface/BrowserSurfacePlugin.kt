@@ -316,6 +316,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         val epoch: Long,
         val profileName: String?,
         var foregrounded: Boolean,
+        var control: SurfaceControlChannel? = null,
         var disposed: Boolean = false,
         var pageRevision: Long = 0,
         var pageError: String? = null,
@@ -332,6 +333,9 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     private var profileSerial = 0L
     private val pageReader by lazy {
         context.assets.open("read-page.js").bufferedReader().use { it.readText() }
+    }
+    private val pageControl by lazy {
+        context.assets.open("control-channel.js").bufferedReader().use { it.readText() }
     }
 
     override fun load() {
@@ -418,6 +422,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
 
     private fun disposeSurface(surface: Surface) {
         if (!surface.disposed) {
+            surface.control?.interrupt("The native page was closed", navigation = true)
             surface.container.visibility = View.GONE
             surface.foregrounded = false
             surface.webView.stopLoading()
@@ -479,6 +484,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             webView.webViewClient = object : WebViewClient() {
                 override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                     surfaces.values.firstOrNull { it.webView === view }?.let {
+                        it.control?.interrupt("The native page navigated", navigation = true)
                         it.pageRevision += 1
                         it.pageError = null
                     }
@@ -535,6 +541,15 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             val lp = FrameLayout.LayoutParams(0, 0)
             host.addView(container, lp)
             container.visibility = View.GONE
+            val control = try {
+                if (SurfaceControlChannel.supported()) SurfaceControlChannel(webView, pageControl) else null
+            } catch (error: RuntimeException) {
+                host.removeView(container)
+                webView.destroy()
+                profileName?.let(::retireProfile)
+                call.reject("Could not install isolated browser control", error)
+                return@runOnUiThread
+            }
             if (url != null) webView.loadUrl(url)
 
             // The renderer handle proves separation from the app process, which
@@ -574,6 +589,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 identity.epoch,
                 profileName,
                 false,
+                control,
             )
             call.resolve()
         }
@@ -782,6 +798,31 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     }
 
     @PluginMethod
+    fun controlPage(call: PluginCall) {
+        val id = call.getString("id")
+        val command = call.getObject("command")
+        if (id == null || command == null || command.optString("subaction") !in setOf("snapshot", "click", "fill", "scroll")) {
+            call.reject("controlPage requires a surface and a fixed page command", "INVALID_REQUEST")
+            return
+        }
+        activity.runOnUiThread {
+            val identity = requireActiveIdentity(call, "controlPage") ?: return@runOnUiThread
+            val surface = ownedSurface(call, id, identity, "controlPage") ?: return@runOnUiThread
+            val control = surface.control ?: run {
+                call.reject("This WebView provider does not support isolated page control", "UNSUPPORTED")
+                return@runOnUiThread
+            }
+            val revision = surface.pageRevision
+            val url = surface.webView.url
+            control.execute(call, command, call.getString("documentId")) {
+                activeOwners.isActive(identity) && surfaces[id] === surface && !surface.disposed &&
+                    surface.foregrounded && surface.webView.progress == 100 && surface.pageError == null &&
+                    surface.pageRevision == revision && surface.webView.url == url
+            }
+        }
+    }
+
+    @PluginMethod
     fun presentSurface(call: PluginCall) {
         val id = call.getString("id")
         activity.runOnUiThread {
@@ -793,6 +834,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             }
             for (surface in surfaces.values) {
                 if (surface.owner == owner) {
+                    if (surface !== selected) surface.control?.interrupt("The native page was hidden")
                     surface.container.visibility = View.GONE
                     surface.foregrounded = false
                 }
@@ -922,6 +964,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             // cannot remain visible or interactive after its realm is retired.
             for (surface in surfaces.values) {
                 if (surface.owner == owner) {
+                    surface.control?.interrupt("The native owner was reconciled")
                     surface.container.visibility = View.GONE
                     surface.foregrounded = false
                 }

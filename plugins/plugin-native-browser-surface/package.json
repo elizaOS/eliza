@@ -53,13 +53,14 @@
     "prepublishOnly": "bun run build",
     "test": "vitest run --config vitest.config.ts && bun run test:native-policy",
     "watch": "tsc6 --watch",
-    "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
+    "build:unlocked": "node scripts/build-control-channel.mjs && bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "test:native-policy": "node --test test/native-host/policies.node.mjs"
+    "test:native-policy": "node --test test/native-host/policies.node.mjs",
+    "test:control": "node scripts/build-control-channel.mjs --check && node scripts/test-control-channel.mjs"
   },
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
