@@ -146,9 +146,15 @@ async function download(url, pin, target) {
 
 /** inputs.json must name the same artifacts the fork pins. */
 export function forkPins() {
-  const paradee = JSON.parse(
+  // inputs.json `paradee.version` picks that version's section of the fork's
+  // pins (for example "v1.1"); without it the top-level v1.0 pins apply.
+  const allParadee = JSON.parse(
     readFileSync(path.join(forkSrc, "tools/paradee/pins.json"), "utf8"),
   );
+  const paradee = inputs.paradee.version
+    ? allParadee[`v${inputs.paradee.version}`]
+    : allParadee;
+  if (!paradee) fail(`the fork pins no Paradee v${inputs.paradee.version}`);
   const misaki = JSON.parse(
     readFileSync(path.join(forkSrc, "tools/misaki-g2p/pins.json"), "utf8"),
   );
@@ -243,6 +249,9 @@ export async function buildModels(args, pins, bundle) {
         hfDir,
         "--output",
         output,
+        ...(inputs.paradee.version
+          ? ["--version", inputs.paradee.version]
+          : []),
         "--outtype",
         "f32",
         "--check-output",
