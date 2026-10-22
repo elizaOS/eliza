@@ -1,8 +1,14 @@
 /** Hosts the unchanged login runtime in a Cloudflare Container behind the Cloudflare edge. */
+
+import { timingSafeEqual } from "node:crypto";
 import { Container, getContainer } from "@cloudflare/containers";
+import { LoginRateLimits } from "./rate-limit";
+
+export { LoginRateLimits };
 
 interface Env {
   LOGIN: DurableObjectNamespace<LoginContainer>;
+  RATE_LIMITS: DurableObjectNamespace<LoginRateLimits>;
   /** Deployment-owned settings and secrets. Never derived from a request. */
   [key: string]: unknown;
 }
@@ -50,6 +56,25 @@ export default {
     await response.body?.cancel();
   },
   async fetch(request: Request, env: Env): Promise<Response> {
+    if (new URL(request.url).pathname.startsWith("/internal/rate-limit/")) {
+      const token = env.STEWARD_RATE_LIMIT_TOKEN;
+      if (typeof token !== "string" || !token.trim()) {
+        return new Response("Rate limits unavailable", { status: 503 });
+      }
+      const expected = new TextEncoder().encode(`Bearer ${token.trim()}`);
+      const actual = new TextEncoder().encode(
+        request.headers.get("Authorization") ?? "",
+      );
+      if (
+        actual.length !== expected.length ||
+        !timingSafeEqual(actual, expected)
+      ) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+      return env.RATE_LIMITS.get(env.RATE_LIMITS.idFromName("login")).fetch(
+        request,
+      );
+    }
     const headers = new Headers(request.headers);
     // Only the Cloudflare edge may supply client network identity. Never pass
     // a caller-controlled forwarding chain into the login abuse limiter.

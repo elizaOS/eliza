@@ -156,6 +156,10 @@ async function startOwnedLogin(options: {
     releaseAuth = releaseAuthStores;
     clearRateLimiter = () => setDatabaseAuthRateLimiter(undefined);
     const redisAvailable = await initRedis();
+    const { isCloudflareRateLimitConfigured } = await import(
+      "./redis/cloudflare-rate-limit"
+    );
+    isCloudflareRateLimitConfigured();
     // A configured Redis outage must not select a different receipt history.
     setDatabaseIdempotencyStore(!isRedisConfigured());
     await initAuthStores(options.mode === "postgres" && !redisAvailable);

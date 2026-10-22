@@ -202,6 +202,12 @@ on Railway; use its external connection endpoint from Cloudflare. Retire only
 the application services after cutover, preserving the database services.
 
 The edge overwrites forwarding headers and the container trusts one proxy hop.
+Set `STEWARD_RATE_LIMIT_URL` to the login Worker's `/internal/rate-limit` URL and
+set the same `STEWARD_RATE_LIMIT_TOKEN` secret on that Worker. Vault and proxy
+sliding-window admission then uses its durable SQLite counter store. Missing or
+failed admission never retries against Redis; transfer existing counters before
+switching the configured backend. Spend and aggregation tracking still require
+their own migration.
 Point Cloud's `LOGIN_API_URL` at the verified login Worker only after login,
 refresh, logout, provider callbacks, and database readiness pass in staging.
 Preserve the original service until production acceptance and rollback checks pass.

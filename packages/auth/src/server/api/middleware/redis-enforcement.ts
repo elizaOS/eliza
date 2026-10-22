@@ -9,6 +9,7 @@
 import { createPriceOracle, type PolicyRule } from "../../shared/index.ts";
 import {
   checkAgentRateLimit,
+  isRateLimitAvailable,
   isRedisAvailable,
   isRedisConfigured,
   recordAgentSpend,
@@ -137,7 +138,7 @@ export async function enforceRateLimit(
 ): Promise<RedisEnforcementResult> {
   const rlParams = extractRateLimitPolicy(policies);
   if (!rlParams) return { allowed: true };
-  if (!isRedisAvailable()) {
+  if (!isRateLimitAvailable()) {
     if (!isRedisConfigured() && process.env.NODE_ENV !== "production")
       return { allowed: true };
     return {
