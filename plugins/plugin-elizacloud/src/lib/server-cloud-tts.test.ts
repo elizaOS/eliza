@@ -314,6 +314,51 @@ describe("handleCloudTtsPreviewRoute (/api/tts/cloud proxy)", () => {
     });
 });
 describe("handleCloudSttRoute (/api/asr/cloud proxy)", () => {
+    test.each([undefined, "cartesia"])("forwards only explicit STT provider opt-in %s and actual model evidence", async (provider) => {
+        upstreamResponse = () => Response.json({transcript:"selected speech"}, {headers:{"X-Eliza-STT-Provider":"cartesia", "X-Eliza-STT-Model":"ink-whisper"}});
+        const req = fakeReq("RIFF-audio", {"content-type":"audio/wav", ...(provider ? {"x-eliza-stt-provider":provider} : {})});
+        const {res,state} = fakeRes();
+        await handleCloudSttRoute(req,res);
+        expect(state.statusCode).toBe(200);
+        expect(upstream).toHaveLength(1);
+        expect(upstream[0].body).toBeInstanceOf(FormData);
+        const form = upstream[0].body as FormData;
+        expect(form.getAll("provider")).toEqual(provider ? ["cartesia"] : []);
+        expect(await (form.get("audio") as Blob).text()).toBe("RIFF-audio");
+        expect(state.headers["x-eliza-stt-model"]).toBe("ink-whisper");
+    });
+    test("keeps the existing JSON audio path with an explicit provider opt-in", async () => {
+        upstreamResponse = () => Response.json({transcript:"speech"});
+        const {res,state} = fakeRes();
+        await handleCloudSttRoute(fakeReq(JSON.stringify({audioBase64:Buffer.from("RIFF-audio").toString("base64")}), {"content-type":"application/json", "x-eliza-stt-provider":"cartesia"}),res);
+        expect(state.statusCode).toBe(200);
+        const form = upstream[0].body as FormData;
+        expect(form.getAll("provider")).toEqual(["cartesia"]);
+        expect(await (form.get("audio") as Blob).text()).toBe("RIFF-audio");
+    });
+    test.each(["", "Cartesia", " cartesia ", "whisper", "cartesia, cartesia"])("refuses invalid STT provider header %j before dispatch", async (provider) => {
+        const {res,state} = fakeRes();
+        await handleCloudSttRoute(fakeReq("RIFF-audio", {"x-eliza-stt-provider":provider}),res);
+        expect(state.statusCode).toBe(400);
+        expect(upstream).toHaveLength(0);
+    });
+    test("refuses duplicated STT provider headers", async () => {
+        const req = fakeReq("RIFF-audio");
+        req.headers["x-eliza-stt-provider"] = ["cartesia", "cartesia"];
+        const {res,state} = fakeRes();
+        await handleCloudSttRoute(req,res);
+        expect(state.statusCode).toBe(400);
+        expect(upstream).toHaveLength(0);
+    });
+    test("does not invent a missing upstream model attestation", async () => {
+        upstreamResponse = () => Response.json({transcript:"speech"});
+        const {res,state} = fakeRes();
+        await handleCloudSttRoute(fakeReq("RIFF-audio", {"x-eliza-stt-provider":"cartesia"}),res);
+        expect(state.statusCode).toBe(200);
+        expect(state.headers["x-eliza-stt-model"]).toBeUndefined();
+        expect(state.headers["x-eliza-stt-provider"]).toBeUndefined();
+    });
+
     test.each([
         ["1", "https://api-staging.eliza.app/api/v1/voice/stt"],
         [undefined, "https://api.eliza.app/api/v1/voice/stt"],

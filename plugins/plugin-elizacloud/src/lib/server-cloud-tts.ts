@@ -50,7 +50,7 @@ function cloudProxyClient(req: http.IncomingMessage, res: http.ServerResponse) {
 /** Forward only actual upstream evidence. An omitted provider remains unverified. */
 function forwardCloudSpeechHeaders(upstream: Response, res: http.ServerResponse, kind: "tts" | "stt") {
     const providerHeader = `X-Eliza-${kind.toUpperCase()}-Provider`;
-    for (const name of [providerHeader, "Server-Timing", "X-Eliza-Trace-Id", "X-Request-Id", "X-Trace-Id", "CF-Ray"]) {
+    for (const name of [providerHeader, ...(kind === "stt" ? ["X-Eliza-STT-Model"] : []), "Server-Timing", "X-Eliza-Trace-Id", "X-Request-Id", "X-Trace-Id", "CF-Ray"]) {
         const value = upstream.headers.get(name);
         if (value) res.setHeader(name, value);
     }
@@ -352,6 +352,11 @@ export async function handleCloudSttRoute(req: http.IncomingMessage, res: http.S
         sendJsonErrorResponse(res, 401, "Eliza Cloud is not connected. Connect your Eliza Cloud account first.");
         return true;
     }
+    const provider = req.headers["x-eliza-stt-provider"];
+    if (provider !== undefined && provider !== "cartesia") {
+        sendJsonErrorResponse(res, 400, "Invalid speech-to-text provider");
+        return true;
+    }
     const contentType = req.headers["content-type"];
     const requestMime = typeof contentType === "string" && contentType.trim()
         ? contentType.split(";", 1)[0]?.trim() || "audio/wav"
@@ -402,6 +407,7 @@ export async function handleCloudSttRoute(req: http.IncomingMessage, res: http.S
                 client.signal.throwIfAborted();
                 const form = new FormData();
                 form.append("audio", new Blob([new Uint8Array(rawBody)], { type: mime }), filename);
+                if (provider === "cartesia") form.append("provider", provider);
                 const sttSignal = cloudProxyAbortSignal("ELIZAOS_CLOUD_STT_TIMEOUT_MS", client.signal);
                 attempt = await fetch(cloudUrl, {
                     method: "POST",
