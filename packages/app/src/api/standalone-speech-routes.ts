@@ -190,7 +190,7 @@ export async function handleStandaloneSpeechRoute(
               ready: service.initialized,
               busy: host.ttsActive,
               provider,
-              model: "paradee-8m-v1.0",
+              model: "paradee-8m-v1.1",
               voice: "af_heart",
               sampleRate: 24000,
               format: "pcm16-wav",
