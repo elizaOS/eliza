@@ -97,4 +97,10 @@ it("still streams a serializable body and an absent body", async () => {
   const absent = await dispatchEcho(runtime, undefined);
   expect(absent?.status).toBe(200);
   expect(seen).toEqual(['{"text":"payload"}', ""]);
+
+  // A literal `null` body is the other documented "absent" case: it must stay
+  // an empty stream rather than becoming the four bytes `"null"` on the wire.
+  const nullBody = await dispatchEcho(runtime, null);
+  expect(nullBody?.status).toBe(200);
+  expect(seen).toEqual(['{"text":"payload"}', "", ""]);
 });
