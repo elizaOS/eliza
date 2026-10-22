@@ -793,6 +793,32 @@ try {
       "blocked",
       "A model plan cannot grant action authority",
     );
+    const lifetime = new AbortController();
+    workflow.signal = lifetime.signal;
+    let entered;
+    const checking = new Promise((resolve) => {
+      entered = resolve;
+    });
+    workflow.authorizeAction = () => {
+      entered();
+      return new Promise(() => {});
+    };
+    const waiting = workflow.refresh();
+    await checking;
+    const beforePause = runtime.get(plannedTask.id);
+    runtime.control(beforePause.id, beforePause.revision, "pause");
+    lifetime.abort();
+    await assert.rejects(waiting, /authorization changed/i);
+    await runtime.settle(plannedTask.id);
+    assert.equal(
+      runtime.get(plannedTask.id).operations.length,
+      0,
+      "Aborted policy work cannot dispatch",
+    );
+    workflow.signal = new AbortController().signal;
+    workflow.authorizeAction = () => permitted;
+    const paused = runtime.get(plannedTask.id);
+    await runtime.observe(paused.id, paused.revision, true);
     permitted = true;
     let decision = await workflow.refresh();
     assert.equal(decision.kind, "agent-action");
