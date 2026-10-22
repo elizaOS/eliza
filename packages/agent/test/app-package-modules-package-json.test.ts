@@ -85,6 +85,14 @@ it("keeps scanning when one candidate copy of the package is corrupt", async () 
   );
 });
 
+it("does not treat a non-string name as a match", async () => {
+  // A readable manifest whose `name` is not a string cannot identify the
+  // package, so discovery must keep looking rather than crash or match it.
+  writeManifest(probedPackageDir, JSON.stringify({ name: 42 }));
+
+  await expect(resolveWorkspacePackageDir(PACKAGE_NAME)).resolves.toBeNull();
+});
+
 it("still reports a genuinely absent package as not found", async () => {
   await expect(resolveWorkspacePackageDir(PACKAGE_NAME)).resolves.toBeNull();
 });
