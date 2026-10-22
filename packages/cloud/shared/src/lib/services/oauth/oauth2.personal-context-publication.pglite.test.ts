@@ -60,7 +60,7 @@ mock.module("../../runtime/cloud-bindings", () => ({
   ...originals.bindings,
   getCloudAwareEnv: () => ({
     NEXT_PUBLIC_APP_URL: "https://fixture.example.test",
-    ALPHA_OAUTH_RETURN_URLS: "https://alphacompute.ai/alphaphone/gmail/callback",
+    APP_OAUTH_RETURN_URLS: "https://alphacompute.ai/alphaphone/gmail/callback",
   }),
 }));
 mock.module("./provider-registry", () => ({

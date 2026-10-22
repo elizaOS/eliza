@@ -64,7 +64,7 @@ export async function handleGenericOAuthCallback(
       appReturn = resolveAppOAuthReturn(
         await cache.get(`oauth2:${provider.id}:${state}`),
         provider.id,
-        getCloudAwareEnv().ALPHA_OAUTH_RETURN_URLS,
+        getCloudAwareEnv().APP_OAUTH_RETURN_URLS,
       );
     } catch {
       appReturnLookupFailed = true;
@@ -128,7 +128,7 @@ export async function handleGenericOAuthCallback(
       appReturn = resolveAppOAuthReturn(
         { ...result, providerId: provider.id, createdAt: Date.now() },
         provider.id,
-        getCloudAwareEnv().ALPHA_OAUTH_RETURN_URLS,
+        getCloudAwareEnv().APP_OAUTH_RETURN_URLS,
       );
     if (appReturn && result.redirectUrl !== appReturn.source)
       throw new Error("OAuth return binding changed");

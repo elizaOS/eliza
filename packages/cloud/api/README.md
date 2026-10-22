@@ -86,9 +86,9 @@ be enabled and bound to that environment's callback.
 
 ### Alpha-owned managed Google returns
 
-The Alpha-owned callback rollout uses `ALPHA_OAUTH_RETURN_URLS` for exact HTTPS
+App-owned connector callbacks use `APP_OAUTH_RETURN_URLS` for exact HTTPS
 Gmail return addresses. Initiation accepts the app nonce as the only `state`
-query parameter and returns `alphaReturn: 2` when configured. The callback uses
+query parameter and returns `appReturn: 2` when configured. The callback uses
 server-owned state and returns only state/result plus `connectionId` on success.
 The app must verify that connection through its authenticated connector list.
 Denial retires state and creates no grant. Unknown state keeps existing recovery.

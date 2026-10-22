@@ -206,14 +206,12 @@ describe("native App Link OAuth (Alpha Phone)", () => {
       tenant_id: TENANT_ID,
       redirect_uri: ALPHA_LINK,
     });
-    const ready = await nativeGet(
-      `/auth/oauth/google/alpha-readiness?${query}`,
-    );
+    const ready = await nativeGet(`/auth/oauth/google/app-readiness?${query}`);
     expect(ready.status).toBe(200);
     expect(ready.headers.get("cache-control")).toBe("no-store");
     expect(await ready.json()).toEqual({
       ok: true,
-      alphaAuth: 1,
+      appAuth: 1,
       tenantId: TENANT_ID,
       redirectUri: ALPHA_LINK,
     });
@@ -264,7 +262,7 @@ describe("native App Link OAuth (Alpha Phone)", () => {
     try {
       delete process.env.GOOGLE_CLIENT_SECRET;
       const unavailable = await nativeGet(
-        `/auth/oauth/google/alpha-readiness?${query}`,
+        `/auth/oauth/google/app-readiness?${query}`,
       );
       expect(unavailable.status).toBe(503);
       const refused = await nativeGet(
@@ -276,6 +274,33 @@ describe("native App Link OAuth (Alpha Phone)", () => {
       process.env.GOOGLE_CLIENT_SECRET = secret;
     }
   }, 30_000);
+
+  test("readiness supports another registered app without product routing", async () => {
+    const previous = process.env.STEWARD_OAUTH_APP_ERROR_REDIRECTS;
+    try {
+      process.env.STEWARD_OAUTH_APP_ERROR_REDIRECTS = APP_LINK;
+      const query = new URLSearchParams({
+        tenant_id: TENANT_ID,
+        redirect_uri: APP_LINK,
+      });
+      const response = await nativeGet(
+        `/auth/oauth/google/app-readiness?${query}`,
+      );
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ok: true,
+        appAuth: 1,
+        tenantId: TENANT_ID,
+        redirectUri: APP_LINK,
+      });
+      query.set("redirect_uri", "https://unregistered.example/callback");
+      expect(
+        (await nativeGet(`/auth/oauth/google/app-readiness?${query}`)).status,
+      ).toBe(503);
+    } finally {
+      process.env.STEWARD_OAUTH_APP_ERROR_REDIRECTS = previous;
+    }
+  });
 
   test("authorize forwards prompt=select_account to Google and accepts no Origin", async () => {
     const appState = base64url(randomBytes(32));

@@ -9659,7 +9659,7 @@ auth.post("/email/send", async (c) => {
  * Body: { email, tenantId?, captchaToken? }
  * Returns 200 { ok: true, data: { expiresAt, codeLength: 6 } }
  *
- * Native in-app email sign-in (Alpha Phone). Emails ONLY a six-digit code,
+ * Native in-app email sign-in. Emails ONLY a six-digit code,
  * rendered with the sign-in code template: the email has no link, and no link
  * token is ever published, so nothing in it can sign in a browser or consume
  * the challenge. The app redeems the code through POST /email/code/verify,
@@ -10723,21 +10723,34 @@ export function resolveOAuthPromptPassthrough(
  * Generates an OAuth authorization URL, stores the CSRF state in the challenge
  * store (keyed as `oauth:<state>`), then redirects the user to the provider.
  */
-// Alpha readiness is read-only: no challenge, credential or provider navigation.
-auth.get("/oauth/google/alpha-readiness", async (c) => {
+// Read-only readiness for any registered application. Never issues a credential.
+auth.get("/oauth/google/app-readiness", async (c) => {
   c.header("Cache-Control", "no-store");
   const tenantId = c.req.query("tenant_id");
   const redirectUri = c.req.query("redirect_uri");
-  const expected =
-    tenantId === "elizacloud"
-      ? "https://alphacompute.ai/alphaphone/auth/callback"
-      : tenantId === "elizacloud-staging"
-        ? "https://alphacompute.ai/alphaphone/auth/staging/callback"
-        : undefined;
-  if (!expected || redirectUri !== expected) {
-    return c.json({ ok: false, error: "Alpha Phone sign-in unavailable" }, 400);
+  if (
+    !tenantId ||
+    tenantId.length > 100 ||
+    !redirectUri ||
+    redirectUri.length > 2048
+  ) {
+    return c.json({ ok: false, error: "App sign-in unavailable" }, 400);
   }
-  const rl = await checkAuthRateLimit(c, "alpha-auth-readiness", 60_000, 30);
+  try {
+    const target = new URL(redirectUri);
+    if (
+      target.protocol !== "https:" ||
+      target.username ||
+      target.password ||
+      target.hash ||
+      target.search
+    ) {
+      return c.json({ ok: false, error: "App sign-in unavailable" }, 400);
+    }
+  } catch {
+    return c.json({ ok: false, error: "App sign-in unavailable" }, 400);
+  }
+  const rl = await checkAuthRateLimit(c, "app-auth-readiness", 60_000, 30);
   if (!rl.allowed) return c.json({ ok: false, error: "Try again later" }, 429);
   try {
     const denied = await requireTenantLoginMethodAllowed(
@@ -10747,10 +10760,7 @@ auth.get("/oauth/google/alpha-readiness", async (c) => {
       "google",
     );
     if (denied)
-      return c.json(
-        { ok: false, error: "Alpha Phone sign-in unavailable" },
-        403,
-      );
+      return c.json({ ok: false, error: "App sign-in unavailable" }, 403);
     await assertAllowedOAuthRedirectUri(redirectUri, tenantId);
     getProviderConfig("google");
     const errorReturn = buildOAuthAppErrorReturn(
@@ -10760,9 +10770,9 @@ auth.get("/oauth/google/alpha-readiness", async (c) => {
       process.env.STEWARD_OAUTH_APP_ERROR_REDIRECTS,
     );
     if (!errorReturn) throw new Error("App error returns are not configured");
-    return c.json({ ok: true, alphaAuth: 1, tenantId, redirectUri });
+    return c.json({ ok: true, appAuth: 1, tenantId, redirectUri });
   } catch {
-    return c.json({ ok: false, error: "Alpha Phone sign-in unavailable" }, 503);
+    return c.json({ ok: false, error: "App sign-in unavailable" }, 503);
   }
 });
 
