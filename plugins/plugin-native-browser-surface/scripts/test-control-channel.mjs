@@ -236,6 +236,34 @@ try {
   );
   assert.equal(scrollTarget?.scrollOnly, true);
   assert.ok(scrollTarget.scroll.maxY > 0);
+  // Native panes can have a fractional visual viewport below rounded innerHeight.
+  // Guidance must not center the tall document before the authorized scroll.
+  await cdp.send("Emulation.setPageScaleFactor", { pageScaleFactor: 1.001 });
+  const viewport = await page.evaluate(() => ({
+    layout: innerHeight,
+    visual: visualViewport.height,
+  }));
+  assert.ok(viewport.visual < viewport.layout);
+  state = await snapshot();
+  const rootGuide = {
+    kind: "show",
+    id: "root-scroll-guidance",
+    snapshotId: state.snapshotId,
+    nodeId: state.elements.find((item) => item.targetSelector === "html").id,
+    origin,
+    expiresAt: Date.now() + 15000,
+    text: "Scroll down to continue.",
+    tone: "instruction",
+  };
+  assert.equal(
+    (await dispatch({ subaction: "guide", guidance: rootGuide })).result.accepted,
+    true,
+  );
+  assert.equal(await page.evaluate(() => scrollY), 0,
+    "Showing root guidance must not perform unjournaled scrolling");
+  await dispatch({ subaction: "guide", guidance: { kind: "hide" } });
+  await cdp.send("Emulation.setPageScaleFactor", { pageScaleFactor: 1 });
+  state = await snapshot();
   const scroll = action(state, "scroll", "html", {
     direction: "down",
     taskPolicy: {
