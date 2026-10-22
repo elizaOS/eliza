@@ -32,6 +32,15 @@ The plugin owns the Chromium native-messaging AIDL definitions. Host apps use
 the library classes and must not compile duplicate copies of those definitions.
 Eliza retains its existing service component as a thin subclass of this relay.
 
+Android surfaces may opt in to navigation interception with
+`createSurface({ ..., interceptNavigation: true })`. The page then navigates within its
+own origin by itself; a main-frame navigation to another origin, a cross-origin redirect
+included, is cancelled before any request and reported as `navigationRequested`
+(`{id, owner, session, epoch, url, redirect, userGesture}`). The host loads the address
+with `navigate()` once its own check (for example `SubmittedNavigation`) allows it.
+Non-web schemes and addresses with credentials never load. POST form submissions are not
+intercepted. Surfaces created without the option are unchanged.
+
 `parseBrowserAddressInput` (also exported as `./address-input` without bridge
 registration) classifies address-bar text as an HTTP(S) URL, search text, or a
 rejection reason. Hosts supply the inferred protocol and own aliases, search

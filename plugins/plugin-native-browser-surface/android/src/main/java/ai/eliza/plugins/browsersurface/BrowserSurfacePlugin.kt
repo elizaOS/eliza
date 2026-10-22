@@ -332,6 +332,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         var y: Double = 0.0,
         var outerClip: HostOuterClip? = null,
         var occlusions: List<HostOcclusionRect> = emptyList(),
+        /** Cross-origin main-frame navigations wait for the host (BrowserNavigationPolicy). */
+        val interceptNavigation: Boolean = false,
     )
 
     private val surfaces = HashMap<String, Surface>()
@@ -459,6 +461,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             return
         }
         val url = call.getString("url")
+        val interceptNavigation = call.getBoolean("interceptNavigation", false) ?: false
 
         activity.runOnUiThread {
             val identity = requireActiveIdentity(call, "createSurface") ?: return@runOnUiThread
@@ -473,7 +476,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 if (
                     existing.owner != owner || existing.session != session ||
                     existing.epoch != identity.epoch ||
-                    existing.process != process || existing.storage != storage
+                    existing.process != process || existing.storage != storage ||
+                    existing.interceptNavigation != interceptNavigation
                 ) {
                     call.reject("surface $id already exists with different owner/session/policy")
                     return@runOnUiThread
@@ -490,6 +494,34 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             val container = OccludingSurfaceLayout(activity)
             val webView = WebView(activity)
             webView.webViewClient = object : WebViewClient() {
+                // loadUrl() (the host's navigate) never reaches this callback, so an approved
+                // address is not intercepted again. POST form submissions do not reach it either.
+                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                    val surface = surfaces[id]
+                    if (surface == null || surface.webView !== view || !surface.interceptNavigation) return false
+                    val target = request.url.toString()
+                    return when (BrowserNavigationPolicy.decide(view.url, target, request.isForMainFrame)) {
+                        BrowserNavigationPolicy.Decision.ALLOW -> false
+                        BrowserNavigationPolicy.Decision.BLOCK -> true
+                        BrowserNavigationPolicy.Decision.REQUEST -> {
+                            if (!surface.disposed &&
+                                activeOwners.isActive(NativeOwnerIdentity(surface.owner, surface.session, surface.epoch))
+                            ) {
+                                notifyListeners("navigationRequested", JSObject().apply {
+                                    put("id", id)
+                                    put("owner", surface.owner)
+                                    put("session", surface.session)
+                                    put("epoch", surface.epoch)
+                                    put("url", target)
+                                    put("redirect", request.isRedirect)
+                                    put("userGesture", request.hasGesture())
+                                })
+                            }
+                            true
+                        }
+                    }
+                }
+
                 override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                     surfaces.values.firstOrNull { it.webView === view }?.let {
                         it.control?.interrupt("The native page navigated", navigation = true)
@@ -598,6 +630,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 profileName,
                 false,
                 control,
+                interceptNavigation = interceptNavigation,
             )
             call.resolve()
         }

@@ -47,6 +47,24 @@ export interface CreateSurfaceOptions extends SurfaceOwnerOptions {
   process: SurfaceProcessSharing;
   /** Explicit storage policy. Required — no default. */
   storage: SurfaceStorageSharing;
+  /**
+   * Android: the page may navigate within its own origin, but a main-frame navigation to
+   * another origin (a cross-origin redirect included) is cancelled before any request and
+   * reported as `navigationRequested`. The host loads it with `navigate()` once its own
+   * check allows it. Non-web schemes and addresses with credentials never load. POST form
+   * submissions are not intercepted. Default false: the page navigates by itself.
+   */
+  interceptNavigation?: boolean;
+}
+
+/** A cross-origin main-frame navigation an intercepting surface held for the host. */
+export interface NavigationRequestedEvent extends SurfaceIdOptions {
+  /** The address the page asked for; nothing has been requested from it yet. */
+  url: string;
+  /** A server redirect of the page's current navigation, not a new one. */
+  redirect: boolean;
+  /** Whether the person's gesture started the navigation. */
+  userGesture: boolean;
 }
 
 export interface SurfaceRect {
@@ -256,6 +274,11 @@ export interface ElizaSurfaceManagerPlugin {
   addListener(
     eventName: "navigationChanged",
     listener: (event: SurfaceIdOptions) => void,
+  ): Promise<PluginListenerHandle>;
+  /** An intercepting surface held a cross-origin navigation; `navigate()` to allow it. */
+  addListener(
+    eventName: "navigationRequested",
+    listener: (event: NavigationRequestedEvent) => void,
   ): Promise<PluginListenerHandle>;
   /** Atomically hide all siblings, then present the requested surface or host. */
   presentSurface(options: PresentSurfaceOptions): Promise<void>;
