@@ -1988,12 +1988,32 @@
             command: { subaction: "snapshot" },
           });
           await call("presentSurface", { ...identity, id });
+          await rejects(
+            "controlPage",
+            command(observation, "click", "#increment"),
+          );
           const resumed = await snapshot();
           assert(
             resumed.documentId === observation.documentId,
             "native control preserves the document across Home",
           );
-          window.nativeBrowserEvidence.control = { observation, resumed };
+          window.nativeBrowserPauseRequested = true;
+          const pauseDeadline = Date.now() + 8000;
+          while (!window.nativeBrowserPauseComplete) {
+            if (Date.now() >= pauseDeadline)
+              throw new Error("Native pause/resume did not complete");
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+          const activityResumed = await snapshot();
+          assert(
+            activityResumed.documentId === resumed.documentId,
+            "activity pause fences commands and retains the document",
+          );
+          window.nativeBrowserEvidence.control = {
+            observation,
+            resumed,
+            activityResumed,
+          };
         }
       } finally {
         await call("destroySurface", { ...identity, id });

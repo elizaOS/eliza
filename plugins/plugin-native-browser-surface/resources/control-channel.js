@@ -13,7 +13,8 @@
     ).join("");
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
   };
-  const documentId = identifier();
+  let documentId = identifier();
+  let active = true;
   let sequence = 0;
   const send = (value) => channel.postMessage(JSON.stringify(value));
   channel.onmessage = (event) => {
@@ -28,6 +29,7 @@
       send({ documentId, sequence: request.sequence, result });
     const reject = (kind, message) => reply({ error: { kind, message } });
     if (
+      !active ||
       request.documentId !== documentId ||
       !Number.isSafeInteger(request.sequence) ||
       request.sequence <= sequence
@@ -88,6 +90,16 @@
     }
   };
   const ready = () => send({ ready: true, documentId });
+  window.addEventListener("pagehide", (event) => {
+    if (event.isTrusted) active = false;
+  });
+  window.addEventListener("pageshow", (event) => {
+    if (!event.isTrusted) return;
+    active = true;
+    // A restored back/forward-cache document must not revive old commands.
+    if (event.persisted) documentId = identifier();
+    ready();
+  });
   ready();
   // Android may deliver the document-start message before its navigation
   // callback. Announce again once the DOM has loaded, retaining the same ID.

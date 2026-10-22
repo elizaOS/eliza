@@ -62,7 +62,8 @@ JavaScript world. It requires AndroidX WebKit 1.16 and a provider that supports
 The host must supply an authorized task policy for input. Never use a policy
 from model output or website content. Each effect requires a fresh snapshot and
 its document ID. Closing, hiding, navigation, or owner reconciliation interrupts
-pending work. A lost effect reply reports an uncertain outcome; observe before
+pending work. Activity pause also fences control and keeps the page for Resume.
+Hiding or pausing requires a fresh snapshot before the next input. A lost effect reply reports an uncertain outcome; observe before
 continuing and never automatically replay the effect. This API currently covers
 the main frame's DOM commands, not child frames, screenshots or coordinate input.
 

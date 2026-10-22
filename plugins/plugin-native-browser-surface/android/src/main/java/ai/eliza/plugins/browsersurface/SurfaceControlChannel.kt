@@ -14,6 +14,7 @@ internal class SurfaceControlChannel(private val webView: WebView, script: Strin
     private var documentId: String? = null
     private var documentOrigin: Uri? = null
     private var proxy: JavaScriptReplyProxy? = null
+    private var snapshotId: String? = null
     private var sequence = 0L
     private data class Pending(
         val call: PluginCall,
@@ -62,11 +63,14 @@ internal class SurfaceControlChannel(private val webView: WebView, script: Strin
             } else {
                 val error = result.optJSONObject("error")
                 if (error != null) request.call.reject(error.optString("message"), error.optString("kind"))
-                else request.call.resolve(JSObject().apply {
-                    put("documentId", incomingDocument)
-                    put("frameScope", "main")
-                    put("result", result)
-                })
+                else {
+                    if (!request.effect) snapshotId = result.optString("snapshotId").takeIf { it.isNotBlank() }
+                    request.call.resolve(JSObject().apply {
+                        put("documentId", incomingDocument)
+                        put("frameScope", "main")
+                        put("result", result)
+                    })
+                }
             }
         }
         WebViewCompat.addJavaScriptOnEvent(
@@ -91,6 +95,13 @@ internal class SurfaceControlChannel(private val webView: WebView, script: Strin
             call.reject("A page command is still awaiting its result", "BUSY")
             return
         }
+        if (effect && (snapshotId == null || command.optString("snapshotId") != snapshotId)) {
+            call.reject("Read a fresh snapshot before acting on this page", "STALE_REF")
+            return
+        }
+        // Native invalidation covers visibility/lifecycle changes even if the
+        // DOM and its isolated-world snapshot happen to remain unchanged.
+        snapshotId = null
         sequence += 1
         val timeout = Runnable { interrupt("The page command timed out; observe before continuing") }
         pending = Pending(call, currentDocument, sequence, effect, isCurrent, timeout)
@@ -107,6 +118,7 @@ internal class SurfaceControlChannel(private val webView: WebView, script: Strin
     }
 
     fun interrupt(message: String, navigation: Boolean = false) {
+        snapshotId = null
         val request = pending
         pending = null
         if (navigation) {

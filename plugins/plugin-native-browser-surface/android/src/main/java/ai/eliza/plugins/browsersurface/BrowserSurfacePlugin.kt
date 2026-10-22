@@ -36,6 +36,7 @@ import android.webkit.WebViewClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceError
 import android.widget.FrameLayout
+import androidx.lifecycle.Lifecycle
 import androidx.webkit.ProfileStore
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
@@ -180,7 +181,14 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         helperEntry?.reconcilePermission()
     }
 
+    override fun handleOnPause() {
+        surfaces.values.forEach { it.control?.interrupt("The browser host was paused") }
+        super.handleOnPause()
+    }
+
     override fun handleOnDestroy() {
+        surfaces.values.forEach(::disposeSurface)
+        surfaces.clear()
         dockScope.cancel()
         helperEntry?.destroy()
         helperEntry = null
@@ -543,7 +551,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             container.visibility = View.GONE
             val control = try {
                 if (SurfaceControlChannel.supported()) SurfaceControlChannel(webView, pageControl) else null
-            } catch (error: RuntimeException) {
+            } catch (error: Exception) {
                 host.removeView(container)
                 webView.destroy()
                 profileName?.let(::retireProfile)
@@ -815,7 +823,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             val revision = surface.pageRevision
             val url = surface.webView.url
             control.execute(call, command, call.getString("documentId")) {
-                activeOwners.isActive(identity) && surfaces[id] === surface && !surface.disposed &&
+                activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && activeOwners.isActive(identity) && surfaces[id] === surface && !surface.disposed &&
                     surface.foregrounded && surface.webView.progress == 100 && surface.pageError == null &&
                     surface.pageRevision == revision && surface.webView.url == url
             }
