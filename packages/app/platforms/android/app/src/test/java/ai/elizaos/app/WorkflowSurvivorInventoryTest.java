@@ -45,4 +45,9 @@ public class WorkflowSurvivorInventoryTest {
   Map<Integer,WorkflowSurvivorInventory.Identity> unknown=new HashMap<>(processes);unknown.put(43,identity(43,"200"));
   assertThrows(IOException.class,()->WorkflowSurvivorInventory.classifyCandidates(unknown,List.of(owner()),1,(journal,observed)->verify(journal,observed.uid,observed.pid)));
  }
+ @Test public void expiredStopDeadlineRefusesBeforeInspectingAnyProcessOrPath()throws Exception {
+  assertThrows(IOException.class,()->WorkflowSurvivorInventory.stopResident(null,null,null,0));
+  assertThrows(IOException.class,()->WorkflowSurvivorInventory.requireClassified(null,null,null,null,0));
+  assertThrows(IOException.class,()->IpcStartupRecovery.requireSoleUidProcess(0));
+ }
 }
