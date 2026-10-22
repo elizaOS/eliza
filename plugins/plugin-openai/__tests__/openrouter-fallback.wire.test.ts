@@ -4,7 +4,11 @@
  * transport invariants; live provider/model quality is a separate gate.
  */
 import { createServer, type Server } from "node:http";
-import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
+import {
+  type GenerateTextParams,
+  type IAgentRuntime,
+  runWithTrajectoryContext,
+} from "@elizaos/core";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleTextSmall } from "../models/text";
 import type { TextStreamResult } from "../types";
@@ -138,6 +142,10 @@ function runtime(overrides: Record<string, string> = {}) {
     ...overrides,
   };
   const events: unknown[] = [];
+  const records: Record<string, unknown>[] = [];
+  const trajectories = {
+    logLlmCall: (record: Record<string, unknown>) => records.push(record),
+  };
   return {
     runtime: {
       getSetting: (key: string) => settings[key],
@@ -145,10 +153,11 @@ function runtime(overrides: Record<string, string> = {}) {
       emitEvent: async (_name: string, event: unknown) => {
         events.push(event);
       },
-      getService: () => null,
+      getService: (type: string) => (type === "trajectories" ? trajectories : null),
       getServicesByType: () => [],
     } as unknown as IAgentRuntime,
     events,
+    records,
   };
 }
 
@@ -208,23 +217,34 @@ describe("explicit OpenRouter fallback", () => {
   });
 
   it.each([false, true])("recovers before streaming output, structured=%s", async (structured) => {
-    const { runtime: agent } = runtime();
+    const { runtime: agent, records } = runtime();
     const chunks: string[] = [];
-    const response = (await handleTextSmall(agent, {
-      ...(structured ? params : { prompt: "Go home" }),
-      stream: true,
-      streamStructured: structured,
-      onStreamChunk: (chunk) => chunks.push(chunk),
-    })) as TextStreamResult;
-    for await (const _chunk of response.textStream) {
-      /* Consume actual provider frames. */
-    }
+    const response = await runWithTrajectoryContext(
+      { trajectoryId: "fallback-trajectory", trajectoryStepId: "fallback-step" },
+      async () => {
+        const result = (await handleTextSmall(agent, {
+          ...(structured ? params : { prompt: "Go home" }),
+          stream: true,
+          streamStructured: structured,
+          onStreamChunk: (chunk) => chunks.push(chunk),
+        })) as TextStreamResult;
+        for await (const _chunk of result.textStream) {
+          /* Consume actual provider frames. */
+        }
+        return result;
+      }
+    );
     expect(await response.text).toBe(
       structured ? JSON.stringify({ operation: "show", viewId: "chat" }) : "Back home."
     );
     expect(chunks.join("")).toBe(await response.text);
     expect(response.providerMetadata?.provider).toBe("openrouter");
     expect(requests).toHaveLength(2);
+    expect(records[0]).toMatchObject({
+      response: "",
+      finishReason: "error",
+      providerMetadata: { error: expect.stringContaining("Tokens per minute limit exceeded") },
+    });
   });
 
   it.each(["generate", "stream", "structured", "buffered"])(
