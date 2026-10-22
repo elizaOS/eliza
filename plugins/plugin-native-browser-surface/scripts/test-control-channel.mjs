@@ -568,7 +568,7 @@ try {
     status: "waiting",
     authorization: { state: "active", decisionId: "fixture-authority" },
     allowedOrigins: [origin],
-    allowedCapabilities: ["browser.click", "browser.select"],
+    allowedCapabilities: ["browser.click", "browser.select", "browser.fill"],
     operations: [],
   };
   const actuator = new NativeTaskActuator({
@@ -582,19 +582,22 @@ try {
     }),
     nextBindingRevision: () => 2,
     resolveValue: async (ref) => {
+      if (ref === "public-query") return "Exact public query";
       assert.equal(ref, "public-choice-french");
       return "French";
     },
     verify: async (proposal, before, after) =>
-      proposal.capability === "browser.select"
-        ? after.elements
-            .find((e) => e.targetSelector === "#language")
-            ?.options?.find((o) => o.selected)?.label === "French"
-          ? "succeeded"
-          : "unknown"
-        : before.text.includes("4") && after.text.includes("5")
-          ? "succeeded"
-          : "unknown",
+      proposal.capability === "browser.fill"
+        ? "succeeded"
+        : proposal.capability === "browser.select"
+          ? after.elements
+              .find((e) => e.targetSelector === "#language")
+              ?.options?.find((o) => o.selected)?.label === "French"
+            ? "succeeded"
+            : "unknown"
+          : before.text.includes("4") && after.text.includes("5")
+            ? "succeeded"
+            : "unknown",
     recordEvidence: async () => "fixture-real-page-readback",
   });
   const actuatorSignal = new AbortController().signal;
@@ -682,6 +685,73 @@ try {
     await page.$eval("#language", (node) => node.selectedOptions[0].label),
     "French",
   );
+  for (const rewrite of [false, true]) {
+    await page.$eval(
+      "#query",
+      (node, rewrite) => {
+        node.oninput = rewrite
+          ? () => {
+              node.value = "Rewritten by website";
+            }
+          : null;
+      },
+      rewrite,
+    );
+    task.observation = await actuator.observe({
+      owner,
+      taskId: task.id,
+      signal: actuatorSignal,
+    });
+    const read = actuator.readObservation(task.id, owner);
+    const fillProposal = {
+      ...proposal,
+      id: `fill-readback-${rewrite}`,
+      capability: "browser.fill",
+      valueRef: "public-query",
+      observationId: task.observation.id,
+      observationVersion: task.observation.version,
+      inputRevision: task.observation.inputRevision,
+      targetRef: read.snapshot.elements.find(
+        (e) => e.targetSelector === "#query",
+      ).selector,
+      expectedSelector: "#query",
+      expiresAt: Date.now() + 10000,
+    };
+    task.operations.push({ status: "dispatched", proposal: fillProposal });
+    const result = await actuator.execute(fillProposal, {
+      owner,
+      signal: actuatorSignal,
+      isCurrent: () => true,
+    });
+    assert.equal(
+      result.status,
+      rewrite ? "unknown" : "succeeded",
+      "A website rewrite cannot pass even an overly permissive host verifier",
+    );
+    assert.equal(
+      await page.$eval("#query", (node) => node.value),
+      rewrite ? "Rewritten by website" : "Exact public query",
+    );
+    const again = await actuator.observe({
+      owner,
+      taskId: task.id,
+      signal: actuatorSignal,
+    });
+    task.observation = again;
+    const snapshot = actuator.readObservation(task.id, owner).snapshot;
+    assert.equal(
+      snapshot.inputReadback,
+      undefined,
+      "Fill comparison is consumed by its first readback",
+    );
+    assert.ok(
+      !JSON.stringify(snapshot).includes("Exact public query") &&
+        !JSON.stringify(snapshot).includes("Rewritten by website"),
+    );
+  }
+  await page.$eval("#query", (node) => {
+    node.oninput = null;
+  });
   const renewedContext = { ...context, epoch: 2 };
   observed = (
     await surfaceTarget.execute(

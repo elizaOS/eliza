@@ -560,7 +560,24 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     // A submit or page change that a task fill or click set off in this
     // document, under this binding. The watch below stopped it.
     const violation = globalThis[watchKey]?.violation;
+    // A one-shot comparison from the actual fill, kept in this isolated realm.
+    // Neither the expected text nor the field value leaves the page.
+    const inputReadback = monitor.inputReadback;
+    delete monitor.inputReadback;
     return {
+      ...(policy &&
+      inputReadback &&
+      inputReadback.scope === policy.guidanceScope
+        ? {
+            inputReadback: {
+              targetRef: inputReadback.targetRef,
+              matches:
+                inputReadback.node.isConnected &&
+                !sensitivity(inputReadback.node) &&
+                inputReadback.node.value === inputReadback.text,
+            },
+          }
+        : {}),
       ...(policy && violation && violation.scope === policy.guidanceScope
         ? { effectViolation: violation.kind }
         : {}),
@@ -933,6 +950,13 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     );
     node.dispatchEvent(new Event("input", { bubbles: true }));
     node.dispatchEvent(new Event("change", { bubbles: true }));
+    if (policy && !sensitivity(node))
+      monitor.inputReadback = {
+        node,
+        text: command.text,
+        targetRef: `${state.snapshotId}:0:${command.nodeId}`,
+        scope: policy.guidanceScope,
+      };
   } else if (command.subaction === "select") {
     Object.getOwnPropertyDescriptor(
       HTMLSelectElement.prototype,

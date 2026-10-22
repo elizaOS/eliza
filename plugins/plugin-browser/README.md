@@ -27,6 +27,12 @@ before binding a task after restart. It waits at most 10 seconds by default
 stops on cancellation or transport shutdown. It sends no commands and never
 retries dispatched work. Hosts must recheck task/account authority after waiting.
 
+`NativeTaskActuator` requires the browser's one-use exact-value readback for public
+fills before consulting host verification. Missing or mismatched proof returns an
+unknown outcome and does not replay the fill. This includes older browser peers
+that do not supply the proof; update the browser component with the host. Protected
+code entry retains its separate policy and verification contract.
+
 For an advisory-enabled peer, trusted hosts can call
 `NativeSocketBrowserTarget.setProtectionOwner(opaqueOwnerOrNull)` after profile
 registration and every account transition. `onProfileRegistered(listener)` notifies

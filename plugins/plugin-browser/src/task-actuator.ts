@@ -561,6 +561,19 @@ export class NativeTaskActuator {
     // The page tried to submit or leave because of this action. The browser
     // stopped it, but the page state is no longer the one that was reviewed.
     if (after.effectViolation !== undefined) return { status: "unknown" };
+    // Occupancy alone cannot verify a public fill: page handlers can replace it.
+    // The isolated page compares against the text from the actual dispatched fill.
+    if (proposal.capability === "browser.fill" && !protectedValueKind) {
+      const readback = after.inputReadback as
+        | { targetRef?: unknown; matches?: unknown }
+        | undefined;
+      if (
+        after.documentId !== cached.snapshot.documentId ||
+        readback?.targetRef !== proposal.targetRef ||
+        readback.matches !== true
+      )
+        return { status: "unknown" };
+    }
     const status = await this.options.verify(proposal, cached.snapshot, after);
     if (!current()) return { status: "unknown" };
     const evidenceRef = await this.options.recordEvidence(
