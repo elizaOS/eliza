@@ -121,7 +121,7 @@ jobs:
 
       - name: Retain closed deletion billing provenance receipt
         if: ${{ inputs.read_only_deletion_billing_provenance == true || inputs.read_only_agent_deletion_authority == true || inputs.read_only_failed_agent_deletion_jobs == true || inputs.read_only_agent_provider_state == true }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: deletion-billing-provenance-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/issue-review-cloud/deletion-billing-provenance.json

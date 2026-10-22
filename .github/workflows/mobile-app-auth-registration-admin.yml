@@ -17,6 +17,7 @@ on:
         options:
           - diagnose
           - inventory
+          - compare-primary
           - repair
       client:
         description: First-party native client whose apps registration to inspect or repair
@@ -54,10 +55,12 @@ jobs:
           bun-version: "1.4.2"
       - name: Install dependencies
         run: bun install --frozen-lockfile --ignore-scripts
-      - name: Read-only Alpha binding and registration inventory
-        if: inputs.operation == 'inventory'
+      - name: Read-only mobile auth inventory or primary authority comparison
+        if: inputs.operation == 'inventory' || inputs.operation == 'compare-primary'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ELIZA_MOBILE_APP_AUTH_INVENTORY_OPERATION: ${{ inputs.operation }}
+          ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
           DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
           DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
           ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID }}
@@ -67,7 +70,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: bun packages/scripts/cloud/admin/inventory-mobile-app-auth.ts
       - name: Diagnose or repair protected registration
-        if: inputs.operation != 'inventory'
+        if: inputs.operation == 'diagnose' || inputs.operation == 'repair'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
