@@ -843,6 +843,12 @@ export async function generateStage1Decision(
   // Terminal review shares a budget with direct IGNORE review below. A
   // repeated terminal decision still passes through ordinary routing.
   let terminalDecisionReviewed = false;
+  // A review that answers STOP/IGNORE with RESPOND settles that this addressed
+  // turn is answered; a later read or repair can change how, not end it in
+  // silence. A context read is not the answer; the next decision is. STOP
+  // remains explicit disengagement.
+  let terminalReviewAnswerPending = false;
+  let silenceRejected = false;
   const terminalReaskEnabled =
     readStage1TerminalReaskSetting(args.runtime) ?? directMessageChannel;
   if (!args.codingMode && !hasContextReadToolCall(rawMessageHandler)) {
@@ -867,6 +873,8 @@ export async function generateStage1Decision(
         "[message] Stage 1 decision receives one response-contract review",
       );
       terminalDecisionReviewed = true;
+      terminalReviewAnswerPending =
+        parsedForRepair?.shouldRespond !== "RESPOND";
       const repairedInput = {
         ...messageHandlerInput,
         messages: [
@@ -931,6 +939,10 @@ export async function generateStage1Decision(
       nativeRead = extractContextRead(rawMessageHandler, contextReadEnabled());
       parsedDecision =
         nativeRead ?? extractMessageHandlerRawParsed(rawMessageHandler);
+      if (terminalReviewAnswerPending && !nativeRead) {
+        silenceRejected = parsedDecision?.shouldRespond === "RESPOND";
+        terminalReviewAnswerPending = false;
+      }
       explicit = readHistoryContextRequests(
         context,
         history,
@@ -1042,8 +1054,10 @@ export async function generateStage1Decision(
       // contradictory, normal pending-intent guards still own routing.
       if (invalidReadRepair) invalidReadRepairAttempted = true;
       if (routingRepair) routingRepairAttempted = true;
-      if (terminalReview && decisionRepair === terminalReview)
+      if (terminalReview && decisionRepair === terminalReview) {
         terminalDecisionReviewed = true;
+        terminalReviewAnswerPending = true;
+      }
       if (repairHistoryIdentity || repairHistorySourceIds)
         historySelectionRepairAttempted = true;
       messageHandlerInput = {
@@ -1432,17 +1446,19 @@ export async function generateStage1Decision(
     );
   }
   if (
-    routingRepairAttempted &&
-    (hasNavigationWithoutPendingIntent(rawFieldParsed) ||
-      rawFieldParsed?.replyEffectStatus === "non_applied" ||
-      rawFieldParsed?.shouldRespond === "STOP" ||
-      rawFieldParsed?.shouldRespond === "IGNORE") &&
-    getStage1RoutingRepair(rawFieldParsed)
+    (routingRepairAttempted &&
+      (hasNavigationWithoutPendingIntent(rawFieldParsed) ||
+        rawFieldParsed?.replyEffectStatus === "non_applied" ||
+        rawFieldParsed?.shouldRespond === "STOP" ||
+        rawFieldParsed?.shouldRespond === "IGNORE") &&
+      getStage1RoutingRepair(rawFieldParsed)) ||
+    (silenceRejected && rawFieldParsed?.shouldRespond === "IGNORE")
   ) {
     // A repeated preview/pending-work or unclaimed-navigation conflict cannot authorize effects or a
-    // terminal reply. Keep the recorded model attempts and reject before fields.
+    // terminal reply, and silence the terminal review already rejected cannot
+    // end the addressed turn. Keep the recorded model attempts and reject before fields.
     throw new ElizaError(
-      "Stage-1 decision still conflicts with pending work after repair; retry with a consistent routing decision",
+      "Stage-1 decision still conflicts after repair; retry with a consistent routing decision",
       {
         code: "STAGE1_ROUTING_CONFLICT",
         context: { messageId: args.message.id },
