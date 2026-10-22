@@ -160,6 +160,10 @@ function asCapturedServerResponse(res: unknown): ServerResponse {
  * Builds a synthetic `IncomingMessage` / `ServerResponse` pair that legacy
  * Express-shaped route handlers can write to. The captured response is
  * returned as a {@link RouteHandlerResult}.
+ *
+ * A body that cannot be represented as JSON on the request stream rejects with
+ * `ROUTE_REQUEST_BODY_UNSERIALIZABLE`; only an absent body (`null` /
+ * `undefined`) yields the empty stream a handler reads as "no payload".
  */
 export function buildLegacyShim(args: {
   method: string;
@@ -180,8 +184,24 @@ export function buildLegacyShim(args: {
     if (Buffer.isBuffer(args.body)) return args.body.toString("utf8");
     try {
       return JSON.stringify(args.body);
-    } catch {
-      return "";
+    } catch (error) {
+      // error-policy:J2 context-adding rethrow — an empty request stream is
+      // indistinguishable from "the caller sent no payload", so a body the
+      // shim cannot put on the wire (cyclic graph, BigInt, throwing `toJSON`)
+      // must fail the dispatch instead of running the handler against a
+      // request that silently lost its payload.
+      throw new ElizaError(
+        "request body could not be serialized for a legacy route handler",
+        {
+          code: "ROUTE_REQUEST_BODY_UNSERIALIZABLE",
+          cause: error,
+          context: {
+            method: args.method,
+            path: args.path,
+            bodyType: typeof args.body,
+          },
+        },
+      );
     }
   })();
   const readable = Readable.from(
