@@ -152,6 +152,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
       description: "Todos, reminders, habits, routines and tracked progress.",
       sensitivity: "personal",
       cacheScope: "agent",
+      aliases: ["reminder", "reminders", "alarm", "alarms"],
       subcontexts: ["goals", "todos", "productivity"],
       roleGate: { minRole: "ADMIN" },
     },
