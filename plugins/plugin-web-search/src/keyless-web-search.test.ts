@@ -17,7 +17,8 @@ function mcp(text: string, options?: { isError?: boolean }): Response {
 describe("searchKeylessWeb", () => {
     it("uses Parallel first with a fixed non-redirecting MCP request", async () => {
         const fetchImpl = vi.fn(async () => mcp("current result"));
-        const result = await searchKeylessWeb("latest elizaOS", { fetchImpl });
+        const sessionId = "0123456789abcdef0123456789abcdef";
+        const result = await searchKeylessWeb("latest elizaOS", { fetchImpl, sessionId });
 
         expect(result).toEqual({
             provider: "parallel",
@@ -29,6 +30,9 @@ describe("searchKeylessWeb", () => {
         expect(url).toBe("https://search.parallel.ai/mcp");
         expect(init).toMatchObject({ method: "POST", redirect: "manual" });
         expect(String(init?.body)).not.toContain("TAVILY");
+        expect(JSON.parse(String(init?.body))).toMatchObject({
+            params: { arguments: { session_id: sessionId } },
+        });
     });
 
     it("reports Parallel provider failure without dispatching another provider", async () => {

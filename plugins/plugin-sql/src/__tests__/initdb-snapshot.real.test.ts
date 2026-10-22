@@ -5,12 +5,13 @@
  * Each case runs in a Bun child process so heaps from one case cannot leak
  * into another's count.
  */
-import { describe, expect, it } from "vitest";
+
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
 
 const manager = fileURLToPath(new URL("../pglite/manager.ts", import.meta.url));
 
@@ -41,7 +42,11 @@ function run(snapshot: string | null, makeSnapshot = false) {
   const bun = process.versions.bun ? process.execPath : "bun";
   const result = spawnSync(bun, ["--eval", script], { env, encoding: "utf8", timeout: 120_000 });
   if (result.status !== 0) throw new Error(result.stderr || `exit ${result.status}`);
-  return JSON.parse(result.stdout.trim().split("\n").at(-1) as string) as { version: string; vector: string; live: number };
+  return JSON.parse(result.stdout.trim().split("\n").at(-1) as string) as {
+    version: string;
+    vector: string;
+    live: number;
+  };
 }
 
 describe("PGlite initdb snapshot", () => {

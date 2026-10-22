@@ -53,7 +53,7 @@ public final class ParadeeVoice implements AutoCloseable {
     /**
      * Loads the model.
      *
-     * @param model the Paradee GGUF, for example {@code paradee-8m-v1_0.gguf}
+     * @param model the Paradee GGUF, for example {@code paradee-8m-v1_1.gguf}
      * @param lexicon the misaki lexicon, {@code misaki-en-us.lex}
      * @param espeakDir the directory that contains {@code espeak-ng-data}, or
      *     null to keep G2P to the lexicon and its rules
