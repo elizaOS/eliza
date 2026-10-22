@@ -942,6 +942,21 @@
         "typescript": "^6.0.3",
       },
     },
+    "packages/cloud/services/gateway-container": {
+      "name": "@elizaos/gateway-container",
+      "version": "1.0.0",
+      "dependencies": {
+        "@cloudflare/containers": "^0.3.7",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "2.5.15",
+        "@cloudflare/workers-types": "^4.20260429.1",
+        "@types/node": "22.19.17",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "bun-types": "1.4.2",
+        "typescript": "^6.0.3",
+      },
+    },
     "packages/cloud/services/gateway-discord": {
       "name": "@elizaos/gateway-discord",
       "version": "1.0.0",
@@ -3970,6 +3985,8 @@
     "@elizaos/electrobun": ["@elizaos/electrobun@workspace:packages/app/platforms/electrobun"],
 
     "@elizaos/entity-voice-bench": ["@elizaos/entity-voice-bench@workspace:packages/benchmarks/suites/entity-voice-bench"],
+
+    "@elizaos/gateway-container": ["@elizaos/gateway-container@workspace:packages/cloud/services/gateway-container"],
 
     "@elizaos/gateway-discord": ["@elizaos/gateway-discord@workspace:packages/cloud/services/gateway-discord"],
 
