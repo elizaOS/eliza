@@ -1898,6 +1898,123 @@
           restored,
           state: await call("getSurfaceState", { ...identity, id }),
         };
+        if (descriptor.surfaceControl) {
+          window.nativeBrowserControlFixtureRequested = true;
+          await waitForPage("Control fixture");
+          const snapshot = async () => {
+            const deadline = Date.now() + 5000;
+            for (;;) {
+              try {
+                return await call("controlPage", {
+                  ...identity,
+                  id,
+                  command: { subaction: "snapshot" },
+                });
+              } catch (error) {
+                if (error.code !== "UNAVAILABLE" || Date.now() >= deadline)
+                  throw error;
+                await new Promise((resolve) => setTimeout(resolve, 50));
+              }
+            }
+          };
+          let observation = await snapshot();
+          assert(
+            observation.frameScope === "main" && observation.result.complete,
+            "native control reads the main-frame DOM",
+          );
+          assert(
+            !JSON.stringify(observation).includes("private-control-value"),
+            "native control excludes password values",
+          );
+          const taskPolicy = {
+            origin: "https://native-control.example",
+            expiresAt: Date.now() + 60000,
+            targets: [
+              { selector: "#query", action: "fill" },
+              { selector: "#increment", action: "click" },
+            ],
+          };
+          const command = (read, subaction, selector, extra = {}) => ({
+            ...identity,
+            id,
+            documentId: read.documentId,
+            command: {
+              subaction,
+              snapshotId: read.result.snapshotId,
+              nodeId: read.result.elements.find(
+                (element) => element.targetSelector === selector,
+              ).id,
+              taskPolicy,
+              ...extra,
+            },
+          });
+          const fill = command(observation, "fill", "#query", {
+            text: "Wikipedia",
+          });
+          await rejects("controlPage", {
+            ...fill,
+            documentId: "retired-document",
+          });
+          assert(
+            (await call("controlPage", fill)).result.dispatched,
+            "native fill dispatched",
+          );
+          await rejects("controlPage", fill);
+          observation = await snapshot();
+          assert(
+            observation.result.elements.find(
+              (element) => element.targetSelector === "#query",
+            ).hasInput,
+            "native fill readback sees input",
+          );
+          assert(
+            (
+              await call(
+                "controlPage",
+                command(observation, "click", "#increment"),
+              )
+            ).result.dispatched,
+            "native click dispatched",
+          );
+          observation = await snapshot();
+          assert(
+            observation.result.text.includes("1"),
+            "native click readback sees the changed page",
+          );
+          await call("presentSurface", { ...identity });
+          await rejects("controlPage", {
+            ...identity,
+            id,
+            command: { subaction: "snapshot" },
+          });
+          await call("presentSurface", { ...identity, id });
+          await rejects(
+            "controlPage",
+            command(observation, "click", "#increment"),
+          );
+          const resumed = await snapshot();
+          assert(
+            resumed.documentId === observation.documentId,
+            "native control preserves the document across Home",
+          );
+          window.nativeBrowserPauseRequested = true;
+          const pauseDeadline = Date.now() + 8000;
+          while (!window.nativeBrowserPauseComplete) {
+            if (Date.now() >= pauseDeadline)
+              throw new Error("Native pause/resume did not complete");
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+          const activityResumed = await snapshot();
+          assert(
+            activityResumed.documentId === resumed.documentId,
+            "activity pause fences commands and retains the document",
+          );
+          window.nativeBrowserEvidence.control = {
+            observation,
+            resumed,
+            activityResumed,
+          };
+        }
       } finally {
         await call("destroySurface", { ...identity, id });
       }

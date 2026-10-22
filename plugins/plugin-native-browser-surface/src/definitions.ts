@@ -203,6 +203,36 @@ export interface ElizaSurfaceManagerPlugin {
   reloadSurface(options: SurfaceIdOptions): Promise<void>;
   /** Move back in this surface's own history; never replays after a lost reply. */
   goBack(options: SurfaceIdOptions): Promise<void>;
+  /**
+   * Android isolated-world main-frame observation/input. Host-only: task policy
+   * must come from the trusted task authorizer, never page or model output.
+   * Effects require the documentId and snapshot references from a fresh read.
+   * A dispatch receipt requires readback and does not prove website success.
+   */
+  controlPage(
+    options: SurfaceIdOptions & {
+      documentId?: string;
+      command: {
+        subaction: "snapshot" | "click" | "fill" | "scroll";
+        snapshotId?: string;
+        nodeId?: string;
+        text?: string;
+        direction?: "up" | "down" | "left" | "right";
+        taskPolicy?: {
+          origin: string;
+          expiresAt: number;
+          targets: Array<{
+            selector: string;
+            action: "click" | "fill" | "scroll";
+          }>;
+        };
+      };
+    },
+  ): Promise<{
+    documentId: string;
+    frameScope: "main";
+    result: Record<string, unknown>;
+  }>;
   /** Read visible text from this foreground native page, never the host DOM. */
   readPage(
     options: SurfaceIdOptions & { selector?: string },

@@ -311,8 +311,8 @@
     "lucide-react": "^1.0.0",
     "nprogress": "^0.2.0",
     "process": "^0.11.10",
-    "react": "^19.3.0",
-    "react-dom": "^19.0.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "react-is": "^19.3.0",
     "react-router-dom": "^7.10.0",
     "saxes": "^6.0.0",
@@ -357,7 +357,7 @@
     "playwright-core": "^1.58.2",
     "postcss": "^8.5.29",
     "puppeteer-core": "^24.43.1",
-    "react-test-renderer": "19.2.7",
+    "react-test-renderer": "19.3.1",
     "rollup-plugin-visualizer": "^7.0.1",
     "sharp": "^0.35.3",
     "tailwindcss": "^4.3.1",
@@ -418,7 +418,7 @@
   },
   "peerDependencies": {
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react-dom": "^19.3.1",
     "three": "^0.184.0"
   },
   "exports": {

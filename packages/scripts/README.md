@@ -70,16 +70,6 @@ exit status still gates the package result. No counts are inferred from stdout.
 
 Use `bun run release:candidate --help` for candidate, verification, and publication commands, or the protected `release.yaml` workflow. Direct `release`, `release:next`, and `release:beta` publication shortcuts are retired. Prepare one exact cohort version, public access, and published dependency ranges before pinning the source SHA; the workflow does not rewrite manifests while publishing. The cohort in `release-cohort.json` contains the surviving publishable packages. Npm channels `latest`, `next`, and `beta` remain distinct from desktop channels.
 
-The protected **Cloud Catalog Diagnostic** workflow checks only the five Stripe
-catalog binding names. It then makes one unauthenticated plans request with a
-random diagnostic header. A temporary Wrangler tail filters that header and GET
-method. The script emits only HTTP status and recognized catalog failure codes
-from the exact plans URL. Tail output stays in bounded memory; Wrangler disk logs
-and metrics are disabled. No provider configuration or payment is changed.
-Production requires `main`. A 503 without a captured code fails the diagnostic;
-it does not prove a missing binding. Compare binding presence and the captured
-code before repairing provider configuration.
-
 The protected **Mobile App Auth Registration Admin** workflow has a read-only
 `inventory` operation for Alpha Phone recovery. It reports only presence of the
 three known mobile-auth Worker secret bindings and aggregate registration counts
@@ -90,3 +80,19 @@ all registration queries run in the same read-only transaction. Existing `diagno
 and `repair` behavior is unchanged. A present Worker registry is not permission to
 replace it: preserve every existing client and Android certificate when repairing
 configuration. This inventory neither reveals nor changes those values.
+
+The protected **Cloud Catalog Diagnostic** workflow checks only the five Stripe
+catalog binding names. It then makes one unauthenticated plans request with a
+random diagnostic header. A temporary Wrangler tail filters that header and GET
+method. The script emits only HTTP status and recognized catalog failure codes
+from the exact plans URL. Tail output stays in bounded memory; Wrangler disk logs
+and metrics are disabled. No provider configuration or payment is changed.
+Production requires `main`. A 503 without a captured code fails the diagnostic;
+it does not prove a missing binding. Compare binding presence and the captured
+code before repairing provider configuration.
+
+Its `compare-primary` operation selects only the protected primary app UUID and
+reports booleans for app approval, organization/owner validity, and whether the
+protected creation organization and owner match that existing app. It shares the
+inventory's database identity guard and read-only transaction. It does not select
+another organization, reveal identifiers, activate records, or change ownership.

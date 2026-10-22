@@ -31,6 +31,11 @@ export class BrowserSurfaceWeb
   extends WebPlugin
   implements ElizaSurfaceManagerPlugin
 {
+  async controlPage(
+    _options: Parameters<ElizaSurfaceManagerPlugin["controlPage"]>[0],
+  ): ReturnType<ElizaSurfaceManagerPlugin["controlPage"]> {
+    throw this.unavailable(UNAVAILABLE);
+  }
   async getBrowserHelperEntryState(): Promise<{
     permissionGranted: boolean;
     visible: boolean;

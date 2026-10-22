@@ -102,8 +102,8 @@
     "git-workspace-service": "0.4.5",
     "lucide-react": "^1.0.0",
     "marked": "^18.0.13",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "smol-toml": "^1.8.0",
     "smthrs": "0.35.0",
     "@elizaos/contracts": "workspace:*"

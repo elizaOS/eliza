@@ -344,7 +344,7 @@ describe("Cloud CF workflow staging certification gate", () => {
       'path == ".github/workflows/cloud-cf-deploy.yml"',
     );
     expect(validate).toContain(
-      "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+      "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
     );
     expect(validate).toContain("artifact-ids:");
     expect(validate).toContain("github-token: $" + "{{ github.token }}");

@@ -421,28 +421,14 @@ export function requestedHistory(
             projection.loadedSourceIds.has(id)
           )
             return false;
-          const { content, metadata } = event.segment;
-          if (
-            quotationTexts.some(
-              ({ text, beforeSourceIndex }) =>
-                index < beforeSourceIndex &&
-                quotesCompleteSource(text, content),
-            )
-          )
-            return true;
-          const speaker = metadata?.speakerName;
-          const prefix =
-            typeof speaker === "string" ? `${speaker}: ` : undefined;
-          // A displayed speaker prefix need not be quoted. This only finds
-          // a read candidate; load the complete original with its identity.
-          return (
-            !!prefix &&
-            content.startsWith(prefix) &&
-            quotationTexts.some(
-              ({ text, beforeSourceIndex }) =>
-                index < beforeSourceIndex &&
-                quotesCompleteSource(text, content.slice(prefix.length)),
-            )
+          // A displayed speaker prefix or attachment summary need not be
+          // quoted. This only finds a read candidate; load the complete
+          // original with its identity.
+          return quotationTexts.some(
+            ({ text, beforeSourceIndex }) =>
+              index < beforeSourceIndex &&
+              (quotesCompleteSource(text, event.segment.content) ||
+                quotesCompleteSource(text, priorMessageBody(event.segment))),
           );
         })
       : [];
@@ -466,6 +452,21 @@ export function requestedHistory(
   ];
 }
 
+/** A prior message's quotable text: its segment without the speaker prefix and
+ * without the attachment summary that dialogue context appends after it. */
+function priorMessageBody(segment: ContextObjectPromptSegment): string {
+  const speaker = segment.metadata?.speakerName;
+  const prefix = typeof speaker === "string" ? `${speaker}: ` : "";
+  const content =
+    prefix && segment.content.startsWith(prefix)
+      ? segment.content.slice(prefix.length)
+      : segment.content;
+  const summary = segment.metadata?.attachmentSummary;
+  return typeof summary === "string" && content.endsWith(` ${summary}`)
+    ? content.slice(0, -summary.length - 1)
+    : content;
+}
+
 /** Stored quote links request only unchanged, earlier originals already in this
  * authorized room. The existing dependency closure preserves linked corrections. */
 function referencedHistorySources(
@@ -485,13 +486,6 @@ function referencedHistorySources(
     if (seenEvents.has(event.id)) duplicateEvents.add(event.id);
     seenEvents.add(event.id);
   }
-  const body = (segment: ContextObjectPromptSegment) => {
-    const speaker = segment.metadata?.speakerName;
-    const prefix = typeof speaker === "string" ? `${speaker}: ` : "";
-    return prefix && segment.content.startsWith(prefix)
-      ? segment.content.slice(prefix.length)
-      : segment.content;
-  };
   const pending = new Set(sourceIds);
   includeLinkedSources(pending, projection.dependencySourceGroups ?? []);
   // Set iteration also visits newly added dependencies, once each.
@@ -501,7 +495,7 @@ function referencedHistorySources(
     const { source: reply, index } = entry;
     if (reply.event.segment.metadata?.roomId !== projection.scope.roomId)
       continue;
-    const text = body(reply.event.segment);
+    const text = priorMessageBody(reply.event.segment);
     const stored = reply.event.segment.metadata?.sourceReplyReferences;
     const references =
       readSourceReplyReferences(stored, text) ??
@@ -518,8 +512,8 @@ function referencedHistorySources(
       if (
         source.event.segment.metadata?.roomId !== projection.scope.roomId ||
         sourceReplyEventHash(source.event) !== reference.sourceSha256 ||
-        !body(source.event.segment) ||
-        !text.includes(body(source.event.segment))
+        !priorMessageBody(source.event.segment) ||
+        !text.includes(priorMessageBody(source.event.segment))
       )
         continue;
       if (!pending.has(source.id)) {
@@ -556,21 +550,13 @@ function quotedHistorySources(
         const earlierQuotes = quotationTexts.filter(
           ({ beforeSourceIndex }) => index < beforeSourceIndex,
         );
-        const { content, metadata } = event.segment;
-        if (
-          earlierQuotes.some(({ text }) => quotesCompleteSource(text, content))
-        )
-          return true;
-        const speaker = metadata?.speakerName;
-        const prefix = typeof speaker === "string" ? `${speaker}: ` : undefined;
-        // A displayed speaker prefix need not be quoted. This only finds
-        // a read candidate; load the complete original with its identity.
-        return (
-          !!prefix &&
-          content.startsWith(prefix) &&
-          earlierQuotes.some(({ text }) =>
-            quotesCompleteSource(text, content.slice(prefix.length)),
-          )
+        // A displayed speaker prefix or attachment summary need not be quoted.
+        // This only finds a read candidate; load the complete original with
+        // its identity.
+        return earlierQuotes.some(
+          ({ text }) =>
+            quotesCompleteSource(text, event.segment.content) ||
+            quotesCompleteSource(text, priorMessageBody(event.segment)),
         );
       })
     : [];

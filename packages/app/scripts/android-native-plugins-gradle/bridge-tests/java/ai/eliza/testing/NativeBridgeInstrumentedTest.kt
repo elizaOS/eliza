@@ -50,6 +50,7 @@ class NativeBridgeInstrumentedTest {
         val descriptor = JSONObject(context.assets.open("native-plugin.json").bufferedReader().use { it.readText() })
         val script = context.assets.open("contracts.js").bufferedReader().use { it.readText() }
         val arguments = InstrumentationRegistry.getArguments()
+        descriptor.put("surfaceControl", arguments.getString("surfaceControl") == "1")
         arguments.getString("smsCleanupBody")?.let { body ->
             check(Build.HARDWARE in setOf("ranchu", "goldfish"))
             check(body.startsWith("Eliza native SMS round trip "))
@@ -161,6 +162,45 @@ class NativeBridgeInstrumentedTest {
             val finishDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
             while (System.nanoTime() < finishDeadline) {
                 if (descriptor.getString("directory") == "plugin-native-browser-surface") {
+                    if (evaluate(scenario, "window.nativeBrowserPauseRequested === true") == "true") {
+                        evaluate(scenario, "window.nativeBrowserPauseRequested = false")
+                        scenario.moveToState(Lifecycle.State.STARTED)
+                        try {
+                            evaluate(scenario, """window.nativePausedControlResult = null;
+                                window.Capacitor.nativePromise("ElizaSurfaceManager", "controlPage", {
+                                  owner: "bridge-test", session: "session-1", epoch: 1,
+                                  id: "bridge-surface", command: {subaction: "snapshot"}
+                                }).then(() => window.nativePausedControlResult = "allowed",
+                                  error => window.nativePausedControlResult = error.code);""")
+                            val pauseDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+                            var result = evaluate(scenario, "window.nativePausedControlResult")
+                            while (result == "null" && System.nanoTime() < pauseDeadline) {
+                                Thread.sleep(50)
+                                result = evaluate(scenario, "window.nativePausedControlResult")
+                            }
+                            assertEquals("A paused host must reject browser control", "\"UNAVAILABLE\"", result)
+                        } finally {
+                            scenario.moveToState(Lifecycle.State.RESUMED)
+                        }
+                        evaluate(scenario, "window.nativeBrowserPauseComplete = true")
+                    }
+                    if (evaluate(scenario, "window.nativeBrowserControlFixtureRequested === true") == "true") {
+                        evaluate(scenario, "window.nativeBrowserControlFixtureRequested = false")
+                        scenario.onActivity { activity ->
+                            val pages = mutableListOf<android.webkit.WebView>()
+                            fun visit(view: android.view.View) {
+                                if (view is android.webkit.WebView && view !== activity.bridge.webView && view.isShown) pages.add(view)
+                                if (view is android.view.ViewGroup) for (i in 0 until view.childCount) visit(view.getChildAt(i))
+                            }
+                            visit(activity.window.decorView)
+                            check(pages.size == 1)
+                            pages.single().loadDataWithBaseURL(
+                                "https://native-control.example/",
+                                """<!doctype html><title>Control fixture</title><label>Search query<input id="query"></label><input type="password" value="private-control-value"><button type="button" id="increment" onclick="document.querySelector('output').textContent++">Increment</button><output>0</output><script>window.elizaSurfaceControl={postMessage(){throw new Error("page-owned channel")}};window.__elizaBrowserControlV1={snapshotId:"page-owned snapshot"};</script>""",
+                                "text/html", "UTF-8", "https://native-control.example/",
+                            )
+                        }
+                    }
                     val captureRaw = evaluate(scenario, "JSON.stringify(window.nativeBrowserCapture || null)")
                     val captureText = JSONTokener(captureRaw).nextValue() as? String
                     if (captureText != null && captureText != "null") {

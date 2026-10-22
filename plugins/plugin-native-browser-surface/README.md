@@ -56,6 +56,29 @@ node packages/app/scripts/android-native-plugins.ts --serial emulator-5554 --plu
 
 The bridge fixture exports native screenshots and complete page-read results.
 
+Android `controlPage` uses the shared Chromium page commands in a named isolated
+JavaScript world. It requires AndroidX WebKit 1.16 and a provider that supports
+`JS_INJECTION_IN_FRAME_AND_WORLD`; unsupported providers reject control requests.
+The host must supply an authorized task policy for input. Never use a policy
+from model output or website content. Each effect requires a fresh snapshot and
+its document ID. Closing, hiding, navigation, or owner reconciliation interrupts
+pending work. Activity pause also fences control and keeps the page for Resume.
+Hiding or pausing requires a fresh snapshot before the next input. A lost effect reply reports an uncertain outcome; observe before
+continuing and never automatically replay the effect. This API currently covers
+the main frame's DOM commands, not child frames, screenshots or coordinate input.
+
+`bun run --cwd plugins/plugin-native-browser-surface test:control` uses
+`ELIZA_BROWSER_EXECUTABLE` to test the generated channel in a real Chromium
+isolated world. This checks DOM effects and document/reference isolation, not
+Android installation or the native reply proxy. The generated native asset shares
+the existing browser command implementation; `build` regenerates it and
+`node plugins/plugin-native-browser-surface/scripts/build-control-channel.mjs --check`
+checks that it is current.
+Run the native bridge flow with `--surface-control` on the Android test command
+above. It uses a local synthetic document, checks real click/fill readback, stale
+references and document IDs, and hides/restores the same page. This lane requires
+a provider with isolated-world support and fails if it is unavailable.
+
 Android foreground-service hosts can share `ChromiumBrowserConnection`: construct
 it with the service context, call `start()` after entering foreground, and
 `close()` when the service stops. Call its lifecycle methods on the main thread.

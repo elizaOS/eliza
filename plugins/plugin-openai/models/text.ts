@@ -2547,6 +2547,24 @@ function selectRequestModelName(
   return fallbackModelName;
 }
 
+/** Marks a streamed call's trajectory record as failed, keeping the provider's own finish reason. */
+function stampStreamError(
+  runtime: IAgentRuntime,
+  details: RecordLlmCallDetails,
+  error: unknown
+): void {
+  details.providerMetadata = {
+    ...(details.providerMetadata && typeof details.providerMetadata === "object"
+      ? details.providerMetadata
+      : {}),
+    providerFinishReason: details.finishReason,
+    error: composeToolDiagnosticRedactor(runtime)(
+      error instanceof Error ? error.message : String(error)
+    ),
+  };
+  details.finishReason = "error";
+}
+
 function noteRateLimitCooldown(
   models: Map<string, number>,
   modelName: string,
@@ -3498,13 +3516,7 @@ async function generateTextAtEndpoint(
         ).catch((error: unknown) => {
           if (stalledOutput) {
             details.response = stalledOutput.text;
-            details.finishReason = "error";
-            details.providerMetadata = {
-              ...(details.providerMetadata && typeof details.providerMetadata === "object"
-                ? details.providerMetadata
-                : {}),
-              error: "Structured output stopped making JSON progress.",
-            };
+            stampStreamError(runtime, details, stalledOutput.error);
           }
           noteRateLimitCooldown(modelCooldowns, modelName, error);
           throw stalledOutput?.error ?? error;
@@ -3727,6 +3739,7 @@ async function generateTextAtEndpoint(
         (failure as { statusCode?: number; status?: number }).statusCode ??
         (failure as { status?: number }).status;
       if (status === 429) {
+        stampStreamError(runtime, details, capturedStreamError);
         logActiveTrajectoryLlmCall(runtime, {
           ...details,
           response: "",
@@ -3841,18 +3854,7 @@ async function generateTextAtEndpoint(
         streamIterationErrorForTelemetry ??
         capturedStreamError ??
         companionStreamError;
-      if (streamError !== undefined) {
-        details.providerMetadata = {
-          ...(details.providerMetadata && typeof details.providerMetadata === "object"
-            ? details.providerMetadata
-            : {}),
-          providerFinishReason: details.finishReason,
-          error: composeToolDiagnosticRedactor(runtime)(
-            streamError instanceof Error ? streamError.message : String(streamError)
-          ),
-        };
-        details.finishReason = "error";
-      }
+      if (streamError !== undefined) stampStreamError(runtime, details, streamError);
       const elapsed =
         (typeof performance !== "undefined" && typeof performance.now === "function"
           ? performance.now()

@@ -232,7 +232,7 @@ jobs:
 
       - name: Download checksum-pinned Syft
         id: syft
-        uses: anchore/sbom-action/download-syft@3f46e6c23709f2b35c9c5182affe8ef3d6e32b71
+        uses: anchore/sbom-action/download-syft@f8706fc06deabb1adc34978fc92896fdcd3d17fe
 
       - name: Build clean snapshot-pinned mkosi release disk
         env:
@@ -388,7 +388,7 @@ jobs:
             ${{ env.WORK_ROOT }}/canonical/*.spdx.json
 
       - name: Upload bounded pre-signing image
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: elizaos-linux-mkosi-built-${{ matrix.architecture }}
           path: ${{ env.WORK_ROOT }}/upload/*
@@ -561,7 +561,7 @@ jobs:
             ${{ env.WORK_ROOT }}/publish/*/*
 
       - name: Upload x86_64 publication input
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: elizaos-linux-mkosi-x86_64
           path: ${{ env.WORK_ROOT }}/publish/x86_64/*
@@ -570,7 +570,7 @@ jobs:
           retention-days: 30
 
       - name: Upload arm64 publication input
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: elizaos-linux-mkosi-arm64
           path: ${{ env.WORK_ROOT }}/publish/arm64/*
@@ -579,7 +579,7 @@ jobs:
           retention-days: 30
 
       - name: Upload riscv64 publication input
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: elizaos-linux-mkosi-riscv64
           path: ${{ env.WORK_ROOT }}/publish/riscv64/*
@@ -588,7 +588,7 @@ jobs:
           retention-days: 30
 
       - name: Upload signed image discovery metadata
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: elizaos-linux-image-metadata
           path: ${{ env.WORK_ROOT }}/publish/metadata/*

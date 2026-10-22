@@ -128,7 +128,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.9",
-    "@ai-sdk/provider": "3.0.14",
+    "@ai-sdk/provider": "4.0.29",
     "@ai-sdk/provider-utils": "5.0.5",
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/core": "workspace:*",
@@ -160,8 +160,8 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "lucide-react": "^1.0.0",
-    "react": "^19.3.0",
-    "react-dom": "^19.0.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vite": "^8.3.3",
@@ -170,8 +170,8 @@
   },
   "peerDependencies": {
     "@elizaos/ui": "workspace:*",
-    "react": "^19.3.0",
-    "react-dom": "^19.0.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "zod": "^4.6.5"
   },
   "peerDependenciesMeta": {

@@ -13,7 +13,7 @@ const bindings = [
   "ELIZA_ANDROID_ASSET_LINKS_JSON",
 ] as const;
 
-export async function inventoryRegistration(
+async function admitInventoryDatabase(
   client: pg.Client,
   environment: "staging" | "production",
 ) {
@@ -41,6 +41,47 @@ export async function inventoryRegistration(
     receipt.authoritySha256 !== authority
   )
     throw new Error("identity_mismatch");
+}
+
+export async function comparePrimaryAuthority(
+  client: pg.Client,
+  environment: "staging" | "production",
+) {
+  await admitInventoryDatabase(client, environment);
+  const appId = process.env.ELIZA_MOBILE_APP_AUTH_APP_ID;
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      appId ?? "",
+    )
+  )
+    throw new Error("primary_app_required");
+  const result = await client.query(
+    `SELECT
+    app.id IS NOT NULL AS primary_app_exists,
+    COALESCE(app.is_active AND app.is_approved, FALSE) AS primary_app_active_approved,
+    COALESCE(org.is_active, FALSE) AS primary_organization_active,
+    COALESCE(owner.is_active AND owner.deleted_at IS NULL, FALSE) AS primary_owner_active,
+    COALESCE(owner.organization_id = org.id AND owner.role IN ('owner', 'admin'), FALSE) AS primary_owner_authorized,
+    COALESCE(app.organization_id = $2::uuid, FALSE) AS protected_organization_matches,
+    COALESCE(app.created_by_user_id = $3::uuid, FALSE) AS protected_owner_matches
+    FROM (SELECT $1::uuid AS id) requested
+    LEFT JOIN apps app ON app.id = requested.id
+    LEFT JOIN organizations org ON org.id = app.organization_id
+    LEFT JOIN users owner ON owner.id = app.created_by_user_id`,
+    [
+      appId,
+      process.env.ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID,
+      process.env.ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID,
+    ],
+  );
+  return { identityMatched: true, ...result.rows[0] };
+}
+
+export async function inventoryRegistration(
+  client: pg.Client,
+  environment: "staging" | "production",
+) {
+  await admitInventoryDatabase(client, environment);
   const result = await client.query(
     `SELECT
     COUNT(*)::integer AS callback_rows,
@@ -72,6 +113,10 @@ if (import.meta.main) {
       process.env.GITHUB_REF !== "refs/heads/main"
     )
       throw new Error("production_main_required");
+    const operation =
+      process.env.ELIZA_MOBILE_APP_AUTH_INVENTORY_OPERATION ?? "inventory";
+    if (operation !== "inventory" && operation !== "compare-primary")
+      throw new Error("operation_required");
     // Buffer both streams: Wrangler failures may include operator configuration.
     const output = execFileSync(
       "bunx",
@@ -114,7 +159,11 @@ if (import.meta.main) {
     await client.connect();
     await client.query("BEGIN TRANSACTION READ ONLY");
     console.log(
-      JSON.stringify(await inventoryRegistration(client, environment)),
+      JSON.stringify(
+        await (operation === "compare-primary"
+          ? comparePrimaryAuthority(client, environment)
+          : inventoryRegistration(client, environment)),
+      ),
     );
     await client.query("ROLLBACK");
   } catch (error) {
@@ -122,6 +171,8 @@ if (import.meta.main) {
     console.error(
       [
         "protected_owner_required",
+        "primary_app_required",
+        "operation_required",
         "identity_pin_required",
         "identity_mismatch",
         "environment_required",
