@@ -982,6 +982,92 @@ describe("Stage 1 response format", () => {
     ]);
   });
 
+  // Replays trajectory step-1792388440557-rg4lab: the review rejected IGNORE
+  // with a conflicting RESPOND, and its routing repair returned IGNORE. The
+  // read case answers the review with a context read before that RESPOND.
+  it.each([
+    [ChannelType.GROUP, "IGNORE", false],
+    [ChannelType.DM, "IGNORE", false],
+    [ChannelType.GROUP, "STOP", false],
+    [ChannelType.DM, "IGNORE", true],
+  ] as const)(
+    "does not let a later repair silence an addressed %s turn whose review rejected IGNORE (final %s, read %s)",
+    async (channelType, final, read) => {
+      const runtime = makeRuntime(
+        [
+          stage1Response({ shouldRespond: "IGNORE", contexts: ["simple"] }),
+          ...(read
+            ? [
+                {
+                  text: "",
+                  toolCalls: [
+                    {
+                      name: "READ_CONTEXT",
+                      arguments: {
+                        contextRequests: ["userPersonalityPreferences"],
+                      },
+                    },
+                  ],
+                },
+              ]
+            : []),
+          stage1Response({
+            contexts: ["media"],
+            intents: [
+              "generate a clean image of a minimal flat red house with brown door, no windows, blue sky, green grass, yellow sun, no watermark",
+            ],
+            replyText:
+              "already did. that regen was image gen clean, no watermark. paste your own prompt if the match is off.",
+            extra: { replyEffectStatus: "non_applied" },
+          }),
+          stage1Response({ shouldRespond: final, contexts: [] }),
+        ],
+        { ELIZA_STAGE1_TERMINAL_REASK: "1" },
+      );
+      const state = makeState();
+      if (read) {
+        runtime.providers = [
+          {
+            name: "userPersonalityPreferences",
+            cacheStable: true,
+            get: vi.fn(),
+          },
+        ];
+        state.data.providers = {
+          userPersonalityPreferences: {
+            text: "Complete character preferences: use plain language.",
+            discoveryText: "context_discovery: userPersonalityPreferences",
+          },
+        };
+        runtime.composeState = vi.fn(async () => structuredClone(state));
+      }
+      const run = runV5MessageRuntimeStage1({
+        runtime,
+        message: makeMessage({
+          text: "can u just try it urself with image gen?",
+          channelType,
+          mentionContext: { isMention: true },
+        }),
+        state,
+        responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+      });
+      if (final === "STOP")
+        await expect(run).resolves.toMatchObject({
+          kind: "terminal",
+          action: "STOP",
+        });
+      else
+        await expect(run).rejects.toMatchObject({
+          code: "STAGE1_ROUTING_CONFLICT",
+        });
+      const prompts = useModelCalls(runtime).map(([, params]) =>
+        JSON.stringify((params as { messages: unknown }).messages),
+      );
+      expect(prompts).toHaveLength(read ? 4 : 3);
+      expect(prompts.at(-1)).toContain("non_applied preview ends the turn");
+    },
+  );
+
   it("preserves coding-mode Stage-1 bypass with terminal review enabled", async () => {
     const runtime = makeRuntime([], { ELIZA_STAGE1_TERMINAL_REASK: "1" });
     const result = await runV5MessageRuntimeStage1({
@@ -1732,6 +1818,35 @@ describe("Stage 1 response format", () => {
     expect(routed.plan.requiresTool).toBe(true);
     expect(routed.plan.contexts).toContain("general");
     expect(routed.plan.candidateActions).toEqual(["TASKS"]);
+  });
+
+  it("escalates a simple Stage 1 capability denial on an image remake ask to media generation", () => {
+    const routed = messageHandlerFromFieldResult(
+      {
+        shouldRespond: "RESPOND",
+        contexts: ["simple"],
+        intents: [],
+        replyEffectStatus: "none",
+        replyText:
+          "i can read and describe images, not make them. crop or inpaint the watermark instead.",
+        candidateActionNames: [],
+        facts: [],
+        relationships: [],
+        addressedTo: [],
+      },
+      undefined,
+      {
+        actions: [{ name: "REPLY" }, { name: "GENERATE_MEDIA" }],
+        messageText:
+          "damn i didnt even see the watermark, can you try to remake the image without it",
+      },
+    );
+
+    expect(routed.plan.simple).toBe(false);
+    expect(routed.plan.requiresTool).toBe(true);
+    expect(routed.plan.candidateActions).toEqual(["GENERATE_MEDIA"]);
+    // A repeated denial must not be accepted early on inferred evidence.
+    expect(routed.plan.requiredToolEvidence).toBeUndefined();
   });
 
   it("parses Stage 1 output from GenerateTextResult content parts when text is blank", async () => {

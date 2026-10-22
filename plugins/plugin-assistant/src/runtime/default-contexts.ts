@@ -152,6 +152,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
       description: "Todos, reminders, habits, routines and tracked progress.",
       sensitivity: "personal",
       cacheScope: "agent",
+      aliases: ["reminder", "reminders", "alarm", "alarms"],
       subcontexts: ["goals", "todos", "productivity"],
       roleGate: { minRole: "ADMIN" },
     },
@@ -292,7 +293,8 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "media",
       label: "Media",
-      description: "Images, audio, video and attachments.",
+      description:
+        "Image, audio and video generation, inspection and attachments.",
       sensitivity: "personal",
       cacheScope: "turn",
       roleGate: { minRole: "USER" },

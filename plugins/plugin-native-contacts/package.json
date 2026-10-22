@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-native-contacts",
   "version": "2.0.3-beta.7",
   "type": "module",
-  "description": "Android Contacts overlay app \u2014 wraps the @elizaos/plugin-native-contacts/bridge native plugin.",
+  "description": "Android Contacts overlay app — wraps the @elizaos/plugin-native-contacts/bridge native plugin.",
   "main": "./dist/index.js",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.build.json",
@@ -90,7 +90,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tsup": "^9.0.0",
-    "vite": "^8.3.0"
+    "vite": "^8.3.3"
   },
   "capacitor": {
     "android": {

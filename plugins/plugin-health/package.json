@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-health",
   "version": "2.0.3-beta.7",
-  "description": "Health, sleep, circadian and screen-time domain plugin for elizaOS \u2014 extracted from app-lifeops in Wave 1 (W1-B). Owns connectors (Apple Health, Google Fit, Strava, Fitbit, Withings, Oura), sleep/circadian/regularity engines, screen-time aggregation, and the wake/bedtime/nap anchor contributions consumed by app-lifeops via the W1-F connector / channel / signal-bus contracts.",
+  "description": "Health, sleep, circadian and screen-time domain plugin for elizaOS — extracted from app-lifeops in Wave 1 (W1-B). Owns connectors (Apple Health, Google Fit, Strava, Fitbit, Withings, Oura), sleep/circadian/regularity engines, screen-time aggregation, and the wake/bedtime/nap anchor contributions consumed by app-lifeops via the W1-F connector / channel / signal-bus contracts.",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -86,7 +86,7 @@
     "tsup": "^9.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vite": "^8.3.0",
+    "vite": "^8.3.3",
     "vitest": "^5.0.5",
     "@elizaos/testing": "workspace:*"
   },

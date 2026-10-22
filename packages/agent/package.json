@@ -284,7 +284,7 @@
     "drizzle-orm": "0.45.3",
     "esbuild": "^0.28.0",
     "ethers": "^6.16.0",
-    "hono": "^4.13.8",
+    "hono": "^4.13.11",
     "isomorphic-git": "^1.42.2",
     "jpeg-js": "^0.4.4",
     "json5": "^2.2.3",
@@ -341,7 +341,7 @@
     "bun-types": "1.4.2",
     "resolve.exports": "2.0.4",
     "typescript": "^6.0.3",
-    "vite": "^8.3.0",
+    "vite": "^8.3.3",
     "vitest": "^5.0.5",
     "@elizaos/testing": "workspace:*"
   },

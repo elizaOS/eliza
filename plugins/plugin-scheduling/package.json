@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-scheduling",
   "version": "2.0.3-beta.7",
   "type": "module",
-  "description": "Scheduling spine for elizaOS agents: the storage-agnostic ScheduledTask state machine \u2014 trigger evaluation (cron/interval/once/event/after_task/relative_to_anchor/during_window), gate + completion-check + escalation-ladder + anchor + consolidation registries, the due/next-fire-at math, and the runner. Persistence + owner/channel/connector deps are injected by the host (e.g. @elizaos/plugin-personal-assistant). Reminders register a tick-hook via the ports here.",
+  "description": "Scheduling spine for elizaOS agents: the storage-agnostic ScheduledTask state machine — trigger evaluation (cron/interval/once/event/after_task/relative_to_anchor/during_window), gate + completion-check + escalation-ladder + anchor + consolidation registries, the due/next-fire-at math, and the runner. Persistence + owner/channel/connector deps are injected by the host (e.g. @elizaos/plugin-personal-assistant). Reminders register a tick-hook via the ports here.",
   "main": "./dist/index.js",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -59,7 +59,7 @@
     "tsup": "^9.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vite": "^8.3.0",
+    "vite": "^8.3.3",
     "vitest": "^5.0.5",
     "@elizaos/plugin-sqlite": "workspace:*"
   }
