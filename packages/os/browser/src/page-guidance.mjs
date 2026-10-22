@@ -155,9 +155,9 @@ export function pageGuidance(request) {
     target.scrollIntoView({
       block: "center",
       inline: "nearest",
-      behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
-        ? "instant"
-        : "smooth",
+      // Finish the host-owned reveal before acknowledging it. A later task
+      // snapshot must not race a smooth scroll after guidance is cleared.
+      behavior: "instant",
     });
   // The page shares document.fonts. Each document gets an unguessable family
   // added from bytes (no network or page CSP); any other face that claims it

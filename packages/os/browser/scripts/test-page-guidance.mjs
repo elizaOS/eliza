@@ -722,6 +722,44 @@ try {
   cases.push(
     "an off-screen step is scrolled into view and shown; an action guide reports off-screen and never scrolls",
   );
+  // A host may immediately clear guidance and observe for the next action.
+  // No owned smooth scroll may continue changing that new observation.
+  await page.emulateMediaFeatures([
+    { name: "prefers-reduced-motion", value: "no-preference" },
+  ]);
+  await page.evaluate(() => scrollTo({ top: 0, behavior: "instant" }));
+  element = await read("scroll-settle");
+  await show("scroll-settle", element("Account details"), {
+    id: "scroll-settle",
+  });
+  const revealed = await page.$eval("#far", (n) =>
+    n.getBoundingClientRect().toJSON(),
+  );
+  assert.ok(
+    revealed.top >= 0 && revealed.bottom <= 800,
+    JSON.stringify(revealed),
+  );
+  await call(pageGuidance, { kind: "hide" });
+  element = await read("after-scroll-settle");
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  const validation = await call(
+    pageCommand,
+    {
+      subaction: "click",
+      snapshotId: "after-scroll-settle",
+      nodeId: element("Account details"),
+    },
+    null,
+    true,
+  );
+  assert.equal(validation.validated, true, JSON.stringify(validation));
+  await page.emulateMediaFeatures([
+    { name: "prefers-reduced-motion", value: "reduce" },
+  ]);
+  await page.evaluate(() => scrollTo({ top: 0, behavior: "instant" }));
+  cases.push(
+    "guidance completes its reveal before returning; clearing it cannot leave a moving viewport under the next snapshot",
+  );
   const overlaps = async () => {
     const box = await part(
       ".label",
