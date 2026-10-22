@@ -74,6 +74,10 @@ Android installation or the native reply proxy. The generated native asset share
 the existing browser command implementation; `build` regenerates it and
 `node plugins/plugin-native-browser-surface/scripts/build-control-channel.mjs --check`
 checks that it is current.
+The same test routes commands through the authenticated native-host HTTP gateway
+and surface client. It checks complete observations, real click/fill readback,
+and an effect whose reply is lost without delivering that command again. The
+native host transport still needs product task and page ownership composition.
 Run the native bridge flow with `--surface-control` on the Android test command
 above. It uses a local synthetic document, checks real click/fill readback, stale
 references and document IDs, and hides/restores the same page. This lane requires

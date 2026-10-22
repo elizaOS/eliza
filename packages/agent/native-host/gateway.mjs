@@ -1,5 +1,10 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import http from "node:http";
+import {
+  SURFACE_CHANNEL_BYTES,
+  SURFACE_CHANNEL_PATHS,
+  SurfaceChannelError,
+} from "./surface-channel.mjs";
 
 const MAX_BODY = 64 * 1024;
 const uuid =
@@ -44,6 +49,7 @@ export function createLocalAgentGateway({
   ownershipStore,
   taskGateway,
   websiteReputation,
+  surfaceChannel,
   inferenceConfigured = async () => true,
   fetchImpl = fetch,
 } = {}) {
@@ -113,7 +119,7 @@ export function createLocalAgentGateway({
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
     "Access-Control-Max-Age": "600",
   };
-  return http.createServer(async (req, res) => {
+  const server = http.createServer(async (req, res) => {
     const origin = req.headers.origin;
     // Host validation also rejects DNS rebinding requests without an Origin.
     const trustedCaller =
@@ -197,6 +203,7 @@ export function createLocalAgentGateway({
         req.method === "POST" &&
         hostPolicy.resetPaths.includes(url.pathname)
       ) {
+        surfaceChannel?.revoke();
         epoch++;
         rooms.clear();
         for (const request of pending) {
@@ -225,6 +232,17 @@ export function createLocalAgentGateway({
         );
       if (url.search && !url.pathname.startsWith("/cloud/") && !taskEventRead)
         return json(res, 400, { error: message("error10") });
+      if (SURFACE_CHANNEL_PATHS.has(url.pathname)) {
+        if (!surfaceChannel || !inboundToken)
+          return json(res, 503, { code: "SURFACE_UNAVAILABLE" });
+        if (req.method !== "POST")
+          return json(res, 405, { error: message("error9") });
+        const input = await readJsonBody(
+          req,
+          url.pathname.endsWith("/reply") ? SURFACE_CHANNEL_BYTES : 4096,
+        );
+        return json(res, 200, await surfaceChannel.handle(url.pathname, input));
+      }
       if (req.method === "POST" && url.pathname === "/browser/check") {
         const input = await readJsonBody(req, 8192);
         if (Object.keys(input).length !== 1 || typeof input.url !== "string")
@@ -424,6 +442,11 @@ export function createLocalAgentGateway({
       json(res, response.status, data);
     } catch (error) {
       if (res.destroyed || res.writableEnded) return;
+      if (error instanceof SurfaceChannelError)
+        return json(res, error.status, {
+          code: error.code,
+          error: error.message,
+        });
       if (error.code === "TASK_CLEANUP_UNCONFIRMED")
         return json(res, 503, { code: error.code, error: message("error21") });
       json(res, error.status || 502, {
@@ -434,6 +457,8 @@ export function createLocalAgentGateway({
       });
     }
   });
+  server.on("close", () => surfaceChannel?.close());
+  return server;
 }
 
 export function createCredentialGate({

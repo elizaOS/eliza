@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
+import { createLocalAgentGateway } from "../../../packages/agent/native-host/gateway.mjs";
+import { createSurfaceCommandChannel } from "../../../packages/agent/native-host/surface-channel.mjs";
+import { connectSurfaceCommandClient } from "../../../packages/agent/native-host/surface-client.mjs";
 
 const require = createRequire(
   import.meta.resolve("@elizaos/plugin-browser/package.json"),
@@ -21,8 +24,47 @@ const server = createServer((_req, res) => {
   );
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-let browser;
+let browser, client;
+const channel = createSurfaceCommandChannel({
+  credentialGate: async () => "synthetic-owner",
+});
+const gateway = createLocalAgentGateway({
+  token: "fixture-agent",
+  inboundToken: "fixture-host",
+  surfaceChannel: channel,
+  hostPolicy: {
+    origins: [],
+    resetPaths: [],
+    conversationTitle: "Test",
+    abortReason: "test",
+    validateTitle() {},
+    prepareMessage() {},
+    isPaidAction: () => false,
+    formatTaskContext: () => "",
+  },
+});
+await new Promise((resolve) => gateway.listen(0, "127.0.0.1", resolve));
+const gatewayUrl = `http://127.0.0.1:${gateway.address().port}`;
+const request = async (path, input, token = "fixture-host") => {
+  const response = await fetch(`${gatewayUrl}/browser/surface/${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+  return { status: response.status, body: await response.json() };
+};
 try {
+  assert.equal(
+    (await request("connect", { clientId: "renderer", epoch: 1 }, "wrong"))
+      .status,
+    401,
+  );
+  let connection = (
+    await request("connect", { clientId: "renderer", epoch: 1 })
+  ).body;
   browser = await puppeteer.launch({
     executablePath: process.env.ELIZA_BROWSER_EXECUTABLE,
     headless: true,
@@ -54,9 +96,34 @@ try {
   );
   assert.equal(ready.ready, true);
   let sequence = 0;
-  const dispatch = (command, extra = {}) =>
+  const nativeDispatch = (command, extra = {}) =>
     evaluate(
       `elizaSurfaceControl.onmessage({data:${JSON.stringify(JSON.stringify({ documentId: ready.documentId, sequence: ++sequence, command, ...extra }))}}); messages.pop()`,
+    );
+  client = await connectSurfaceCommandClient({
+    clientId: "renderer",
+    epoch: 1,
+    request: async (path, input, signal) => {
+      const response = await fetch(`${gatewayUrl}${path}`, {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer fixture-host",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(input),
+        signal,
+      });
+      const body = await response.json();
+      if (!response.ok)
+        throw Object.assign(new Error(body.error), { code: body.code });
+      return body;
+    },
+    handleCommand: (input) => nativeDispatch(input.command, input.extra),
+  });
+  const dispatch = (command, extra = {}) =>
+    channel.request(
+      { command, extra },
+      { effect: command.subaction !== "snapshot" },
     );
   const snapshot = async () =>
     (await dispatch({ subaction: "snapshot" })).result;
@@ -141,10 +208,44 @@ try {
     true,
   );
   assert.equal(await page.$eval("output", (node) => node.textContent), "2");
+  // Lose the transport reply after a real DOM effect. The command is consumed,
+  // reports uncertainty and is never delivered again on the next pull.
+  state = await snapshot();
+  await client.close();
+  connection = (await request("connect", { clientId: "renderer", epoch: 2 }))
+    .body;
+  const interrupted = new AbortController();
+  const pending = channel.request(
+    { command: action(state, "click", "#increment") },
+    { effect: true, signal: interrupted.signal },
+  );
+  const uncertain = assert.rejects(pending, { code: "UNCERTAIN_OUTCOME" });
+  const delivered = (await request("pull", connection)).body.command;
+  const lost = await nativeDispatch(delivered.input.command);
+  interrupted.abort();
+  await uncertain;
+  assert.equal(await page.$eval("output", (node) => node.textContent), "3");
+  assert.equal(
+    (await request("reply", { ...connection, id: delivered.id, result: lost }))
+      .status,
+    409,
+  );
+  const afterLoss = (await request("pull", connection)).body;
+  assert.equal(afterLoss.command, null);
+  assert.deepEqual(afterLoss.cancellations, [delivered.id]);
+  assert.equal((await request("close", connection)).status, 200);
+  assert.equal(
+    (await request("connect", { clientId: "renderer", epoch: 1 })).status,
+    409,
+  );
   console.log(
-    "PASS: isolated command channel, real click/fill, document and replay fences, manual input, policy requirement, fixed operations, credential exclusion",
+    "PASS: authenticated host HTTP to isolated command channel, real click/fill, lost-effect uncertainty without replay, document and replay fences, manual input, policy requirement, fixed operations, credential exclusion",
   );
 } finally {
+  await client?.close();
   await browser?.close();
+  channel.close();
+  gateway.closeAllConnections();
+  await new Promise((resolve) => gateway.close(resolve));
   await new Promise((resolve) => server.close(resolve));
 }

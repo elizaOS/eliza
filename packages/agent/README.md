@@ -202,6 +202,22 @@ transport, bounded JSON, conversation ownership, request cancellation, account
 fencing and authenticated task presentation. Only trusted host code provides this
 policy; never accept it from renderer input.
 
+Native hosts can opt into `native-host/surface-channel.mjs` with an authenticated
+`credentialGate` and pass that channel as `surfaceChannel` to the gateway. The
+four POST routes under `/browser/surface/` require the inbound bearer token and
+normal origin policy. The browser-safe `surface-client.mjs` accepts the host's
+authenticated request adapter and native command handler; it never reads keys.
+Connections use increasing renderer epochs. Commands have bounded deadlines,
+are delivered once, and are never retried or reconnected automatically. Account
+replacement and close retire pending commands. Losing a delivered effect returns
+`UNCERTAIN_OUTCOME`; a receipt is not proof that the website achieved the goal.
+Complete replies up to the explicit 2 MiB transport limit are accepted; larger
+messages fail instead of being truncated. At most 16 commands may be pending.
+Hosts must still authorize task commands and enforce selected-page, document,
+visibility and cancellation checks at the native handler. This channel provides
+no task authority, task store, browser profile or Chromium-extension identity.
+Source-bundle consumers must include both gateway and channel source modules.
+
 `native-host/account-state.mjs` preserves private credential-derived namespaces
 and configuration migration. `native-host/runtime-supervisor.mjs` serializes
 identity transitions and stops only the child returned by the host launcher.
