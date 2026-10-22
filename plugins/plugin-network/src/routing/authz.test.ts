@@ -145,6 +145,28 @@ describe("Network two-ended range", () => {
         until: "2026-11-01T00:00:00.000Z",
       },
     );
+    // A destination is not a start date. "from Boston to New York on Friday
+    // for two weeks" must keep the duration, not end on the departure day.
+    const placeRange =
+      "I'm flying from Boston to New York on Friday for two weeks";
+    assert.deepEqual(
+      authorizeSetState(
+        {
+          state: "traveling",
+          from: null,
+          until: "2026-10-30",
+          evidence: placeRange,
+        },
+        placeRange,
+        now,
+      ),
+      {
+        allowed: true,
+        state: "traveling",
+        from: "2026-10-16T00:00:00.000Z",
+        until: "2026-10-30T00:00:00.000Z",
+      },
+    );
   });
 });
 
