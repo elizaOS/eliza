@@ -196,7 +196,10 @@ class NativeBridgeInstrumentedTest {
                 Thread.sleep(50)
             }
             evaluate(scenario, "window.nativeDescriptor = $descriptor; $script")
-            val finishDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+            // The extended surface flow includes real navigation, compositor capture,
+            // selection, activity pause and redirect checks. Each step retains its own deadline.
+            val contractSeconds = if (descriptor.optBoolean("surfaceControl", false)) 120L else 30L
+            val finishDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(contractSeconds)
             while (System.nanoTime() < finishDeadline) {
                 if (descriptor.getString("directory") == "plugin-native-browser-surface") {
                     if (evaluate(scenario, "window.nativeBrowserPauseRequested === true") == "true") {
