@@ -518,3 +518,45 @@ test("edge JSON extraction accepts observed bracket syntax without unsafe traver
     fetch.mockRestore();
   }
 });
+
+for (const input of ["https://example.com", "https://EXAMPLE.com:443"]) {
+  test(`normalizes a valid public HTTPS origin before the Edge reader: ${input}`, async () => {
+    const canonical = "https://example.com/";
+    const fetch = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (_request, options) => {
+        const call = JSON.parse(String(options?.body));
+        expect(call.params.arguments.urls).toEqual([canonical]);
+        return Response.json(envelope(canonical));
+      });
+    try {
+      const result = await call(createWebFetchEdgeAction(), { url: input });
+      expect(result?.success).toBe(true);
+      expect(result?.data?.url).toBe(canonical);
+      expect(fetch).toHaveBeenCalledTimes(1);
+    } finally {
+      fetch.mockRestore();
+    }
+  });
+}
+
+test("URL normalization never admits private aliases, credentials, fragments or HTTP", async () => {
+  const fetch = vi.spyOn(globalThis, "fetch");
+  try {
+    for (const url of [
+      "https://127.1",
+      "https://2130706433",
+      "https://user:pass@EXAMPLE.com",
+      "https://example.com/#fragment",
+      "http://example.com",
+      "https://LOCALHOST",
+    ]) {
+      expect((await call(createWebFetchEdgeAction(), { url }))?.success).toBe(
+        false,
+      );
+    }
+    expect(fetch).not.toHaveBeenCalled();
+  } finally {
+    fetch.mockRestore();
+  }
+});

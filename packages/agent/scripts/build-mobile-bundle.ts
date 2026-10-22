@@ -1614,7 +1614,9 @@ for (const asset of ["pglite.wasm", "initdb.wasm", "pglite.data"]) {
     timeout: 120_000,
   });
   if (made.status !== 0 || !existsSync(snapshotPath)) {
-    console.error("[build-mobile] FATAL: could not make the PGlite initdb snapshot");
+    console.error(
+      "[build-mobile] FATAL: could not make the PGlite initdb snapshot",
+    );
     process.exit(1);
   }
   const sz = (await stat(snapshotPath)).size;
