@@ -812,6 +812,65 @@ try {
   cases.push(
     "action and paused name tags stay fully readable at the narrow viewport edge",
   );
+  // The installed product split leaves only 191 CSS pixels for its website.
+  await page.setViewport({ width: 462, height: 191 });
+  await page.goto(`${origin}/labels`);
+  await isolate();
+  await page.evaluate(() => {
+    document.querySelector("#email").style.cssText =
+      "left:85px;top:144px;width:192px;height:22px;padding:0";
+  });
+  element = await read("compact-action");
+  await show("compact-action", element("Email"), {
+    id: "compact-action",
+    action: "fill",
+    assistantName: "Grace",
+    text: "I will type the text for your request.",
+  });
+  await until(shown);
+  const compact = await evaluate(
+    "(()=>{const s=globalThis.__elizaPageGuidanceV1;return {label:s.shadow.querySelector('.label').getBoundingClientRect().toJSON(),target:document.querySelector('#email').getBoundingClientRect().toJSON()}})()",
+  );
+  assert.ok(
+    compact.label.y >= 8 && compact.label.y + compact.label.height <= 183,
+    JSON.stringify(compact),
+  );
+  assert.ok(compact.label.y + compact.label.height <= compact.target.y - 8);
+  const cancel = await part(
+    ".close",
+    "({height:n.getBoundingClientRect().height,width:n.getBoundingClientRect().width,label:n.getAttribute('aria-label')})",
+  );
+  assert.ok(cancel.height >= 64 && cancel.width >= 64);
+  assert.equal(cancel.label, "Cancel this action");
+  await until(
+    `globalThis.__elizaPageGuidanceV1.actionReady("compact-action","compact-action",${JSON.stringify(element("Email"))},"fill")`,
+  );
+  await page.screenshot({ path: `${output}/compact-action.png` });
+  const cancelPoint = await part(
+    ".close",
+    "({x:n.getBoundingClientRect().x+n.getBoundingClientRect().width/2,y:n.getBoundingClientRect().y+n.getBoundingClientRect().height/2})",
+  );
+  await page.mouse.click(cancelPoint.x, cancelPoint.y);
+  assert.equal(
+    await evaluate("globalThis.__elizaPageGuidanceV1.dismissed"),
+    true,
+  );
+  assert.equal(
+    (
+      await call(pageGuidance, {
+        kind: "action-status",
+        id: "compact-action",
+        snapshotId: "compact-action",
+        nodeId: element("Email"),
+        action: "fill",
+      })
+    ).ready,
+    false,
+  );
+  await call(pageGuidance, { kind: "hide" });
+  cases.push(
+    "191px split viewport shows an unobscured action preview and 64px Cancel before readiness",
+  );
   await writeFile(
     `${output}/verification.json`,
     JSON.stringify(

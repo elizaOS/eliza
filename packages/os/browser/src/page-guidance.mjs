@@ -205,6 +205,7 @@ export function pageGuidance(request) {
   style.replaceSync(
     ".ring{position:fixed;box-sizing:border-box;border-radius:8px;pointer-events:none;box-shadow:0 0 0 3px #fff,0 0 0 6px #4a3428}.ring.pulse{animation:ring .9s ease-in-out 3}@keyframes ring{50%{box-shadow:0 0 0 3px #fff,0 0 0 7px #4a34288c}}" +
       ".label{font:500 20px/1.4 var(--face);position:fixed;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;background:#fff;color:#141414;border:2px solid #b3aad3;border-radius:16px;padding:18px;box-shadow:0 8px 24px #14141324;pointer-events:none;opacity:0;transform:translateY(-8px);transition:opacity .3s ease-out,transform .3s ease-out}.label.shown{opacity:1;transform:none;pointer-events:auto}.label.tone-success{border-color:#265b19}" +
+      ".label.compact{flex-direction:row;align-items:center;gap:12px;padding:12px}.label.compact .row{flex:1;min-width:0}.label.compact .mark{display:none}.label.compact .title{font-size:20px;line-height:24px}.label.compact .close{flex:none;min-width:92px;padding:0 16px}" +
       ".tail{position:absolute;left:28px;top:-10px;width:16px;height:16px;box-sizing:border-box;background:#fff;border:2px solid;border-color:inherit;border-right:0;border-bottom:0;transform:rotate(45deg)}.tail.up{top:auto;bottom:-10px;border:2px solid;border-color:inherit;border-left:0;border-top:0}" +
       ".row{display:flex;gap:12px;align-items:flex-start}.mark{flex:none;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:#d4ceea;color:#141414;font:700 20px/1 var(--face)}.tone-active .mark{background:#b3aad3}.tone-success .mark{border-radius:17px;background:#265b19;color:#fff}" +
       ".words{display:flex;flex-direction:column;gap:4px;min-width:0}.title{margin:0;font:700 22px/28px var(--face);overflow-wrap:anywhere}.detail{margin:0;font:500 17px/22px var(--face);color:#4a3428;overflow-wrap:anywhere}" +
@@ -331,6 +332,7 @@ export function pageGuidance(request) {
     request.action ? "Cancel this action" : "Dismiss guidance",
   );
   close.type = "button";
+  if (request.action) close.setAttribute("aria-label", "Cancel this action");
   close.hidden =
     !request.action && buttons.some((answer) => answer.kind === "secondary");
   label.append(...offered, close);
@@ -605,6 +607,13 @@ export function pageGuidance(request) {
       view.height -
         (keyboard ? Math.max(bottomInset, barInset) : bottomInset) / view.scale,
     );
+    // A split-screen or keyboard viewport must still show the action and its
+    // full-size cancel target. Keep the target unobscured and the preview dwell.
+    const compact = Boolean(request.action && view.height < 320);
+    label.classList.toggle("compact", compact);
+    const cancelText = compact ? "Cancel" : "Cancel this action";
+    if (request.action && close.textContent !== cancelText)
+      close.textContent = cancelText;
     const geometry = JSON.stringify([
       rect.x,
       rect.y,
@@ -630,7 +639,7 @@ export function pageGuidance(request) {
       rect.bottom <= view.top + view.height
     ) {
       label.hidden = false;
-      label.style.width = `${Math.min(answers.length ? 440 : 360, view.width - 24)}px`;
+      label.style.width = `${Math.min(compact ? view.width - 16 : answers.length ? 440 : 360, view.width - (compact ? 16 : 24))}px`;
       const height = label.getBoundingClientRect().height,
         width = label.getBoundingClientRect().width;
       const candidates = [
