@@ -53,10 +53,16 @@ final class IpcStartupRecovery implements Closeable {
     }
     /** Strong conservative gate: no other process with this full UID is permitted. */
     static void requireSoleUidProcess()throws Exception {
+        requireSoleUidProcess(android.os.SystemClock.elapsedRealtime()+10000);
+    }
+    static void requireSoleUidProcess(long deadline)throws Exception {
+        if(android.os.SystemClock.elapsedRealtime()>=deadline)throw refused("process inventory deadline");
         File self=new File("/proc/"+Process.myPid());String current=identity(self);
         if(Os.stat(self.getPath()).st_uid!=Process.myUid())throw refused("current process UID mismatch");
         File[] processes=new File("/proc").listFiles();if(processes==null || processes.length<20)throw refused("incomplete process inventory");
-        for(File proc:processes){if(!proc.getName().matches("[0-9]+") || proc.equals(self))continue;
+        for(File proc:processes){
+            if(android.os.SystemClock.elapsedRealtime()>=deadline)throw refused("process inventory deadline");
+            if(!proc.getName().matches("[0-9]+") || proc.equals(self))continue;
             StructStat s;
             try{s=Os.stat(proc.getPath());}catch(android.system.ErrnoException error){if(error.errno==OsConstants.ENOENT)continue;throw error;}
             if(s.st_uid==Process.myUid()){
@@ -91,7 +97,7 @@ final class IpcStartupRecovery implements Closeable {
             File ipc=new File(home,"ipc");StructStat directory=owned(ipc,OsConstants.S_IFDIR,0700);
             if(!ipc.getCanonicalPath().equals(ipc.getPath()))throw refused("IPC directory alias");
             File[] entries=ipc.listFiles();if(entries==null)throw refused("unreadable IPC directory");
-            if(workerBun==null||workerExecutable==null)requireSoleUidProcess();else WorkflowSurvivorInventory.requireClassified(home,new File(home,".eliza/smthrs"),workerBun,workerExecutable);
+            if(workerBun==null||workerExecutable==null)requireSoleUidProcess();else WorkflowSurvivorInventory.requireClassified(home,new File(home,".eliza/smthrs"),workerBun,workerExecutable,android.os.SystemClock.elapsedRealtime()+10000);
             File[] homeEntries=home.listFiles();if(homeEntries==null)throw refused("unreadable app directory");
             // A crash during explicit archival must not silently free admission slots.
             // Refuse even when the live IPC directory is empty or fewer than eight remain.
@@ -107,7 +113,7 @@ final class IpcStartupRecovery implements Closeable {
                 else throw refused("unexpected IPC entry");
                 StructStat stat=owned(entry,kind,0600);if(kind==OsConstants.S_IFREG && stat.st_size>4096)throw refused("oversized IPC metadata");observed.put(name,stat.st_dev+":"+stat.st_ino);
             }
-            if(workerBun==null||workerExecutable==null)requireSoleUidProcess();else WorkflowSurvivorInventory.requireClassified(home,new File(home,".eliza/smthrs"),workerBun,workerExecutable); // live detached child, launcher or unrelated same-UID process blocks recovery
+            if(workerBun==null||workerExecutable==null)requireSoleUidProcess();else WorkflowSurvivorInventory.requireClassified(home,new File(home,".eliza/smthrs"),workerBun,workerExecutable,android.os.SystemClock.elapsedRealtime()+10000); // live detached child, launcher or unrelated same-UID process blocks recovery
             for(File entry:entries){StructStat stat=Os.lstat(entry.getPath());if(!observed.get(entry.getName()).equals(stat.st_dev+":"+stat.st_ino))throw refused("IPC entry replaced");}
             File[] again=ipc.listFiles();if(again==null || again.length!=entries.length)throw refused("IPC entries changed");
             StructStat current=owned(ipc,OsConstants.S_IFDIR,0700);if(current.st_dev!=directory.st_dev || current.st_ino!=directory.st_ino)throw refused("IPC directory replaced");
