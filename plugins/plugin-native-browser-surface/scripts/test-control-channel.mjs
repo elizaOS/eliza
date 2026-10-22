@@ -833,6 +833,9 @@ try {
     await plannedActuator.quiesce({ owner, taskId: plannedTask.id });
     db.close();
   }
+  console.log(
+    "PASS: planned select and click through durable SQLite task runtime, host permission withdrawal and stale-page replan without dispatch",
+  );
   await taskHandler.close();
   console.log(
     "PASS: NativeTaskActuator readback, cleanup uncertainty, bound embedded task adapter and authenticated host HTTP to isolated command channel, real click/fill/select with visible preview and option-label readback, lost-effect uncertainty without replay, document and replay fences, manual input, policy requirement, fixed operations, credential exclusion",
