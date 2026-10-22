@@ -12,6 +12,10 @@ import { createSurfaceCommandChannel } from "../../../packages/agent/native-host
 import { connectSurfaceCommandClient } from "../../../packages/agent/native-host/surface-client.mjs";
 import { buildTaskRuntime } from "../../../packages/app/scripts/build-consumer-task-runtime.mjs";
 import { createSurfaceTaskHandler } from "../../../packages/os/browser/src/surface-task-handler.mjs";
+import {
+  pageControls,
+  pageView,
+} from "../../plugin-personal-assistant/native-host/guided-website-workflow.mjs";
 
 const require = createRequire(
   import.meta.resolve("@elizaos/plugin-browser/package.json"),
@@ -627,6 +631,24 @@ try {
     signal: actuatorSignal,
   });
   const selectObservation = actuator.readObservation(task.id, owner);
+  const plannerView = pageView(
+    selectObservation.snapshot,
+    pageControls(selectObservation.snapshot),
+  );
+  const language = plannerView.controls.find(
+    (control) => control.label === "Language",
+  );
+  assert.deepEqual(
+    language.options.map((option) => option.label),
+    ["English", "French", "German", "Unavailable", "Ambiguous", "Ambiguous"],
+  );
+  assert.equal(
+    language.options.find((option) => option.label === "Unavailable").disabled,
+    true,
+  );
+  assert.equal(language.options.filter((option) => option.selected).length, 1);
+  assert.equal(JSON.stringify(plannerView).includes("opaque-"), false);
+  assert.equal(JSON.stringify(plannerView).includes("private-value"), false);
   const selectProposal = {
     ...proposal,
     id: "actuator-select",

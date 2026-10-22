@@ -175,6 +175,16 @@ export function pageView(snapshot, { controls, protectedFields }) {
         ],
         ["description", element.description],
         [
+          "options",
+          Array.isArray(element.options)
+            ? element.options.map(({ label, disabled, selected }) => ({
+                label,
+                disabled: disabled === true,
+                selected: selected === true,
+              }))
+            : null,
+        ],
+        [
           "filled",
           typeof element.hasInput === "boolean"
             ? element.hasInput
