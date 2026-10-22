@@ -171,6 +171,22 @@ function sqlJsonArray(value: string[] | null | undefined): string {
   return sqlQuote(JSON.stringify(value));
 }
 
+/**
+ * Escape `%`, `_` and the escape character itself so a value matches as
+ * literal text inside a `LIKE ... ESCAPE '\'` pattern.
+ */
+function escapeLikeLiteral(value: string): string {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
+/**
+ * SQL expression that makes a stored name safe to use as a LIKE pattern.
+ * Sender names are data, so a stored `john_doe` must not match `johnxdoe`.
+ */
+function escapeLikeColumn(expression: string): string {
+  return `REPLACE(REPLACE(REPLACE(${expression}, '\\', '\\\\'), '%', '\\%'), '_', '\\_')`;
+}
+
 // ---------------------------------------------------------------------------
 // Repository
 //
@@ -304,8 +320,11 @@ export class InboxRepository {
     if (opts.senderName) {
       const normalized = opts.senderName.trim().toLowerCase();
       if (normalized) {
+        // Sender names are literal text, not LIKE patterns. Without the escape
+        // a sender named "Studio 100% Fit" matches every other name and pulls
+        // that sender's rows into this sender's cross-channel context.
         senderClauses.push(
-          `(LOWER(sender_name) LIKE ${sqlText(`%${normalized}%`)} OR ${sqlText(normalized)} LIKE '%' || LOWER(sender_name) || '%')`,
+          `(LOWER(sender_name) LIKE ${sqlText(`%${escapeLikeLiteral(normalized)}%`)} ESCAPE '\\' OR ${sqlText(normalized)} LIKE '%' || ${escapeLikeColumn("LOWER(sender_name)")} || '%' ESCAPE '\\')`,
         );
       }
     }
