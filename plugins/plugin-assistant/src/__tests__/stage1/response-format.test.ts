@@ -1734,6 +1734,35 @@ describe("Stage 1 response format", () => {
     expect(routed.plan.candidateActions).toEqual(["TASKS"]);
   });
 
+  it("escalates a simple Stage 1 capability denial on an image remake ask to media generation", () => {
+    const routed = messageHandlerFromFieldResult(
+      {
+        shouldRespond: "RESPOND",
+        contexts: ["simple"],
+        intents: [],
+        replyEffectStatus: "none",
+        replyText:
+          "i can read and describe images, not make them. crop or inpaint the watermark instead.",
+        candidateActionNames: [],
+        facts: [],
+        relationships: [],
+        addressedTo: [],
+      },
+      undefined,
+      {
+        actions: [{ name: "REPLY" }, { name: "GENERATE_MEDIA" }],
+        messageText:
+          "damn i didnt even see the watermark, can you try to remake the image without it",
+      },
+    );
+
+    expect(routed.plan.simple).toBe(false);
+    expect(routed.plan.requiresTool).toBe(true);
+    expect(routed.plan.candidateActions).toEqual(["GENERATE_MEDIA"]);
+    // A repeated denial must not be accepted early on inferred evidence.
+    expect(routed.plan.requiredToolEvidence).toBeUndefined();
+  });
+
   it("parses Stage 1 output from GenerateTextResult content parts when text is blank", async () => {
     const runtime = makeRuntime([
       {

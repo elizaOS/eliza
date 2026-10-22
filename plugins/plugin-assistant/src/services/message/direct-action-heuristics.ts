@@ -779,6 +779,25 @@ const SCHEDULED_ADMIN_ACTION_NAMES_BY_DOMAIN: Record<
 };
 
 /**
+ * Sentence and contrast clauses of `text`, each cut at its first restriction.
+ * A restriction cannot create a hint; affirmative work before it or after
+ * "but" remains.
+ */
+function affirmativeClauses(text: string): string[] {
+  return intentClauses(text)
+    .flatMap((clause) => clause.split(/[.!?\n]/u))
+    .map(
+      (clause) =>
+        clause
+          .split(
+            /\b(?:do\s+not|don['’]?t|never(?!\s+mind\b)|without)\b/iu,
+            1,
+          )[0]
+          ?.trim() ?? "",
+    );
+}
+
+/**
  * Detects admin operations on an existing scheduled item and preserves the
  * owning action boundary. Reminder, alarm, and routine definitions use their
  * owner surfaces; structural check-ins, follow-ups, and raw scheduled tasks use
@@ -788,18 +807,8 @@ const SCHEDULED_ADMIN_ACTION_NAMES_BY_DOMAIN: Record<
 function detectScheduledItemAdminDomain(
   text: string,
 ): ScheduledAdminDomain | null {
-  // Use the existing contrast-clause boundary parser. A restriction cannot
-  // create a mutation hint; affirmative work before it or after "but" remains.
   // This projection is only for inference: the full request still reaches the planner.
-  const normalized = intentClauses(text)
-    .flatMap((clause) => clause.split(/[.!?\n]/u))
-    .map(
-      (clause) =>
-        clause.split(
-          /\b(?:do\s+not|don['’]?t|never(?!\s+mind\b)|without)\b/iu,
-          1,
-        )[0] ?? "",
-    )
+  const normalized = affirmativeClauses(text)
     .join(" ")
     .replace(/\s+/gu, " ")
     .trim();
@@ -860,24 +869,58 @@ const MEDIA_GENERATION_ACTION_NAMES = [
   "CREATE_IMAGE",
 ] as const;
 
+// Generation verbs and their re- forms ("remake", "re-render", "redo").
+const MEDIA_GENERATION_VERB = String.raw`\b(?:generate|make|draw|create|render|paint|produce|design|re-?(?:generate|make|draw|create|render|do))\b`;
+
+// GENERATE_MEDIA's validate() nouns plus chat shorthand ("img", "pic", "pfp") and "banner".
+const MEDIA_ARTIFACT_NOUN =
+  "(?:image|img|pic|pfp|picture|photo|art(?:work)?|illustration|logo|sticker|wallpaper|banner|drawing|painting|meme|gif" +
+  "|video|animation|clip" +
+  String.raw`|music|song|audio|sound(?:\s?effect)?|sfx|voice(?:over)?|speech)s?\b`;
+
+// The container/disk sense of "image" ("docker image", "base image").
+const NON_MEDIA_IMAGE_MODIFIER = String.raw`(?<!\b(?:docker|container|base|disk|vm|os)\s)`;
+
+// A media word that modifies a technical noun ("image upload", "image gen settings").
+const NOT_TECHNICAL_COMPOUND = String.raw`(?!\s+(?:upload|bucket|tag|field|cache|embeddings?|endpoint|service|description|alt|thumbnails?|section|channel|settings|benchmark|tests?)s?\b)`;
+
+const MEDIA_ARTIFACT_REQUEST_RE = new RegExp(
+  String.raw`${MEDIA_GENERATION_VERB}[^.!?]{0,60}\b${NON_MEDIA_IMAGE_MODIFIER}${MEDIA_ARTIFACT_NOUN}${NOT_TECHNICAL_COMPOUND}`,
+  "iu",
+);
+
+// "try/use/run image gen", "do it with the video generator".
+const MEDIA_GENERATOR_REQUEST_RE = new RegExp(
+  String.raw`\b(?:try|use|run|do\s(?:it|that|this)|give\sit\sa\s(?:shot|go|try))\b[^.!?]{0,60}\b(?:image|img|picture|pic|photo|video|art)[- ]?gen(?:eration|erator)?s?\b${NOT_TECHNICAL_COMPOUND}`,
+  "iu",
+);
+
+const CONDITIONAL_PATTERN =
+  /\b(?:if|hypothetically|suppose|pretend|imagine)\b/iu;
+
+const QUESTION_CLAUSE_PATTERN =
+  /^(?:did|do|does|have|is|are|what|which|how|why)\b[^.!?]*\b(?:you|u)\b/iu;
+
 /**
  * Detects an explicit media-generation ask ("make me a pixel-art castle
- * image", "generate a picture of a lighthouse"). Live regression (matrix
- * F35, tj-fcf8c1c21be91f): Stage-1 classified a styled image ask as
- * ["simple"] with no candidates, the planner ran with HANDLE_RESPONSE only,
- * and the model declared "I don't have an image generator" — an hour after
- * the same runtime generated and delivered one. Capability self-belief
- * follows tool exposure, so the deterministic candidate is what keeps the
- * answer consistent. Generation verbs must pair with a visual-artifact noun:
- * "create a todo" and "draw up a plan" never match.
+ * image", "remake the image without the watermark", "try it with image gen").
+ * Capability self-belief follows tool exposure: a styled image ask routed
+ * without candidates leaves the planner with no generator and the model
+ * denies having one, so the deterministic candidate keeps the answer
+ * consistent. Naming the generator counts only outside questions
+ * ("did you try image gen?") and conditionals ("try image gen if you're bored").
  */
-function looksLikeMediaGenerationRequest(text: string): boolean {
+export function looksLikeMediaGenerationRequest(text: string): boolean {
   const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
   if (!normalized || looksLikeActionExplanationRequest(normalized)) {
     return false;
   }
-  return /\b(?:generate|make|draw|create|render|paint|produce)\b[^.!?]{0,60}\b(?:image|picture|photo|art(?:work)?|illustration|logo|sticker|wallpaper|drawing|painting|meme|gif)s?\b/iu.test(
-    normalized,
+  return affirmativeClauses(normalized).some(
+    (clause) =>
+      MEDIA_ARTIFACT_REQUEST_RE.test(clause) ||
+      (MEDIA_GENERATOR_REQUEST_RE.test(clause) &&
+        !QUESTION_CLAUSE_PATTERN.test(clause) &&
+        !CONDITIONAL_PATTERN.test(clause)),
   );
 }
 
@@ -1292,7 +1335,7 @@ function looksLikeExplicitFilesystemRequest(text: string): boolean {
   if (!imperative.test(text.trim()) || looksLikeActionExplanationRequest(text))
     return false;
   if (
-    /\b(?:if|hypothetically|suppose|pretend|imagine)\b/iu.test(text) ||
+    CONDITIONAL_PATTERN.test(text) ||
     /\b(?:do\s+not|don['’]?t|never|without|no)\b[^\n;]{0,100}\b(?:tools?|actions?|files?|filesystem|read(?:ing)?|writ(?:e|ing)|sav(?:e|ing)|creat(?:e|ing)|edit(?:ing)?|append(?:ing)?|execut(?:e|ing))\b/iu.test(
       text,
     )

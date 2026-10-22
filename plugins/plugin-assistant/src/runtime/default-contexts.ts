@@ -292,7 +292,8 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "media",
       label: "Media",
-      description: "Images, audio, video and attachments.",
+      description:
+        "Image, audio and video generation, inspection and attachments.",
       sensitivity: "personal",
       cacheScope: "turn",
       roleGate: { minRole: "USER" },

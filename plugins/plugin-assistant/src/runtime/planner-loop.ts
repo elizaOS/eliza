@@ -1185,8 +1185,8 @@ async function runPlannerLoopIterations(
   // committed — accept it instead of burning the remaining budget on the
   // heuristic's guess (observed live: 4 identical REPLYs, ~36s, for a
   // pure-opinion ask force-planned by an inferred web candidate). Model-
-  // emitted requirements and strong deterministic coding-work inferences keep
-  // the full corrective budget.
+  // emitted requirements and the inferences keepsFullRequiredToolBudget names
+  // (coding and media generation) keep the full corrective budget.
   let lastMissAnswerText: string | undefined;
   const heuristicRequiredToolEvidence =
     params.requiredToolEvidence === "inferred";
