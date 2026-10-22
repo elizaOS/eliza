@@ -3,6 +3,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { Container, getContainer } from "@cloudflare/containers";
 import { LoginAggregations } from "./aggregation";
+import { verifiedProxyClientIp } from "./client-ip";
 import { LoginRateLimits } from "./rate-limit";
 
 import { LoginSpendMetrics } from "./spend-metrics";
@@ -100,13 +101,21 @@ export default {
       );
     }
     const headers = new Headers(request.headers);
-    // Only the Cloudflare edge may supply client network identity. Never pass
-    // a caller-controlled forwarding chain into the login abuse limiter.
+    // Trust the edge or a signed first-party proxy assertion, never a caller
+    // forwarding chain. Cross-zone Worker fetches otherwise share one address.
     headers.delete("forwarded");
     headers.delete("x-real-ip");
     headers.delete("x-envoy-external-address");
     headers.delete("x-forwarded-for");
-    const clientIp = request.headers.get("CF-Connecting-IP");
+    const clientIp =
+      verifiedProxyClientIp(request, env.STEWARD_REQUEST_SIGNING_SECRET) ??
+      request.headers.get("CF-Connecting-IP");
+    for (const name of [
+      "x-steward-client-ip",
+      "x-steward-client-ip-expires",
+      "x-steward-client-ip-signature",
+    ])
+      headers.delete(name);
     if (clientIp) headers.set("x-forwarded-for", clientIp);
     return getContainer(env.LOGIN, "login").fetch(
       new Request(request, { headers }),

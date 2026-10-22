@@ -109,3 +109,34 @@ export async function signStewardMutatingRequest(
   const signature = await hmacSha256Hex(secret, canonical);
   headers.set("x-steward-signature", `v1=${signature}`);
 }
+
+/** Bind the edge-observed client address to this upstream request across zones. */
+export async function signStewardClientIp(
+  secret: string | null,
+  method: string,
+  pathAndSearch: string,
+  headers: Headers,
+  edgeClientIp: string | undefined,
+): Promise<void> {
+  // Never relay a caller's assertion, including when this host has no signer.
+  for (const name of [
+    "x-steward-client-ip",
+    "x-steward-client-ip-expires",
+    "x-steward-client-ip-signature",
+  ])
+    headers.delete(name);
+  if (!secret || !edgeClientIp) return;
+  const expiry = String(Date.now() + REQUEST_TTL_SECONDS * 1000);
+  // Keep the domain-separated payload aligned with login's verifiedProxyClientIp.
+  const payload = JSON.stringify([
+    "steward-client-ip-v1",
+    method.toUpperCase(),
+    pathAndSearch,
+    expiry,
+    edgeClientIp,
+  ]);
+  const signature = await hmacSha256Hex(secret, payload);
+  headers.set("x-steward-client-ip", edgeClientIp);
+  headers.set("x-steward-client-ip-expires", expiry);
+  headers.set("x-steward-client-ip-signature", signature);
+}

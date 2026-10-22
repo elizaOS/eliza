@@ -202,6 +202,9 @@ on Railway; use its external connection endpoint from Cloudflare. Retire only
 the application services after cutover, preserving the database services.
 
 The edge overwrites forwarding headers and the container trusts one proxy hop.
+Cloud's proxy signs its edge-observed client IP with the existing shared
+`STEWARD_REQUEST_SIGNING_SECRET`; deploy this proxy before routing cross-zone
+traffic to login, preserving independent client rate-limit buckets.
 Set `STEWARD_RATE_LIMIT_URL` to the login Worker's `/internal/rate-limit` URL and
 set the same `STEWARD_RATE_LIMIT_TOKEN` secret on that Worker. Vault and proxy
 sliding-window admission then uses its durable SQLite counter store. Missing or
