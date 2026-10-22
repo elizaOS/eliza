@@ -325,6 +325,7 @@ describe("webSearchEdgePlugin", () => {
         });
         expect(callback).toHaveBeenCalledWith({
             text: "Web search is temporarily unavailable.",
+            transcriptVisibility: "internal",
         });
     });
 
@@ -339,7 +340,7 @@ describe("webSearchEdgePlugin", () => {
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it("reports runner failures through the channel callback", async () => {
+    it("keeps runner failures internal to the conversation", async () => {
         const callback = vi.fn();
         globalThis.fetch = vi.fn(
             async () => new Response("unavailable", { status: 503 })
@@ -354,10 +355,11 @@ describe("webSearchEdgePlugin", () => {
         expect(callback).toHaveBeenCalledOnce();
         expect(callback).toHaveBeenCalledWith({
             text: "Web search is temporarily unavailable.",
+            transcriptVisibility: "internal",
         });
     });
 
-    it("reports injected runner failures through the channel callback", async () => {
+    it("keeps injected runner failures internal to the conversation", async () => {
         const callback = vi.fn();
         const controller = new AbortController();
         const [action] =
@@ -386,6 +388,7 @@ describe("webSearchEdgePlugin", () => {
         expect(callback).toHaveBeenCalledOnce();
         expect(callback).toHaveBeenCalledWith({
             text: "The authorized public read is unavailable.",
+            transcriptVisibility: "internal",
         });
     });
 });

@@ -3,7 +3,7 @@
  * Protocol uses fd 3; diagnostics never reach callers.
  *
  * Environment: ELIZA_INFERENCE_LIBRARY + ELIZA_INFERENCE_LIBRARY_SHA256, and an
- * absolute ELIZA_PARADEE_MODEL_DIR holding the pinned `paradee-8m-v1_0.gguf`
+ * absolute ELIZA_PARADEE_MODEL_DIR holding the pinned `paradee-8m-v1_1.gguf`
  * and `misaki-en-us.lex`. Text is phonemized by the native misaki G2P; no
  * ONNX, no host phonemizer, no download and no cloud fallback. When the
  * directory also holds the pinned eSpeak NG 1.52.0 English data in
@@ -37,8 +37,8 @@ import { loadElizaInferenceFfi } from "./services/voice/ffi-bindings";
  */
 export const PARADEE_ASSETS: readonly PinnedSpeechAsset[] = [
 	{
-		path: "paradee-8m-v1_0.gguf",
-		sha256: "357477651abb53b3fb1911a6e932026f3f1697fd772668326152e3ca04c9be27",
+		path: "paradee-8m-v1_1.gguf",
+		sha256: "f205ab055f0120d571aa6fda2deadde1e6fbc88e8d8bd56a592917fd0e50892e",
 		bytes: 32_072_768,
 	},
 	{

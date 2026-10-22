@@ -1,9 +1,10 @@
 {
   "paradee": {
-    "path": "tts/paradee/paradee-8m-v1_0.gguf",
-    "source": "llama.cpp tools/paradee/convert_paradee_pt_to_gguf.py --outtype f32 from the sahilmahendrakar/Paradee-8M-v1.0 files pinned in tools/paradee/pins.json",
-    "bytes": 32072768,
-    "sha256": "357477651abb53b3fb1911a6e932026f3f1697fd772668326152e3ca04c9be27",
+    "version": "1.1",
+    "path": "tts/paradee/paradee-8m-v1_1.gguf",
+    "source": "llama.cpp tools/paradee/convert_paradee_pt_to_gguf.py --version 1.1 --outtype f32 from the sahilmahendrakar/Paradee-8M-v1.1 files pinned in tools/paradee/pins.json",
+    "bytes": 31275232,
+    "sha256": "f205ab055f0120d571aa6fda2deadde1e6fbc88e8d8bd56a592917fd0e50892e",
     "license": "Apache-2.0"
   },
   "lexicon": {
