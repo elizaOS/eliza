@@ -786,7 +786,7 @@ try {
     plannedTask = await runtime.observe(
       plannedTask.id,
       plannedTask.revision,
-      true,
+      false,
     );
     assert.equal(
       (await workflow.refresh()).kind,
@@ -796,6 +796,18 @@ try {
     permitted = true;
     let decision = await workflow.refresh();
     assert.equal(decision.kind, "agent-action");
+    permitted = false;
+    assert.equal(
+      (await workflow.executeAction(decision.offerKey)).kind,
+      "blocked",
+    );
+    assert.equal(
+      runtime.get(plannedTask.id).operations.length,
+      0,
+      "Revoked host permission prevents dispatch",
+    );
+    permitted = true;
+    decision = await workflow.refresh();
     await page.select("#language", "opaque-en");
     decision = await workflow.executeAction(decision.offerKey);
     assert.equal(

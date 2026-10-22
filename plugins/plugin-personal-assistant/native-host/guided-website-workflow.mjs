@@ -331,6 +331,10 @@ function validManualActivity(activity) {
  * control herself. The only effect the workflow can cause is one fill of a
  * value the host holds, into one empty ordinary field, after she agrees
  * (`fill`). It re-reads the page before and after that fill.
+ * A host can explicitly opt into planned actions with `authorizeAction`. The
+ * planner may then propose an `agent-action`; `executeAction` rechecks host
+ * authority and page identity before the task runtime dispatches one effect.
+ * The host remains responsible for consequence policy and readback verification.
  *
  * It stops and asks when the website did something nobody asked for (a form
  * sent while the website was hers, or a submit or page change after a task
@@ -761,6 +765,7 @@ export class GuidedWebsiteWorkflow {
       this.offer = {
         key: decision.offerKey,
         kind: decision.kind,
+        plan: agentAction ? structuredClone(plan) : null,
         action: agentAction ? plan.action : "fill",
         ref: control.ref,
         selector: control.element.targetSelector,
@@ -824,13 +829,13 @@ export class GuidedWebsiteWorkflow {
         false,
         this.stillAuthorized,
       );
-    const { observation, snapshot } = this.actuator.readObservation(
+    let { observation, snapshot } = this.actuator.readObservation(
       task.id,
       this.runtime.owner,
     );
     if (snapshot.effectViolation !== undefined)
       return this.pauseForEffectViolation();
-    const target = pageControls(snapshot).controls.find(
+    let target = pageControls(snapshot).controls.find(
       (control) =>
         control.ref === offer.ref &&
         control.element.targetSelector === offer.selector,
@@ -838,6 +843,36 @@ export class GuidedWebsiteWorkflow {
     if (policySnapshotKey(snapshot) !== offer.fingerprint || !target) {
       this.offer = null;
       return this.refresh();
+    }
+    if (kind === "agent-action") {
+      const checked = await this.decideOnFreshPage(
+        { observation, snapshot },
+        (current) => {
+          const index = pageControls(current),
+            view = pageView(current, index);
+          return this.authorizeAction({
+            plan: offer.plan,
+            control: view.controls.find((c) => c.ref === offer.ref),
+            page: view,
+          });
+        },
+        { taskChanged: this.words.changed, pageChanged: this.words.changed },
+      );
+      if (checked.result) return checked.result;
+      if (checked.decision !== true) {
+        this.offer = null;
+        return blocked(this.words.noTarget);
+      }
+      ({ observation, snapshot } = checked);
+      target = pageControls(snapshot).controls.find(
+        (c) =>
+          c.ref === offer.ref && c.element.targetSelector === offer.selector,
+      );
+      if (!target) {
+        this.offer = null;
+        return this.refresh();
+      }
+      task = this.runtime.get(this.taskId);
     }
     await this.requireAuthority();
     this.offer = null;
