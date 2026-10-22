@@ -27,7 +27,11 @@ function runtimeRecordingLegacyBodies(seen: string[]): IAgentRuntime {
         rawPath: true,
         handler: async (req, res) => {
           const chunks: Buffer[] = [];
-          for await (const chunk of req) chunks.push(Buffer.from(chunk));
+          // RouteRequest has no stream members in its type, but the legacy shim
+          // hands the handler a real Readable so req.on("data") keeps working.
+          for await (const chunk of req as unknown as AsyncIterable<Buffer>) {
+            chunks.push(Buffer.from(chunk));
+          }
           const text = Buffer.concat(chunks).toString("utf8");
           seen.push(text);
           res.json({ bytes: text.length });
