@@ -724,11 +724,17 @@ export class GuidedWebsiteWorkflow {
       (!["fill", "select"].includes(plan.action) ||
         typeof plan.valueRef === "string") &&
       typeof this.authorizeAction === "function" &&
-      (await this.authorizeAction({
-        plan,
-        control: view,
-        page: pageView(snapshot, { controls, protectedFields: [] }),
-      })) === true;
+      (await awaitPolicy(
+        this.authorizeAction(
+          {
+            plan,
+            control: view,
+            page: pageView(snapshot, { controls, protectedFields: [] }),
+          },
+          { signal: this.signal, taskId: this.taskId },
+        ),
+        this.signal,
+      )) === true;
     // A model cannot grant itself an action. The host must opt in for this step;
     // dispatch rechecks the exact observed page and the runtime's capability grant.
     if (plan.kind === "agent-action" && !agentAction) {
