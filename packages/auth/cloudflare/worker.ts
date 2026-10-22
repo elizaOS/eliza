@@ -19,6 +19,27 @@ interface Env {
   [key: string]: unknown;
 }
 
+const REQUIRED_RUNTIME_SETTINGS = [
+  "DATABASE_URL",
+  "STEWARD_MASTER_PASSWORD",
+  "STEWARD_JWT_SECRET",
+  "STEWARD_KDF_SALT",
+  "STEWARD_AUDIT_HMAC_KEY",
+] as const;
+
+async function stopInactiveRuntime(env: Env): Promise<void> {
+  // A newly provisioned state service has no login credentials or running process.
+  if (
+    !REQUIRED_RUNTIME_SETTINGS.every(
+      (key) => typeof env[key] === "string" && (env[key] as string).trim(),
+    )
+  )
+    return;
+  // stop() sends SIGTERM; the runtime drains persisted webhook deliveries.
+  // Operators must observe stopped state before transferring writer ownership.
+  await getContainer(env.LOGIN, "login").stop();
+}
+
 export class LoginContainer extends Container<Env> {
   defaultPort = 3200;
   sleepAfter = "30m";
@@ -29,13 +50,7 @@ export class LoginContainer extends Container<Env> {
     for (const [key, value] of Object.entries(env)) {
       if (typeof value === "string") values[key] = value;
     }
-    for (const key of [
-      "DATABASE_URL",
-      "STEWARD_MASTER_PASSWORD",
-      "STEWARD_JWT_SECRET",
-      "STEWARD_KDF_SALT",
-      "STEWARD_AUDIT_HMAC_KEY",
-    ]) {
+    for (const key of REQUIRED_RUNTIME_SETTINGS) {
       if (!values[key]?.trim())
         throw new Error(`Missing login setting: ${key}`);
     }
@@ -52,6 +67,10 @@ export class LoginContainer extends Container<Env> {
 
 export default {
   async scheduled(_event: ScheduledController, env: Env): Promise<void> {
+    if (env.LOGIN_ENABLED !== "true") {
+      await stopInactiveRuntime(env);
+      return;
+    }
     // Keep the existing runtime scheduler alive to retry persisted webhook
     // deliveries even when the login API receives no foreground traffic.
     const response = await getContainer(env.LOGIN, "login").fetch(
@@ -99,6 +118,10 @@ export default {
       return env.RATE_LIMITS.get(env.RATE_LIMITS.idFromName("login")).fetch(
         request,
       );
+    }
+    if (env.LOGIN_ENABLED !== "true") {
+      await stopInactiveRuntime(env);
+      return new Response("Login deployment inactive", { status: 503 });
     }
     const headers = new Headers(request.headers);
     // Trust the edge or a signed first-party proxy assertion, never a caller

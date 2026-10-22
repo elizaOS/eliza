@@ -30,6 +30,9 @@ name = "eliza-login-staging"
 workers_dev = true
 preview_urls = false
 
+[env.staging.vars]
+LOGIN_ENABLED = "false"
+
 [env.staging.triggers]
 crons = ["* * * * *"]
 
@@ -52,6 +55,9 @@ class_name = "LoginRateLimits"
 name = "eliza-login-production"
 workers_dev = true
 preview_urls = false
+
+[env.production.vars]
+LOGIN_ENABLED = "false"
 
 [env.production.triggers]
 crons = ["* * * * *"]

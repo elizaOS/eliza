@@ -194,6 +194,10 @@ sender after review.
 
 `cloudflare/wrangler.toml` runs the same Bun login server in a Cloudflare
 Container. Deploy staging with `bun run --cwd packages/auth cloudflare:deploy:staging`.
+The runtime stays inactive until deployed with `--var LOGIN_ENABLED:true`.
+State-transfer endpoints remain available while inactive. Deactivating sends SIGTERM
+to a configured runtime; verify the container is stopped before restarting another
+writer. A 503 response alone is not proof that draining has finished.
 Copy the existing environment's identity, vault, signing, provider, and database
 secrets with Wrangler secret bulk input; retain their exact values so accounts,
 sessions, passkeys, and encrypted data remain compatible. Never commit that input.
