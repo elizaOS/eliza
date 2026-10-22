@@ -180,8 +180,25 @@ export function buildLegacyShim(args: {
     if (Buffer.isBuffer(args.body)) return args.body.toString("utf8");
     try {
       return JSON.stringify(args.body);
-    } catch {
-      return "";
+    } catch (error) {
+      // error-policy:J1 context-adding rethrow: a body that cannot be
+      // serialized would otherwise stream zero bytes while `req.body` still
+      // carries the real payload, so a handler reading the raw stream treats a
+      // broken request as an empty one. Surface the failure instead of
+      // fabricating an empty body; the absent-body and string/Buffer paths
+      // above keep the legitimate "no body" semantics untouched.
+      throw new ElizaError(
+        "legacy route request body is not JSON-serializable",
+        {
+          code: "ROUTE_REQUEST_BODY_NOT_SERIALIZABLE",
+          cause: error,
+          context: {
+            method: args.method,
+            path: args.path,
+            bodyType: typeof args.body,
+          },
+        },
+      );
     }
   })();
   const readable = Readable.from(
