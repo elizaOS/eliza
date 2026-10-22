@@ -5,12 +5,10 @@
  * opts a surface into interception. The page may then move within its own origin; a
  * navigation to another origin, a cross-origin redirect included, is cancelled before any
  * request and handed to the host, which loads it with `navigate()` once its check allows it.
- * Non-web schemes and addresses carrying credentials never load. Pure JVM; no Android types.
+ * Non-web schemes and addresses carrying credentials are refused in this callback.
+ * POST submissions and subframes are outside this handoff. Pure JVM; no Android types.
  */
 package ai.eliza.plugins.browsersurface
-
-import java.net.URI
-import java.util.Locale
 
 object BrowserNavigationPolicy {
     enum class Decision {
@@ -26,26 +24,8 @@ object BrowserNavigationPolicy {
 
     fun decide(current: String?, target: String, mainFrame: Boolean): Decision {
         if (!mainFrame) return Decision.ALLOW
-        val next = web(target) ?: return Decision.BLOCK
-        val from = current?.let(::web) ?: return Decision.REQUEST
-        return if (origin(from) == origin(next)) Decision.ALLOW else Decision.REQUEST
-    }
-
-    private fun web(value: String): URI? {
-        val uri = try {
-            URI(value)
-        } catch (error: java.net.URISyntaxException) {
-            // error-policy:J3 A malformed address is refused, never guessed at.
-            return null
-        }
-        val scheme = uri.scheme?.lowercase(Locale.ROOT)
-        if ((scheme != "https" && scheme != "http") || uri.host.isNullOrBlank() || uri.rawUserInfo != null) return null
-        return uri
-    }
-
-    private fun origin(uri: URI): Triple<String, String, Int> {
-        val scheme = uri.scheme.lowercase(Locale.ROOT)
-        val port = if (uri.port != -1) uri.port else if (scheme == "https") 443 else 80
-        return Triple(scheme, uri.host.lowercase(Locale.ROOT).trimEnd('.'), port)
+        val next = BrowserWebOrigin.of(target) ?: return Decision.BLOCK
+        val from = BrowserWebOrigin.of(current) ?: return Decision.REQUEST
+        return if (from == next) Decision.ALLOW else Decision.REQUEST
     }
 }

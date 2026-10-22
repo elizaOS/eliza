@@ -12,7 +12,7 @@ class BrowserNavigationPolicyTest {
     @Test
     fun sameOriginNavigationsLoadByThemselves() {
         assertEquals(Decision.ALLOW, decide("https://en.wikipedia.org/wiki/Main_Page", "https://en.wikipedia.org/wiki/Paris"))
-        assertEquals(Decision.ALLOW, decide("https://Example.com/a", "https://example.com./b?q=1#top"))
+        assertEquals(Decision.ALLOW, decide("https://Example.com/a", "https://example.com/b?q=1#top"))
         assertEquals(Decision.ALLOW, decide("https://example.com/", "https://example.com:443/next"))
         assertEquals(Decision.ALLOW, decide("http://example.com/", "http://example.com:80/next"))
     }
@@ -23,6 +23,7 @@ class BrowserNavigationPolicyTest {
         assertEquals(Decision.REQUEST, decide("https://example.com/", "https://evil.example.net/"))
         assertEquals(Decision.REQUEST, decide("https://example.com/", "http://example.com/"))
         assertEquals(Decision.REQUEST, decide("https://example.com/", "https://example.com:8443/"))
+        assertEquals(Decision.REQUEST, decide("https://example.com/", "https://example.com./next"))
         assertEquals(Decision.REQUEST, decide(null, "https://example.com/"))
         assertEquals(Decision.REQUEST, decide("about:blank", "https://example.com/"))
     }

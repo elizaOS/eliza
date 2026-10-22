@@ -38,8 +38,9 @@ own origin by itself; a main-frame navigation to another origin, a cross-origin 
 included, is cancelled before any request and reported as `navigationRequested`
 (`{id, owner, session, epoch, url, redirect, userGesture}`). The host loads the address
 with `navigate()` once its own check (for example `SubmittedNavigation`) allows it.
-Non-web schemes and addresses with credentials never load. POST form submissions are not
-intercepted. Surfaces created without the option are unchanged.
+Non-web schemes and addresses with credentials are refused when WebView sends them to
+this callback. POST form submissions and subframes are not intercepted. This is a
+navigation handoff, not a network filter. Surfaces created without the option are unchanged.
 
 `parseBrowserAddressInput` (also exported as `./address-input` without bridge
 registration) classifies address-bar text as an HTTP(S) URL, search text, or a

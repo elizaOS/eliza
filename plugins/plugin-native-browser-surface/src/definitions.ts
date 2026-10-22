@@ -51,8 +51,9 @@ export interface CreateSurfaceOptions extends SurfaceOwnerOptions {
    * Android: the page may navigate within its own origin, but a main-frame navigation to
    * another origin (a cross-origin redirect included) is cancelled before any request and
    * reported as `navigationRequested`. The host loads it with `navigate()` once its own
-   * check allows it. Non-web schemes and addresses with credentials never load. POST form
-   * submissions are not intercepted. Default false: the page navigates by itself.
+   * check allows it. Non-web schemes and addresses with credentials are refused in this
+   * callback. POST form submissions and subframes are not intercepted. This is not a
+   * network filter. Default false: the page navigates by itself.
    */
   interceptNavigation?: boolean;
 }
