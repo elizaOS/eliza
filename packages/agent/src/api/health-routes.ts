@@ -747,6 +747,15 @@ export async function handleHealthRoutes(
       agentName: state.agentName,
       model,
       ...(await responseReadinessFields(state.runtime, state.agentState)),
+      // Registration only: turn authorization and provider acceptance are separate.
+      // Project before serialization; never include action metadata or the runtime graph.
+      deviceActionRegistration: !state.runtime
+        ? "runtime_unavailable"
+        : state.runtime.actions.some(
+              (action) => action.name === "PROPOSE_DEVICE_ACTION",
+            )
+          ? "registered"
+          : "missing",
       startedAt: state.startedAt,
       uptime,
       startup: state.startup,
