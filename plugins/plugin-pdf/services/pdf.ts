@@ -269,7 +269,11 @@ export class PdfService extends Service {
         const page = await pdf.getPage(pageNumber);
         const viewport = page.getViewport({ scale: 1 });
         const textContent = await page.getTextContent();
-        const nativeText = this.cleanUpContent(collectTextStrings(textContent.items).join(" "));
+        // Text items are font runs, not words. Join the runs directly and turn a
+        // line end into a space, which is how option extraction already reads the
+        // same items; a space between every run splits a word that a font change
+        // divides ("Re" + "port").
+        const nativeText = this.cleanUpContent(collectTextStrings(textContent.items, " ").join(""));
         const nativePositionedText = collectPositionedTextItems(textContent.items, pageNumber);
         const operatorList = await page.getOperatorList();
         if (!Array.isArray(operatorList.fnArray)) {
@@ -523,7 +527,9 @@ export class PdfService extends Service {
       const viewport = page.getViewport({ scale: 1.0 });
       const textContent = await page.getTextContent();
 
-      const pageText = collectTextStrings(textContent.items).join(" ");
+      // Same run joining as the other extraction paths: font runs concatenate
+      // and only a line end contributes a space.
+      const pageText = collectTextStrings(textContent.items, " ").join("");
 
       pages.push({
         pageNumber: pageNum,
