@@ -46,7 +46,7 @@ export function isCloudflareSpendMetricsConfigured(): boolean {
 }
 
 async function requestSpendMetrics(
-  operation: "record" | "read",
+  operation: "record" | "read" | "replay-record" | "replay-read",
   input: unknown,
 ): Promise<unknown> {
   const configured = configuration();
@@ -142,4 +142,50 @@ export async function readCloudflareSpendMetrics(
     });
   }
   return { total: result.total, hosts: result.hosts as Record<string, number> };
+}
+
+export async function recordCloudflareReplayMetric(
+  tenantId: string,
+  counter: string,
+  now: number,
+  ttlSeconds: number,
+): Promise<void> {
+  const result = await requestSpendMetrics("replay-record", {
+    tenantId,
+    counter,
+    now,
+    ttlSeconds,
+  });
+  if (
+    !result ||
+    typeof result !== "object" ||
+    !("recorded" in result) ||
+    result.recorded !== true
+  )
+    throw new ElizaError("Cloudflare did not acknowledge replay telemetry", {
+      code: "LOGIN_REPLAY_METRICS_RESPONSE_INVALID",
+    });
+}
+export async function readCloudflareReplayMetrics(
+  tenantId: string,
+): Promise<Record<string, string> | null> {
+  const result = await requestSpendMetrics("replay-read", { tenantId });
+  if (result && typeof result === "object" && "fields" in result) {
+    if (result.fields === null) return null;
+    if (
+      result.fields &&
+      typeof result.fields === "object" &&
+      !Array.isArray(result.fields) &&
+      Object.values(result.fields).every(
+        (v: unknown) =>
+          typeof v === "string" &&
+          /^\d+$/.test(v) &&
+          Number.isSafeInteger(Number(v)),
+      )
+    )
+      return result.fields as Record<string, string>;
+  }
+  throw new ElizaError("Cloudflare returned invalid replay telemetry", {
+    code: "LOGIN_REPLAY_METRICS_RESPONSE_INVALID",
+  });
 }

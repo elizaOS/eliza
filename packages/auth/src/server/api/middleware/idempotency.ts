@@ -2,6 +2,11 @@ import { ElizaError, logger } from "@elizaos/core";
 import { createMiddleware } from "hono/factory";
 import { createDatabaseAuthSql } from "../../auth/auth-sql";
 import { PostgresBackend } from "../../auth/store-backends";
+import {
+  isCloudflareSpendMetricsConfigured,
+  readCloudflareReplayMetrics,
+  recordCloudflareReplayMetric,
+} from "../../redis/cloudflare-spend-metrics";
 import { redactedThrownDiagnostics } from "../../shared/index.ts";
 import type { ApiResponse, AppVariables } from "../services/context";
 import { isRecentMfaTimestamp } from "../services/recent-mfa";
@@ -185,10 +190,19 @@ async function recordIdempotencyMetricInRedis(
   counter: keyof IdempotencyMetricCounters,
   now: number,
 ): Promise<void> {
-  const redis = getRedisClient();
-  if (!redis) return;
-  const key = metricsRedisKey(tenantId);
   try {
+    if (isCloudflareSpendMetricsConfigured()) {
+      await recordCloudflareReplayMetric(
+        tenantId,
+        counter,
+        now,
+        metricsTtlSeconds(),
+      );
+      return;
+    }
+    const redis = getRedisClient();
+    if (!redis) return;
+    const key = metricsRedisKey(tenantId);
     const existingWindow = await redis.hget(key, "windowStartedAt");
     const pipeline = redis.multi();
     if (!existingWindow) pipeline.hset(key, "windowStartedAt", String(now));
@@ -200,7 +214,7 @@ async function recordIdempotencyMetricInRedis(
     logger.error(
       {
         details: [
-          "[steward:idempotency] Failed to record Redis idempotency metrics",
+          "[steward:idempotency] Failed to record durable idempotency metrics",
           redactedThrownDiagnostics(error),
         ],
       },
@@ -233,8 +247,11 @@ async function snapshotFromRedis(
   now: number,
 ): Promise<TenantIdempotencyMetricsSnapshot | null> {
   const redis = getRedisClient();
-  if (!redis) return null;
-  const fields = await redis.hgetall(metricsRedisKey(tenantId));
+  const fields = isCloudflareSpendMetricsConfigured()
+    ? await readCloudflareReplayMetrics(tenantId)
+    : redis
+      ? await redis.hgetall(metricsRedisKey(tenantId))
+      : null;
   if (!fields || Object.keys(fields).length === 0) return null;
 
   const counters = emptyIdempotencyCounters();

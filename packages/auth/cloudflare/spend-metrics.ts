@@ -1,5 +1,6 @@
 /** Durable, time-bucketed USD telemetry. PostgreSQL owns vault spend enforcement. */
 import { DurableObject } from "cloudflare:workers";
+import { handleReplayMetrics, initializeReplayMetrics } from "./replay-metrics";
 
 type Bucket = { key: string; ttlSeconds: number };
 type Stored = { total: number; tenant: string; hosts: string };
@@ -17,6 +18,7 @@ const validBucket = (value: unknown): value is Bucket =>
 export class LoginSpendMetrics extends DurableObject<Record<string, unknown>> {
   constructor(ctx: DurableObjectState, env: Record<string, unknown>) {
     super(ctx, env);
+    initializeReplayMetrics(ctx.storage.sql);
     ctx.storage.sql.exec(`CREATE TABLE IF NOT EXISTS spend_metrics (
       key TEXT PRIMARY KEY, total INTEGER NOT NULL, tenant TEXT NOT NULL,
       hosts TEXT NOT NULL, expires_at INTEGER NOT NULL
@@ -31,14 +33,22 @@ export class LoginSpendMetrics extends DurableObject<Record<string, unknown>> {
       "DELETE FROM spend_metrics WHERE expires_at <= ?",
       Date.now(),
     );
+    this.ctx.storage.sql.exec(
+      "DELETE FROM replay_metrics WHERE expires_at <= ?",
+      Date.now(),
+    );
     const { count } = this.ctx.storage.sql
-      .exec<{ count: number }>("SELECT count(*) AS count FROM spend_metrics")
+      .exec<{ count: number }>(
+        "SELECT (SELECT count(*) FROM spend_metrics) + (SELECT count(*) FROM replay_metrics) AS count",
+      )
       .one();
     if (count > 0) await this.ctx.storage.setAlarm(Date.now() + 86_400_000);
   }
 
   async fetch(request: Request): Promise<Response> {
     const operation = new URL(request.url).pathname.split("/").pop();
+    if (operation?.startsWith("replay-"))
+      return handleReplayMetrics(request, this.ctx.storage);
     if (
       request.method !== "POST" ||
       !["record", "read"].includes(operation ?? "")

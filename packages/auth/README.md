@@ -217,6 +217,9 @@ spend telemetry, configure `/internal/spend-metrics` as `STEWARD_SPEND_METRICS_U
 and set matching `STEWARD_SPEND_METRICS_TOKEN`. Transfer live period totals and
 host breakdowns before switching. Vault spend enforcement remains in PostgreSQL;
 this telemetry backend does not implement the unused Redis reservation helpers.
+It also persists replay telemetry. Its authenticated `replay-import` operation
+requires `sourceQuiesced: true`, preserves original expiries, and atomically
+rejects conflicting live counters before publication.
 Point Cloud's `LOGIN_API_URL` at the verified login Worker only after login,
 refresh, logout, provider callbacks, and database readiness pass in staging.
 Preserve the original service until production acceptance and rollback checks pass.
