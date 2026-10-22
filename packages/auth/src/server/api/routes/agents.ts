@@ -3831,7 +3831,7 @@ agentRoutes.delete("/:agentId/key-quorums/:quorumId", async (c) => {
 
 export async function createAgentBatch(
   c: Context<{ Variables: AppVariables }>,
-) {
+): Promise<Response> {
   if (!requireTenantAdminOrApiKey(c)) {
     return c.json<ApiResponse>(
       {
