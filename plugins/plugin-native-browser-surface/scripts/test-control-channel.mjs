@@ -816,7 +816,11 @@ try {
       "Aborted policy work cannot dispatch",
     );
     workflow.signal = new AbortController().signal;
-    workflow.authorizeAction = () => permitted;
+    workflow.authorizeAction = (_input, context) => {
+      assert.equal(context.signal, workflow.signal);
+      assert.equal(context.taskId, plannedTask.id);
+      return permitted;
+    };
     const paused = runtime.get(plannedTask.id);
     await runtime.observe(paused.id, paused.revision, true);
     permitted = true;

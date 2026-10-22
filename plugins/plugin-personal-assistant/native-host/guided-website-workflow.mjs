@@ -853,14 +853,17 @@ export class GuidedWebsiteWorkflow {
     if (kind === "agent-action") {
       const checked = await this.decideOnFreshPage(
         { observation, snapshot },
-        (current) => {
+        (current, context) => {
           const index = pageControls(current),
             view = pageView(current, index);
-          return this.authorizeAction({
-            plan: offer.plan,
-            control: view.controls.find((c) => c.ref === offer.ref),
-            page: view,
-          });
+          return this.authorizeAction(
+            {
+              plan: offer.plan,
+              control: view.controls.find((c) => c.ref === offer.ref),
+              page: view,
+            },
+            context,
+          );
         },
         { taskChanged: this.words.changed, pageChanged: this.words.changed },
       );
