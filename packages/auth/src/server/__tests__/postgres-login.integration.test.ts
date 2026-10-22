@@ -118,6 +118,71 @@ test.skipIf(!databaseUrl)(
         headers: [["content-type", "application/octet-stream"]],
         body: new Uint8Array([0, 128, 255]).buffer,
       });
+      const { transferLoginState } = await import("../auth/store-transfer");
+      const [storedReceipt] = await owner<{ value: string }[]>`
+        SELECT value FROM auth_kv_store WHERE namespace = 'idempotency' AND id = ${receiptKey}
+      `;
+      const transferredKey = `transferred-${receiptKey}`;
+      const transferSnapshot = {
+        capturedAtMs: Date.now(),
+        entries: [
+          {
+            key: `idempotency:${transferredKey}`,
+            value: storedReceipt.value,
+            expiresAtMs: receipt.expiresAt,
+          },
+          {
+            key: "auth:token:transfer-fixture",
+            value: "fixture-refresh-token",
+            expiresAtMs: receipt.expiresAt,
+          },
+          {
+            key: "auth:challenge:expired-transfer",
+            value: "expired",
+            expiresAtMs: Date.now() - 1_000,
+          },
+        ],
+      };
+      expect(
+        await transferLoginState(owner, transferSnapshot, "validate"),
+      ).toMatchObject({ live: 2, applied: false });
+      expect(await receiptStore().get(transferredKey)).toBeUndefined();
+      expect(
+        await transferLoginState(owner, transferSnapshot, "apply-quiesced"),
+      ).toMatchObject({ live: 2, applied: true });
+      expect(await receiptStore().get(transferredKey)).toMatchObject({
+        status: "completed",
+      });
+      const { PostgresBackend } = await import("../auth/store-backends");
+      const importedTokens = new PostgresBackend("token");
+      expect(await importedTokens.get("transfer-fixture")).toBe(
+        "fixture-refresh-token",
+      );
+      const beforeConflict =
+        await owner`SELECT value FROM auth_kv_store WHERE namespace = 'token' AND id = 'transfer-fixture'`;
+      await expect(
+        transferLoginState(
+          owner,
+          {
+            ...transferSnapshot,
+            entries: [
+              {
+                ...transferSnapshot.entries[0],
+                key: "idempotency:must-not-publish",
+              },
+              { ...transferSnapshot.entries[1], value: "conflicting-token" },
+            ],
+          },
+          "apply-quiesced",
+        ),
+      ).rejects.toMatchObject({ code: "LOGIN_STATE_TRANSFER_CONFLICT" });
+      expect(await receiptStore().get("must-not-publish")).toBeUndefined();
+      expect([
+        ...(await owner`SELECT value FROM auth_kv_store WHERE namespace = 'token' AND id = 'transfer-fixture'`),
+      ]).toEqual([...beforeConflict]);
+      expect(
+        await transferLoginState(owner, transferSnapshot, "apply-quiesced"),
+      ).toMatchObject({ live: 2, conflicts: 0 });
       const nonceResponse = await fetch(`${base}/auth/nonce`, {
         headers: { Origin: "https://eliza.app" },
       });

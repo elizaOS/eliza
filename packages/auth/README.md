@@ -205,3 +205,12 @@ The edge overwrites forwarding headers and the container trusts one proxy hop.
 Point Cloud's `LOGIN_API_URL` at the verified login Worker only after login,
 refresh, logout, provider callbacks, and database readiness pass in staging.
 Preserve the original service until production acceptance and rollback checks pass.
+
+For Redis login-state transfer, pipe a JSON snapshot with `capturedAtMs` and
+`entries: [{key, value, expiresAtMs}]` into
+`bun --conditions=eliza-source packages/auth/src/server/migrate-redis-state.ts`.
+It validates without writing. Only after stopping source and destination writers,
+pass `--apply-source-quiesced` to publish atomically. Conflicting live values fail;
+expired records are skipped and existing expiration times are never extended.
+Snapshots contain secrets: keep them out of logs and Git. Other Redis records,
+including enforcement counters and telemetry, need their own transfer.
