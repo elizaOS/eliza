@@ -81,8 +81,9 @@ function parseServiceAccount(raw: string): ServiceAccount | null {
  * push service starts without an Android provider. A credential that IS
  * supplied but cannot be used is a deployment error and is raised instead, so
  * it cannot degrade into that same silent "not configured" state. (A supplied
- * `ELIZA_FCM_SERVICE_ACCOUNT_PATH` that cannot be read already throws from
- * `readFileSync`; this keeps both misconfigurations equally loud.)
+ * `ELIZA_FCM_SERVICE_ACCOUNT_PATH` that cannot be read or that holds an empty
+ * payload throws for the same reason; this keeps both misconfigurations equally
+ * loud.)
  *
  * Exported for the gating check / tests.
  */
@@ -97,6 +98,14 @@ export function readServiceAccount(
     : "ELIZA_FCM_SERVICE_ACCOUNT_PATH";
   if (!raw && path) {
     raw = readFileSync(path, "utf8").trim();
+    if (!raw) {
+      // error-policy:J2 the path variable was supplied, so an empty or
+      // whitespace-only file is an unusable credential, not an absent one.
+      throw new ElizaError(
+        "[FcmProvider] ELIZA_FCM_SERVICE_ACCOUNT_PATH points at an empty FCM service account file",
+        { code: "FCM_SERVICE_ACCOUNT_INVALID", context: { source } },
+      );
+    }
   }
   if (!raw) return null;
   const account = parseServiceAccount(raw);

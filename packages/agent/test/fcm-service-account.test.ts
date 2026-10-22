@@ -3,6 +3,9 @@
  * credential that is present and unusable is a deployment error and must not
  * be reported as "not configured".
  */
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { ElizaError } from "@elizaos/core";
 import { expect, it } from "vitest";
 import { readServiceAccount } from "../src/services/push/fcm-provider.ts";
@@ -50,4 +53,50 @@ it("still accepts a complete service account", () => {
   const account = readServiceAccount({ ELIZA_FCM_SERVICE_ACCOUNT: VALID });
   expect(account?.client_email).toBe("push@example.invalid");
   expect(account?.project_id).toBe("fixture-project");
+});
+
+/** Write `contents` to a fresh temp file and hand it to `run`, then clean up. */
+function withAccountFile(contents: string, run: (path: string) => void): void {
+  const dir = mkdtempSync(join(tmpdir(), "fcm-service-account-"));
+  try {
+    const file = join(dir, "service-account.json");
+    writeFileSync(file, contents, "utf8");
+    run(file);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+it("rejects a supplied credential path whose file is empty", () => {
+  withAccountFile("", (path) => {
+    const error = credentialError({ ELIZA_FCM_SERVICE_ACCOUNT_PATH: path });
+    expect(error.code).toBe("FCM_SERVICE_ACCOUNT_INVALID");
+    expect(error.context?.source).toBe("ELIZA_FCM_SERVICE_ACCOUNT_PATH");
+  });
+});
+
+it("rejects a supplied credential path that holds only whitespace", () => {
+  withAccountFile(" \n\t\n", (path) => {
+    const error = credentialError({ ELIZA_FCM_SERVICE_ACCOUNT_PATH: path });
+    expect(error.code).toBe("FCM_SERVICE_ACCOUNT_INVALID");
+    expect(error.context?.source).toBe("ELIZA_FCM_SERVICE_ACCOUNT_PATH");
+  });
+});
+
+it("rejects a supplied credential path holding malformed JSON", () => {
+  withAccountFile('{"client_email":', (path) => {
+    const error = credentialError({ ELIZA_FCM_SERVICE_ACCOUNT_PATH: path });
+    expect(error.code).toBe("FCM_SERVICE_ACCOUNT_INVALID");
+    expect(error.context?.source).toBe("ELIZA_FCM_SERVICE_ACCOUNT_PATH");
+  });
+});
+
+it("still accepts a complete service account read from a path", () => {
+  withAccountFile(VALID, (path) => {
+    const account = readServiceAccount({
+      ELIZA_FCM_SERVICE_ACCOUNT_PATH: path,
+    });
+    expect(account?.client_email).toBe("push@example.invalid");
+    expect(account?.project_id).toBe("fixture-project");
+  });
 });
