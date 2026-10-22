@@ -83,6 +83,41 @@ test.skipIf(!databaseUrl)(
       process.env.SKIP_MIGRATIONS = "1";
       server = await startLoginServer({ port: 0 });
       let base = `http://127.0.0.1:${server.port}`;
+      const idempotency = await import("../api/middleware/idempotency");
+      expect(idempotency.defaultIdempotencyStore).toBeInstanceOf(
+        idempotency.DatabaseIdempotencyStore,
+      );
+      const receiptStore = () => {
+        const store = idempotency.defaultIdempotencyStore;
+        if (!(store instanceof idempotency.DatabaseIdempotencyStore)) {
+          throw new Error(
+            "Hosted login did not select database replay protection",
+          );
+        }
+        return store;
+      };
+      const receiptKey = `postgres-replay-${randomBytes(8).toString("hex")}`;
+      const receipt = {
+        fingerprint: "authenticated-request-fingerprint",
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 60_000,
+      };
+      const reservations = await Promise.all(
+        Array.from({ length: 12 }, () =>
+          receiptStore().reserve(receiptKey, receipt),
+        ),
+      );
+      expect(reservations.filter((entry) => entry === undefined)).toHaveLength(
+        1,
+      );
+      expect(
+        reservations.filter((entry) => entry?.status === "processing"),
+      ).toHaveLength(11);
+      await receiptStore().setCompleted(receiptKey, {
+        status: 201,
+        headers: [["content-type", "application/octet-stream"]],
+        body: new Uint8Array([0, 128, 255]).buffer,
+      });
       const nonceResponse = await fetch(`${base}/auth/nonce`, {
         headers: { Origin: "https://eliza.app" },
       });
@@ -129,6 +164,19 @@ test.skipIf(!databaseUrl)(
       server = undefined;
       server = await startLoginServer({ port: 0 });
       base = `http://127.0.0.1:${server.port}`;
+      const replay = await receiptStore().get(receiptKey);
+      expect(replay?.status).toBe("completed");
+      expect(replay?.response?.status).toBe(201);
+      expect(
+        new Uint8Array(replay?.response?.body ?? new ArrayBuffer(0)),
+      ).toEqual(new Uint8Array([0, 128, 255]));
+      expect(await receiptStore().reserve(receiptKey, receipt)).toMatchObject({
+        status: "completed",
+      });
+      await owner`UPDATE auth_kv_store SET expires_at = now() - interval '1 second'
+        WHERE namespace = 'idempotency' AND id = ${receiptKey}`;
+      expect(await receiptStore().reserve(receiptKey, receipt)).toBeUndefined();
+      await receiptStore().delete(receiptKey);
       const headers = {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",

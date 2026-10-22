@@ -24,6 +24,8 @@ Use these barrels in repository consumers. Explicit old account/vault paths and
 Hosted login uses `postgres-js`; embedded login owns PGlite. Unsupported database
 drivers fail explicitly. Runtime shutdown drains webhook deliveries before closing
 its database, Redis connection and configuration-dependent vault cache.
+Without configured Redis, hosted and embedded login keep request replay receipts
+in their existing database store. A configured Redis outage does not switch stores.
 
 ## Development
 
