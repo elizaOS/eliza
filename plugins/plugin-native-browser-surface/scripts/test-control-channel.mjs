@@ -116,7 +116,15 @@ try {
         throw Object.assign(new Error(body.error), { code: body.code });
       return body;
     },
-    handleCommand: (input) => nativeDispatch(input.command, input.extra),
+    handleCommand: async (input) => {
+      const reply = await nativeDispatch(input.command, input.extra);
+      // Match the Android reply proxy, which rejects native error results.
+      if (reply.result.error)
+        throw Object.assign(new Error(reply.result.error.message), {
+          code: reply.result.error.kind,
+        });
+      return reply;
+    },
   });
   connection = { connectionId: client.connectionId };
   assert.equal(
@@ -160,40 +168,34 @@ try {
   assert.equal((await dispatch(click)).result.dispatched, true);
   assert.equal(await page.$eval("output", (node) => node.textContent), "1");
   const consumed = sequence;
-  assert.equal(
-    (await dispatch(click, { sequence: consumed })).result.error.kind,
-    "STALE_REF",
-  );
+  await assert.rejects(dispatch(click, { sequence: consumed }), {
+    code: "STALE_REF",
+  });
   assert.equal(await page.$eval("output", (node) => node.textContent), "1");
   state = await snapshot();
   const fill = action(state, "fill", "#query", { text: "Wikipedia" });
-  assert.equal(
-    (await dispatch(fill, { documentId: "retired-document" })).result.error
-      .kind,
-    "STALE_REF",
-  );
+  await assert.rejects(dispatch(fill, { documentId: "retired-document" }), {
+    code: "STALE_REF",
+  });
   assert.equal(await page.$eval("#query", (node) => node.value), "");
-  assert.equal(
-    (await dispatch({ ...fill, taskPolicy: null })).result.error.kind,
-    "POLICY_BLOCKED",
-  );
+  await assert.rejects(dispatch({ ...fill, taskPolicy: null }), {
+    code: "POLICY_BLOCKED",
+  });
   assert.equal((await dispatch(fill)).result.dispatched, true);
   assert.equal(await page.$eval("#query", (node) => node.value), "Wikipedia");
   state = await snapshot();
   await page.type("#query", " by hand");
-  assert.equal(
-    (await dispatch(action(state, "fill", "#query", { text: "overwrite" })))
-      .result.error.kind,
-    "STALE_REF",
+  await assert.rejects(
+    dispatch(action(state, "fill", "#query", { text: "overwrite" })),
+    { code: "STALE_REF" },
   );
   assert.equal(
     await page.$eval("#query", (node) => node.value),
     "Wikipedia by hand",
   );
-  assert.equal(
-    (await dispatch({ subaction: "evaluate", script: "alert(1)" })).result.error
-      .kind,
-    "UNSUPPORTED",
+  await assert.rejects(
+    dispatch({ subaction: "evaluate", script: "alert(1)" }),
+    { code: "UNSUPPORTED" },
   );
   // A website can define the same names in its world without replacing the
   // channel, its sequence or the snapshot node references.
