@@ -1781,6 +1781,7 @@
         process: "shared",
         storage: "shared",
         url: "about:blank",
+        interceptNavigation: descriptor.surfaceControl === true,
       });
       try {
         const state = await call("getSurfaceState", { ...identity, id });
@@ -1927,7 +1928,7 @@
             "native control excludes password values",
           );
           const taskPolicy = {
-            origin: "https://native-control.example",
+            origin: window.nativeBrowserControlOrigin,
             expiresAt: Date.now() + 60000,
             targets: [
               { selector: "#query", action: "fill" },
@@ -2014,6 +2015,86 @@
             resumed,
             activityResumed,
           };
+          const requested = [];
+          const navigationListener = window.Capacitor.addListener(
+            descriptor.name,
+            "navigationRequested",
+            (event) => requested.push(event),
+          );
+          try {
+            const clickLink = async (selector) => {
+              const read = await snapshot();
+              const input = command(read, "click", selector);
+              input.command.taskPolicy = {
+                ...taskPolicy,
+                targets: [{ selector, action: "click" }],
+              };
+              try {
+                assert(
+                  (await call("controlPage", input)).result.dispatched,
+                  "navigation link click dispatched",
+                );
+              } catch (error) {
+                // Navigation can retire a delivered click before its reply arrives.
+                if (error.code !== "UNCERTAIN_OUTCOME") throw error;
+              }
+            };
+            await clickLink("#same-origin");
+            const sameDeadline = Date.now() + 5000;
+            let same;
+            do {
+              same = await call("getSurfaceState", { ...identity, id });
+              if (same.currentUrl.endsWith("/same")) break;
+              await new Promise((resolve) => setTimeout(resolve, 50));
+            } while (Date.now() < sameDeadline);
+            assert(
+              same.currentUrl === `${taskPolicy.origin}/same` &&
+                requested.length === 0,
+              `same-origin page link loads without host approval: ${JSON.stringify({ same, requested })}`,
+            );
+            await clickLink("#cross-origin");
+            const requestDeadline = Date.now() + 5000;
+            while (!requested.length && Date.now() < requestDeadline)
+              await new Promise((resolve) => setTimeout(resolve, 50));
+            assert(
+              requested.length === 1 &&
+                requested[0].url ===
+                  `${taskPolicy.origin.replace("127.0.0.1", "localhost")}/next` &&
+                requested[0].id === id &&
+                requested[0].session === identity.session &&
+                requested[0].owner === identity.owner &&
+                requested[0].epoch === identity.epoch,
+              "cross-origin page link emits the current owner's approval request",
+            );
+            assert(
+              (await call("getSurfaceState", { ...identity, id }))
+                .currentUrl === same.currentUrl,
+              "unapproved cross-origin link leaves the current native page in place",
+            );
+            await call("navigate", { ...identity, id, url: requested[0].url });
+            await waitForPage("Approved fixture");
+            assert(
+              requested.length === 1,
+              "explicit host navigation is not intercepted again",
+            );
+            await call("navigate", {
+              ...identity,
+              id,
+              url: `${taskPolicy.origin}/redirect`,
+            });
+            const redirectDeadline = Date.now() + 5000;
+            while (requested.length < 2 && Date.now() < redirectDeadline)
+              await new Promise((resolve) => setTimeout(resolve, 50));
+            assert(
+              requested.length === 2 &&
+                requested[1].redirect === true &&
+                requested[1].url === requested[0].url,
+              "cross-origin HTTP redirect waits for another host decision",
+            );
+            window.nativeBrowserEvidence.interception = { same, requested };
+          } finally {
+            (await navigationListener).remove();
+          }
         }
       } finally {
         await call("destroySurface", { ...identity, id });

@@ -32,6 +32,16 @@ The plugin owns the Chromium native-messaging AIDL definitions. Host apps use
 the library classes and must not compile duplicate copies of those definitions.
 Eliza retains its existing service component as a thin subclass of this relay.
 
+Android surfaces may opt in to navigation interception with
+`createSurface({ ..., interceptNavigation: true })`. The page then navigates within its
+own origin by itself; a main-frame navigation to another origin, a cross-origin redirect
+included, is cancelled before any request and reported as `navigationRequested`
+(`{id, owner, session, epoch, url, redirect, userGesture}`). The host loads the address
+with `navigate()` once its own check (for example `SubmittedNavigation`) allows it.
+Non-web schemes and addresses with credentials are refused when WebView sends them to
+this callback. POST form submissions and subframes are not intercepted. This is a
+navigation handoff, not a network filter. Surfaces created without the option are unchanged.
+
 `parseBrowserAddressInput` (also exported as `./address-input` without bridge
 registration) classifies address-bar text as an HTTP(S) URL, search text, or a
 rejection reason. Hosts supply the inferred protocol and own aliases, search
@@ -74,6 +84,10 @@ Android installation or the native reply proxy. The generated native asset share
 the existing browser command implementation; `build` regenerates it and
 `node plugins/plugin-native-browser-surface/scripts/build-control-channel.mjs --check`
 checks that it is current.
+The same test routes commands through the authenticated native-host HTTP gateway
+and surface client. It checks complete observations, real click/fill readback,
+and an effect whose reply is lost without delivering that command again. The
+native host transport still needs product task and page ownership composition.
 Run the native bridge flow with `--surface-control` on the Android test command
 above. It uses a local synthetic document, checks real click/fill readback, stale
 references and document IDs, and hides/restores the same page. This lane requires

@@ -28,6 +28,7 @@ import {
   writePrivateRuntimeJson,
 } from "./private-runtime-launch.mjs";
 import { createRuntimeSupervisor } from "./runtime-supervisor.mjs";
+import { createSurfaceCommandChannel } from "./surface-channel.mjs";
 
 test("private launch persists token, preserves user config and isolates actual child environment", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "private-launch-"));
@@ -705,4 +706,102 @@ test("private JSON rejects a real FIFO without blocking on a writer", async (t) 
     ],
     { timeout: 5000 },
   );
+});
+
+test("embedded surface HTTP channel fences account replacement, cancellation, late replies and complete observations", async () => {
+  let account = "owner-a";
+  const channel = createSurfaceCommandChannel({
+    credentialGate: async () => account,
+  });
+  const server = createLocalAgentGateway({
+    token: "agent-authority",
+    inboundToken: "host-authority",
+    hostPolicy: policy,
+    surfaceChannel: channel,
+  });
+  const origin = await listen(server);
+  const send = async (path, body, token = "host-authority") => {
+    const response = await fetch(`${origin}/browser/surface/${path}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    return { status: response.status, body: await response.json() };
+  };
+  try {
+    assert.equal(
+      (await send("connect", { clientId: "a", epoch: 1 }, "wrong")).status,
+      401,
+    );
+    const a = (await send("connect", { clientId: "a", epoch: 1 })).body;
+    const controller = new AbortController();
+    const notSent = channel.request(
+      { subaction: "click" },
+      { effect: true, signal: controller.signal },
+    );
+    const notSentFailure = assert.rejects(notSent, { code: "STALE_REF" });
+    await new Promise((resolve) => setImmediate(resolve));
+    controller.abort();
+    await notSentFailure;
+    assert.equal((await send("pull", a)).body.command, null);
+    const effect = channel.request({ subaction: "fill" }, { effect: true });
+    const uncertain = assert.rejects(effect, { code: "UNCERTAIN_OUTCOME" });
+    const delivered = (await send("pull", a)).body.command;
+    assert.equal(
+      (
+        await send("reply", {
+          ...a,
+          connectionId: "foreign",
+          id: delivered.id,
+          result: {},
+        })
+      ).status,
+      409,
+    );
+    account = "owner-b";
+    assert.equal(
+      (await send("reply", { ...a, id: delivered.id, result: {} })).status,
+      409,
+    );
+    await uncertain;
+    const b = (await send("connect", { clientId: "b", epoch: 2 })).body;
+    assert.equal((await send("close", a)).status, 409);
+    assert.equal(
+      (await send("connect", { clientId: "a", epoch: 1 })).status,
+      409,
+    );
+    const reading = channel.request(
+      { subaction: "snapshot" },
+      { effect: false },
+    );
+    const read = (await send("pull", b)).body.command;
+    const observation = {
+      documentId: "fresh",
+      text: "Complete page text. ".repeat(10000),
+    };
+    assert.equal(
+      (await send("reply", { ...b, id: read.id, result: observation })).status,
+      200,
+    );
+    assert.deepEqual(await reading, observation);
+    assert.equal(
+      (await send("reply", { ...b, id: read.id, result: observation })).status,
+      409,
+    );
+    const pending = channel.request({ subaction: "click" }, { effect: true });
+    const ended = assert.rejects(pending, { code: "UNCERTAIN_OUTCOME" });
+    await send("pull", b);
+    channel.revoke();
+    await ended;
+    assert.equal(
+      (await send("connect", { clientId: "b", epoch: 2 })).status,
+      409,
+    );
+  } finally {
+    channel.close();
+    await close(server);
+  }
 });

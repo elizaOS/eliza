@@ -281,7 +281,7 @@
     "@elizaos/plugin-workflow": "workspace:*",
     "@noble/curves": "2.2.0",
     "@noble/hashes": "2.2.0",
-    "drizzle-orm": "0.45.3",
+    "drizzle-orm": "0.45.4",
     "esbuild": "^0.28.0",
     "ethers": "^6.16.0",
     "hono": "^4.13.11",

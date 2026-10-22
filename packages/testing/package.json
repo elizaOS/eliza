@@ -92,7 +92,7 @@
     "@playwright/test": "^1.64.1",
     "bun-types": "1.4.2",
     "drizzle-kit": "^0.31.10",
-    "drizzle-orm": "0.45.3",
+    "drizzle-orm": "0.45.4",
     "@octokit/rest": "^22.0.0"
   },
   "elizaos": {

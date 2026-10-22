@@ -809,7 +809,7 @@ export async function tenantAuth(
   c: Context<{ Variables: AppVariables }>,
   next: Next,
   options?: { requireTenantMatch?: string; bindTenantDatabase?: boolean },
-) {
+): Promise<Response | void> {
   const authHeader = c.req.header("Authorization");
   if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.slice(7);
@@ -1084,7 +1084,7 @@ export async function tenantAuth(
 export async function sessionAuth(
   c: Context<{ Variables: AppVariables }>,
   next: Next,
-) {
+): Promise<Response | void> {
   const authHeader = c.req.header("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
     return c.json<ApiResponse>(
@@ -1202,7 +1202,7 @@ export function requireTenantLevel(
 export async function dashboardAuthMiddleware(
   c: Context<{ Variables: AppVariables }>,
   next: Next,
-) {
+): Promise<Response | void> {
   const authHeader = c.req.header("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
     return c.json<ApiResponse>(

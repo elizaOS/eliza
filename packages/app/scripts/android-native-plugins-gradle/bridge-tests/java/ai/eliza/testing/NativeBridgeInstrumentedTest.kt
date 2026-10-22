@@ -36,6 +36,42 @@ class NativeBridgeTestActivity : BridgeActivity() {
 
 @RunWith(AndroidJUnit4::class)
 class NativeBridgeInstrumentedTest {
+    private var browserFixture: java.net.ServerSocket? = null
+    private val approvedPageRequests = java.util.concurrent.atomic.AtomicInteger(0)
+
+    @org.junit.After
+    fun closeBrowserFixture() { browserFixture?.close() }
+
+    private fun browserFixtureOrigin(): String {
+        val server = java.net.ServerSocket(0, 8, java.net.InetAddress.getByName("127.0.0.1"))
+        browserFixture = server
+        val origin = "http://127.0.0.1:${server.localPort}"
+        kotlin.concurrent.thread(isDaemon = true, name = "native-browser-fixture") {
+            while (!server.isClosed) {
+                val socket = try { server.accept() } catch (error: java.net.SocketException) {
+                    if (server.isClosed) break else throw error
+                }
+                socket.use {
+                    it.soTimeout = 5000
+                    val input = it.getInputStream().bufferedReader()
+                    val path = input.readLine().split(" ")[1]
+                    if (path == "/next") approvedPageRequests.incrementAndGet()
+                    while (!input.readLine().isNullOrEmpty()) { }
+                    val other = "http://localhost:${server.localPort}/next"
+                    val response = if (path == "/redirect") {
+                        "HTTP/1.1 302 Found\r\nLocation: $other\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    } else {
+                        val title = when (path) { "/same" -> "Same fixture"; "/next" -> "Approved fixture"; else -> "Control fixture" }
+                        val body = """<!doctype html><title>$title</title><label>Search query<input id="query"></label><input type="password" value="private-control-value"><button type="button" id="increment" onclick="document.querySelector('output').textContent++">Increment</button><output>0</output><a id="same-origin" href="$origin/same">Same origin</a><a id="cross-origin" href="$other">Other origin</a><script>window.elizaSurfaceControl={postMessage(){throw new Error("page-owned channel")}};window.__elizaBrowserControlV1={snapshotId:"page-owned snapshot"};</script>"""
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${body.toByteArray().size}\r\nConnection: close\r\n\r\n$body"
+                    }
+                    it.getOutputStream().write(response.toByteArray())
+                }
+            }
+        }
+        return origin
+    }
+
     private fun evaluate(scenario: ActivityScenario<NativeBridgeTestActivity>, script: String): String {
         val latch = CountDownLatch(1)
         var value = "null"
@@ -186,6 +222,8 @@ class NativeBridgeInstrumentedTest {
                     }
                     if (evaluate(scenario, "window.nativeBrowserControlFixtureRequested === true") == "true") {
                         evaluate(scenario, "window.nativeBrowserControlFixtureRequested = false")
+                        val origin = browserFixtureOrigin()
+                        evaluate(scenario, "window.nativeBrowserControlOrigin = ${JSONObject.quote(origin)}")
                         scenario.onActivity { activity ->
                             val pages = mutableListOf<android.webkit.WebView>()
                             fun visit(view: android.view.View) {
@@ -194,11 +232,7 @@ class NativeBridgeInstrumentedTest {
                             }
                             visit(activity.window.decorView)
                             check(pages.size == 1)
-                            pages.single().loadDataWithBaseURL(
-                                "https://native-control.example/",
-                                """<!doctype html><title>Control fixture</title><label>Search query<input id="query"></label><input type="password" value="private-control-value"><button type="button" id="increment" onclick="document.querySelector('output').textContent++">Increment</button><output>0</output><script>window.elizaSurfaceControl={postMessage(){throw new Error("page-owned channel")}};window.__elizaBrowserControlV1={snapshotId:"page-owned snapshot"};</script>""",
-                                "text/html", "UTF-8", "https://native-control.example/",
-                            )
+                            pages.single().loadUrl("$origin/")
                         }
                     }
                     val captureRaw = evaluate(scenario, "JSON.stringify(window.nativeBrowserCapture || null)")
@@ -256,6 +290,10 @@ class NativeBridgeInstrumentedTest {
                     if (descriptor.getString("directory") == "plugin-native-browser-surface") {
                         val evidence = evaluate(scenario, "JSON.stringify(window.nativeBrowserEvidence)")
                         result.put("browser", JSONObject(JSONTokener(evidence).nextValue() as String))
+                        if (descriptor.getBoolean("surfaceControl")) {
+                            assertEquals("Only the approved host load may request the other origin", 1, approvedPageRequests.get())
+                            result.put("approvedPageRequests", approvedPageRequests.get())
+                        }
                         InstrumentationRegistry.getInstrumentation().sendStatus(2, Bundle().apply {
                             putString("nativeArtifactName", "browser-navigation.json")
                             putString("nativeArtifactBase64", Base64.encodeToString(result.toString().toByteArray(), Base64.NO_WRAP))
