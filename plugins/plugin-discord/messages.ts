@@ -20,6 +20,7 @@ import {
 	type Memory,
 	MemoryType,
 	parseBooleanValue,
+	replaceStoredMessageContent,
 	type SendHandlerPersistenceFailure,
 	type SendHandlerReceipt,
 	type Service,
@@ -43,6 +44,7 @@ import {
 	ChannelType as DiscordChannelType,
 	type Message as DiscordMessage,
 	type MessageActionRowComponentBuilder,
+	type PartialMessage,
 	type TextChannel,
 } from "discord.js";
 import { isDiscordUserAddressed } from "./addressing";
@@ -51,6 +53,7 @@ import { AttachmentManager } from "./attachments";
 // Key point: Discord snowflake IDs (e.g., "1253563208833433701") are NOT valid UUIDs.
 // Use stringToUuid() to convert them, not asUUID() which would throw an error.
 import type { ICompatRuntime } from "./compat";
+import { discordEditedAt } from "./discord-history";
 import { checkDiscordDmAccess } from "./dm-access";
 import { createDraftStreamController } from "./draft-stream";
 import { getDiscordSettings } from "./environment";
@@ -85,6 +88,7 @@ import { formatInboundEnvelope } from "./inbound-envelope";
 import { buildDiscordReplyPayload } from "./interactions";
 import {
 	appendCoalescedDiscordMetadata,
+	type DiscordMessageMetadata,
 	type DiscordMessageWithCoalescedMetadata,
 } from "./message-coalesce";
 import { chunkDiscordText } from "./messaging";
@@ -1046,6 +1050,8 @@ export class MessageManager {
 	private coordinationSweepInFlight = false;
 	private recentlyProcessedMessageIds = new Map<string, number>();
 	private static readonly PROCESSED_MESSAGE_TTL_MS = 2 * 60 * 1000;
+	/** Last queued turn per Discord message id; see `queueMessageTurn`. */
+	private readonly messageTurnTails = new Map<string, Promise<void>>();
 	/**
 	 * Constructor for a new instance of MessageManager.
 	 * @param {IDiscordService} discordService - The Discord service instance.
@@ -1356,31 +1362,6 @@ export class MessageManager {
 		return result.created ? "created" : "existing";
 	}
 
-	private async hasPersistedInboundMemory(
-		memory: Memory,
-		platformMessageId?: string,
-	): Promise<boolean> {
-		if (!memory.id) {
-			return false;
-		}
-
-		const existing = await this.runtime.getMemoryById(memory.id);
-		if (!existing) {
-			return false;
-		}
-
-		this.runtime.logger.debug(
-			{
-				src: "plugin:discord",
-				agentId: this.runtime.agentId,
-				messageId: platformMessageId,
-				memoryId: memory.id,
-			},
-			"Skipping already persisted Discord inbound message",
-		);
-		return true;
-	}
-
 	/**
 	 * Close a durable turn as terminal REPLIED for the deliberate ingest-only
 	 * branches (auto-reply off, wrong target, strict-mode ignore, cannot-send).
@@ -1487,8 +1468,83 @@ export class MessageManager {
 		) {
 			return;
 		}
-		const turn = this.runMessageTurn(message);
-		this.discordService.trackInFlightTurn?.(message.id, turn);
+		return this.queueMessageTurn(message.id, () =>
+			this.runMessageTurn(message),
+		);
+	}
+
+	/**
+	 * Handles a Discord message edit. Discord also sends updates for embed
+	 * unfurls and flag changes; only a content edit moves `editedTimestamp`.
+	 * The edit runs after any earlier turn for the same message has settled, so
+	 * it sees that turn's stored memory and reply. `runMessageTurn` then
+	 * refreshes the stored memory and answers again only if the agent replied
+	 * to the original.
+	 */
+	async handleMessageEdit(
+		update: DiscordMessage | PartialMessage,
+	): Promise<void> {
+		// Unfurls, pins and flag changes leave the stamp unset. A content edit
+		// carries content and author, so discord.js has already un-partialed it.
+		if (!update.editedTimestamp) {
+			return;
+		}
+		const message = update.partial ? await update.fetch() : update;
+		// Bots edit to stream and report progress, not to correct a message.
+		if (message.author.bot) {
+			return;
+		}
+		const editedAt = discordEditedAt(message);
+		if (
+			this.discordService.admitInboundMessage?.(
+				message.id,
+				message.channel.id,
+			) === false
+		) {
+			return;
+		}
+		return this.queueMessageTurn(message.id, async () => {
+			const stored = await this.runtime.getMemoryById(
+				createUniqueUuid(this.runtime, message.id),
+			);
+			// Never stored: not a message this agent took in. A stored stamp that
+			// is the same or newer: a redelivery, an unfurl after a handled edit,
+			// or an older edit whose fetch finished after a newer one was stored.
+			// ISO stamps sort in time order.
+			const storedEditedAt = stored?.content.editedAt;
+			if (
+				!stored ||
+				(typeof storedEditedAt === "string" &&
+					editedAt !== undefined &&
+					storedEditedAt >= editedAt)
+			) {
+				return;
+			}
+			this.releaseMessageProcessing(message.id);
+			await this.runMessageTurn(message);
+		});
+	}
+
+	/**
+	 * Runs turns for one Discord message id strictly one after another and
+	 * registers each with the shutdown drain. An edit that arrives while the
+	 * original turn is still running waits for it instead of racing it.
+	 */
+	private queueMessageTurn(
+		messageId: string,
+		run: () => Promise<void>,
+	): Promise<void> {
+		const prior = this.messageTurnTails.get(messageId);
+		const turn = prior ? prior.catch(() => undefined).then(run) : run();
+		this.messageTurnTails.set(messageId, turn);
+		void turn
+			.catch(() => undefined)
+			.finally(() => {
+				if (this.messageTurnTails.get(messageId) === turn) {
+					this.messageTurnTails.delete(messageId);
+				}
+			});
+		this.discordService.trackInFlightTurn?.(messageId, turn);
 		return turn;
 	}
 
@@ -1716,6 +1772,8 @@ export class MessageManager {
 		let statusReactions: StatusReactionController | null = null;
 
 		try {
+			// Read with the text: a concurrent edit patches this cached object.
+			const editedAt = discordEditedAt(message);
 			let { processedContent, attachments } =
 				await this.processMessage(message);
 			const currentMessageText = processedContent;
@@ -1754,6 +1812,7 @@ export class MessageManager {
 					processedAttachments: attachments,
 					extraContent: {
 						currentMessageText,
+						...(editedAt ? { editedAt } : {}),
 						mentionContext: {
 							isMention: isBotPlatformMentioned,
 							isReply: isReplyToBot,
@@ -1881,11 +1940,39 @@ export class MessageManager {
 			//   - retry budget exhausted -> mark terminal FAILED (no silent drop)
 			//   - otherwise -> RESUME the reply path below instead of returning.
 			if (message.id) {
-				inboundMemoryCommitted = await this.hasPersistedInboundMemory(
-					newMessage,
-					message.id,
-				);
-				const claim = await claimDiscordTurn(this.runtime, message.id, {
+				const stored = newMessage.id
+					? await this.runtime.getMemoryById(newMessage.id)
+					: null;
+				inboundMemoryCommitted = stored !== null;
+				let turnKey = message.id;
+				if (
+					stored &&
+					newMessage.id &&
+					stored.content.editedAt !== newMessage.content.editedAt &&
+					// A batch memory holds other people's messages too; the edited
+					// anchor alone must not overwrite them.
+					!(stored.metadata as DiscordMessageMetadata | undefined)
+						?.coalescedDiscordMessageIds
+				) {
+					// The user edited a message this agent already stored. Update
+					// the stored memory in place so history shows the current text.
+					await replaceStoredMessageContent(
+						this.runtime,
+						newMessage.id,
+						newMessage.content,
+					);
+					// If the agent replied to the original, the edit gets one more
+					// normal turn. A turn key per edit keeps redeliveries a no-op.
+					// Without a reply the original turn record decides, and that
+					// is already terminal for an ingested or ignored message.
+					if (
+						(await findDeliveredReply(this.runtime, roomId, newMessage.id)) !==
+						null
+					) {
+						turnKey = `${message.id}:edit:${newMessage.content.editedAt}`;
+					}
+				}
+				const claim = await claimDiscordTurn(this.runtime, turnKey, {
 					entityId: newMessage.entityId,
 					roomId: newMessage.roomId,
 					worldId,
