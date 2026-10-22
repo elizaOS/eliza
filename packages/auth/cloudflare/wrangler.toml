@@ -17,6 +17,10 @@ new_sqlite_classes = ["LoginContainer"]
 tag = "v2"
 new_sqlite_classes = ["LoginRateLimits"]
 
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["LoginAggregations"]
+
 [env.staging]
 name = "eliza-login-staging"
 workers_dev = true
@@ -62,3 +66,11 @@ class_name = "LoginContainer"
 [[env.production.durable_objects.bindings]]
 name = "RATE_LIMITS"
 class_name = "LoginRateLimits"
+
+[[env.staging.durable_objects.bindings]]
+name = "AGGREGATIONS"
+class_name = "LoginAggregations"
+
+[[env.production.durable_objects.bindings]]
+name = "AGGREGATIONS"
+class_name = "LoginAggregations"

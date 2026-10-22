@@ -206,8 +206,11 @@ Set `STEWARD_RATE_LIMIT_URL` to the login Worker's `/internal/rate-limit` URL an
 set the same `STEWARD_RATE_LIMIT_TOKEN` secret on that Worker. Vault and proxy
 sliding-window admission then uses its durable SQLite counter store. Missing or
 failed admission never retries against Redis; transfer existing counters before
-switching the configured backend. Spend and aggregation tracking still require
-their own migration.
+switching the configured backend. Set `STEWARD_AGGREGATION_URL` to the Worker's
+`/internal/aggregation` URL and matching `STEWARD_AGGREGATION_TOKEN` to use its
+durable policy-event store. Transfer existing rolling-window events before
+switching; a configured store failure denies policy evaluation. Spend tracking
+still requires its own migration.
 Point Cloud's `LOGIN_API_URL` at the verified login Worker only after login,
 refresh, logout, provider callbacks, and database readiness pass in staging.
 Preserve the original service until production acceptance and rollback checks pass.

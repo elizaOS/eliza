@@ -2,12 +2,14 @@
 
 import { timingSafeEqual } from "node:crypto";
 import { Container, getContainer } from "@cloudflare/containers";
+import { LoginAggregations } from "./aggregation";
 import { LoginRateLimits } from "./rate-limit";
 
-export { LoginRateLimits };
+export { LoginAggregations, LoginRateLimits };
 
 interface Env {
   LOGIN: DurableObjectNamespace<LoginContainer>;
+  AGGREGATIONS: DurableObjectNamespace<LoginAggregations>;
   RATE_LIMITS: DurableObjectNamespace<LoginRateLimits>;
   /** Deployment-owned settings and secrets. Never derived from a request. */
   [key: string]: unknown;
@@ -56,8 +58,12 @@ export default {
     await response.body?.cancel();
   },
   async fetch(request: Request, env: Env): Promise<Response> {
-    if (new URL(request.url).pathname.startsWith("/internal/rate-limit/")) {
-      const token = env.STEWARD_RATE_LIMIT_TOKEN;
+    const path = new URL(request.url).pathname;
+    const aggregation = path.startsWith("/internal/aggregation/");
+    if (aggregation || path.startsWith("/internal/rate-limit/")) {
+      const token = aggregation
+        ? env.STEWARD_AGGREGATION_TOKEN
+        : env.STEWARD_RATE_LIMIT_TOKEN;
       if (typeof token !== "string" || !token.trim()) {
         return new Response("Rate limits unavailable", { status: 503 });
       }
@@ -71,6 +77,10 @@ export default {
       ) {
         return new Response("Unauthorized", { status: 401 });
       }
+      if (aggregation)
+        return env.AGGREGATIONS.get(env.AGGREGATIONS.idFromName("login")).fetch(
+          request,
+        );
       return env.RATE_LIMITS.get(env.RATE_LIMITS.idFromName("login")).fetch(
         request,
       );
