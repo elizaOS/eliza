@@ -117,13 +117,6 @@ export function createSurfaceCommandChannel({
           input.epoch < 0
         )
           throw failure("INVALID_REQUEST", "Invalid surface connection", 400);
-        if (
-          session?.clientId === input.clientId &&
-          session.epoch === input.epoch
-        ) {
-          session.expiresAt = now() + 15000;
-          return { connectionId: session.id };
-        }
         if (input.epoch <= highestEpoch)
           throw failure("STALE_REF", "Surface connection epoch was retired");
         retire();

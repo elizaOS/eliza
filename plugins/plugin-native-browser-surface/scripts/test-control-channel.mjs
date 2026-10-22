@@ -62,9 +62,7 @@ try {
       .status,
     401,
   );
-  let connection = (
-    await request("connect", { clientId: "renderer", epoch: 1 })
-  ).body;
+  let connection;
   browser = await puppeteer.launch({
     executablePath: process.env.ELIZA_BROWSER_EXECUTABLE,
     headless: true,
@@ -120,6 +118,11 @@ try {
     },
     handleCommand: (input) => nativeDispatch(input.command, input.extra),
   });
+  connection = { connectionId: client.connectionId };
+  assert.equal(
+    (await request("connect", { clientId: "renderer", epoch: 1 })).status,
+    409,
+  );
   const dispatch = (command, extra = {}) =>
     channel.request(
       { command, extra },
