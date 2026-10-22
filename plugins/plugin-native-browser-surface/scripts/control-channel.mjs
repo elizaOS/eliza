@@ -87,5 +87,10 @@ export function installControlChannel(pageCommand) {
       );
     }
   };
-  send({ ready: true, documentId });
+  const ready = () => send({ ready: true, documentId });
+  ready();
+  // Android may deliver the document-start message before its navigation
+  // callback. Announce again once the DOM has loaded, retaining the same ID.
+  if (document.readyState === "loading")
+    document.addEventListener("DOMContentLoaded", ready, { once: true });
 }

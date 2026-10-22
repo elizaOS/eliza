@@ -73,6 +73,10 @@ Android installation or the native reply proxy. The generated native asset share
 the existing browser command implementation; `build` regenerates it and
 `node plugins/plugin-native-browser-surface/scripts/build-control-channel.mjs --check`
 checks that it is current.
+Run the native bridge flow with `--surface-control` on the Android test command
+above. It uses a local synthetic document, checks real click/fill readback, stale
+references and document IDs, and hides/restores the same page. This lane requires
+a provider with isolated-world support and fails if it is unavailable.
 
 Android foreground-service hosts can share `ChromiumBrowserConnection`: construct
 it with the service context, call `start()` after entering foreground, and

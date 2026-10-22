@@ -12,6 +12,7 @@ import org.json.JSONObject
 /** Main-thread, main-frame commands. The website never receives the bridge object. */
 internal class SurfaceControlChannel(private val webView: WebView, script: String) {
     private var documentId: String? = null
+    private var documentOrigin: Uri? = null
     private var proxy: JavaScriptReplyProxy? = null
     private var sequence = 0L
     private data class Pending(
@@ -29,7 +30,7 @@ internal class SurfaceControlChannel(private val webView: WebView, script: Strin
         WebViewCompat.addWebMessageListener(
             webView, "elizaSurfaceControl", setOf("*"), world,
         ) { _, message, origin, mainFrame, reply ->
-            if (!mainFrame || !sameOrigin(origin, webView.url)) return@addWebMessageListener
+            if (!mainFrame || origin.scheme !in setOf("http", "https")) return@addWebMessageListener
             val data = try { JSONObject(message.data ?: return@addWebMessageListener) }
                 catch (_: Exception) { return@addWebMessageListener }
             val incomingDocument = data.optString("documentId")
@@ -37,9 +38,14 @@ internal class SurfaceControlChannel(private val webView: WebView, script: Strin
             if (data.optBoolean("ready")) {
                 if (documentId != incomingDocument) interrupt("The browser document changed")
                 documentId = incomingDocument
+                // Document-start messages can arrive before WebView.url is
+                // updated. Retain the native-reported origin and validate it
+                // against the loaded surface at dispatch and on every reply.
+                documentOrigin = origin
                 proxy = reply
                 return@addWebMessageListener
             }
+            if (!sameOrigin(origin, webView.url)) return@addWebMessageListener
             val request = pending ?: return@addWebMessageListener
             if (incomingDocument != request.documentId || data.optLong("sequence", -1) != request.sequence) {
                 return@addWebMessageListener
@@ -72,7 +78,8 @@ internal class SurfaceControlChannel(private val webView: WebView, script: Strin
         val effect = command.optString("subaction") != "snapshot"
         val currentDocument = documentId
         val currentProxy = proxy
-        if (currentDocument == null || currentProxy == null || !isCurrent()) {
+        if (currentDocument == null || currentProxy == null ||
+            documentOrigin?.let { sameOrigin(it, webView.url) } != true || !isCurrent()) {
             call.reject("The isolated page control channel is not ready", "UNAVAILABLE")
             return
         }
@@ -104,6 +111,7 @@ internal class SurfaceControlChannel(private val webView: WebView, script: Strin
         pending = null
         if (navigation) {
             documentId = null
+            documentOrigin = null
             proxy = null
         }
         if (request != null) {
