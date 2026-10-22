@@ -103,8 +103,8 @@ export async function webStreamToNodeStream(webStream: ReadableStream<Uint8Array
 }
 
 export function parseImageDescriptionResponse(responseText: string): ImageDescriptionResult {
-  const titleMatch = responseText.match(/^Title:[ \t]*([^\r\n]+)/i);
-  const title = titleMatch?.[1]?.trim() || "Image Analysis";
+  const titleMatch = responseText.match(/^\s*(?:\*\*)?Title(?:\*\*)?:[ \t]*([^\r\n]+)/i);
+  const title = titleMatch?.[1]?.replace(/\*\*/g, "").trim() || "Image Analysis";
 
   return { title, description: responseText };
 }
