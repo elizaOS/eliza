@@ -1,3 +1,8 @@
+import {
+  CLOUDFLARE_STT_MODEL,
+  CloudflareSpeechError,
+  transcribeCloudflareAudio,
+} from "@elizaos/cloud-shared/lib/providers/cloudflare-speech";
 /**
  * Cloud voice transcription route for multipart audio uploads. The request
  * body is size-gated before auth and multipart parsing so rejected uploads do
@@ -287,7 +292,12 @@ function parseCartesiaTranscription(
   };
 }
 
-type BatchSttProvider = "cartesia" | "deepgram" | "elevenlabs" | "whisper";
+type BatchSttProvider =
+  | "cloudflare"
+  | "cartesia"
+  | "deepgram"
+  | "elevenlabs"
+  | "whisper";
 
 function parseBatchSttProvider(
   value: string | undefined,
@@ -295,6 +305,7 @@ function parseBatchSttProvider(
   if (value === undefined) return undefined;
   const provider = value.trim().toLowerCase();
   if (
+    provider === "cloudflare" ||
     provider === "cartesia" ||
     provider === "deepgram" ||
     provider === "elevenlabs" ||
@@ -1178,6 +1189,38 @@ async function __hono_POST(c: AppContext) {
     // the path below. Inert when WHISPER_STT_URL is unset or the operator
     // pinned `elevenlabs`.
     // -------------------------------------------------------------------------
+    if (batchSttProvider === "cloudflare" || (!batchSttProvider && env.AI)) {
+      await credentialGuard[Symbol.asyncDispose]();
+      const started = Date.now();
+      const payload = await transcribeCloudflareAudio(
+        env.AI,
+        new Uint8Array(buffer),
+        languageCode,
+        c.req.raw.signal,
+      );
+      const { segments, words, invalidFields } =
+        parseWhisperTimestamps(payload);
+      if (invalidFields.length > 0) {
+        return Response.json(
+          { error: "Speech-to-text returned invalid timestamps" },
+          { status: 502 },
+        );
+      }
+      return Response.json(
+        {
+          transcript: payload.text.trim(),
+          duration_ms: Date.now() - started,
+          ...(segments ? { segments } : {}),
+          ...(words ? { words } : {}),
+        },
+        {
+          headers: {
+            "X-Eliza-STT-Provider": "cloudflare",
+            "X-Eliza-STT-Model": CLOUDFLARE_STT_MODEL,
+          },
+        },
+      );
+    }
     const whisperBaseUrl = env.WHISPER_STT_URL?.trim();
     if (whisperBaseUrl && batchSttProvider !== "elevenlabs") {
       const whisperStart = Date.now();
@@ -1457,6 +1500,12 @@ async function __hono_POST(c: AppContext) {
       return Response.json(serialized, { status: apiError.status ?? 500 });
     }
 
+    if (error instanceof CloudflareSpeechError) {
+      return Response.json(
+        { error: error.message, provider: "cloudflare" },
+        { status: error.status },
+      );
+    }
     if (error instanceof Error) {
       const errorMessage = error.message.toLowerCase();
       const errorWithBody = error as Error & {

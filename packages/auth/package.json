@@ -349,7 +349,10 @@
     "test:login": "bun test --timeout 30000 --isolate src/sdk/__tests__ src/server/__tests__ && bun run test:railpack",
     "test:native-host": "node --test native-host/*.test.mjs native-host/staging-acceptance.process-test.mjs",
     "test:postgres": "LOGIN_REQUIRE_POSTGRES_TESTS=1 bun test src/server/__tests__/postgres-login.integration.test.ts",
-    "test:integration": "bun run test:browser && bun run test:postgres"
+    "test:integration": "bun run test:browser && bun run test:postgres",
+    "cloudflare:check": "tsc --noEmit -p cloudflare/tsconfig.json",
+    "cloudflare:deploy:staging": "wrangler deploy --config cloudflare/wrangler.toml --env staging",
+    "cloudflare:deploy:production": "wrangler deploy --config cloudflare/wrangler.toml --env production"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -377,7 +380,8 @@
     "@simplewebauthn/server": "^14.0.3",
     "resend": "^6.9.4",
     "@elizaos/host": "workspace:*",
-    "@elizaos/contracts": "workspace:*"
+    "@elizaos/contracts": "workspace:*",
+    "@cloudflare/containers": "^0.3.7"
   },
   "devDependencies": {
     "@types/node": "^25.0.0",
@@ -385,7 +389,9 @@
     "typescript": "^6.0.3",
     "vitest": "^5.0.5",
     "@types/bun": "1.4.2",
-    "@playwright/test": "^1.64.1"
+    "@playwright/test": "^1.64.1",
+    "@cloudflare/workers-types": "^4.20260429.1",
+    "wrangler": "^4.0.0"
   },
   "elizaos": {
     "scripts": {

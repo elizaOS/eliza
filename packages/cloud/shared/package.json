@@ -220,6 +220,7 @@
     "./lib/providers/audio/registry": "./src/lib/providers/audio/registry.ts",
     "./lib/providers/audio/types": "./src/lib/providers/audio/types.ts",
     "./lib/providers/bge-embeddings": "./src/lib/providers/bge-embeddings.ts",
+    "./lib/providers/cloudflare-speech": "./src/lib/providers/cloudflare-speech.ts",
     "./lib/providers/language-model": "./src/lib/providers/language-model.ts",
     "./lib/providers/video/registry": "./src/lib/providers/video/registry.ts",
     "./lib/providers/video/types": "./src/lib/providers/video/types.ts",

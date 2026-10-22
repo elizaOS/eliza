@@ -24,6 +24,8 @@ Use these barrels in repository consumers. Explicit old account/vault paths and
 Hosted login uses `postgres-js`; embedded login owns PGlite. Unsupported database
 drivers fail explicitly. Runtime shutdown drains webhook deliveries before closing
 its database, Redis connection and configuration-dependent vault cache.
+Without configured Redis, hosted and embedded login keep request replay receipts
+in their existing database store. A configured Redis outage does not switch stores.
 
 ## Development
 
@@ -187,3 +189,46 @@ that the recipient received the code. No webhook, agent history, model call,
 new login token, or database migration is added. Real delivery and Cloud account
 continuity still require separate testing with the existing authorized key and
 sender after review.
+
+## Cloudflare login service
+
+`cloudflare/wrangler.toml` runs the same Bun login server in a Cloudflare
+Container. Deploy staging with `bun run --cwd packages/auth cloudflare:deploy:staging`.
+Copy the existing environment's identity, vault, signing, provider, and database
+secrets with Wrangler secret bulk input; retain their exact values so accounts,
+sessions, passkeys, and encrypted data remain compatible. Never commit that input.
+The container owns no durable files. PostgreSQL remains the authoritative store
+on Railway; use its external connection endpoint from Cloudflare. Retire only
+the application services after cutover, preserving the database services.
+
+The edge overwrites forwarding headers and the container trusts one proxy hop.
+Cloud's proxy signs its edge-observed client IP with the existing shared
+`STEWARD_REQUEST_SIGNING_SECRET`; deploy this proxy before routing cross-zone
+traffic to login, preserving independent client rate-limit buckets.
+Set `STEWARD_RATE_LIMIT_URL` to the login Worker's `/internal/rate-limit` URL and
+set the same `STEWARD_RATE_LIMIT_TOKEN` secret on that Worker. Vault and proxy
+sliding-window admission then uses its durable SQLite counter store. Missing or
+failed admission never retries against Redis; transfer existing counters before
+switching the configured backend. Set `STEWARD_AGGREGATION_URL` to the Worker's
+`/internal/aggregation` URL and matching `STEWARD_AGGREGATION_TOKEN` to use its
+durable policy-event store. Transfer existing rolling-window events before
+switching; a configured store failure denies policy evaluation. For real-time
+spend telemetry, configure `/internal/spend-metrics` as `STEWARD_SPEND_METRICS_URL`
+and set matching `STEWARD_SPEND_METRICS_TOKEN`. Transfer live period totals and
+host breakdowns before switching. Vault spend enforcement remains in PostgreSQL;
+this telemetry backend does not implement the unused Redis reservation helpers.
+It also persists replay telemetry. Its authenticated `replay-import` operation
+requires `sourceQuiesced: true`, preserves original expiries, and atomically
+rejects conflicting live counters before publication.
+Point Cloud's `LOGIN_API_URL` at the verified login Worker only after login,
+refresh, logout, provider callbacks, and database readiness pass in staging.
+Preserve the original service until production acceptance and rollback checks pass.
+
+For Redis login-state transfer, pipe a JSON snapshot with `capturedAtMs` and
+`entries: [{key, value, expiresAtMs}]` into
+`bun --conditions=eliza-source packages/auth/src/server/migrate-redis-state.ts`.
+It validates without writing. Only after stopping source and destination writers,
+pass `--apply-source-quiesced` to publish atomically. Conflicting live values fail;
+expired records are skipped and existing expiration times are never extended.
+Snapshots contain secrets: keep them out of logs and Git. Other Redis records,
+including enforcement counters and telemetry, need their own transfer.
