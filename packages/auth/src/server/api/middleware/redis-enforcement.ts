@@ -10,8 +10,8 @@ import { createPriceOracle, type PolicyRule } from "../../shared/index.ts";
 import {
   checkAgentRateLimit,
   isRateLimitAvailable,
-  isRedisAvailable,
   isRedisConfigured,
+  isSpendTelemetryAvailable,
   recordAgentSpend,
 } from "./redis";
 
@@ -221,7 +221,7 @@ export async function recordVaultSpend(
   valueWei: string,
   chainId: number,
 ): Promise<void> {
-  if (!isRedisAvailable()) return;
+  if (!isSpendTelemetryAvailable()) return;
 
   // Skip zero/empty values without touching the oracle.
   let wei: bigint;

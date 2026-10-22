@@ -164,6 +164,10 @@ async function startOwnedLogin(options: {
       "./redis/cloudflare-aggregation"
     );
     isCloudflareAggregationConfigured();
+    const { isCloudflareSpendMetricsConfigured } = await import(
+      "./redis/cloudflare-spend-metrics"
+    );
+    isCloudflareSpendMetricsConfigured();
     // A configured Redis outage must not select a different receipt history.
     setDatabaseIdempotencyStore(!isRedisConfigured());
     await initAuthStores(options.mode === "postgres" && !redisAvailable);

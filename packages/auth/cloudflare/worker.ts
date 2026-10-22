@@ -5,11 +5,14 @@ import { Container, getContainer } from "@cloudflare/containers";
 import { LoginAggregations } from "./aggregation";
 import { LoginRateLimits } from "./rate-limit";
 
-export { LoginAggregations, LoginRateLimits };
+import { LoginSpendMetrics } from "./spend-metrics";
+
+export { LoginAggregations, LoginRateLimits, LoginSpendMetrics };
 
 interface Env {
   LOGIN: DurableObjectNamespace<LoginContainer>;
   AGGREGATIONS: DurableObjectNamespace<LoginAggregations>;
+  SPEND_METRICS: DurableObjectNamespace<LoginSpendMetrics>;
   RATE_LIMITS: DurableObjectNamespace<LoginRateLimits>;
   /** Deployment-owned settings and secrets. Never derived from a request. */
   [key: string]: unknown;
@@ -60,12 +63,19 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const path = new URL(request.url).pathname;
     const aggregation = path.startsWith("/internal/aggregation/");
-    if (aggregation || path.startsWith("/internal/rate-limit/")) {
-      const token = aggregation
-        ? env.STEWARD_AGGREGATION_TOKEN
-        : env.STEWARD_RATE_LIMIT_TOKEN;
+    const spendMetrics = path.startsWith("/internal/spend-metrics/");
+    if (
+      spendMetrics ||
+      aggregation ||
+      path.startsWith("/internal/rate-limit/")
+    ) {
+      const token = spendMetrics
+        ? env.STEWARD_SPEND_METRICS_TOKEN
+        : aggregation
+          ? env.STEWARD_AGGREGATION_TOKEN
+          : env.STEWARD_RATE_LIMIT_TOKEN;
       if (typeof token !== "string" || !token.trim()) {
-        return new Response("Rate limits unavailable", { status: 503 });
+        return new Response("State service unavailable", { status: 503 });
       }
       const expected = new TextEncoder().encode(`Bearer ${token.trim()}`);
       const actual = new TextEncoder().encode(
@@ -77,6 +87,10 @@ export default {
       ) {
         return new Response("Unauthorized", { status: 401 });
       }
+      if (spendMetrics)
+        return env.SPEND_METRICS.get(
+          env.SPEND_METRICS.idFromName("login"),
+        ).fetch(request);
       if (aggregation)
         return env.AGGREGATIONS.get(env.AGGREGATIONS.idFromName("login")).fetch(
           request,

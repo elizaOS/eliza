@@ -21,6 +21,10 @@ new_sqlite_classes = ["LoginRateLimits"]
 tag = "v3"
 new_sqlite_classes = ["LoginAggregations"]
 
+[[migrations]]
+tag = "v4"
+new_sqlite_classes = ["LoginSpendMetrics"]
+
 [env.staging]
 name = "eliza-login-staging"
 workers_dev = true
@@ -74,3 +78,11 @@ class_name = "LoginAggregations"
 [[env.production.durable_objects.bindings]]
 name = "AGGREGATIONS"
 class_name = "LoginAggregations"
+
+[[env.staging.durable_objects.bindings]]
+name = "SPEND_METRICS"
+class_name = "LoginSpendMetrics"
+
+[[env.production.durable_objects.bindings]]
+name = "SPEND_METRICS"
+class_name = "LoginSpendMetrics"

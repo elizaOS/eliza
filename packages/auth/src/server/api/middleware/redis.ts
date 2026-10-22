@@ -9,6 +9,7 @@
 
 import { logger } from "@elizaos/core";
 import { isCloudflareRateLimitConfigured } from "../../redis/cloudflare-rate-limit";
+import { isCloudflareSpendMetricsConfigured } from "../../redis/cloudflare-spend-metrics";
 import {
   checkRateLimit,
   checkSpendLimit,
@@ -94,6 +95,10 @@ export async function initRedis(
 
 export function isRedisAvailable(): boolean {
   return redisAvailable;
+}
+
+export function isSpendTelemetryAvailable(): boolean {
+  return isCloudflareSpendMetricsConfigured() || redisAvailable;
 }
 
 export function isRateLimitAvailable(): boolean {
@@ -251,7 +256,7 @@ export async function recordAgentSpend(
   costUsd: number,
   host: string,
 ): Promise<void> {
-  if (!redisAvailable || costUsd <= 0) return;
+  if (!isSpendTelemetryAvailable() || costUsd <= 0) return;
 
   try {
     await recordSpend(agentId, tenantId, costUsd, host);

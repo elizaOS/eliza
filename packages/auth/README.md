@@ -209,8 +209,11 @@ failed admission never retries against Redis; transfer existing counters before
 switching the configured backend. Set `STEWARD_AGGREGATION_URL` to the Worker's
 `/internal/aggregation` URL and matching `STEWARD_AGGREGATION_TOKEN` to use its
 durable policy-event store. Transfer existing rolling-window events before
-switching; a configured store failure denies policy evaluation. Spend tracking
-still requires its own migration.
+switching; a configured store failure denies policy evaluation. For real-time
+spend telemetry, configure `/internal/spend-metrics` as `STEWARD_SPEND_METRICS_URL`
+and set matching `STEWARD_SPEND_METRICS_TOKEN`. Transfer live period totals and
+host breakdowns before switching. Vault spend enforcement remains in PostgreSQL;
+this telemetry backend does not implement the unused Redis reservation helpers.
 Point Cloud's `LOGIN_API_URL` at the verified login Worker only after login,
 refresh, logout, provider callbacks, and database readiness pass in staging.
 Preserve the original service until production acceptance and rollback checks pass.
