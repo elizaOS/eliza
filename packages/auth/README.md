@@ -195,8 +195,9 @@ Container. Deploy staging with `bun run --cwd packages/auth cloudflare:deploy:st
 Copy the existing environment's identity, vault, signing, provider, and database
 secrets with Wrangler secret bulk input; retain their exact values so accounts,
 sessions, passkeys, and encrypted data remain compatible. Never commit that input.
-The container owns no durable files. PostgreSQL remains the authoritative store;
-use a restored and reconciled non-Railway database before retiring Railway.
+The container owns no durable files. PostgreSQL remains the authoritative store
+on Railway; use its external connection endpoint from Cloudflare. Retire only
+the application services after cutover, preserving the database services.
 
 The edge overwrites forwarding headers and the container trusts one proxy hop.
 Point Cloud's `LOGIN_API_URL` at the verified login Worker only after login,
