@@ -81,6 +81,7 @@ const capabilities = new Set([
   "snapshot",
   "click",
   "fill",
+  "select",
   "scroll",
   "back",
   "forward",
@@ -104,7 +105,7 @@ export interface NativeTaskBinding extends NativeTaskContext {
   assistantName?: string;
   targets: Array<{
     selector: string;
-    action: "click" | "fill" | "fill-code" | "scroll";
+    action: "click" | "fill" | "fill-code" | "select" | "scroll";
   }>;
 }
 interface NativeReply {
@@ -890,7 +891,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
     if (
       options.expectedSelector !== undefined &&
       (!options.taskContext ||
-        !["click", "fill", "scroll"].includes(command.subaction) ||
+        !["click", "fill", "select", "scroll"].includes(command.subaction) ||
         typeof options.expectedSelector !== "string" ||
         !options.expectedSelector ||
         options.expectedSelector.length > 256 ||
@@ -904,7 +905,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
     if (
       options.actionText !== undefined &&
       (!options.taskContext ||
-        !["click", "fill", "scroll"].includes(command.subaction) ||
+        !["click", "fill", "select", "scroll"].includes(command.subaction) ||
         !validActionText(options.actionText))
     )
       throw new BrowserDispatchFailure(
@@ -937,7 +938,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
     command = safeCommand as BrowserWorkspaceCommand;
     if (
       options.taskContext &&
-      ["click", "fill", "scroll"].includes(command.subaction) &&
+      ["click", "fill", "select", "scroll"].includes(command.subaction) &&
       !this.advertised.has("task-action-feedback")
     )
       throw new BrowserDispatchFailure(
@@ -979,6 +980,8 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
         );
       command = { ...command, id: String(tabs[0].id) };
     }
+    if (command.subaction === "select" && command.text === undefined)
+      command = { ...command, text: command.value };
     const profileId = this.profileId;
     const scopedCommand = options.taskContext
       ? {

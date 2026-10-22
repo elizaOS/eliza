@@ -48,6 +48,7 @@ export class NativeTaskActuator {
   readonly capabilities = [
     "browser.click",
     "browser.fill",
+    "browser.select",
     "browser.scroll.up",
     "browser.scroll.down",
     "browser.scroll.left",
@@ -639,15 +640,15 @@ export class NativeTaskActuator {
     const subaction = proposal.capability.split(".")[1] as
       | "click"
       | "fill"
+      | "select"
       | "scroll";
-    const resolved =
-      subaction === "fill"
-        ? await this.options.resolveValue(
-            proposal.valueRef ||
-              fail("Fill requires a protected value reference"),
-            task,
-          )
-        : undefined;
+    const resolved = ["fill", "select"].includes(subaction)
+      ? await this.options.resolveValue(
+          proposal.valueRef ||
+            fail("Fill or select requires a held value reference"),
+          task,
+        )
+      : undefined;
     if (
       resolved !== undefined &&
       typeof resolved !== "string" &&
@@ -658,6 +659,8 @@ export class NativeTaskActuator {
       fail("Invalid protected value");
     const protectedValueKind =
       typeof resolved === "object" ? resolved.kind : undefined;
+    if (subaction === "select" && protectedValueKind)
+      fail("Select cannot use a protected value");
     const text = typeof resolved === "object" ? resolved.text : resolved;
     if (
       !current() ||

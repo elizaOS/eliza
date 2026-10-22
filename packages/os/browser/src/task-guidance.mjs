@@ -159,7 +159,7 @@ export function createTaskGuidance(
       if (
         !policy ||
         !match ||
-        !["click", "fill", "scroll"].includes(command.subaction)
+        !["click", "fill", "select", "scroll"].includes(command.subaction)
       )
         throw stale();
       const ticket = { id };
@@ -208,6 +208,7 @@ export function createTaskGuidance(
                 {
                   click: "I will select this control.",
                   fill: "I will enter the approved information here.",
+                  select: "I will choose the approved option here.",
                   scroll: "I will scroll this area.",
                 }[command.subaction],
             },

@@ -64,7 +64,9 @@
     }
     if (
       !command ||
-      !["snapshot", "click", "fill", "scroll"].includes(command.subaction)
+      !["snapshot", "click", "fill", "select", "scroll"].includes(
+        command.subaction,
+      )
     ) {
       reject("UNSUPPORTED", "This channel accepts fixed page commands only.");
       return;
@@ -77,7 +79,8 @@
     if (
       (command.validateOnly !== undefined &&
         typeof command.validateOnly !== "boolean") ||
-      (command.subaction === "fill" && typeof command.text !== "string") ||
+      (["fill", "select"].includes(command.subaction) &&
+        typeof command.text !== "string") ||
       (command.subaction === "scroll" &&
         !["up", "down", "left", "right"].includes(command.direction)) ||
       (policy &&
@@ -88,7 +91,7 @@
             (target) =>
               target &&
               typeof target.selector === "string" &&
-              ["click", "fill", "scroll"].includes(target.action),
+              ["click", "fill", "select", "scroll"].includes(target.action),
           )))
     ) {
       reject(
@@ -600,6 +603,8 @@
           node,
           bounds: geometry,
           value: typeof node.value === "string" ? node.value : null,
+          selection:
+            node instanceof HTMLSelectElement ? node.selectedIndex : null,
         });
         const state = controlState(node);
         const form = node.form ?? node.closest("form");
@@ -613,6 +618,17 @@
           type: node.getAttribute("type"),
           ...state,
           description: withoutSecrets(state.description),
+          // Option labels are page-authored choices, not internal option values.
+          ...(node instanceof HTMLSelectElement && sensitivity(node) === null
+            ? {
+                options: [...node.options].map((option) => ({
+                  label: hint(option.label.replace(/\s+/g, " ")),
+                  disabled:
+                    option.disabled || option.parentElement?.disabled === true,
+                  selected: option.selected,
+                })),
+              }
+            : {}),
           // Words that locate a control when its name is empty or repeated.
           // None of them is a field value.
           placeholder: hint(node.getAttribute("placeholder")),
@@ -724,6 +740,8 @@
     if (
       !node?.isConnected ||
       recorded.value !== (typeof node.value === "string" ? node.value : null) ||
+      recorded.selection !==
+        (node instanceof HTMLSelectElement ? node.selectedIndex : null) ||
       JSON.stringify(recorded.bounds) !== JSON.stringify(bounds(node))
     )
       return {
@@ -814,7 +832,27 @@
       )
         return denied();
     }
-    if (command.subaction === "fill" && (node.disabled || node.readOnly))
+    const selectedOptions =
+      command.subaction === "select" && node instanceof HTMLSelectElement
+        ? [...node.options].filter(
+            (option) =>
+              option.label.replace(/\s+/g, " ").trim() === command.text,
+          )
+        : [];
+    if (
+      command.subaction === "select" &&
+      (!(node instanceof HTMLSelectElement) ||
+        node.multiple ||
+        sensitivity(node) !== null ||
+        selectedOptions.length !== 1 ||
+        selectedOptions[0].disabled ||
+        selectedOptions[0].parentElement?.disabled === true)
+    )
+      return denied();
+    if (
+      ["fill", "select"].includes(command.subaction) &&
+      (node.disabled || node.readOnly)
+    )
       return denied();
     // A control the provider disabled stays as the provider left it. A script
     // click on an aria-disabled control would still run the page's handlers.
@@ -839,7 +877,7 @@
       feedback.markActed();
     }
     delete globalThis[key];
-    if (policy && ["click", "fill"].includes(command.subaction)) {
+    if (policy && ["click", "fill", "select"].includes(command.subaction)) {
       // A task fill or click must not submit a form or leave the page, also
       // not through the page's own script (an auto-submitting code field, or
       // a button that calls form.submit()). For 30 seconds, or until the next
@@ -1046,6 +1084,13 @@
       );
       node.dispatchEvent(new Event("input", { bubbles: true }));
       node.dispatchEvent(new Event("change", { bubbles: true }));
+    } else if (command.subaction === "select") {
+      Object.getOwnPropertyDescriptor(
+        HTMLSelectElement.prototype,
+        "selectedIndex",
+      ).set.call(node, selectedOptions[0].index);
+      node.dispatchEvent(new Event("input", { bubbles: true }));
+      node.dispatchEvent(new Event("change", { bubbles: true }));
     } else if (command.subaction === "scroll") {
       node.scrollBy({
         top:
@@ -1115,7 +1160,7 @@
       keepClear.length > 8 ||
       keepClear.some((id) => typeof id !== "string" || !/^\d+$/.test(id)) ||
       (request.action !== undefined &&
-        !["click", "fill", "scroll"].includes(request.action)) ||
+        !["click", "fill", "select", "scroll"].includes(request.action)) ||
       (request.restore !== undefined && typeof request.restore !== "boolean") ||
       window !== window.top ||
       request.origin !== location.origin ||

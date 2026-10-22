@@ -64,7 +64,9 @@ export function installControlChannel(pageCommand, pageGuidance) {
     }
     if (
       !command ||
-      !["snapshot", "click", "fill", "scroll"].includes(command.subaction)
+      !["snapshot", "click", "fill", "select", "scroll"].includes(
+        command.subaction,
+      )
     ) {
       reject("UNSUPPORTED", "This channel accepts fixed page commands only.");
       return;
@@ -77,7 +79,8 @@ export function installControlChannel(pageCommand, pageGuidance) {
     if (
       (command.validateOnly !== undefined &&
         typeof command.validateOnly !== "boolean") ||
-      (command.subaction === "fill" && typeof command.text !== "string") ||
+      (["fill", "select"].includes(command.subaction) &&
+        typeof command.text !== "string") ||
       (command.subaction === "scroll" &&
         !["up", "down", "left", "right"].includes(command.direction)) ||
       (policy &&
@@ -88,7 +91,7 @@ export function installControlChannel(pageCommand, pageGuidance) {
             (target) =>
               target &&
               typeof target.selector === "string" &&
-              ["click", "fill", "scroll"].includes(target.action),
+              ["click", "fill", "select", "scroll"].includes(target.action),
           )))
     ) {
       reject(

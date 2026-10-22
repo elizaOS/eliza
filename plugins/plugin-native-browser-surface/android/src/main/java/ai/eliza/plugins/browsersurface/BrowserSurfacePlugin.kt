@@ -842,7 +842,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     fun controlPage(call: PluginCall) {
         val id = call.getString("id")
         val command = call.getObject("command")
-        if (id == null || command == null || command.optString("subaction") !in setOf("snapshot", "click", "fill", "scroll", "guide")) {
+        if (id == null || command == null || command.optString("subaction") !in setOf("snapshot", "click", "fill", "select", "scroll", "guide")) {
             call.reject("controlPage requires a surface and a fixed page command", "INVALID_REQUEST")
             return
         }

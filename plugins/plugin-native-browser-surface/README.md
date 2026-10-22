@@ -93,6 +93,12 @@ above. It uses a local synthetic document, checks real click/fill readback, stal
 references and document IDs, and hides/restores the same page. This lane requires
 a provider with isolated-world support and fails if it is unavailable.
 
+The `select` command chooses one exact visible option label from a native select.
+Its `text` is the label, not the internal option value. Snapshot options expose
+labels, disabled state and selection. Ambiguous labels, disabled options and
+multi-select controls are refused. Selection uses the same document, task policy,
+preview and fresh-readback requirements as other effects.
+
 A `validateOnly: true` input command checks the observed target and host policy
 without consuming its native snapshot or running input. The shared task adapter
 uses this before the visible preview, then sends the actual action with its

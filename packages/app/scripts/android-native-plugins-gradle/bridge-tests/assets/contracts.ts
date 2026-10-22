@@ -1935,6 +1935,7 @@
             expiresAt: Date.now() + 60000,
             targets: [
               { selector: "#query", action: "fill" },
+              { selector: "#language", action: "select" },
               { selector: "#increment", action: "click" },
             ],
           };
@@ -2035,6 +2036,26 @@
               (element) => element.targetSelector === "#query",
             ).hasInput,
             "native fill readback sees input",
+          );
+          assert(
+            !JSON.stringify(observation).includes("internal-fr"),
+            "native snapshot excludes internal option values",
+          );
+          assert(
+            (
+              await call(
+                "controlPage",
+                command(observation, "select", "#language", { text: "French" }),
+              )
+            ).result.dispatched,
+            "native select dispatched",
+          );
+          observation = await snapshot();
+          assert(
+            observation.result.elements
+              .find((element) => element.targetSelector === "#language")
+              .options.find((option) => option.selected).label === "French",
+            "native select readback names the selected option",
           );
           assert(
             (

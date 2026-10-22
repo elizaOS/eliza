@@ -49,7 +49,7 @@ export function pageGuidance(request) {
     keepClear.length > 8 ||
     keepClear.some((id) => typeof id !== "string" || !/^\d+$/.test(id)) ||
     (request.action !== undefined &&
-      !["click", "fill", "scroll"].includes(request.action)) ||
+      !["click", "fill", "select", "scroll"].includes(request.action)) ||
     (request.restore !== undefined && typeof request.restore !== "boolean") ||
     window !== window.top ||
     request.origin !== location.origin ||

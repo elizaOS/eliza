@@ -69,7 +69,9 @@ export function createTaskBindings({
           typeof target.selector !== "string" ||
           !target.selector ||
           target.selector.length > 256 ||
-          !["click", "fill", "fill-code", "scroll"].includes(target.action),
+          !["click", "fill", "fill-code", "select", "scroll"].includes(
+            target.action,
+          ),
       )
     )
       throw blocked();
@@ -133,7 +135,7 @@ export function createTaskBindings({
     if (
       command.expectedSelector !== undefined &&
       (!command.taskContext ||
-        !["click", "fill", "scroll"].includes(command.subaction))
+        !["click", "fill", "select", "scroll"].includes(command.subaction))
     )
       throw blocked();
     delete copy.taskPolicy;
@@ -173,7 +175,7 @@ export function createTaskBindings({
     )
       throw blocked();
     if (
-      !["snapshot", "click", "fill", "scroll", "navigate"].includes(
+      !["snapshot", "click", "fill", "select", "scroll", "navigate"].includes(
         command.subaction,
       )
     )

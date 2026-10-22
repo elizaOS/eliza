@@ -158,7 +158,9 @@ export function createSurfaceTaskHandler({
       !command ||
       !validPageId(command.id) ||
       !command.taskContext ||
-      !["snapshot", "click", "fill", "scroll"].includes(command.subaction) ||
+      !["snapshot", "click", "fill", "select", "scroll"].includes(
+        command.subaction,
+      ) ||
       Object.keys(command).some(
         (key) =>
           ![

@@ -146,7 +146,9 @@ export class NativeSurfaceBrowserTarget {
     command: BrowserWorkspaceCommand,
     options: Parameters<NativeSocketBrowserTarget["execute"]>[1] = {},
   ): Promise<BrowserWorkspaceCommandResult> {
-    const effect = ["click", "fill", "scroll"].includes(command.subaction);
+    const effect = ["click", "fill", "select", "scroll"].includes(
+      command.subaction,
+    );
     if (
       !options.taskContext ||
       !command.id ||
@@ -171,7 +173,10 @@ export class NativeSurfaceBrowserTarget {
       subaction: command.subaction,
       id: command.id,
       selector: command.selector,
-      text: command.text,
+      text:
+        command.subaction === "select"
+          ? (command.text ?? command.value)
+          : command.text,
       direction: command.direction,
       taskContext: options.taskContext,
       taskExpiresAt: options.taskExpiresAt,

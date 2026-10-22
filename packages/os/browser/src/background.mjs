@@ -54,6 +54,7 @@ const connection = new NativeConnection({
         "snapshot",
         "click",
         "fill",
+        "select",
         "scroll",
         "back",
         "forward",

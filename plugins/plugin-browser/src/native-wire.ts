@@ -23,6 +23,7 @@ const actions = new Set([
   "snapshot",
   "click",
   "fill",
+  "select",
   "scroll",
   "back",
   "forward",
@@ -84,15 +85,21 @@ export function parseCommand(input: unknown) {
       );
   }
   if (
-    ["click", "fill", "scroll"].includes(String(command.subaction)) &&
+    ["click", "fill", "select", "scroll"].includes(String(command.subaction)) &&
     typeof command.selector !== "string"
   )
     throw new BridgeError(
       "INVALID_REQUEST",
       "Use an element selector from the latest snapshot.",
     );
-  if (command.subaction === "fill" && typeof command.text !== "string")
-    throw new BridgeError("INVALID_REQUEST", "Fill requires a text string.");
+  if (
+    ["fill", "select"].includes(String(command.subaction)) &&
+    typeof command.text !== "string"
+  )
+    throw new BridgeError(
+      "INVALID_REQUEST",
+      "Fill or select requires a text string.",
+    );
   return { id: value.id, command };
 }
 

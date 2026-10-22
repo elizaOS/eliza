@@ -65,7 +65,7 @@ const server = createServer(
   (_req, res) => {
     res.setHeader("Content-Type", "text/html");
     res.end(
-      `<!doctype html><input id="query" aria-label="Search query"><input type="password" value="private-value"><button type="button" id="increment" onclick="document.querySelector('output').textContent++">Increment</button><output>0</output>`,
+      `<!doctype html><input id="query" aria-label="Search query"><input type="password" value="private-value"><button type="button" id="increment" onclick="document.querySelector('output').textContent++">Increment</button><output>0</output><label>Language<select id="language"><option value="opaque-en">English</option><option value="opaque-fr">French</option><option value="opaque-de">German</option><option value="opaque-disabled" disabled>Unavailable</option><option value="opaque-a">Ambiguous</option><option value="opaque-b">Ambiguous</option></select></label>`,
     );
   },
 );
@@ -181,7 +181,11 @@ try {
   const dispatch = (command, extra = {}) =>
     channel.request(
       { command, extra },
-      { effect: ["click", "fill", "scroll"].includes(command.subaction) },
+      {
+        effect: ["click", "fill", "select", "scroll"].includes(
+          command.subaction,
+        ),
+      },
     );
   const snapshot = async () =>
     (await dispatch({ subaction: "snapshot" })).result;
@@ -191,6 +195,7 @@ try {
     targets: [
       { selector: "#increment", action: "click" },
       { selector: "#query", action: "fill" },
+      { selector: "#language", action: "select" },
     ],
   };
   let state = await snapshot();
@@ -276,6 +281,28 @@ try {
   });
   assert.equal((await dispatch(fill)).result.dispatched, true);
   assert.equal(await page.$eval("#query", (node) => node.value), "Wikipedia");
+  state = await snapshot();
+  assert.ok(
+    !JSON.stringify(state).includes("opaque-fr"),
+    "Internal option values stay in the page",
+  );
+  for (const text of ["Missing", "Unavailable", "Ambiguous"])
+    await assert.rejects(
+      dispatch(action(state, "select", "#language", { text })),
+      { code: "POLICY_BLOCKED" },
+    );
+  const select = action(state, "select", "#language", { text: "German" });
+  await dispatch({ ...select, validateOnly: true });
+  assert.equal(
+    await page.$eval("#language", (node) => node.selectedOptions[0].label),
+    "English",
+  );
+  assert.equal((await dispatch(select)).result.dispatched, true);
+  assert.equal(
+    await page.$eval("#language", (node) => node.selectedOptions[0].label),
+    "German",
+  );
+  await assert.rejects(dispatch(select), { code: "STALE_REF" });
   state = await snapshot();
   await page.type("#query", " by hand");
   await assert.rejects(
@@ -499,6 +526,20 @@ try {
     "Wikipedia from the task adapter",
   );
   observed = await taskSnapshot();
+  assert.equal(
+    (
+      await surfaceTarget.execute(
+        taskAction("select", "#language", { value: "English" }).command,
+        { taskContext: context, expectedSelector: "#language" },
+      )
+    ).value.result.dispatched,
+    true,
+  );
+  assert.equal(
+    await page.$eval("#language", (node) => node.selectedOptions[0].label),
+    "English",
+  );
+  observed = await taskSnapshot();
   selected = false;
   await assert.rejects(taskRequest(taskAction("click", "#increment"), true), {
     code: "STALE_REF",
@@ -518,7 +559,7 @@ try {
     status: "waiting",
     authorization: { state: "active", decisionId: "fixture-authority" },
     allowedOrigins: [origin],
-    allowedCapabilities: ["browser.click"],
+    allowedCapabilities: ["browser.click", "browser.select"],
     operations: [],
   };
   const actuator = new NativeTaskActuator({
@@ -531,13 +572,20 @@ try {
       targets: policy.targets,
     }),
     nextBindingRevision: () => 2,
-    resolveValue: async () => {
-      throw Error("No value needed");
+    resolveValue: async (ref) => {
+      assert.equal(ref, "public-choice-french");
+      return "French";
     },
-    verify: async (_proposal, before, after) =>
-      before.text.includes("4") && after.text.includes("5")
-        ? "succeeded"
-        : "unknown",
+    verify: async (proposal, before, after) =>
+      proposal.capability === "browser.select"
+        ? after.elements
+            .find((e) => e.targetSelector === "#language")
+            ?.options?.find((o) => o.selected)?.label === "French"
+          ? "succeeded"
+          : "unknown"
+        : before.text.includes("4") && after.text.includes("5")
+          ? "succeeded"
+          : "unknown",
     recordEvidence: async () => "fixture-real-page-readback",
   });
   const actuatorSignal = new AbortController().signal;
@@ -573,6 +621,40 @@ try {
     evidenceRef: "fixture-real-page-readback",
   });
   assert.equal(await page.$eval("output", (node) => node.textContent), "5");
+  task.observation = await actuator.observe({
+    owner,
+    taskId: task.id,
+    signal: actuatorSignal,
+  });
+  const selectObservation = actuator.readObservation(task.id, owner);
+  const selectProposal = {
+    ...proposal,
+    id: "actuator-select",
+    capability: "browser.select",
+    valueRef: "public-choice-french",
+    observationId: task.observation.id,
+    observationVersion: task.observation.version,
+    inputRevision: task.observation.inputRevision,
+    targetRef: selectObservation.snapshot.elements.find(
+      (e) => e.targetSelector === "#language",
+    ).selector,
+    expectedSelector: "#language",
+  };
+  task.operations.push({ status: "dispatched", proposal: selectProposal });
+  assert.equal(
+    (
+      await actuator.execute(selectProposal, {
+        owner,
+        signal: actuatorSignal,
+        isCurrent: () => true,
+      })
+    ).status,
+    "succeeded",
+  );
+  assert.equal(
+    await page.$eval("#language", (node) => node.selectedOptions[0].label),
+    "French",
+  );
   const renewedContext = { ...context, epoch: 2 };
   observed = (
     await surfaceTarget.execute(
@@ -595,7 +677,7 @@ try {
   );
   await taskHandler.close();
   console.log(
-    "PASS: NativeTaskActuator readback, cleanup uncertainty, bound embedded task adapter and authenticated host HTTP to isolated command channel, real click/fill with visible preview, lost-effect uncertainty without replay, document and replay fences, manual input, policy requirement, fixed operations, credential exclusion",
+    "PASS: NativeTaskActuator readback, cleanup uncertainty, bound embedded task adapter and authenticated host HTTP to isolated command channel, real click/fill/select with visible preview and option-label readback, lost-effect uncertainty without replay, document and replay fences, manual input, policy requirement, fixed operations, credential exclusion",
   );
 } finally {
   await client?.close();
