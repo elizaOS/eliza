@@ -360,6 +360,15 @@ export function resolveHistoryAuthorEntityId(
 		: service.resolveDiscordEntityId(authorId);
 }
 
+/** Edit stamp stored on memory content; unset until the author edits. */
+export function discordEditedAt(
+	message: Pick<Message, "editedTimestamp">,
+): string | undefined {
+	return message.editedTimestamp
+		? new Date(message.editedTimestamp).toISOString()
+		: undefined;
+}
+
 /**
  * Builds a Memory object from a Discord Message.
  */
@@ -480,6 +489,7 @@ export async function buildMemoryFromMessage(
 		...(options?.extraMetadata ? options.extraMetadata : {}),
 	};
 
+	const editedAt = discordEditedAt(message);
 	const memory: Memory = {
 		id: createUniqueUuid(service.runtime, message.id),
 		entityId,
@@ -494,6 +504,7 @@ export async function buildMemoryFromMessage(
 			inReplyTo: message.reference?.messageId
 				? createUniqueUuid(service.runtime, message.reference.messageId)
 				: undefined,
+			...(editedAt ? { editedAt } : {}),
 			...(options?.extraContent ? options.extraContent : {}),
 		},
 		metadata: metadata as Memory["metadata"],
