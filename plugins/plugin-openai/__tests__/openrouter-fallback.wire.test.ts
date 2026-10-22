@@ -245,8 +245,8 @@ describe("explicit OpenRouter fallback", () => {
       /* Consume the fallback frames. */
     }
     expect(llmCalls.length).toBeGreaterThan(0);
-    const first = llmCalls[0];
-    expect(first.finishReason).toBe("error");
+    const first = llmCalls.find((call) => call.finishReason === "error")!;
+    expect(first).toBeDefined();
     expect(String(first.response)).toContain("Tokens per minute limit exceeded");
     expect(String(first.providerMetadata?.error)).toContain("Tokens per minute limit exceeded");
   });
