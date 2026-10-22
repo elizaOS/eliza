@@ -10,6 +10,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createLocalAgentGateway } from "../../../packages/agent/native-host/gateway.mjs";
 import { createSurfaceCommandChannel } from "../../../packages/agent/native-host/surface-channel.mjs";
 import { connectSurfaceCommandClient } from "../../../packages/agent/native-host/surface-client.mjs";
+import { buildTaskRuntime } from "../../../packages/app/scripts/build-consumer-task-runtime.mjs";
 import { createSurfaceTaskHandler } from "../../../packages/os/browser/src/surface-task-handler.mjs";
 
 const require = createRequire(
@@ -42,40 +43,20 @@ execFileSync(
   ],
   { stdio: "ignore" },
 );
-const targetModule = join(certificates, "surface-target.mjs");
-execFileSync(
-  "bun",
-  [
-    "build",
-    fileURLToPath(
-      new URL(
-        "../../plugin-browser/src/native-surface-target.ts",
-        import.meta.url,
-      ),
-    ),
-    "--target=node",
-    `--outfile=${targetModule}`,
-  ],
-  { stdio: "pipe" },
+// Exercise the same immutable bundle consumed by product hosts, not a private
+// test entry that can conceal missing public exports. Commit candidate sources
+// before running this lane; native resources and the host bundle must agree.
+const sourceRoot = fileURLToPath(new URL("../../../", import.meta.url));
+const sourceCommit = execFileSync(
+  "git",
+  ["-C", sourceRoot, "rev-parse", "HEAD"],
+  { encoding: "utf8" },
+).trim();
+const runtimeModule = join(certificates, "task-runtime.mjs");
+buildTaskRuntime(runtimeModule, { sourceRoot, sourceCommit });
+const { NativeSurfaceBrowserTarget, NativeTaskActuator } = await import(
+  pathToFileURL(runtimeModule).href
 );
-const { NativeSurfaceBrowserTarget } = await import(
-  pathToFileURL(targetModule).href
-);
-const actuatorModule = join(certificates, "task-actuator.mjs");
-execFileSync(
-  "bun",
-  [
-    "build",
-    fileURLToPath(
-      new URL("../../plugin-browser/src/task-actuator.ts", import.meta.url),
-    ),
-    "--target=node",
-    "--conditions=eliza-source",
-    `--outfile=${actuatorModule}`,
-  ],
-  { stdio: "pipe" },
-);
-const { NativeTaskActuator } = await import(pathToFileURL(actuatorModule).href);
 const server = createServer(
   {
     key: await readFile(join(certificates, "key.pem")),

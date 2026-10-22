@@ -98,6 +98,14 @@ export function buildTaskRuntime(
             `export * from './packages/agent/src/services/interactive-task-${name}.ts';`,
         )
         .join("\n") +
+        (fs.existsSync(
+          path.join(
+            temporary,
+            "plugins/plugin-browser/src/native-surface-target.ts",
+          ),
+        )
+          ? "\nexport * from './plugins/plugin-browser/src/native-surface-target.ts';"
+          : "") +
         `\nexport * from './packages/agent/src/services/sqlite-message-interaction-session-store.ts';\nexport * from './packages/core/src/${interactionSources.sessions}.ts';\nexport * from './plugins/plugin-browser/src/native-socket-target.ts';\nexport * from './plugins/plugin-browser/src/task-actuator.ts';\nexport * from './plugins/plugin-google-workspace/src/task-code-resolver.ts';`,
     );
     fs.mkdirSync(path.dirname(output), { recursive: true });
