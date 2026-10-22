@@ -61,6 +61,10 @@ export async function handleReaction(
 			service.runtime.logger.warn("Invalid reaction or user");
 			return;
 		}
+		// Other bots mark messages with status reactions. They are not dialogue.
+		if (user.bot) {
+			return;
+		}
 
 		// Get emoji info
 		let emoji = reaction.emoji.name;
@@ -113,7 +117,7 @@ export async function handleReaction(
 
 		// Process message content
 		const messageContent = reaction.message.content || "";
-		const reactionMessage = `*${actionText} <${emoji}> ${preposition}: \\"${messageContent}\\"*`;
+		const reactionMessage = `*${actionText} <${emoji}> ${preposition}: "${messageContent}"*`;
 
 		// Get user info from the reacting user (not the message author)
 		const reactionMessageAuthor = reaction.message.author;
