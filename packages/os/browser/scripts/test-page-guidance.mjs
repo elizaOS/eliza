@@ -871,6 +871,35 @@ try {
   cases.push(
     "191px split viewport shows an unobscured action preview and 64px Cancel before readiness",
   );
+  // Normal guidance centers an off-screen control before an action is offered.
+  // Its preview must also fit beside that centered target in the split view.
+  await page.evaluate(() => {
+    document.querySelector("#email").style.top = "85px";
+  });
+  element = await read("centered-compact-action");
+  await show("centered-compact-action", element("Email"), {
+    id: "centered-compact-action",
+    action: "fill",
+    assistantName: "Grace",
+    text: "I will type the text for your request.",
+  });
+  await until(shown);
+  const centered = await evaluate(
+    "(()=>{const s=globalThis.__elizaPageGuidanceV1;return {label:s.shadow.querySelector('.label').getBoundingClientRect().toJSON(),target:document.querySelector('#email').getBoundingClientRect().toJSON(),cancel:s.shadow.querySelector('.close').getBoundingClientRect().toJSON()}})()",
+  );
+  assert.ok(
+    centered.label.y >= 8 && centered.label.bottom <= centered.target.y - 8,
+    JSON.stringify(centered),
+  );
+  assert.ok(centered.cancel.height >= 64 && centered.cancel.width >= 64);
+  await until(
+    `globalThis.__elizaPageGuidanceV1.actionReady("centered-compact-action","centered-compact-action",${JSON.stringify(element("Email"))},"fill")`,
+  );
+  await page.screenshot({ path: `${output}/centered-compact-action.png` });
+  await call(pageGuidance, { kind: "hide" });
+  cases.push(
+    "centered target in a 191px split view retains full text, 64px Cancel and preview readiness",
+  );
   await writeFile(
     `${output}/verification.json`,
     JSON.stringify(
