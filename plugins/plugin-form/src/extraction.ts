@@ -81,13 +81,10 @@ interface JsonObjectRegion {
 /**
  * Find each complete top-level `{...}` region in one pass. A brace inside a
  * JSON string does not change the depth, so a value such as `"a{b}c"` stays
- * inside its region. A region left open at the end of the text is reported
- * through `unfinished`; it is a cut-off reply, not a value.
+ * inside its region. A region still open at the end of the text is a cut-off
+ * reply and is not reported.
  */
-function topLevelObjectRegions(text: string): {
-  regions: JsonObjectRegion[];
-  unfinished: boolean;
-} {
+function topLevelObjectRegions(text: string): JsonObjectRegion[] {
   const regions: JsonObjectRegion[] = [];
   let depth = 0;
   let start = 0;
@@ -111,7 +108,41 @@ function topLevelObjectRegions(text: string): {
       if (depth === 0) regions.push({ start, end: index + 1 });
     }
   }
-  return { regions, unfinished: depth > 0 };
+  return regions;
+}
+
+/**
+ * The literal strings the prompts in this module show the model as the
+ * response shape. A reply can restate that shape, and a restated shape is not
+ * an answer: it carries the placeholder text, not the user's value.
+ */
+const RESPONSE_SHAPE_PLACEHOLDER =
+  /^(?:<[^<>\s]{1,60}>|extracted value or null if not found|brief explanation|old@example\.com|new@example\.com)$/i;
+/** Fields that carry the answer, at the top level or inside `corrections`. */
+const ANSWER_VALUE_FIELDS = new Set(["value", "old_value", "new_value"]);
+
+function valueFieldStrings(value: unknown, depth = 0): string[] {
+  if (depth > 3 || !value || typeof value !== "object") return [];
+  if (Array.isArray(value))
+    return value.flatMap((entry) => valueFieldStrings(entry, depth + 1));
+  const strings: string[] = [];
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof entry === "string" && ANSWER_VALUE_FIELDS.has(key)) {
+      strings.push(entry.trim());
+    } else if (entry && typeof entry === "object") {
+      strings.push(...valueFieldStrings(entry, depth + 1));
+    }
+  }
+  return strings;
+}
+
+/** True only when every answer value in the object is prompt placeholder text. */
+function restatesResponseShape(parsed: unknown): boolean {
+  const strings = valueFieldStrings(parsed);
+  return (
+    strings.length > 0 &&
+    strings.every((entry) => RESPONSE_SHAPE_PLACEHOLDER.test(entry))
+  );
 }
 
 function parseJsonObjectResponse<T>(response: string): T | null {
@@ -129,22 +160,18 @@ function parseJsonObjectResponse<T>(response: string): T | null {
   const trimmed = String(response ?? "").trim();
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
   const candidate = (fenced?.[1] ?? trimmed).trim();
-  const { regions, unfinished } = topLevelObjectRegions(candidate);
-  const first = regions[0];
-  const last = regions[regions.length - 1];
-  if (!first || !last) return null;
-  // The reply ends inside an unclosed object, so its last `}` closed an
-  // earlier object. That earlier object is often the shape restated from the
-  // prompt, and reading it stored the schema text as the user's answer.
-  if (unfinished) return null;
-  // A single region parses exactly as before, including the fences and the
-  // braces of a string value.
-  if (regions.length === 1)
-    return acrossRegions(candidate.slice(first.start, last.end));
-  // Prose can hold its own complete braces, as in "treat {city} as text". The
-  // answer is the newest region, so read that one and never join the prose
-  // between two regions into one object.
-  return acrossRegions(candidate.slice(last.start, last.end));
+  const regions = topLevelObjectRegions(candidate);
+  // Prose can hold its own complete braces, as in "treat {city} as text", and
+  // the reply can narrate before or after the object. Read the newest region
+  // that is not the prompt's placeholder shape: an answer stays readable when
+  // the shape is restated after it, and a cut-off reply that only restated the
+  // shape keeps the field empty instead of storing the placeholder text.
+  for (let index = regions.length - 1; index >= 0; index -= 1) {
+    const region = regions[index];
+    const parsed = acrossRegions(candidate.slice(region.start, region.end));
+    if (parsed && !restatesResponseShape(parsed)) return parsed;
+  }
+  return null;
 }
 
 function parseBoolean(value: unknown): boolean {
