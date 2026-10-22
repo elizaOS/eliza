@@ -137,10 +137,20 @@ export function pageGuidance(request) {
   // A step whose control is outside the visible page brings it into view, so
   // the guide never waits unseen. An action guide never scrolls: the action
   // needs the page exactly as observed.
-  const targetRect = () =>
-    target === document.scrollingElement
-      ? new DOMRect(0, 0, innerWidth, innerHeight)
-      : target.getBoundingClientRect();
+  const targetRect = () => {
+    if (target !== document.scrollingElement)
+      return target.getBoundingClientRect();
+    // Native panes and page zoom can make the visible viewport fractional.
+    // Rounded layout bounds would center the tall document as an off-screen
+    // target, scrolling before the separately authorized action.
+    const view = window.visualViewport;
+    return new DOMRect(
+      view?.offsetLeft ?? 0,
+      view?.offsetTop ?? 0,
+      view?.width ?? innerWidth,
+      view?.height ?? innerHeight,
+    );
+  };
   const placed = targetRect();
   const view0 = window.visualViewport;
   const placement =

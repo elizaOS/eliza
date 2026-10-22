@@ -1,7 +1,7 @@
 /** Real Chromium DOM and isolated realm; Android reply-proxy coverage is separate. */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:https";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -13,6 +13,7 @@ import { createSurfaceCommandChannel } from "../../../packages/agent/native-host
 import { connectSurfaceCommandClient } from "../../../packages/agent/native-host/surface-client.mjs";
 import { buildTaskRuntime } from "../../../packages/app/scripts/build-consumer-task-runtime.mjs";
 import { createSurfaceTaskHandler } from "../../../packages/os/browser/src/surface-task-handler.mjs";
+import { testOutputPath } from "../../../packages/scripts/lib/test-output.ts";
 import {
   GuidedWebsiteWorkflow,
   pageControls,
@@ -238,31 +239,77 @@ try {
   assert.ok(scrollTarget.scroll.maxY > 0);
   // Native panes can have a fractional visual viewport below rounded innerHeight.
   // Guidance must not center the tall document before the authorized scroll.
-  await cdp.send("Emulation.setPageScaleFactor", { pageScaleFactor: 1.001 });
-  const viewport = await page.evaluate(() => ({
-    layout: innerHeight,
-    visual: visualViewport.height,
-  }));
-  assert.ok(viewport.visual < viewport.layout);
-  state = await snapshot();
-  const rootGuide = {
-    kind: "show",
-    id: "root-scroll-guidance",
-    snapshotId: state.snapshotId,
-    nodeId: state.elements.find((item) => item.targetSelector === "html").id,
-    origin,
-    expiresAt: Date.now() + 15000,
-    text: "Scroll down to continue.",
-    tone: "instruction",
-  };
-  assert.equal(
-    (await dispatch({ subaction: "guide", guidance: rootGuide })).result.accepted,
-    true,
-  );
-  assert.equal(await page.evaluate(() => scrollY), 0,
-    "Showing root guidance must not perform unjournaled scrolling");
-  await dispatch({ subaction: "guide", guidance: { kind: "hide" } });
+  await mkdir(testOutputPath("native-scroll-guidance"), { recursive: true });
+  for (const [width, height, scale] of [
+    [800, 600, 1.001],
+    [400, 191, 1.001],
+    [400, 191, 1.25],
+  ]) {
+    await page.setViewport({ width, height });
+    await cdp.send("Emulation.setPageScaleFactor", { pageScaleFactor: scale });
+    const viewport = await page.evaluate(() => ({
+      layout: innerHeight,
+      visual: visualViewport.height,
+    }));
+    assert.ok(viewport.visual < viewport.layout);
+    state = await snapshot();
+    const rootGuide = {
+      kind: "show",
+      id: "root-scroll-guidance",
+      snapshotId: state.snapshotId,
+      nodeId: state.elements.find((item) => item.targetSelector === "html").id,
+      origin,
+      expiresAt: Date.now() + 15000,
+      text: "Scroll down to continue.",
+      tone: "instruction",
+    };
+    assert.equal(
+      (await dispatch({ subaction: "guide", guidance: rootGuide })).result
+        .accepted,
+      true,
+    );
+    assert.equal(
+      await page.evaluate(() => scrollY),
+      0,
+      "Showing root guidance must not perform unjournaled scrolling",
+    );
+    const preview = {
+      ...rootGuide,
+      id: "root-scroll-preview",
+      action: "scroll",
+    };
+    assert.equal(
+      (await dispatch({ subaction: "guide", guidance: preview })).result
+        .accepted,
+      true,
+    );
+    const deadline = Date.now() + 5000;
+    while (
+      !(
+        await dispatch({
+          subaction: "guide",
+          guidance: { ...preview, kind: "action-status" },
+        })
+      ).result.ready
+    ) {
+      assert.ok(Date.now() < deadline, "Root scroll preview must become ready");
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.equal(
+      await page.evaluate(() => scrollY),
+      0,
+      "Preview must not move the page either",
+    );
+    await page.screenshot({
+      path: testOutputPath(
+        "native-scroll-guidance",
+        `${width}-${height}-${scale}.png`,
+      ),
+    });
+    await dispatch({ subaction: "guide", guidance: { kind: "hide" } });
+  }
   await cdp.send("Emulation.setPageScaleFactor", { pageScaleFactor: 1 });
+  await page.setViewport({ width: 800, height: 600 });
   state = await snapshot();
   const scroll = action(state, "scroll", "html", {
     direction: "down",
