@@ -769,7 +769,7 @@
     "drizzle-orm": "0.45.4",
     "exceljs": "^4.4.0",
     "expletives": "^0.1.5",
-    "hono": "4.13.8",
+    "hono": "4.13.11",
     "jose": "^6.0.0",
     "libphonenumber-js": "^1.13.14",
     "nanoid": "^6.0.0",
