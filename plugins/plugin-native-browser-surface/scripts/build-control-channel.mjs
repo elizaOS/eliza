@@ -1,5 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { pageCommand } from "../../../packages/os/browser/src/commands.mjs";
+import { pageCommand } from "../../../packages/os/browser/src/page-command.mjs";
 import { installControlChannel } from "./control-channel.mjs";
 
 // Ship the same command implementation as Chromium. Published native packages
