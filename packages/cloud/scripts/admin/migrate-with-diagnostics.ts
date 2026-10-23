@@ -1390,17 +1390,22 @@ export async function runMigrations(
         );
         await reportIdentityResult?.(identityConfig, identityResult);
       }
+      console.log("[db:migrate] ensuring migration ledger table");
       await ensureMigrationsTable(client);
 
+      console.log("[db:migrate] reading migration ledger");
       const applied = await getAppliedMigrations(client);
       if (applied.length === 0) {
+        console.log("[db:migrate] checking empty-ledger database is fresh");
         await assertEmptyLedgerDatabaseIsFresh(client);
       }
+      console.log("[db:migrate] validating canonical migration ledger");
       const validatedLedger = validateAppliedMigrationLedger(
         applied,
         migrations,
       );
       if (client.backend === "postgres" && applied.length > 0) {
+        console.log("[db:migrate] checking canonical database relations");
         await assertAppliedLedgerHasCanonicalRelations(client);
       }
       const lastApplied = applied.at(-1);
