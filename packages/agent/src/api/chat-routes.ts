@@ -1382,7 +1382,7 @@ function isRemoteOllamaEndpointConfigured(): boolean {
   }
   return host !== "localhost" && host !== "127.0.0.1" && host !== "::1";
 }
-export function resolveChatGenerationTimeoutMs(explicit?: number): number {
+function resolveChatGenerationTimeoutMs(explicit?: number): number {
   if (
     typeof explicit === "number" &&
     Number.isFinite(explicit) &&
