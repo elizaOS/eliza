@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { APICallError, generateText, RetryError } from "ai";
 import {
   getSafeCallerLlmPurpose,
   getSafeProviderErrorMetadata,
@@ -123,6 +124,75 @@ describe("provider failure diagnostic privacy", () => {
       parameterCategory: "reasoning_effort",
       reasonClass: "unsupported_parameter",
     });
+  });
+
+  test("retains finite metadata after a real SDK generation rejection and retry wrapping", async () => {
+    const marker = "PRIVATE_PROVIDER_REQUEST_SENTINEL";
+    const failure = new APICallError({
+      message: marker,
+      url: `https://example.invalid/${marker}`,
+      requestBodyValues: { messages: [{ role: "user", content: marker }] },
+      responseHeaders: { "x-private": marker },
+      responseBody: JSON.stringify({
+        error: {
+          code: "invalid_json_schema",
+          type: "invalid_request_error",
+          param: `tools[0].function.parameters.properties.${marker}`,
+          message: `Invalid schema: "additionalProperties" must be false; ${marker}`,
+        },
+      }),
+      statusCode: 400,
+      isRetryable: false,
+    });
+    let dispatches = 0;
+    let rejected: unknown;
+    try {
+      await generateText({
+        model: {
+          specificationVersion: "v3",
+          provider: "closed-regression",
+          modelId: "closed-regression",
+          supportedUrls: {},
+          async doGenerate() {
+            dispatches++;
+            throw failure;
+          },
+          async doStream() {
+            throw new Error("Unexpected streaming dispatch");
+          },
+        },
+        prompt: marker,
+        maxRetries: 0,
+      });
+    } catch (error) {
+      rejected = error;
+    }
+    expect(dispatches).toBe(1);
+    expect(APICallError.isInstance(rejected)).toBe(true);
+    expect(rejected).toBe(failure);
+    const retry = new RetryError({
+      message: marker,
+      reason: "errorNotRetryable",
+      errors: [rejected],
+    });
+    expect(RetryError.isInstance(retry)).toBe(true);
+    for (const error of [
+      rejected,
+      retry,
+      new Error(marker, { cause: retry }),
+    ]) {
+      const metadata = getSafeProviderErrorMetadata(error, "action_planner");
+      expect(metadata).toEqual({
+        callerPurpose: "action_planner",
+        upstreamStatus: 400,
+        providerErrorCode: "invalid_json_schema",
+        providerErrorType: "invalid_request_error",
+        parameterCategory: "tools",
+        schemaKeywords: ["additionalProperties"],
+        reasonClass: "invalid_schema",
+      });
+      expect(JSON.stringify(metadata)).not.toContain(marker);
+    }
   });
 
   test("invalid and oversize bodies retain status without processing their contents", () => {
