@@ -97,12 +97,6 @@ function validatedSearchRequest(
       code: "MAPS_INVALID_INPUT",
     });
   }
-  // A cursor the model copies back can carry the space or line break that
-  // surrounded it in the previous answer. The blank test above already treats
-  // that padding as framing, not as part of the token, so the value that
-  // reaches the provider must be the same trimmed token: a page token with
-  // padding is rejected upstream as an invalid token.
-  const cursor = request.cursor?.trim();
   return {
     query,
     ...(request.near
@@ -114,7 +108,7 @@ function validatedSearchRequest(
           ),
         }
       : {}),
-    ...(cursor ? { cursor } : {}),
+    ...(request.cursor ? { cursor: request.cursor } : {}),
     ...(request.limit ? { limit: request.limit } : {}),
   };
 }
@@ -282,11 +276,7 @@ export class MapsService extends Service {
         code: "MAPS_INVALID_INPUT",
       });
     }
-    // A place id the model copies out of a rendered answer can carry the space
-    // or line break that framed it there. Google accepts only the exact place
-    // resource name, so "/v1/places/%20ChIJ...%20" answers 404 and an existing
-    // place would be reported as absent.
-    const place = await adapter.getPlace(providerPlaceId.trim());
+    const place = await adapter.getPlace(providerPlaceId);
     return {
       place: place ? assertProviderPlace(place, adapter, "place detail") : null,
       provider: this.copyDescription(registration.description),
