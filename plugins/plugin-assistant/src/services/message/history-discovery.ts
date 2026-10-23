@@ -462,7 +462,9 @@ function priorMessageBody(segment: ContextObjectPromptSegment): string {
       ? segment.content.slice(prefix.length)
       : segment.content;
   const summary = segment.metadata?.attachmentSummary;
-  return typeof summary === "string" && content.endsWith(` ${summary}`)
+  if (typeof summary !== "string") return content;
+  if (content === summary) return "";
+  return content.endsWith(` ${summary}`)
     ? content.slice(0, -summary.length - 1)
     : content;
 }

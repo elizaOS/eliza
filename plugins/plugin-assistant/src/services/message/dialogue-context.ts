@@ -213,7 +213,11 @@ export function appendPriorDialogueEvents(
       const text =
         typeof m.content?.text === "string" ? m.content.text.trim() : "";
       if (looksLikePriorDialogueArtifact(text)) return isInterruptedReply(m);
-      return text.length > 0 || isInterruptedReply(m);
+      return (
+        text.length > 0 ||
+        (m.content?.attachments?.length ?? 0) > 0 ||
+        isInterruptedReply(m)
+      );
     })
     .sort((a, b) => {
       const aTime = Number.isFinite(a.createdAt as unknown as number)
@@ -342,7 +346,12 @@ export function appendPriorDialogueEvents(
     }
     const text =
       priorDialogueOriginalText(memory) ?? getUserMessageText(memory);
-    if (!text || looksLikePriorDialogueArtifact(text)) continue;
+    // History discovery strips this exact suffix to recover the quotable text.
+    const attachmentSummary = priorDialogueAttachmentSummary(memory);
+    // An attachment-only message (e.g. a generated image with no caption) is
+    // still part of the dialogue.
+    if (text ? looksLikePriorDialogueArtifact(text) : !attachmentSummary)
+      continue;
     const isOwnReply = memory.entityId === runtime.agentId;
     const speakerName = isOwnReply
       ? (runtime.character?.name ?? priorDialogueSpeakerName(memory))
@@ -360,8 +369,6 @@ export function appendPriorDialogueEvents(
     const sourceReplyReferences = storedReferences
       ? { ...storedReferences, replySha256: sourceReplyTextHash(text) }
       : undefined;
-    // History discovery strips this exact suffix to recover the quotable text.
-    const attachmentSummary = priorDialogueAttachmentSummary(memory);
     events.push({
       id: `history:${memory.id}`,
       type: "segment",
@@ -371,7 +378,7 @@ export function appendPriorDialogueEvents(
         id: `history:${memory.id}`,
         label: isOwnReply ? "prior_message:agent" : "prior_message:user",
         content: priorDialogueContent(
-          attachmentSummary ? `${text} ${attachmentSummary}` : text,
+          [text, attachmentSummary].filter(Boolean).join(" "),
           speakerName ?? (isOwnReply ? "assistant" : "user"),
         ),
         stable: false,
