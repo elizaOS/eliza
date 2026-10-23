@@ -154,11 +154,23 @@ export function ensureBrowserWorkspaceCheckboxElement(
   );
 }
 
+/** A page learns an edit only from the events a browser sends. The desktop
+ * backend sends the same pair, so both backends must report every edit. */
+export function notifyBrowserWorkspaceControlChanged(
+  control: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
+): void {
+  const view = control.ownerDocument?.defaultView;
+  if (!view) return;
+  control.dispatchEvent(new view.Event("input", { bubbles: true }));
+  control.dispatchEvent(new view.Event("change", { bubbles: true }));
+}
+
 export function setBrowserWorkspaceControlValue(
   control: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
   nextValue: string,
 ): void {
   control.value = nextValue;
+  notifyBrowserWorkspaceControlChanged(control);
 }
 
 export async function activateWebBrowserWorkspaceElement(
@@ -211,6 +223,7 @@ export async function activateWebBrowserWorkspaceElement(
   const inputType = inputElement?.type?.toLowerCase() ?? "";
   if (inputElement && (inputType === "checkbox" || inputType === "radio")) {
     inputElement.checked = inputType === "radio" ? true : !inputElement.checked;
+    notifyBrowserWorkspaceControlChanged(inputElement);
     return {
       mode: "web",
       subaction,

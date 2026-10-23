@@ -27,6 +27,7 @@ import {
   ensureBrowserWorkspaceCheckboxElement,
   ensureBrowserWorkspaceFormControlElement,
   ensureLoadedWebBrowserWorkspaceTabDocument,
+  notifyBrowserWorkspaceControlChanged,
   scrollWebBrowserWorkspaceTarget,
   setBrowserWorkspaceControlValue,
   submitWebBrowserWorkspaceForm,
@@ -1101,6 +1102,7 @@ export async function executeWebBrowserWorkspaceDomCommand(
               "check",
             );
             input.checked = true;
+            notifyBrowserWorkspaceControlChanged(input);
             return {
               mode: "web",
               subaction: command.subaction,
@@ -1181,6 +1183,7 @@ export async function executeWebBrowserWorkspaceDomCommand(
               "uncheck",
             );
             input.checked = false;
+            notifyBrowserWorkspaceControlChanged(input);
             return {
               mode: "web",
               subaction: command.subaction,
@@ -1213,6 +1216,7 @@ export async function executeWebBrowserWorkspaceDomCommand(
         }
         const input = ensureBrowserWorkspaceCheckboxElement(element, "check");
         input.checked = true;
+        notifyBrowserWorkspaceControlChanged(input);
         return {
           mode: "web",
           subaction: command.subaction,
@@ -1510,6 +1514,7 @@ export async function executeWebBrowserWorkspaceDomCommand(
         }
         (select as HTMLSelectElement).value = option.value;
         option.selected = true;
+        notifyBrowserWorkspaceControlChanged(select);
         return {
           mode: "web",
           subaction: command.subaction,
@@ -1526,6 +1531,7 @@ export async function executeWebBrowserWorkspaceDomCommand(
         }
         const input = ensureBrowserWorkspaceCheckboxElement(element, "uncheck");
         input.checked = false;
+        notifyBrowserWorkspaceControlChanged(input);
         return {
           mode: "web",
           subaction: command.subaction,
