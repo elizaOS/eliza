@@ -370,7 +370,7 @@
     "viem": "^2.56.9",
     "@aws-sdk/client-kms": "^3.1136.0",
     "graphene-pk11": "^2.2.0",
-    "hono": "^4.13.8",
+    "hono": "^4.13.13",
     "jose": "^6.2.1",
     "siwe": "^3.0.0",
     "@node-saml/node-saml": "5.1.0",

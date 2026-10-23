@@ -284,7 +284,7 @@
     "drizzle-orm": "0.45.3",
     "esbuild": "^0.28.0",
     "ethers": "^6.16.0",
-    "hono": "^4.13.8",
+    "hono": "^4.13.13",
     "isomorphic-git": "^1.42.2",
     "jpeg-js": "^0.4.4",
     "json5": "^2.2.3",
