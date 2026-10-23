@@ -916,6 +916,7 @@ try {
     permitted = false;
   // A navigation can retire Android's isolated-world reply before it reaches
   // the host. Lose only that acknowledgement after the real DOM operation.
+  const recoveryDatabases = [];
   let lostFollowReplies = 0,
     followFault = "lost-reply";
   const followTarget = Object.create(surfaceTarget);
@@ -930,7 +931,7 @@ try {
       await page.waitForFunction(() => location.hash === "#billing-portal");
       if (followFault === "wrong-destination")
         await page.evaluate(() => history.replaceState(null, "", "#unrelated"));
-      if (followFault === "revoked") {
+      if (followFault === "paused") {
         const active = runtime.get(plannedTask.id);
         runtime.control(active.id, active.revision, "pause");
       }
@@ -1112,9 +1113,16 @@ try {
       runtime.get(plannedTask.id).operations.map((o) => o.status),
       ["succeeded", "succeeded", "succeeded"],
     );
-    for (const mode of ["no-navigation", "wrong-destination", "revoked"]) {
+    for (const mode of ["no-navigation", "wrong-destination", "paused"]) {
       followFault = mode;
       await page.evaluate(() => history.replaceState(null, "", "/"));
+      const recoveryDb = new DatabaseSync(":memory:");
+      recoveryDatabases.push(recoveryDb);
+      runtime = new InteractiveTaskRuntime({
+        owner,
+        store: new SqliteInteractiveTaskStore(recoveryDb),
+        actuator: plannedActuator,
+      });
       plannedTask = runtime.create({
         id: `uncertain-follow-${mode}`,
         goalRef: "open-portal",
@@ -1161,6 +1169,7 @@ try {
     }
   } finally {
     await plannedActuator.quiesce({ owner, taskId: plannedTask.id });
+    for (const recoveryDb of recoveryDatabases) recoveryDb.close();
     db.close();
   }
   console.log(
