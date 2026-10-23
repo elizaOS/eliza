@@ -170,8 +170,12 @@ export function requireNonSensitiveText(text, options) {
 export const SECRET_REMOVED_MARK = "[removed]";
 /** One digit, typed ("4") or as speech recognition writes it ("four"). */
 const D = `(?:\\d|\\b(?:${DIGIT_WORD})\\b)`;
-/** Between digits: nothing, a space, comma, dot or dash ("4 8-2, 9"). */
-const S = "(?:[\\s,.-]{0,3})";
+/**
+ * Between digits: nothing, a space or dash, or a comma or dot followed by a
+ * space or dash ("4 8-2, 9"). A comma or dot right before the next digit is
+ * an amount ("12.50", "1,250"), not a code, so it ends the run.
+ */
+const S = "(?:[\\s-]{0,3}|[,.][\\s-]{1,3})";
 const digitRun = (min, max) => `${D}(?:${S}${D}){${min - 1},${max - 1}}`;
 const DIGIT_OR_WORD = new RegExp(`\\d|\\b(?:${DIGIT_WORD})\\b`, "gi");
 const digitsOf = (text) =>
@@ -357,7 +361,12 @@ export function createSecretScrubber({
     }
   }
   function rememberWords(words) {
-    for (const word of credentialWords(words)) {
+    // A clause keeps a comma or semicolon with no space after it
+    // ("hunter2,please"), so the parts are remembered too.
+    const parts = words.flatMap((word) =>
+      /[,;]/.test(word) ? [word, ...word.split(/[,;]+/)] : [word],
+    );
+    for (const word of credentialWords(parts)) {
       phraseSecrets.add(key(word));
       phraseLengths.add(1);
     }
@@ -495,6 +504,15 @@ export function createSecretScrubber({
       const out = removeRemembered(text, SECRET_REMOVED_MARK);
       return out === text ? value : out;
     },
+    /**
+     * Whether text carries a value already remembered. Nothing new is looked
+     * for and nothing is remembered.
+     */
+    carriesRemembered(value) {
+      if (typeof value !== "string" || !value || !size()) return false;
+      const text = normalize(value);
+      return removeRemembered(text, SECRET_REMOVED_MARK) !== text;
+    },
     /** Detects and remembers the secrets in rejected text without keeping the text. */
     remember(value) {
       if (typeof value === "string") scrub(value);
@@ -525,7 +543,9 @@ export function createSensitiveTextGate({
         scrubber.remember(text);
         throw refusal();
       }
-      if (scrubber.size && scrubber.scrub(text) !== text) throw refusal();
+      // Only a value refused before; never what the scrubber's wider
+      // removal rules would change, and nothing new is remembered here.
+      if (scrubber.carriesRemembered(text)) throw refusal();
     },
     clear() {
       scrubber.clear();

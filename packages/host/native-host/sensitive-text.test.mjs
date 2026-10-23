@@ -151,6 +151,52 @@ test("the gate refuses a remembered value again without its telling words", () =
   gate.require(`use ${CODE} like before`);
 });
 
+test("the gate refuses only a remembered value, not what scrubbing would change", () => {
+  const gate = createSensitiveTextGate();
+  assert.throws(() => gate.require(`my verification code is ${CODE}`));
+  const size = gate.scrubber.size;
+  // An amount after "code" is neither sensitive nor remembered.
+  gate.require("the discount code costs 12.50");
+  gate.require("I paid 1250 dollars");
+  gate.require("the code costs 1,250 now");
+  assert.equal(gate.scrubber.size, size);
+  assert.throws(() => gate.require(`use ${CODE} like before`));
+});
+
+test("an amount after a code word stays", () => {
+  for (const text of [
+    "the discount code costs 12.50",
+    "the code costs 48.29 today",
+    "the code costs 1,250 now",
+  ]) {
+    assert.equal(redactSensitiveText(text), text, text);
+    const scrubber = createSecretScrubber();
+    assert.equal(scrubber.scrub(text), text, text);
+    assert.equal(scrubber.size, 0, text);
+  }
+  assert.equal(
+    redactSensitiveText("the code is 4, 8, 2, 9"),
+    `the code is ${MARK}`,
+  );
+});
+
+test("a password followed by a comma and more words is remembered alone", () => {
+  const scrubber = createSecretScrubber();
+  assert.equal(
+    scrubber.scrub("password is hunter2,please call"),
+    `password is ${MARK}`,
+  );
+  assert.equal(
+    scrubber.scrub("I typed hunter2 again"),
+    `I typed ${MARK} again`,
+  );
+  assert.equal(scrubber.scrub("please call me"), "please call me");
+  const gate = createSensitiveTextGate();
+  assert.throws(() => gate.require("password is hunter2;please call"));
+  assert.throws(() => gate.require("I typed hunter2 again"));
+  gate.require("please call me");
+});
+
 test("a host matcher adds its own values to the check, the scrubber and the gate", () => {
   // A host-specific value: "member id" followed by eight digits.
   const memberId = {
