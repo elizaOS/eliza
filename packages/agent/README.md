@@ -278,7 +278,9 @@ adds no effect authority and must not be called inside an existing transaction.
 
 Native hosts may opt into `createCredentialGate({ readVerifiedAccount })` after
 providing an authenticated whole credential/owner record. The stable identity
-hashes the JSON tuple `[authority, userId, organizationId]`; credential rotation
+hashes the JSON tuple `[authority, userId, organizationId]`. Hosts that key
+other data by this owner use the exported `verifiedOwnerIdentity(owner)`
+instead of a copy of the hash. Credential rotation
 still must satisfy the existing per-process fingerprint fence. The default
 credential-hash owner remains unchanged. This option requires a host-owned
 writer lease and an explicit migration before adoption; neither is supplied by

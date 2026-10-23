@@ -461,6 +461,42 @@ export function createLocalAgentGateway({
   return server;
 }
 
+/**
+ * The stable owner of a verified Cloud account: `cloud-owner-v1:` and the
+ * SHA-256 of the JSON tuple `[authority, userId, organizationId]`. The owner
+ * must come from an authenticated record (see `createCredentialGate`), never
+ * from a renderer value or a decoded token claim. Throws a TypeError for an
+ * invalid owner.
+ */
+export function verifiedOwnerIdentity(owner) {
+  if (!owner || typeof owner !== "object" || Object.keys(owner).length !== 3)
+    throw new TypeError("Invalid verified account owner");
+  const tuple = [owner.authority, owner.userId, owner.organizationId];
+  if (
+    tuple.some(
+      (v) =>
+        typeof v !== "string" ||
+        !v ||
+        Array.from(v).some(
+          (c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127,
+        ) ||
+        !v.isWellFormed(),
+    )
+  )
+    throw new TypeError("Invalid verified account owner");
+  const authority = new URL(tuple[0]);
+  if (
+    authority.origin !== tuple[0] ||
+    !(
+      authority.protocol === "https:" ||
+      (authority.protocol === "http:" &&
+        ["127.0.0.1", "localhost", "[::1]"].includes(authority.hostname))
+    )
+  )
+    throw new TypeError("Invalid verified account authority");
+  return `cloud-owner-v1:${createHash("sha256").update(JSON.stringify(tuple)).digest("hex")}`;
+}
+
 export function createCredentialGate({
   readBinding,
   readCredential,
@@ -502,41 +538,10 @@ export function createCredentialGate({
             Object.keys(record).length !== 4 ||
             typeof record.credentialId !== "string" ||
             !record.credentialId ||
-            record.credential !== key ||
-            !record.owner ||
-            Object.keys(record.owner).length !== 3
+            record.credential !== key
           )
             throw Error();
-          const tuple = [
-            record.owner.authority,
-            record.owner.userId,
-            record.owner.organizationId,
-          ];
-          if (
-            tuple.some(
-              (v) =>
-                typeof v !== "string" ||
-                !v ||
-                Array.from(v).some(
-                  (c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127,
-                ) ||
-                !v.isWellFormed(),
-            )
-          )
-            throw Error();
-          const authority = new URL(tuple[0]);
-          if (
-            authority.origin !== tuple[0] ||
-            !(
-              authority.protocol === "https:" ||
-              (authority.protocol === "http:" &&
-                ["127.0.0.1", "localhost", "[::1]"].includes(
-                  authority.hostname,
-                ))
-            )
-          )
-            throw Error();
-          owner = `cloud-owner-v1:${createHash("sha256").update(JSON.stringify(tuple)).digest("hex")}`;
+          owner = verifiedOwnerIdentity(record.owner);
         }
       } catch {
         throw Object.assign(new Error(staleMessage), { status: 409 });
