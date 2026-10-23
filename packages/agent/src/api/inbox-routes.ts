@@ -45,6 +45,7 @@ import {
   type ConnectorAccount,
   type ConnectorAccountManager,
   createUniqueUuid,
+  ElizaError,
   expandConnectorSourceFilter,
   getConnectorAccountManager,
   type Memory,
@@ -1813,7 +1814,20 @@ async function loadLatestRoomMemory(
     return candidates[0] ?? null;
   } catch (error) {
     if (isMissingMessagesTableError(error)) return null;
-    throw error;
+    // error-policy:J1 this helper feeds two HTTP paths that interpolate
+    // `err.message` into the response body, and a driver error can carry a
+    // SQLite file path, SQL text, or a remote host. Report the raw cause here,
+    // then hand the routes a fixed, detail-free failure that still reads as a
+    // failure rather than an empty chat.
+    runtime.reportError("inbox-message-history", error, {
+      roomId,
+      tableName: "messages",
+    });
+    throw new ElizaError("Inbox message history is unavailable.", {
+      code: "INBOX_MESSAGE_HISTORY_UNAVAILABLE",
+      cause: error,
+      context: { roomId, tableName: "messages" },
+    });
   }
 }
 async function augmentRoomsFromRecentMemories(

@@ -17,6 +17,7 @@ async function listChats(
 ) {
   let status = 200;
   let body: Record<string, unknown> = {};
+  const reported: Array<{ scope: string; error: unknown }> = [];
   const world = { id: WORLD_ID, name: "connector", metadata: {} };
   const room = {
     id: ROOM_ID,
@@ -29,6 +30,9 @@ async function listChats(
   const runtime = {
     agentId: AGENT_ID,
     logger: { info() {}, warn() {}, error() {}, debug() {} },
+    reportError: (scope: string, error: unknown) => {
+      reported.push({ scope, error });
+    },
     getAllWorlds: async () => [world],
     getRoomsByWorlds: async () => [room],
     getMemories: async (params: { roomId?: string }) =>
@@ -60,7 +64,7 @@ async function listChats(
       },
     } as never,
   );
-  return { status, body };
+  return { status, body, reported };
 }
 
 it("reports a message-storage failure instead of an empty chat", async () => {
@@ -69,6 +73,22 @@ it("reports a message-storage failure instead of an empty chat", async () => {
   });
   expect(status).toBe(500);
   expect(body.error).toContain("failed to load inbox chats");
+});
+
+it("keeps storage detail out of the response and reports the cause", async () => {
+  // A driver message can carry the database path, SQL text, or a remote host.
+  // The route interpolates `err.message` into the body, so the detail must stop
+  // at the helper boundary and travel through the diagnostic hook instead.
+  const sentinel = "SENTINEL_HOST_PATH=/var/lib/eliza/secrets/agent.db";
+  const { status, body, reported } = await listChats(async () => {
+    throw new Error(`SQLITE_CANTOPEN: unable to open database file ${sentinel}`);
+  });
+  expect(status).toBe(500);
+  expect(body.error).toContain("Inbox message history is unavailable.");
+  expect(JSON.stringify(body)).not.toContain("SENTINEL_HOST_PATH");
+  expect(reported).toHaveLength(1);
+  expect(reported[0]?.scope).toBe("inbox-message-history");
+  expect((reported[0]?.error as Error).message).toContain("SENTINEL_HOST_PATH");
 });
 
 it("keeps a genuinely message-less room as an empty chat", async () => {
