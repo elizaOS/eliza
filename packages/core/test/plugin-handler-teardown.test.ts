@@ -1,7 +1,10 @@
 /** Plugin unload must tear down chat pre-handlers and response-handler
  * (field) evaluators, not only actions/providers/evaluators. */
 import { expect, it } from "vitest";
+import { SEND_HANDLER_NOT_FOUND } from "../src/types/messaging";
 import type { Plugin } from "../src/types/plugin";
+import type { IAgentRuntime } from "../src/types/runtime";
+import { Service } from "../src/types/service";
 
 /** The chat pre-handler registry is internal to the concrete runtime; the test
  * reads it directly to assert the real post-unload state, not just bookkeeping. */
@@ -178,4 +181,221 @@ it("unloading a plugin whose same-name response-handler evaluators were skipped 
 	expect(runtime.responseHandlerFieldEvaluators).toContain(
 		incumbent.responseHandlerFieldEvaluators?.[0],
 	);
+});
+
+/** Registers connectors from its started service, through the same
+ * registerSendHandlers hook plugin-telegram, plugin-discord and plugin-slack use. */
+class ConnectorFixtureService extends Service {
+	static serviceType = "connector_teardown_fixture";
+	capabilityDescription = "Connector teardown fixture";
+	static async start(runtime: IAgentRuntime): Promise<Service> {
+		return new ConnectorFixtureService(runtime);
+	}
+	async stop(): Promise<void> {}
+	static registerSendHandlers(runtime: IAgentRuntime): void {
+		const sendHandler = async () => undefined;
+		runtime.registerMessageConnector({ source: "fixture-chat", sendHandler });
+		runtime.registerMessageConnector({
+			source: "fixture-chat",
+			accountId: "second",
+			sendHandler,
+		});
+		runtime.registerPostConnector({ source: "fixture-feed" });
+		runtime.registerSendHandler("fixture-legacy", sendHandler);
+	}
+}
+
+function connectorSources(runtime: IAgentRuntime) {
+	return {
+		message: runtime
+			.getMessageConnectors()
+			.map(({ source, accountId }) => `${source}:${accountId ?? ""}`),
+		post: runtime.getPostConnectors().map(({ source }) => source),
+	};
+}
+
+it("unloadPlugin removes the message and post connectors its service registered", async () => {
+	const { createInitializedRuntime } = await import("./initialized-runtime");
+	const runtime = await createInitializedRuntime({
+		character: { name: "Teardown connectors", bio: [] },
+		logLevel: "fatal",
+	});
+
+	await runtime.registerPlugin({
+		name: "connector-teardown-fixture",
+		description: "Registers message and post connectors from a service",
+		services: [ConnectorFixtureService],
+	});
+	await runtime.getServiceLoadPromise("connector_teardown_fixture");
+	expect(connectorSources(runtime)).toEqual({
+		message: ["fixture-chat:", "fixture-chat:second", "fixture-legacy:"],
+		post: ["fixture-feed"],
+	});
+
+	await runtime.unloadPlugin("connector-teardown-fixture");
+
+	// A connector that outlives its plugin still looks available to MESSAGE,
+	// POST and scheduled dispatch, and routes sends to the stopped service.
+	expect(connectorSources(runtime)).toEqual({ message: [], post: [] });
+	for (const target of [
+		{ source: "fixture-chat" },
+		{ source: "fixture-chat", accountId: "second" },
+		{ source: "fixture-legacy" },
+	]) {
+		await expect(
+			runtime.sendMessageToTarget(target, { text: "after unload" }),
+		).rejects.toMatchObject({ code: SEND_HANDLER_NOT_FOUND });
+	}
+});
+
+/** Registers the same connector keys as another fixture plugin; each send
+ * records which plugin's handler the registry routed it to. */
+function sharedConnectorPlugin(name: string, delivered: string[]): Plugin {
+	class SharedConnectorService extends Service {
+		static serviceType = `${name}_service`;
+		capabilityDescription = "Shared connector key fixture";
+		static async start(runtime: IAgentRuntime): Promise<Service> {
+			return new SharedConnectorService(runtime);
+		}
+		async stop(): Promise<void> {}
+		static registerSendHandlers(runtime: IAgentRuntime): void {
+			runtime.registerMessageConnector({
+				source: "shared-chat",
+				accountId: "T1",
+				sendHandler: async () => {
+					delivered.push(name);
+				},
+			});
+			runtime.registerPostConnector({ source: "shared-feed" });
+		}
+	}
+	return {
+		name,
+		description: "Registers connector keys another plugin also registers",
+		services: [SharedConnectorService],
+	};
+}
+
+it("unloading a plugin keeps a connector another plugin registered later under the same key", async () => {
+	const { createInitializedRuntime } = await import("./initialized-runtime");
+	const runtime = await createInitializedRuntime({
+		character: { name: "Teardown shared connector", bio: [] },
+		logLevel: "fatal",
+	});
+	const delivered: string[] = [];
+	const target = { source: "shared-chat", accountId: "T1" };
+
+	await runtime.registerPlugin(
+		sharedConnectorPlugin("connector-earlier", delivered),
+	);
+	await runtime.getServiceLoadPromise("connector-earlier_service");
+	await runtime.registerPlugin(
+		sharedConnectorPlugin("connector-later", delivered),
+	);
+	await runtime.getServiceLoadPromise("connector-later_service");
+	// The registry keeps the later registration for a (source, accountId) key.
+	await runtime.sendMessageToTarget(target, { text: "both loaded" });
+	expect(delivered).toEqual(["connector-later"]);
+
+	await runtime.unloadPlugin("connector-earlier");
+
+	// The earlier plugin's entry was already replaced, so its unload must not
+	// remove the live connector of the plugin that is still loaded.
+	expect(connectorSources(runtime)).toEqual({
+		message: ["shared-chat:T1"],
+		post: ["shared-feed"],
+	});
+	await runtime.sendMessageToTarget(target, { text: "earlier unloaded" });
+	expect(delivered).toEqual(["connector-later", "connector-later"]);
+
+	await runtime.unloadPlugin("connector-later");
+
+	expect(connectorSources(runtime)).toEqual({ message: [], post: [] });
+	await expect(
+		runtime.sendMessageToTarget(target, { text: "both unloaded" }),
+	).rejects.toMatchObject({ code: SEND_HANDLER_NOT_FOUND });
+});
+
+/** Registers the default account, or a named one, on connector sources
+ * another fixture plugin also uses; each send records the plugin it reached. */
+function accountConnectorPlugin(
+	name: string,
+	accountId: string | undefined,
+	delivered: string[],
+): Plugin {
+	class AccountConnectorService extends Service {
+		static serviceType = `${name}_service`;
+		capabilityDescription = "Connector account fixture";
+		static async start(runtime: IAgentRuntime): Promise<Service> {
+			return new AccountConnectorService(runtime);
+		}
+		async stop(): Promise<void> {}
+		static registerSendHandlers(runtime: IAgentRuntime): void {
+			const sendHandler = async () => {
+				delivered.push(name);
+			};
+			runtime.registerMessageConnector({
+				source: "account-chat",
+				accountId,
+				sendHandler,
+			});
+			runtime.registerPostConnector({ source: "account-feed", accountId });
+			if (accountId) {
+				runtime.registerMessageConnector({
+					source: "account-legacy",
+					accountId,
+					sendHandler,
+				});
+			} else {
+				runtime.registerSendHandler("account-legacy", sendHandler);
+			}
+		}
+	}
+	return {
+		name,
+		description: "Registers one account on shared connector sources",
+		services: [AccountConnectorService],
+	};
+}
+
+it("unloading a plugin's default account keeps another plugin's named account on the same source", async () => {
+	const { createInitializedRuntime } = await import("./initialized-runtime");
+	const runtime = await createInitializedRuntime({
+		character: { name: "Teardown connector accounts", bio: [] },
+		logLevel: "fatal",
+	});
+	const delivered: string[] = [];
+
+	await runtime.registerPlugin(
+		accountConnectorPlugin("connector-default", undefined, delivered),
+	);
+	await runtime.getServiceLoadPromise("connector-default_service");
+	await runtime.registerPlugin(
+		accountConnectorPlugin("connector-work", "work", delivered),
+	);
+	await runtime.getServiceLoadPromise("connector-work_service");
+
+	await runtime.unloadPlugin("connector-default");
+
+	// Unregistering a source without an account removes every account of it,
+	// so the default account's unload must remove only its own entries.
+	expect(connectorSources(runtime).message).toEqual([
+		"account-chat:work",
+		"account-legacy:work",
+	]);
+	expect(
+		runtime
+			.getPostConnectors()
+			.map(({ source, accountId }) => `${source}:${accountId ?? ""}`),
+	).toEqual(["account-feed:work"]);
+	for (const source of ["account-chat", "account-legacy"]) {
+		await runtime.sendMessageToTarget(
+			{ source, accountId: "work" },
+			{ text: "default unloaded" },
+		);
+		await expect(
+			runtime.sendMessageToTarget({ source }, { text: "default unloaded" }),
+		).rejects.toMatchObject({ code: SEND_HANDLER_NOT_FOUND });
+	}
+	expect(delivered).toEqual(["connector-work", "connector-work"]);
 });

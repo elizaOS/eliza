@@ -823,6 +823,8 @@ export interface PluginOwnership {
 	models: PluginModelRegistration[];
 	services: PluginServiceRegistration[];
 	sendHandlerSources: string[];
+	messageConnectors: { source: string; accountId?: string }[];
+	postConnectors: { source: string; accountId?: string }[];
 	hasAdapter: boolean;
 	chatPreHandlerIds: string[];
 	responseHandlerEvaluatorNames: string[];
