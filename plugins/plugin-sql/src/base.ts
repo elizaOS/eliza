@@ -1962,7 +1962,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     sourceEntityId?: UUID
   ): Promise<Component | null> {
     return this.withDatabase(async () => {
-      const conditions = [eq(componentTable.entityId, entityId), eq(componentTable.type, type)];
+      const conditions = [
+        eq(componentTable.entityId, entityId),
+        eq(componentTable.type, type),
+        eq(componentTable.agentId, this.agentId),
+      ];
 
       if (worldId) {
         conditions.push(eq(componentTable.worldId, worldId));
@@ -2004,7 +2008,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   async getComponents(entityId: UUID, worldId?: UUID, sourceEntityId?: UUID): Promise<Component[]> {
     return this.withDatabase(async () => {
-      const conditions = [eq(componentTable.entityId, entityId)];
+      const conditions = [
+        eq(componentTable.entityId, entityId),
+        eq(componentTable.agentId, this.agentId),
+      ];
 
       if (worldId) {
         conditions.push(eq(componentTable.worldId, worldId));
@@ -2080,7 +2087,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             ...rest,
             createdAt: new Date(createdAt),
           })
-          .where(eq(componentTable.id, component.id));
+          .where(
+            and(eq(componentTable.id, component.id), eq(componentTable.agentId, this.agentId))
+          );
       } catch (error) {
         // error-policy:J3 the typed jsonb text rejection is input validation;
         // surface it unwrapped instead of as a storage fault.
@@ -2103,7 +2112,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   async deleteComponent(componentId: UUID): Promise<void> {
     return this.withDatabase(async () => {
-      await this.db.delete(componentTable).where(eq(componentTable.id, componentId));
+      await this.db
+        .delete(componentTable)
+        .where(and(eq(componentTable.id, componentId), eq(componentTable.agentId, this.agentId)));
     });
   }
 
