@@ -67,15 +67,17 @@ const {
   InteractiveTaskRuntime,
   SqliteInteractiveTaskStore,
 } = await import(pathToFileURL(runtimeModule).href);
+let paymentPosts = 0;
 const server = createServer(
   {
     key: await readFile(join(certificates, "key.pem")),
     cert: await readFile(join(certificates, "cert.pem")),
   },
-  (_req, res) => {
+  (req, res) => {
+    if (req.method === "POST") paymentPosts++;
     res.setHeader("Content-Type", "text/html");
     res.end(
-      `<!doctype html><input id="query" aria-label="Search query"><input type="password" value="private-value"><button type="button" id="increment" onclick="document.querySelector('output').textContent++">Increment</button><output>0</output><label>Language<select id="language"><option value="opaque-en">English</option><option value="opaque-fr">French</option><option value="opaque-de">German</option><option value="opaque-disabled" disabled>Unavailable</option><option value="opaque-a">Ambiguous</option><option value="opaque-b">Ambiguous</option></select></label>`,
+      `<!doctype html><input id="query" aria-label="Search query"><input type="password" value="private-value"><button type="button" id="increment" onclick="document.querySelector('output').textContent++">Increment</button><output>0</output><label>Language<select id="language"><option value="opaque-en">English</option><option value="opaque-fr">French</option><option value="opaque-de">German</option><option value="opaque-disabled" disabled>Unavailable</option><option value="opaque-a">Ambiguous</option><option value="opaque-b">Ambiguous</option></select></label><form id="payment" action="/paid" method="post"><button id="pay">Pay bill</button></form><p id="receipt"></p><script>payment.addEventListener("submit",(event)=>{event.preventDefault();fetch("/paid",{method:"POST"}).then(()=>{receipt.textContent="Paid"})})</script>`,
     );
   },
 );
@@ -1036,6 +1038,98 @@ try {
   }
   console.log(
     "PASS: planned select and click through durable SQLite task runtime, host permission withdrawal and stale-page replan without dispatch",
+  );
+  // A commit control stays with the person unless the host spends a grant
+  // for her yes to that one control in this observation; the grant is
+  // single use and the page reports the commit as consented.
+  const payContext = { ...context, epoch: 5 };
+  assert.equal(
+    (
+      await surfaceTarget.bindTask({
+        ...binding,
+        ...payContext,
+        bindingRevision: 100,
+        expiresAt: Date.now() + 60000,
+        targets: [{ selector: "#pay", action: "click" }],
+      })
+    ).bound,
+    true,
+  );
+  const payObservation = async () => {
+    observed = (
+      await surfaceTarget.execute(
+        { subaction: "snapshot", id: pageId },
+        { taskContext: payContext },
+      )
+    ).value.result;
+    return taskAction("click", "#pay").command;
+  };
+  const payGrant = (command, grantId) => ({
+    grantId,
+    taskId: payContext.taskId,
+    epoch: payContext.epoch,
+    origin,
+    targetRef: command.selector,
+    selector: "#pay",
+    subaction: "click",
+    expiresAt: Date.now() + 30000,
+  });
+  let payCommand = await payObservation();
+  await assert.rejects(
+    surfaceTarget.execute(payCommand, {
+      taskContext: payContext,
+      expectedSelector: "#pay",
+    }),
+    { kind: "POLICY_BLOCKED" },
+  );
+  assert.equal(paymentPosts, 0);
+  payCommand = await payObservation();
+  // A grant for another observation of the same control is refused.
+  await assert.rejects(
+    surfaceTarget.execute(payCommand, {
+      taskContext: payContext,
+      expectedSelector: "#pay",
+      commitGrant: {
+        ...payGrant(payCommand, "pay-stale"),
+        targetRef: "00000000-0000-4000-8000-000000000000:0:1",
+      },
+    }),
+    { kind: "POLICY_BLOCKED" },
+  );
+  payCommand = await payObservation();
+  const paid = payGrant(payCommand, "pay-yes");
+  assert.equal(
+    (
+      await surfaceTarget.execute(payCommand, {
+        taskContext: payContext,
+        expectedSelector: "#pay",
+        commitGrant: paid,
+      })
+    ).value.result.dispatched,
+    true,
+  );
+  await page.waitForFunction(
+    () => document.querySelector("#receipt").textContent === "Paid",
+  );
+  assert.equal(paymentPosts, 1);
+  payCommand = await payObservation();
+  assert.deepEqual(observed.frames[0].consentedCommit, {
+    grantId: "pay-yes",
+    kind: "submit",
+  });
+  assert.equal(observed.frames[0].effectViolation, undefined);
+  // The spent grant cannot commit again, even for a fresh observation.
+  await assert.rejects(
+    surfaceTarget.execute(payCommand, {
+      taskContext: payContext,
+      expectedSelector: "#pay",
+      commitGrant: { ...paid, targetRef: payCommand.selector },
+    }),
+    { kind: "POLICY_BLOCKED" },
+  );
+  assert.equal(paymentPosts, 1);
+  console.log(
+    "PASS: embedded commit control blocked without a grant; one host grant commits once, is reported as consented, and cannot be replayed",
   );
   await taskHandler.close();
   console.log(

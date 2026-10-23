@@ -163,6 +163,27 @@ does after the 30 seconds is not watched. `showGuidance` accepts
 `keepClearRefs` (controls the label must not cover, peer capability
 `task-guide-keep-clear`) and returns `placement` and `dismissed`.
 
+A consented commit is the one exception, and only for a step the person said
+yes to. The host passes a `commitGrant` callback to `NativeTaskActuator`; it
+returns a `NativeCommitGrant` only after the host has recorded her explicit yes
+to this exact step, control and (for a fill or select) value, and `undefined`
+for every other action. A grant names the task, epoch, binding origin, the
+observed control (`targetRef`, so one page observation), its reviewed
+`selector` (the proposal's `expectedSelector`), the subaction, an optional
+lowercase SHA-256 `valueHash` of the exact text, and `expiresAt` at most
+`COMMIT_GRANT_MAX_MS` (60 seconds) ahead. The actuator refuses a mismatched
+grant before dispatch, and only a peer advertising `task-commit-grant` receives
+one. The browser checks every field again, spends the grant once (a spent ID is
+refused, also after a bridge restart; a refusal after admission still spends
+it), and lets the commit control be pressed. The watch then lets exactly one
+form submit to the binding's origin through, with its page load, and treats
+the page's own-site requests and same-document address changes as part of it;
+a snapshot reports `consentedCommit` (`{ grantId, kind }`) instead of
+`effectViolation`. A second submit, a submit to another origin and any other
+move to another document are still stopped and reported. The actuator treats
+a `consentedCommit` for any other grant as an unknown outcome. Without a grant
+nothing changes: commit controls stay blocked.
+
 `NativeSocketBrowserTarget.currentPage()` is a trusted host read of the page the
 person sees in the connected profile. It sends one `list` command and returns the
 single active HTTPS tab as `{ tabId, origin, title }`: the origin without path,

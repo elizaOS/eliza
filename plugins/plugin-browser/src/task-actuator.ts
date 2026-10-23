@@ -9,12 +9,14 @@ import {
   type TaskOwner,
 } from "@elizaos/core/protocol";
 import {
+  type NativeCommitGrant,
   type NativeSocketBrowserTarget,
   type NativeTaskBinding,
   type NativeTaskContext,
   type NativeTaskGuideAnswer,
   type NativeTaskGuideTone,
   validActionText,
+  validCommitGrant,
 } from "./native-socket-target.js";
 
 export interface TaskBrowserSnapshot {
@@ -119,6 +121,17 @@ export class NativeTaskActuator {
         task: InteractiveTask,
         proposal: TaskActionProposal,
       ) => string | undefined;
+      /**
+       * The host's single-use grant for this exact commit, issued only after
+       * it recorded the person's explicit yes to this step, control and value.
+       * Return undefined for every other action; the browser then keeps
+       * blocking commits. The proposal must name its reviewed control
+       * (`expectedSelector`).
+       */
+      commitGrant?: (
+        task: InteractiveTask,
+        proposal: TaskActionProposal,
+      ) => NativeCommitGrant | undefined;
     },
   ) {}
   private now() {
@@ -528,6 +541,7 @@ export class NativeTaskActuator {
       command,
       protectedValueKind,
       actionText,
+      commitGrant,
     } = prepared;
     // Preparation awaits host callbacks; authority may end before this continuation.
     if (
@@ -545,6 +559,7 @@ export class NativeTaskActuator {
         ...(proposal.expectedSelector === undefined
           ? {}
           : { expectedSelector: proposal.expectedSelector }),
+        ...(commitGrant ? { commitGrant } : {}),
         signal: context.signal,
       });
     } catch (error) {
@@ -561,6 +576,16 @@ export class NativeTaskActuator {
     // The page tried to submit or leave because of this action. The browser
     // stopped it, but the page state is no longer the one that was reviewed.
     if (after.effectViolation !== undefined) return { status: "unknown" };
+    // A commit the browser let through must be the one this grant named.
+    // The page's report then reaches verify and evidence with the snapshot.
+    const consented = after.consentedCommit as
+      | { grantId?: unknown; kind?: unknown }
+      | undefined;
+    if (
+      consented !== undefined &&
+      (!commitGrant || consented.grantId !== commitGrant.grantId)
+    )
+      return { status: "unknown" };
     // Occupancy alone cannot verify a public fill: page handlers can replace it.
     // The isolated page compares against the text from the actual dispatched fill.
     if (proposal.capability === "browser.fill" && !protectedValueKind) {
@@ -692,6 +717,23 @@ export class NativeTaskActuator {
     const actionText = this.options.describeAction?.(task, proposal);
     if (actionText !== undefined && !validActionText(actionText))
       fail("Invalid action sentence");
+    const commitGrant = this.options.commitGrant
+      ? structuredClone(this.options.commitGrant(task, proposal))
+      : undefined;
+    if (
+      commitGrant !== undefined &&
+      (subaction === "scroll" ||
+        !validCommitGrant(commitGrant, {
+          taskContext: binding.context,
+          subaction,
+          targetRef: proposal.targetRef,
+          selector: proposal.expectedSelector,
+          now: this.now(),
+        }) ||
+        commitGrant.origin !== binding.policy.origin)
+    )
+      fail("The commit grant does not match this action");
+    if (!current()) fail("Action cancelled before dispatch");
     return {
       task,
       cached,
@@ -699,6 +741,7 @@ export class NativeTaskActuator {
       current,
       protectedValueKind,
       actionText,
+      commitGrant,
       command: {
         subaction,
         id: binding.policy.tabId,

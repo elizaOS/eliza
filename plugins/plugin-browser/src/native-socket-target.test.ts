@@ -2,13 +2,15 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { createConnection, createServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { BrowserDispatchFailure } from "./dispatch-types";
 import {
   androidNativeBrowserSocketPath,
+  COMMIT_GRANT_MAX_MS,
   currentPageFromTabs,
   currentPageTitle,
   NativeSocketBrowserTarget,
+  validCommitGrant,
 } from "./native-socket-target";
 
 it.skipIf(process.platform !== "linux")(
@@ -614,6 +616,51 @@ it("sends a deadline-bound effect only to a feedback-capable peer", async () => 
       result: { dispatched: true },
     });
     await raw;
+    // A commit grant comes only from trusted options, and only a peer that
+    // verifies and spends it may receive one; page data cannot carry one.
+    const grant = {
+      grantId: "yes-1",
+      taskId: taskContext.taskId,
+      epoch: taskContext.epoch,
+      origin: "https://example.test",
+      targetRef: "00000000-0000-0000-0000-000000000000:0:0",
+      selector: "#method",
+      subaction: "click" as const,
+      expiresAt: Date.now() + 30000,
+    };
+    await expect(
+      target.execute(
+        {
+          subaction: "click",
+          id: "1",
+          selector: "00000000-0000-0000-0000-000000000000:0:0",
+        },
+        {
+          taskContext,
+          taskExpiresAt,
+          expectedSelector: "#method",
+          commitGrant: grant,
+        },
+      ),
+    ).rejects.toMatchObject({ kind: "POLICY_BLOCKED" });
+    const smuggled = target.execute(
+      {
+        subaction: "click",
+        id: "1",
+        selector: "00000000-0000-0000-0000-000000000000:0:0",
+        commitGrant: grant,
+      } as never,
+      { taskContext, taskExpiresAt },
+    );
+    await vi.waitFor(() => expect(frames.messages).toHaveLength(5));
+    expect(frames.messages[4].command.commitGrant).toBeUndefined();
+    frames.send({
+      type: "result",
+      id: frames.messages[4].id,
+      ok: true,
+      result: { dispatched: true },
+    });
+    await smuggled;
   } finally {
     socket?.destroy();
     await target.stop();
@@ -1098,4 +1145,56 @@ it("refuses the current page when the peer cannot list tabs", async () => {
     await target.stop();
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+describe("validCommitGrant", () => {
+  const taskContext = {
+    actorId: "actor",
+    accountId: "account",
+    agentId: "agent",
+    taskId: "task",
+    epoch: 2,
+  };
+  const now = Date.now();
+  const grant = {
+    grantId: "yes-1",
+    taskId: "task",
+    epoch: 2,
+    origin: "https://example.test",
+    targetRef: "00000000-0000-0000-0000-000000000000:0:4",
+    selector: "#pay",
+    subaction: "fill",
+    valueHash: "a".repeat(64),
+    expiresAt: now + 30000,
+  };
+  const expected = {
+    taskContext,
+    subaction: "fill",
+    targetRef: grant.targetRef,
+    selector: "#pay",
+    now,
+  };
+  it("accepts only the exact task, control, action and a short life", () => {
+    expect(validCommitGrant(grant, expected)).toBe(true);
+    for (const change of [
+      { taskId: "other" },
+      { epoch: 3 },
+      { targetRef: "00000000-0000-0000-0000-000000000000:0:5" },
+      { selector: "#other" },
+      { subaction: "click" },
+      { valueHash: "not-a-hash" },
+      { expiresAt: now },
+      { expiresAt: now + COMMIT_GRANT_MAX_MS + 1 },
+      { grantId: "" },
+      { extra: 1 },
+    ])
+      expect(validCommitGrant({ ...grant, ...change }, expected)).toBe(false);
+    // A click commits no typed value, so it cannot carry a value hash.
+    expect(
+      validCommitGrant(
+        { ...grant, subaction: "click" },
+        { ...expected, subaction: "click" },
+      ),
+    ).toBe(false);
+  });
 });

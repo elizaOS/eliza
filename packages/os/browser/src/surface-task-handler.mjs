@@ -173,6 +173,7 @@ export function createSurfaceTaskHandler({
             "direction",
             "expectedSelector",
             "actionText",
+            "commitGrant",
           ].includes(key),
       )
     )

@@ -92,7 +92,16 @@
               target &&
               typeof target.selector === "string" &&
               ["click", "fill", "select", "scroll"].includes(target.action),
-          )))
+          ) ||
+          // The host spent this grant for one commit of the reviewed control.
+          (policy.commitGrant !== undefined &&
+            (!policy.commitGrant ||
+              typeof policy.commitGrant !== "object" ||
+              typeof policy.commitGrant.grantId !== "string" ||
+              !Number.isSafeInteger(policy.commitGrant.expiresAt) ||
+              typeof policy.expectedSelector !== "string" ||
+              policy.commitGrant.selector !== policy.expectedSelector ||
+              !["click", "fill", "select"].includes(command.subaction)))))
     ) {
       reject(
         "INVALID_REQUEST",
@@ -156,6 +165,24 @@
     const key = "__elizaBrowserControlV1";
     const monitorKey = "__elizaBrowserObservationV1";
     const watchKey = "__elizaTaskEffectWatchV1";
+    const grantKey = "__elizaCommitGrantsV1";
+    // A host-issued grant for the one commit the person said yes to. The bridge
+    // checked task, epoch, origin, observation and value and spent it there; the
+    // page checks the control, the time and that this document never used it.
+    const grant =
+      policy?.commitGrant &&
+      ["click", "fill", "select"].includes(command.subaction) &&
+      typeof policy.commitGrant.grantId === "string" &&
+      policy.commitGrant.selector === policy.expectedSelector &&
+      Date.now() < policy.commitGrant.expiresAt &&
+      !(
+        globalThis[grantKey]?.document === document &&
+        globalThis[grantKey].used.has(policy.commitGrant.grantId)
+      )
+        ? policy.commitGrant
+        : null;
+    if (policy?.commitGrant && !grant && command.subaction !== "snapshot")
+      return denied();
     let monitor = globalThis[monitorKey];
     if (!monitor || monitor.document !== document) {
       monitor = {
@@ -745,6 +772,8 @@
       // A submit or page change that a task fill or click set off in this
       // document, under this binding. The watch below stopped it.
       const violation = globalThis[watchKey]?.violation;
+      // The commit the person said yes to, which the watch let through once.
+      const consented = globalThis[watchKey]?.consented;
       // A one-shot comparison from the actual fill, kept in this isolated realm.
       // Neither the expected text nor the field value leaves the page.
       const inputReadback = monitor.inputReadback;
@@ -765,6 +794,14 @@
           : {}),
         ...(policy && violation && violation.scope === policy.guidanceScope
           ? { effectViolation: violation.kind }
+          : {}),
+        ...(policy && consented && consented.scope === policy.guidanceScope
+          ? {
+              consentedCommit: {
+                grantId: consented.grantId,
+                kind: consented.kind,
+              },
+            }
           : {}),
         url: location.href,
         title: withoutSecrets(document.title),
@@ -865,10 +902,12 @@
         ...[...(node.labels ?? [])].map((item) => item.textContent),
       ].join(" ");
       // A control that commits something stays with the person, whatever its
-      // element or role. Keep this literal equal to COMMIT_CONTROL above; the
-      // function runs in the page, so it cannot read a module constant.
+      // element or role, unless she said yes to this exact commit. Keep this
+      // literal equal to COMMIT_CONTROL above; the function runs in the page,
+      // so it cannot read a module constant.
       if (
         command.subaction === "click" &&
+        !grant &&
         (node.matches(
           "button:not([type=button]):not([type=reset]),input[type=submit],input[type=image],input[type=password]",
         ) ||
@@ -956,6 +995,11 @@
       feedback.markActed();
     }
     delete globalThis[key];
+    if (grant) {
+      if (globalThis[grantKey]?.document !== document)
+        globalThis[grantKey] = { document, used: new Set() };
+      globalThis[grantKey].used.add(grant.grantId);
+    }
     if (
       policy &&
       ["click", "fill", "select", "scroll"].includes(command.subaction)
@@ -974,6 +1018,12 @@
       // Snapshots report the first of these, so the host treats the outcome as
       // unknown and pauses the task. A request still in flight when a snapshot
       // is read shows up in a later snapshot.
+      //
+      // With a commit grant, the one commit the person said yes to goes ahead:
+      // one form submit (and the page load it sends) to the grant's origin,
+      // and the page's own-site requests and same-document address changes.
+      // Snapshots report it as a consented commit. A second submit, a submit
+      // to another origin, or any other page change is still stopped.
       globalThis[watchKey]?.stop();
       const anchor =
         command.subaction === "click" ? node.closest("a[href]") : null;
@@ -986,7 +1036,30 @@
           globalThis[watchKey]?.violation?.scope === policy.guidanceScope
             ? (globalThis[watchKey]?.violation ?? null)
             : null,
+        consented:
+          globalThis[watchKey]?.consented?.scope === policy.guidanceScope
+            ? (globalThis[watchKey]?.consented ?? null)
+            : null,
         stop: () => controller.abort(),
+      };
+      // submits: 0 until the one granted form submit; then its page load may
+      // follow once (pending).
+      const consent = grant
+        ? { grantId: grant.grantId, submits: 0, pending: false }
+        : null;
+      const consentTo = (kind) => {
+        watch.consented ??= {
+          grantId: consent.grantId,
+          kind,
+          scope: policy.guidanceScope,
+        };
+      };
+      const sameOrigin = (url) => {
+        try {
+          return new URL(url, location.href).origin === location.origin;
+        } catch {
+          return false;
+        }
       };
       // A person's activated control can finish after the short typing window.
       // Stray taps, scrolling and ordinary typing do not create that handoff.
@@ -1072,7 +1145,33 @@
       window.addEventListener(
         "submit",
         (event) => {
-          if (!personForms.has(event.target)) report("submit", event);
+          if (personForms.has(event.target)) return;
+          const form = event.target;
+          const submitter = event.submitter;
+          if (
+            consent &&
+            consent.submits === 0 &&
+            form instanceof HTMLFormElement &&
+            (submitter?.hasAttribute("formmethod")
+              ? submitter.formMethod
+              : form.method) !== "dialog" &&
+            sameOrigin(
+              submitter?.hasAttribute("formaction")
+                ? submitter.formAction
+                : form.action,
+            ) &&
+            ["", "_self"].includes(
+              submitter?.hasAttribute("formtarget")
+                ? submitter.formTarget
+                : form.target,
+            )
+          ) {
+            consent.submits = 1;
+            consent.pending = true;
+            consentTo("submit");
+            return;
+          }
+          report("submit", event);
         },
         options,
       );
@@ -1089,7 +1188,22 @@
             return;
           if (event.destination.sameDocument) {
             // Recorded, not stopped: the page's own state has already moved.
-            if (!byPerson(performance.now())) record("navigation");
+            if (byPerson(performance.now())) return;
+            if (consent) consentTo("navigation");
+            else record("navigation");
+            return;
+          }
+          if (
+            consent &&
+            event.formData &&
+            sameOrigin(event.destination.url) &&
+            (consent.pending || consent.submits === 0)
+          ) {
+            // The page load of the granted submit, or a script form.submit(),
+            // which sends no submit event, as the one granted submit.
+            consent.submits = 1;
+            consent.pending = false;
+            consentTo("submit");
             return;
           }
           report(event.formData ? "submit" : "navigation", event);
@@ -1123,7 +1237,8 @@
               continue;
             }
             if (sameSite(host)) {
-              record("request");
+              if (consent) consentTo("request");
+              else record("request");
               break;
             }
           }

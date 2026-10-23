@@ -281,6 +281,19 @@ watch lasts 30 seconds or until the next task fill or click. Same-site
 `fetch`, `XMLHttpRequest` and beacon requests each have a fixture. It also checks date fills (`YYYY-MM-DD`, real days only), the
 `expectedSelector` target check and the value-free `hasInput` field flag.
 
+`task-commit-grant` lets a host-issued, single-use grant authorize one commit
+the person said yes to (see the plugin-browser README). `task-bindings.mjs`
+checks the grant against the live binding (task, epoch, origin, reviewed
+control, observed `targetRef`, optional value hash, at most 60 seconds left),
+records it as spent under `commit-grant:<id>`, and hands the page only its ID,
+selector and expiry. The page refuses a grant it has used in this document and
+reports the commit as `consentedCommit`. Run `node --conditions=eliza-source
+packages/os/browser/scripts/test-commit-grant.mjs` for the Chromium checks:
+no grant, an expired grant or one for another control is refused; a granted
+form submit reaches its own origin; a script commit's request and
+`pushState` are consented, not violations; a grant does not cross origins; and
+a second form sent by the same click is stopped.
+
 Show-only guides scroll an off-screen target into view and report `placement`.
 Action guides never scroll. A trusted Dismiss sends only the guide ID; the
 extension keeps the step dismissed for that tab, task and epoch, also after a

@@ -92,7 +92,16 @@ export function installControlChannel(pageCommand, pageGuidance) {
               target &&
               typeof target.selector === "string" &&
               ["click", "fill", "select", "scroll"].includes(target.action),
-          )))
+          ) ||
+          // The host spent this grant for one commit of the reviewed control.
+          (policy.commitGrant !== undefined &&
+            (!policy.commitGrant ||
+              typeof policy.commitGrant !== "object" ||
+              typeof policy.commitGrant.grantId !== "string" ||
+              !Number.isSafeInteger(policy.commitGrant.expiresAt) ||
+              typeof policy.expectedSelector !== "string" ||
+              policy.commitGrant.selector !== policy.expectedSelector ||
+              !["click", "fill", "select"].includes(command.subaction)))))
     ) {
       reject(
         "INVALID_REQUEST",

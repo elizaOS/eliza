@@ -1,6 +1,9 @@
 /** Shared task authority for trusted browser transports. No page input runs here. */
 import { BridgeError } from "./protocol.mjs";
 
+/** Longest life of a consented-commit grant, from the host's yes to its use. */
+export const COMMIT_GRANT_MAX_MS = 60000;
+
 /** Hosts supply storage, page lookup and cleanup; model/page data cannot bind tasks. */
 export function createTaskBindings({
   bindings,
@@ -20,6 +23,28 @@ export function createTaskBindings({
       "The command does not match this tab's active task binding.",
     );
   const bindingKey = (id) => `task-binding:${id}`;
+  const grantKey = (id) => `commit-grant:${id}`;
+  // Grants spent in this lifetime. Storage keeps them across a worker restart.
+  const spentGrants = new Set();
+  const grantKeys = [
+    "grantId",
+    "taskId",
+    "epoch",
+    "origin",
+    "targetRef",
+    "selector",
+    "subaction",
+    "valueHash",
+    "expiresAt",
+  ];
+  const sha256 = async (text) =>
+    [
+      ...new Uint8Array(
+        await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)),
+      ),
+    ]
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
   async function bind(message, current) {
     const { id, binding } = message;
     if (
@@ -138,8 +163,17 @@ export function createTaskBindings({
         !["click", "fill", "select", "scroll"].includes(command.subaction))
     )
       throw blocked();
+    // A consented commit names the one reviewed control it is for.
+    if (
+      command.commitGrant !== undefined &&
+      (!command.taskContext ||
+        command.expectedSelector === undefined ||
+        !["click", "fill", "select"].includes(command.subaction))
+    )
+      throw blocked();
     delete copy.taskPolicy;
     delete copy.expectedSelector;
+    delete copy.commitGrant;
     // Only a bound task action carries the host's preview sentence.
     if (!command.taskContext) delete copy.actionText;
     if (!command.id) {
@@ -202,6 +236,10 @@ export function createTaskBindings({
       )
     )
       throw blocked();
+    const commitGrant =
+      command.commitGrant === undefined
+        ? undefined
+        : await spendCommitGrant(command, binding, current);
     copy.taskPolicy = {
       origin: binding.origin,
       targets: binding.targets,
@@ -212,8 +250,74 @@ export function createTaskBindings({
       guidanceScope: String(binding.bindingRevision),
       protectedValueKind: command.protectedValueKind,
       assistantName: binding.assistantName,
+      ...(commitGrant === undefined ? {} : { commitGrant }),
     };
     return { command: copy, current };
+  }
+  /**
+   * A host-issued grant for one commit the person said yes to: this task and
+   * epoch, this origin, this control in this observation and, when given, this
+   * exact value. It is spent here, once, before the page sees it; a refusal
+   * after this point still spends it. Without a grant, commits stay blocked.
+   */
+  async function spendCommitGrant(command, binding, current) {
+    const grant = command.commitGrant;
+    if (
+      !grant ||
+      typeof grant !== "object" ||
+      Array.isArray(grant) ||
+      Object.keys(grant).some((key) => !grantKeys.includes(key)) ||
+      !validId(grant.grantId) ||
+      grant.taskId !== binding.taskId ||
+      grant.epoch !== binding.epoch ||
+      grant.origin !== binding.origin ||
+      grant.subaction !== command.subaction ||
+      grant.targetRef !== command.selector ||
+      typeof grant.targetRef !== "string" ||
+      grant.selector !== command.expectedSelector ||
+      !binding.targets.some(
+        (target) =>
+          target.selector === grant.selector &&
+          (target.action === command.subaction ||
+            (target.action === "fill-code" && command.subaction === "fill")),
+      ) ||
+      !Number.isSafeInteger(grant.expiresAt) ||
+      grant.expiresAt <= now() ||
+      grant.expiresAt > now() + COMMIT_GRANT_MAX_MS ||
+      (grant.valueHash !== undefined &&
+        (command.subaction === "click" ||
+          typeof grant.valueHash !== "string" ||
+          !/^[0-9a-f]{64}$/.test(grant.valueHash) ||
+          typeof command.text !== "string"))
+    )
+      throw blocked();
+    if (
+      grant.valueHash !== undefined &&
+      (await sha256(command.text)) !== grant.valueHash
+    )
+      throw blocked();
+    const key = grantKey(grant.grantId);
+    if (spentGrants.has(grant.grantId) || (await read(key)) || !current())
+      throw blocked();
+    // Spend in memory before awaiting storage, so a concurrent copy fails.
+    if (spentGrants.has(grant.grantId)) throw blocked();
+    spentGrants.add(grant.grantId);
+    await write(key, {
+      taskId: grant.taskId,
+      epoch: grant.epoch,
+      origin: grant.origin,
+      targetRef: grant.targetRef,
+      selector: grant.selector,
+      subaction: grant.subaction,
+      expiresAt: grant.expiresAt,
+      spentAt: now(),
+    });
+    if (!current() || grant.expiresAt <= now()) throw blocked();
+    return {
+      grantId: grant.grantId,
+      selector: grant.selector,
+      expiresAt: grant.expiresAt,
+    };
   }
   return { bind, scope, blocked, validId };
 }
