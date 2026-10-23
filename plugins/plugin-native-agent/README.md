@@ -190,8 +190,10 @@ instrumentation qualifies the real directory-sync adapter.
 APK install directory and configures the optional installed canvas library. Hosts
 supply trusted installed files and a private alias directory, serialize refreshes
 and own bundle verification and launch policy. Links are reconstructible state;
-this does not load native code or authorize a library. Portable and Android tests
-use synthetic files to verify install-path changes and optional-library cleanup.
+this does not load native code or authorize a library. `requireAbi` checks the
+loader, bun and its libraries against an ABI that the caller supplies; it reads
+ELF headers only and does not verify contents. Portable and Android tests use
+synthetic files to verify install-path changes, optional-library cleanup and ABI refusal.
 
 `native-host/local-credential-client` supplies the private JavaScript client for
 `LocalCredentialBroker`. Hosts supply the loopback port, private bearer token,
@@ -218,7 +220,7 @@ source identity, serialize staging and publish provenance only after success.
 Failed staging can leave partial files: verification rejects source/generated
 hash mismatches; this is not an atomic or durable publication API.
 
-`EmbeddedRuntimeLaunch` constructs Android embedded agent/gateway commands and
+`EmbeddedRuntimeLaunch` constructs Android embedded agent/gateway/script commands and
 private base environments from verified installed libraries and trusted host
 paths. Hosts retain provider/plugin configuration, account storage identity and
 all supervisor/readiness policy. Agent authority is not copied to the gateway.

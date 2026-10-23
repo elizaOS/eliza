@@ -24,6 +24,10 @@ public final class EmbeddedRuntimeLaunchTest {
     ProcessBuilder gateway = launch.gateway(bundle.resolve("gateway.js"));
     check(!gateway.environment().containsKey("PROVIDER_KEY")); check(!gateway.environment().containsKey("ELIZA_API_TOKEN"));
     check(gateway.environment().get("NAPI_RS_NATIVE_LIBRARY_PATH").equals(installed.resolve("libeliza_canvas.so").toString()));
+    ProcessBuilder script = launch.script(bundle.resolve("probe.js"), "--once");
+    check(script.command().equals(List.of(installed.resolve("libeliza_ld_musl_aarch64.so").toString(),installed.resolve("libeliza_bun.so").toString(),"--no-env-file","--no-install",bundle.resolve("probe.js").toString(),"--once")));
+    check(script.directory().equals(bundle.toFile())); check(script.environment().get("HOME").equals(state.toString()));
+    check(!script.environment().containsKey("ELIZA_API_TOKEN")); check(!script.environment().containsKey("NAPI_RS_NATIVE_LIBRARY_PATH"));
     check(Files.isSymbolicLink(root.resolve("aliases/libstdc++.so.6")));
     check(EmbeddedRuntimeLaunch.fingerprint("abc").equals("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"));
     try { launch.agent(bundle.resolve("agent.js"),state.resolve("config"),0,token,Map.of()); throw new AssertionError(); } catch (IllegalArgumentException expected) { checks++; }
