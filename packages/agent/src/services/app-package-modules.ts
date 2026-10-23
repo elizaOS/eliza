@@ -116,15 +116,30 @@ function resolveInstalledPluginDir(packageName: string): string | null {
     : null;
 }
 async function readPackageName(packageDir: string): Promise<string | null> {
+  const manifestPath = path.join(packageDir, "package.json");
   try {
     const packageJson = JSON.parse(
-      await fs.promises.readFile(path.join(packageDir, "package.json"), "utf8"),
+      await fs.promises.readFile(manifestPath, "utf8"),
     ) as {
       name?: unknown;
     };
     return typeof packageJson.name === "string" ? packageJson.name : null;
-  } catch {
-    return null;
+  } catch (cause) {
+    // error-policy:J3 Callers only reach this read for a directory that already
+    // has a manifest, so a manifest that disappeared mid-scan is "not a
+    // package". A manifest that exists but cannot be read or parsed is broken
+    // metadata: reporting it as "not installed" would silently drop the
+    // package and send the caller on to a registry/lower-priority fallback.
+    const code =
+      typeof cause === "object" && cause !== null && "code" in cause
+        ? String(cause.code)
+        : undefined;
+    if (code === "ENOENT" || code === "ENOTDIR") return null;
+    throw new ElizaError("Failed to read app package metadata", {
+      code: "APP_MODULE_RESOLUTION_FAILED",
+      context: { packageDir, manifestPath },
+      cause,
+    });
   }
 }
 async function resolveWorkspacePackageDirs(
