@@ -83,4 +83,94 @@ describe("UAIDResolver.search", () => {
 
     await expect(resolver.search("erc8004")).rejects.toThrow(/HOL registry/);
   });
+
+  it("rejects when a successful body omits the agents field", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse(200, { total: 0 })),
+    );
+    const resolver = new UAIDResolver({ brokerUrl: BROKER });
+
+    await expect(resolver.search("erc8004")).rejects.toBeInstanceOf(
+      UAIDRegistryError,
+    );
+  });
+
+  it("rejects a null entry instead of throwing a raw TypeError", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse(200, { agents: [null] })),
+    );
+    const resolver = new UAIDResolver({ brokerUrl: BROKER });
+
+    const failure = await resolver.search("erc8004").catch((error) => error);
+    expect(failure).toBeInstanceOf(UAIDRegistryError);
+    expect(failure).not.toBeInstanceOf(TypeError);
+  });
+
+  it("rejects a primitive entry instead of resolving a hollow match", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse(200, { agents: ["erc8004"] })),
+    );
+    const resolver = new UAIDResolver({ brokerUrl: BROKER });
+
+    await expect(resolver.search("erc8004")).rejects.toBeInstanceOf(
+      UAIDRegistryError,
+    );
+  });
+
+  it("rejects an entry without a uaid instead of resolving an empty match", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse(200, { agents: [{ protocol: "a2a" }] })),
+    );
+    const resolver = new UAIDResolver({ brokerUrl: BROKER });
+
+    await expect(resolver.search("a2a")).rejects.toBeInstanceOf(
+      UAIDRegistryError,
+    );
+  });
+
+  it("still maps a well-formed entry", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse(200, {
+          agents: [
+            {
+              uaid: "uaid:aid:eip155:8453;uid=7;proto=erc8004",
+              agentId: "7",
+              protocol: "erc8004",
+              chain: "base",
+              trustScore: 91,
+              verified: true,
+            },
+          ],
+        }),
+      ),
+    );
+    const resolver = new UAIDResolver({ brokerUrl: BROKER });
+
+    await expect(resolver.search("erc8004")).resolves.toEqual([
+      {
+        resolved: true,
+        uaid: "uaid:aid:eip155:8453;uid=7;proto=erc8004",
+        identity: {
+          agentId: "7",
+          owner: "",
+          agentURI: "",
+          paymentAddress: "",
+          registrationFile: null,
+          protocol: "erc8004",
+          chain: "base",
+          uaid: "uaid:aid:eip155:8453;uid=7;proto=erc8004",
+        },
+        protocol: "erc8004",
+        chain: "base",
+        trustScore: 91,
+        registryVerified: true,
+      },
+    ]);
+  });
 });

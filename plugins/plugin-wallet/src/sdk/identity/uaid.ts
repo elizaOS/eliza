@@ -321,36 +321,48 @@ export class UAIDResolver {
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
       throw new UAIDRegistryError("HOL registry search returned invalid JSON");
     }
-    const agents = (payload as { agents?: unknown }).agents ?? [];
+    const agents = (payload as { agents?: unknown }).agents;
     if (!Array.isArray(agents)) {
       throw new UAIDRegistryError(
         "HOL registry search returned an invalid agents list",
       );
     }
+    const entries = agents.map((agent: unknown, index: number) => {
+      if (!agent || typeof agent !== "object" || Array.isArray(agent)) {
+        throw new UAIDRegistryError(
+          `HOL registry search returned an invalid agent at index ${index}`,
+        );
+      }
+      const { uaid } = agent as { uaid?: unknown };
+      if (typeof uaid !== "string" || uaid.length === 0) {
+        throw new UAIDRegistryError(
+          `HOL registry search returned an agent without a uaid at index ${index}`,
+        );
+      }
+      return agent as Record<string, unknown>;
+    });
 
-    return (agents as Record<string, unknown>[]).map(
-      (agent: Record<string, unknown>) => ({
-        resolved: true,
-        uaid: agent.uaid as string,
-        identity: {
-          agentId: String(agent.agentId ?? agent.nativeId ?? ""),
-          owner: (agent.owner ?? agent.controller ?? "") as string,
-          agentURI: (agent.agentURI ?? agent.metadataUri ?? "") as string,
-          paymentAddress: (agent.paymentAddress ??
-            agent.agentWallet ??
-            "") as string,
-          registrationFile: (agent.registrationFile ??
-            null) as AgentRegistrationFile | null,
-          protocol: (agent.protocol ?? "unknown") as UAIDProtocol,
-          chain: (agent.chain ?? "") as string,
-          uaid: agent.uaid as string,
-        },
+    return entries.map((agent: Record<string, unknown>) => ({
+      resolved: true,
+      uaid: agent.uaid as string,
+      identity: {
+        agentId: String(agent.agentId ?? agent.nativeId ?? ""),
+        owner: (agent.owner ?? agent.controller ?? "") as string,
+        agentURI: (agent.agentURI ?? agent.metadataUri ?? "") as string,
+        paymentAddress: (agent.paymentAddress ??
+          agent.agentWallet ??
+          "") as string,
+        registrationFile: (agent.registrationFile ??
+          null) as AgentRegistrationFile | null,
         protocol: (agent.protocol ?? "unknown") as UAIDProtocol,
-        chain: agent.chain as string | undefined,
-        trustScore: agent.trustScore as number | undefined,
-        registryVerified: (agent.verified ?? false) as boolean,
-      }),
-    );
+        chain: (agent.chain ?? "") as string,
+        uaid: agent.uaid as string,
+      },
+      protocol: (agent.protocol ?? "unknown") as UAIDProtocol,
+      chain: agent.chain as string | undefined,
+      trustScore: agent.trustScore as number | undefined,
+      registryVerified: (agent.verified ?? false) as boolean,
+    }));
   }
 
   // ── ERC-8004 ↔ UAID bridge ────────────────────────────────────────────────
