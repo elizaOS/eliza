@@ -889,6 +889,13 @@ try {
       throw new Error("Follow must not activate the click handler");
     };
     document.body.append(a);
+    window.addEventListener("hashchange", () => {
+      if (location.hash === "#billing-portal") {
+        const status = document.createElement("p");
+        status.textContent = "Portal opened";
+        document.body.append(status);
+      }
+    });
   });
   // Drive the shared planned-action workflow through the real durable task
   // runtime, HTTP transport and DOM. The deterministic planner is not LLM proof.
@@ -971,7 +978,7 @@ try {
           ref: view.controls.find((c) => c.label === "Increment").ref,
           message: "Increment once",
         };
-      if (!view.url.endsWith("#billing-portal"))
+      if (!view.text.includes("Portal opened"))
         return {
           status: "act",
           kind: "agent-action",

@@ -2139,12 +2139,12 @@
             (event) => requested.push(event),
           );
           try {
-            const clickLink = async (selector) => {
+            const clickLink = async (selector, action = "click") => {
               const read = await snapshot();
-              const input = command(read, "click", selector);
+              const input = command(read, action, selector);
               input.command.taskPolicy = {
                 ...taskPolicy,
-                targets: [{ selector, action: "click" }],
+                targets: [{ selector, action }],
               };
               try {
                 assert(
@@ -2156,7 +2156,7 @@
                 if (error.code !== "UNCERTAIN_OUTCOME") throw error;
               }
             };
-            await clickLink("#same-origin");
+            await clickLink("#same-origin", "follow");
             const sameDeadline = Date.now() + 5000;
             let same;
             do {
