@@ -4986,12 +4986,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.withDatabase(async () => {
       await this.db.transaction(async (tx) => {
         // Tenant guard: a foreign or missing row is a no-op, so one adapter
-        // can never wipe another agent's memories by id.
+        // can never wipe another agent's memories by id. The row lock is held
+        // from this ownership check through the child and parent deletes
+        // below: at READ COMMITTED a concurrent delete + same-UUID reinsert
+        // would otherwise let the id-keyed child deletes below hit the new
+        // tenant's rows. The embedding rows carry no agent id of their own,
+        // so the lock is what protects them.
         const [owned] = await tx
           .select({ id: memoryTable.id })
           .from(memoryTable)
           .where(and(eq(memoryTable.id, memoryId), eq(memoryTable.agentId, this.agentId)))
-          .limit(1);
+          .limit(1)
+          .for("update");
         if (!owned) return;
 
         // See if there are any fragments that we need to delete
@@ -5026,11 +5032,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           const batch = memoryIds.slice(i, i + BATCH_SIZE);
 
           // Tenant guard: only ids owned by this adapter's agent are
-          // deletable, mirroring the sqlite deleteMemories scope.
+          // deletable, mirroring the sqlite deleteMemories scope. The row
+          // locks are held from this ownership check through the child and
+          // parent deletes below: at READ COMMITTED a concurrent delete +
+          // same-UUID reinsert would otherwise let the id-keyed child
+          // deletes below hit the new tenant's rows.
           const ownedRows = await tx
             .select({ id: memoryTable.id })
             .from(memoryTable)
-            .where(and(inArray(memoryTable.id, batch), eq(memoryTable.agentId, this.agentId)));
+            .where(and(inArray(memoryTable.id, batch), eq(memoryTable.agentId, this.agentId)))
+            .for("update");
           const ownedIds = ownedRows.map((r) => r.id as UUID);
           if (ownedIds.length === 0) continue;
 
@@ -5044,8 +5055,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           // Delete embeddings for the batch
           await tx.delete(embeddingTable).where(inArray(embeddingTable.memoryId, ownedIds));
 
-          // Delete the memories themselves
-          await tx.delete(memoryTable).where(inArray(memoryTable.id, ownedIds));
+          // Delete the memories themselves. The agent predicate repeats the
+          // ownership check on the final delete as well, so a row that
+          // changed tenants after the check above can never be removed here.
+          await tx
+            .delete(memoryTable)
+            .where(and(inArray(memoryTable.id, ownedIds), eq(memoryTable.agentId, this.agentId)));
         }
       });
     });
