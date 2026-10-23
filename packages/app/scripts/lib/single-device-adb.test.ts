@@ -22,7 +22,10 @@ const LISTING =
 /** A stand-in adb server: records first requests, answers the listing, echoes a transport. */
 async function fakeAdb(t: { after: (fn: () => unknown) => void }) {
   const seen: string[] = [];
+  const sockets = new Set<net.Socket>();
   const server = net.createServer((socket) => {
+    sockets.add(socket);
+    socket.on("close", () => sockets.delete(socket));
     let text = "";
     let started = false;
     socket.on("data", (chunk) => {
@@ -59,7 +62,7 @@ async function fakeAdb(t: { after: (fn: () => unknown) => void }) {
     () =>
       new Promise<void>((resolve) => {
         server.close(() => resolve());
-        server.closeAllConnections?.();
+        for (const socket of sockets) socket.destroy();
       }),
   );
   return { port: (server.address() as net.AddressInfo).port, seen };
@@ -143,6 +146,24 @@ test("the proxy lists one device and refuses requests for any other", async (t) 
   );
   assert.equal(adb.seen.length, before, "no refused request was forwarded");
   assert.equal(endpoint.refused.length, refused.length);
+});
+
+test("an unreachable adb server is answered with FAIL, not a silent close", async (t) => {
+  const closed = net.createServer();
+  await new Promise<void>((resolve) =>
+    closed.listen(0, "127.0.0.1", () => resolve()),
+  );
+  const adbPort = (closed.address() as net.AddressInfo).port;
+  await new Promise<void>((resolve) => closed.close(() => resolve()));
+  const endpoint = await startSingleDeviceAdb("emulator-5554", { adbPort });
+  t.after(() => endpoint.close());
+  for (const command of ["host:devices", "host:transport:emulator-5554"]) {
+    assert.match(
+      await exchange(endpoint.port, [frame(command)]),
+      /^FAIL[0-9a-f]{4}adb server 127\.0\.0\.1:\d+ unreachable: /,
+      command,
+    );
+  }
 });
 
 test("decision and listing filter", () => {

@@ -110,7 +110,19 @@ export async function startSingleDeviceAdb(
         sockets.delete(upstream);
         client.end();
       });
-      upstream.on("error", () => client.destroy());
+      // Before any answer, report an unreachable adb server as adb's FAIL so the
+      // caller fails instead of waiting on a silently closed socket.
+      upstream.on("error", (error) => {
+        if (client.bytesWritten === 0) {
+          client.end(
+            fail(
+              `adb server ${adbHost}:${adbPort} unreachable: ${error.message}`,
+            ),
+          );
+        } else {
+          client.destroy();
+        }
+      });
       client.on("close", () => upstream.destroy());
       if (decision === "forward") {
         upstream.write(head);
