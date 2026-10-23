@@ -92,8 +92,15 @@ function listContainersFromBinary(binary: string, prefix: string): string[] {
       .split("\n")
       .map((s) => s.trim())
       .filter(Boolean);
-  } catch {
-    return [];
+  } catch (error) {
+    // A failed `ps` is "unknown", not "none": returning [] lets start()/recover()
+    // skip orphan cleanup and then claim a clean sandbox while stale containers
+    // keep running. Surface it so the lifecycle reports the real cause.
+    throw new ElizaError(`Failed to list ${prefix} containers`, {
+      code: "SANDBOX_LIST_CONTAINERS_FAILED",
+      cause: error,
+      context: { binary, prefix },
+    });
   }
 }
 
