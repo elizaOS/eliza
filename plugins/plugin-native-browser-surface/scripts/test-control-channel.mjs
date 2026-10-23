@@ -1349,6 +1349,16 @@ try {
   await taskHandler.close();
   // The shipped isolated channel follows the observed URL without running a
   // payment-labelled anchor's click handler. It takes no caller-provided URL.
+  const linkDispatch = async (command) => {
+    const reply = await nativeDispatch(command);
+    if (reply.result.error)
+      throw Object.assign(new Error(reply.result.error.message), {
+        code: reply.result.error.kind,
+      });
+    return reply;
+  };
+  const linkSnapshot = async () =>
+    (await linkDispatch({ subaction: "snapshot" })).result;
   await page.evaluate(() => {
     document.body.innerHTML = `<a id="portal" href="/billing-portal" onclick="fetch('/unexpected-payment', {method:'POST'})">Payment portal</a>`;
   });
@@ -1359,11 +1369,11 @@ try {
   };
   const follow = (state) =>
     action(state, "follow", "#portal", { taskPolicy: followPolicy });
-  state = await snapshot();
+  state = await linkSnapshot();
   await page.evaluate(
     () => (document.querySelector("#portal").href = "/different"),
   );
-  await assert.rejects(dispatch(follow(state)), { code: "STALE_REF" });
+  await assert.rejects(linkDispatch(follow(state)), { code: "STALE_REF" });
   for (const href of [
     "javascript:alert(1)",
     "https://other.example/portal",
@@ -1373,30 +1383,32 @@ try {
       (href) => (document.querySelector("#portal").href = href),
       href,
     );
-    state = await snapshot();
-    await assert.rejects(dispatch(follow(state)), { code: "POLICY_BLOCKED" });
+    state = await linkSnapshot();
+    await assert.rejects(linkDispatch(follow(state)), {
+      code: "POLICY_BLOCKED",
+    });
   }
   await page.evaluate(() => {
     const a = document.querySelector("#portal");
     a.href = "/billing-portal";
     a.download = "receipt";
   });
-  state = await snapshot();
-  await assert.rejects(dispatch(follow(state)), { code: "POLICY_BLOCKED" });
+  state = await linkSnapshot();
+  await assert.rejects(linkDispatch(follow(state)), { code: "POLICY_BLOCKED" });
   await page.evaluate(() => {
     const a = document.querySelector("#portal");
     a.removeAttribute("download");
     a.target = "_blank";
   });
-  state = await snapshot();
-  await assert.rejects(dispatch(follow(state)), { code: "POLICY_BLOCKED" });
+  state = await linkSnapshot();
+  await assert.rejects(linkDispatch(follow(state)), { code: "POLICY_BLOCKED" });
   await page.evaluate(() =>
     document.querySelector("#portal").removeAttribute("target"),
   );
-  state = await snapshot();
+  state = await linkSnapshot();
   const postsBeforeFollow = paymentPosts;
   const navigation = page.waitForNavigation();
-  const followed = await dispatch(follow(state));
+  const followed = await linkDispatch(follow(state));
   assert.equal(followed.result.dispatched, true);
   assert.equal(followed.result.requiresReadback, true);
   await navigation;

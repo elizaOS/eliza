@@ -86,6 +86,15 @@ sign-in fields, host-supplied selectors and every frame the page cannot read; it
 the covers right after and paints over host chrome. It rejects rather than return an
 image it could not mask.
 
+Android `controlPage` also accepts `follow` for a current observed anchor with a
+host-issued `follow` target permission. It loads the exact HTTPS address retained
+in that snapshot without invoking the anchor's click handlers. Stale destinations,
+other origins, URL credentials, downloads and other-window targets are refused.
+The snapshot is consumed once. Navigation can interrupt its reply; read the page
+without replaying after an uncertain outcome. This primitive does not grant task
+authority or prove arrival. Agent planner and task-actuator composition remain
+separate from this native operation.
+
 Android `observeHistory` exposes adjacent same-origin destinations with opaque,
 short-lived references. `navigateHistory` consumes a reference once and dispatches
 through the native-owned isolated world: Android's ordinary Back/Forward API can
