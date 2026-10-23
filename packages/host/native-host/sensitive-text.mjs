@@ -13,8 +13,11 @@ const DIGIT_WORDS = {
   eight: "8",
   nine: "9",
 };
-const SPOKEN_DIGITS =
-  /\b(?:zero|oh|one|two|three|four|five|six|seven|eight|nine)(?:[\s,.-]+(?:zero|oh|one|two|three|four|five|six|seven|eight|nine)){3,}\b/gi;
+const DIGIT_WORD = Object.keys(DIGIT_WORDS).join("|");
+const SPOKEN_DIGITS = new RegExp(
+  `\\b(?:${DIGIT_WORD})(?:[\\s,.-]+(?:${DIGIT_WORD})){3,}\\b`,
+  "gi",
+);
 /** Speech recognition writes "one two three four" or "1 2 3 4" for a spoken code. */
 const spokenDigits = (text) =>
   text.replace(SPOKEN_DIGITS, (run) =>
@@ -23,16 +26,66 @@ const spokenDigits = (text) =>
       .map((word) => DIGIT_WORDS[word.toLowerCase()])
       .join(""),
   );
+const normalize = (value) =>
+  String(value)
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "");
+
+/** The words shown when text is refused. They never include the matched value. */
+export const SENSITIVE_TEXT_REFUSAL =
+  "This looks like a password, verification code, token or card number. It was not sent. Remove it from your draft and enter it directly in the website or password manager.";
+const refusal = () =>
+  new NativeHostError(SENSITIVE_TEXT_REFUSAL, {
+    status: 422,
+    code: "SENSITIVE_TEXT",
+  });
+
+/** Luhn checksum of a 13 to 19 digit card number. A run of one repeated digit is not a card. */
+export function luhn(digits) {
+  if (!/^\d{13,19}$/.test(digits) || /^(\d)\1+$/.test(digits)) return false;
+  let sum = 0;
+  for (
+    let i = digits.length - 1, alternate = false;
+    i >= 0;
+    i--, alternate = !alternate
+  ) {
+    let n = Number(digits[i]);
+    if (alternate) {
+      n *= 2;
+      if (n > 9) n -= 9;
+    }
+    sum += n;
+  }
+  return sum % 10 === 0;
+}
+
+/**
+ * An extra matcher lets a host refuse and remove its own kinds of values (for
+ * example ID or bank numbers). `spans(text)` returns the [start, end) ranges
+ * of the values in normalized text. `test(text)` is optional; without it, the
+ * text is refused when `spans` finds a value in it, also after spoken digit
+ * words are written as digits.
+ * @typedef {{ spans(text: string): Iterable<[number, number]>, test?(text: string): boolean }} SensitiveTextMatcher
+ */
+const matcherFinds = (matcher, text) =>
+  matcher.test
+    ? matcher.test(text)
+    : [...matcher.spans(text)].length > 0 ||
+      (spokenDigits(text) !== text &&
+        [...matcher.spans(spokenDigits(text))].length > 0);
+
 /** Conservative recognition, not a promise to identify every possible secret.
  * Reject the whole input rather than silently changing a user's instructions.
  * Never include the matched value in an error or a log.
  */
-export function containsSensitiveText(value) {
-  const normalized = value
-    .normalize("NFKC")
-    .replace(/[\u200B-\u200D\uFEFF]/g, "");
+export function containsSensitiveText(value, { matchers = [] } = {}) {
+  const normalized = normalize(value);
   const spoken = spokenDigits(normalized);
-  return sensitive(normalized) || (spoken !== normalized && sensitive(spoken));
+  return (
+    sensitive(normalized) ||
+    (spoken !== normalized && sensitive(spoken)) ||
+    matchers.some((matcher) => matcherFinds(matcher, normalized))
+  );
 }
 function sensitive(text) {
   if (
@@ -84,31 +137,386 @@ function sensitive(text) {
     !/^\d{3}[ -]\d{4}$/.test(bare)
   )
     return true;
-  for (const candidate of text.matchAll(/(?<!\d)(?:\d[ -]?){12,18}\d(?!\d)/g)) {
-    const digits = candidate[0].replace(/\D/g, "");
-    if (/^(\d)\1+$/.test(digits)) continue;
-    let sum = 0;
-    for (
-      let i = digits.length - 1, alternate = false;
-      i >= 0;
-      i--, alternate = !alternate
-    ) {
-      let n = Number(digits[i]);
-      if (alternate) {
-        n *= 2;
-        if (n > 9) n -= 9;
-      }
-      sum += n;
-    }
-    if (sum % 10 === 0) return true;
-  }
+  for (const candidate of text.matchAll(/(?<!\d)(?:\d[ -]?){12,18}\d(?!\d)/g))
+    if (luhn(candidate[0].replace(/\D/g, ""))) return true;
   return false;
 }
 
-export function requireNonSensitiveText(text) {
-  if (containsSensitiveText(text))
-    throw new NativeHostError(
-      "This looks like a password, verification code, token or card number. It was not sent. Remove it from your draft and enter it directly in the website or password manager.",
-      { status: 422, code: "SENSITIVE_TEXT" },
-    );
+export function requireNonSensitiveText(text, options) {
+  if (containsSensitiveText(text, options)) throw refusal();
 }
+
+// Removing a detected secret from text that is kept.
+//
+// The check above rejects text that looks like a secret. Rejection is not
+// enough for text that a host already keeps: a transcript, the conversation
+// history and a diagnostic log keep the words. A secret scrubber removes a
+// detected secret from text and remembers it, so the same value is removed
+// again from later text, also where it has no telling words around it
+// ("use 482917 like before").
+//
+// Limits: detection is the same conservative recognition as the check above.
+// The scrubber keeps keyed in-memory fingerprints, never the values, and never
+// returns or logs a value. A short code can still be found from a fingerprint
+// by trying every code, so a host must never store the fingerprints.
+// No Node imports: hosts also load this in a renderer.
+
+/** Replaces each removed value. */
+export const SECRET_REMOVED_MARK = "[removed]";
+/** One digit, typed ("4") or as speech recognition writes it ("four"). */
+const D = `(?:\\d|\\b(?:${DIGIT_WORD})\\b)`;
+/** Between digits: nothing, a space, comma, dot or dash ("4 8-2, 9"). */
+const S = "(?:[\\s,.-]{0,3})";
+const digitRun = (min, max) => `${D}(?:${S}${D}){${min - 1},${max - 1}}`;
+const DIGIT_OR_WORD = new RegExp(`\\d|\\b(?:${DIGIT_WORD})\\b`, "gi");
+const digitsOf = (text) =>
+  (String(text).match(DIGIT_OR_WORD) || [])
+    .map((part) => (/\d/.test(part) ? part : DIGIT_WORDS[part.toLowerCase()]))
+    .join("");
+
+/**
+ * Where a value follows (or comes before) its telling words. Each rule keeps
+ * the words that say what it is ("my verification code is") and removes only
+ * the value. `kind` says how the value is remembered: digits or a phrase.
+ */
+const RULES = [
+  {
+    pattern:
+      /\b(?:csk-|sk-(?:proj-|live-)?|gh[pousr]_|github_pat_|AIza)[A-Za-z0-9_-]{16,}\b/g,
+    kind: "phrase",
+  },
+  {
+    pattern:
+      /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]*?(?:-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|$)/g,
+    kind: null,
+  },
+  { pattern: /\b(Bearer\s+)([A-Za-z0-9._~+/-]{12,}=*)/gi, kind: "phrase" },
+  {
+    pattern: /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g,
+    kind: "phrase",
+  },
+  // "my password is not working" names no password: after "password is" only
+  // a credential-looking word is remembered. The clause is still removed.
+  {
+    pattern: /\b(password\s*(?:is\s+|=\s*|:\s*))([^\n.!?;,]{1,80})/gi,
+    kind: "password",
+  },
+  {
+    pattern:
+      /\b((?:passphrase|pass phrase|api[ _-]?key|access[ _-]?token|refresh[ _-]?token|client[ _-]?secret)\s*(?:is\s+|=\s*|:\s*))([^\n.!?;,]{1,80})/gi,
+    kind: "phrase",
+  },
+  {
+    pattern: new RegExp(
+      `\\b((?:verification|security|one[ -]?time|confirmation|login|sign[ -]?in|authentication)\\s+(?:code|pin)\\s*(?:(?:is|was)\\s*|[:=]\\s*)?)(${digitRun(4, 10)})`,
+      "gi",
+    ),
+    kind: "digits",
+  },
+  {
+    pattern: new RegExp(
+      `\\b((?:otp|pin|cvv|cvc)\\s*(?:is\\s+|[:=]\\s*))(${digitRun(3, 10)})`,
+      "gi",
+    ),
+    kind: "digits",
+  },
+  // "my code is 4 8 2 9 1 7". A zip, postal or area code is not a secret.
+  {
+    pattern: new RegExp(
+      `(?<!\\b(?:zip|postal|post|area|country|dialing)\\s+)\\b((?:pass)?code\\b(?:\\s+[a-z']+){0,4}?\\s*(?:[:=]\\s*)?)(${digitRun(4, 8)})(?!\\d)`,
+      "gi",
+    ),
+    kind: "digits",
+  },
+  // "482917 is the code"
+  {
+    pattern: new RegExp(
+      `(?<!\\d)(${digitRun(4, 8)})(\\s+(?:is|was)\\s+(?:the|my|your|our)\\s+(?:[a-z]+\\s+){0,2}?(?:pass)?code\\b)`,
+      "gi",
+    ),
+    kind: "digits",
+    valueFirst: true,
+  },
+];
+const CARD = new RegExp(`(?<!\\d)${digitRun(13, 19)}(?!\\d)`, "gi");
+/**
+ * A run of digits where a remembered value can come back without telling
+ * words. An amount is never part of a run: "$41.11", "48.29" and "1,250" stay.
+ */
+const RUN = new RegExp(
+  `(?<![\\d$€£]|[$€£]\\s|\\d[.,])${D}(?:(?:[ \\t-]{1,2}|[,.]\\s+)?${D}){0,63}(?![.,]?\\d)`,
+  "gi",
+);
+/** A remembered value is found inside a run at most this many digits longer. */
+const EXTRA_DIGITS = 2;
+/** Values one scrubber remembers before it starts again. */
+const REMEMBER_LIMIT = 128;
+
+/** cyrb53: a fast 53-bit keyed string hash for comparison. Not cryptographic. */
+function cyrb53(seed, text) {
+  let h1 = 0xdeadbeef ^ seed;
+  let h2 = 0x41c6ce57 ^ seed;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 =
+    Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^
+    Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 =
+    Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^
+    Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+}
+const randomSeed = () =>
+  globalThis.crypto.getRandomValues(new Uint32Array(1))[0];
+const tokensOf = (text) =>
+  [...String(text).matchAll(/\S+/g)]
+    .map((match) => {
+      const raw = match[0];
+      const lead = raw.length - raw.replace(/^[("'“‘]+/, "").length;
+      const word = raw.slice(lead).replace(/[)"'”’.,!?;:]+$/, "");
+      const start = match.index + lead;
+      return { word: word.toLowerCase(), start, end: start + word.length };
+    })
+    .filter((token) => token.word);
+const credentialWords = (tokens) =>
+  tokens.filter((word) => word.length >= 4 && /[^a-z]/.test(word));
+const onlyDigits = (value, digits) =>
+  digits.length >= 4 &&
+  digits.length === value.replace(/[^\dA-Za-z]/g, "").length;
+
+/** [start, end) spans from every matcher, sorted and merged. */
+function matcherSpans(matchers, text) {
+  const merged = [];
+  const spans = matchers
+    .flatMap((matcher) => [...matcher.spans(text)])
+    .sort((a, b) => a[0] - b[0] || b[1] - a[1]);
+  for (const [start, end] of spans) {
+    const last = merged.at(-1);
+    if (last && start < last[1]) last[1] = Math.max(last[1], end);
+    else merged.push([start, end]);
+  }
+  return merged;
+}
+
+/**
+ * Removes detected secrets from text and remembers each one, so it is removed
+ * again wherever it comes back later, also as spoken digit words or as the
+ * start or end of a code that a transcript heard only in part. Use one
+ * scrubber per signed-in session and call `clear()` when the session ends.
+ * @param {{ seed?: number, matchers?: SensitiveTextMatcher[] }} [options]
+ */
+export function createSecretScrubber({
+  seed = randomSeed(),
+  matchers = [],
+} = {}) {
+  const digitSecrets = new Set();
+  const digitParts = new Set();
+  const digitLengths = new Set();
+  const phraseSecrets = new Set();
+  const phraseLengths = new Set();
+  const key = (text) => cyrb53(seed, text);
+  const size = () => digitSecrets.size + phraseSecrets.size;
+
+  function clear() {
+    digitSecrets.clear();
+    digitParts.clear();
+    digitLengths.clear();
+    phraseSecrets.clear();
+    phraseLengths.clear();
+  }
+  function rememberDigits(digits) {
+    if (digits.length < 4 || digits.length > 64) return;
+    if (size() >= REMEMBER_LIMIT) clear();
+    digitSecrets.add(key(digits));
+    digitLengths.add(digits.length);
+    // The start or end of the value: four or more digits of a short code,
+    // eight or more of a longer number. A card's last four digits are on
+    // every receipt, so they are not remembered.
+    for (let n = digits.length <= 8 ? 4 : 8; n < digits.length; n++) {
+      digitParts.add(key(digits.slice(0, n)));
+      digitParts.add(key(digits.slice(-n)));
+    }
+  }
+  function rememberWords(words) {
+    for (const word of credentialWords(words)) {
+      phraseSecrets.add(key(word));
+      phraseLengths.add(1);
+    }
+  }
+  function remember(kind, value) {
+    if (!kind) return;
+    const digits = digitsOf(value);
+    if (kind === "digits") return rememberDigits(digits);
+    const words = tokensOf(value)
+      .map((token) => token.word)
+      .filter((word) => word !== SECRET_REMOVED_MARK);
+    if (kind === "password") {
+      rememberWords(words);
+      if (words.length === 1 && onlyDigits(value, digits))
+        rememberDigits(digits);
+      return;
+    }
+    if (!words.length || words.length > 12) return;
+    if (size() >= REMEMBER_LIMIT) clear();
+    phraseSecrets.add(key(words.join(" ")));
+    phraseLengths.add(words.length);
+    rememberWords(words);
+    if (onlyDigits(value, digits)) rememberDigits(digits);
+  }
+
+  function removeRemembered(text, mark) {
+    let out = text;
+    if (digitSecrets.size) {
+      out = out.replace(RUN, (match) => {
+        const digits = digitsOf(match);
+        if (digits.length < 4) return match;
+        if (digitSecrets.has(key(digits)) || digitParts.has(key(digits)))
+          return mark;
+        for (const n of digitLengths) {
+          if (digits.length <= n || digits.length > n + EXTRA_DIGITS) continue;
+          for (let i = 0; i + n <= digits.length; i++)
+            if (digitSecrets.has(key(digits.slice(i, i + n)))) return mark;
+        }
+        return match;
+      });
+    }
+    if (phraseSecrets.size) {
+      const tokens = tokensOf(out);
+      const taken = [];
+      // Longest phrase first; a span inside one already taken is skipped.
+      for (const n of [...phraseLengths].sort((a, b) => b - a))
+        for (let i = 0; i + n <= tokens.length; i++) {
+          const window = tokens.slice(i, i + n);
+          const [start, end] = [window[0].start, window.at(-1).end];
+          if (window[0].word === SECRET_REMOVED_MARK) continue;
+          if (taken.some(([a, b]) => start < b && end > a)) continue;
+          if (phraseSecrets.has(key(window.map((t) => t.word).join(" "))))
+            taken.push([start, end]);
+        }
+      for (const [start, end] of taken.sort((a, b) => b[0] - a[0]))
+        out = out.slice(0, start) + mark + out.slice(end);
+    }
+    return out;
+  }
+
+  /**
+   * One pass. With `keepWords` false the telling words go too, which gives the
+   * probe that the check reads afterwards.
+   */
+  function pass(text, mark, keepWords) {
+    let out = text;
+    for (const { pattern, kind, valueFirst } of RULES) {
+      out = out.replace(pattern, (match, first, second) => {
+        if (typeof first !== "string") {
+          remember(kind, match);
+          return mark;
+        }
+        const [secret, words] = valueFirst ? [first, second] : [second, first];
+        if (secret.trim().startsWith(SECRET_REMOVED_MARK))
+          return keepWords ? match : mark;
+        remember(kind, secret);
+        if (!keepWords) return mark;
+        return valueFirst ? mark + words : words + mark;
+      });
+    }
+    out = out.replace(CARD, (match) => {
+      const digits = digitsOf(match);
+      if (!luhn(digits)) return match;
+      rememberDigits(digits);
+      return mark;
+    });
+    for (const [start, end] of matcherSpans(matchers, out).reverse()) {
+      remember("phrase", out.slice(start, end));
+      out = out.slice(0, start) + mark + out.slice(end);
+    }
+    return removeRemembered(out, mark);
+  }
+
+  /** Text with every detected or remembered secret replaced by the mark. */
+  function scrub(value) {
+    if (typeof value !== "string" || !value) return value;
+    const text = normalize(value);
+    const out = pass(text, SECRET_REMOVED_MARK, true);
+    // A secret the check still sees but no rule could place ("482917",
+    // "four eight two nine"): the whole text goes.
+    const probe = pass(text, "\n", false).split(SECRET_REMOVED_MARK).join("\n");
+    if (containsSensitiveText(probe, { matchers })) {
+      const digits = digitsOf(probe);
+      if (digits.length >= 4 && digits.length <= 19) rememberDigits(digits);
+      return SECRET_REMOVED_MARK;
+    }
+    // Nothing found: the original characters come back (NFKC is only for matching).
+    return out === text ? value : out;
+  }
+
+  /** A copy of a plain object or array with every string scrubbed. Keys are kept. */
+  function scrubValue(value, depth = 0) {
+    if (typeof value === "string") return scrub(value);
+    if (depth > 20 || value === null || typeof value !== "object") return value;
+    if (Array.isArray(value))
+      return value.map((item) => scrubValue(item, depth + 1));
+    // A Date, Error, Map or class instance is returned as it is.
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) return value;
+    return Object.fromEntries(
+      Object.entries(value).map(([name, item]) => [
+        name,
+        scrubValue(item, depth + 1),
+      ]),
+    );
+  }
+
+  return {
+    scrub,
+    scrubValue,
+    /** Removes only values already remembered; nothing new is looked for. */
+    scrubRemembered(value) {
+      if (typeof value !== "string" || !value || !size()) return value;
+      const text = normalize(value);
+      const out = removeRemembered(text, SECRET_REMOVED_MARK);
+      return out === text ? value : out;
+    },
+    /** Detects and remembers the secrets in rejected text without keeping the text. */
+    remember(value) {
+      if (typeof value === "string") scrub(value);
+    },
+    /** How many values are remembered (never the values). */
+    get size() {
+      return size();
+    },
+    clear,
+  };
+}
+
+/**
+ * The check a host runs on text before it reaches a model, speech or storage,
+ * with a memory. A refused value is remembered, and later text that carries
+ * it is refused too, also without telling words. The whole text is refused,
+ * never silently changed.
+ * @param {{ matchers?: SensitiveTextMatcher[], scrubber?: ReturnType<typeof createSecretScrubber> }} [options]
+ */
+export function createSensitiveTextGate({
+  matchers = [],
+  scrubber = createSecretScrubber({ matchers }),
+} = {}) {
+  return {
+    scrubber,
+    require(text) {
+      if (containsSensitiveText(text, { matchers })) {
+        scrubber.remember(text);
+        throw refusal();
+      }
+      if (scrubber.size && scrubber.scrub(text) !== text) throw refusal();
+    },
+    clear() {
+      scrubber.clear();
+    },
+  };
+}
+
+/** Text with detected secrets replaced by the mark. Nothing is remembered. */
+export const redactSensitiveText = (value, options) =>
+  createSecretScrubber(options).scrub(value);
