@@ -46,7 +46,7 @@ export type NativePageGuidance =
       id: string;
       snapshotId: string;
       nodeId: string;
-      action: "click" | "fill" | "select" | "scroll";
+      action: "click" | "fill" | "select" | "scroll" | "follow";
     }
   | {
       kind: "show";
@@ -471,6 +471,7 @@ export interface ElizaSurfaceManagerPlugin {
           | "fill"
           | "select"
           | "scroll"
+          | "follow"
           | "guide";
         /** Check the target without consuming the snapshot or dispatching input. */
         validateOnly?: boolean;
@@ -489,7 +490,7 @@ export interface ElizaSurfaceManagerPlugin {
           assistantName?: string;
           targets: Array<{
             selector: string;
-            action: "click" | "fill" | "select" | "scroll";
+            action: "click" | "fill" | "select" | "scroll" | "follow";
           }>;
         };
       };

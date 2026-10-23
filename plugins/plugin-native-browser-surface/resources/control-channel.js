@@ -87,7 +87,7 @@
     }
     if (
       !command ||
-      !["snapshot", "click", "fill", "select", "scroll"].includes(
+      !["snapshot", "click", "fill", "select", "scroll", "follow"].includes(
         command.subaction,
       )
     ) {
@@ -114,7 +114,9 @@
             (target) =>
               target &&
               typeof target.selector === "string" &&
-              ["click", "fill", "select", "scroll"].includes(target.action),
+              ["click", "fill", "select", "scroll", "follow"].includes(
+                target.action,
+              ),
           ) ||
           // The host spent this grant for one commit of the reviewed control.
           (policy.commitGrant !== undefined &&
@@ -702,6 +704,7 @@
         nodes.set(id, {
           node,
           bounds: geometry,
+          href: node instanceof HTMLAnchorElement ? node.href : null,
           scroll,
           scrollOnly,
           value: typeof node.value === "string" ? node.value : null,
@@ -1266,6 +1269,34 @@
       node.matches(':disabled,[aria-disabled="true"]')
     )
       return denied();
+    // Follow the observed address without activating website click handlers.
+    // This is distinct from a click or a consented form submission. The snapshot
+    // retains the exact destination privately; model-supplied URLs are not used.
+    let destination = null;
+    if (command.subaction === "follow") {
+      if (
+        !policy ||
+        !(node instanceof HTMLAnchorElement) ||
+        !node.hasAttribute("href") ||
+        node.hasAttribute("download") ||
+        (node.target && node.target !== "_self") ||
+        node.matches('[aria-disabled="true"]') ||
+        node.href !== recorded.href
+      )
+        return denied();
+      try {
+        destination = new URL(recorded.href);
+        if (
+          destination.protocol !== "https:" ||
+          destination.origin !== policy.origin ||
+          destination.username ||
+          destination.password
+        )
+          return denied();
+      } catch {
+        return denied();
+      }
+    }
     if (validateOnly) return { validated: true };
     if (policy?.actionId) {
       const feedback = globalThis.__elizaPageGuidanceV1;
@@ -1281,6 +1312,11 @@
       feedback.markActed();
     }
     delete globalThis[key];
+    if (destination) {
+      globalThis[watchKey]?.stop();
+      location.assign(destination.href);
+      return { dispatched: true, requiresReadback: true };
+    }
     if (grant) {
       if (globalThis[grantKey]?.document !== document)
         globalThis[grantKey] = { document, used: new Set() };
@@ -1980,7 +2016,9 @@
       keepClear.length > 8 ||
       keepClear.some((id) => typeof id !== "string" || !/^\d+$/.test(id)) ||
       (request.action !== undefined &&
-        !["click", "fill", "select", "scroll"].includes(request.action)) ||
+        !["click", "fill", "select", "scroll", "follow"].includes(
+          request.action,
+        )) ||
       (request.restore !== undefined && typeof request.restore !== "boolean") ||
       window !== window.top ||
       request.origin !== location.origin ||

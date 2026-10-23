@@ -87,7 +87,7 @@ export function installControlChannel(pageCommand, pageGuidance) {
     }
     if (
       !command ||
-      !["snapshot", "click", "fill", "select", "scroll"].includes(
+      !["snapshot", "click", "fill", "select", "scroll", "follow"].includes(
         command.subaction,
       )
     ) {
@@ -114,7 +114,9 @@ export function installControlChannel(pageCommand, pageGuidance) {
             (target) =>
               target &&
               typeof target.selector === "string" &&
-              ["click", "fill", "select", "scroll"].includes(target.action),
+              ["click", "fill", "select", "scroll", "follow"].includes(
+                target.action,
+              ),
           ) ||
           // The host spent this grant for one commit of the reviewed control.
           (policy.commitGrant !== undefined &&

@@ -519,6 +519,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       nodes.set(id, {
         node,
         bounds: geometry,
+        href: node instanceof HTMLAnchorElement ? node.href : null,
         scroll,
         scrollOnly,
         value: typeof node.value === "string" ? node.value : null,
@@ -1072,6 +1073,34 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     node.matches(':disabled,[aria-disabled="true"]')
   )
     return denied();
+  // Follow the observed address without activating website click handlers.
+  // This is distinct from a click or a consented form submission. The snapshot
+  // retains the exact destination privately; model-supplied URLs are not used.
+  let destination = null;
+  if (command.subaction === "follow") {
+    if (
+      !policy ||
+      !(node instanceof HTMLAnchorElement) ||
+      !node.hasAttribute("href") ||
+      node.hasAttribute("download") ||
+      (node.target && node.target !== "_self") ||
+      node.matches('[aria-disabled="true"]') ||
+      node.href !== recorded.href
+    )
+      return denied();
+    try {
+      destination = new URL(recorded.href);
+      if (
+        destination.protocol !== "https:" ||
+        destination.origin !== policy.origin ||
+        destination.username ||
+        destination.password
+      )
+        return denied();
+    } catch {
+      return denied();
+    }
+  }
   if (validateOnly) return { validated: true };
   if (policy?.actionId) {
     const feedback = globalThis.__elizaPageGuidanceV1;
@@ -1087,6 +1116,11 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     feedback.markActed();
   }
   delete globalThis[key];
+  if (destination) {
+    globalThis[watchKey]?.stop();
+    location.assign(destination.href);
+    return { dispatched: true, requiresReadback: true };
+  }
   if (grant) {
     if (globalThis[grantKey]?.document !== document)
       globalThis[grantKey] = { document, used: new Set() };

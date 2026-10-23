@@ -199,7 +199,7 @@ try {
     channel.request(
       { command, extra },
       {
-        effect: ["click", "fill", "select", "scroll"].includes(
+        effect: ["click", "fill", "select", "scroll", "follow"].includes(
           command.subaction,
         ),
       },
@@ -1347,6 +1347,69 @@ try {
     "PASS: a consented commit is bound to its request and form contents; another path, a changed field, an added hidden input and a form.submit() into a new window are refused or reported, and the host and page form hashes agree",
   );
   await taskHandler.close();
+  // The shipped isolated channel follows the observed URL without running a
+  // payment-labelled anchor's click handler. It takes no caller-provided URL.
+  await page.evaluate(() => {
+    document.body.innerHTML = `<a id="portal" href="/billing-portal" onclick="fetch('/unexpected-payment', {method:'POST'})">Payment portal</a>`;
+  });
+  const followPolicy = {
+    origin,
+    expiresAt: Date.now() + 60000,
+    targets: [{ selector: "#portal", action: "follow" }],
+  };
+  const follow = (state) =>
+    action(state, "follow", "#portal", { taskPolicy: followPolicy });
+  state = await snapshot();
+  await page.evaluate(
+    () => (document.querySelector("#portal").href = "/different"),
+  );
+  await assert.rejects(dispatch(follow(state)), { code: "STALE_REF" });
+  for (const href of [
+    "javascript:alert(1)",
+    "https://other.example/portal",
+    `https://user:password@127.0.0.1:${server.address().port}/portal`,
+  ]) {
+    await page.evaluate(
+      (href) => (document.querySelector("#portal").href = href),
+      href,
+    );
+    state = await snapshot();
+    await assert.rejects(dispatch(follow(state)), { code: "POLICY_BLOCKED" });
+  }
+  await page.evaluate(() => {
+    const a = document.querySelector("#portal");
+    a.href = "/billing-portal";
+    a.download = "receipt";
+  });
+  state = await snapshot();
+  await assert.rejects(dispatch(follow(state)), { code: "POLICY_BLOCKED" });
+  await page.evaluate(() => {
+    const a = document.querySelector("#portal");
+    a.removeAttribute("download");
+    a.target = "_blank";
+  });
+  state = await snapshot();
+  await assert.rejects(dispatch(follow(state)), { code: "POLICY_BLOCKED" });
+  await page.evaluate(() =>
+    document.querySelector("#portal").removeAttribute("target"),
+  );
+  state = await snapshot();
+  const postsBeforeFollow = paymentPosts;
+  const navigation = page.waitForNavigation();
+  const followed = await dispatch(follow(state));
+  assert.equal(followed.result.dispatched, true);
+  assert.equal(followed.result.requiresReadback, true);
+  await navigation;
+  assert.equal(page.url(), `${origin}/billing-portal`);
+  assert.equal(
+    paymentPosts,
+    postsBeforeFollow,
+    "Following the link must not execute its payment handler",
+  );
+  console.log(
+    "PASS: observed same-origin link navigation without click handlers, with stale URL, credential, scheme, origin, download and new-window refusal",
+  );
+
   console.log(
     "PASS: NativeTaskActuator readback, cleanup uncertainty, bound embedded task adapter and authenticated host HTTP to isolated command channel, real click/fill/select with visible preview and option-label readback, lost-effect uncertainty without replay, document and replay fences, manual input, policy requirement, fixed operations, credential exclusion",
   );
