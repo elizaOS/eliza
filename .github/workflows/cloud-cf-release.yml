@@ -1276,6 +1276,10 @@ jobs:
         working-directory: ${{ env.CHECKOUT_DIR }}
         env:
           DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+          # Probe the upstream this release will route to. The canonical one is
+          # the Cloudflare login Worker (https://login-staging.eliza.app),
+          # published via ELIZA_LOGIN_API_URL. Unset means pre-cutover: the
+          # committed wrangler.toml default (Railway) stays live, so probe it.
           STEWARD_UPSTREAM_URL: ${{ vars.ELIZA_LOGIN_API_URL || 'https://steward-api-staging.up.railway.app' }}
         run: |
           set -euo pipefail
@@ -1413,6 +1417,10 @@ jobs:
           NETWORK_SITE_AUTH_SERVER_TOKEN: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.NETWORK_SITE_AUTH_SERVER_TOKEN || '' }}
           DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
           LOGIN_API_URL: ${{ vars.ELIZA_LOGIN_API_URL }}
+          # One-release opt-in that keeps Railway-era login upstreams accepted
+          # once ELIZA_LOGIN_API_URL is set (transition or rollback). The
+          # Cloudflare login Worker is canonical; unset this after the release.
+          LOGIN_ALLOW_RAILWAY_TRANSITION: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_LOGIN_ALLOW_RAILWAY_TRANSITION) && 'true' || 'false' }}
           # Phone and app voice are production features. Staging remains an
           # explicit repository-variable opt-in, while production is pinned on
           # so a managed deploy cannot silently replace wrangler.toml's true
@@ -1538,6 +1546,7 @@ jobs:
           SERVED_SOURCE_URL: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
           STEWARD_API_URL: ${{ secrets.STEWARD_API_URL }}
           LOGIN_API_URL: ${{ vars.ELIZA_LOGIN_API_URL }}
+          LOGIN_ALLOW_RAILWAY_TRANSITION: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_LOGIN_ALLOW_RAILWAY_TRANSITION) && 'true' || 'false' }}
           DISCORD_GATEWAY_URL: ${{ vars.ELIZA_DISCORD_GATEWAY_URL }}
           GATEWAY_DISCORD_BOOTSTRAP_SECRET: ${{ secrets.GATEWAY_DISCORD_BOOTSTRAP_SECRET }}
           GATEWAY_INTERNAL_SECRET: ${{ secrets.GATEWAY_INTERNAL_SECRET }}

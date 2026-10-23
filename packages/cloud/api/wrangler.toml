@@ -674,6 +674,12 @@ binding = "BROWSER"
 [env.staging.vars]
 APP_OAUTH_RETURN_URLS = "https://alphacompute.ai/alphaphone/gmail/staging/callback"
 NODE_ENV = "production"
+# Pre-cutover default only. The canonical upstream is the Cloudflare login
+# Worker, https://login-staging.eliza.app (CANONICAL_LOGIN_UPSTREAM_URLS in
+# packages/cloud/scripts/verify-steward-upstream-binding.ts). The canonical
+# release publishes it by setting the protected ELIZA_LOGIN_API_URL variable,
+# which overrides this value; leaving it unset keeps this Railway default so
+# merging routing changes cannot move live login before the owner's cutover.
 LOGIN_API_URL = "https://steward-api-staging.up.railway.app"
 # Signed Twilio callbacks and media-stream URLs must use the externally routed
 # HTTPS origin, never a request-derived host. Keep this committed so any
@@ -1023,6 +1029,8 @@ binding = "BROWSER"
 
 [env.production.vars]
 APP_OAUTH_RETURN_URLS = "https://alphacompute.ai/alphaphone/gmail/callback"
+# Pre-cutover default only; canonical is https://login.eliza.app, published
+# through ELIZA_LOGIN_API_URL (see the staging block above).
 LOGIN_API_URL = "https://steward-api-production-115d.up.railway.app"
 NODE_ENV = "production"
 # Signed Twilio callbacks and media-stream URLs must use the externally routed
