@@ -81,14 +81,20 @@ it("keeps storage detail out of the response and reports the cause", async () =>
   // at the helper boundary and travel through the diagnostic hook instead.
   const sentinel = "SENTINEL_HOST_PATH=/var/lib/eliza/secrets/agent.db";
   const { status, body, reported } = await listChats(async () => {
-    throw new Error(`SQLITE_CANTOPEN: unable to open database file ${sentinel}`);
+    throw new Error(
+      `SQLITE_CANTOPEN: unable to open database file ${sentinel}`,
+    );
   });
   expect(status).toBe(500);
   expect(body.error).toContain("Inbox message history is unavailable.");
   expect(JSON.stringify(body)).not.toContain("SENTINEL_HOST_PATH");
   expect(reported).toHaveLength(1);
-  expect(reported[0]?.scope).toBe("inbox-message-history");
-  expect((reported[0]?.error as Error).message).toContain("SENTINEL_HOST_PATH");
+  const report = reported[0];
+  expect(report?.scope).toBe("inbox-message-history");
+  expect(report?.error).toBeInstanceOf(Error);
+  expect((report?.error as Error | undefined)?.message).toContain(
+    "SENTINEL_HOST_PATH",
+  );
 });
 
 it("keeps a genuinely message-less room as an empty chat", async () => {
