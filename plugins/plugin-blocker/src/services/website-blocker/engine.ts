@@ -1753,6 +1753,26 @@ function normalizeStringList(
   return null;
 }
 
+/**
+ * A duration string must state minutes, because the field is `durationMinutes`.
+ * `Number.parseFloat` read the leading number and dropped the unit, so
+ * "2 hours" became a two-minute block and "30 seconds" became a thirty-minute
+ * block, with no error in either direction. Only a bare number or an explicit
+ * minutes unit is a duration in minutes; any other unit is invalid input and is
+ * rejected here so the caller is asked again instead of blocking for a
+ * different length of time than the one it requested.
+ *
+ * The unit is matched against the lowercased value, so "90 Minutes", "5 Min"
+ * and "5M" all give the same duration.
+ *
+ * Return values are distinct on purpose: `null` is a manual block
+ * ("manual", "indefinite", "until-unblocked"), `undefined` is invalid input,
+ * and a number is the block length in whole minutes. The caller rejects only
+ * `undefined`, so the manual-block tokens stay valid.
+ */
+const MINUTES_DURATION_STRING =
+  /^(\d+(?:\.\d+)?)\s*(?:m|min|mins|minute|minutes)?$/;
+
 function parseDurationMinutes(
   value: number | string | null | undefined,
 ): number | null | undefined {
@@ -1773,9 +1793,9 @@ function parseDurationMinutes(
       return null;
     }
 
-    const parsed = Number.parseFloat(trimmed);
-    if (Number.isFinite(parsed)) {
-      return Math.round(parsed);
+    const minutes = MINUTES_DURATION_STRING.exec(trimmed);
+    if (minutes) {
+      return Math.round(Number.parseFloat(minutes[1]));
     }
   }
 
