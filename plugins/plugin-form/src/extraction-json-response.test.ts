@@ -142,6 +142,15 @@ describe("correction reply parsing", () => {
     );
   }
 
+  async function correctWithStored(stored: string) {
+    return await detectCorrection(
+      runtimeReturning(examplePair),
+      "use new@example.com instead",
+      { email: stored },
+      [email],
+    );
+  }
+
   it("keeps a correction whose real values equal the prompt example", async () => {
     // The user typed those addresses, so they are values, not placeholders.
     const corrections = await correct(
@@ -170,5 +179,48 @@ describe("correction reply parsing", () => {
 
     expect(corrections).toHaveLength(1);
     expect(corrections[0].value).toBe("new@example.com");
+  });
+
+  it("does not let the example old value on another field ground the pair", async () => {
+    // The form holds the example old address, but on the backup field. The
+    // reply corrects the primary field, which holds another address, so the
+    // stored value does not authorize this correction.
+    const primary: FormControl = {
+      key: "primaryEmail",
+      label: "Primary email",
+      type: "email",
+    };
+    const backup: FormControl = {
+      key: "backupEmail",
+      label: "Backup email",
+      type: "email",
+    };
+    const restated = JSON.stringify({
+      has_correction: true,
+      corrections: [
+        {
+          field: "primaryEmail",
+          old_value: "old@example.com",
+          new_value: "new@example.com",
+          confidence: 0.9,
+        },
+      ],
+    });
+    const corrections = await detectCorrection(
+      runtimeReturning(restated),
+      "use new@example.com instead",
+      { primaryEmail: "alice@example.com", backupEmail: "old@example.com" },
+      [primary, backup],
+    );
+
+    expect(corrections).toEqual([]);
+  });
+
+  it("does not read a stored value that only contains the example address as the old value", async () => {
+    // The stored value is a different address that contains the example text.
+    // Only an exact normalized match with the corrected field grounds the pair.
+    const corrections = await correctWithStored("old@example.com (work)");
+
+    expect(corrections).toEqual([]);
   });
 });
