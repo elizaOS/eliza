@@ -74,6 +74,13 @@ Service-only consumers set `hostPolicy.accountBilling: false` to exclude billing
 routes. Enrollment requires its factory when a pending credential store is supplied.
 Explicit `providerDefaultVoice: true` permits omitted voice IDs; `speechLanguage: null`
 uses provider language detection. Omitting these choices retains policy validation.
+Hosts can opt into per-capture language selection with `speechLanguages: ["en", "es"]`.
+`POST /voice/stt` then accepts `languageCode` only when it exactly matches that
+trusted list. Other values return 400 before any provider request. Omitting
+`languageCode` keeps `speechLanguage` (including null for detection); selecting a
+language never changes the default or another capture. Hosts without the list
+continue using their default and reject explicit language selections.
+
 
 Use `@elizaos/cloud-sdk/testing` for deterministic setup-session mocks. The older
 setup-session mock exports remain compatible; the client root does not load them.
