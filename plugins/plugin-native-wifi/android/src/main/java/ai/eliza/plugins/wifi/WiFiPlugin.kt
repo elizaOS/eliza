@@ -3,6 +3,7 @@ package ai.eliza.plugins.wifi
 
 import android.Manifest
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
@@ -277,7 +278,13 @@ class WiFiPlugin : Plugin() {
         }
         val intent = Intent(Settings.ACTION_WIFI_ADD_NETWORKS)
             .putParcelableArrayListExtra(Settings.EXTRA_WIFI_NETWORK_LIST, arrayListOf(suggestion))
-        startActivityForResult(call, intent, "addNetworkResult")
+        try {
+            startActivityForResult(call, intent, "addNetworkResult")
+        } catch (error: ActivityNotFoundException) {
+            // error-policy:J1 Some Android builds (for example Wear OS or TV) ship no add-network dialog.
+            call.reject("This device has no system dialog for saving Wi-Fi networks", "UNSUPPORTED", error)
+            bridge.releaseCall(call)
+        }
     }
 
     @ActivityCallback
