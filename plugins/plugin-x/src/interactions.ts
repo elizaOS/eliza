@@ -18,6 +18,7 @@ import {
   type Memory,
   type MessagePayload,
   ModelType,
+  parseBooleanFromText,
 } from "@elizaos/core";
 import { parseJSONObjectFromText } from "@elizaos/core/protocol";
 import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
@@ -239,10 +240,17 @@ export class TwitterInteractionClient {
     try {
       await this.client.withAuthenticatedSession(async (session) => {
         const { profile } = session;
-        // Check for mentions first (replies enabled by default)
-        const repliesEnabled =
-          (getSetting(this.runtime, "TWITTER_ENABLE_REPLIES") ??
-            process.env.TWITTER_ENABLE_REPLIES) !== "false";
+        // Check for mentions first (replies enabled by default). Read the
+        // account state before the runtime setting, as the dry-run flag does,
+        // and read the value with the shared boolean vocabulary, as
+        // TWITTER_ENABLE_DMS does. `!== "false"` kept replies on for "off",
+        // "0" and an upper-case "FALSE".
+        const repliesEnabled = parseBooleanFromText(
+          this.state?.TWITTER_ENABLE_REPLIES ??
+            getSetting(this.runtime, "TWITTER_ENABLE_REPLIES") ??
+            process.env.TWITTER_ENABLE_REPLIES ??
+            "true",
+        );
         if (repliesEnabled) {
           await this.handleMentions(session);
         }

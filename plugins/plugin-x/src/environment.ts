@@ -272,12 +272,16 @@ export async function validateTwitterConfig(
           "false"
         ).toLowerCase() === "true",
       ),
+      // The replies toggle accepts the shared boolean vocabulary, as the DM
+      // toggle does. A strict `=== "true"` here rewrote `1`, `yes` and `on`
+      // to "false", and the client reads this validated state before the
+      // runtime setting, so those aliases silently stopped mentions polling.
       TWITTER_ENABLE_REPLIES: String(
-        config.TWITTER_ENABLE_REPLIES !== undefined
-          ? config.TWITTER_ENABLE_REPLIES.toLowerCase() === "true"
-          : (
-              getSetting(runtime, "TWITTER_ENABLE_REPLIES") ?? "true"
-            ).toLowerCase() === "true",
+        parseBooleanFromText(
+          config.TWITTER_ENABLE_REPLIES ??
+            getSetting(runtime, "TWITTER_ENABLE_REPLIES") ??
+            "true",
+        ),
       ),
       TWITTER_ENABLE_DMS: String(
         (
