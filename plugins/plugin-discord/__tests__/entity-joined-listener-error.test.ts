@@ -12,9 +12,10 @@
  *   unhandled rejection. The failure is non-fatal for member onboarding: the
  *   handler still resolves normally.
  */
+
+import type { IAgentRuntime } from "@elizaos/core";
 import type { GuildMember } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
-import type { IAgentRuntime } from "@elizaos/core";
 import { DiscordService } from "../service.ts";
 import { DiscordEventTypes } from "../types.ts";
 
@@ -72,11 +73,9 @@ describe("handleGuildMemberAdd ENTITY_JOINED listener failures", () => {
 		const service = new DiscordService(runtime);
 
 		let settled = false;
-		const pending = service
-			.handleGuildMemberAdd(makeMember())
-			.then(() => {
-				settled = true;
-			});
+		const pending = service.handleGuildMemberAdd(makeMember()).then(() => {
+			settled = true;
+		});
 
 		await flushMicrotasks();
 		expect(emitEvent).toHaveBeenCalledTimes(1);
