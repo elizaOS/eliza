@@ -2308,31 +2308,59 @@ function writeJsonObjectFile(
   writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 /**
- * Why a persisted JSON object file cannot be trusted, or null when it is
- * parseable or genuinely absent.
+ * The persisted assignment map as read from disk, or the reason those bytes
+ * cannot be trusted.
  *
- * `readJsonObjectFile` answers `{}` for both an absent file and a damaged one,
- * which is fine for read-only callers that fall back to other sources. A caller
- * that writes the map back cannot use that answer: it would persist the damage
- * as "no entries". Only ENOENT means "there is no state yet".
+ * `readJsonObjectFile` answers `{}` for an absent file, an unparseable file and
+ * a file whose `assignments` field has the wrong shape. That is fine for
+ * read-only callers that fall back to other sources. A caller that writes the
+ * map back cannot use that answer: it would persist the damage as "no
+ * assignments". Only ENOENT means "there is no state yet". The map is returned
+ * here so the snapshot that is validated is the same one that is mutated.
  */
-function unreadableJsonObjectReason(filePath: string): string | null {
+function readAssignmentsSnapshot():
+  | { ok: true; assignments: Record<string, string> }
+  | { ok: false; reason: string } {
   let raw: string;
   try {
-    raw = readFileSync(filePath, "utf8");
+    raw = readFileSync(localInferenceAssignmentsPath(), "utf8");
   } catch (error) {
     const code = (error as { code?: unknown }).code;
-    if (code === "ENOENT") return null;
-    return error instanceof Error ? error.message : String(error);
+    if (code === "ENOENT") return { ok: true, assignments: {} };
+    return {
+      ok: false,
+      reason: error instanceof Error ? error.message : String(error),
+    };
   }
+  let parsed: unknown;
   try {
-    const parsed: unknown = JSON.parse(raw);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? null
-      : "file does not contain a JSON object";
+    parsed = JSON.parse(raw);
   } catch (error) {
-    return error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      reason: error instanceof Error ? error.message : String(error),
+    };
   }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ok: false, reason: "file does not contain a JSON object" };
+  }
+  const rawAssignments = (parsed as Record<string, unknown>).assignments;
+  // An absent field is a legitimate empty map; a present one must be an object.
+  if (rawAssignments === undefined) return { ok: true, assignments: {} };
+  if (
+    !rawAssignments ||
+    typeof rawAssignments !== "object" ||
+    Array.isArray(rawAssignments)
+  ) {
+    return { ok: false, reason: "assignments is not a JSON object" };
+  }
+  const assignments: Record<string, string> = {};
+  for (const [slot, modelId] of Object.entries(rawAssignments)) {
+    if (typeof modelId === "string" && modelId.trim()) {
+      assignments[slot] = modelId.trim();
+    }
+  }
+  return { ok: true, assignments };
 }
 function iosNativeCatalogById(modelId: string): NativeCatalogModelEntry | null {
   return (
@@ -2449,16 +2477,8 @@ function positiveInteger(value: unknown): number | null {
   return null;
 }
 function readAssignments(): Record<string, string> {
-  const parsed = readJsonObjectFile(localInferenceAssignmentsPath());
-  const raw = parsed.assignments;
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const out: Record<string, string> = {};
-  for (const [slot, modelId] of Object.entries(raw)) {
-    if (typeof modelId === "string" && modelId.trim()) {
-      out[slot] = modelId.trim();
-    }
-  }
-  return out;
+  const snapshot = readAssignmentsSnapshot();
+  return snapshot.ok ? snapshot.assignments : {};
 }
 function writeAssignments(assignments: Record<string, string>): void {
   writeJsonObjectFile(localInferenceAssignmentsPath(), {
@@ -3937,17 +3957,16 @@ async function handleNativeIosLocalInferenceRoute(
         return jsonResponse(404, { error: `Unknown local model: ${modelId}` });
       }
     }
-    const assignmentsPath = localInferenceAssignmentsPath();
-    const unreadable = unreadableJsonObjectReason(assignmentsPath);
-    if (unreadable) {
-      // Writing the map read from this file back would replace every stored
-      // slot with the empty map the unreadable bytes collapsed into.
+    const snapshot = readAssignmentsSnapshot();
+    if (!snapshot.ok) {
+      // Writing back the map read from these bytes would replace every stored
+      // slot with the empty map the unreadable payload collapsed into.
       return jsonResponse(500, {
-        error: `Local model assignments are unreadable: ${unreadable}`,
+        error: `Local model assignments are unreadable: ${snapshot.reason}`,
         code: "ios_local_assignments_unreadable",
       });
     }
-    const assignments = readAssignments();
+    const assignments = snapshot.assignments;
     if (modelId) assignments[slot] = modelId;
     else delete assignments[slot];
     writeAssignments(assignments);

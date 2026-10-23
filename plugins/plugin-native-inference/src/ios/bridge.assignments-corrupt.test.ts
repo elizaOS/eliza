@@ -103,6 +103,43 @@ describe("iOS bridge — local model assignments storage", () => {
     expect(readFileSync(filePath, "utf8")).toBe(TRUNCATED_ASSIGNMENTS);
   });
 
+  it("refuses to overwrite a valid JSON file whose assignments field is not an object", async () => {
+    const stateDir = useStateDir();
+    const filePath = assignmentsPath(stateDir);
+    mkdirSync(path.dirname(filePath), { recursive: true });
+    const damaged = '{"version":1,"assignments":"damaged"}';
+    writeFileSync(filePath, damaged);
+
+    const result = await postAssignment("TEXT_SMALL");
+
+    // Parses as JSON, so a shape-blind guard would let the write through and
+    // replace the string with the `{}` that `readAssignments` fell back to.
+    expect(result.status).toBe(500);
+    expect(result.json.code).toBe("ios_local_assignments_unreadable");
+    expect(readFileSync(filePath, "utf8")).toBe(damaged);
+  });
+
+  it("writes the same map it validated, keeping other slots", async () => {
+    const stateDir = useStateDir();
+    const filePath = assignmentsPath(stateDir);
+    mkdirSync(path.dirname(filePath), { recursive: true });
+    writeFileSync(
+      filePath,
+      JSON.stringify({
+        version: 1,
+        assignments: { TEXT_LARGE: "eliza-1-2b" },
+      }),
+    );
+
+    const result = await postAssignment("TEXT_SMALL");
+
+    expect(result.status).toBe(200);
+    expect(result.json.assignments).toEqual({ TEXT_LARGE: "eliza-1-2b" });
+    expect(JSON.parse(readFileSync(filePath, "utf8")).assignments).toEqual({
+      TEXT_LARGE: "eliza-1-2b",
+    });
+  });
+
   it("still treats a missing assignments file as empty and writable", async () => {
     const stateDir = useStateDir();
     const filePath = assignmentsPath(stateDir);
