@@ -17,7 +17,7 @@
 
 import { createPrivateKey, createSign, type KeyObject } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { validateUuid } from "@elizaos/core";
+import { ElizaError, validateUuid } from "@elizaos/core";
 import {
   type PushMessage,
   type PushProvider,
@@ -76,6 +76,15 @@ function parseServiceAccount(raw: string): ServiceAccount | null {
 
 /**
  * Read + validate the FCM service account from the environment, or null.
+ *
+ * `null` means "no credential was supplied", which is a supported state: the
+ * push service starts without an Android provider. A credential that IS
+ * supplied but cannot be used is a deployment error and is raised instead, so
+ * it cannot degrade into that same silent "not configured" state. (A supplied
+ * `ELIZA_FCM_SERVICE_ACCOUNT_PATH` that cannot be read or that holds an empty
+ * payload throws for the same reason; this keeps both misconfigurations equally
+ * loud.)
+ *
  * Exported for the gating check / tests.
  */
 export function readServiceAccount(
@@ -84,11 +93,31 @@ export function readServiceAccount(
   const inline = env.ELIZA_FCM_SERVICE_ACCOUNT?.trim();
   const path = env.ELIZA_FCM_SERVICE_ACCOUNT_PATH?.trim();
   let raw = inline;
+  const source = inline
+    ? "ELIZA_FCM_SERVICE_ACCOUNT"
+    : "ELIZA_FCM_SERVICE_ACCOUNT_PATH";
   if (!raw && path) {
     raw = readFileSync(path, "utf8").trim();
+    if (!raw) {
+      // error-policy:J2 the path variable was supplied, so an empty or
+      // whitespace-only file is an unusable credential, not an absent one.
+      throw new ElizaError(
+        "[FcmProvider] ELIZA_FCM_SERVICE_ACCOUNT_PATH points at an empty FCM service account file",
+        { code: "FCM_SERVICE_ACCOUNT_INVALID", context: { source } },
+      );
+    }
   }
   if (!raw) return null;
-  return parseServiceAccount(raw);
+  const account = parseServiceAccount(raw);
+  if (!account) {
+    // error-policy:J2 a credential that is present but unusable must not select
+    // the "no push provider" path.
+    throw new ElizaError(
+      `[FcmProvider] ${source} does not contain a usable FCM service account`,
+      { code: "FCM_SERVICE_ACCOUNT_INVALID", context: { source } },
+    );
+  }
+  return account;
 }
 
 export class FcmProvider implements PushProvider {
