@@ -2,17 +2,29 @@
 package ai.eliza.plugins.wifi
 
 import android.Manifest
+import android.app.Activity
 import android.content.Context
+import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.wifi.ScanResult
 import android.net.wifi.WifiConfiguration
 import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
+import androidx.activity.result.ActivityResult
+import androidx.annotation.RequiresApi
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
+import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
 
 /**
@@ -25,6 +37,10 @@ import com.getcapacitor.annotation.CapacitorPlugin
  *    Legacy `WifiConfiguration.addNetwork` is deprecated and returns -1.
  *  - API 23–28: legacy `WifiConfiguration` + `enableNetwork` is still
  *    permitted for system / privileged callers like Eliza.
+ *
+ * `addNetworkWithApproval` (API 30+) is for ordinary apps: it opens the
+ * system "Save this network?" dialog and reports whether a validated or
+ * captive-portal Wi-Fi network then appears.
  */
 @CapacitorPlugin(name = "ElizaWiFi")
 class WiFiPlugin : Plugin() {
@@ -222,6 +238,126 @@ class WiFiPlugin : Plugin() {
         call.resolve(response)
     }
 
+    @PluginMethod
+    fun getConnectivity(call: PluginCall) {
+        val state = try {
+            WiFiStateReader(context).readConnectivity()
+        } catch (error: IllegalStateException) {
+            call.reject(error.message ?: "Connectivity service is unavailable on this device")
+            return
+        }
+        val result = JSObject()
+        result.put("online", state.online)
+        result.put("validated", state.validated)
+        result.put("captivePortal", state.captivePortal)
+        result.put("ssid", state.ssid ?: JSObject.NULL)
+        call.resolve(result)
+    }
+
+    @PluginMethod
+    fun addNetworkWithApproval(call: PluginCall) {
+        val ssid = call.getString("ssid")?.trim()
+        val password = call.getString("password")
+        // The call stays saved while the system dialog is open; keep the passphrase out of it.
+        call.data.remove("password")
+        if (ssid.isNullOrEmpty()) {
+            call.reject("ssid is required")
+            return
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            call.reject("User-approved Wi-Fi join requires Android 11 or later", "UNSUPPORTED")
+            return
+        }
+        val suggestion = try {
+            WiFiConnectionRequests.build(ssid, password, call.getBoolean("hidden") ?: false)
+        } catch (error: IllegalArgumentException) {
+            // error-policy:J3 Invalid SSIDs and passphrases reject before the system dialog opens.
+            call.reject("Invalid Wi-Fi connection options: ${error.message}", "INVALID_ARGUMENT", error)
+            return
+        }
+        val intent = Intent(Settings.ACTION_WIFI_ADD_NETWORKS)
+            .putParcelableArrayListExtra(Settings.EXTRA_WIFI_NETWORK_LIST, arrayListOf(suggestion))
+        startActivityForResult(call, intent, "addNetworkResult")
+    }
+
+    @ActivityCallback
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun addNetworkResult(call: PluginCall?, result: ActivityResult) {
+        if (call == null) return
+        if (result.resultCode != Activity.RESULT_OK) {
+            finishApprovedJoin(call, "declined")
+            return
+        }
+        // Settings returns one code per submitted network; one network was submitted.
+        val code = result.data?.getIntegerArrayListExtra(Settings.EXTRA_WIFI_NETWORK_RESULT_LIST)?.firstOrNull()
+        if (code != null && code != Settings.ADD_WIFI_RESULT_SUCCESS && code != Settings.ADD_WIFI_RESULT_ALREADY_EXISTS) {
+            call.reject("Android did not save the Wi-Fi network: $code", "WIFI_REQUEST_FAILED")
+            bridge.releaseCall(call)
+            return
+        }
+        awaitWifiInternet(call, call.getString("ssid")?.trim())
+    }
+
+    /**
+     * Resolves `connected` when a validated Wi-Fi network appears, `captivePortal`
+     * when it needs a sign-in page first (it does not validate by itself), and
+     * `notConnected` when neither happens within [APPROVED_JOIN_TIMEOUT_MS].
+     */
+    private fun awaitWifiInternet(call: PluginCall, ssid: String?) {
+        val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        if (manager == null) {
+            call.reject("Connectivity service is unavailable on this device")
+            bridge.releaseCall(call)
+            return
+        }
+        val main = Handler(Looper.getMainLooper())
+        val reader = WiFiStateReader(context)
+        var settled = false
+        lateinit var callback: ConnectivityManager.NetworkCallback
+        lateinit var timeout: Runnable
+        fun settle(status: String) {
+            main.post {
+                if (settled) return@post
+                settled = true
+                main.removeCallbacks(timeout)
+                manager.unregisterNetworkCallback(callback)
+                finishApprovedJoin(call, status)
+            }
+        }
+        callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
+                val validated = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                val captive = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)
+                if (!validated && !captive) return
+                // Android may hide the name; then the join in progress is the only Wi-Fi change.
+                val connected = reader.connectedSsid()
+                if (connected != null && connected != ssid) return
+                settle(if (validated) "connected" else "captivePortal")
+            }
+        }
+        timeout = Runnable { settle("notConnected") }
+        val request = NetworkRequest.Builder()
+            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+        try {
+            manager.registerNetworkCallback(request, callback)
+        } catch (error: RuntimeException) {
+            // error-policy:J1 Android refused the network watch (for example too many callbacks).
+            call.reject("Unable to watch the Wi-Fi network: ${error.message}", "WIFI_REQUEST_FAILED", error)
+            bridge.releaseCall(call)
+            return
+        }
+        main.postDelayed(timeout, APPROVED_JOIN_TIMEOUT_MS)
+    }
+
+    private fun finishApprovedJoin(call: PluginCall, status: String) {
+        val result = JSObject()
+        result.put("status", status)
+        call.resolve(result)
+        bridge.releaseCall(call)
+    }
+
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
@@ -255,4 +391,8 @@ class WiFiPlugin : Plugin() {
         return enabled
     }
 
+    private companion object {
+        /** Validation usually follows a join within seconds; a captive portal is reported at once. */
+        const val APPROVED_JOIN_TIMEOUT_MS = 30_000L
+    }
 }

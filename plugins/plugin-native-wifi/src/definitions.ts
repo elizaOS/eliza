@@ -76,6 +76,29 @@ export interface ConnectResult {
   message?: string;
 }
 
+/** Result returned by `getConnectivity`. */
+export interface ConnectivityResult {
+  /** The active network offers Internet access. */
+  online: boolean;
+  /** Android confirmed that the active network reaches the Internet. */
+  validated: boolean;
+  /** The active network needs a sign-in page before it reaches the Internet. */
+  captivePortal: boolean;
+  /** Active Wi-Fi network name, or null when the network is not Wi-Fi or Android hides the name. */
+  ssid: string | null;
+}
+
+/** Result returned by `addNetworkWithApproval`. */
+export interface ApprovedJoinResult {
+  /**
+   * - `connected`: a validated Wi-Fi network appeared after the user approved.
+   * - `captivePortal`: the joined network needs a sign-in page first.
+   * - `declined`: the user closed the system dialog without saving the network.
+   * - `notConnected`: the network was saved, but no Wi-Fi Internet appeared within 30 seconds.
+   */
+  status: "connected" | "captivePortal" | "declined" | "notConnected";
+}
+
 /** Public Capacitor plugin contract — implemented natively on Android with an empty-data web fallback. */
 export interface WiFiPlugin {
   /** Read radio + active connection state. */
@@ -90,4 +113,12 @@ export interface WiFiPlugin {
   connectToNetwork(options: ConnectOptions): Promise<ConnectResult>;
   /** Disconnect the currently connected network. */
   disconnectFromNetwork(): Promise<ConnectResult>;
+  /** Read Internet validation and captive-portal state of the active network. */
+  getConnectivity(): Promise<ConnectivityResult>;
+  /**
+   * Ask the user to save the network in the system "Save this network?" dialog
+   * (Android 11+), then wait for Wi-Fi Internet. Needs no privileged permission.
+   * Rejects with `UNSUPPORTED` before Android 11.
+   */
+  addNetworkWithApproval(options: ConnectOptions): Promise<ApprovedJoinResult>;
 }
