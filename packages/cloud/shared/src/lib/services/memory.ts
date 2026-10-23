@@ -396,9 +396,14 @@ export class MemoryService {
     let deletedCount = 0;
 
     if (input.memoryId) {
-      await runtime.deleteMemory(input.memoryId as UUID);
-      await memoryCache.invalidateMemory(input.memoryId);
-      deletedCount = 1;
+      // Delete only a memory in a room of the caller's organization, the
+      // same rooms retrieveMemories reads from.
+      const memory = await runtime.getMemoryById(input.memoryId as UUID);
+      if (memory && (await this.checkRoomOwnership(input.organizationId, memory.roomId))) {
+        await runtime.deleteMemory(input.memoryId as UUID);
+        await memoryCache.invalidateMemory(input.memoryId);
+        deletedCount = 1;
+      }
     }
 
     logger.info(
