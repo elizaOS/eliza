@@ -91,7 +91,9 @@ function toConnectorAccount(settings: GoogleChatSettings): ConnectorAccount {
     createdAt: now,
     updatedAt: now,
     metadata: {
-      ...(serviceAccount.unreadable === true ? { serviceAccountError: SERVICE_ACCOUNT_UNREADABLE } : {}),
+      ...(serviceAccount.unreadable === true
+        ? { serviceAccountError: SERVICE_ACCOUNT_UNREADABLE }
+        : {}),
       audienceType: settings.audienceType,
       audience: settings.audience,
       webhookPath: settings.webhookPath,
