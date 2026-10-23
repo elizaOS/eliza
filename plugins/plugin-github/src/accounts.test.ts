@@ -437,108 +437,119 @@ describe("GitHub account resolution", () => {
     ]);
   });
 
-  it("persists callback tokens as credential refs without returning token metadata", async () => {
-    const vault = new Map<string, string>();
-    const setCredentialRef = vi.fn(async () => undefined);
-    const runtime = createTestRuntime({
-      agentId: "agent-1",
-      character: {},
-      getSetting: (key: string) =>
-        ({
-          GITHUB_OAUTH_CLIENT_ID: "github-client",
-          GITHUB_OAUTH_CLIENT_SECRET: "github-secret",
-          GITHUB_OAUTH_REDIRECT_URI: "http://localhost/oauth/github/callback",
-        })[key] ?? null,
-      getService: (serviceType: string) =>
-        serviceType === "vault"
-          ? {
-              set: async (key: string, value: string) => {
-                vault.set(key, value);
-              },
-            }
-          : null,
-    });
-    const manager = createOAuthCallbackManager(
-      "github",
-      "acct_github_durable_1",
-      setCredentialRef,
-    );
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string | URL | Request) => {
-        const href = String(url);
-        if (href.includes("/login/oauth/access_token")) {
-          return new Response(
-            JSON.stringify({
-              access_token: "github-access-token",
-              refresh_token: "github-refresh-token",
-              expires_in: 28800,
-              token_type: "bearer",
-              scope: "repo,read:user",
-            }),
-            { status: 200, headers: { "content-type": "application/json" } },
-          );
-        }
-        if (href.includes("api.github.com/user")) {
-          return new Response(
-            JSON.stringify({
-              id: 123,
-              login: "ada",
-              name: "Ada",
-              email: "ada@example.com",
-              type: "User",
-            }),
-            { status: 200, headers: { "content-type": "application/json" } },
-          );
-        }
-        throw new Error(`Unexpected fetch ${href}`);
-      }),
-    );
+  it.each([
+    { flowMetadata: { role: "TEAM" }, expectedRole: "TEAM" },
+    // The connector UI starts OAuth with `requestedRole` (ConnectorAccountList).
+    { flowMetadata: { requestedRole: "AGENT" }, expectedRole: "AGENT" },
+  ])(
+    "persists callback tokens as credential refs without returning token metadata (flow metadata $flowMetadata)",
+    async ({ flowMetadata, expectedRole }) => {
+      const vault = new Map<string, string>();
+      const setCredentialRef = vi.fn(async () => undefined);
+      const runtime = createTestRuntime({
+        agentId: "agent-1",
+        character: {},
+        getSetting: (key: string) =>
+          ({
+            GITHUB_OAUTH_CLIENT_ID: "github-client",
+            GITHUB_OAUTH_CLIENT_SECRET: "github-secret",
+            GITHUB_OAUTH_REDIRECT_URI: "http://localhost/oauth/github/callback",
+          })[key] ?? null,
+        getService: (serviceType: string) =>
+          serviceType === "vault"
+            ? {
+                set: async (key: string, value: string) => {
+                  vault.set(key, value);
+                },
+              }
+            : null,
+      });
+      const manager = createOAuthCallbackManager(
+        "github",
+        "acct_github_durable_1",
+        setCredentialRef,
+      );
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string | URL | Request) => {
+          const href = String(url);
+          if (href.includes("/login/oauth/access_token")) {
+            return new Response(
+              JSON.stringify({
+                access_token: "github-access-token",
+                refresh_token: "github-refresh-token",
+                expires_in: 28800,
+                token_type: "bearer",
+                scope: "repo,read:user",
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            );
+          }
+          if (href.includes("api.github.com/user")) {
+            return new Response(
+              JSON.stringify({
+                id: 123,
+                login: "ada",
+                name: "Ada",
+                email: "ada@example.com",
+                type: "User",
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            );
+          }
+          throw new Error(`Unexpected fetch ${href}`);
+        }),
+      );
 
-    const provider = createGitHubConnectorAccountProvider(runtime);
-    const result = await provider.completeOAuth?.(
-      {
-        provider: "github",
-        code: "oauth-code",
-        query: {},
-        flow: {
-          id: "flow-1",
+      const provider = createGitHubConnectorAccountProvider(runtime);
+      const result = await provider.completeOAuth?.(
+        {
           provider: "github",
-          state: "state-1",
-          status: "pending",
-          accountId: "acct_github_durable_1",
-          codeVerifier: "github-pkce-verifier",
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          metadata: { role: "TEAM" },
+          code: "oauth-code",
+          query: {},
+          flow: {
+            id: "flow-1",
+            provider: "github",
+            state: "state-1",
+            status: "pending",
+            accountId: "acct_github_durable_1",
+            codeVerifier: "github-pkce-verifier",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            metadata: flowMetadata,
+          },
         },
-      },
-      manager as never,
-    );
+        manager as never,
+      );
 
-    const account = result?.account as ConnectorAccount;
-    const metadata = account.metadata as Record<string, unknown>;
-    expect(account.id).toBe("acct_github_durable_1");
-    expect(account.role).toBe("TEAM");
-    expect(JSON.stringify(metadata)).not.toContain("github-access-token");
-    expect(JSON.stringify(metadata)).not.toContain("github-refresh-token");
-    expect(metadata.credentialRefs).toEqual([
-      expect.objectContaining({
-        credentialType: "oauth.tokens",
-        vaultRef: "connector.agent-1.github.acct_github_durable_1.oauth_tokens",
-      }),
-    ]);
-    expect(
-      vault.get("connector.agent-1.github.acct_github_durable_1.oauth_tokens"),
-    ).toContain("github-access-token");
-    expect(setCredentialRef).toHaveBeenCalledWith(
-      expect.objectContaining({
-        accountId: "acct_github_durable_1",
-        credentialType: "oauth.tokens",
-        vaultRef: "connector.agent-1.github.acct_github_durable_1.oauth_tokens",
-      }),
-    );
-  });
+      const account = result?.account as ConnectorAccount;
+      const metadata = account.metadata as Record<string, unknown>;
+      expect(account.id).toBe("acct_github_durable_1");
+      expect(account.role).toBe(expectedRole);
+      expect(JSON.stringify(metadata)).not.toContain("github-access-token");
+      expect(JSON.stringify(metadata)).not.toContain("github-refresh-token");
+      expect(metadata.credentialRefs).toEqual([
+        expect.objectContaining({
+          credentialType: "oauth.tokens",
+          vaultRef:
+            "connector.agent-1.github.acct_github_durable_1.oauth_tokens",
+        }),
+      ]);
+      expect(
+        vault.get(
+          "connector.agent-1.github.acct_github_durable_1.oauth_tokens",
+        ),
+      ).toContain("github-access-token");
+      expect(setCredentialRef).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accountId: "acct_github_durable_1",
+          credentialType: "oauth.tokens",
+          vaultRef:
+            "connector.agent-1.github.acct_github_durable_1.oauth_tokens",
+        }),
+      );
+    },
+  );
 
   it("fails OAuth callback when no durable vault writer is available", async () => {
     const runtime = createTestRuntime({
