@@ -16,6 +16,7 @@ import test from "node:test";
 import { acquireExclusiveDatabaseLease } from "./database-lease.mjs";
 import {
   initializeResearchConfiguration,
+  openConfiguredResearchStore,
   readResearchConfiguration,
   rotateResearchConfiguration,
 } from "./research-configuration.mjs";
@@ -77,18 +78,16 @@ test("configuration refuses public files and symlink indirection", (t) => {
 test("offline rotation preserves encrypted research and audit with closed recovery files", (t) => {
   const f = fixture(t),
     { configPath: path } = initializeResearchConfiguration(f.options),
-    config = readResearchConfiguration(path);
-  let store = openStore({
-    path: config.databasePath,
-    key: Buffer.from(config.encryptionKey, "base64"),
-    retentionMs: config.retentionMs,
-    maxEvents: config.maxEvents,
-  });
+    { config, store, close } = openConfiguredResearchStore({
+      path,
+      openStore,
+    });
+  assert.throws(() => openConfiguredResearchStore({ path, openStore }));
   store.dataset(actor, {
     expectedRevision: 0,
     data: { study: "fixture", participants: [], tasks: [], coverage: [] },
   });
-  store.close();
+  close();
   const release = acquireExclusiveDatabaseLease(config.databasePath);
   assert.throws(() => rotateResearchConfiguration({ path, openStore, actor }));
   assert.equal(existsSync(`${path}.rotation-previous`), false);
@@ -102,23 +101,16 @@ test("offline rotation preserves encrypted research and audit with closed recove
   );
   assert.equal(existsSync(`${path}.rotation-next`), false);
   assert.equal(existsSync(`${config.databasePath}.lock`), false);
-  store = openStore({
-    path: config.databasePath,
-    key: Buffer.from(next.encryptionKey, "base64"),
-    retentionMs: next.retentionMs,
-    maxEvents: next.maxEvents,
-  });
-  assert.equal(store.report(actor).revision, 1);
-  assert.ok(store.audit(actor).some((e) => e.action === "rotate-storage-key"));
-  store.close();
-  assert.throws(() =>
-    openStore({
-      path: config.databasePath,
-      key: Buffer.from(config.encryptionKey, "base64"),
-      retentionMs: config.retentionMs,
-      maxEvents: config.maxEvents,
-    }),
+  const rotated = openConfiguredResearchStore({ path, openStore });
+  assert.equal(rotated.store.report(actor).revision, 1);
+  assert.ok(
+    rotated.store.audit(actor).some((e) => e.action === "rotate-storage-key"),
   );
+  rotated.close();
+  assert.throws(() =>
+    openConfiguredResearchStore({ path: receipt.recoveryPath, openStore }),
+  );
+  assert.equal(existsSync(`${config.databasePath}.lock`), false);
   assert.throws(() => rotateResearchConfiguration({ path, openStore, actor }));
   assert.equal(
     readResearchConfiguration(path).encryptionKey,
