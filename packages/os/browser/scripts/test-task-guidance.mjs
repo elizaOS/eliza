@@ -465,13 +465,41 @@ try {
   await page.$eval("#target", (node) => (node.style.marginLeft = "130px"));
   assert.equal((await changedAction.pending).ok, false);
   assert.equal(await page.evaluate(() => window.clicks), 0);
+  // A real pointer must reach Cancel above a modal in a short viewport.
+  await page.setViewport({ width: 460, height: 182 });
+  await page.evaluate(() => {
+    const dialog = document.createElement("dialog");
+    dialog.id = "cancel-modal";
+    const target = document.querySelector("#target");
+    target.style.cssText = "margin:0;padding:0;font:16px sans-serif";
+    dialog.innerHTML = "<p>Website notice</p>";
+    dialog.append(target);
+    document.body.append(dialog);
+    dialog.showModal();
+  });
   const dismissedAction = await startAction();
   await waitPointer();
-  await evaluate(
-    'globalThis.__elizaPageGuidanceV1.shadow.querySelector("button").click()',
-  );
+  const cancelPoint = await evaluate(`(() => {
+    const state = globalThis.__elizaPageGuidanceV1;
+    const button = state.shadow.querySelector(".close");
+    globalThis.__trustedCancel = false;
+    button.addEventListener("click", event => {globalThis.__trustedCancel = event.isTrusted;}, {once:true});
+    const rect = button.getBoundingClientRect();
+    return {x:rect.left+rect.width/2,y:rect.top+rect.height/2};
+  })()`);
+  // Wait for the preview's fade, but act before its 800 ms dwell permits dispatch.
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  await page.mouse.click(cancelPoint.x, cancelPoint.y);
+  assert.equal(await evaluate("globalThis.__trustedCancel"), true);
   assert.equal((await dismissedAction.pending).ok, false);
   assert.equal(await page.evaluate(() => window.clicks), 0);
+  await page.evaluate(() => {
+    const target = document.querySelector("#target");
+    target.style.cssText = "margin-left:130px";
+    document.body.prepend(target);
+    document.querySelector("#cancel-modal").remove();
+  });
+  await page.setViewport({ width: 1280, height: 800 });
   const typingAction = await startAction();
   await waitPointer();
   await page.focus("#manual");

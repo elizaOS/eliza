@@ -50,8 +50,10 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         records.some(
           (record) =>
             !(
+              // A registered guide can live inside a modal's non-inert
+              // subtree. Only changes consisting entirely of owned hosts
+              // are excluded; ordinary page mutations still invalidate refs.
               record.type === "childList" &&
-              record.target === document.documentElement &&
               [...record.addedNodes, ...record.removedNodes].length > 0 &&
               [...record.addedNodes, ...record.removedNodes].every((node) =>
                 monitor.ownedHosts.has(node),
