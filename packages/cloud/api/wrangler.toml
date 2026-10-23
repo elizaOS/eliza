@@ -693,8 +693,7 @@ ELIZA_INFERENCE_TIMING = "info"
 SHARED_MEMORY_TABLES_ENABLED = "true"
 SHARED_RECALL_ENABLED = "true"
 # POST /api/v1/decisions answers through Workers AI Clef (clef-flash) on the
-# existing AI binding. Production stays off (503 "unavailable") until staging
-# qualification records latency and answers.
+# existing AI binding. Mirrored in [env.production.vars].
 CLEF_DECISIONS_ENABLED = "true"
 # Apps (Product 2): wire the real deploy trigger so POST /api/v1/apps/:id/deploy
 # enqueues an APP_DEPLOY job the provisioning-worker daemon runs (instead of the
@@ -1041,6 +1040,11 @@ PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED = "false"
 # environment-pinned: the helper honors it only when ENVIRONMENT is production,
 # and it must be exactly true to opt in.
 THIN_INFERENCE_ENTRY_ENABLED = "true"
+# POST /api/v1/decisions answers through Workers AI Clef
+# (@cf/cloudflare/clef-flash) on [env.production.ai]. Mirrors
+# [env.staging.vars]. A Clef suggestion never lowers a client's ask floor, and
+# a failing provider answers 503 "unavailable" so clients keep their own rules.
+CLEF_DECISIONS_ENABLED = "true"
 # Apps deploy (Product 2): arms the Worker-side deploy trigger (configureAppsDeployTrigger,
 # bootstrap-app.ts) so POST /api/v1/apps/:id/deploy enqueues a real APP_DEPLOY job instead of
 # the no-op stub. Mirrors [env.staging.vars]. CUTOVER GATE — only effective once the prod
