@@ -201,7 +201,7 @@ export function generateAndroidConsumerHost({
     "Distribution variants must be explicit",
   );
   const flavors = [],
-    sourceNames = new Set(["main", "androidTest"]);
+    sourceNames = new Set(["main", "androidTest", "debug", "release"]);
   for (const flavor of profile.flavors) {
     requireValue(
       namePattern.test(flavor.name) &&

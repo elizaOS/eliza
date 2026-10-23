@@ -84,6 +84,12 @@ Web subscription settings select a registered product with `VITE_ELIZA_APPLICATI
 agent-backed settings use `ELIZAOS_CLOUD_APPLICATION_SLOT` from the runtime.
 These select a product, not a merchant credential or paid entitlement.
 
+Independent Android consumer profiles may use `main`, `androidTest`, `debug`,
+`release`, and their declared flavor names in `sourceSets`. Keep test trust and
+other debug-only resources in `debug`; they must not enter release artifacts.
+Run `node packages/app/scripts/mobile/android/qualify-consumer-host.mjs` from the
+repository root with the Android SDK and JDK configured to check real APK isolation.
+
 ## Disposable hosted Android fixtures
 
 `scripts/mobile/android/hosted-fixture` supplies display/network admission and

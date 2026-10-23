@@ -144,6 +144,36 @@ try {
             .includes("assets/companion-only.txt"),
           false,
         );
+        const entries = execFileSync(aapt, ["list", apk], {
+          encoding: "utf8",
+        }).split("\n");
+        assert.ok(entries.includes(`assets/${build}-only.txt`));
+        assert.equal(
+          entries.includes(
+            `assets/${build === "debug" ? "release" : "debug"}-only.txt`,
+          ),
+          false,
+        );
+        const resources = execFileSync(
+          path.join(sdk, "build-tools/36.0.0/aapt2"),
+          ["dump", "resources", apk],
+          { encoding: "utf8" },
+        );
+        const policyPath =
+          /xml\/consumer_network_security\n[^\n]*\(file\) (\S+)/.exec(
+            resources,
+          )?.[1];
+        assert.ok(
+          policyPath,
+          "Network policy must be present in the APK resource table",
+        );
+        const networkPolicy = execFileSync(
+          aapt,
+          ["dump", "xmltree", apk, policyPath],
+          { encoding: "utf8" },
+        );
+        assert.equal(networkPolicy.includes('"user"'), build === "debug");
+        assert.equal(networkPolicy.includes('"localhost"'), build === "debug");
         const bytes = fs.readFileSync(apk),
           artifact = `${brand}-${name}`;
         fs.writeFileSync(path.join(directory, artifact), bytes);
@@ -193,6 +223,7 @@ try {
           appId: fixture.identity.appId,
           appName: fixture.identity.appName,
           runtimePackagingFixture: Boolean(runtimeDirectory),
+          buildTypeIsolation: true,
           variant,
           build,
           artifact,
@@ -202,7 +233,7 @@ try {
   }
   fs.writeFileSync(
     path.join(directory, "verification.json"),
-    `${JSON.stringify({ scope: "Two independent generated hosts with linked libraries and separate companion APK modules; real debug/release APK identity, companion asset isolation and HOME manifest checks. The second host configures synthetic runtime assets and verifies ABI-asset exclusion; no executable runtime is supplied. No installation, native runtime, AOSP or user acceptance.", receipts }, null, 2)}\n`,
+    `${JSON.stringify({ scope: "Two independent generated hosts with linked libraries and separate companion APK modules; real debug/release APK identity, build-type asset and TLS-resource isolation, companion asset isolation and HOME manifest checks. The second host configures synthetic runtime assets and verifies ABI-asset exclusion; no executable runtime is supplied. No installation, native runtime, AOSP or user acceptance.", receipts }, null, 2)}\n`,
   );
   console.log(`Qualified ${receipts.length} APKs: ${directory}`);
 } finally {
