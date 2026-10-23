@@ -6,6 +6,7 @@ export const GUIDED_FILL = "guided-fill:";
 export const PLANNED_ACTION = "planned-browser-action:";
 const ACTIONS = new Set([
   "click",
+  "follow",
   "fill",
   "select",
   "scroll.up",

@@ -880,6 +880,16 @@ try {
     "6",
     "Cleanup failure must not hide the real effect",
   );
+  await page.evaluate(() => {
+    const a = document.createElement("a");
+    a.id = "planned-portal";
+    a.href = "#billing-portal";
+    a.textContent = "Payment portal";
+    a.onclick = () => {
+      throw new Error("Follow must not activate the click handler");
+    };
+    document.body.append(a);
+  });
   // Drive the shared planned-action workflow through the real durable task
   // runtime, HTTP transport and DOM. The deterministic planner is not LLM proof.
   failCleanup = false;
@@ -904,15 +914,19 @@ try {
       return "German";
     },
     verify: async (proposal, before, after) =>
-      proposal.capability === "browser.select"
-        ? after.elements
-            .find((e) => e.targetSelector === "#language")
-            ?.options.find((o) => o.selected)?.label === "German"
+      proposal.capability === "browser.follow"
+        ? after.url === `${origin}/#billing-portal`
           ? "succeeded"
           : "unknown"
-        : before.text.includes("6") && after.text.includes("7")
-          ? "succeeded"
-          : "unknown",
+        : proposal.capability === "browser.select"
+          ? after.elements
+              .find((e) => e.targetSelector === "#language")
+              ?.options.find((o) => o.selected)?.label === "German"
+            ? "succeeded"
+            : "unknown"
+          : before.text.includes("6") && after.text.includes("7")
+            ? "succeeded"
+            : "unknown",
     recordEvidence: async () => "fixture-planned-action-readback",
   });
   runtime = new InteractiveTaskRuntime({
@@ -924,7 +938,7 @@ try {
     id: "planned-native-flow",
     goalRef: "select-and-click",
     allowedOrigins: [origin],
-    allowedCapabilities: ["browser.select", "browser.click"],
+    allowedCapabilities: ["browser.select", "browser.click", "browser.follow"],
     authorization: {
       decisionId: "planned-authority",
       policyRevision: "fixture-v1",
@@ -957,7 +971,15 @@ try {
           ref: view.controls.find((c) => c.label === "Increment").ref,
           message: "Increment once",
         };
-      return { status: "done", message: "Observed both requested changes" };
+      if (!view.url.endsWith("#billing-portal"))
+        return {
+          status: "act",
+          kind: "agent-action",
+          action: "follow",
+          ref: view.controls.find((c) => c.label === "Payment portal").ref,
+          message: "Open the payment portal",
+        };
+      return { status: "done", message: "Observed all requested changes" };
     },
   });
   try {
@@ -1031,11 +1053,14 @@ try {
     );
     assert.equal(decision.kind, "agent-action");
     decision = await workflow.executeAction(decision.offerKey);
-    assert.equal(decision.kind, "done");
+    assert.equal(decision.kind, "agent-action");
     assert.equal(await page.$eval("output", (n) => n.textContent), "7");
+    decision = await workflow.executeAction(decision.offerKey);
+    assert.equal(decision.kind, "done");
+    assert.equal(page.url(), `${origin}/#billing-portal`);
     assert.deepEqual(
       runtime.get(plannedTask.id).operations.map((o) => o.status),
-      ["succeeded", "succeeded"],
+      ["succeeded", "succeeded", "succeeded"],
     );
   } finally {
     await plannedActuator.quiesce({ owner, taskId: plannedTask.id });

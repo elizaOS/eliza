@@ -159,7 +159,9 @@ export function createTaskGuidance(
       if (
         !policy ||
         !match ||
-        !["click", "fill", "select", "scroll"].includes(command.subaction)
+        !["click", "fill", "select", "scroll", "follow"].includes(
+          command.subaction,
+        )
       )
         throw stale();
       const ticket = { id };

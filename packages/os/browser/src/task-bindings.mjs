@@ -143,9 +143,14 @@ export function createTaskBindings({
           typeof target.selector !== "string" ||
           !target.selector ||
           target.selector.length > 256 ||
-          !["click", "fill", "fill-code", "select", "scroll"].includes(
-            target.action,
-          ),
+          ![
+            "click",
+            "fill",
+            "fill-code",
+            "select",
+            "scroll",
+            "follow",
+          ].includes(target.action),
       )
     )
       throw blocked();
@@ -213,7 +218,9 @@ export function createTaskBindings({
     if (
       command.expectedSelector !== undefined &&
       (!command.taskContext ||
-        !["click", "fill", "select", "scroll"].includes(command.subaction))
+        !["click", "fill", "select", "scroll", "follow"].includes(
+          command.subaction,
+        ))
     )
       throw blocked();
     // A consented commit names the one reviewed control it is for.
@@ -262,9 +269,15 @@ export function createTaskBindings({
     )
       throw blocked();
     if (
-      !["snapshot", "click", "fill", "select", "scroll", "navigate"].includes(
-        command.subaction,
-      )
+      ![
+        "snapshot",
+        "click",
+        "fill",
+        "select",
+        "scroll",
+        "follow",
+        "navigate",
+      ].includes(command.subaction)
     )
       throw blocked();
     // Removal has no page-read/action authority. It still belongs to exactly

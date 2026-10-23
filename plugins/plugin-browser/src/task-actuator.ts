@@ -121,6 +121,7 @@ const PRE_EFFECT_REFUSALS = new Set(["STALE_REF", "POLICY_BLOCKED"]);
 export class NativeTaskActuator {
   readonly capabilities = [
     "browser.click",
+    "browser.follow",
     "browser.fill",
     "browser.select",
     "browser.scroll.up",
@@ -801,7 +802,8 @@ export class NativeTaskActuator {
       | "click"
       | "fill"
       | "select"
-      | "scroll";
+      | "scroll"
+      | "follow";
     const resolved = ["fill", "select"].includes(subaction)
       ? await this.options.resolveValue(
           proposal.valueRef ||
@@ -844,7 +846,7 @@ export class NativeTaskActuator {
       : undefined;
     if (
       commitGrant !== undefined &&
-      (subaction === "scroll" ||
+      (["scroll", "follow"].includes(subaction) ||
         !validCommitGrant(commitGrant, {
           taskContext: binding.context,
           subaction,

@@ -114,7 +114,7 @@ export interface NativeTaskBinding extends NativeTaskContext {
   assistantName?: string;
   targets: Array<{
     selector: string;
-    action: "click" | "fill" | "fill-code" | "select" | "scroll";
+    action: "click" | "fill" | "fill-code" | "select" | "scroll" | "follow";
   }>;
 }
 /** Longest life of a consented-commit grant, from the person's yes to its use. */
