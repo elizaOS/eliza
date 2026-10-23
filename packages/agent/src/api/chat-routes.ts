@@ -1348,12 +1348,14 @@ export function isChatGenerationTimeoutError(err: unknown): boolean {
     err instanceof Error ? err.message : typeof err === "string" ? err : "";
   return CHAT_GENERATION_TIMEOUT_PATTERN.test(msg);
 }
-const ENDPOINT_USERINFO_PATTERN = /^([a-z][a-z0-9+.-]*:\/\/)[^/?#@]*@/i;
-// The raw value is what the operator needs to identify, but it can embed
-// basic-auth credentials (`http://user:token@host`) and this warning is written
-// to logs. Keep the scheme and host, drop the userinfo segment.
-function redactEndpointUserinfo(value: string): string {
-  return value.replace(ENDPOINT_USERINFO_PATTERN, "$1***@");
+// An unparseable endpoint can carry credentials anywhere in the value
+// (`http://user:token@host/`, `?api_key=...`), and `new URL` gives no
+// structure to sanitise, so nothing derived from it is safe to log. The
+// operator only needs to know which variable is wrong and that parsing failed.
+function configuredOllamaEndpointVariable(): string {
+  return readAliasedEnv("OLLAMA_BASE_URL")?.trim()
+    ? "OLLAMA_BASE_URL"
+    : "OLLAMA_API_ENDPOINT";
 }
 function isRemoteOllamaEndpointConfigured(): boolean {
   const raw =
@@ -1363,16 +1365,18 @@ function isRemoteOllamaEndpointConfigured(): boolean {
   let host: string;
   try {
     host = new URL(configured.replace(/\/api\/?$/i, "")).hostname.toLowerCase();
-  } catch (error) {
+  } catch {
     // An operator-supplied endpoint is intentional configuration, so a value we
     // cannot parse must not read as "no endpoint configured": that silently
     // drops the deadline to the local default and the misconfiguration only
-    // resurfaces as "chat generation timed out after 180000ms". Report it and
-    // keep the classification unchanged.
+    // resurfaces as "chat generation timed out after 180000ms".
+    //
+    // The value and the `new URL` message are both omitted: the message echoes
+    // its input on every supported runtime, and an unparseable URL gives no
+    // reliable boundary between host, path, query, and userinfo. Name the
+    // variable and the stable reason, keep the classification unchanged.
     logger.warn(
-      `[chat-routes] OLLAMA_BASE_URL/OLLAMA_API_ENDPOINT is not a parseable URL (${JSON.stringify(
-        redactEndpointUserinfo(configured),
-      )}): ${error instanceof Error ? error.message : String(error)}`,
+      `[chat-routes] ${configuredOllamaEndpointVariable()} is not a parseable URL (invalid-url); falling back to the default chat generation timeout`,
     );
     return false;
   }
