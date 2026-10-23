@@ -2307,6 +2307,33 @@ function writeJsonObjectFile(
   mkdirSync(path.dirname(filePath), { recursive: true });
   writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
+/**
+ * Why a persisted JSON object file cannot be trusted, or null when it is
+ * parseable or genuinely absent.
+ *
+ * `readJsonObjectFile` answers `{}` for both an absent file and a damaged one,
+ * which is fine for read-only callers that fall back to other sources. A caller
+ * that writes the map back cannot use that answer: it would persist the damage
+ * as "no entries". Only ENOENT means "there is no state yet".
+ */
+function unreadableJsonObjectReason(filePath: string): string | null {
+  let raw: string;
+  try {
+    raw = readFileSync(filePath, "utf8");
+  } catch (error) {
+    const code = (error as { code?: unknown }).code;
+    if (code === "ENOENT") return null;
+    return error instanceof Error ? error.message : String(error);
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? null
+      : "file does not contain a JSON object";
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
 function iosNativeCatalogById(modelId: string): NativeCatalogModelEntry | null {
   return (
     IOS_NATIVE_CATALOG_MODELS.find((entry) => entry.id === modelId) ?? null
@@ -3909,6 +3936,16 @@ async function handleNativeIosLocalInferenceRoute(
       if (!known) {
         return jsonResponse(404, { error: `Unknown local model: ${modelId}` });
       }
+    }
+    const assignmentsPath = localInferenceAssignmentsPath();
+    const unreadable = unreadableJsonObjectReason(assignmentsPath);
+    if (unreadable) {
+      // Writing the map read from this file back would replace every stored
+      // slot with the empty map the unreadable bytes collapsed into.
+      return jsonResponse(500, {
+        error: `Local model assignments are unreadable: ${unreadable}`,
+        code: "ios_local_assignments_unreadable",
+      });
     }
     const assignments = readAssignments();
     if (modelId) assignments[slot] = modelId;
