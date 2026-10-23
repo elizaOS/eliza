@@ -91,10 +91,14 @@ export interface ConnectivityResult {
 /** Result returned by `addNetworkWithApproval`. */
 export interface ApprovedJoinResult {
   /**
-   * - `connected`: a validated Wi-Fi network appeared after the user approved.
+   * - `connected`: the joined Wi-Fi network validated. It is either a network that
+   *   appeared after the dialog opened (and Android disclosed no other name) or the
+   *   already-joined network, when Android disclosed its name and it matches `ssid`.
    * - `captivePortal`: the joined network needs a sign-in page first.
    * - `declined`: the user closed the system dialog without saving the network.
-   * - `notConnected`: the network was saved, but no Wi-Fi Internet appeared within 30 seconds.
+   * - `notConnected`: the network was saved, but Android confirmed no join within
+   *   30 seconds. Without location access Android hides network names, so a device
+   *   already on the requested network reports this too.
    */
   status: "connected" | "captivePortal" | "declined" | "notConnected";
 }

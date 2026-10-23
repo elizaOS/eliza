@@ -27,6 +27,7 @@ import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Wi-Fi bridge for ElizaOS.
@@ -45,6 +46,12 @@ import com.getcapacitor.annotation.CapacitorPlugin
  */
 @CapacitorPlugin(name = "ElizaWiFi")
 class WiFiPlugin : Plugin() {
+    /**
+     * Wi-Fi networks that already offered Internet when each approved-join
+     * dialog opened, keyed by call id. Android reports these again as soon as
+     * the result callback registers, so they must not count as the new join.
+     */
+    private val approvedJoinBaselines = ConcurrentHashMap<String, Set<Network>>()
     private val wifiManager: WifiManager?
         get() = context.applicationContext
             .getSystemService(Context.WIFI_SERVICE) as? WifiManager
@@ -276,11 +283,18 @@ class WiFiPlugin : Plugin() {
             call.reject("Invalid Wi-Fi connection options: ${error.message}", "INVALID_ARGUMENT", error)
             return
         }
+        val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        if (manager == null) {
+            call.reject("Connectivity service is unavailable on this device")
+            return
+        }
+        approvedJoinBaselines[call.callbackId] = wifiInternetNetworks(manager)
         val intent = Intent(Settings.ACTION_WIFI_ADD_NETWORKS)
             .putParcelableArrayListExtra(Settings.EXTRA_WIFI_NETWORK_LIST, arrayListOf(suggestion))
         try {
             startActivityForResult(call, intent, "addNetworkResult")
         } catch (error: ActivityNotFoundException) {
+            approvedJoinBaselines.remove(call.callbackId)
             // error-policy:J1 Some Android builds (for example Wear OS or TV) ship no add-network dialog.
             call.reject("This device has no system dialog for saving Wi-Fi networks", "UNSUPPORTED", error)
             bridge.releaseCall(call)
@@ -291,6 +305,9 @@ class WiFiPlugin : Plugin() {
     @RequiresApi(Build.VERSION_CODES.R)
     private fun addNetworkResult(call: PluginCall?, result: ActivityResult) {
         if (call == null) return
+        // Null when the app process was recreated while the dialog was open:
+        // then no Wi-Fi network is known to be new, and each one needs its name confirmed.
+        val baseline = approvedJoinBaselines.remove(call.callbackId)
         if (result.resultCode != Activity.RESULT_OK) {
             finishApprovedJoin(call, "declined")
             return
@@ -302,15 +319,32 @@ class WiFiPlugin : Plugin() {
             bridge.releaseCall(call)
             return
         }
-        awaitWifiInternet(call, call.getString("ssid")?.trim())
+        awaitWifiInternet(call, call.getString("ssid")?.trim(), baseline)
+    }
+
+    /** Every Wi-Fi network that currently offers Internet, validated or not. */
+    private fun wifiInternetNetworks(manager: ConnectivityManager): Set<Network> {
+        @Suppress("DEPRECATION") // No synchronous replacement; a callback only reports asynchronously.
+        val networks = manager.allNetworks
+        return networks.filterTo(HashSet()) { network ->
+            val caps = manager.getNetworkCapabilities(network)
+            caps != null &&
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
+                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        }
     }
 
     /**
-     * Resolves `connected` when a validated Wi-Fi network appears, `captivePortal`
+     * Resolves `connected` when the joined Wi-Fi network validates, `captivePortal`
      * when it needs a sign-in page first (it does not validate by itself), and
-     * `notConnected` when neither happens within [APPROVED_JOIN_TIMEOUT_MS].
+     * `notConnected` when neither is confirmed within [APPROVED_JOIN_TIMEOUT_MS].
+     *
+     * A network in [baseline] (or any network when [baseline] is null) was already
+     * up before the dialog opened, so it counts only when Android discloses its
+     * name and the name matches [ssid]. A network that appears afterwards counts
+     * unless Android discloses a different name.
      */
-    private fun awaitWifiInternet(call: PluginCall, ssid: String?) {
+    private fun awaitWifiInternet(call: PluginCall, ssid: String?, baseline: Set<Network>?) {
         val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
         if (manager == null) {
             call.reject("Connectivity service is unavailable on this device")
@@ -336,9 +370,12 @@ class WiFiPlugin : Plugin() {
                 val validated = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
                 val captive = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)
                 if (!validated && !captive) return
-                // Android may hide the name; then the join in progress is the only Wi-Fi change.
                 val connected = reader.connectedSsid()
                 if (connected != null && connected != ssid) return
+                val preexisting = baseline == null || network in baseline
+                // Android hides the name without location access; an already-joined
+                // network with a hidden name may be the old one, so it never counts.
+                if (preexisting && connected == null) return
                 settle(if (validated) "connected" else "captivePortal")
             }
         }
