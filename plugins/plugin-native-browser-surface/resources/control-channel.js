@@ -2362,7 +2362,8 @@
     label.append(...offered, close);
     // Measures the bottom inset the page is drawn under (the navigation bar on Android).
     const inset = element("div", "inset");
-    root.append(ring, label, pointer, tap, inset);
+    // The cursor shadow must not paint over the preview or its Cancel button.
+    root.append(ring, pointer, label, tap, inset);
     shadow.adoptedStyleSheets = [style];
     shadow.append(root);
     pointer.style.display = "none";
