@@ -260,7 +260,7 @@ export async function repairRegistrationTransaction(
             $7::uuid, TRUE, TRUE)`,
         [
           appId,
-          `${target.slugPrefix}-${appId.slice(0, 8)}`,
+          `${target.slugPrefix}-${appId}`,
           organizationId,
           ownerUserId,
           target.redirectOrigin,
@@ -319,6 +319,8 @@ export function resolveTargetRegistration(env: NodeJS.ProcessEnv): {
     const target = resolveMobileAppAuthRegistrationTarget(
       env.ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID,
       env.ELIZA_MOBILE_APP_AUTH_ENVIRONMENT,
+      env.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON,
+      env.ELIZA_MOBILE_APP_AUTH_APP_ID,
     );
     const appId =
       target === PRIMARY_MOBILE_APP_AUTH_TARGET
@@ -326,6 +328,7 @@ export function resolveTargetRegistration(env: NodeJS.ProcessEnv): {
         : requireRegisteredMobileClientAppId(
             env.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON,
             target,
+            env.ELIZA_MOBILE_APP_AUTH_APP_ID,
           );
     return { target, appId };
   } catch (error) {

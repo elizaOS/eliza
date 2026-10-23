@@ -93,6 +93,22 @@ against the existing `ai.elizaos.app` registration. Unknown and disabled clients
 fail closed; malformed additional configuration does not change the legacy client.
 The global mobile-auth enable switch and environment binding still apply.
 
+Auth has separate configuration boundaries. A Cloud exchange callback is not
+necessarily the browser callback used by Google:
+
+| Channel | Server-owned configuration | Consumer responsibility |
+| --- | --- | --- |
+| Cloud credential exchange | `ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON` and an approved `apps` row | Client ID, environment and exact exchange callback |
+| Google sign-in | Steward tenant/app redirect registration and `STEWARD_OAUTH_APP_ERROR_REDIRECTS` | PKCE, state, optional Steward `authClientId`, browser return handling |
+| Gmail connector consent | `APP_OAUTH_RETURN_URLS` | App nonce and authenticated connection readback |
+| Android verified links | `ELIZA_ANDROID_ASSET_LINKS_JSON` | Package, signing certificate and manifest URL filters |
+| Hosted fallback | Pages `ELIZA_NATIVE_AUTH_CALLBACKS_JSON` | Public callback URL, package and display name |
+
+Request parameters can select these registrations; they cannot register a new
+callback. App IDs in Cloud and client IDs in Steward belong to different stores
+and must not be assumed interchangeable. No product repository is imported by
+these shared mechanisms.
+
 Before enabling a client, provision its own active, approved app with an active
 owner/organization, an exact allowed callback, and no live generated application
 API key. Use separate registrations in staging and production. Validate the public
@@ -105,18 +121,16 @@ is the existing broad user/organization capability, not a narrower permission cl
 The release workflow publishes the registry from the protected
 `ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON` environment secret. The
 `Mobile App Auth Registration Admin` workflow diagnoses or repairs a client's
-`apps` row: choose the client (`ai.elizaresearch.alphaphone` for Alpha Phone,
-`ai.elizaresearch.seniorcare` for Senior Care, whose callback is
-`https://cloud.eliza.app/auth/senior-care/callback`, staging:
-`https://cloud-staging.eliza.app/auth/senior-care/callback`;
-`technology.graceful.grace` for Grace, whose callback is
-`https://cloud.eliza.app/auth/grace/callback`, staging:
-`https://cloud-staging.eliza.app/auth/grace/callback`; Grace is Senior Care
-after its Android package rename, and the Senior Care client stays registered
-until no device still uses it); additional clients take their app UUID from the same registry entry, which must
-be enabled and bound to that environment's callback.
+`apps` row: enter any enabled `clientId` from the selected environment's registry.
+The app UUID and exact callback come only from that protected registry. The admin
+uses the Worker's validator, including uniqueness against the primary client and
+validation of every registry entry. No application names or callback paths are
+compiled into the admin. New rows get a neutral display name;
+existing rows retain their branding. Use separate environment registries. The
+registry's callback is authoritative; the admin does not infer an environment
+from a hostname. Review each environment's registry before repair.
 
-### Alpha-owned managed Google returns
+### App-owned managed Google returns
 
 App-owned connector callbacks use `APP_OAUTH_RETURN_URLS` for exact HTTPS
 Gmail return addresses. Initiation accepts the app nonce as the only `state`
@@ -124,37 +138,25 @@ query parameter and returns `appReturn: 2` when configured. The callback uses
 server-owned state and returns only state/result plus `connectionId` on success.
 The app must verify that connection through its authenticated connector list.
 Denial retires state and creates no grant. Unknown state keeps existing recovery.
-Google credentials and token refresh behavior are unchanged. The Alpha domain's
+Google credentials and token refresh behavior are unchanged. The app domain's
 callback assets and Android association must be deployed before live acceptance.
 
-### Alpha Phone in-app sign-in
+### Native in-app sign-in
 
-Alpha Phone signs in natively: email codes go straight to Steward, and Google
-uses a Custom Tab whose redirect is the verified App Link
-`https://eliza.app/alphaphone/auth/callback` (staging:
-`https://staging.eliza.app/alphaphone/auth/callback`). The device redeems the
-Steward code with its PKCE verifier, then trades the Steward session for an
-`eliza_mobile_` credential through `POST /api/v1/app-auth/connect`
-(`flow: "mobile_pkce"`, Bearer Steward token), `mobile/token` and `mobile/ack`.
-Steward returns a successful code and state in the URL fragment.
+Any registered native app can use email codes or Google with a verified HTTPS
+App Link. The app supplies its configured callback and keeps its PKCE verifier
+private. It redeems the Steward code, then exchanges the Steward session through
+`POST /api/v1/app-auth/connect` (`flow: "mobile_pkce"`), `mobile/token` and
+`mobile/ack`. Successful OAuth returns carry code and state only in the fragment.
 
-The callback contract (success `#code=..&state=..` only in the fragment, error
-`{error,state}` from a fixed allowlist, the fallback page's hand-off, and the
-authorize parameters Alpha sends) is pinned by
-`packages/app/test/fixtures/alphaphone-native-signin-callback.contract.json`.
-The same file is committed in AlphaCompute/alphaphone, whose callback parser
-runs every vector. Here `packages/app/test/alphaphone-callback-contract.test.ts`
-runs it against the fallback page, and
-`packages/auth/src/server/__tests__/native-app-link-oauth.integration.test.ts`
-against Steward's real success and error hand-offs and its error codes. Change
-both copies together.
+Reusable synthetic callback vectors live in
+`packages/app/test/fixtures/native-signin-callback.contract.json`. The Pages
+fallback and Steward integration tests run these vectors. Consumer repositories
+own their actual Android packages, callbacks, branding and acceptance tests.
 
-Alpha authorizes with `prompt=select_account` (so the final redirect follows a
-user gesture and Chrome hands it to the App Link) and `mfa=exchange`. With
-`mfa=exchange`, an account with a second factor gets the normal success return;
-`POST /steward/auth/oauth/exchange` then answers
-`{ok: true, mfaRequired: true, mfa: {type, challengeId, expiresAt}, user}` with
-no tokens, and the app finishes through `/steward/auth/mfa/{type}/complete`.
+Use `prompt=select_account` for a user gesture before the App Link and
+`mfa=exchange` to finish a required second factor through the existing exchange
+and MFA endpoints. An MFA-required response carries no session tokens.
 
 Native email sign-in is a six-digit code typed into the app:
 
@@ -179,8 +181,7 @@ Native email sign-in is a six-digit code typed into the app:
 Operator configuration per environment:
 
 - `ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON` (GitHub Environment secret on `staging` /
-  `production`) registers `ai.elizaresearch.alphaphone` with that environment's
-  callback. Leave `credentialTtlSeconds` unset (30-day default) while the
+  `production`) registers each app's client ID, app UUID and exact callback. Leave `credentialTtlSeconds` unset (30-day default) while the
   device's `eliza_mobile_` key remains readable by the app renderer. Then run the
   admin workflow's repair for that client.
 - `ELIZA_ANDROID_ASSET_LINKS_JSON` is a GitHub **variable** (`vars.`), defined on
@@ -191,7 +192,7 @@ Operator configuration per environment:
   `eliza.app` and `staging.eliza.app`. Malformed values publish `[]`. Without
   the release signer's fingerprint, App Link verification fails on every phone:
   do not promote native sign-in to production until it is set and
-  `adb shell pm get-app-links ai.elizaresearch.alphaphone` shows the host as
+  `adb shell pm get-app-links <application-package>` shows the host as
   `verified`.
 - The Steward tenant `elizacloud` must list the callback in its
   `allowedRedirectUrls`. `/auth/oauth/:provider/authorize` receives an explicit
@@ -200,16 +201,34 @@ Operator configuration per environment:
   Google `prompt=select_account` passthrough, `mfa=exchange` and
   `/email/code/send` reach a device only after that deployment.
 
-If Android does not intercept the App Link, the Pages route
-`/alphaphone/auth/callback` serves a static, no-store page. It never forwards a
-code: an `intent://` hand-off is matched on package name only, so a sideloaded
-app with the same package name could otherwise collect a code from an authorize
-it started itself. The page tells the user to return to Alpha Phone and start
-again. Its one control opens the app with no parameters, or with
-`?error=app_link_unverified&state=<state>` when the fragment or query holds a
-well-formed state (a state alone redeems nothing), and a pinned script removes
-the fragment and query from history. Success returns rely solely on the
-verified App Link.
+For a callback hosted by Eliza Pages, set `ELIZA_NATIVE_AUTH_CALLBACKS_JSON`
+in the protected Pages production/preview environment before deploying this change.
+This is a separate Pages binding, not an API Worker secret. It is a JSON array:
+
+```json
+[{"redirectUri":"https://eliza.app/example/return","androidPackage":"org.example.reader","appName":"Example Reader"}]
+```
+
+Entries contain only public routing and display data, never app UUIDs or secrets.
+Each exact origin/path selects one package and escaped display name. Staging needs
+its own exact URLs; an entry on one host does not authorize it on another. Unknown
+routes keep ordinary site behavior, and malformed or duplicate configuration fails
+closed. Apps hosting their own callbacks need no Pages entry. The callback used
+only for Cloud's API-to-API mobile code exchange needs no browser page at all.
+
+When Android does not intercept a configured callback, Pages serves a no-store
+fallback. It never forwards a code: package-name intents do not verify the signer.
+The control opens the configured app with no parameters, or only
+`error=app_link_unverified` and a well-formed state. A hash-pinned script clears
+query and fragment from history. Success still requires a verified App Link.
+
+Migration: copy every currently supported callback, package and display name into
+the deployment's Pages binding before rollout. Retain legacy URLs as configuration
+until installed clients migrate. Update Steward tenant/app redirect allowlists,
+`STEWARD_OAUTH_APP_ERROR_REDIRECTS`, Android manifests and asset links separately.
+Adding an app requires protected configuration and app registration, not a new
+upstream product branch. Verify the public metadata, both callback hosts and real
+Android link delivery before declaring live sign-in accepted.
 
 Remaining Cloud-hosted pages a native sign-in can still reach: this fallback
 page, and Steward's OAuth error page inside the Custom Tab for non-MFA failures

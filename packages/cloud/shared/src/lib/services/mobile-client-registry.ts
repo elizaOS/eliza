@@ -70,6 +70,7 @@ export function selectRegisteredMobileClient(
     }
     if (
       url.protocol !== "https:" ||
+      item.redirectUri.includes("*") ||
       url.username ||
       url.password ||
       url.search ||

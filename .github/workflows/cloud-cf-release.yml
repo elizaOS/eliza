@@ -1505,7 +1505,7 @@ jobs:
           LOCAL_EMBEDDINGS_API_KEY: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.LOCAL_EMBEDDINGS_API_KEY || '' }}
           ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
           ELIZA_MOBILE_APP_AUTH_ENABLED: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_MOBILE_APP_AUTH_ENABLED) && 'true' || 'false' }}
-          # Additional first-party native clients (e.g. Alpha Phone) for mobile
+          # Additional registered native clients for mobile
           # App Auth, and the public Android Digital Asset Links statements
           # served at /.well-known/assetlinks.json. Both are optional; a blank
           # source preserves the Worker's current value.

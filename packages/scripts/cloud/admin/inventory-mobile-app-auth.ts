@@ -1,10 +1,10 @@
-/** Read-only Alpha recovery inventory. Never emit identifiers or provider output. */
+/** Read-only registered-client recovery inventory. Never emit identifiers or provider output. */
 import { execFileSync } from "node:child_process";
 import pg from "pg";
 import { readDatabaseIdentityReceipt } from "../../../cloud/scripts/admin/database-identity-receipt.ts";
 import {
-  alphaPhoneMobileAppAuthTarget,
   mobileAppAuthDatabaseConnection,
+  resolveMobileAppAuthRegistrationTarget,
 } from "./verify-mobile-app-auth-registration.ts";
 
 const bindings = [
@@ -94,7 +94,12 @@ export async function inventoryRegistration(
     LEFT JOIN users owner ON owner.id = app.created_by_user_id
     WHERE app.allowed_origins @> jsonb_build_array($1::text)`,
     [
-      alphaPhoneMobileAppAuthTarget(environment).redirectUri,
+      resolveMobileAppAuthRegistrationTarget(
+        process.env.ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID,
+        environment,
+        process.env.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON,
+        process.env.ELIZA_MOBILE_APP_AUTH_APP_ID,
+      ).redirectUri,
       process.env.ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID,
       process.env.ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID,
     ],

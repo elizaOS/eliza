@@ -1,9 +1,8 @@
 /**
- * Cross-repo contract for the Alpha Phone in-app sign-in callback.
+ * Generic native in-app sign-in callback contract.
  *
- * test/fixtures/alphaphone-native-signin-callback.contract.json is committed,
- * byte for byte, in elizaOS/eliza and AlphaCompute/alphaphone. Alpha's native
- * callback parser runs the same `cases`; this suite pins the reference
+ * Synthetic vectors in test/fixtures/native-signin-callback.contract.json
+ * can be reused by consumers. This suite pins the reference
  * classifier to them and drives the real fallback page (served by the Pages
  * middleware, plus its pinned script) through every `fallbackCases` vector, so
  * the page can never hand the app a shape the app would not accept, and never
@@ -17,8 +16,6 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   NATIVE_CALLBACK_SCRUB_SCRIPT,
-  NATIVE_SIGN_IN_CALLBACK_PATH,
-  NATIVE_SIGN_IN_PACKAGE,
   onRequest,
 } from "../functions/_middleware";
 
@@ -61,7 +58,7 @@ const fixture = JSON.parse(
     join(
       import.meta.dirname,
       "fixtures",
-      "alphaphone-native-signin-callback.contract.json",
+      "native-signin-callback.contract.json",
     ),
     "utf8",
   ),
@@ -140,7 +137,15 @@ async function fallbackHandOff(pageUrl: string) {
   const page = new URL(pageUrl);
   const response = await onRequest({
     request: new Request(pageUrl),
-    env: {},
+    env: {
+      ELIZA_NATIVE_AUTH_CALLBACKS_JSON: JSON.stringify(
+        Object.values(fixture.hosts).map((host) => ({
+          redirectUri: `https://${host}${fixture.path}`,
+          androidPackage: fixture.package,
+          appName: "Example Reader",
+        })),
+      ),
+    },
     next: async () => new Response("spa"),
   } as unknown as Parameters<typeof onRequest>[0]);
   expect(response.status).toBe(200);
@@ -162,12 +167,11 @@ async function fallbackHandOff(pageUrl: string) {
   return { html, serverHref, href: anchor.href };
 }
 
-describe("Alpha Phone sign-in callback contract (shared fixture)", () => {
+describe("Example Reader sign-in callback contract (shared fixture)", () => {
   it("describes the callback this repository serves", () => {
-    expect(fixture.contract).toBe("alphaphone-native-signin-callback");
+    expect(fixture.contract).toBe("native-signin-callback");
     expect(fixture.version).toBe(1);
-    expect(fixture.path).toBe(NATIVE_SIGN_IN_CALLBACK_PATH);
-    expect(fixture.package).toBe(NATIVE_SIGN_IN_PACKAGE);
+
     expect(fixture.hosts).toEqual({
       production: "eliza.app",
       staging: "staging.eliza.app",

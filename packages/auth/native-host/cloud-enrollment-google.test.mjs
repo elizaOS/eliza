@@ -108,7 +108,7 @@ const exchanges = (f) =>
   f.calls.filter((call) => call.path === "/auth/oauth/exchange");
 
 test("Google start returns Steward's PKCE authorize URL and keeps the verifier private", async () => {
-  const f = fixture({ options: { authClientId: "grace" } });
+  const f = fixture({ options: { authClientId: "example-app" } });
   const begun = await startGoogle(f);
   assert.equal(begun.status, "browser");
   assert.equal(typeof begun.sessionId, "string");
@@ -129,7 +129,7 @@ test("Google start returns Steward's PKCE authorize URL and keeps the verifier p
   ]);
   assert.equal(url.searchParams.get("redirect_uri"), RETURN);
   assert.equal(url.searchParams.get("tenant_id"), "elizacloud");
-  assert.equal(url.searchParams.get("client_id"), "grace");
+  assert.equal(url.searchParams.get("client_id"), "example-app");
   assert.equal(url.searchParams.get("response_type"), "code");
   assert.equal(url.searchParams.get("code_challenge_method"), "S256");
   assert.equal(url.searchParams.get("mfa"), "exchange");

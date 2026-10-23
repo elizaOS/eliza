@@ -14,9 +14,9 @@ import {
 const PRIMARY_APP = "689a1597-85e7-43ca-b000-8c6392d79465";
 const ALPHA_APP = "0b8f6a3e-2c4d-4e5f-9a1b-3c5d7e9f1a2b";
 const ALPHA = {
-  clientId: "ai.elizaresearch.alphaphone",
+  clientId: "org.example.reader",
   appId: ALPHA_APP,
-  redirectUri: "https://eliza.app/alphaphone/auth/callback",
+  redirectUri: "https://eliza.app/reader/auth/callback",
   enabled: true,
 };
 const NINETY_DAYS = 90 * 24 * 60 * 60;
@@ -97,7 +97,7 @@ describe("mobile client registry credential lifetime", () => {
     ).toEqual({ ok: false, code: "invalid_client" });
   });
 
-  test("Alpha cannot reuse the primary client's app id or redirect", () => {
+  test("An additional client cannot reuse the primary client's app id or redirect", () => {
     for (const clash of [
       { appId: PRIMARY_APP },
       { redirectUri: MOBILE_APP_AUTH_REDIRECT_URI },
