@@ -111,13 +111,6 @@ function topLevelObjectRegions(text: string): JsonObjectRegion[] {
   return regions;
 }
 
-/**
- * The literal strings the prompts in this module show the model as the
- * response shape. A reply can restate that shape, and a restated shape is not
- * an answer: it carries the placeholder text, not the user's value.
- */
-const RESPONSE_SHAPE_PLACEHOLDER =
-  /^(?:<[^<>\s]{1,60}>|extracted value or null if not found|brief explanation|old@example\.com|new@example\.com)$/i;
 /** Fields that carry the answer, at the top level or inside `corrections`. */
 const ANSWER_VALUE_FIELDS = new Set(["value", "old_value", "new_value"]);
 
@@ -136,16 +129,61 @@ function valueFieldStrings(value: unknown, depth = 0): string[] {
   return strings;
 }
 
-/** True only when every answer value in the object is prompt placeholder text. */
-function restatesResponseShape(parsed: unknown): boolean {
+/**
+ * The placeholder text each prompt shows as its own response shape. A reply can
+ * restate the shape it was given, and a restated shape is not an answer: it
+ * carries the placeholder, not the user's value. Only the placeholder of the
+ * caller's own prompt marks an echo, so a real answer that equals example text
+ * from another prompt stays an answer.
+ */
+const SINGLE_FIELD_SHAPE_VALUE = "extracted value or null if not found";
+const CORRECTION_SHAPE_OLD_VALUE = "old@example.com";
+const CORRECTION_SHAPE_NEW_VALUE = "new@example.com";
+
+function sameText(value: unknown, expected: string): boolean {
+  return typeof value === "string" && value.trim().toLowerCase() === expected;
+}
+
+/** Every answer value repeats the single-field placeholder value. */
+function isSingleFieldShapeEcho(parsed: SingleFieldJsonResponse): boolean {
   const strings = valueFieldStrings(parsed);
   return (
     strings.length > 0 &&
-    strings.every((entry) => RESPONSE_SHAPE_PLACEHOLDER.test(entry))
+    strings.every((entry) => sameText(entry, SINGLE_FIELD_SHAPE_VALUE))
   );
 }
 
-function parseJsonObjectResponse<T>(response: string): T | null {
+/**
+ * Every correction repeats the correction prompt's example pair. The user's own
+ * message wins: when it contains that example text, the text is a real value
+ * and the correction is kept.
+ */
+function isCorrectionShapeEcho(
+  parsed: CorrectionJsonResponse,
+  userText: string,
+): boolean {
+  const corrections = Array.isArray(parsed?.corrections)
+    ? parsed.corrections
+    : [];
+  if (corrections.length === 0) return false;
+  const said = userText.toLowerCase();
+  if (
+    said.includes(CORRECTION_SHAPE_OLD_VALUE) ||
+    said.includes(CORRECTION_SHAPE_NEW_VALUE)
+  ) {
+    return false;
+  }
+  return corrections.every(
+    (correction) =>
+      sameText(correction.old_value, CORRECTION_SHAPE_OLD_VALUE) &&
+      sameText(correction.new_value, CORRECTION_SHAPE_NEW_VALUE),
+  );
+}
+
+function parseJsonObjectResponse<T>(
+  response: string,
+  isShapeEcho: (parsed: T) => boolean,
+): T | null {
   const acrossRegions = (candidate: string): T | null => {
     try {
       const parsed = JSON.parse(candidate);
@@ -163,13 +201,13 @@ function parseJsonObjectResponse<T>(response: string): T | null {
   const regions = topLevelObjectRegions(candidate);
   // Prose can hold its own complete braces, as in "treat {city} as text", and
   // the reply can narrate before or after the object. Read the newest region
-  // that is not the prompt's placeholder shape: an answer stays readable when
-  // the shape is restated after it, and a cut-off reply that only restated the
-  // shape keeps the field empty instead of storing the placeholder text.
+  // that the caller does not report as its own restated shape: an answer stays
+  // readable when the shape is restated after it, and a cut-off reply that only
+  // restated the shape keeps the field empty instead of storing placeholder text.
   for (let index = regions.length - 1; index >= 0; index -= 1) {
     const region = regions[index];
     const parsed = acrossRegions(candidate.slice(region.start, region.end));
-    if (parsed && !restatesResponseShape(parsed)) return parsed;
+    if (parsed && !isShapeEcho(parsed)) return parsed;
   }
   return null;
 }
@@ -475,7 +513,10 @@ Return only a valid JSON object with this schema:
     temperature: 0.1,
   });
 
-  const parsed = parseJsonObjectResponse<SingleFieldJsonResponse>(response);
+  const parsed = parseJsonObjectResponse<SingleFieldJsonResponse>(
+    response,
+    isSingleFieldShapeEcho,
+  );
   const found = parsed?.found === true || parsed?.found === "true";
   if (!found || !parsed) return null;
 
@@ -573,7 +614,10 @@ Rules:
     temperature: 0.1,
   });
 
-  const parsed = parseJsonObjectResponse<CorrectionJsonResponse>(response);
+  const parsed = parseJsonObjectResponse<CorrectionJsonResponse>(
+    response,
+    (parsed) => isCorrectionShapeEcho(parsed, text),
+  );
   const hasCorrection =
     parsed?.has_correction === true || parsed?.has_correction === "true";
   if (!parsed || !hasCorrection || !parsed.corrections) return [];

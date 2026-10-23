@@ -6,7 +6,7 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { extractSingleField } from "./extraction";
+import { detectCorrection, extractSingleField } from "./extraction";
 import type { FormControl } from "./types";
 
 const control: FormControl = { key: "city", label: "City", type: "text" };
@@ -85,5 +85,60 @@ describe("single-field reply parsing", () => {
       (await extract('{"found": true, "value": "a{b}c", "confidence": 0.9}'))
         ?.value,
     ).toBe("a{b}c");
+  });
+
+  it("keeps a real value that equals example text from another prompt", async () => {
+    // The correction prompt shows `old@example.com`; the single-field prompt
+    // does not. A user value with that shape is an answer, not a shape echo.
+    for (const value of [
+      "old@example.com",
+      "new@example.com",
+      "brief explanation",
+      "<city>",
+    ]) {
+      const result = await extract(
+        JSON.stringify({ found: true, value, confidence: 0.9 }),
+      );
+      expect(result?.value).toBe(value);
+    }
+  });
+});
+
+describe("correction reply parsing", () => {
+  const email: FormControl = { key: "email", label: "Email", type: "email" };
+  const examplePair = JSON.stringify({
+    has_correction: true,
+    corrections: [
+      {
+        field: "email",
+        old_value: "old@example.com",
+        new_value: "new@example.com",
+        confidence: 0.9,
+      },
+    ],
+  });
+
+  async function correct(text: string) {
+    return await detectCorrection(
+      runtimeReturning(examplePair),
+      text,
+      { email: "old@example.com" },
+      [email],
+    );
+  }
+
+  it("keeps a correction whose real values equal the prompt example", async () => {
+    // The user typed those addresses, so they are values, not placeholders.
+    const corrections = await correct(
+      "change old@example.com to new@example.com",
+    );
+
+    expect(corrections).toHaveLength(1);
+    expect(corrections[0].value).toBe("new@example.com");
+  });
+
+  it("drops a reply that only repeats the prompt example pair", async () => {
+    // The user never said either address: the reply restated the shape.
+    expect(await correct("my email address is wrong")).toEqual([]);
   });
 });
