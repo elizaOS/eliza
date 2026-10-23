@@ -20,6 +20,7 @@ import {
   createdAtValue,
   loadCanonicalMigrations,
   type Migration,
+  MigrationLedgerValidationError,
   validateAppliedMigrationLedger,
 } from "./canonical-migration-ledger";
 import {
@@ -363,6 +364,19 @@ export function planMigrationExecution(
 
 const POSTGRES_SQLSTATE_PATTERN = /^[0-9A-Z]{5}$/;
 const POSTGRES_POSITION_PATTERN = /^[1-9][0-9]{0,9}$/;
+const PUBLIC_LEDGER_FAILURE_REASONS = new Set([
+  "too_many_rows",
+  "duplicate_journal_time",
+  "missing_checkpoint",
+  "invalid_ledger_time",
+  "duplicate_ledger_time",
+  "unmatched_ledger_time",
+  "hash_mismatch",
+  "out_of_order",
+  "historical_after_checkpoint",
+  "missing_journal_index",
+  "missing_required_entry",
+]);
 
 function allowlistedDatabaseField(
   value: unknown,
@@ -372,7 +386,7 @@ function allowlistedDatabaseField(
 }
 
 /**
- * Format only bounded PostgreSQL metadata that cannot contain row values.
+ * Format only bounded PostgreSQL metadata and fixed ledger failure categories.
  *
  * PostgreSQL's `message`, `detail`, and `hint` fields are deliberately absent:
  * JSON parse failures copy the offending legacy token into `detail`, while
@@ -383,6 +397,7 @@ function allowlistedDatabaseField(
 function formatDatabaseError(error: unknown): string {
   let sqlState: string | undefined;
   let position: string | undefined;
+  let ledgerReason: string | undefined;
   try {
     const databaseError =
       error instanceof Error ? (error as DatabaseError) : null;
@@ -394,6 +409,10 @@ function formatDatabaseError(error: unknown): string {
       databaseError?.position,
       POSTGRES_POSITION_PATTERN,
     );
+    if (error instanceof MigrationLedgerValidationError) {
+      const reason = error.reason;
+      if (PUBLIC_LEDGER_FAILURE_REASONS.has(reason)) ledgerReason = reason;
+    }
   } catch {
     // error-policy:J3 hostile error accessors yield the static diagnostic.
   }
@@ -401,6 +420,7 @@ function formatDatabaseError(error: unknown): string {
     "code=DATABASE_OPERATION_FAILED",
     sqlState ? `database_code=${sqlState}` : null,
     position ? `position=${position}` : null,
+    ledgerReason ? `ledger_reason=${ledgerReason}` : null,
   ].filter(Boolean);
 
   return details.join(" ");
