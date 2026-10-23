@@ -880,7 +880,21 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     // Neither the expected text nor the field value leaves the page.
     const inputReadback = monitor.inputReadback;
     delete monitor.inputReadback;
+    const clickReadback = monitor.clickReadback;
+    delete monitor.clickReadback;
     return {
+      ...(policy &&
+      clickReadback &&
+      clickReadback.scope === policy.guidanceScope
+        ? {
+            clickReadback: {
+              targetRef: clickReadback.targetRef,
+              synchronousTextChange:
+                clickReadback.before !== clickReadback.after &&
+                clickReadback.after === pageText,
+            },
+          }
+        : {}),
       ...(policy &&
       inputReadback &&
       inputReadback.scope === policy.guidanceScope
@@ -1694,7 +1708,24 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     globalThis[watchKey] = watch;
   }
   if (command.subaction === "click") {
+    // Only text changed during this exact synchronous activation is eligible.
+    // Timers and later requests are not attributed to this click. Retain the
+    // visible text privately until one snapshot confirms it is still present;
+    // neither text nor input values are included in the receipt. This proves
+    // a UI response, never a completed goal or a committed payment.
+    delete monitor.clickReadback;
+    const before =
+      policy && typeof policy.guidanceScope === "string"
+        ? readVisibleText(document.body ?? document.documentElement)
+        : null;
     node.click();
+    if (before !== null)
+      monitor.clickReadback = {
+        targetRef: `${state.snapshotId}:0:${command.nodeId}`,
+        scope: policy.guidanceScope,
+        before,
+        after: readVisibleText(document.body ?? document.documentElement),
+      };
   } else if (command.subaction === "fill") {
     if (
       !(

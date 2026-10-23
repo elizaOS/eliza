@@ -641,6 +641,104 @@ try {
     "A scroll handler that navigates must leave uncertainty evidence",
   );
   cases.push("task scrolling retains the navigation/effect watch");
+  // Click response evidence is produced in the isolated command, not by the
+  // host guessing from two unrelated page reads.
+  await page.evaluate(() => {
+    document.body.innerHTML =
+      '<button id="show" type="button">Show details</button><output></output><input id="entry"><span hidden id="hidden">old</span>';
+    document.querySelector("#show").onclick = () => {
+      document.querySelector("output").textContent =
+        "Library address: 10 Maple Street";
+    };
+  });
+  const clickPolicy = {
+    origin: new URL(page.url()).origin,
+    expiresAt: Date.now() + 60000,
+    guidanceScope: "click-readback",
+    targets: [{ selector: "#show", action: "click" }],
+  };
+  const clickRead = async (scope = "click-readback") =>
+    run(
+      {
+        subaction: "snapshot",
+        taskPolicy: { ...clickPolicy, guidanceScope: scope },
+      },
+      `snapshot-${++sequence}`,
+    );
+  const perform = async () => {
+    const observed = await snapshot();
+    const ref = `${observed.id}:0:${observed.value.elements.find((element) => element.targetSelector === "#show").id}`;
+    assert.equal(
+      (
+        await act(observed, "click", "Show details", {
+          taskPolicy: clickPolicy,
+        })
+      ).dispatched,
+      true,
+    );
+    return ref;
+  };
+  const clicked = await perform();
+  assert.deepEqual((await clickRead()).clickReadback, {
+    targetRef: clicked,
+    synchronousTextChange: true,
+  });
+  assert.equal(
+    (await clickRead()).clickReadback,
+    undefined,
+    "Readback is consumed once",
+  );
+  await page.evaluate(() => {
+    document.querySelector("output").textContent = "old";
+  });
+  await perform();
+  assert.equal(
+    (await clickRead("another-task")).clickReadback,
+    undefined,
+    "A different task cannot read the receipt",
+  );
+  assert.equal((await clickRead()).clickReadback, undefined);
+  await page.evaluate(() => {
+    document.querySelector("output").textContent = "old";
+  });
+  await perform();
+  await page.evaluate(() => {
+    document.querySelector("output").textContent = "Later unrelated text";
+  });
+  assert.equal(
+    (await clickRead()).clickReadback.synchronousTextChange,
+    false,
+    "Changed-again text is not the click readback",
+  );
+  await page.evaluate(() => {
+    document.querySelector("#show").onclick = () => {
+      document.querySelector("#entry").value = "private-field-value";
+      document.querySelector("#hidden").textContent = "hidden result";
+    };
+    document.querySelector("output").textContent =
+      "Carousel changed before the click";
+  });
+  await perform();
+  assert.equal(
+    (await clickRead()).clickReadback.synchronousTextChange,
+    false,
+    "Unrelated updates, hidden text and input values do not prove visible click results",
+  );
+  await page.evaluate(() => {
+    document.querySelector("#show").onclick = () =>
+      queueMicrotask(() => {
+        document.querySelector("output").textContent = "Asynchronous result";
+      });
+  });
+  await perform();
+  assert.equal(
+    (await clickRead()).clickReadback.synchronousTextChange,
+    false,
+    "Asynchronous changes require separate outcome evidence",
+  );
+  cases.push(
+    "one-use task-bound synchronous text response excludes unrelated, hidden and edited values",
+  );
   const out = testOutputPath("browser-page-freshness");
   await mkdir(out, { recursive: true });
   await writeFile(

@@ -461,3 +461,15 @@ baseline. Run `bun --conditions=eliza-source browser/protection/test-advisory.mj
 from `packages/os` to exercise the same flow through the actual Linux native host
 and socket target, including disconnect reset. These controlled pages do not
 establish Android, TalkBack, or a full owned Chromium build.
+
+Task click snapshots can include a one-use `clickReadback` with the observed
+`targetRef` and `synchronousTextChange`. The isolated command compares visible
+text immediately before and after the click handler, then checks that the same
+text remains at readback. Timer updates, later request results, hidden text and
+form values do not establish this response. A different task scope consumes the
+receipt without exposing it. The receipt proves a visible UI response to that
+click, not goal completion, a provider result or a payment. Product policy must
+still check effect violations and verify the requested outcome separately.
+Chromium page-freshness and generated surface control-channel tests cover this
+protocol; installed native input and asynchronous result attribution are separate
+gates.

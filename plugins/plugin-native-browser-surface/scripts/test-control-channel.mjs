@@ -703,7 +703,10 @@ try {
               ?.options?.find((o) => o.selected)?.label === "French"
             ? "succeeded"
             : "unknown"
-          : before.text.includes("4") && after.text.includes("5")
+          : before.text.includes("4") &&
+              after.text.includes("5") &&
+              after.clickReadback?.targetRef === proposal.targetRef &&
+              after.clickReadback?.synchronousTextChange === true
             ? "succeeded"
             : "unknown",
     recordEvidence: async () => "fixture-real-page-readback",
@@ -747,6 +750,11 @@ try {
     signal: actuatorSignal,
   });
   const selectObservation = actuator.readObservation(task.id, owner);
+  assert.equal(
+    selectObservation.snapshot.clickReadback,
+    undefined,
+    "The next task observation cannot replay click result evidence",
+  );
   const plannerView = pageView(
     selectObservation.snapshot,
     pageControls(selectObservation.snapshot),
