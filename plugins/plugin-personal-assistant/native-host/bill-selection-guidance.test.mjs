@@ -70,6 +70,20 @@ test("required selection guidance withholds the choice when target, capability o
     (await required.guide(decision, snapshot, false)).guidance.available,
     true,
   );
+  const named = new BillWorkflow({
+    ...options,
+    actuator: { showGuidance: async () => {} },
+    assistantName: "Ada",
+  });
+  assert.match(
+    (await named.guide(decision, snapshot, false)).guidance.instruction,
+    /before choosing it in Ada\.$/,
+  );
+  for (const assistantName of ["", " ", 7, "x".repeat(65)])
+    assert.throws(
+      () => new BillWorkflow({ ...options, actuator: {}, assistantName }),
+      /assistant name/,
+    );
 });
 
 test("required guidance accepts only bounded host-supplied recovery copy", () => {

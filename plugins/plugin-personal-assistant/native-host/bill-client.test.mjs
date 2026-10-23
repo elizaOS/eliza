@@ -511,6 +511,26 @@ test("prior and saved outcomes are admitted with their company", () => {
     );
 });
 
+test("fixed host words keep their typed reason codes", () => {
+  const read = (decision) =>
+    readBillDecision({ decision }, "task1", validators);
+  const stop = {
+    kind: "blocked",
+    reason: "Stopped.",
+    reasonCode: "task-changed",
+  };
+  assert.equal(read(stop).reasonCode, "task-changed");
+  const code = { kind: "human-verification", message: "Filled." };
+  assert.equal(read({ ...code, codeReason: "filled" }).codeReason, "filled");
+  for (const reasonCode of ["", "Task changed", 7, "x".repeat(65)])
+    assert.throws(() => read({ ...stop, reasonCode }), BillClientResponseError);
+  for (const decision of [
+    { ...code, codeReason: "other" },
+    { ...stop, codeReason: "filled" },
+  ])
+    assert.throws(() => read(decision), BillClientResponseError);
+});
+
 test("a shown guide is checked again and renewed before it expires, and reported gone after", async () => {
   let time = 1000;
   const pending = [];

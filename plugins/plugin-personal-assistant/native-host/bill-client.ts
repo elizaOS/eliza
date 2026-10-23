@@ -243,8 +243,13 @@ export type BillDecision = {
   ended?: boolean;
   /** One receipt email for this outcome was found in the connected Google account. */
   receiptInEmail?: boolean;
-  /** Why the verification code was not filled, from the host's fixed list. */
+  /** What the code step did, from the host's fixed list. */
   codeReason?: BillCodeReason;
+  /**
+   * A stable name for fixed host words (`message` or `reason`), so a host can
+   * choose its own words without matching English text.
+   */
+  reasonCode?: string;
 };
 export type BillCodeReason =
   | "typed"
@@ -252,7 +257,18 @@ export type BillCodeReason =
   | "insufficient_scope"
   | "account_changed"
   | "cloud_sign_in_required"
-  | "timeout";
+  | "timeout"
+  | "lookup_in_progress"
+  | "no_challenge"
+  | "already_handled"
+  | "missing"
+  | "expired"
+  | "ambiguous"
+  | "incomplete"
+  | "unavailable"
+  | "filled"
+  | "fill_unconfirmed"
+  | "fill_failed";
 const codeReasons: readonly BillCodeReason[] = [
   "typed",
   "reauth_required",
@@ -260,6 +276,17 @@ const codeReasons: readonly BillCodeReason[] = [
   "account_changed",
   "cloud_sign_in_required",
   "timeout",
+  "lookup_in_progress",
+  "no_challenge",
+  "already_handled",
+  "missing",
+  "expired",
+  "ambiguous",
+  "incomplete",
+  "unavailable",
+  "filled",
+  "fill_unconfirmed",
+  "fill_failed",
 ];
 export function readBillDecision(
   value: unknown,
@@ -346,6 +373,12 @@ export function readBillDecision(
       !codeReasons.includes(decision.codeReason))
   )
     throw new BillClientResponseError("Invalid code reason");
+  if (
+    decision.reasonCode !== undefined &&
+    (typeof decision.reasonCode !== "string" ||
+      !/^[a-z][a-z0-9-]{0,63}$/.test(decision.reasonCode))
+  )
+    throw new BillClientResponseError("Invalid reason code");
   for (const value of [
     decision.message,
     decision.reason,
