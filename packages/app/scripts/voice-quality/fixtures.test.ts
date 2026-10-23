@@ -5,14 +5,14 @@ import path from "node:path";
 import { FIXTURES, loadSentences } from "./host-wer-gate";
 
 const repoRoot = path.resolve(import.meta.dir, "../../../..");
-const qualifyJava = path.join(
+const deviceWerJava = path.join(
   repoRoot,
-  "packages/app/scripts/paradee-voice/qualify/app/src/androidTest/java/ai/eliza/voicequalify/Wer.java",
+  "packages/app/platforms/android/paradee-voice/src/main/java/ai/eliza/voice/Wer.java",
 );
 
 describe("voice-quality fixtures", () => {
   it("keeps host and device thresholds identical", () => {
-    const java = readFileSync(qualifyJava, "utf8");
+    const java = readFileSync(deviceWerJava, "utf8");
     expect(FIXTURES.thresholds.ttsRoundTripWer).toBe(0.08);
     expect(FIXTURES.thresholds.asrWer).toBe(0.06);
     expect(java).toContain(

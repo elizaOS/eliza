@@ -14,6 +14,9 @@ def ffiInclude = project.hasProperty('elizaParadeeFfiIncludeDir') ? file(project
 // for ai.eliza.voice.VoiceNative with the voice natives only.
 def jniSource = new File(paradeeSource, '../app/src/main/elizavoice-jni')
 def paradeeAbis = ['arm64-v8a', 'x86_64']
+// elizaParadeeCapacitor=true adds ParadeeVoicePlugin (capacitor/). The consumer
+// build must include the ':capacitor-android' project.
+def withCapacitor = project.hasProperty('elizaParadeeCapacitor') && project.elizaParadeeCapacitor.toString() == 'true'
 
 android {
     namespace 'ai.eliza.voice'
@@ -39,7 +42,8 @@ android {
         }
     }
     sourceSets.main {
-        java.srcDirs = [new File(paradeeSource, 'src/main/java')]
+        java.srcDirs = [new File(paradeeSource, 'src/main/java')] +
+            (withCapacitor ? [new File(paradeeSource, 'capacitor/src/main/java')] : [])
         manifest.srcFile new File(paradeeSource, 'src/main/AndroidManifest.xml')
         assets.srcDirs = [new File(paradeeNative, 'assets')]
         jniLibs.srcDirs = packageInference ? [new File(paradeeNative, 'jniLibs')] : []
@@ -47,6 +51,12 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
+    }
+}
+
+if (withCapacitor) {
+    dependencies {
+        implementation project(':capacitor-android')
     }
 }
 

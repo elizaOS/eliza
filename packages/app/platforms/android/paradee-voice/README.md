@@ -65,6 +65,30 @@ The JNI bridge is the app's `app/src/main/elizavoice-jni`, built here as
 `libparadeevoicejni.so` for `ai.eliza.voice.VoiceNative` with only the voice
 natives. Its `JNI_OnLoad` registers the methods and is its only export.
 
+## Capacitor plugin
+
+Set `ext.elizaParadeeCapacitor = true` before you apply `consumer.gradle` to add
+`ParadeeVoicePlugin` (`capacitor/`). The build must include `:capacitor-android`.
+Register the plugin in the activity. The JavaScript name is `ParadeeVoice`:
+
+- `status()` gives `{ speech, transcription }`. `transcription` is `android`,
+  `asr` or `none`. It also starts the bundle install and the model load.
+- `synthesize({ requestId, text, speed })` gives a 16-bit WAV in `audioBase64`,
+  `sampleRate`, `seconds` and `ms`.
+- `transcribe({ requestId, pcm16Base64, sampleRate: 16000 })` gives `text`,
+  `engine`, `fellBack`, `demoted` and `ms`. The input is at most one minute.
+- `cancel({ requestId })` stops that request. It rejects with `CANCELLED`.
+
+Transcription uses `OnDeviceRecognizer` first when Android 13 or later has an
+installed on-device English model. That class feeds the recording through
+`RecognizerIntent.EXTRA_AUDIO_SOURCE` and needs `RECORD_AUDIO`. When the
+recognizer fails, or returns no words for audio that holds speech, `NativeAsr`
+transcribes the recording. A timeout or empty answer turns the recognizer off
+for the process. The models and their two worker threads belong to the process.
+
+`Wer` is the device copy of `packages/app/scripts/voice-quality/wer.ts` (same normalization
+and word error count) for consumer quality gates.
+
 ## Build
 
 Generate the native inputs and the hash-pinned bundle (NDK 28.2, arm64-v8a and

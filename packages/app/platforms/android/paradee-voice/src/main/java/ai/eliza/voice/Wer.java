@@ -1,4 +1,4 @@
-package ai.eliza.voicequalify;
+package ai.eliza.voice;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -7,13 +7,14 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Same normalization and word error count as
+ * Word error rate with the same normalization and word error count as
  * packages/app/scripts/voice-quality/wer.ts, so host and device gates agree.
+ * Pure Java: it has no Android dependency.
  */
-final class Wer {
+public final class Wer {
     /** Gate thresholds; must equal fixtures.json (checked by fixtures.test.ts). */
-    static final double TTS_ROUND_TRIP_MAX_WER = 0.08;
-    static final double ASR_MAX_WER = 0.06;
+    public static final double TTS_ROUND_TRIP_MAX_WER = 0.08;
+    public static final double ASR_MAX_WER = 0.06;
 
     private static final Map<String, Integer> UNITS = new HashMap<>();
     private static final Map<String, Integer> TENS = new HashMap<>();
@@ -52,7 +53,7 @@ final class Wer {
         return null;
     }
 
-    static Long parseNumberWords(List<String> words) {
+    public static Long parseNumberWords(List<String> words) {
         if (words.isEmpty()) return null;
         boolean hasScale = false;
         for (String w : words) if (SCALES.containsKey(w) || w.equals("hundred")) hasScale = true;
@@ -136,7 +137,7 @@ final class Wer {
         return out;
     }
 
-    static List<String> normalize(String text) {
+    public static List<String> normalize(String text) {
         String folded = java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFKD)
                 .replaceAll("[\\u0300-\\u036f]", "")
                 .toLowerCase(Locale.ROOT)
@@ -153,7 +154,7 @@ final class Wer {
     }
 
     /** {edits, reference words}. */
-    static int[] wordErrors(String reference, String hypothesis) {
+    public static int[] wordErrors(String reference, String hypothesis) {
         List<String> ref = normalize(reference);
         List<String> hyp = normalize(hypothesis);
         int[] row = new int[hyp.size() + 1];
@@ -172,7 +173,7 @@ final class Wer {
     }
 
     /** Windowed-sinc resampler (Hann, 16 zero crossings), as in wer.ts. */
-    static float[] resample(float[] input, int from, int to) {
+    public static float[] resample(float[] input, int from, int to) {
         if (from == to) return input;
         double ratio = from / (double) to;
         double cutoff = Math.min(1.0, to / (double) from) * 0.97;
