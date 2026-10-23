@@ -914,8 +914,23 @@ try {
     runtime,
     bindingRevision = 2,
     permitted = false;
+  // A navigation can retire Android's isolated-world reply before it reaches
+  // the host. Lose only that acknowledgement after the real DOM operation.
+  let lostFollowReplies = 0;
+  const followTarget = Object.create(surfaceTarget);
+  followTarget.execute = async (command, options) => {
+    const result = await surfaceTarget.execute(command, options);
+    if (command.subaction === "follow") {
+      lostFollowReplies++;
+      await page.waitForFunction(() => location.hash === "#billing-portal");
+      throw Object.assign(new Error("Navigation retired its native reply"), {
+        kind: "UNCERTAIN_OUTCOME",
+      });
+    }
+    return result;
+  };
   const plannedActuator = new NativeTaskActuator({
-    target: surfaceTarget,
+    target: followTarget,
     getTask: (id) => runtime.get(id),
     policy: (current) => ({
       tabId: pageId,
@@ -1077,6 +1092,7 @@ try {
       JSON.stringify({ decision, task: runtime.get(plannedTask.id) }),
     );
     assert.equal(page.url(), `${origin}/#billing-portal`);
+    assert.equal(lostFollowReplies, 1, "Lost navigation replies must never replay follow");
     assert.deepEqual(
       runtime.get(plannedTask.id).operations.map((o) => o.status),
       ["succeeded", "succeeded", "succeeded"],
