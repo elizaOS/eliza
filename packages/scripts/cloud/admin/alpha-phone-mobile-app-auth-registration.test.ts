@@ -1,5 +1,5 @@
 /**
- * Additional client registration (Alpha Phone, Senior Care): target selection, Worker registry validation, and
+ * Additional client registration (Alpha Phone, Senior Care, Grace): target selection, Worker registry validation, and
  * the real repair transaction against in-process PGlite. Synthetic UUIDs only.
  */
 import {
@@ -18,6 +18,8 @@ import {
 import {
   ALPHA_PHONE_MOBILE_APP_AUTH_CLIENT_ID,
   alphaPhoneMobileAppAuthTarget,
+  GRACE_MOBILE_APP_AUTH_CLIENT_ID,
+  graceMobileAppAuthTarget,
   type MobileAppAuthRegistrationRow,
   mobileAppAuthConfigUrl,
   PRIMARY_MOBILE_APP_AUTH_TARGET,
@@ -35,10 +37,13 @@ const PRIMARY_APP_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const ORGANIZATION_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const OWNER_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const SENIOR_APP_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+const GRACE_APP_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff";
 const PRODUCTION = alphaPhoneMobileAppAuthTarget("production");
 const STAGING = alphaPhoneMobileAppAuthTarget("staging");
 const SENIOR_PRODUCTION = seniorCareMobileAppAuthTarget("production");
 const SENIOR_STAGING = seniorCareMobileAppAuthTarget("staging");
+const GRACE_PRODUCTION = graceMobileAppAuthTarget("production");
+const GRACE_STAGING = graceMobileAppAuthTarget("staging");
 
 const registry = (entry: Record<string, unknown>) =>
   JSON.stringify([
@@ -234,6 +239,88 @@ describe("Senior Care registration target", () => {
   });
 });
 
+describe("Grace registration target", () => {
+  test("binds each environment to its own Cloud site callback", () => {
+    expect(GRACE_PRODUCTION).toEqual({
+      clientId: "technology.graceful.grace",
+      redirectUri: "https://cloud.eliza.app/auth/grace/callback",
+      redirectOrigin: "https://cloud.eliza.app",
+      appName: "Grace",
+      appDescription: "First-party Grace native sign-in client",
+      slugPrefix: "grace-auth",
+    });
+    expect(GRACE_STAGING).toMatchObject({
+      clientId: "technology.graceful.grace",
+      redirectUri: "https://cloud-staging.eliza.app/auth/grace/callback",
+      redirectOrigin: "https://cloud-staging.eliza.app",
+    });
+    expect(
+      resolveMobileAppAuthRegistrationTarget(
+        GRACE_MOBILE_APP_AUTH_CLIENT_ID,
+        "production",
+      ),
+    ).toEqual(GRACE_PRODUCTION);
+    expect(
+      resolveMobileAppAuthRegistrationTarget(
+        GRACE_MOBILE_APP_AUTH_CLIENT_ID,
+        "staging",
+      ),
+    ).toEqual(GRACE_STAGING);
+    expect(() =>
+      resolveMobileAppAuthRegistrationTarget(
+        GRACE_MOBILE_APP_AUTH_CLIENT_ID,
+        undefined,
+      ),
+    ).toThrow(/staging or production/);
+  });
+
+  test("selects the Grace entry beside the retained Senior Care entry", () => {
+    const shared = JSON.stringify([
+      {
+        clientId: SENIOR_CARE_MOBILE_APP_AUTH_CLIENT_ID,
+        appId: SENIOR_APP_ID,
+        redirectUri: SENIOR_PRODUCTION.redirectUri,
+        enabled: true,
+      },
+      {
+        clientId: GRACE_MOBILE_APP_AUTH_CLIENT_ID,
+        appId: GRACE_APP_ID,
+        redirectUri: GRACE_PRODUCTION.redirectUri,
+        enabled: true,
+      },
+    ]);
+    expect(
+      resolveTargetRegistration({
+        ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID: GRACE_MOBILE_APP_AUTH_CLIENT_ID,
+        ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: "production",
+        ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: shared,
+      }),
+    ).toEqual({ target: GRACE_PRODUCTION, appId: GRACE_APP_ID });
+    expect(
+      resolveTargetRegistration({
+        ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID:
+          SENIOR_CARE_MOBILE_APP_AUTH_CLIENT_ID,
+        ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: "production",
+        ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: shared,
+      }),
+    ).toEqual({ target: SENIOR_PRODUCTION, appId: SENIOR_APP_ID });
+    // A Grace entry still bound to the Senior Care callback is refused.
+    expect(() =>
+      requireRegisteredMobileClientAppId(
+        JSON.stringify([
+          {
+            clientId: GRACE_MOBILE_APP_AUTH_CLIENT_ID,
+            appId: GRACE_APP_ID,
+            redirectUri: SENIOR_PRODUCTION.redirectUri,
+            enabled: true,
+          },
+        ]),
+        GRACE_PRODUCTION,
+      ),
+    ).toThrow(/must use exactly/);
+  });
+});
+
 describe("Alpha Phone registration repair transaction", () => {
   let database: PGlite;
   const client = {
@@ -394,6 +481,45 @@ describe("Alpha Phone registration repair transaction", () => {
     expect(() =>
       validateMobileAppAuthRegistrationRow(alpha, ALPHA_APP_ID, PRODUCTION),
     ).not.toThrow();
+  });
+
+  test("repairs Grace beside the retained Senior Care client on the same origin", async () => {
+    for (const [appId, target] of [
+      [SENIOR_APP_ID, SENIOR_PRODUCTION],
+      [GRACE_APP_ID, GRACE_PRODUCTION],
+    ] as const) {
+      await repairRegistrationTransaction(
+        client,
+        appId,
+        ORGANIZATION_ID,
+        OWNER_ID,
+        target,
+      );
+    }
+    const grace = await read(GRACE_APP_ID, GRACE_PRODUCTION);
+    expect(() =>
+      validateMobileAppAuthRegistrationRow(
+        grace,
+        GRACE_APP_ID,
+        GRACE_PRODUCTION,
+      ),
+    ).not.toThrow();
+    expect(grace?.allowed_origins).toEqual([GRACE_PRODUCTION.redirectUri]);
+    const senior = await read(SENIOR_APP_ID, SENIOR_PRODUCTION);
+    expect(() =>
+      validateMobileAppAuthRegistrationRow(
+        senior,
+        SENIOR_APP_ID,
+        SENIOR_PRODUCTION,
+      ),
+    ).not.toThrow();
+    expect(() =>
+      validateMobileAppAuthRegistrationRow(
+        senior,
+        SENIOR_APP_ID,
+        GRACE_PRODUCTION,
+      ),
+    ).toThrow();
   });
 
   test("refuses to give the Alpha callback to a second active app", async () => {

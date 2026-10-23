@@ -108,8 +108,12 @@ The release workflow publishes the registry from the protected
 `apps` row: choose the client (`ai.elizaresearch.alphaphone` for Alpha Phone,
 `ai.elizaresearch.seniorcare` for Senior Care, whose callback is
 `https://cloud.eliza.app/auth/senior-care/callback`, staging:
-`https://cloud-staging.eliza.app/auth/senior-care/callback`);
-additional clients take their app UUID from the same registry entry, which must
+`https://cloud-staging.eliza.app/auth/senior-care/callback`;
+`technology.graceful.grace` for Grace, whose callback is
+`https://cloud.eliza.app/auth/grace/callback`, staging:
+`https://cloud-staging.eliza.app/auth/grace/callback`; Grace is Senior Care
+after its Android package rename, and the Senior Care client stays registered
+until no device still uses it); additional clients take their app UUID from the same registry entry, which must
 be enabled and bound to that environment's callback.
 
 ### Alpha-owned managed Google returns
