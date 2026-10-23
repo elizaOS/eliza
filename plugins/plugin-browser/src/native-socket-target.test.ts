@@ -140,6 +140,8 @@ it("acknowledges profile-bound liveness then rejects interrupted effects without
     await vi.waitFor(() => expect(registrations).toHaveLength(1));
     expect(registrations[0].profileId).toBe("stable-profile");
     expect(registrations[0].isCurrent()).toBe(true);
+    expect(target.hasCapability("list")).toBe(true);
+    expect(target.hasCapability("task-bind")).toBe(false);
     first.send({
       type: "ping",
       nonce: "probe-nonce",
@@ -163,6 +165,7 @@ it("acknowledges profile-bound liveness then rejects interrupted effects without
     );
     await interrupted;
     expect(await target.available()).toBe(false);
+    expect(target.hasCapability("list")).toBe(false);
     expect(registrations[0].isCurrent()).toBe(false);
     const second = peer();
     await vi.waitFor(() => expect(second.messages[0]?.type).toBe("hello-ack"));

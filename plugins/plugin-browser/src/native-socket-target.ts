@@ -418,6 +418,10 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
     capabilities.has(command.subaction) &&
     this.advertised.has(command.subaction) &&
     (!command.id || /^\d+$/.test(command.id));
+  /** Whether the registered profile advertised `capability`. False while no profile is registered. */
+  hasCapability(capability: string): boolean {
+    return this.advertised.has(capability);
+  }
   getProfileId(): string | null {
     return !this.stopped && this.socket && !this.socket.destroyed
       ? this.profileId
