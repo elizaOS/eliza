@@ -3854,10 +3854,37 @@ export class AcpService extends Service {
     opts: SendOptions,
     startedAt: number,
   ): Promise<PromptResult> {
-    const { client, protocolSessionId } = await this.ensureNativeClientAttached(
-      session,
-      opts,
-    );
+    // Register the prompt before a lazy reattach: closeSession() keeps its
+    // stop marker only while a prompt is registered, and a stop that lands
+    // during the attach must still stop this prompt.
+    this.nativePromptSessionIds.add(session.id);
+    let attached: { client: NativeAcpClient; protocolSessionId: string };
+    try {
+      attached = await this.ensureNativeClientAttached(session, opts);
+    } catch (err) {
+      this.nativePromptSessionIds.delete(session.id);
+      this.nativeStoppingSessionIds.delete(session.id);
+      throw err;
+    }
+    const { client, protocolSessionId } = attached;
+    if (this.nativeStoppingSessionIds.has(session.id)) {
+      // The session was stopped while it was attaching: close the client the
+      // attach just opened and do not send the prompt.
+      this.nativePromptSessionIds.delete(session.id);
+      await this.stopNativeClient(session.id);
+      this.nativeStoppingSessionIds.delete(session.id);
+      await this.store.updateStatus(session.id, "stopped");
+      void this.revokeModelLease(session.id, "native_prompt:stopped");
+      return {
+        sessionId: session.id,
+        response: "",
+        finalText: "",
+        stopReason: "stopped",
+        durationMs: Date.now() - startedAt,
+        exitCode: null,
+        signal: null,
+      };
+    }
     let finalText = "";
     let eventStopReason: string | undefined;
     const capturedToolOutputs = new Set<string>();
@@ -3879,7 +3906,6 @@ export class AcpService extends Service {
       finalText = handled.finalText;
       eventStopReason = handled.stopReason ?? eventStopReason;
     };
-    this.nativePromptSessionIds.add(session.id);
     client.setEventHandler(previousOnAcp);
     client.setTimeoutMs(opts.timeoutMs ?? this.sessionTimeoutMs);
     try {
