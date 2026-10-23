@@ -200,4 +200,31 @@ describe("attachments in prior dialogue", () => {
     });
     expect(resolved?.replyText).toBe("I said: \n\nhere's your image.");
   });
+
+  it("still binds an attachment-only message as a source", () => {
+    const uncaptioned = {
+      ...generated,
+      id: "uncaptioned",
+      content: { ...generated.content, text: "" },
+    } as Memory;
+    const events = render([request, uncaptioned]);
+    const context = createContextObject({
+      id: "turn",
+      metadata: { roomId: "room", messageId: message.id },
+      events,
+    });
+    const sourceSetId = completionContextSources(context).sourceSetId;
+    const snapshot = createSourceReplySnapshot(
+      context,
+      {
+        sourceSetId,
+        scope: { agentId: "agent", roomId: "room" },
+        visibleEventIds: new Set(["history:request", "history:uncaptioned"]),
+        loadedSourceIds: new Set(),
+      },
+      [request, uncaptioned],
+    );
+    if (!snapshot) throw Error("snapshot");
+    expect(snapshot.originals.get("h2")).toBe("");
+  });
 });
