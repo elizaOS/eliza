@@ -47,7 +47,8 @@ while status/discovery never dispatch confirmation. New reviews carry `allowance
 from the quote's saved catalog definition. Native projection preserves these terms;
 historical reviews omit them rather than borrowing current catalog terms.
 Pending pages retain lease and
-source state. Hosted invoice links are temporary private payment UI responses:
+source state. `NativeBillingRoutes` (root export) types each local billing route's
+request and response body, built from the Cloud DTOs. Hosted invoice links are temporary private payment UI responses:
 do not persist, log or add them to agent/model context. Returning from payment
 requires fresh command/subscription observation, not a success-URL assumption.
 

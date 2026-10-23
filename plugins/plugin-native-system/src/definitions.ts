@@ -100,6 +100,60 @@ export interface DefaultAppStatus {
   icon?: string;
 }
 
+/**
+ * `setup.DeviceSetup.readiness()` JSON. Package lists contain only installed
+ * packages from the host's supported sets. The `false` fields are permanent:
+ * Android gives no nonprivileged proof of vault readiness and no silent
+ * default change.
+ */
+export interface DeviceSetupReadiness {
+  installedBrowsers: string[];
+  configuredBrowserPackage: string;
+  browserDispatchStatus:
+    | "not-configured"
+    | "not-installed"
+    | "untrusted"
+    | "unavailable"
+    | "ready";
+  browserObservationAvailable: false;
+  installedPasswordManagers: string[];
+  preferredBrowserPackage: string | null;
+  preferredBrowserIsSupported: boolean;
+  autofillProviderPackage: string | null;
+  autofillProviderIsSupported: boolean;
+  providerVaultReadinessKnown: false;
+  canChangeDefaultsSilently: false;
+}
+
+/** `setup.DeviceSetup.Target` names. App targets require a host-listed package. */
+export type DeviceSetupTarget =
+  | "BROWSER_DEFAULTS"
+  | "CREDENTIAL_PROVIDERS"
+  | "BROWSER_APP"
+  | "PASSWORD_MANAGER_APP"
+  | "APP_DETAILS";
+
+/** `setup.DeviceSetup.Outcome` names. `OPENED` means a screen was started, not that the user changed a setting. */
+export type DeviceSetupOutcome =
+  | "OPENED"
+  | "UNSUPPORTED_BROWSER"
+  | "UNSUPPORTED_PASSWORD_MANAGER"
+  | "UNSUPPORTED_PACKAGE"
+  | "UNAVAILABLE";
+
+/**
+ * Bridge shape for a host plugin that exposes the native-only
+ * `setup.DeviceSetup` helper. `ElizaSystem` does not implement it; the host
+ * registers its own plugin and passes the Java enum names unchanged.
+ */
+export interface DeviceSetup {
+  readiness(): Promise<DeviceSetupReadiness>;
+  open(options: {
+    target: DeviceSetupTarget;
+    packageName?: string;
+  }): Promise<{ outcome: DeviceSetupOutcome }>;
+}
+
 export interface SystemPlugin {
   listLauncherApps(options?: {
     icons?: boolean;
