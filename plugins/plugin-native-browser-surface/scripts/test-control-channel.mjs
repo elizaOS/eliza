@@ -1056,7 +1056,11 @@ try {
     assert.equal(decision.kind, "agent-action");
     assert.equal(await page.$eval("output", (n) => n.textContent), "7");
     decision = await workflow.executeAction(decision.offerKey);
-    assert.equal(decision.kind, "done");
+    assert.equal(
+      decision.kind,
+      "done",
+      JSON.stringify({ decision, task: runtime.get(plannedTask.id) }),
+    );
     assert.equal(page.url(), `${origin}/#billing-portal`);
     assert.deepEqual(
       runtime.get(plannedTask.id).operations.map((o) => o.status),
