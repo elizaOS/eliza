@@ -428,11 +428,14 @@ export function pageGuidance(request) {
       Math.min(cursorRect.left + 24, left + width - tagRect.width),
     );
     const below = cursorRect.top + 28;
+    // Clamp a near-bottom tag before flipping it above the pointer, where it
+    // can cover the action preview. Keep the tag below the pointer tip.
+    const belowFit = Math.min(below, top + height - tagRect.height);
     const y = Math.max(
       top,
       Math.min(
-        below + tagRect.height <= top + height
-          ? below
+        belowFit >= cursorRect.top + 24
+          ? belowFit
           : cursorRect.top - tagRect.height - 4,
         top + height - tagRect.height,
       ),
