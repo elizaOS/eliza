@@ -671,11 +671,21 @@ async function main(): Promise<void> {
   const enabled = requireMobileAppAuthEnabled(
     readEnvironmentVariable("ELIZA_MOBILE_APP_AUTH_ENABLED"),
   );
+  const primaryAppId = readEnvironmentVariable("ELIZA_MOBILE_APP_AUTH_APP_ID");
+  const registry = readEnvironmentVariable(
+    "ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON",
+  );
+  const target = resolveMobileAppAuthRegistrationTarget(
+    readEnvironmentVariable("ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID"),
+    readEnvironmentVariable("ELIZA_MOBILE_APP_AUTH_ENVIRONMENT"),
+    registry,
+    primaryAppId,
+  );
   const appId =
     enabled && !options.skipDatabase
-      ? requireMobileAppAuthAppId(
-          readEnvironmentVariable("ELIZA_MOBILE_APP_AUTH_APP_ID"),
-        )
+      ? target === PRIMARY_MOBILE_APP_AUTH_TARGET
+        ? requireMobileAppAuthAppId(primaryAppId)
+        : requireRegisteredMobileClientAppId(registry, target, primaryAppId)
       : undefined;
 
   if (enabled && !options.skipDatabase) {
@@ -686,7 +696,7 @@ async function main(): Promise<void> {
     if (!databaseUrl) {
       fail("DATABASE_URL is required for the mobile App Auth preflight");
     }
-    await verifyDatabaseMobileAppAuthRegistration(databaseUrl, appId);
+    await verifyDatabaseMobileAppAuthRegistration(databaseUrl, appId, target);
     console.log("[MobileAppAuthPreflight] Database registration is valid.");
   } else if (!enabled) {
     console.log(
@@ -698,7 +708,7 @@ async function main(): Promise<void> {
     const environment = requireMobileAppAuthEnvironment(
       readEnvironmentVariable("ELIZA_MOBILE_APP_AUTH_ENVIRONMENT"),
     );
-    await verifyLiveMobileAppAuthConfig(environment, fetch, enabled);
+    await verifyLiveMobileAppAuthConfig(environment, fetch, enabled, target);
     console.log(
       `[MobileAppAuthPreflight] ${environment} public config is valid.`,
     );

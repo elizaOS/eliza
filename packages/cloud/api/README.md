@@ -129,6 +129,11 @@ compiled into the admin. New rows get a neutral display name;
 existing rows retain their branding. Use separate environment registries. The
 registry's callback is authoritative; the admin does not infer an environment
 from a hostname. Review each environment's registry before repair.
+Set `ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID` to select the same client for the
+standalone verifier. With the protected environment variables present, run
+`node packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts
+--skip-database --verify-live` to check its public metadata without a database read.
+Omitting the selector keeps the primary-client release check.
 
 ### App-owned managed Google returns
 
