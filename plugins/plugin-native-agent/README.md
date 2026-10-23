@@ -100,8 +100,11 @@ identities, positive request/UI budgets and runtime/storage/UI observation ports
 The client enforces its absolute deadline independently of the service. Schema 5
 supports standalone/launcher distributions and fixed runtime/UI observation states;
 reports never mark a journal healthy or authorize recovery. The Android contract
-checks malformed/stale/inconsistent evidence. Hosts must separately qualify actual
-IPC, process death and observation providers in their packaged applications.
+checks malformed/stale/inconsistent evidence, and
+`NativeHealthServiceContract.assertRefusesSameSigner` requires a host's declared
+service to refuse its own same-signer app UID, which is not the supervisor. Hosts
+must separately qualify actual IPC, process death and observation providers in
+their packaged applications.
 
 `WebViewHealthObserver` tracks one host Activity/WebView on the main thread and
 serves deadline-bound observations off the main thread. Hosts supply a trusted
