@@ -195,8 +195,9 @@ export function createTaskGuidance(
           await track(tabId, true);
           // Native validation and metadata round trips are not preview time.
           // Preserve the original authorization deadline while leaving room
-          // for cursor travel, visible dwell and cancellation after setup.
-          expiresAt = Math.min(Date.now() + 5000, policy.expiresAt);
+          // for slow native painting, cursor travel, visible dwell and Cancel.
+          // This wait never renews the original task authorization.
+          expiresAt = Math.min(Date.now() + 15000, policy.expiresAt);
           const shown = await inject(pageGuidance, [
             {
               kind: "show",

@@ -535,13 +535,41 @@ try {
     }
     return result;
   };
+  // Reproduce a slow native WebView: keep the real renderer and visibility
+  // observer, but deliver animation frames no faster than once per 900 ms.
+  await evaluate(`globalThis.__frameTest={request:requestAnimationFrame,cancel:cancelAnimationFrame,pending:new Map(),next:0};
+    globalThis.requestAnimationFrame=callback=>{
+      const test=__frameTest,id=++test.next,entry={};test.pending.set(id,entry);
+      entry.frame=test.request(time=>{entry.timer=setTimeout(()=>{test.pending.delete(id);callback(time);},900);});return id;
+    };
+    globalThis.cancelAnimationFrame=id=>{
+      const test=__frameTest,entry=test.pending.get(id);if(!entry)return;
+      test.cancel(entry.frame);clearTimeout(entry.timer);test.pending.delete(id);
+    };true`);
   const approvedAction = await startAction();
-  await waitPointer(6500);
+  await waitPointer(12000);
   const approvedReply = await approvedAction.pending;
   assert.equal(delayedValidation, true);
   assert.equal(approvedReply.ok, true, JSON.stringify(approvedReply));
   assert.equal(await page.evaluate(() => window.clicks), 1);
   assert.equal(await pointerVisible(), false);
+  const slowCancelledAction = await startAction();
+  await waitPointer(12000);
+  await send({ type: "cancel", id: slowCancelledAction.id });
+  assert.equal((await slowCancelledAction.pending).ok, false);
+  assert.equal(await page.evaluate(() => window.clicks), 1);
+  const expiredDuringPainting = await startAction({
+    taskExpiresAt: Date.now() + 4000,
+  });
+  assert.equal((await expiredDuringPainting.pending).ok, false);
+  assert.equal(
+    await page.evaluate(() => window.clicks),
+    1,
+    "Slow painting cannot renew expired authorization",
+  );
+  await evaluate(`for(const id of __frameTest.pending.keys())cancelAnimationFrame(id);
+    globalThis.requestAnimationFrame=__frameTest.request;
+    globalThis.cancelAnimationFrame=__frameTest.cancel;delete globalThis.__frameTest;true`);
   delayedValidation = false;
   const expiredDuringValidation = await startAction({
     taskExpiresAt: Date.now() + 1500,
