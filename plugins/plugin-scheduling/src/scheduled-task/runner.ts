@@ -2924,12 +2924,18 @@ export function createScheduledTaskRunner(
             : {}),
         });
       }
+      // An in-app delivery lands in the owner's chat room; the dispatcher
+      // reports that room, and it is where the reply arrives. The target
+      // name ("in_app") would never match a reply's roomId.
+      const ownerChatRoomId = dispatchResult.metadata?.ownerChatRoomId;
       const pendingPromptRoomId = claimed.completionCheck
-        ? pendingPromptRoomIdForTask(claimed, {
-            agentId: deps.agentId,
-            channelKey: dispatchResult.channelKey ?? dispatchChannelKey,
-            target: dispatchResult.target,
-          })
+        ? typeof ownerChatRoomId === "string" && ownerChatRoomId.length > 0
+          ? ownerChatRoomId
+          : pendingPromptRoomIdForTask(claimed, {
+              agentId: deps.agentId,
+              channelKey: dispatchResult.channelKey ?? dispatchChannelKey,
+              target: dispatchResult.target,
+            })
         : null;
       if (pendingPromptRoomId) {
         claimed.metadata.pendingPromptRoomId = pendingPromptRoomId;
