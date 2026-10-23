@@ -739,6 +739,51 @@ try {
   cases.push(
     "one-use task-bound synchronous text response excludes unrelated, hidden and edited values",
   );
+  // A guide inside a native modal must not stale its own snapshot. A mixed
+  // insertion or ordinary page edit must still fence the observed action.
+  await page.evaluate(() => {
+    document.body.innerHTML =
+      '<dialog><button type="button">Modal action</button></dialog>';
+    document.querySelector("dialog").showModal();
+    window.scrollTo(0, 0);
+  });
+  for (const mutation of ["owned-only", "mixed", "attribute", "text"]) {
+    state = await snapshot();
+    const node = state.value.elements.find(
+      (element) => element.label === "Modal action",
+    );
+    assert.ok(node);
+    const shown = await cdp.send("Runtime.evaluate", {
+      contextId: executionContextId,
+      expression: `(${pageGuidance.toString()})(${JSON.stringify({ kind: "show", id: `modal-${mutation}`, origin: new URL(page.url()).origin, snapshotId: state.id, nodeId: node.id, text: "Use this control", expiresAt: Date.now() + 60000 })})`,
+      returnByValue: true,
+    });
+    assert.equal(shown.exceptionDetails, undefined);
+    assert.equal(shown.result.value.placement, "in-view");
+    const changed = await cdp.send("Runtime.evaluate", {
+      contextId: executionContextId,
+      expression: `(() => {
+        const guide = globalThis.__elizaPageGuidanceV1;
+        const dialog = document.querySelector('dialog');
+        const button = dialog.querySelector('button');
+        if (${JSON.stringify(mutation)} === 'mixed') dialog.append(guide.host, document.createElement('span'));
+        if (${JSON.stringify(mutation)} === 'attribute') button.setAttribute('aria-description','Changed instruction');
+        if (${JSON.stringify(mutation)} === 'text') button.firstChild.data = 'Changed action';
+        guide.destroy();
+      })()`,
+      returnByValue: true,
+    });
+    assert.equal(changed.exceptionDetails, undefined);
+    const result = await act(state, "click", "Modal action");
+    if (mutation === "owned-only") assert.equal(result.dispatched, true);
+    else assert.equal(result.error.kind, "STALE_REF", mutation);
+    await page.evaluate(() => {
+      document.querySelector("dialog button").textContent = "Modal action";
+    });
+  }
+  cases.push(
+    "modal owned-host insertion/removal preserves refs; mixed insertion and page attribute/text edits invalidate them",
+  );
   const out = testOutputPath("browser-page-freshness");
   await mkdir(out, { recursive: true });
   await writeFile(
