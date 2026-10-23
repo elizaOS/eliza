@@ -91,8 +91,11 @@ handler. The host must authorize the target and the task capability; the normal
 preview, one-use reference, expiry, effect journal and readback checks apply.
 It refuses URL credentials, download links and new-window targets. It is not a
 form submission or consent grant. Desktop workspace and socket targets do not
-support this operation yet. A navigation that retires its reply remains unknown
-until reconciled from fresh page evidence, without replay.
+support this operation yet. If a follow returns `UNCERTAIN_OUTCOME`, the actuator does not replay it. It
+checks one fresh snapshot against the exact observed same-origin HTTPS destination
+and then requires host verification. A missing or different destination, effect
+violation, changed authority or failed cleanup remains unknown. Other uncertain
+effects retain the explicit reconciliation path.
 
 Native `select` takes an exact visible option label in `text` (or the workspace
 `value` field). Snapshots report option labels, disabled state and selection,

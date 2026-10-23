@@ -667,6 +667,7 @@ export class NativeTaskActuator {
       binding.expiresAt <= this.now()
     )
       notDispatched(new Error("Action authority ended before dispatch"));
+    let uncertainFollow = false;
     try {
       await this.options.target.execute(command, {
         taskContext: binding.context,
@@ -684,7 +685,15 @@ export class NativeTaskActuator {
       const kind = (error as { kind?: unknown } | null)?.kind;
       if (typeof kind === "string" && PRE_EFFECT_REFUSALS.has(kind))
         notDispatched(error);
-      throw error;
+      // A same-origin observed follow can destroy its reply channel. Never
+      // repeat it. Only this navigation operation may continue to fresh
+      // destination readback; other uncertain effects retain explicit recovery.
+      if (
+        proposal.capability !== "browser.follow" ||
+        kind !== "UNCERTAIN_OUTCOME"
+      )
+        throw error;
+      uncertainFollow = true;
     }
     await this.quiesce({ owner: context.owner, taskId: task.id });
     if (!current()) return { status: "unknown" };
@@ -693,6 +702,29 @@ export class NativeTaskActuator {
     // The page tried to submit or leave because of this action. The browser
     // stopped it, but the page state is no longer the one that was reviewed.
     if (after.effectViolation !== undefined) return { status: "unknown" };
+    if (uncertainFollow) {
+      const targets = cached.snapshot.elements.filter(
+        (element) =>
+          element.selector === proposal.targetRef &&
+          element.targetSelector === proposal.expectedSelector,
+      );
+      try {
+        if (targets.length !== 1 || typeof targets[0].href !== "string")
+          return { status: "unknown" };
+        const destination = new URL(targets[0].href);
+        if (
+          destination.protocol !== "https:" ||
+          destination.username ||
+          destination.password ||
+          destination.origin !== new URL(cached.snapshot.url).origin ||
+          destination.href === new URL(cached.snapshot.url).href ||
+          destination.href !== new URL(after.url).href
+        )
+          return { status: "unknown" };
+      } catch {
+        return { status: "unknown" };
+      }
+    }
     // A commit the browser let through must be the one this grant named.
     // The page's report then reaches verify and evidence with the snapshot.
     const consented = after.consentedCommit as

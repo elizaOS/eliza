@@ -916,13 +916,24 @@ try {
     permitted = false;
   // A navigation can retire Android's isolated-world reply before it reaches
   // the host. Lose only that acknowledgement after the real DOM operation.
-  let lostFollowReplies = 0;
+  let lostFollowReplies = 0,
+    followFault = "lost-reply";
   const followTarget = Object.create(surfaceTarget);
   followTarget.execute = async (command, options) => {
+    if (command.subaction === "follow" && followFault === "no-navigation")
+      throw Object.assign(new Error("No dispatch receipt"), {
+        kind: "UNCERTAIN_OUTCOME",
+      });
     const result = await surfaceTarget.execute(command, options);
     if (command.subaction === "follow") {
       lostFollowReplies++;
       await page.waitForFunction(() => location.hash === "#billing-portal");
+      if (followFault === "wrong-destination")
+        await page.evaluate(() => history.replaceState(null, "", "#unrelated"));
+      if (followFault === "revoked") {
+        const active = runtime.get(plannedTask.id);
+        runtime.control(active.id, active.revision, "pause");
+      }
       throw Object.assign(new Error("Navigation retired its native reply"), {
         kind: "UNCERTAIN_OUTCOME",
       });
@@ -1092,11 +1103,62 @@ try {
       JSON.stringify({ decision, task: runtime.get(plannedTask.id) }),
     );
     assert.equal(page.url(), `${origin}/#billing-portal`);
-    assert.equal(lostFollowReplies, 1, "Lost navigation replies must never replay follow");
+    assert.equal(
+      lostFollowReplies,
+      1,
+      "Lost navigation replies must never replay follow",
+    );
     assert.deepEqual(
       runtime.get(plannedTask.id).operations.map((o) => o.status),
       ["succeeded", "succeeded", "succeeded"],
     );
+    for (const mode of ["no-navigation", "wrong-destination", "revoked"]) {
+      followFault = mode;
+      await page.evaluate(() => history.replaceState(null, "", "/"));
+      plannedTask = runtime.create({
+        id: `uncertain-follow-${mode}`,
+        goalRef: "open-portal",
+        allowedOrigins: [origin],
+        allowedCapabilities: ["browser.follow"],
+        authorization: {
+          decisionId: `follow-${mode}`,
+          policyRevision: "fixture-v1",
+          state: "active",
+          decidedAt: new Date().toISOString(),
+          revokedAt: null,
+        },
+      });
+      workflow = new GuidedWebsiteWorkflow({
+        runtime,
+        actuator: plannedActuator,
+        taskId: plannedTask.id,
+        authorizeAction: () => true,
+        planStep: ({ page: view }) => ({
+          status: "act",
+          kind: "agent-action",
+          action: "follow",
+          ref: view.controls.find((c) => c.label === "Payment portal").ref,
+          message: "Open the portal",
+        }),
+      });
+      plannedTask = await runtime.observe(
+        plannedTask.id,
+        plannedTask.revision,
+        false,
+      );
+      const offered = await workflow.refresh();
+      assert.equal(offered.kind, "agent-action");
+      const before = lostFollowReplies;
+      await workflow.executeAction(offered.offerKey);
+      const operations = runtime.get(plannedTask.id).operations;
+      assert.equal(operations.length, 1, mode);
+      assert.notEqual(operations[0].status, "succeeded", mode);
+      assert.equal(
+        lostFollowReplies - before,
+        mode === "no-navigation" ? 0 : 1,
+        "No follow replay",
+      );
+    }
   } finally {
     await plannedActuator.quiesce({ owner, taskId: plannedTask.id });
     db.close();
