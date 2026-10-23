@@ -2064,6 +2064,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       assertJsonbStorable(component.data);
       await this.db.insert(componentTable).values({
         ...component,
+        // The adapter owns the agent boundary: a caller cannot plant a row in
+        // another agent's scope by supplying a foreign agentId.
+        agentId: this.agentId,
         createdAt: new Date(),
       });
       return true;
@@ -2078,8 +2081,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async updateComponent(component: Component): Promise<void> {
     return this.withDatabase(async () => {
       try {
-        // Convert createdAt from number to Date for database compatibility
-        const { createdAt, ...rest } = component;
+        // Convert createdAt from number to Date for database compatibility.
+        // agentId is excluded from the SET clause: ownership is immutable, so a
+        // caller cannot move a row into another agent's scope via update.
+        const { createdAt, agentId: _agentId, ...rest } = component;
         assertJsonbStorable(rest.data);
         await this.db
           .update(componentTable)
@@ -7589,7 +7594,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   ): Promise<Component[]> {
     if (entityIds.length === 0) return [];
     return this.withDatabase(async () => {
-      const conditions: SQL[] = [inArray(componentTable.entityId, entityIds)];
+      const conditions: SQL[] = [
+        inArray(componentTable.entityId, entityIds),
+        eq(componentTable.agentId, this.agentId),
+      ];
       if (worldId) {
         conditions.push(eq(componentTable.worldId, worldId));
       }
@@ -7632,7 +7640,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const result = await this.db
         .select()
         .from(componentTable)
-        .where(inArray(componentTable.id, componentIds));
+        .where(
+          and(inArray(componentTable.id, componentIds), eq(componentTable.agentId, this.agentId))
+        );
       return result.map((component) => ({
         ...component,
         id: component.id as UUID,
@@ -7656,7 +7666,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async deleteComponents(componentIds: UUID[]): Promise<void> {
     if (componentIds.length === 0) return;
     return this.withDatabase(async () => {
-      await this.db.delete(componentTable).where(inArray(componentTable.id, componentIds));
+      await this.db
+        .delete(componentTable)
+        .where(
+          and(inArray(componentTable.id, componentIds), eq(componentTable.agentId, this.agentId))
+        );
     });
   }
 
@@ -7685,7 +7699,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   ): Promise<void> {
     for (const update of updates) {
       const rows = await this.withDatabase(async () =>
-        this.db.select().from(componentTable).where(eq(componentTable.id, update.componentId))
+        this.db
+          .select()
+          .from(componentTable)
+          .where(
+            and(eq(componentTable.id, update.componentId), eq(componentTable.agentId, this.agentId))
+          )
       );
       const row = rows[0];
       if (!row) continue;
@@ -7700,7 +7719,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         await this.db
           .update(componentTable)
           .set({ data })
-          .where(eq(componentTable.id, update.componentId));
+          .where(
+            and(eq(componentTable.id, update.componentId), eq(componentTable.agentId, this.agentId))
+          );
       });
     }
   }
