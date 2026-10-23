@@ -168,36 +168,60 @@ function isSingleFieldShapeEcho(
   );
 }
 
+/** The stored value of the field a correction names, when the form has it. */
+function currentValueOfCorrectionField(
+  field: unknown,
+  controls: FormControl[],
+  currentValues: Record<string, JsonValue>,
+): JsonValue | undefined {
+  if (typeof field !== "string") return undefined;
+  const name = field.trim().toLowerCase();
+  if (!name) return undefined;
+  // Same resolution rule the caller uses to write the correction: a label or a
+  // key, case-insensitive. A name that matches no control grounds nothing.
+  const control = controls.find(
+    (c) => c.label.toLowerCase() === name || c.key.toLowerCase() === name,
+  );
+  return control ? currentValues[control.key] : undefined;
+}
+
 /**
  * Every correction repeats the correction prompt's example pair. The user's own
  * message and the value the form already holds win: a pair is a real correction
  * only when the user stated the replacement and the old address is either
- * their own words or the stored value. A mention of one side does not ground
- * the other side, so restating the pair stays a shape echo.
+ * their own words or the exact stored value of the field being corrected. A
+ * mention of one side does not ground the other side, and a value stored on a
+ * different field does not authorize this one, so restating the pair stays a
+ * shape echo.
  */
 function isCorrectionShapeEcho(
   parsed: CorrectionJsonResponse,
   userText: string,
   currentValues: Record<string, JsonValue>,
+  controls: FormControl[],
 ): boolean {
   const corrections = Array.isArray(parsed?.corrections)
     ? parsed.corrections
     : [];
   if (corrections.length === 0) return false;
-  const stored = Object.values(currentValues)
-    .filter((entry): entry is string => typeof entry === "string")
-    .join("\n")
-    .toLowerCase();
-  return corrections.every(
-    (correction) =>
-      sameText(correction.old_value, CORRECTION_SHAPE_OLD_VALUE) &&
-      sameText(correction.new_value, CORRECTION_SHAPE_NEW_VALUE) &&
-      !(
-        userSupplied(userText, correction.new_value) &&
-        (userSupplied(userText, correction.old_value) ||
-          stored.includes(CORRECTION_SHAPE_OLD_VALUE))
-      ),
-  );
+  return corrections.every((correction) => {
+    if (!sameText(correction.old_value, CORRECTION_SHAPE_OLD_VALUE))
+      return false;
+    if (!sameText(correction.new_value, CORRECTION_SHAPE_NEW_VALUE))
+      return false;
+    if (!userSupplied(userText, correction.new_value)) return true;
+    if (userSupplied(userText, correction.old_value)) return false;
+    // An exact normalized match with this field's own value, not a substring
+    // of any stored value and not a value that belongs to another field.
+    const stored = currentValueOfCorrectionField(
+      correction.field,
+      controls,
+      currentValues,
+    );
+    return !(
+      typeof stored === "string" && sameText(stored, CORRECTION_SHAPE_OLD_VALUE)
+    );
+  });
 }
 
 function parseJsonObjectResponse<T>(
@@ -636,7 +660,8 @@ Rules:
 
   const parsed = parseJsonObjectResponse<CorrectionJsonResponse>(
     response,
-    (parsed) => isCorrectionShapeEcho(parsed, text, currentValues),
+    (parsed) =>
+      isCorrectionShapeEcho(parsed, text, currentValues, resolvedControls),
   );
   const hasCorrection =
     parsed?.has_correction === true || parsed?.has_correction === "true";
