@@ -54,7 +54,7 @@ async function tiktokAdsRequest<T>(
     },
   });
 
-  const json = (await response.json()) as TikTokAdsResponse<T>;
+  const json = (await response.json().catch(() => ({}))) as TikTokAdsResponse<T>;
 
   if (json.code !== 0) {
     throw new Error(json.message || `TikTok Ads API error: ${json.code}`);
@@ -213,7 +213,7 @@ export const tiktokAdsProvider: AdProvider = {
       }),
     });
 
-    const json = (await response.json()) as TikTokAdsResponse<{
+    const json = (await response.json().catch(() => ({}))) as TikTokAdsResponse<{
       access_token: string;
       refresh_token: string;
       refresh_token_expires_in: number;
