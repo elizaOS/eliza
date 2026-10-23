@@ -1,4 +1,4 @@
-name: Cloud existing runner qualification (disabled draft)
+name: Cloud existing runner qualification
 "on":
   workflow_dispatch:
     inputs:
@@ -11,7 +11,7 @@ name: Cloud existing runner qualification (disabled draft)
       expires_epoch:
         required: true
         type: string
-      root_reservation_sha256:
+      root_observation_scope_sha256:
         required: true
         type: string
 permissions: {}
@@ -20,8 +20,8 @@ concurrency:
   cancel-in-progress: false
 jobs:
   qualify-existing-host:
-    # Deliberately disabled. Enabling requires a separate exact Root scope/resource review.
-    if: ${{ false }}
+    # Human-approved one-time observation: scope identity is not a resource lease.
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.run_attempt == 1 }}
     environment: production
     runs-on: [self-hosted, Linux, X64, x-canary]
     timeout-minutes: 1
@@ -32,10 +32,10 @@ jobs:
           REVIEWED_SHA: ${{ inputs.reviewed_sha }}
           ISSUED_EPOCH: ${{ inputs.issued_epoch }}
           EXPIRES_EPOCH: ${{ inputs.expires_epoch }}
-          ROOT_RESERVATION_SHA256: ${{ inputs.root_reservation_sha256 }}
-          REVIEWED_RESERVATION_SHA256: REQUIRES_ROOT_EXACT_LITERAL_RESERVATION_SHA256
+          ROOT_OBSERVATION_SCOPE_SHA256: ${{ inputs.root_observation_scope_sha256 }}
+          REVIEWED_OBSERVATION_SCOPE_SHA256: 6619214a2f34fb6a1d6b179838e229613c8f6178069f34d5c7deeb536eeae3af
         run: |
-          python3 - <<'PYHOST'
+          python3 -I -B - <<'PYHOST'
           import os,json,time,pathlib,hashlib,shutil
           # FS-only host qualification: no subprocess, network, credential or provider access.
           assert os.environ.get('GITHUB_EVENT_NAME')=='workflow_dispatch'
@@ -45,9 +45,9 @@ jobs:
           assert os.environ['GITHUB_SHA']==os.environ['REVIEWED_SHA']
           now=time.time();issued=float(os.environ['ISSUED_EPOCH']);expiry=float(os.environ['EXPIRES_EPOCH'])
           assert issued<=now<expiry and 0<expiry-issued<=300
-          assert os.environ['ROOT_RESERVATION_SHA256']==os.environ['REVIEWED_RESERVATION_SHA256']
-          assert len(os.environ['ROOT_RESERVATION_SHA256'])==64
-          out={'scope':'READ_ONLY_HOST_QUALIFICATION_NOT_PUBLICATION','runId':os.environ['GITHUB_RUN_ID'],'attempt':1,'workflowSHA':os.environ['GITHUB_SHA'],'runner':'eliza-robot-1','reservationSHA256':os.environ['ROOT_RESERVATION_SHA256'],'atEpoch':now,'cpuCount':os.cpu_count(),'freeBytes':shutil.disk_usage(os.environ['RUNNER_TEMP']).free}
+          assert os.environ['ROOT_OBSERVATION_SCOPE_SHA256']==os.environ['REVIEWED_OBSERVATION_SCOPE_SHA256']
+          assert len(os.environ['ROOT_OBSERVATION_SCOPE_SHA256'])==64
+          out={'scope':'READ_ONLY_HOST_QUALIFICATION_NOT_PUBLICATION','runId':os.environ['GITHUB_RUN_ID'],'attempt':1,'workflowSHA':os.environ['GITHUB_SHA'],'runner':'eliza-robot-1','observationScopeSHA256':os.environ['ROOT_OBSERVATION_SCOPE_SHA256'],'atEpoch':now,'cpuCount':os.cpu_count(),'freeBytes':shutil.disk_usage(os.environ['RUNNER_TEMP']).free}
           def read(path,limit=65536):
            try:
             with pathlib.Path(path).open('rb') as stream:
