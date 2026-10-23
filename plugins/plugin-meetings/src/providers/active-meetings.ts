@@ -9,6 +9,7 @@
  */
 
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import { OWNER_EXCLUSIVE_DISCLOSURE_GATE } from "@elizaos/core";
 import {
   MEETING_PLATFORM_LABELS,
   type MeetingSession,
@@ -36,8 +37,10 @@ export const activeMeetingsProvider: Provider = {
   description:
     "Meetings the notetaker bot is currently attending and transcribing",
   dynamic: true,
-  // Meeting URLs can carry join passwords; only the owner sees them.
+  // Meeting URLs can carry join passwords; only the owner sees them, and
+  // only where the delivery audience is the owner alone.
   roleGate: { minRole: "OWNER" },
+  disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     const service = runtime.getService<MeetingService>("meetings");
     const active = service?.listSessions({ active: true }) ?? [];
