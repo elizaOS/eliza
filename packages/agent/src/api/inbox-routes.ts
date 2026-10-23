@@ -1757,38 +1757,37 @@ async function loadLatestRoomMemory(
   runtime: AgentRuntime,
   roomId: UUID,
 ): Promise<Memory | null> {
-  try {
-    const memories = await runtime.getMemories({
-      tableName: "messages",
-      roomId,
-      limit: 10,
-      unique: false,
-    });
-    if (!Array.isArray(memories) || memories.length === 0) {
-      return null;
-    }
-    const candidates = memories
-      .filter((memory) => !extractDiscordReactionEvent(memory))
-      .filter((memory) => extractText(memory).trim().length > 0)
-      .sort((left, right) => {
-        const rightCreated =
-          typeof right.createdAt === "number" &&
-          Number.isFinite(right.createdAt)
-            ? right.createdAt
-            : 0;
-        const leftCreated =
-          typeof left.createdAt === "number" && Number.isFinite(left.createdAt)
-            ? left.createdAt
-            : 0;
-        return (
-          rightCreated - leftCreated ||
-          (left.id ?? "").localeCompare(right.id ?? "")
-        );
-      });
-    return candidates[0] ?? null;
-  } catch {
+  const memories = await runtime.getMemories({
+    tableName: "messages",
+    roomId,
+    limit: 10,
+    unique: false,
+  });
+  if (!Array.isArray(memories) || memories.length === 0) {
     return null;
   }
+  const candidates = memories
+    .filter((memory) => !extractDiscordReactionEvent(memory))
+    .filter((memory) => extractText(memory).trim().length > 0)
+    .sort((left, right) => {
+      const rightCreated =
+        typeof right.createdAt === "number" && Number.isFinite(right.createdAt)
+          ? right.createdAt
+          : 0;
+      const leftCreated =
+        typeof left.createdAt === "number" && Number.isFinite(left.createdAt)
+          ? left.createdAt
+          : 0;
+      return (
+        rightCreated - leftCreated ||
+        (left.id ?? "").localeCompare(right.id ?? "")
+      );
+    });
+  // `null` means "this room really has no renderable message". A storage
+  // read failure is not that: callers render the room as an empty chat and
+  // the inbox silently loses activity, so let the adapter error propagate
+  // to the route boundary, which already answers with a 500.
+  return candidates[0] ?? null;
 }
 async function augmentRoomsFromRecentMemories(
   runtime: AgentRuntime,
