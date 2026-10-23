@@ -425,7 +425,10 @@ try {
   const waitPointer = async (timeout = 3000) => {
     const deadline = Date.now() + timeout;
     while (!(await pointerVisible())) {
-      assert.ok(Date.now() < deadline, "Pointer did not become visible");
+      assert.ok(
+        Date.now() < deadline,
+        `Pointer did not become visible: ${JSON.stringify(await evaluate("(()=>{const s=globalThis.__elizaPageGuidanceV1;return {id:s?.id,visible:s?.visible,disposed:s?.disposed,invalidated:s?.invalidated,paused:s?.paused}})()"))}`,
+      );
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
   };
@@ -540,11 +543,11 @@ try {
   await evaluate(`globalThis.__frameTest={request:requestAnimationFrame,cancel:cancelAnimationFrame,pending:new Map(),next:0};
     globalThis.requestAnimationFrame=callback=>{
       const test=__frameTest,id=++test.next,entry={};test.pending.set(id,entry);
-      entry.frame=test.request(time=>{entry.timer=setTimeout(()=>{test.pending.delete(id);callback(time);},900);});return id;
+      entry.frame=test.request.call(globalThis,time=>{entry.timer=setTimeout(()=>{test.pending.delete(id);callback(time);},900);});return id;
     };
     globalThis.cancelAnimationFrame=id=>{
       const test=__frameTest,entry=test.pending.get(id);if(!entry)return;
-      test.cancel(entry.frame);clearTimeout(entry.timer);test.pending.delete(id);
+      test.cancel.call(globalThis,entry.frame);clearTimeout(entry.timer);test.pending.delete(id);
     };true`);
   const approvedAction = await startAction();
   await waitPointer(12000);
