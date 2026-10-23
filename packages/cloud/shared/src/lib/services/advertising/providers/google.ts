@@ -74,11 +74,23 @@ async function googleAdsRequest<T>(
     },
   });
 
-  const json = await response.json();
+  const text = await response.text();
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch (parseError) {
+    // Scope the fallback to error responses: a 2xx with a non-JSON body is a
+    // real failure, so keep surfacing it instead of silently treating absent
+    // fields as valid data.
+    if (response.ok) throw parseError;
+    json = {};
+  }
 
   if (!response.ok) {
     const error = json as GoogleAdsError;
-    throw new Error(error.error?.message || `Google Ads API error: ${response.status}`);
+    const snippet = text.length > 200 ? `${text.slice(0, 200)}...` : text;
+    const detail = snippet ? ` (body: ${snippet})` : "";
+    throw new Error(error.error?.message || `Google Ads API error: ${response.status}${detail}`);
   }
 
   return json as T;
