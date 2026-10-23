@@ -168,6 +168,10 @@ test("an amount after a code word stays", () => {
     "the discount code costs 12.50",
     "the code costs 48.29 today",
     "the code costs 1,250 now",
+    "my code is 12.50",
+    "the code is 1,250",
+    "1,250 is my code",
+    "my passcode is 48.29 now",
   ]) {
     assert.equal(redactSensitiveText(text), text, text);
     const scrubber = createSecretScrubber();
@@ -191,6 +195,8 @@ test("a password followed by a comma and more words is remembered alone", () => 
     `I typed ${MARK} again`,
   );
   assert.equal(scrubber.scrub("please call me"), "please call me");
+  assert.equal(scrubber.scrub("password is abc9,"), `password is ${MARK},`);
+  assert.equal(scrubber.scrub("I typed abc9 again"), `I typed ${MARK} again`);
   const gate = createSensitiveTextGate();
   assert.throws(() => gate.require("password is hunter2;please call"));
   assert.throws(() => gate.require("I typed hunter2 again"));
@@ -228,6 +234,25 @@ test("what follows a comma inside a password value is not remembered alone", () 
   gate.require("back in 2024");
   assert.throws(() => gate.require("use hunter2 now"));
   assert.throws(() => gate.require("use hunter2,2024 now"));
+
+  // An all-digit value: only the digits before the comma are remembered.
+  const digits = createSensitiveTextGate();
+  assert.throws(() => digits.require("password is 4829,2024"));
+  digits.require("back in 2024");
+  assert.throws(() => digits.require("use 4829 now"));
+  assert.throws(() => digits.require("use 4829,2024 now"));
+});
+
+test("a zip code in a refused sentence is not remembered", () => {
+  const gate = createSensitiveTextGate();
+  assert.throws(() =>
+    gate.require("my password is hunter2. 90210 is my zip code"),
+  );
+  assert.equal(gate.scrubber.size, 1);
+  gate.require("I live in 90210");
+  assert.throws(() => gate.require("use hunter2"));
+  for (const text of ["90210 is my zip code", "4829 is our area code"])
+    assert.equal(redactSensitiveText(text), text, text);
 });
 
 test("an amount with a decimal or thousands separator after a code word stays", () => {

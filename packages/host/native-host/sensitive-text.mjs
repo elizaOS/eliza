@@ -252,10 +252,10 @@ const RULES = [
     ),
     kind: "digits",
   },
-  // "482917 is the code"
+  // "482917 is the code". "90210 is my zip code" is not a secret.
   {
     pattern: new RegExp(
-      `(?<!\\d|\\d[.,])(${digitRun(4, 8)})(\\s+(?:is|was)\\s+(?:the|my|your|our)\\s+(?:[a-z]+\\s+){0,2}?(?:pass)?code\\b)`,
+      `(?<!\\d|\\d[.,])(${digitRun(4, 8)})(\\s+(?:is|was)\\s+(?:the|my|your|our)\\s+(?:(?!(?:zip|postal|post|area|country|dialing)\\b)[a-z]+\\s+){0,2}?(?:pass)?code\\b)`,
       "gi",
     ),
     kind: "digits",
@@ -383,8 +383,10 @@ export function createSecretScrubber({
     if (!first) return;
     const head = first.split(/[,;]/)[0];
     rememberWords(head && head !== first ? [first, head] : [first]);
-    const digits = digitsOf(first);
-    if (onlyDigits(first, digits)) rememberDigits(digits);
+    // Digits come from the part before the punctuation only: "4829,2024"
+    // remembers 4829 (and the whole word above), never the year after it.
+    const digits = digitsOf(head);
+    if (onlyDigits(head, digits)) rememberDigits(digits);
   }
   function remember(kind, value) {
     if (!kind) return;
