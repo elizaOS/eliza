@@ -57,6 +57,13 @@ interface PendingConfirmation {
 	readonly createdAt: number;
 	readonly ttlMs: number;
 	readonly metadata?: Record<string, unknown>;
+	/**
+	 * Id of the user message that asked for the operation. Only a LATER
+	 * message may confirm or cancel: a planner can run the same action twice
+	 * inside one turn with the same message, and that message must not count
+	 * as the owner's reply to the prompt it triggered.
+	 */
+	readonly requestMessageId?: string;
 }
 
 export interface RequireConfirmationArgs {
@@ -158,6 +165,7 @@ export async function requireConfirmation(
 			createdAt: Date.now(),
 			ttlMs,
 			metadata: args.metadata,
+			...(args.message.id ? { requestMessageId: String(args.message.id) } : {}),
 		};
 		await args.runtime.setCache(cacheKey, record);
 		if (args.callback) {
@@ -166,6 +174,19 @@ export async function requireConfirmation(
 				source: args.message.content.source,
 			});
 		}
+		return { status: "pending" };
+	}
+
+	// The message that asked for the operation is not a reply to its prompt:
+	// keep waiting for the next user message.
+	const sameMessage =
+		existing.requestMessageId !== undefined &&
+		args.message.id !== undefined &&
+		String(args.message.id) === existing.requestMessageId;
+	const olderThanPrompt =
+		typeof args.message.createdAt === "number" &&
+		args.message.createdAt <= existing.createdAt;
+	if (sameMessage || olderThanPrompt) {
 		return { status: "pending" };
 	}
 
