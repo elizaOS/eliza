@@ -274,7 +274,10 @@ export function validateToolSelectionName(
   }
   const data = basicResult.data;
   const mcpData = (state.values.mcp ?? {}) as Record<string, McpServerInfo>;
-  const server = mcpData[data.serverName];
+  // Same rule as the tool lookup below and as the resource check: the server
+  // name comes from the model, so only an own key names a server. An inherited
+  // `constructor` or `toString` must not look like a connected server.
+  const server = Object.hasOwn(mcpData, data.serverName) ? mcpData[data.serverName] : undefined;
   if (server?.status !== "connected") {
     return {
       success: false,
