@@ -192,8 +192,15 @@ async function readRuntimeAccountRecord(
     const store = accountRuntime.getConnectorAccountStore?.("x");
     const account = await store?.getAccount(accountId);
     if (account) return account;
-  } catch {
-    return null;
+  } catch (error) {
+    // A rejected store read is an infrastructure fault (persistence down,
+    // schema mismatch), not "this account has no record". Resolving it to
+    // `null` made the default account fall back to the env credentials and an
+    // explicit account to blank credentials, hiding the failure.
+    throw new Error(
+      `X connector account store failed to read account "${accountId}"`,
+      { cause: error },
+    );
   }
 
   try {
