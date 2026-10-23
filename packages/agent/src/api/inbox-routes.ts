@@ -115,6 +115,8 @@ const DEFAULT_INBOX_SOURCES = expandConnectorSourceFilter(
  */
 const MAX_ROOMS_SCANNED = 2000;
 const ORPHAN_ROOM_MEMORY_SCAN_LIMIT = 10000;
+/** Stable code for a `messages` read that failed, as opposed to an empty room. */
+const INBOX_MESSAGE_HISTORY_UNAVAILABLE = "INBOX_MESSAGE_HISTORY_UNAVAILABLE";
 /**
  * Worlds we never want to surface in the connector chats sidebar. These
  * are internal scratch worlds (autonomy-service self-talk, advanced
@@ -1755,30 +1757,17 @@ function applyInboxChatMemory(
   }
 }
 /**
- * A runtime whose `messages` table does not exist yet (boot before the storage
- * plugin migrated it) has no messages to read, so the truthful answer is "no
- * messages". Every other storage failure — I/O, dropped connection,
- * permission — means the messages could not be read at all and must surface,
- * otherwise the caller cannot tell "this chat is empty" from "this chat's
- * history is unreadable".
+ * A storage read that fails is not evidence of an empty room. A missing
+ * `messages` table in particular means the migration did not finish or the
+ * store is damaged — not that this chat has no history — so only a successful
+ * `getMemories` result of `[]` may be reported as empty.
+ *
+ * The typed error keeps driver detail (file paths, SQL text, remote hosts) out
+ * of HTTP responses and carries the room context. Requests report the cause
+ * once at their own boundary: the chat list reads up to `MAX_ROOMS_SCANNED`
+ * previews concurrently, so an outage covering every room must not produce one
+ * diagnostic per room.
  */
-function isMissingMessagesTableError(error: unknown): boolean {
-  const seen = new Set<unknown>();
-  const messages: string[] = [];
-  let current: unknown = error;
-  while (current && typeof current === "object" && !seen.has(current)) {
-    seen.add(current);
-    if (current instanceof Error) messages.push(current.message);
-    current = (current as { cause?: unknown }).cause;
-  }
-  return messages.some(
-    (message) =>
-      /no such table:?\s*["']?(?:\w+\.)?messages["']?(?![\w])/i.test(message) ||
-      /(?:relation|table)\s+["']?(?:\w+\.)?messages["']?\s+does not exist/i.test(
-        message,
-      ),
-  );
-}
 async function loadLatestRoomMemory(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -1813,22 +1802,46 @@ async function loadLatestRoomMemory(
       });
     return candidates[0] ?? null;
   } catch (error) {
-    if (isMissingMessagesTableError(error)) return null;
-    // error-policy:J1 this helper feeds two HTTP paths that interpolate
-    // `err.message` into the response body, and a driver error can carry a
-    // SQLite file path, SQL text, or a remote host. Report the raw cause here,
-    // then hand the routes a fixed, detail-free failure that still reads as a
-    // failure rather than an empty chat.
-    runtime.reportError("inbox-message-history", error, {
-      roomId,
-      tableName: "messages",
-    });
-    throw new ElizaError("Inbox message history is unavailable.", {
-      code: "INBOX_MESSAGE_HISTORY_UNAVAILABLE",
-      cause: error,
-      context: { roomId, tableName: "messages" },
-    });
+    // error-policy:J1 the read failed, so there is no truthful "empty chat" to
+    // return. Hand the request boundary a fixed, detail-free failure that still
+    // reads as a failure; it reports this cause once, with the room context.
+    throw inboxMessageHistoryUnavailable(error, roomId);
   }
+}
+/**
+ * Wrap a failed `messages` read so the request boundary can report the cause
+ * once and answer with a fixed message. `roomId` is omitted for the cross-room
+ * scans, where the failure is not tied to one room.
+ */
+function inboxMessageHistoryUnavailable(
+  error: unknown,
+  roomId?: UUID,
+): ElizaError {
+  return new ElizaError("Inbox message history is unavailable.", {
+    code: INBOX_MESSAGE_HISTORY_UNAVAILABLE,
+    cause: error,
+    context: { ...(roomId ? { roomId } : {}), tableName: "messages" },
+  });
+}
+/**
+ * Turn the typed history failure into a report at the request boundary and a
+ * safe client message. Returns `null` for every other error so each route keeps
+ * its own handler.
+ */
+function reportInboxMessageHistoryFailure(
+  runtime: AgentRuntime,
+  error: unknown,
+): string | null {
+  if (
+    !(error instanceof ElizaError) ||
+    error.code !== INBOX_MESSAGE_HISTORY_UNAVAILABLE
+  ) {
+    return null;
+  }
+  runtime.reportError("inbox-message-history", error.cause ?? error, {
+    ...error.context,
+  });
+  return error.message;
 }
 async function augmentRoomsFromRecentMemories(
   runtime: AgentRuntime,
@@ -1838,12 +1851,16 @@ async function augmentRoomsFromRecentMemories(
   if (roomById.size >= MAX_ROOMS_SCANNED) {
     return;
   }
-  const recentMemories = await runtime.getMemories({
-    agentId: runtime.agentId,
-    limit: ORPHAN_ROOM_MEMORY_SCAN_LIMIT,
-    tableName: "messages",
-    unique: false,
-  });
+  const recentMemories = await runtime
+    .getMemories({
+      agentId: runtime.agentId,
+      limit: ORPHAN_ROOM_MEMORY_SCAN_LIMIT,
+      tableName: "messages",
+      unique: false,
+    })
+    .catch((error: unknown) => {
+      throw inboxMessageHistoryUnavailable(error);
+    });
   for (const memory of recentMemories) {
     if (roomById.size >= MAX_ROOMS_SCANNED) {
       break;
@@ -2354,11 +2371,15 @@ async function loadInboxChats(
   // room client-side. 2000 messages is enough to catch the latest turn
   // in every active connector chat — the bulk query is the expensive
   // part, so we fetch once and reduce.
-  const memories = await runtime.getMemoriesByRoomIds({
-    tableName: "messages",
-    roomIds,
-    limit: 2000,
-  });
+  const memories = await runtime
+    .getMemoriesByRoomIds({
+      tableName: "messages",
+      roomIds,
+      limit: 2000,
+    })
+    .catch((error: unknown) => {
+      throw inboxMessageHistoryUnavailable(error);
+    });
   // Reduce: per room, keep the most recent source-tagged message.
   const accumulator = new Map<
     string,
@@ -2950,9 +2971,11 @@ export async function handleInboxRoute(
     } catch (err) {
       // error-policy:J1 HTTP route boundary returns a structured 500 when the
       // connector throws or cannot prove provider acceptance.
+      const historyFailure = reportInboxMessageHistoryFailure(runtime, err);
       helpers.error(
         res,
-        `failed to send inbox reply: ${err instanceof Error ? err.message : String(err)}`,
+        historyFailure ??
+          `failed to send inbox reply: ${err instanceof Error ? err.message : String(err)}`,
         500,
       );
     }
@@ -3062,9 +3085,11 @@ export async function handleInboxRoute(
       const chats = await loadInboxChats(runtime, sourceFilter);
       helpers.json(res, { chats, count: chats.length });
     } catch (err) {
+      const historyFailure = reportInboxMessageHistoryFailure(runtime, err);
       helpers.error(
         res,
-        `failed to load inbox chats: ${err instanceof Error ? err.message : String(err)}`,
+        historyFailure ??
+          `failed to load inbox chats: ${err instanceof Error ? err.message : String(err)}`,
         500,
       );
     }
