@@ -6,23 +6,82 @@
  * "Scheduled". Real scheduleDraftSendAction handler; the triage service's
  * draft lookup and scheduler call are stubbed.
  */
-import type { HandlerOptions, IAgentRuntime, Memory } from "@elizaos/core";
+import type {
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  UUID,
+} from "@elizaos/core";
 import { afterEach, expect, it, vi } from "vitest";
 import { scheduleDraftSendAction } from "../actions/scheduleDraftSend.ts";
 import {
   __resetDefaultTriageServiceForTests,
   getDefaultTriageService,
 } from "../triage-service.ts";
-import { createFakeRuntime } from "./fake-runtime.ts";
+import { createFakeRuntime, FAKE_AGENT_ID } from "./fake-runtime.ts";
 
 afterEach(() => {
   vi.restoreAllMocks();
   __resetDefaultTriageServiceForTests();
 });
 
+function cacheRuntime(): IAgentRuntime {
+  const cache = new Map<string, unknown>();
+  return Object.assign(createFakeRuntime(), {
+    getCache: async (key: string) => cache.get(key),
+    setCache: async (key: string, value: unknown) => {
+      cache.set(key, value);
+      return true;
+    },
+    deleteCache: async (key: string) => cache.delete(key),
+    compareAndSetCache: async (
+      key: string,
+      expected: unknown,
+      next: unknown,
+    ) => {
+      if (JSON.stringify(cache.get(key)) !== JSON.stringify(expected))
+        return false;
+      cache.set(key, next);
+      return true;
+    },
+  }) as IAgentRuntime;
+}
+
+let clock = Date.now();
+function ownerTurn(text: string): Memory {
+  clock += 1_000;
+  return {
+    id: `00000000-0000-0000-0000-${String(clock).slice(-12)}` as UUID,
+    entityId: "00000000-0000-0000-0000-00000000owner" as UUID,
+    roomId: "00000000-0000-0000-0000-000000000room" as UUID,
+    agentId: FAKE_AGENT_ID,
+    content: { text, source: "test" },
+    createdAt: clock,
+  } as Memory;
+}
+
+async function scheduleAs(
+  runtime: IAgentRuntime,
+  message: Memory,
+  sendAt: unknown,
+) {
+  return scheduleDraftSendAction.handler(runtime, message, undefined, {
+    parameters: { draftId: "d1", sendAt },
+  } as unknown as HandlerOptions);
+}
+
 function stubService() {
   const service = getDefaultTriageService();
-  vi.spyOn(service, "getDraft").mockReturnValue({ draftId: "d1" } as never);
+  vi.spyOn(service, "getDraft").mockReturnValue({
+    draftId: "d1",
+    agentId: FAKE_AGENT_ID,
+    source: "gmail",
+    to: [{ identifier: "alice@example.com" }],
+    subject: "Later",
+    body: "Sent later.",
+    preview: "To alice@example.com: Later",
+    metadata: {},
+  } as never);
   return vi.spyOn(service, "scheduleDraftSend").mockResolvedValue({
     draftId: "d1",
     scheduleCommit: {
@@ -54,10 +113,14 @@ it.each([
   expect(scheduled).not.toHaveBeenCalled();
 });
 
-it("schedules a future time", async () => {
+it("schedules a future time once the owner confirms", async () => {
   const scheduled = stubService();
   const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-  const result = await schedule(createFakeRuntime(), future);
+  const runtime = cacheRuntime();
+  const asked = await scheduleAs(runtime, ownerTurn("send it later"), future);
+  expect(asked?.data).toMatchObject({ requiresConfirmation: true });
+  expect(scheduled).not.toHaveBeenCalled();
+  const result = await scheduleAs(runtime, ownerTurn("yes"), future);
   expect(result?.success).toBe(true);
   expect(scheduled).toHaveBeenCalledWith(
     expect.anything(),
