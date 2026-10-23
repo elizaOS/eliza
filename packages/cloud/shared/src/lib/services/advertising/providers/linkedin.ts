@@ -687,12 +687,20 @@ export const linkedinAdsProvider: AdProvider = {
         client_secret: clientSecret,
       }).toString(),
     });
-    const json = (await response.json()) as {
+    const text = await response.text();
+    let json: {
       access_token?: string;
       expires_in?: number;
       refresh_token?: string;
       error_description?: string;
-    };
+    } = {};
+    if (text) {
+      try {
+        json = JSON.parse(text) as typeof json;
+      } catch {
+        json = {};
+      }
+    }
     if (!response.ok || !json.access_token) {
       throw new Error(json.error_description || "Failed to refresh LinkedIn token");
     }
