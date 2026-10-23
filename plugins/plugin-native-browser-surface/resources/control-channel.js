@@ -2368,7 +2368,13 @@
     ring.hidden = true;
     label.hidden = true;
     monitor.ownedHosts.add(host);
-    document.documentElement.append(host);
+    // Keep guidance above a website modal and inside its non-inert subtree.
+    // A manual popover does not dismiss the site's dialog or steal its modality.
+    const parent = target.closest("dialog:modal") ?? document.documentElement;
+    if (typeof host.showPopover === "function")
+      host.setAttribute("popover", "manual");
+    parent.append(host);
+    if (typeof host.showPopover === "function") host.showPopover();
     // Taps count only while Chromium reports the label as fully visible: not
     // covered by page content (including the top layer), transformed or faded.
     const visibility = new IntersectionObserver(
@@ -2503,6 +2509,8 @@
             !state.paused &&
             !state.dismissed &&
             state.visible &&
+            unobscured &&
+            Date.now() - unobscuredSince >= 800 &&
             visibleSince &&
             Date.now() - visibleSince >= 800 &&
             Date.now() < request.expiresAt &&
