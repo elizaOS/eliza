@@ -70,21 +70,42 @@ const MAX_TYPE_BRANCH_DEPTH = 8;
 
 function propertyTypeNames(prop: JsonSchemaProperty | undefined, depth = 0): string[] {
   if (!prop || depth > MAX_TYPE_BRANCH_DEPTH) return [];
-  const names = new Set<string>();
+  const declared = new Set<string>();
   if (typeof prop.type === "string") {
-    names.add(prop.type);
+    declared.add(prop.type);
   } else if (Array.isArray(prop.type)) {
     for (const entry of prop.type) {
-      if (typeof entry === "string") names.add(entry);
+      if (typeof entry === "string") declared.add(entry);
     }
   }
 
+  const alternatives = new Set<string>();
   for (const key of ["anyOf", "oneOf"] as const) {
     const variants = prop[key];
     if (!Array.isArray(variants)) continue;
     for (const variant of variants) {
-      for (const name of propertyTypeNames(variant, depth + 1)) names.add(name);
+      for (const name of propertyTypeNames(variant, depth + 1)) alternatives.add(name);
     }
+  }
+
+  const names = new Set<string>();
+  if (declared.size > 0 && alternatives.size > 0) {
+    // A sibling `type` and `anyOf`/`oneOf` are simultaneous constraints, not
+    // alternatives: `{"type":"string","anyOf":[{"type":"number"},
+    // {"type":"string"}]}` accepts strings only. Intersecting keeps the
+    // advertised type and the validator from accepting the number branch.
+    for (const name of declared) {
+      if (alternatives.has(name)) names.add(name);
+    }
+    // No shared name is an unsatisfiable pair, as in `type: "string"` with
+    // only a number branch. Keep the declared type: it is narrower than the
+    // branch set and does not invite a value the server cannot accept.
+    if (names.size === 0) {
+      for (const name of declared) names.add(name);
+    }
+  } else {
+    for (const name of declared) names.add(name);
+    for (const name of alternatives) names.add(name);
   }
 
   // `allOf` requires every branch. Only a type that all typed branches agree on

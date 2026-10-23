@@ -142,3 +142,46 @@ describe("an anyOf property with distinct branch types", () => {
     ).toMatchObject({ type: "string" });
   });
 });
+
+/**
+ * `type` and `anyOf`/`oneOf` are simultaneous constraints, not alternatives. A
+ * schema that names a type and also lists branches accepts only the values
+ * that satisfy both, so the branch the sibling type excludes must not be
+ * advertised or accepted.
+ */
+describe("an anyOf property with a sibling type", () => {
+  const stringThenNumber = {
+    properties: { value: { type: "string", anyOf: [{ type: "number" }, { type: "string" }] } },
+  };
+  const stringThenString = {
+    properties: { value: { type: "string", anyOf: [{ type: "string" }, { type: "number" }] } },
+  };
+
+  it("does not advertise the branch that the sibling type excludes", () => {
+    for (const schema of [stringThenNumber, stringThenString]) {
+      const property = providerProperty(schema).value;
+      expect(property.type).toBe("string");
+      expect(property.anyOf).toBeUndefined();
+    }
+  });
+
+  it("accepts the shared type and rejects the other branch", () => {
+    for (const schema of [stringThenNumber, stringThenString]) {
+      expect(validateParamsAgainstSchema({ value: "text" }, schema)).toEqual([]);
+      expect(validateParamsAgainstSchema({ value: 7 }, schema)).toEqual([
+        "Parameter 'value' expected string, got number",
+      ]);
+    }
+  });
+
+  it("narrows to the declared number type as well", () => {
+    const schema = {
+      properties: { value: { type: "number", anyOf: [{ type: "string" }, { type: "number" }] } },
+    };
+    expect(providerProperty(schema).value.type).toBe("number");
+    expect(validateParamsAgainstSchema({ value: 7 }, schema)).toEqual([]);
+    expect(validateParamsAgainstSchema({ value: "text" }, schema)).toEqual([
+      "Parameter 'value' expected number, got string",
+    ]);
+  });
+});
