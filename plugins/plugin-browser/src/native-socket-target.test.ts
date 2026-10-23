@@ -493,183 +493,239 @@ it("negotiates trusted task guidance and sends a cancellation fence", async () =
   }
 });
 
-it("sends a deadline-bound effect only to a feedback-capable peer", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "native-action-feedback-"));
-  const socketPath = join(directory, "browser.sock");
-  const target = new NativeSocketBrowserTarget(() => {});
-  let socket: Socket | undefined;
-  try {
-    await target.start({ ELIZA_BROWSER_NATIVE_SOCKET: socketPath });
-    socket = createConnection(socketPath);
-    const frames = socketFrames(socket);
-    frames.send({
-      type: "hello",
-      protocol: 2,
-      extensionId: "pmldpcoefklbdbgmggcejkfoinmjfeio",
-      profileId: "feedback",
-      capabilities: ["click", "task-bind", "task-action-feedback"],
-    });
-    await vi.waitFor(async () => expect(await target.available()).toBe(true));
-    const taskContext = {
-      actorId: "actor",
-      accountId: "account",
-      agentId: "agent",
-      taskId: "task",
-      epoch: 1,
-    };
-    const taskExpiresAt = Date.now() + 10000;
-    const executing = target.execute(
-      {
-        subaction: "click",
-        id: "1",
-        selector: "00000000-0000-0000-0000-000000000000:0:0",
-      },
-      { taskContext, taskExpiresAt },
-    );
-    await vi.waitFor(() => expect(frames.messages).toHaveLength(1));
-    expect(frames.messages[0]).toMatchObject({
-      type: "command",
-      command: { subaction: "click", taskContext, taskExpiresAt },
-    });
-    frames.send({
-      type: "result",
-      id: frames.messages[0].id,
-      ok: true,
-      result: { dispatched: true },
-    });
-    await expect(executing).resolves.toMatchObject({ subaction: "click" });
-    // The preview sentence comes only from trusted options, never the command.
-    const worded = target.execute(
-      {
-        subaction: "click",
-        id: "1",
-        selector: "00000000-0000-0000-0000-000000000000:0:0",
-        actionText: "Page text cannot word this.",
-      } as never,
-      {
-        taskContext,
-        taskExpiresAt,
-        actionText: "I will choose your saved Visa.",
-      },
-    );
-    await vi.waitFor(() => expect(frames.messages).toHaveLength(2));
-    expect(frames.messages[1].command.actionText).toBe(
-      "I will choose your saved Visa.",
-    );
-    frames.send({
-      type: "result",
-      id: frames.messages[1].id,
-      ok: true,
-      result: { dispatched: true },
-    });
-    await worded;
-    const unbound = target.execute({
-      subaction: "click",
-      id: "1",
-      selector: "00000000-0000-0000-0000-000000000000:0:0",
-      actionText: "Unbound text.",
-    } as never);
-    for (const actionText of ["", "x".repeat(201), "line\nbreak"])
-      await expect(
-        target.execute(
-          {
-            subaction: "click",
-            id: "1",
-            selector: "00000000-0000-0000-0000-000000000000:0:0",
-          },
-          { taskContext, taskExpiresAt, actionText },
-        ),
-      ).rejects.toMatchObject({ kind: "POLICY_BLOCKED" });
-    await vi.waitFor(() => expect(frames.messages).toHaveLength(3));
-    expect(frames.messages[2].command.actionText).toBeUndefined();
-    frames.send({
-      type: "result",
-      id: frames.messages[2].id,
-      ok: true,
-      result: { dispatched: true },
-    });
-    await unbound;
-    // A reviewed target comes only from trusted options, and only a peer
-    // that enforces it may receive one.
-    await expect(
-      target.execute(
+it.each(["click", "follow"] as const)(
+  "sends a deadline-bound %s only to a feedback-capable peer",
+  async (subaction) => {
+    const directory = await mkdtemp(join(tmpdir(), "native-action-feedback-"));
+    const socketPath = join(directory, "browser.sock");
+    const target = new NativeSocketBrowserTarget(() => {});
+    let socket: Socket | undefined;
+    try {
+      await target.start({ ELIZA_BROWSER_NATIVE_SOCKET: socketPath });
+      socket = createConnection(socketPath);
+      const frames = socketFrames(socket);
+      frames.send({
+        type: "hello",
+        protocol: 2,
+        extensionId: "pmldpcoefklbdbgmggcejkfoinmjfeio",
+        profileId: "feedback",
+        capabilities: [subaction, "task-bind", "task-action-feedback"],
+      });
+      await vi.waitFor(async () => expect(await target.available()).toBe(true));
+      const taskContext = {
+        actorId: "actor",
+        accountId: "account",
+        agentId: "agent",
+        taskId: "task",
+        epoch: 1,
+      };
+      const taskExpiresAt = Date.now() + 10000;
+      const executing = target.execute(
         {
-          subaction: "click",
+          subaction,
           id: "1",
           selector: "00000000-0000-0000-0000-000000000000:0:0",
         },
-        { taskContext, taskExpiresAt, expectedSelector: "#method" },
-      ),
-    ).rejects.toMatchObject({ kind: "UNSUPPORTED" });
-    const raw = target.execute(
-      {
-        subaction: "click",
-        id: "1",
-        selector: "00000000-0000-0000-0000-000000000000:0:0",
-        expectedSelector: "#page-chosen",
-      } as never,
-      { taskContext, taskExpiresAt },
-    );
-    await vi.waitFor(() => expect(frames.messages).toHaveLength(4));
-    expect(frames.messages[3].command.expectedSelector).toBeUndefined();
-    frames.send({
-      type: "result",
-      id: frames.messages[3].id,
-      ok: true,
-      result: { dispatched: true },
-    });
-    await raw;
-    // A commit grant comes only from trusted options, and only a peer that
-    // verifies and spends it may receive one; page data cannot carry one.
-    const grant = {
-      grantId: "yes-1",
-      taskId: taskContext.taskId,
-      epoch: taskContext.epoch,
-      origin: "https://example.test",
-      targetRef: "00000000-0000-0000-0000-000000000000:0:0",
-      selector: "#method",
-      subaction: "click" as const,
-      expiresAt: Date.now() + 30000,
-    };
-    await expect(
-      target.execute(
+        { taskContext, taskExpiresAt },
+      );
+      await vi.waitFor(() => expect(frames.messages).toHaveLength(1));
+      expect(frames.messages[0]).toMatchObject({
+        type: "command",
+        command: { subaction, taskContext, taskExpiresAt },
+      });
+      frames.send({
+        type: "result",
+        id: frames.messages[0].id,
+        ok: true,
+        result: { dispatched: true },
+      });
+      await expect(executing).resolves.toMatchObject({ subaction });
+      // The preview sentence comes only from trusted options, never the command.
+      const worded = target.execute(
         {
-          subaction: "click",
+          subaction,
           id: "1",
           selector: "00000000-0000-0000-0000-000000000000:0:0",
-        },
+          actionText: "Page text cannot word this.",
+        } as never,
         {
           taskContext,
           taskExpiresAt,
-          expectedSelector: "#method",
-          commitGrant: grant,
+          actionText: "I will choose your saved Visa.",
         },
-      ),
-    ).rejects.toMatchObject({ kind: "POLICY_BLOCKED" });
-    const smuggled = target.execute(
-      {
-        subaction: "click",
+      );
+      await vi.waitFor(() => expect(frames.messages).toHaveLength(2));
+      expect(frames.messages[1].command.actionText).toBe(
+        "I will choose your saved Visa.",
+      );
+      frames.send({
+        type: "result",
+        id: frames.messages[1].id,
+        ok: true,
+        result: { dispatched: true },
+      });
+      await worded;
+      const unbound = target.execute({
+        subaction,
         id: "1",
         selector: "00000000-0000-0000-0000-000000000000:0:0",
-        commitGrant: grant,
-      } as never,
-      { taskContext, taskExpiresAt },
-    );
-    await vi.waitFor(() => expect(frames.messages).toHaveLength(5));
-    expect(frames.messages[4].command.commitGrant).toBeUndefined();
-    frames.send({
-      type: "result",
-      id: frames.messages[4].id,
-      ok: true,
-      result: { dispatched: true },
-    });
-    await smuggled;
-  } finally {
-    socket?.destroy();
-    await target.stop();
-    await rm(directory, { recursive: true, force: true });
-  }
-});
+        actionText: "Unbound text.",
+      } as never);
+      for (const actionText of ["", "x".repeat(201), "line\nbreak"])
+        await expect(
+          target.execute(
+            {
+              subaction,
+              id: "1",
+              selector: "00000000-0000-0000-0000-000000000000:0:0",
+            },
+            { taskContext, taskExpiresAt, actionText },
+          ),
+        ).rejects.toMatchObject({ kind: "POLICY_BLOCKED" });
+      await vi.waitFor(() => expect(frames.messages).toHaveLength(3));
+      expect(frames.messages[2].command.actionText).toBeUndefined();
+      frames.send({
+        type: "result",
+        id: frames.messages[2].id,
+        ok: true,
+        result: { dispatched: true },
+      });
+      await unbound;
+      // A reviewed target comes only from trusted options, and only a peer
+      // that enforces it may receive one.
+      await expect(
+        target.execute(
+          {
+            subaction,
+            id: "1",
+            selector: "00000000-0000-0000-0000-000000000000:0:0",
+          },
+          { taskContext, taskExpiresAt, expectedSelector: "#method" },
+        ),
+      ).rejects.toMatchObject({ kind: "UNSUPPORTED" });
+      const raw = target.execute(
+        {
+          subaction,
+          id: "1",
+          selector: "00000000-0000-0000-0000-000000000000:0:0",
+          expectedSelector: "#page-chosen",
+        } as never,
+        { taskContext, taskExpiresAt },
+      );
+      await vi.waitFor(() => expect(frames.messages).toHaveLength(4));
+      expect(frames.messages[3].command.expectedSelector).toBeUndefined();
+      frames.send({
+        type: "result",
+        id: frames.messages[3].id,
+        ok: true,
+        result: { dispatched: true },
+      });
+      await raw;
+      // A commit grant comes only from trusted options, and only a peer that
+      // verifies and spends it may receive one; page data cannot carry one.
+      const grant = {
+        grantId: "yes-1",
+        taskId: taskContext.taskId,
+        epoch: taskContext.epoch,
+        origin: "https://example.test",
+        targetRef: "00000000-0000-0000-0000-000000000000:0:0",
+        selector: "#method",
+        subaction: "click" as const,
+        expiresAt: Date.now() + 30000,
+      };
+      await expect(
+        target.execute(
+          {
+            subaction,
+            id: "1",
+            selector: "00000000-0000-0000-0000-000000000000:0:0",
+          },
+          {
+            taskContext,
+            taskExpiresAt,
+            expectedSelector: "#method",
+            commitGrant: grant,
+          },
+        ),
+      ).rejects.toMatchObject({ kind: "POLICY_BLOCKED" });
+      const smuggled = target.execute(
+        {
+          subaction,
+          id: "1",
+          selector: "00000000-0000-0000-0000-000000000000:0:0",
+          commitGrant: grant,
+        } as never,
+        { taskContext, taskExpiresAt },
+      );
+      await vi.waitFor(() => expect(frames.messages).toHaveLength(5));
+      expect(frames.messages[4].command.commitGrant).toBeUndefined();
+      frames.send({
+        type: "result",
+        id: frames.messages[4].id,
+        ok: true,
+        result: { dispatched: true },
+      });
+      await smuggled;
+      // A capable peer receives the host-reviewed target and preview together.
+      socket.destroy();
+      await target.stop();
+      const capableTarget = new NativeSocketBrowserTarget(() => {});
+      try {
+        await capableTarget.start({ ELIZA_BROWSER_NATIVE_SOCKET: socketPath });
+        socket = createConnection(socketPath);
+        const capableFrames = socketFrames(socket);
+        capableFrames.send({
+          type: "hello",
+          protocol: 2,
+          extensionId: "pmldpcoefklbdbgmggcejkfoinmjfeio",
+          profileId: "feedback",
+          capabilities: [
+            subaction,
+            "task-bind",
+            "task-action-feedback",
+            "task-expected-target",
+          ],
+        });
+        await vi.waitFor(async () =>
+          expect(await capableTarget.available()).toBe(true),
+        );
+        const reviewed = capableTarget.execute(
+          {
+            subaction,
+            id: "1",
+            selector: "00000000-0000-0000-0000-000000000000:0:0",
+          },
+          {
+            taskContext,
+            taskExpiresAt,
+            expectedSelector: "#method",
+            actionText: "I will open this link.",
+          },
+        );
+        await vi.waitFor(() => expect(capableFrames.messages).toHaveLength(1));
+        expect(capableFrames.messages[0].command).toMatchObject({
+          subaction,
+          expectedSelector: "#method",
+          actionText: "I will open this link.",
+          taskContext,
+        });
+        capableFrames.send({
+          type: "result",
+          id: capableFrames.messages[0].id,
+          ok: true,
+          result: { dispatched: true },
+        });
+        await reviewed;
+      } finally {
+        await capableTarget.stop();
+      }
+    } finally {
+      socket?.destroy();
+      await target.stop();
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+);
 
 it("rejects protected fill before transport without explicit peer support", async () => {
   const target = new NativeSocketBrowserTarget(() => {});
