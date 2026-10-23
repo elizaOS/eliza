@@ -171,8 +171,14 @@ private sink without persistence, logging or renderer output. Hosts must strip
 handled Intent data before passing lifecycle events to a WebView, use a bounded
 executor and supply coarse delivery-failure handling. The sink must validate state,
 PKCE, account identity and single-use exchange. `QUEUED` is transport admission,
-not authentication success. Portable JVM coverage is in `test:native-host`; Android
-intent/app-link delivery and provider callback registration need host qualification.
+not authentication success. `ResponseMode.FRAGMENT` admits `response_mode=fragment`
+returns, with the response in the fragment or an error in the query, never both.
+`OAuthBrowserLauncher` opens the authorize address in an Auth Tab when the browser
+supports it and hands the result to the callback. If the browser cannot verify the
+redirect host, or has no Auth Tab support, it opens a Custom Tab; the host then
+delivers the App Link intent to the same callback. Portable JVM coverage is in
+`test:native-host`; Android intent/app-link delivery, Auth Tab results and provider
+callback registration need host qualification.
 
 `NativeProcessLog` drains child diagnostics with bounded line buffers, literal
 secret redaction before truncation, UTF-8 byte-limited rotation and serialized
