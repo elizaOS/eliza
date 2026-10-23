@@ -60,12 +60,14 @@ function parameters(message: Memory, options?: HandlerOptions): Params {
   return values as Params;
 }
 
+// The values here come from the model, not from an adapter. A model can copy an
+// opaque token out of a rendered answer together with the space or line break
+// that framed it there, so this model-facing boundary trims the framing. The
+// service and the adapters keep every token they receive byte for byte: a
+// provider token with that padding answers 404 or an invalid-token error, and
+// an existing place or page would be reported as absent.
 function text(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-function opaqueText(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 function flag(value: unknown): boolean {
@@ -273,13 +275,13 @@ async function resolvedPlace(
   params: Params,
   ownerEntityId: string,
 ): Promise<PlaceRef | null> {
-  const savedPlaceId = opaqueText(params.savedPlaceId);
+  const savedPlaceId = text(params.savedPlaceId);
   if (savedPlaceId) {
     return (
       (await service.getSavedPlace(ownerEntityId, savedPlaceId))?.place ?? null
     );
   }
-  const placeId = opaqueText(params.placeId);
+  const placeId = text(params.placeId);
   if (placeId) return service.getPlace(placeId, text(params.provider));
   return directPlace(params);
 }
@@ -383,7 +385,7 @@ async function execute(
   try {
     switch (action) {
       case "place": {
-        const placeId = opaqueText(params.placeId);
+        const placeId = text(params.placeId);
         if (placeId) {
           const { place, provider } = await service.getPlaceResult(
             placeId,
@@ -484,7 +486,7 @@ async function execute(
             {
               query,
               near,
-              cursor: opaqueText(params.cursor),
+              cursor: text(params.cursor),
               limit: number(params.limit),
             },
             text(params.provider),
@@ -523,8 +525,8 @@ async function execute(
         );
       }
       case "route": {
-        const originPlaceId = opaqueText(params.originPlaceId);
-        const destinationPlaceId = opaqueText(params.destinationPlaceId);
+        const originPlaceId = text(params.originPlaceId);
+        const destinationPlaceId = text(params.destinationPlaceId);
         const origin =
           directPlace(params, "origin") ??
           (originPlaceId
