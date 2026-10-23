@@ -422,8 +422,8 @@ try {
     evaluate(
       'globalThis.__elizaPageGuidanceV1?.visible && globalThis.__elizaPageGuidanceV1?.host.isConnected && globalThis.__elizaPageGuidanceV1?.shadow.querySelector(".pointer")?.style.display === "block"',
     );
-  const waitPointer = async () => {
-    const deadline = Date.now() + 3000;
+  const waitPointer = async (timeout = 3000) => {
+    const deadline = Date.now() + timeout;
     while (!(await pointerVisible())) {
       assert.ok(Date.now() < deadline, "Pointer did not become visible");
       await new Promise((resolve) => setTimeout(resolve, 20));
@@ -513,7 +513,18 @@ try {
   assert.equal((await forbiddenAction.pending).error.kind, "POLICY_BLOCKED");
   assert.equal(await pointerVisible(), false);
   const execute = api.scripting.executeScript;
+  let delayedValidation = false;
   api.scripting.executeScript = async (request) => {
+    // Native bridge validation can take seconds on a loaded device. It must
+    // not consume the time needed to show the preview and offer Cancel.
+    if (
+      !delayedValidation &&
+      request.args[0].subaction === "click" &&
+      request.args[2] === true
+    ) {
+      delayedValidation = true;
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
     const result = await execute(request);
     if (
       request.args[0].subaction === "click" &&
@@ -525,10 +536,23 @@ try {
     return result;
   };
   const approvedAction = await startAction();
-  await waitPointer();
+  await waitPointer(6500);
   const approvedReply = await approvedAction.pending;
+  assert.equal(delayedValidation, true);
   assert.equal(approvedReply.ok, true, JSON.stringify(approvedReply));
   assert.equal(await page.evaluate(() => window.clicks), 1);
+  assert.equal(await pointerVisible(), false);
+  delayedValidation = false;
+  const expiredDuringValidation = await startAction({
+    taskExpiresAt: Date.now() + 1500,
+  });
+  assert.equal((await expiredDuringValidation.pending).ok, false);
+  assert.equal(delayedValidation, true);
+  assert.equal(
+    await page.evaluate(() => window.clicks),
+    1,
+    "Slow setup cannot renew expired authorization",
+  );
   assert.equal(await pointerVisible(), false);
   await page.setViewport({ width: 640, height: 960 });
   const fillAction = await startAction(

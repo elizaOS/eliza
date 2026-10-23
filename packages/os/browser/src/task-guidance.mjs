@@ -167,8 +167,8 @@ export function createTaskGuidance(
       const ticket = { id };
       active.set(tabId, ticket);
       const valid = () => current() && active.get(tabId) === ticket;
-      const actionId = `action:${id}`,
-        expiresAt = Math.min(Date.now() + 5000, policy.expiresAt);
+      const actionId = `action:${id}`;
+      let expiresAt = policy.expiresAt;
       const inject = async (func, args) => {
         if (!valid()) throw stale();
         const results = await api.scripting.executeScript({
@@ -193,6 +193,10 @@ export function createTaskGuidance(
             throw new BridgeError(result.error.kind, result.error.message);
           if (result.validated !== true) throw stale();
           await track(tabId, true);
+          // Native validation and metadata round trips are not preview time.
+          // Preserve the original authorization deadline while leaving room
+          // for cursor travel, visible dwell and cancellation after setup.
+          expiresAt = Math.min(Date.now() + 5000, policy.expiresAt);
           const shown = await inject(pageGuidance, [
             {
               kind: "show",
