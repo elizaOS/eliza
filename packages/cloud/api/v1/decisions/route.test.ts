@@ -79,7 +79,7 @@ test("route answers 503 unavailable while disabled or without the AI binding", a
   ]) {
     const response = await post(modeRequest, env);
     expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({
+    expect((await response.json()) as unknown).toEqual({
       status: "unavailable",
       reason: "disabled",
     });
@@ -103,7 +103,7 @@ test("route asks Clef flash through the AI binding and returns the typed answer"
   });
   expect(response.status).toBe(200);
   expect(response.headers.get("cache-control")).toBe("no-store");
-  expect(await response.json()).toEqual({
+  expect((await response.json()) as unknown).toEqual({
     status: "ok",
     kind: "mode",
     model: "clef-flash",
@@ -125,7 +125,7 @@ test("provider failure answers 503 and never logs request text", async () => {
     CLEF_DECISIONS_ENABLED: "true",
   });
   expect(response.status).toBe(503);
-  expect(await response.json()).toEqual({
+  expect((await response.json()) as unknown).toEqual({
     status: "unavailable",
     reason: "provider_error",
   });
@@ -143,7 +143,7 @@ test("invalid requests are refused without echoing their text", async () => {
     },
   );
   expect(response.status).toBe(400);
-  expect(await response.json()).toEqual({
+  expect((await response.json()) as unknown).toEqual({
     error: "Invalid decision request",
     field: "action",
   });
