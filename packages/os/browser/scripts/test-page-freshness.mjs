@@ -326,7 +326,7 @@ try {
       "beforeend",
       '<label for="full">Full name</label><input id="full" autocomplete="name" required aria-invalid="true" aria-describedby="hint" aria-errormessage="problem" value="private-name-value"><span id="hint">As shown on your bill</span><span id="problem">Enter your name</span><label>Card number <input id="card" autocomplete="cc-number" value="4242424242424242"></label><span id="pin-name">PIN</span><input id="pin" aria-labelledby="pin-name" autocomplete="current-password"><input id="agree" type="checkbox" checked aria-label="Paperless"><button id="more" type="button" aria-expanded="false" disabled>More</button>',
     );
-    document.querySelector("#full").focus();
+    document.querySelector("#full").focus({ preventScroll: true });
   });
   state = await snapshot();
   const named = (label) =>
