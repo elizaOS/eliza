@@ -119,12 +119,13 @@ function sensitive(text) {
   if (/\b(?:otp|pin|cvv|cvc)\s*(?:is\s+|[:=]\s*)\d{3,10}\b/i.test(text))
     return true;
   // "my code is 4 8 2 9 1 7", "the code they sent is 482917" and
-  // "482917 is the code". A zip, postal or area code is not a secret.
+  // "482917 is the code". A zip, postal or area code is not a secret, and
+  // neither is an amount ("the code costs 1250.75").
   if (
-    /(?<!\b(?:zip|postal|post|area|country|dialing)\s+)\b(?:pass)?code\b(?:\s+[a-z']+){0,4}?\s*(?:[:=]\s*)?\d(?:[\s-]?\d){3,7}(?!\d)/i.test(
+    /(?<!\b(?:zip|postal|post|area|country|dialing)\s+)\b(?:pass)?code\b(?:\s+[a-z']+){0,4}?\s*(?:[:=]\s*)?\d(?:[\s-]?\d){3,7}(?![.,]?\d)/i.test(
       text,
     ) ||
-    /(?<!\d)\d(?:[\s-]?\d){3,7}\s+(?:is|was)\s+(?:the|my|your|our)\s+(?:(?!(?:zip|postal|post|area|country|dialing)\b)[a-z]+\s+){0,2}?(?:pass)?code\b/i.test(
+    /(?<!\d|\d[.,])\d(?:[\s-]?\d){3,7}\s+(?:is|was)\s+(?:the|my|your|our)\s+(?:(?!(?:zip|postal|post|area|country|dialing)\b)[a-z]+\s+){0,2}?(?:pass)?code\b/i.test(
       text,
     )
   )
@@ -192,7 +193,8 @@ const CLAUSE = "(?:[^\\n.!?;,]|[.!?;,](?![\\s.!?;,]|$)){1,80}";
 /**
  * Where a value follows (or comes before) its telling words. Each rule keeps
  * the words that say what it is ("my verification code is") and removes only
- * the value. `kind` says how the value is remembered: digits or a phrase.
+ * the value. `kind` says how the value is remembered: digits, a phrase, or
+ * the first word of a clause only (`password`, `clause`).
  */
 const RULES = [
   {
@@ -210,8 +212,9 @@ const RULES = [
     pattern: /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g,
     kind: "phrase",
   },
-  // "my password is not working" names no password: after "password is" only
-  // a credential-looking word is remembered. The clause is still removed.
+  // "my password is not working" names no password: only the word right after
+  // "password is" is remembered, and only when it looks like a credential.
+  // The clause is still removed.
   {
     pattern: new RegExp(
       `\\b(password\\s*(?:is\\s+|=\\s*|:\\s*))(${CLAUSE})`,
@@ -224,7 +227,7 @@ const RULES = [
       `\\b((?:passphrase|pass phrase|api[ _-]?key|access[ _-]?token|refresh[ _-]?token|client[ _-]?secret)\\s*(?:is\\s+|=\\s*|:\\s*))(${CLAUSE})`,
       "gi",
     ),
-    kind: "phrase",
+    kind: "clause",
   },
   {
     pattern: new RegExp(
@@ -240,10 +243,11 @@ const RULES = [
     ),
     kind: "digits",
   },
-  // "my code is 4 8 2 9 1 7". A zip, postal or area code is not a secret.
+  // "my code is 4 8 2 9 1 7". A zip, postal or area code is not a secret,
+  // and neither is an amount ("the code costs 1250.75").
   {
     pattern: new RegExp(
-      `(?<!\\b(?:zip|postal|post|area|country|dialing)\\s+)\\b((?:pass)?code\\b(?:\\s+[a-z']+){0,4}?\\s*(?:[:=]\\s*)?)(${digitRun(4, 8)})(?!\\d)`,
+      `(?<!\\b(?:zip|postal|post|area|country|dialing)\\s+)\\b((?:pass)?code\\b(?:\\s+[a-z']+){0,4}?\\s*(?:[:=]\\s*)?)(${digitRun(4, 8)})(?![.,]?\\d)`,
       "gi",
     ),
     kind: "digits",
@@ -251,7 +255,7 @@ const RULES = [
   // "482917 is the code"
   {
     pattern: new RegExp(
-      `(?<!\\d)(${digitRun(4, 8)})(\\s+(?:is|was)\\s+(?:the|my|your|our)\\s+(?:[a-z]+\\s+){0,2}?(?:pass)?code\\b)`,
+      `(?<!\\d|\\d[.,])(${digitRun(4, 8)})(\\s+(?:is|was)\\s+(?:the|my|your|our)\\s+(?:[a-z]+\\s+){0,2}?(?:pass)?code\\b)`,
       "gi",
     ),
     kind: "digits",
@@ -361,15 +365,26 @@ export function createSecretScrubber({
     }
   }
   function rememberWords(words) {
-    // A clause keeps a comma or semicolon with no space after it
-    // ("hunter2,please"), so the parts are remembered too.
-    const parts = words.flatMap((word) =>
-      /[,;]/.test(word) ? [word, ...word.split(/[,;]+/)] : [word],
-    );
-    for (const word of credentialWords(parts)) {
+    for (const word of credentialWords(words)) {
+      if (size() >= REMEMBER_LIMIT) clear();
       phraseSecrets.add(key(word));
       phraseLengths.add(1);
     }
+  }
+  /**
+   * The value of a clause ("password is hunter2 and I paid 1250"): its first
+   * word only. The rest of the clause is removed but never remembered, so an
+   * amount, date or room number in the same sentence is not refused later.
+   * A comma or semicolon with no space after it may end the value
+   * ("hunter2,please") or be part of it, so the word and the part before
+   * the punctuation are remembered, never what comes after it.
+   */
+  function rememberClauseValue(first) {
+    if (!first) return;
+    const head = first.split(/[,;]/)[0];
+    rememberWords(head && head !== first ? [first, head] : [first]);
+    const digits = digitsOf(first);
+    if (onlyDigits(first, digits)) rememberDigits(digits);
   }
   function remember(kind, value) {
     if (!kind) return;
@@ -378,16 +393,12 @@ export function createSecretScrubber({
     const words = tokensOf(value)
       .map((token) => token.word)
       .filter((word) => word !== SECRET_REMOVED_MARK);
-    if (kind === "password") {
-      rememberWords(words);
-      if (words.length === 1 && onlyDigits(value, digits))
-        rememberDigits(digits);
-      return;
-    }
+    if (kind === "password") return rememberClauseValue(words[0]);
     if (!words.length || words.length > 12) return;
     if (size() >= REMEMBER_LIMIT) clear();
     phraseSecrets.add(key(words.join(" ")));
     phraseLengths.add(words.length);
+    if (kind === "clause") return rememberClauseValue(words[0]);
     rememberWords(words);
     if (onlyDigits(value, digits)) rememberDigits(digits);
   }

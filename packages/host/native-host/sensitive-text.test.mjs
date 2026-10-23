@@ -197,6 +197,55 @@ test("a password followed by a comma and more words is remembered alone", () => 
   gate.require("please call me");
 });
 
+test("only the value after a password is remembered, not the rest of its sentence", () => {
+  const gate = createSensitiveTextGate();
+  assert.throws(() =>
+    gate.require(
+      "my password is hunter2 and I paid 1250 dollars for room 2b4c",
+    ),
+  );
+  assert.equal(gate.scrubber.size, 1);
+  gate.require("I paid 1250 dollars");
+  gate.require("room 2b4c");
+  assert.throws(() => gate.require("I typed hunter2 again"));
+
+  const talk = createSensitiveTextGate();
+  assert.throws(() => talk.require("password is not working since 10/23/2026"));
+  assert.equal(talk.scrubber.size, 0);
+  talk.require("since 10/23/2026");
+
+  const key = createSensitiveTextGate();
+  assert.throws(() =>
+    key.require("api key is abc123xyz and I paid 1250 dollars"),
+  );
+  key.require("I paid 1250 dollars");
+  assert.throws(() => key.require("abc123xyz"));
+});
+
+test("what follows a comma inside a password value is not remembered alone", () => {
+  const gate = createSensitiveTextGate();
+  assert.throws(() => gate.require("password is hunter2,2024"));
+  gate.require("back in 2024");
+  assert.throws(() => gate.require("use hunter2 now"));
+  assert.throws(() => gate.require("use hunter2,2024 now"));
+});
+
+test("an amount with a decimal or thousands separator after a code word stays", () => {
+  for (const text of [
+    "the code costs 1250.75",
+    "the code costs 4829,50 now",
+    "1250.75 is the code",
+    "12.4829 is the code",
+  ]) {
+    assert.equal(containsSensitiveText(text), false, text);
+    assert.equal(redactSensitiveText(text), text, text);
+  }
+  assert.equal(
+    redactSensitiveText("the code is 4829."),
+    `the code is ${MARK}.`,
+  );
+});
+
 test("a host matcher adds its own values to the check, the scrubber and the gate", () => {
   // A host-specific value: "member id" followed by eight digits.
   const memberId = {
