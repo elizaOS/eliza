@@ -119,7 +119,11 @@ public final class TaskDataKeyStore {
    * The target is written and read back first; then {@code step} (may be null) runs, for example
    * to move the host's files; only then is the source erased. A repeat after a crash resumes.
    * Returns false, changing nothing, when the source has no key or the target already holds a
-   * different key.
+   * different key. A stop inside the final source erase leaves the source without its Keystore
+   * entry, so a repeat throws {@link WrappingKeyMissingException}; the target is already
+   * committed and {@link #destroy} on the source finishes the move. {@code step} runs under the
+   * process-wide {@link JsonCredentialSlots#LOCK}, so it must not wait on another thread that
+   * uses credential slots.
    */
   public boolean adopt(String fromAccountId, String toAccountId, String databaseId, AdoptStep step)
       throws Exception {
