@@ -613,7 +613,10 @@ const optionalPluginSpecifiers = {
   workflow: "@elizaos/plugin-workflow/trigger-routes",
 } as const;
 const optionalPluginImports = {
-  capacitor: () => importOptionalPlugin(optionalPluginSpecifiers.capacitor),
+  // The mobile host has no node_modules. Keep this specifier visible to the
+  // bundler, as with the native browser loader above.
+  capacitor: () =>
+    import(/* @vite-ignore */ "@elizaos/plugin-native-inference/host-bridge"),
   cloud: () => importOptionalPlugin(optionalPluginSpecifiers.cloud),
   imessage: () => importOptionalPlugin(optionalPluginSpecifiers.imessage),
   mcp: () => importOptionalPlugin(optionalPluginSpecifiers.mcp),
