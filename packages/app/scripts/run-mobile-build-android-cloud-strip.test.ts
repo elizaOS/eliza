@@ -71,6 +71,28 @@ describe("Android push bridge startup", () => {
   });
 });
 
+describe("Android cloud WebView visibility", () => {
+  it("hides the page while the activity is stopped in both variants", () => {
+    for (const launcherKiosk of [false, true]) {
+      const source = cloudSafeMainActivityJava("ai.elizaos.app", {
+        launcherKiosk,
+      });
+      const onStop = source.slice(source.indexOf("public void onStop()"));
+      expect(onStop.indexOf("getWebView().onPause()")).toBeGreaterThan(-1);
+      expect(onStop.indexOf("getWebView().onPause()")).toBeLessThan(
+        onStop.indexOf("super.onStop()"),
+      );
+      const onStart = source.slice(source.indexOf("public void onStart()"));
+      expect(onStart.indexOf("getWebView().onResume()")).toBeGreaterThan(
+        onStart.indexOf("super.onStart()"),
+      );
+      expect(source).not.toMatch(
+        /void onPause\(\)[^}]*getWebView\(\)\.onPause/,
+      );
+    }
+  });
+});
+
 /** Every committed main-sourceset .java basename that references ElizaAgentService. */
 function collectAgentServiceReferencingSources() {
   const referencing = [];

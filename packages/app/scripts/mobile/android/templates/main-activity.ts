@@ -206,6 +206,26 @@ ${launcherMethods}
 ${resumeHandler}
 ${focusHandler}
 
+    // Screen off stops the activity but can leave its window visible, so the
+    // page would keep document.visibilityState "visible". WebView.onPause marks
+    // the page hidden; JavaScript keeps running. Use onStop, not onPause, so a
+    // permission dialog over the visible app does not hide the page.
+    @Override
+    public void onStart() {
+        super.onStart();
+        if (getBridge() != null && getBridge().getWebView() != null) {
+            getBridge().getWebView().onResume();
+        }
+    }
+
+    @Override
+    public void onStop() {
+        if (getBridge() != null && getBridge().getWebView() != null) {
+            getBridge().getWebView().onPause();
+        }
+        super.onStop();
+    }
+
     private void keepScreenAwake() {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
