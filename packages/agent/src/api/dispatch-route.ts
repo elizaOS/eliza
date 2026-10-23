@@ -179,10 +179,27 @@ export function buildLegacyShim(args: {
     if (typeof args.body === "string") return args.body;
     if (Buffer.isBuffer(args.body)) return args.body.toString("utf8");
     try {
-      return JSON.stringify(args.body);
-    } catch {
-      return "";
+      const serialized = JSON.stringify(args.body);
+      if (typeof serialized === "string") return serialized;
+    } catch (cause) {
+      // error-policy:J1 request-body translation: a payload the shim cannot
+      // represent (circular reference, BigInt) used to become an empty request
+      // stream, so a handler re-reading the raw body ran against zero bytes and
+      // the fault surfaced downstream as "the client sent no payload". Refuse
+      // to build the shim instead; every transport already turns a dispatch
+      // rejection into a visible 500 / `{ok:false}` frame.
+      throw new ElizaError("request body is not JSON-serializable", {
+        code: "ROUTE_REQUEST_BODY_NOT_SERIALIZABLE",
+        cause,
+        context: { method: args.method, path: args.path },
+      });
     }
+    // `JSON.stringify` returns undefined for values with no JSON form (a bare
+    // function/symbol); same reasoning as above.
+    throw new ElizaError("request body is not JSON-serializable", {
+      code: "ROUTE_REQUEST_BODY_NOT_SERIALIZABLE",
+      context: { method: args.method, path: args.path },
+    });
   })();
   const readable = Readable.from(
     bodyText ? [Buffer.from(bodyText, "utf8")] : [],
