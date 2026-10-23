@@ -1753,42 +1753,46 @@ function applyInboxChatMemory(
     existing.latestDiscordMessageId = discordMessageId;
   }
 }
+/**
+ * Newest readable message in a room, or null when the room genuinely has none
+ * (and when every stored row is a reaction/empty-content row).
+ *
+ * Storage failures propagate: `null` means "this room has no message to read",
+ * never "the read failed". Callers that can degrade (the chats sidebar) decide
+ * that at their own boundary; callers that cannot (connector source trust) turn
+ * the failure into an observable server error.
+ */
 async function loadLatestRoomMemory(
   runtime: AgentRuntime,
   roomId: UUID,
 ): Promise<Memory | null> {
-  try {
-    const memories = await runtime.getMemories({
-      tableName: "messages",
-      roomId,
-      limit: 10,
-      unique: false,
-    });
-    if (!Array.isArray(memories) || memories.length === 0) {
-      return null;
-    }
-    const candidates = memories
-      .filter((memory) => !extractDiscordReactionEvent(memory))
-      .filter((memory) => extractText(memory).trim().length > 0)
-      .sort((left, right) => {
-        const rightCreated =
-          typeof right.createdAt === "number" &&
-          Number.isFinite(right.createdAt)
-            ? right.createdAt
-            : 0;
-        const leftCreated =
-          typeof left.createdAt === "number" && Number.isFinite(left.createdAt)
-            ? left.createdAt
-            : 0;
-        return (
-          rightCreated - leftCreated ||
-          (left.id ?? "").localeCompare(right.id ?? "")
-        );
-      });
-    return candidates[0] ?? null;
-  } catch {
+  const memories = await runtime.getMemories({
+    tableName: "messages",
+    roomId,
+    limit: 10,
+    unique: false,
+  });
+  if (!Array.isArray(memories) || memories.length === 0) {
     return null;
   }
+  const candidates = memories
+    .filter((memory) => !extractDiscordReactionEvent(memory))
+    .filter((memory) => extractText(memory).trim().length > 0)
+    .sort((left, right) => {
+      const rightCreated =
+        typeof right.createdAt === "number" && Number.isFinite(right.createdAt)
+          ? right.createdAt
+          : 0;
+      const leftCreated =
+        typeof left.createdAt === "number" && Number.isFinite(left.createdAt)
+          ? left.createdAt
+          : 0;
+      return (
+        rightCreated - leftCreated ||
+        (left.id ?? "").localeCompare(right.id ?? "")
+      );
+    });
+  return candidates[0] ?? null;
 }
 async function augmentRoomsFromRecentMemories(
   runtime: AgentRuntime,
@@ -2371,11 +2375,27 @@ async function loadInboxChats(
         return !!roomSource && sourceFilter.has(roomSource.toLowerCase());
       })
       .map(async ([roomIdKey, room]) => {
-        const latestMemory = await loadLatestRoomMemory(
-          runtime,
-          roomIdKey as UUID,
-        );
-        return { latestMemory, room, roomIdKey };
+        try {
+          const latestMemory = await loadLatestRoomMemory(
+            runtime,
+            roomIdKey as UUID,
+          );
+          return { latestMemory, room, roomIdKey };
+        } catch (error) {
+          // error-policy:J2 One unreadable room must not blank the sidebar.
+          // The row still renders from room metadata (empty preview, zero
+          // count); the failure is logged so it is not mistaken for a room
+          // that really has no messages.
+          runtime.logger.warn(
+            {
+              src: "inbox-routes",
+              roomId: roomIdKey,
+              err: error instanceof Error ? error.message : String(error),
+            },
+            "[InboxRoutes] inbox chat backfill lookup failed",
+          );
+          return { latestMemory: null, room, roomIdKey };
+        }
       }),
   );
   for (const { latestMemory, room, roomIdKey } of backfilledRooms) {
@@ -2684,7 +2704,33 @@ export async function handleInboxRoute(
       helpers.error(res, "inbox room not found", 404);
       return true;
     }
-    const trustedRoomSource = await resolveTrustedRoomSource(runtime, room);
+    let trustedRoomSource: string | null;
+    try {
+      trustedRoomSource = await resolveTrustedRoomSource(runtime, room);
+    } catch (error) {
+      // error-policy:J1 HTTP route boundary translates a failed room-source
+      // read into an observable failure instead of answering 409 as if the
+      // room had no connector source at all.
+      runtime.logger.error(
+        {
+          src: "inbox-routes",
+          roomId,
+          source,
+          err: error instanceof Error ? error.message : String(error),
+        },
+        "[InboxRoutes] room source lookup failed",
+      );
+      helpers.json(
+        res,
+        {
+          error: "Inbox room source lookup failed",
+          code: "INBOX_ROOM_SOURCE_LOOKUP_FAILED",
+          context: { requestedSource: source, roomId },
+        },
+        500,
+      );
+      return true;
+    }
     if (
       !trustedRoomSource ||
       !connectorSourcesMatch(source, trustedRoomSource)
