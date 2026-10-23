@@ -9,6 +9,7 @@ import type {
   CreateLifeOpsCalendarEventRequest,
   LifeOpsCalendarEvent,
 } from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import {
   createOrder,
   createPayment,
@@ -386,9 +387,31 @@ export class TravelDomain {
       passengers: ReadonlyArray<TravelBookingPassenger>;
       calendarSync?: TravelCalendarSyncPlan | null;
       calendarGrantId?: string;
+      /** The quote the owner approved; a higher or other-currency price is not booked. */
+      approvedTotal?: { cents: number; currency: string } | null;
     },
   ): Promise<FlightBookingExecutionResult> {
     const prepared = await this.prepareFlightBooking(args);
+    const approved = args.approvedTotal;
+    if (
+      approved &&
+      approved.cents > 0 &&
+      (prepared.payload.currency !== approved.currency ||
+        prepared.payload.totalCents > approved.cents)
+    ) {
+      // The offer is re-read here, after approval: its price can rise after
+      // the search. Booking it would pay more than the owner approved.
+      throw new ElizaError("The flight price changed after approval", {
+        code: "TRAVEL_QUOTE_CHANGED",
+        context: {
+          offerId: prepared.offer.id,
+          approvedCents: approved.cents,
+          approvedCurrency: approved.currency,
+          currentCents: prepared.payload.totalCents,
+          currentCurrency: prepared.payload.currency,
+        },
+      });
+    }
     const order = await this.createFlightOrder({
       offer: prepared.offer,
       passengers: args.passengers,
