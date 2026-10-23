@@ -9,7 +9,9 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ElizaError } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { tasksAction } from "../actions/tasks.js";
 import {
   DEFAULT_WORKSPACE_DISK_CAP_BYTES,
   DEFAULT_WORKSPACE_MIN_FREE_BYTES,
@@ -227,16 +229,32 @@ describe("measureDirBytes", () => {
     expect(total).toBe(0);
   });
 
-  it("rejects a path that exists but is not a readable directory", async () => {
+  it("rejects an unreadable path with a path-free typed error", async () => {
     const root = tmpRoot("wsreg-measure-notdir-");
     const filePath = join(root, "not-a-dir.txt");
     await writeFile(filePath, "x", "utf8");
 
     // ENOTDIR is a corrupt registry entry, not a vanished workspace: reporting
     // 0 bytes would let the cap gate under-count and admit a spawn on a full disk.
-    await expect(measureDirBytes(filePath)).rejects.toMatchObject({
-      code: "ENOTDIR",
+    const failure = await measureDirBytes(filePath).catch(
+      (error: unknown) => error,
+    );
+    expect(failure).toMatchObject({
+      code: "WORKSPACE_DISK_MEASUREMENT_FAILED",
     });
+    expect(failure).toBeInstanceOf(ElizaError);
+    // Chat-safe by construction: the provision action relays error.message
+    // verbatim, so the host path and errno stay in structured context.
+    expect(failure.message).not.toContain(root);
+    expect(failure.message).not.toContain("/");
+    expect((failure as ElizaError).context).toEqual({
+      dir: filePath,
+      operation: "readdir",
+      errno: "ENOTDIR",
+    });
+    expect(((failure as ElizaError).cause as NodeJS.ErrnoException).code).toBe(
+      "ENOTDIR",
+    );
   });
 });
 
@@ -339,5 +357,76 @@ describe("CodingWorkspaceService listScratchWorkspaces sorting", () => {
     expect(list).toHaveLength(2);
     expect(list[0]?.sessionId).toBe("sess-2");
     expect(list[1]?.sessionId).toBe("sess-1");
+  });
+});
+
+describe("provision_workspace action with an unmeasurable registered dir", () => {
+  it("fails the action, provisions nothing, and keeps the host path out of the reply", async () => {
+    const root = tmpRoot("wsreg-action-leak-");
+    // A registry record whose path exists but is a regular file: readdir fails
+    // with ENOTDIR, so the budget gate cannot verify usedBytes.
+    const corruptPath = join(root, "corrupt-entry");
+    await writeFile(corruptPath, "not a directory", "utf8");
+
+    let provisionCalls = 0;
+    const service = new CodingWorkspaceService(
+      { getSetting: () => undefined } as never,
+      { baseDir: join(root, "workspaces") },
+    );
+    (service as unknown as { workspaceService: unknown }).workspaceService = {
+      provision: async () => {
+        provisionCalls += 1;
+        throw new Error(
+          "provision must not run when the budget is unverifiable",
+        );
+      },
+    };
+    service
+      .getWorkspaceRegistry()
+      .register("git-workspace", corruptPath, "owner-1");
+
+    const runtime = {
+      agentId: "agent-1",
+      getService: (type: string) =>
+        type === "CODING_WORKSPACE_SERVICE" ? service : null,
+      hasService: (type: string) => type === "CODING_WORKSPACE_SERVICE",
+      getRoom: async () => ({ id: "room-1" }),
+      getSetting: () => undefined,
+      logger: { debug() {}, info() {}, warn() {}, error() {} },
+      reportError() {},
+    };
+
+    const replies: string[] = [];
+    const result = (await tasksAction.handler(
+      runtime as never,
+      {
+        id: "msg-1",
+        entityId: "agent-1",
+        agentId: "agent-1",
+        roomId: "room-1",
+        content: { text: "create a workspace for elizaOS/eliza" },
+      } as never,
+      undefined,
+      {
+        parameters: {
+          action: "provision_workspace",
+          repo: "https://github.com/elizaOS/eliza",
+          baseBranch: "main",
+        },
+      },
+      async (content) => {
+        if (typeof content.text === "string") replies.push(content.text);
+        return [];
+      },
+    )) as { success: boolean; error?: string };
+
+    expect(result.success).toBe(false);
+    expect(provisionCalls).toBe(0);
+    expect(service.listWorkspaces()).toEqual([]);
+    expect(replies.join("\n")).not.toContain(root);
+    expect(replies.join("\n")).not.toContain(corruptPath);
+    expect(result.error).toBe(
+      "a workspace directory could not be measured, so the disk budget could not be verified and the workspace was not created",
+    );
   });
 });
