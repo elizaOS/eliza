@@ -1,0 +1,103 @@
+name: Cloud existing runner qualification (disabled draft)
+"on":
+  workflow_dispatch:
+    inputs:
+      reviewed_sha:
+        required: true
+        type: string
+      issued_epoch:
+        required: true
+        type: string
+      expires_epoch:
+        required: true
+        type: string
+      root_reservation_sha256:
+        required: true
+        type: string
+permissions: {}
+concurrency:
+  group: cloud-inactive-artifact-production
+  cancel-in-progress: false
+jobs:
+  qualify-existing-host:
+    # Deliberately disabled. Enabling requires a separate exact Root scope/resource review.
+    if: ${{ false }}
+    environment: production
+    runs-on: [self-hosted, Linux, X64, x-canary]
+    timeout-minutes: 1
+    # No checkout, installs, credentials, artifact transfer or Cloudflare requests.
+    steps:
+      - name: FS-only existing host qualification, no checkout or credentials
+        env:
+          REVIEWED_SHA: ${{ inputs.reviewed_sha }}
+          ISSUED_EPOCH: ${{ inputs.issued_epoch }}
+          EXPIRES_EPOCH: ${{ inputs.expires_epoch }}
+          ROOT_RESERVATION_SHA256: ${{ inputs.root_reservation_sha256 }}
+          REVIEWED_RESERVATION_SHA256: REQUIRES_ROOT_EXACT_LITERAL_RESERVATION_SHA256
+        run: |
+          python3 - <<'PYHOST'
+          import os,json,time,pathlib,hashlib,shutil
+          # FS-only host qualification: no subprocess, network, credential or provider access.
+          assert os.environ.get('GITHUB_EVENT_NAME')=='workflow_dispatch'
+          assert os.environ.get('GITHUB_REF')=='refs/heads/main'
+          assert os.environ.get('RUNNER_NAME')=='eliza-robot-1'
+          assert os.environ.get('GITHUB_RUN_ATTEMPT')=='1'
+          assert os.environ['GITHUB_SHA']==os.environ['REVIEWED_SHA']
+          now=time.time();issued=float(os.environ['ISSUED_EPOCH']);expiry=float(os.environ['EXPIRES_EPOCH'])
+          assert issued<=now<expiry and 0<expiry-issued<=300
+          assert os.environ['ROOT_RESERVATION_SHA256']==os.environ['REVIEWED_RESERVATION_SHA256']
+          assert len(os.environ['ROOT_RESERVATION_SHA256'])==64
+          out={'scope':'READ_ONLY_HOST_QUALIFICATION_NOT_PUBLICATION','runId':os.environ['GITHUB_RUN_ID'],'attempt':1,'workflowSHA':os.environ['GITHUB_SHA'],'runner':'eliza-robot-1','reservationSHA256':os.environ['ROOT_RESERVATION_SHA256'],'atEpoch':now,'cpuCount':os.cpu_count(),'freeBytes':shutil.disk_usage(os.environ['RUNNER_TEMP']).free}
+          def read(path,limit=65536):
+           try:
+            with pathlib.Path(path).open('rb') as stream:
+             value=stream.read(limit+1)
+            if len(value)>limit:raise ValueError('Qualification file exceeds bound')
+            return value.decode()
+           except FileNotFoundError:return None
+          out['meminfo']=read('/proc/meminfo');out['selfStatus']=read('/proc/self/status')
+          # Only the approved cgroup2 mount is reportable; never emit unrelated mount lines.
+          def cgroup_mount(text):
+           matches=[]
+           for line in (text or '').splitlines():
+            fields=line.split()
+            if '-' not in fields:continue
+            split=fields.index('-')
+            if split<6 or len(fields)<=split+1 or fields[split+1]!='cgroup2':continue
+            def unescape(value):
+             for code,char in [('\\040',' '),('\\011','\t'),('\\012','\n'),('\\134','\\')]:value=value.replace(code,char)
+             return value
+            root,mountpoint=unescape(fields[3]),unescape(fields[4])
+            if mountpoint!='/sys/fs/cgroup':continue
+            if not root.startswith('/') or '..' in root.split('/'):return None
+            matches.append({'type':'cgroup2','root':root,'mountpoint':mountpoint})
+           return matches[0] if len(matches)==1 else None
+          def cgroup_target(mount,text):
+           if mount is None:return None
+           lines=[line[3:]for line in (text or '').splitlines()if line.startswith('0::')]
+           if len(lines)!=1:return None
+           value=lines[0]
+           if not value.startswith('/') or '..' in value.split('/'):return None
+           root=pathlib.PurePosixPath(mount['root']);relative=pathlib.PurePosixPath(value)
+           if not relative.is_relative_to(root):return None
+           approved=pathlib.Path('/sys/fs/cgroup')
+           point=pathlib.Path(mount['mountpoint'])
+           if point.resolve()!=approved:return None
+           target=point/str(relative.relative_to(root))
+           if not target.resolve().is_relative_to(approved):return None
+           return target
+          try:
+           mount=cgroup_mount(read('/proc/self/mountinfo'))
+           target=cgroup_target(mount,read('/proc/self/cgroup'))
+           out['cgroupMount']=mount
+           out['cgroupTargetStatus']='approved' if target is not None else 'unavailable_or_outside_approved_mount'
+           if target is not None:
+            out['cgroup']={name:read(target/name,4096)for name in ['cpu.max','memory.max','memory.current','memory.swap.max','pids.max','pids.current']}
+          except (ValueError,OSError):
+           out['cgroupMount']=None;out['cgroupTargetStatus']='unavailable'
+          out['controlSocketPresent']={x:pathlib.Path(x).exists()for x in ['/var/run/docker.sock','/run/containerd/containerd.sock']}
+          # Presence only; never execute arbitrary discovered tools or read credential configuration.
+          out['toolPresence']={x:shutil.which(x)is not None for x in ['node','wrangler','python3']}
+          out['floorMet']=out['freeBytes']>=40067108864
+          print(json.dumps(out,sort_keys=True))
+          PYHOST
