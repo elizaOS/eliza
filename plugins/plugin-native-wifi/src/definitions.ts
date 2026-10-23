@@ -91,16 +91,22 @@ export interface ConnectivityResult {
 /** Result returned by `addNetworkWithApproval`. */
 export interface ApprovedJoinResult {
   /**
-   * - `connected`: the joined Wi-Fi network validated. It is either a network that
-   *   appeared after the dialog opened (and Android disclosed no other name) or the
-   *   already-joined network, when Android disclosed its name and it matches `ssid`.
-   * - `captivePortal`: the joined network needs a sign-in page first.
+   * - `connected`: Android validated Internet on a Wi-Fi network whose own name
+   *   equals `ssid`.
+   * - `captivePortal`: the Wi-Fi network named `ssid` needs a sign-in page first.
    * - `declined`: the user closed the system dialog without saving the network.
-   * - `notConnected`: the network was saved, but Android confirmed no join within
-   *   30 seconds. Without location access Android hides network names, so a device
-   *   already on the requested network reports this too.
+   * - `unverified`: no network named `ssid` was confirmed within 30 seconds, but
+   *   Android reported a working Wi-Fi network whose name it withheld (no location
+   *   access or Location off), so it may or may not be the requested one.
+   * - `notConnected`: the network was saved, but Android confirmed no Wi-Fi
+   *   network named `ssid` within 30 seconds and reported no unnamed one.
    */
-  status: "connected" | "captivePortal" | "declined" | "notConnected";
+  status:
+    | "connected"
+    | "captivePortal"
+    | "declined"
+    | "unverified"
+    | "notConnected";
 }
 
 /** Public Capacitor plugin contract — implemented natively on Android with an empty-data web fallback. */

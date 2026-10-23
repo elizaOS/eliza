@@ -2,8 +2,11 @@ package ai.eliza.plugins.wifi
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
+import android.os.Build
 
 /**
  * Pure, [Context]-backed reader for the basic Wi-Fi radio state that
@@ -65,7 +68,36 @@ class WiFiStateReader(private val context: Context) {
             // error-policy:J4 Android hides the name without location access; null means "not disclosed".
             null
         }
-        return trimQuotes(ssid).takeUnless { it.isEmpty() || it == UNKNOWN_SSID }
+        return disclosedSsid(ssid)
+    }
+
+    /**
+     * Name of the Wi-Fi [network] itself, or null when Android does not disclose
+     * it or it cannot be tied to [network].
+     *
+     * On Android 12+ the name comes from [caps] of that network, which carries a
+     * [WifiInfo] when the callback was registered with
+     * `FLAG_INCLUDE_LOCATION_INFO` and the app has location access; this stays
+     * correct with several concurrent Wi-Fi connections. Earlier Android has one
+     * Wi-Fi station only, so `WifiManager.connectionInfo` describes [network]
+     * exactly when [network] is the sole Wi-Fi network both before and after
+     * the name is read.
+     */
+    fun networkSsid(manager: ConnectivityManager, network: Network, caps: NetworkCapabilities): String? {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            return disclosedSsid((caps.transportInfo as? WifiInfo)?.ssid)
+        }
+        if (!isSoleWifiNetwork(manager, network)) return null
+        val ssid = connectedSsid() ?: return null
+        return ssid.takeIf { isSoleWifiNetwork(manager, network) }
+    }
+
+    private fun isSoleWifiNetwork(manager: ConnectivityManager, network: Network): Boolean {
+        @Suppress("DEPRECATION") // No synchronous replacement; a callback only reports asynchronously.
+        val wifi = manager.allNetworks.filter {
+            manager.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+        }
+        return wifi == listOf(network)
     }
 
     /** @throws IllegalStateException if the Wi-Fi service is unavailable (matches
@@ -93,6 +125,10 @@ class WiFiStateReader(private val context: Context) {
     companion object {
         /** `WifiManager.UNKNOWN_SSID` (API 30), returned while Android hides the name. */
         private const val UNKNOWN_SSID = "<unknown ssid>"
+
+        /** [raw] without quotes, or null when it is empty or Android's placeholder for a hidden name. */
+        fun disclosedSsid(raw: String?): String? =
+            trimQuotes(raw).takeUnless { it.isEmpty() || it == UNKNOWN_SSID }
 
         /**
          * `WifiInfo.getSsid()` / some scan results wrap the SSID in quotes

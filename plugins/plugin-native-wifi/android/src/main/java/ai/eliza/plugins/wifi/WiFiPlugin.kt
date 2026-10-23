@@ -27,7 +27,6 @@ import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Wi-Fi bridge for ElizaOS.
@@ -41,17 +40,11 @@ import java.util.concurrent.ConcurrentHashMap
  *    permitted for system / privileged callers like Eliza.
  *
  * `addNetworkWithApproval` (API 30+) is for ordinary apps: it opens the
- * system "Save this network?" dialog and reports whether a validated or
- * captive-portal Wi-Fi network then appears.
+ * system "Save this network?" dialog and reports whether the requested
+ * network, identified by its own name, then validates or hits a captive portal.
  */
 @CapacitorPlugin(name = "ElizaWiFi")
 class WiFiPlugin : Plugin() {
-    /**
-     * Wi-Fi networks that already offered Internet when each approved-join
-     * dialog opened, keyed by call id. Android reports these again as soon as
-     * the result callback registers, so they must not count as the new join.
-     */
-    private val approvedJoinBaselines = ConcurrentHashMap<String, Set<Network>>()
     private val wifiManager: WifiManager?
         get() = context.applicationContext
             .getSystemService(Context.WIFI_SERVICE) as? WifiManager
@@ -288,13 +281,11 @@ class WiFiPlugin : Plugin() {
             call.reject("Connectivity service is unavailable on this device")
             return
         }
-        approvedJoinBaselines[call.callbackId] = wifiInternetNetworks(manager)
         val intent = Intent(Settings.ACTION_WIFI_ADD_NETWORKS)
             .putParcelableArrayListExtra(Settings.EXTRA_WIFI_NETWORK_LIST, arrayListOf(suggestion))
         try {
             startActivityForResult(call, intent, "addNetworkResult")
         } catch (error: ActivityNotFoundException) {
-            approvedJoinBaselines.remove(call.callbackId)
             // error-policy:J1 Some Android builds (for example Wear OS or TV) ship no add-network dialog.
             call.reject("This device has no system dialog for saving Wi-Fi networks", "UNSUPPORTED", error)
             bridge.releaseCall(call)
@@ -305,11 +296,8 @@ class WiFiPlugin : Plugin() {
     @RequiresApi(Build.VERSION_CODES.R)
     private fun addNetworkResult(call: PluginCall?, result: ActivityResult) {
         if (call == null) return
-        // Null when the app process was recreated while the dialog was open:
-        // then no Wi-Fi network is known to be new, and each one needs its name confirmed.
-        val baseline = approvedJoinBaselines.remove(call.callbackId)
         if (result.resultCode != Activity.RESULT_OK) {
-            finishApprovedJoin(call, "declined")
+            finishApprovedJoin(call, ApprovedJoinTracker.STATUS_DECLINED)
             return
         }
         // Settings returns one code per submitted network; one network was submitted.
@@ -319,32 +307,25 @@ class WiFiPlugin : Plugin() {
             bridge.releaseCall(call)
             return
         }
-        awaitWifiInternet(call, call.getString("ssid")?.trim(), baseline)
-    }
-
-    /** Every Wi-Fi network that currently offers Internet, validated or not. */
-    private fun wifiInternetNetworks(manager: ConnectivityManager): Set<Network> {
-        @Suppress("DEPRECATION") // No synchronous replacement; a callback only reports asynchronously.
-        val networks = manager.allNetworks
-        return networks.filterTo(HashSet()) { network ->
-            val caps = manager.getNetworkCapabilities(network)
-            caps != null &&
-                caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
-                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        val ssid = call.getString("ssid")?.trim()
+        if (ssid.isNullOrEmpty()) {
+            call.reject("ssid is required")
+            bridge.releaseCall(call)
+            return
         }
+        awaitWifiInternet(call, ssid)
     }
 
     /**
-     * Resolves `connected` when the joined Wi-Fi network validates, `captivePortal`
-     * when it needs a sign-in page first (it does not validate by itself), and
-     * `notConnected` when neither is confirmed within [APPROVED_JOIN_TIMEOUT_MS].
-     *
-     * A network in [baseline] (or any network when [baseline] is null) was already
-     * up before the dialog opened, so it counts only when Android discloses its
-     * name and the name matches [ssid]. A network that appears afterwards counts
-     * unless Android discloses a different name.
+     * Resolves `connected` when the Wi-Fi network named [ssid] validates and
+     * `captivePortal` when it needs a sign-in page first. The name is read from
+     * each reported network itself (see [WiFiStateReader.networkSsid]), so
+     * another Wi-Fi network, such as the one the device was already on, never
+     * counts. Without a match within [APPROVED_JOIN_TIMEOUT_MS] it resolves
+     * `unverified` when Android reported a working Wi-Fi network whose name it
+     * withheld, and `notConnected` otherwise (see [ApprovedJoinTracker]).
      */
-    private fun awaitWifiInternet(call: PluginCall, ssid: String?, baseline: Set<Network>?) {
+    private fun awaitWifiInternet(call: PluginCall, ssid: String) {
         val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
         if (manager == null) {
             call.reject("Connectivity service is unavailable on this device")
@@ -353,33 +334,44 @@ class WiFiPlugin : Plugin() {
         }
         val main = Handler(Looper.getMainLooper())
         val reader = WiFiStateReader(context)
+        // Touched only on the main thread.
+        val tracker = ApprovedJoinTracker(ssid)
         var settled = false
         lateinit var callback: ConnectivityManager.NetworkCallback
         lateinit var timeout: Runnable
         fun settle(status: String) {
-            main.post {
-                if (settled) return@post
-                settled = true
-                main.removeCallbacks(timeout)
-                manager.unregisterNetworkCallback(callback)
-                finishApprovedJoin(call, status)
+            if (settled) return
+            settled = true
+            main.removeCallbacks(timeout)
+            manager.unregisterNetworkCallback(callback)
+            finishApprovedJoin(call, status)
+        }
+        val onCapabilities = { network: Network, caps: NetworkCapabilities ->
+            val validated = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            val captive = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)
+            if (validated || captive) {
+                // Read on the callback thread, from this network's own capabilities.
+                val networkSsid = reader.networkSsid(manager, network, caps)
+                main.post {
+                    if (!settled) tracker.observe(networkSsid, validated, captive)?.let { settle(it) }
+                }
             }
         }
-        callback = object : ConnectivityManager.NetworkCallback() {
-            override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
-                val validated = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-                val captive = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)
-                if (!validated && !captive) return
-                val connected = reader.connectedSsid()
-                if (connected != null && connected != ssid) return
-                val preexisting = baseline == null || network in baseline
-                // Android hides the name without location access; an already-joined
-                // network with a hidden name may be the old one, so it never counts.
-                if (preexisting && connected == null) return
-                settle(if (validated) "connected" else "captivePortal")
+        callback = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // Location info puts the network's own WifiInfo, with its name, in caps.
+            object : ConnectivityManager.NetworkCallback(FLAG_INCLUDE_LOCATION_INFO) {
+                override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
+                    onCapabilities(network, caps)
+                }
+            }
+        } else {
+            object : ConnectivityManager.NetworkCallback() {
+                override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
+                    onCapabilities(network, caps)
+                }
             }
         }
-        timeout = Runnable { settle("notConnected") }
+        timeout = Runnable { settle(tracker.timeoutStatus()) }
         val request = NetworkRequest.Builder()
             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
