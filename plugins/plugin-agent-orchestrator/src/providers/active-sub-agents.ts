@@ -13,7 +13,7 @@ import {
   type State,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import { getAcpService } from "../actions/common.js";
+import { getAcpService, sessionMatchesMessage } from "../actions/common.js";
 import {
   IN_FLIGHT_TASK_STATUSES,
   type TaskListFilter,
@@ -147,10 +147,13 @@ export const activeSubAgentsProvider: Provider = {
   // turns route through "general"/"tasks" (and promoted simple turns), so the
   // narrow pin excluded this state from exactly the turns that ask about it.
   contexts: ["general", "tasks", "code", "automation"],
+  // Session ids, workdirs and live output are the owner's work; guests in a
+  // public room get nothing, and members see only this room's sessions.
+  roleGate: { minRole: "USER" },
   position: 0,
-  get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
+  get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     const waves = readWaveStatuses(runtime);
-    const inFlightTaskLines = await readInFlightTaskLines(runtime);
+    const inFlightTaskLines = await readInFlightTaskLines(runtime, message);
     const service = getAcpService(runtime);
     if (!service || typeof service.listSessions !== "function") {
       return emptyResult(null, null, waves, inFlightTaskLines);
@@ -181,7 +184,7 @@ export const activeSubAgentsProvider: Provider = {
     const admission = await readAdmissionSnapshot(runtime);
 
     const routed = (Array.isArray(all) ? all : [])
-      .filter(hasOrigin)
+      .filter((s) => sessionMatchesMessage(s, message))
       .filter((s) => !TERMINAL_SESSION_STATUSES.has(s.status));
     if (routed.length === 0)
       return emptyResult(capacity, admission, waves, inFlightTaskLines);
@@ -295,6 +298,7 @@ interface InFlightTaskService {
       title: string;
       status: string;
       activeSessionCount: number;
+      roomId?: string;
     }>
   >;
 }
@@ -303,6 +307,7 @@ interface InFlightTaskService {
  * No timestamps, so the provider segment stays cache-stable turn over turn. */
 async function readInFlightTaskLines(
   runtime: IAgentRuntime,
+  message: Pick<Memory, "roomId">,
 ): Promise<string[]> {
   const orchestrator = runtime.getService<Service & InFlightTaskService>(
     ORCHESTRATOR_TASK_SERVICE_TYPE,
@@ -313,7 +318,9 @@ async function readInFlightTaskLines(
   try {
     const inFlight = (
       await orchestrator.listTasks({ statuses: IN_FLIGHT_TASK_STATUSES })
-    ).sort((a, b) => a.id.localeCompare(b.id));
+    )
+      .filter((task) => task.roomId === message.roomId)
+      .sort((a, b) => a.id.localeCompare(b.id));
     if (inFlight.length === 0) return [];
     return [
       "## In-flight tasks (durable store — ground truth for task status)",
@@ -440,13 +447,6 @@ function unavailableResult() {
     values: { activeSubAgents: text },
     data: { sessions: [], unavailable: true },
   };
-}
-
-function hasOrigin(session: SessionInfo): boolean {
-  const meta = session.metadata as Record<string, unknown> | undefined;
-  if (!meta) return false;
-  const roomId = meta.roomId;
-  return typeof roomId === "string" && roomId.length > 0;
 }
 
 function formatLine(

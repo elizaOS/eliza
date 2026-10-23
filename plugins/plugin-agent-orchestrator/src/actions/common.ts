@@ -153,6 +153,41 @@ export function reportProviderFetchFailure(
   });
 }
 
+/**
+ * True when `session` belongs to the conversation `message` is in: it was
+ * started from this room, targets it, works in its worktree room, or is part
+ * of a swarm that includes it. Providers and actions that list or act on
+ * sessions scope with this so one room never sees another room's work.
+ */
+export function sessionMatchesMessage(
+  session: Pick<SessionInfo, "metadata">,
+  message: Pick<Memory, "roomId">,
+): boolean {
+  const roomId = typeof message.roomId === "string" ? message.roomId : "";
+  if (!roomId) return false;
+  const metadata = session.metadata as Record<string, unknown> | undefined;
+  if (!metadata) return false;
+  if (
+    [
+      metadata.roomId,
+      metadata.taskRoomId,
+      metadata.worktreeRoomId,
+      metadata.originRoomId,
+    ]
+      .filter((value): value is string => typeof value === "string")
+      .includes(roomId)
+  ) {
+    return true;
+  }
+  const swarmRooms = Array.isArray(metadata.swarmRooms)
+    ? metadata.swarmRooms
+    : [];
+  return swarmRooms.some((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+    return (entry as { roomId?: unknown }).roomId === roomId;
+  });
+}
+
 export function contentRecord(message: Memory): Record<string, unknown> {
   return message.content && typeof message.content === "object"
     ? (message.content as Record<string, unknown>)
