@@ -144,39 +144,59 @@ function sameText(value: unknown, expected: string): boolean {
   return typeof value === "string" && value.trim().toLowerCase() === expected;
 }
 
+/** The user's own words carry this text, so the text is data and not a shape. */
+function userSupplied(userText: string, value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const said = userText.toLowerCase();
+  const needle = value.trim().toLowerCase();
+  return needle.length > 0 && said.includes(needle);
+}
+
 /** Every answer value repeats the single-field placeholder value. */
-function isSingleFieldShapeEcho(parsed: SingleFieldJsonResponse): boolean {
+function isSingleFieldShapeEcho(
+  parsed: SingleFieldJsonResponse,
+  userText: string,
+): boolean {
   const strings = valueFieldStrings(parsed);
   return (
     strings.length > 0 &&
-    strings.every((entry) => sameText(entry, SINGLE_FIELD_SHAPE_VALUE))
+    strings.every(
+      (entry) =>
+        sameText(entry, SINGLE_FIELD_SHAPE_VALUE) &&
+        !userSupplied(userText, entry),
+    )
   );
 }
 
 /**
  * Every correction repeats the correction prompt's example pair. The user's own
- * message wins: when it contains that example text, the text is a real value
- * and the correction is kept.
+ * message and the value the form already holds win: a pair is a real correction
+ * only when the user stated the replacement and the old address is either
+ * their own words or the stored value. A mention of one side does not ground
+ * the other side, so restating the pair stays a shape echo.
  */
 function isCorrectionShapeEcho(
   parsed: CorrectionJsonResponse,
   userText: string,
+  currentValues: Record<string, JsonValue>,
 ): boolean {
   const corrections = Array.isArray(parsed?.corrections)
     ? parsed.corrections
     : [];
   if (corrections.length === 0) return false;
-  const said = userText.toLowerCase();
-  if (
-    said.includes(CORRECTION_SHAPE_OLD_VALUE) ||
-    said.includes(CORRECTION_SHAPE_NEW_VALUE)
-  ) {
-    return false;
-  }
+  const stored = Object.values(currentValues)
+    .filter((entry): entry is string => typeof entry === "string")
+    .join("\n")
+    .toLowerCase();
   return corrections.every(
     (correction) =>
       sameText(correction.old_value, CORRECTION_SHAPE_OLD_VALUE) &&
-      sameText(correction.new_value, CORRECTION_SHAPE_NEW_VALUE),
+      sameText(correction.new_value, CORRECTION_SHAPE_NEW_VALUE) &&
+      !(
+        userSupplied(userText, correction.new_value) &&
+        (userSupplied(userText, correction.old_value) ||
+          stored.includes(CORRECTION_SHAPE_OLD_VALUE))
+      ),
   );
 }
 
@@ -515,7 +535,7 @@ Return only a valid JSON object with this schema:
 
   const parsed = parseJsonObjectResponse<SingleFieldJsonResponse>(
     response,
-    isSingleFieldShapeEcho,
+    (parsed) => isSingleFieldShapeEcho(parsed, text),
   );
   const found = parsed?.found === true || parsed?.found === "true";
   if (!found || !parsed) return null;
@@ -616,7 +636,7 @@ Rules:
 
   const parsed = parseJsonObjectResponse<CorrectionJsonResponse>(
     response,
-    (parsed) => isCorrectionShapeEcho(parsed, text),
+    (parsed) => isCorrectionShapeEcho(parsed, text, currentValues),
   );
   const hasCorrection =
     parsed?.has_correction === true || parsed?.has_correction === "true";

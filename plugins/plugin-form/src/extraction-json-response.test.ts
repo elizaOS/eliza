@@ -102,6 +102,21 @@ describe("single-field reply parsing", () => {
       expect(result?.value).toBe(value);
     }
   });
+
+  it("keeps the placeholder text as the value when the user wrote it", async () => {
+    // The user typed the placeholder string themselves, so it is their data.
+    // Only a reply that restates the shape without that input is an echo.
+    const spoken = "extracted value or null if not found";
+    const result = await extractSingleField(
+      runtimeReturning(
+        JSON.stringify({ found: true, value: spoken, confidence: 0.9 }),
+      ),
+      spoken,
+      control,
+    );
+
+    expect(result?.value).toBe(spoken);
+  });
 });
 
 describe("correction reply parsing", () => {
@@ -140,5 +155,20 @@ describe("correction reply parsing", () => {
   it("drops a reply that only repeats the prompt example pair", async () => {
     // The user never said either address: the reply restated the shape.
     expect(await correct("my email address is wrong")).toEqual([]);
+  });
+
+  it("drops the example pair when the user names only one side", async () => {
+    // The user mentions the old address. That does not make the new address
+    // their value, so the reply is still the shape restated.
+    expect(await correct("old@example.com is not my address")).toEqual([]);
+  });
+
+  it("keeps the pair when the user states the new value and the form holds the old", async () => {
+    // The stored value grounds the old side and the message grounds the new
+    // side, so the complete correction is supported.
+    const corrections = await correct("use new@example.com instead");
+
+    expect(corrections).toHaveLength(1);
+    expect(corrections[0].value).toBe("new@example.com");
   });
 });
