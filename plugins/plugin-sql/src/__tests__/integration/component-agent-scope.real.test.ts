@@ -250,6 +250,66 @@ test("createComponent binds the row to the adapter agent", async () => {
   });
 }, 60000);
 
+test("entity reads do not attach another agent's components on a shared entity", async () => {
+  // Entities are shared across agent scopes: agent B can create its own
+  // component for an entity agent A also uses. All three component-bearing
+  // entity reads must return only the caller's components.
+  const foreign = id();
+  const entity = id();
+  const world = id();
+  const room = id();
+  const hostComponentId = id();
+  const foreignComponentId = id();
+
+  await adapter.createWorlds([{ id: world, agentId: hostAgentId, name: "Host world" }]);
+  await adapter.createRooms([
+    { id: room, agentId: hostAgentId, worldId: world, source: "test", type: ChannelType.GROUP },
+  ]);
+  await adapter.createEntities([{ id: entity, agentId: hostAgentId, names: ["Shared entity"] }]);
+  await adapter.addParticipant(entity, room);
+  await adapter.createComponent({
+    id: hostComponentId,
+    entityId: entity,
+    type: "profile",
+    data: { text: "host data" },
+    worldId: world,
+    agentId: hostAgentId,
+    roomId: room,
+    sourceEntityId: entity,
+    createdAt: Date.now(),
+  });
+
+  await adapter.withAgentScope(foreign, async (scoped) => {
+    await scoped.createAgents([
+      { id: foreign, name: "Foreign", createdAt: Date.now(), updatedAt: Date.now() },
+    ]);
+    await scoped.createComponent({
+      id: foreignComponentId,
+      entityId: entity,
+      type: "profile",
+      data: { text: "foreign secret" },
+      worldId: world,
+      agentId: foreign,
+      roomId: room,
+      sourceEntityId: entity,
+      createdAt: Date.now(),
+    });
+  });
+
+  const byIds = await adapter.getEntitiesByIds([entity]);
+  expect(byIds).toHaveLength(1);
+  expect(byIds[0].components?.map((c) => c.id)).toEqual([hostComponentId]);
+
+  const forRoom = await adapter.getEntitiesForRoom(room, true);
+  expect(forRoom).toHaveLength(1);
+  expect(forRoom[0].components?.map((c) => c.id)).toEqual([hostComponentId]);
+
+  const forRooms = await adapter.getEntitiesForRooms([room], true);
+  expect(forRooms).toHaveLength(1);
+  expect(forRooms[0].entities).toHaveLength(1);
+  expect(forRooms[0].entities[0].components?.map((c) => c.id)).toEqual([hostComponentId]);
+}, 120000);
+
 test("updateComponent cannot move a row to another agent", async () => {
   const foreign = id();
   const entity = id();

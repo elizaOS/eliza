@@ -1619,7 +1619,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           components: componentTable,
         })
         .from(entityTable)
-        .leftJoin(componentTable, eq(componentTable.entityId, entityTable.id))
+        .leftJoin(
+          componentTable,
+          and(eq(componentTable.entityId, entityTable.id), eq(componentTable.agentId, this.agentId))
+        )
         .where(inArray(entityTable.id, entityIds));
 
       if (result.length === 0) return [];
@@ -1665,7 +1668,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         );
 
       if (includeComponents) {
-        query.leftJoin(componentTable, eq(componentTable.entityId, entityTable.id));
+        query.leftJoin(
+          componentTable,
+          and(eq(componentTable.entityId, entityTable.id), eq(componentTable.agentId, this.agentId))
+        );
       }
 
       const result = await query.where(eq(participantTable.roomId, roomId));
@@ -7924,7 +7930,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           and(eq(participantTable.entityId, entityTable.id), eq(entityTable.agentId, this.agentId))
         );
       if (includeComponents) {
-        query.leftJoin(componentTable, eq(componentTable.entityId, entityTable.id));
+        query.leftJoin(
+          componentTable,
+          and(eq(componentTable.entityId, entityTable.id), eq(componentTable.agentId, this.agentId))
+        );
       }
       const rows = await query;
       const groups = roomIds.map(() => new Map<UUID, Entity>());
