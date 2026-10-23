@@ -1,3 +1,4 @@
+import { parseJsonObject } from '@elizaos/core';
 import { WorkflowApiError } from '../types/index';
 import {
   type PhoneDeviceTarget,
@@ -89,19 +90,12 @@ Only use operations in allowedOperations. Notes and Calendar reads MUST copy the
   const response = await generate(prompt);
   if (typeof response !== 'string' || Buffer.byteLength(response, 'utf8') > 65536)
     throw new WorkflowApiError('Generated workflow exceeds the response limit', 502);
-  let result: Record<string, unknown>;
-  try {
-    result = object(
-      JSON.parse(
-        response
-          .trim()
-          .replace(/^```json\s*/i, '')
-          .replace(/\s*```$/, '')
-      )
-    );
-  } catch {
-    throw new WorkflowApiError('Model did not return a typed workflow object', 502);
-  }
+  // A provider can wrap the object in a code fence, or add a line of prose
+  // before or after it, without changing the object it returned. The shared
+  // reader takes the first complete, string-aware object region and returns
+  // null when the reply has none.
+  const result = parseJsonObject<Record<string, unknown>>(response);
+  if (!result) throw new WorkflowApiError('Model did not return a typed workflow object', 502);
   if (
     Object.keys(result).length === 1 &&
     typeof result.unsupported === 'string' &&
