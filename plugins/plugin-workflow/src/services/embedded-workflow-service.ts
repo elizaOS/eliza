@@ -2053,6 +2053,12 @@ export class EmbeddedWorkflowService extends Service {
       };
       await this.saveExecution(completed);
       if (completed.status === 'waiting-timer') this.scheduleTimerResume(completed);
+      else if (completed.status === 'waiting-event' && result.wakeAtMs !== undefined) {
+        // Smithers checks a wait's timeout only when the run is called again.
+        // A far deadline is re-armed when the resumed run still waits.
+        const delayMs = Math.min(Math.max(result.wakeAtMs - Date.now(), 0) + 100, 2_147_483_647);
+        this.scheduleWorkerReconciliation(completed, delayMs);
+      }
       return completed;
     } catch (error) {
       if (
