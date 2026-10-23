@@ -154,7 +154,6 @@ import {
 	type ReactionServiceInternals,
 } from "./discord-reactions";
 import { DmChannelRegistry } from "./dm-channel-registry";
-import { emitEventObserved } from "./emit-event-observed";
 import { getDiscordSettings } from "./environment";
 import {
 	executeGuildManagement,
@@ -4963,28 +4962,39 @@ export class DiscordService extends Service implements IDiscordService {
 		const worldId = createUniqueUuid(this.runtime, guild.id);
 		const entityId = this.resolveDiscordEntityId(member.id);
 
-		emitEventObserved(
-			this.runtime,
-			[DiscordEventTypes.ENTITY_JOINED] as string[],
-			{
-				runtime: this.runtime,
-				entityId,
-				worldId,
-				source: "discord",
-				metadata: {
-					accountId,
-					type: member.user.bot ? "bot" : "user",
-					originalId: member.id,
-					username: tag,
-					displayName: member.displayName || member.user.username,
-					roles: member.roles.cache.map((r) => r.name),
-					joinedAt: member.joinedAt?.getTime
-						? member.joinedAt.getTime()
-						: undefined,
-				},
-				member,
-			} as EventPayload,
-		);
+		try {
+			await this.runtime.emitEvent(
+				[DiscordEventTypes.ENTITY_JOINED] as string[],
+				{
+					runtime: this.runtime,
+					entityId,
+					worldId,
+					source: "discord",
+					metadata: {
+						accountId,
+						type: member.user.bot ? "bot" : "user",
+						originalId: member.id,
+						username: tag,
+						displayName: member.displayName || member.user.username,
+						roles: member.roles.cache.map((r) => r.name),
+						joinedAt: member.joinedAt?.getTime
+							? member.joinedAt.getTime()
+							: undefined,
+					},
+					member,
+				} as EventPayload,
+			);
+		} catch (error) {
+			// The member-add handler is already awaited by the gateway
+			// (discord-events.ts), so awaiting here keeps the handler pending
+			// until every listener settles instead of detaching the event.
+			// A listener failure is non-fatal for member onboarding: report it
+			// through diagnostics instead of letting it escape as an unhandled
+			// rejection or masquerading as a member-add handling failure.
+			this.runtime.reportError("discord:emit-event", error, {
+				eventName: DiscordEventTypes.ENTITY_JOINED,
+			});
+		}
 	}
 
 	/**
