@@ -31,6 +31,24 @@ describe("Google Chat connector account status", () => {
     expect(accounts[0].metadata?.serviceAccountError).toBeTruthy();
   });
 
+  it("does not copy credential bytes out of the payload into account metadata", async () => {
+    // `JSON.parse` quotes a window of the input around the offending token, so
+    // the raw SyntaxError message here contains a fragment of the private key.
+    const unquotedPayload = '{"private_key":PRIVKEYSENTINEL_ABC123}';
+    expect(() => JSON.parse(unquotedPayload)).toThrow(/PRIVKEYSEN/);
+
+    const provider = createGoogleChatConnectorAccountProvider(
+      runtime({ GOOGLE_CHAT_SERVICE_ACCOUNT: unquotedPayload })
+    );
+    const accounts = await provider.listAccounts(manager);
+
+    expect(accounts[0].status).toBe("error");
+    expect(accounts[0].metadata?.serviceAccountError).toBe(
+      "Inline service account JSON could not be parsed"
+    );
+    expect(JSON.stringify(accounts[0].metadata)).not.toContain("PRIVKEYSEN");
+  });
+
   it("still reports a parseable service account as connected with its bot identity", async () => {
     const provider = createGoogleChatConnectorAccountProvider(
       runtime({ GOOGLE_CHAT_SERVICE_ACCOUNT: VALID_SERVICE_ACCOUNT })
