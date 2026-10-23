@@ -32,6 +32,7 @@ import {
 const sha256 = (file) =>
   createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 const packagePattern = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/;
+const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
 export async function runIsolatedAndroidTest({
   serial,
@@ -58,6 +59,8 @@ export async function runIsolatedAndroidTest({
   companionApks = [],
   directory,
   evidence,
+  appEvidence,
+  wake = false,
   runnerArgs = [],
   upgradeRunnerArgs = [],
   beforeUpgrade,
@@ -184,6 +187,31 @@ export async function runIsolatedAndroidTest({
     path.isAbsolute(directory),
     "Explicit absolute report directory required",
   );
+  // App-private files are read with run-as after instrumentation. Names are
+  // shell-safe and cannot leave the declared app-relative directory.
+  const appFiles = appEvidence && {
+    directory: appEvidence.directory,
+    json: [...(appEvidence.json ?? [])],
+    png: [...(appEvidence.png ?? [])],
+  };
+  if (appFiles) {
+    assert.match(
+      appFiles.directory ?? "",
+      /^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/,
+      "App-relative evidence directory required",
+    );
+    for (const name of appFiles.json)
+      assert.match(
+        name,
+        /^[A-Za-z0-9_.-]+\.json$/,
+        "Invalid JSON evidence name",
+      );
+    for (const name of appFiles.png)
+      assert.match(name, /^[A-Za-z0-9_.-]+\.png$/, "Invalid PNG evidence name");
+    const names = [...appFiles.json, ...appFiles.png];
+    assert.ok(names.length > 0, "At least one evidence file required");
+    assert.equal(new Set(names).size, names.length, "Duplicate evidence file");
+  }
   const validateRunnerArgs = (runnerArgs) => {
     assert.ok(Array.isArray(runnerArgs) && runnerArgs.length % 3 === 0);
     for (let i = 0; i < runnerArgs.length; i += 3) {
@@ -425,6 +453,56 @@ export async function runIsolatedAndroidTest({
     (await packages()).some((line) =>
       packageNames.some((name) => line === `package:${name}`),
     );
+  // Binary-safe read of one declared file from the installed app's sandbox.
+  const readAppFile = async (name) => {
+    if (cuttlefishBootId) await assertCuttlefish();
+    return (
+      await executeFile(
+        adb,
+        [
+          "-s",
+          serial,
+          "exec-out",
+          "run-as",
+          packageName,
+          "--user",
+          String(androidUser),
+          "cat",
+          `${appFiles.directory}/${name}`,
+        ],
+        {
+          env,
+          encoding: "buffer",
+          signal,
+          timeout: commandTimeoutMs,
+          maxBuffer: 64 * 1024 ** 2,
+        },
+      )
+    ).stdout;
+  };
+  const collectAppEvidence = async (variantName, record) => {
+    const collected = { files: {}, json: {} };
+    record.appEvidence = [];
+    for (const name of [...appFiles.json, ...appFiles.png]) {
+      const bytes = await readAppFile(name);
+      if (name.endsWith(".json"))
+        collected.json[name] = JSON.parse(bytes.toString("utf8"));
+      else
+        assert.ok(
+          bytes.subarray(0, 8).equals(PNG_SIGNATURE),
+          `${name} is not a PNG`,
+        );
+      const local = path.join(directory, `${variantName}-${name}`);
+      fs.writeFileSync(local, bytes);
+      collected.files[name] = local;
+      record.appEvidence.push({
+        name,
+        file: path.basename(local),
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+      });
+    }
+    return collected;
+  };
   // The canonical lease still reclaims dead PIDs. It must not expire under a live caller's work.
   const deviceKey = `android:${serial}`;
   const stateDir = deviceLeaseStateDir(env);
@@ -468,6 +546,8 @@ export async function runIsolatedAndroidTest({
     testClasses: classes,
     expectedTests,
     evidence,
+    ...(appFiles ? { appEvidence: appFiles } : {}),
+    ...(wake ? { wake } : {}),
     variants: [],
   };
   let admitted = false,
@@ -911,6 +991,10 @@ export async function runIsolatedAndroidTest({
           phaseActive = false;
         }
       };
+      if (wake) {
+        await run("shell", "input", "keyevent", "KEYCODE_WAKEUP");
+        await run("shell", "wm", "dismiss-keyguard");
+      }
       await prepareVariant?.(context);
       signal?.throwIfAborted();
       record.instrumentation = await instrument(
@@ -939,6 +1023,8 @@ export async function runIsolatedAndroidTest({
           "candidate",
         );
       }
+      if (appFiles)
+        context.appEvidence = await collectAppEvidence(variant.name, record);
       await collectVariant?.(context);
       assert.equal(
         pendingInterruptionRecovery,

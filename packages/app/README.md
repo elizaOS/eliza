@@ -459,6 +459,15 @@ letters/digits/underscores/hyphens starting with a letter. Results are recorded 
 cannot override test selection. Cleanup hooks may run a final fixture phase even
 after cancellation; failed or partial installs do not expose this function.
 
+Set `wake: true` to send `KEYCODE_WAKEUP` and `wm dismiss-keyguard` after the
+APKs install and before `prepareVariant`. Set `appEvidence: {directory, json,
+png}` to copy named files from an app-relative sandbox directory with `run-as`
+after the last instrumentation. Each file is saved as `<variant>-<name>` in the
+report directory, JSON must parse and PNG must have a PNG signature. Its hash is
+recorded in `variants[].appEvidence`, and `collectVariant` receives
+`context.appEvidence.{files,json}`. A missing or invalid file fails the variant.
+The free-form `evidence` field is unchanged.
+
 Consumer APK audits can import `parseXmlTree` and `manifestFacts` from
 `scripts/lib/android-manifest-facts.mjs`. These pure helpers decode aapt xmltree
 and badging output without invoking an SDK or reading files. They report explicit

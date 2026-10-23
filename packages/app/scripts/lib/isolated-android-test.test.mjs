@@ -61,6 +61,7 @@ if(args.slice(0,4).join(' ')==='shell pm list users')console.log('UserInfo{0:Own
 if(args.slice(0,4).join(' ')==='shell dumpsys activity activities')console.log('topResumedActivity=ActivityRecord u'+(state.foreground||0)+' org.stock.home/.Home');
 if(args.includes('remove-user')){state.userExists=false;publishFixtureState(file,state);console.log('Success');}
 
+if(args.includes('run-as')&&args.at(-2)==='cat'&&args.at(-1).startsWith('app-evidence/')){const item=${JSON.stringify(path.join(root, "app-files"))}+'/'+args.at(-1).slice(13);if(!fs.existsSync(item))process.exit(1);process.stdout.write(fs.readFileSync(item));return;}
 if(args[0]==='emu')console.log('owned-test-fixture\\nOK');
 if(args.includes('ro.kernel.qemu'))console.log('1');
 if(args.includes('ro.product.device'))console.log(mode==='cuttlefish-wrong-device'?'physical':'vsoc_x86_64');
@@ -266,6 +267,61 @@ test("callback failure cleans owned packages and releases the device lease", asy
   assert.deepEqual(JSON.parse(fs.readFileSync(f.state)).packages, []);
   const report = await runIsolatedAndroidTest(f.options);
   assert.equal(report.cleaned, true);
+});
+test("wake and declared app evidence run around each variant's instrumentation", async (t) => {
+  const f = fixture(t);
+  const files = path.join(f.root, "app-files");
+  fs.mkdirSync(files);
+  const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 255]);
+  fs.writeFileSync(path.join(files, "result.json"), '{"passed":true}');
+  fs.writeFileSync(path.join(files, "screen.png"), png);
+  const options = {
+    ...f.options,
+    wake: true,
+    appEvidence: {
+      directory: "app-evidence",
+      json: ["result.json"],
+      png: ["screen.png"],
+    },
+  };
+  const seen = [];
+  const report = await runIsolatedAndroidTest({
+    ...options,
+    collectVariant: (c) => seen.push(c.appEvidence.json["result.json"]),
+  });
+  assert.deepEqual(seen, [{ passed: true }, { passed: true }]);
+  for (const variant of ["standalone", "launcher"]) {
+    assert.deepEqual(
+      fs.readFileSync(path.join(f.options.directory, `${variant}-screen.png`)),
+      png,
+    );
+    assert.deepEqual(
+      report.variants
+        .find((r) => r.variant === variant)
+        .appEvidence.map((e) => e.file),
+      [`${variant}-result.json`, `${variant}-screen.png`],
+    );
+  }
+  const commands = f.commands().map((c) => c.join(" "));
+  const wake = commands.indexOf("shell input keyevent KEYCODE_WAKEUP");
+  assert.equal(commands[wake + 1], "shell wm dismiss-keyguard");
+  assert.ok(wake < commands.findIndex((c) => c.includes("instrument")));
+  assert.equal(report.cleaned, true);
+
+  fs.writeFileSync(path.join(files, "screen.png"), "not a png");
+  fs.rmSync(options.directory, { recursive: true });
+  await assert.rejects(
+    runIsolatedAndroidTest(options),
+    /screen\.png is not a PNG/,
+  );
+  assert.deepEqual(JSON.parse(fs.readFileSync(f.state)).packages, []);
+  await assert.rejects(
+    runIsolatedAndroidTest({
+      ...options,
+      appEvidence: { directory: "../files", json: ["result.json"] },
+    }),
+    /App-relative evidence directory required/,
+  );
 });
 test("runner arguments cannot replace the requested test selection", async (t) => {
   const f = fixture(t);
