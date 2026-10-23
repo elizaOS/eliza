@@ -2435,8 +2435,10 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   private memoryIsVisibleToOwner(memory: StoredMemory): boolean {
     // Rows stored without an agentId belong to this database. A stored
     // agentId for someone else matches the SQL memory `agent_id` predicate
-    // plugin-sql applies in deleteAllMemories.
-    return memory.agentId === undefined || memory.agentId === this.agentId;
+    // plugin-sql applies in deleteAllMemories. A stored null (the JSON
+    // layer's reading of a SQL NULL agent_id on legacy/migrated rows)
+    // is also this database's row, so it stays wipable.
+    return memory.agentId == null || memory.agentId === this.agentId;
   }
 
   async deleteMemories(memoryIds: UUID[]): Promise<void> {
