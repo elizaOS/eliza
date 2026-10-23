@@ -26,10 +26,15 @@ const spokenDigits = (text) =>
       .map((word) => DIGIT_WORDS[word.toLowerCase()])
       .join(""),
   );
-const normalize = (value) =>
-  String(value)
-    .normalize("NFKC")
-    .replace(/[\u200B-\u200D\uFEFF]/g, "");
+const normalize = (value) => {
+  // A non-string would be checked as "[object Object]" and let its secret pass.
+  if (typeof value !== "string")
+    throw new NativeHostError("Text to check must be a string.", {
+      status: 400,
+      code: "INVALID_TEXT",
+    });
+  return value.normalize("NFKC").replace(/[\u200B-\u200D\uFEFF]/g, "");
+};
 
 /** The words shown when text is refused. They never include the matched value. */
 export const SENSITIVE_TEXT_REFUSAL =
@@ -175,6 +180,12 @@ const digitsOf = (text) =>
     .join("");
 
 /**
+ * The value after "password is" up to the end of its clause. Punctuation
+ * inside a value ("Correct-Horse!9", "abc.def") is part of it; punctuation
+ * followed by a space or the end of the text ends the clause.
+ */
+const CLAUSE = "(?:[^\\n.!?;,]|[.!?;,](?![\\s.!?;,]|$)){1,80}";
+/**
  * Where a value follows (or comes before) its telling words. Each rule keeps
  * the words that say what it is ("my verification code is") and removes only
  * the value. `kind` says how the value is remembered: digits or a phrase.
@@ -198,12 +209,17 @@ const RULES = [
   // "my password is not working" names no password: after "password is" only
   // a credential-looking word is remembered. The clause is still removed.
   {
-    pattern: /\b(password\s*(?:is\s+|=\s*|:\s*))([^\n.!?;,]{1,80})/gi,
+    pattern: new RegExp(
+      `\\b(password\\s*(?:is\\s+|=\\s*|:\\s*))(${CLAUSE})`,
+      "gi",
+    ),
     kind: "password",
   },
   {
-    pattern:
-      /\b((?:passphrase|pass phrase|api[ _-]?key|access[ _-]?token|refresh[ _-]?token|client[ _-]?secret)\s*(?:is\s+|=\s*|:\s*))([^\n.!?;,]{1,80})/gi,
+    pattern: new RegExp(
+      `\\b((?:passphrase|pass phrase|api[ _-]?key|access[ _-]?token|refresh[ _-]?token|client[ _-]?secret)\\s*(?:is\\s+|=\\s*|:\\s*))(${CLAUSE})`,
+      "gi",
+    ),
     kind: "phrase",
   },
   {

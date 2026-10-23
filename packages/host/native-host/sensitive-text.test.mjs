@@ -101,6 +101,27 @@ test("a detected secret is removed with its telling words kept and remembered", 
   assert.equal(redactSensitiveText(`use ${CODE}`), `use ${CODE}`);
 });
 
+test("punctuation inside a password is removed with it", () => {
+  const scrubber = createSecretScrubber();
+  assert.equal(
+    scrubber.scrub(`my password: ${PASSWORD}!9.x and more`),
+    `my password: ${MARK}`,
+  );
+  assert.equal(
+    scrubber.scrub(`my password is ${PASSWORD}. Then sign in`),
+    `my password is ${MARK}. Then sign in`,
+  );
+  assert.equal(scrubber.scrub(`It is ${PASSWORD}!9.x`), `It is ${MARK}`);
+});
+
+test("a value that is not a string is refused, not checked as its name", () => {
+  for (const value of [undefined, null, 42, { text: "my pin is 1234" }])
+    assert.throws(
+      () => requireNonSensitiveText(value),
+      (error) => error.status === 400 && error.code === "INVALID_TEXT",
+    );
+});
+
 test("talking about a password remembers no ordinary word", () => {
   const scrubber = createSecretScrubber();
   assert.equal(
