@@ -2432,21 +2432,37 @@
         left,
         Math.min(cursorRect.left + 24, left + width - tagRect.width),
       );
-      const below = cursorRect.top + 28;
-      // Clamp a near-bottom tag before flipping it above the pointer, where it
-      // can cover the action preview. Keep the tag below the pointer tip.
-      const belowFit = Math.min(below, top + height - tagRect.height);
-      const y = Math.max(
-        top,
-        Math.min(
-          belowFit >= cursorRect.top + 24
-            ? belowFit
-            : cursorRect.top - tagRect.height - 4,
-          top + height - tagRect.height,
-        ),
-      );
-      tag.style.left = `${x - cursorRect.left}px`;
-      tag.style.top = `${y - cursorRect.top}px`;
+      // Keep the identity readable without covering the preview or its target.
+      // Either may be above or below the cursor in a compact viewport.
+      const avoid = [
+        targetRect(),
+        ...(label.hidden ? [] : [label.getBoundingClientRect()]),
+      ];
+      const positions = [
+        { x, y: cursorRect.top + 28 },
+        { x, y: cursorRect.top - tagRect.height - 4 },
+        ...avoid.flatMap((rect) => [
+          { x, y: rect.bottom + 8 },
+          { x, y: rect.top - tagRect.height - 8 },
+          { x: rect.right + 8, y: cursorRect.top },
+          { x: rect.left - tagRect.width - 8, y: cursorRect.top },
+        ]),
+      ].map((point) => ({
+        x: Math.max(left, Math.min(point.x, left + width - tagRect.width)),
+        y: Math.max(top, Math.min(point.y, top + height - tagRect.height)),
+      }));
+      const position =
+        positions.find((point) =>
+          avoid.every(
+            (rect) =>
+              point.x + tagRect.width <= rect.left - 4 ||
+              point.x >= rect.right + 4 ||
+              point.y + tagRect.height <= rect.top - 4 ||
+              point.y >= rect.bottom + 4,
+          ),
+        ) ?? positions[0];
+      tag.style.left = `${position.x - cursorRect.left}px`;
+      tag.style.top = `${position.y - cursorRect.top}px`;
     };
     const hide = () => {
       ring.hidden = true;
