@@ -1761,6 +1761,14 @@ function normalizeStringList(
  * minutes unit is a duration in minutes; any other unit is invalid input and is
  * rejected here so the caller is asked again instead of blocking for a
  * different length of time than the one it requested.
+ *
+ * The unit is matched against the lowercased value, so "90 Minutes", "5 Min"
+ * and "5M" all give the same duration.
+ *
+ * Return values are distinct on purpose: `null` is a manual block
+ * ("manual", "indefinite", "until-unblocked"), `undefined` is invalid input,
+ * and a number is the block length in whole minutes. The caller rejects only
+ * `undefined`, so the manual-block tokens stay valid.
  */
 const MINUTES_DURATION_STRING =
   /^(\d+(?:\.\d+)?)\s*(?:m|min|mins|minute|minutes)?$/;
