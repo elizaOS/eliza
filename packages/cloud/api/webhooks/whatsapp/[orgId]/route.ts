@@ -17,10 +17,7 @@ import { agentGatewayRouterService } from "@elizaos/cloud-shared/lib/services/ag
 import { messageRouterService } from "@elizaos/cloud-shared/lib/services/message-router";
 import { phoneErrorDiagnostic } from "@elizaos/cloud-shared/lib/services/phone-error-diagnostics";
 import { whatsappAutomationService } from "@elizaos/cloud-shared/lib/services/whatsapp-automation";
-import {
-  releaseProcessingClaim,
-  tryClaimForProcessing,
-} from "@elizaos/cloud-shared/lib/utils/idempotency";
+import { processOnce } from "@elizaos/cloud-shared/lib/utils/idempotency";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { createPerfTrace } from "@elizaos/cloud-shared/lib/utils/perf-trace";
 import {
@@ -112,28 +109,26 @@ async function handleWhatsAppWebhook(c: AppContext): Promise<Response> {
     for (const msg of messages) {
       const idempotencyKey = `whatsapp:org:${orgId}:${msg.messageId}`;
 
-      // Preserve the provider contract owned by #22359. This storage migration
-      // does not redefine WhatsApp delivery/replay semantics.
-      const claimed = await tryClaimForProcessing(
-        idempotencyKey,
-        "whatsapp-org",
-      );
-      if (!claimed) {
-        logger.info("[WhatsAppWebhook] Skipping duplicate", { orgId });
-        continue;
-      }
-
       try {
-        await handleIncomingMessage(orgId, msg, (promise) =>
-          c.executionCtx.waitUntil(promise),
+        // Claim the message id before the model turn and the outbound send, and
+        // keep the key for the delivered window after success, so a Meta
+        // redelivery of the same message is refused instead of replied to and
+        // billed a second time (same shape as the Twilio and Blooio webhooks).
+        const outcome = await processOnce(idempotencyKey, "whatsapp-org", () =>
+          handleIncomingMessage(orgId, msg, (promise) =>
+            c.executionCtx.waitUntil(promise),
+          ),
         );
+        if (outcome.status === "duplicate") {
+          logger.info("[WhatsAppWebhook] Skipping duplicate", { orgId });
+        }
       } catch (error) {
-        // error-policy:J4 isolate ordinary message failures and release their claim.
+        // error-policy:J4 isolate ordinary message failures; processOnce has
+        // already released the claim so the provider's retry is processed.
         logger.error("[WhatsAppWebhook] Failed to process message", {
           orgId,
           ...phoneErrorDiagnostic(error),
         });
-        await releaseProcessingClaim(idempotencyKey);
       }
     }
 
