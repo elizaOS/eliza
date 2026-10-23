@@ -55,7 +55,7 @@ export function createCommandHandler(api) {
       let feedback;
       if (
         request.command.taskPolicy &&
-        ["click", "fill", "select", "scroll"].includes(
+        ["click", "fill", "select", "scroll", "follow"].includes(
           request.command.subaction,
         )
       ) {

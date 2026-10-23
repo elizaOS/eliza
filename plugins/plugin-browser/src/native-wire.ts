@@ -25,6 +25,7 @@ const actions = new Set([
   "fill",
   "select",
   "scroll",
+  "follow",
   "back",
   "forward",
   "reload",
@@ -85,7 +86,9 @@ export function parseCommand(input: unknown) {
       );
   }
   if (
-    ["click", "fill", "select", "scroll"].includes(String(command.subaction)) &&
+    ["click", "fill", "select", "scroll", "follow"].includes(
+      String(command.subaction),
+    ) &&
     typeof command.selector !== "string"
   )
     throw new BridgeError(

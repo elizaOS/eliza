@@ -56,6 +56,7 @@ const connection = new NativeConnection({
         "fill",
         "select",
         "scroll",
+        "follow",
         "back",
         "forward",
         "reload",
