@@ -70,7 +70,7 @@ vault authorization and does not silently fill remote device profiles.
 
 `NativeSurfaceBrowserTarget` accepts an authenticated surface command channel.
 It supplies the existing `NativeTaskActuator` with the current selected page,
-task binding, guidance and main-frame snapshot/click/fill/select/scroll operations.
+task binding, guidance and main-frame snapshot/click/fill/select/scroll/follow operations.
 Its compatibility `getProfileId()` returns an `embedded:` connection identity;
 it never claims a Chromium extension or profile. Stopping the target aborts its
 in-flight channel requests. Every request names that exact connection, so a
@@ -84,6 +84,15 @@ preview checks. A cleanup failure after input remains an uncertain outcome.
 No page offer answers, arbitrary scripts, protected fills, child frames or
 coordinate input are supported by this adapter. Full general browser control
 and product composition require their own implementation and acceptance.
+
+The embedded task target supports `browser.follow` for an observed same-origin
+HTTPS anchor. It loads the snapshot's exact destination without running a click
+handler. The host must authorize the target and the task capability; the normal
+preview, one-use reference, expiry, effect journal and readback checks apply.
+It refuses URL credentials, download links and new-window targets. It is not a
+form submission or consent grant. Desktop workspace and socket targets do not
+support this operation yet. A navigation that retires its reply remains unknown
+until reconciled from fresh page evidence, without replay.
 
 Native `select` takes an exact visible option label in `text` (or the workspace
 `value` field). Snapshots report option labels, disabled state and selection,

@@ -92,8 +92,8 @@ in that snapshot without invoking the anchor's click handlers. Stale destination
 other origins, URL credentials, downloads and other-window targets are refused.
 The snapshot is consumed once. Navigation can interrupt its reply; read the page
 without replaying after an uncertain outcome. This primitive does not grant task
-authority or prove arrival. Agent planner and task-actuator composition remain
-separate from this native operation.
+authority or prove arrival. The embedded task adapter and guided workflow support `browser.follow`;
+products still own planner policy and completion evidence.
 
 Android `observeHistory` exposes adjacent same-origin destinations with opaque,
 short-lived references. `navigateHistory` consumes a reference once and dispatches
