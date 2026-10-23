@@ -83,11 +83,21 @@ export async function createToolSelectionArgument({
     throw new Error("Tool selection name is required to create tool selection argument");
   }
   const { serverName, toolName } = toolSelectionName;
-  const serverData = mcpProvider.data.mcp[serverName];
+  // Both names can come from the model (or from structured planner options),
+  // so index only own keys. `data.mcp["constructor"]` and `tools["toString"]`
+  // otherwise return inherited Object.prototype members: the first crashed on
+  // `.tools` and the second asked the model for arguments of a tool that does
+  // not exist.
+  const servers = mcpProvider.data.mcp;
+  const serverData =
+    servers && Object.hasOwn(servers, serverName) ? servers[serverName] : undefined;
   if (!serverData) {
     throw new Error(`Server "${serverName}" not found in MCP provider data`);
   }
-  const toolData = serverData.tools[toolName];
+  const toolData =
+    serverData.tools && Object.hasOwn(serverData.tools, toolName)
+      ? serverData.tools[toolName]
+      : undefined;
   if (!toolData) {
     throw new Error(`Tool "${toolName}" not found on server "${serverName}"`);
   }

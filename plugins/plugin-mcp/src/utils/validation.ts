@@ -274,14 +274,25 @@ export function validateToolSelectionName(
   }
   const data = basicResult.data;
   const mcpData = (state.values.mcp ?? {}) as Record<string, McpServerInfo>;
-  const server = mcpData[data.serverName];
+  // Same rule as the tool lookup below and as the resource check: the server
+  // name comes from the model, so only an own key names a server. An inherited
+  // `constructor` or `toString` must not look like a connected server.
+  const server = Object.hasOwn(mcpData, data.serverName) ? mcpData[data.serverName] : undefined;
   if (server?.status !== "connected") {
     return {
       success: false,
       error: `Server "${data.serverName}" not found or not connected`,
     };
   }
-  const toolInfo = server.tools?.[data.toolName];
+  // The tool keys come from the server, but `data.toolName` comes from the
+  // model. Indexing alone reads inherited Object.prototype members, so the
+  // name "constructor" or "toString" looked like a real tool and the runtime
+  // sent a call the server cannot serve. Own keys only: the contract is that
+  // the selected tool exists on the server.
+  const toolInfo =
+    server.tools && Object.hasOwn(server.tools, data.toolName)
+      ? server.tools[data.toolName]
+      : undefined;
   if (!toolInfo) {
     return {
       success: false,
