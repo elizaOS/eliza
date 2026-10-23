@@ -28,6 +28,7 @@ on:
           - ai.elizaos.app
           - ai.elizaresearch.alphaphone
           - ai.elizaresearch.seniorcare
+          - technology.graceful.grace
 
 permissions:
   contents: read
@@ -76,7 +77,7 @@ jobs:
           ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
           ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID }}
           ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID }}
-          # Additional clients (Alpha Phone, Senior Care) resolve their app UUID from the
+          # Additional clients (Alpha Phone, Senior Care, Grace) resolve their app UUID from the
           # same registry the Worker reads, bound to this environment.
           ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: ${{ secrets.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON }}
           ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID: ${{ inputs.client }}
