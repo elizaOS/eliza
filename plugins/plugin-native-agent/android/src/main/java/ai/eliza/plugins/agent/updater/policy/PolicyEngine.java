@@ -14,7 +14,8 @@ import java.util.function.BooleanSupplier;
  * - ACTIVATION evaluates the installation gates for a prepared update. It calls
  *   the Activation port only when every gate holds. A host that has not
  *   enabled installation binds a port that reports NOT_ENABLED.
- * The run returns a Plan for the scheduler; the alert is computed every run. */
+ * The run returns a Plan for the scheduler; the alert is computed every run. A
+ * ledger that cannot be saved still returns the Plan, with a policy-state-unsaved alert. */
 public final class PolicyEngine {
  public enum Job {DISCOVERY,DOWNLOAD,ACTIVATION}
 
@@ -28,7 +29,8 @@ public final class PolicyEngine {
   /** downloadPermitted is false on DISCOVERY runs and true only after the download gate passed. */
   Result discover(boolean downloadPermitted)throws Exception;
  }
- /** The prepared plan awaiting activation, or null/empty when none. */
+ /** The prepared plan awaiting activation, or null/empty when none. An id is 1-256
+  * characters from [A-Za-z0-9._:-]; any other id is unreadable, like a throw. */
  public interface Pending {String preparedId()throws Exception;}
  public interface Activation {
   enum Outcome {NOT_ENABLED,STARTED,FAILED}
@@ -99,7 +101,7 @@ public final class PolicyEngine {
   }
   String prepared=null;boolean pendingKnown=true;
   try{prepared=pending.preparedId();}catch(Exception unreadable){pendingKnown=false;}
-  if(pendingKnown)ledger.observePending(prepared,now,local.toInstant().toEpochMilli());
+  if(pendingKnown)pendingKnown=ledger.observePending(prepared,now,local.toInstant().toEpochMilli());
   ledger.countWindows(policy,local);
   Long activationDelay=null;
   if(!ledger.pendingId().isEmpty()){
@@ -117,10 +119,13 @@ public final class PolicyEngine {
    }
    activationDelay=window==ComfortWindow.State.CLOSED?Math.max(OtaPolicy.MINUTE,ComfortWindow.untilOpen(policy,local).toMillis()):policy.activationRecheckMillis;
   }
-  if(!pendingKnown&&activationDelay==null)activationDelay=policy.activationRecheckMillis;
+  if(!pendingKnown&&activationDelay==null){
+   activationDelay=policy.activationRecheckMillis;
+   if(job==Job.ACTIVATION){decision=OtaGates.Decision.blocked("pending-unknown");outcome="activation-deferred";}
+  }
   PolicyLedger.Alert alert=ledger.alert(policy,now);
   ledger.record(outcome,decision);
-  store.save(ledger);
+  try{store.save(ledger);}catch(IOException unsaved){alert=alert.with("policy-state-unsaved");}
   return new Plan(job,discoveryDelay,download,downloadDelay,activationDelay,alert,decision,outcome);
  }
 

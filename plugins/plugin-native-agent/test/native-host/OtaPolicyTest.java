@@ -52,6 +52,9 @@ public final class OtaPolicyTest {
   rejects("jitter wider than the interval",()->P.toBuilder().discovery(OtaPolicy.HOUR,30*OtaPolicy.MINUTE).build());
   rejects("battery above 100%",()->P.toBuilder().activationMinBatteryPercent(101).build());
   rejects("no missed windows",()->P.toBuilder().missedWindowsBeforeDaytime(0).build());
+  rejects("escalation before the alert",()->P.toBuilder().alertAges(OtaPolicy.DAY,OtaPolicy.DAY).build());
+  OtaPolicy ages=P.toBuilder().alertAges(OtaPolicy.HOUR,OtaPolicy.DAY).build();
+  same(ages.alertAfterMillis,OtaPolicy.HOUR,"host alert age");same(ages.escalateAfterMillis,OtaPolicy.DAY,"host escalation age");
   OtaPolicy host=P.toBuilder().discovery(OtaPolicy.DAY,OtaPolicy.HOUR).activationMinBatteryPercent(50).missedWindowsBeforeDaytime(3).activationRecheckMillis(5*OtaPolicy.MINUTE).reboot(70,30*OtaPolicy.MINUTE).build();
   same(host.discoveryIntervalMillis,OtaPolicy.DAY,"host discovery interval");same(host.discoveryJitterMillis,OtaPolicy.HOUR,"host discovery jitter");
   same(host.activationMinBatteryPercent,50,"host activation battery");same(host.missedWindowsBeforeDaytime,3,"host missed windows");
@@ -185,6 +188,10 @@ public final class OtaPolicyTest {
   w.countWindows(P,la(2026,10,17,5,1));same(w.missedWindows(),2,"second missed window");
   same(ComfortWindow.state(P,LocalTime.of(14,0),w.missedWindows()),ComfortWindow.State.DAYTIME_FALLBACK,"daytime opens after two");
   w.observePending("plan-c",T0,la(2026,10,17,6,0).toInstant().toEpochMilli());same(w.missedWindows(),0,"a new plan starts over");
+  for(String bad:new String[]{"sha256/abc+=","plan 1","x".repeat(257)}){
+   check(!w.observePending(bad,T0,1),"id outside the contract refused: "+bad);same(w.pendingId(),"plan-c","refused id changes nothing");
+  }
+  check(w.observePending("x".repeat(256),T0,1),"256 characters accepted");w.observePending("plan-c",T0,1);
   w.observePending(null,T0,0);same(w.pendingId(),"","activation cleared");same(w.missedWindows(),0,"cleared plan resets missed windows");
   // Pending first seen without signed time: its age starts at the next signed time.
   PolicyLedger u=new PolicyLedger();u.observePending("plan-d",null,1);u.observeSigned(T0);
@@ -322,6 +329,25 @@ public final class OtaPolicyTest {
   same(plan.alert.level,PolicyLedger.Alert.Level.ESCALATE,"7 days deferred escalates");same(plan.alert.reasons,List.of("activation-deferred-7d"),"deferred reason");
   d.pending=null;plan=d.engine(P,ds).run(PolicyEngine.Job.DISCOVERY);
   same(plan.alert.level,PolicyLedger.Alert.Level.NONE,"activation readback clears the alert");same(plan.activationDelayMillis,null,"and cancels the activation job");
+
+  // An id outside the Pending contract is unreadable: nothing is stored that the next load refuses.
+  for(String bad:new String[]{"sha256/abc+=","plan 1","x".repeat(300)}){
+   World b=new World();PolicyStore bs=new PolicyStore(dir.resolve("engine/bad.properties"));Files.deleteIfExists(bs.file());
+   b.pending=bad;b.local=la(2026,10,17,14,0);
+   for(int day=0;day<4;day++){
+    b.signed=T0+day*4*OtaPolicy.DAY;b.calls.clear();plan=b.engine(P,bs).run(PolicyEngine.Job.ACTIVATION);
+    same(b.calls,List.of(),bad+" never activates");same(plan.decision.blockers,List.of("pending-unknown"),bad+" is unreadable");
+    same(plan.outcome,"activation-deferred",bad+" defers");check(!plan.alert.reasons.contains("policy-state-reset"),bad+" never resets the ledger");
+    check(!bs.load().resetPending,bad+" saved ledger reads back");
+   }
+  }
+
+  // A ledger that cannot be saved never blocks: the Plan is returned with an alert.
+  World u=new World();PolicyStore us=new PolicyStore(dir.resolve("engine/unsaved.properties"));Files.createDirectory(us.file());
+  plan=u.engine(P,us).run(PolicyEngine.Job.DISCOVERY);
+  same(u.calls,List.of("discover:false"),"discovery runs");same(plan.discoveryDelayMillis,6*OtaPolicy.HOUR-15*OtaPolicy.MINUTE,"next discovery still planned");
+  same(plan.alert.level,PolicyLedger.Alert.Level.ALERT,"unsaved state alerts");same(plan.alert.reasons,List.of("policy-state-reset","policy-state-unsaved"),"unsaved reason");
+  check(Files.isDirectory(us.file()),"nothing replaced the directory");
 
   // A corrupt ledger never permits anything and raises an alert.
   Files.writeString(ds.file(),"version=1\n");d.pending="plan-3";d.local=la(2026,10,25,14,0);d.calls.clear();

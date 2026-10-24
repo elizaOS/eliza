@@ -17,7 +17,9 @@ import java.util.Properties;
 /** One private file, replaced atomically after an fsync. Unreadable or
  * inconsistent state never blocks the updater: it is replaced by a fresh
  * ledger that raises a "policy-state-reset" alert, and every gate still
- * applies, so a reset can delay an activation but never permit one. */
+ * applies, so a reset can delay an activation but never permit one. save
+ * refuses to replace anything but a regular file; PolicyEngine reports that as
+ * a policy-state-unsaved alert and still returns its Plan. */
 public final class PolicyStore {
  static final int MAX_BYTES=16*1024;
  private final Path file;

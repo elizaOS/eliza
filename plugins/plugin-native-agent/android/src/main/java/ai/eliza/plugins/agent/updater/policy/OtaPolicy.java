@@ -90,6 +90,7 @@ public final class OtaPolicy {
   public Builder qualifiedRebootRoute(boolean value){qualifiedRebootRoute=value;return this;}
   public Builder maxThermalStatus(int value){maxThermalStatus=value;return this;}
   public Builder window(int startMinute,int endMinute){windowStartMinute=startMinute;windowEndMinute=endMinute;return this;}
+  public Builder alertAges(long alertMillis,long escalateMillis){alertAfterMillis=alertMillis;escalateAfterMillis=escalateMillis;return this;}
   public OtaPolicy build(){return new OtaPolicy(this);}
  }
 }

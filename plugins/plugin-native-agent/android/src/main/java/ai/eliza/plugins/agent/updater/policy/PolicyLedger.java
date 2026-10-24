@@ -27,6 +27,7 @@ public final class PolicyLedger {
   /** False when this run had no signed time: the level is the last one computed. */
   public final boolean current;
   Alert(Level level,List<String> reasons,boolean current){this.level=level;this.reasons=Collections.unmodifiableList(new ArrayList<>(reasons));this.current=current;}
+  Alert with(String reason){List<String> more=new ArrayList<>(reasons);more.add(reason);return new Alert(level==Level.NONE?Level.ALERT:level,more,current);}
   @Override public String toString(){return level+(reasons.isEmpty()?"":" "+String.join(",",reasons))+(current?"":" (not current)");}
  }
 
@@ -55,11 +56,17 @@ public final class PolicyLedger {
  }
  void checked(long lower){lastCheck=Math.max(lastCheck,lower);}
 
- /** id is the prepared plan awaiting activation, or empty when none. */
- void observePending(String id,Long signedLower,long wallNow){
-  if(id==null||id.isEmpty()){pendingId="";pendingSince=0;pendingSinceWall=0;windowsThroughWall=0;missedWindows=0;return;}
-  if(id.equals(pendingId))return;
+ /** The Pending port's id contract, and all the ledger stores and reads back. */
+ static boolean validPendingId(String id){return id.length()<=256&&id.matches("[A-Za-z0-9._:-]+");}
+
+ /** id is the prepared plan awaiting activation, or empty when none. An id outside
+  * the Pending contract changes nothing and returns false. */
+ boolean observePending(String id,Long signedLower,long wallNow){
+  if(id==null||id.isEmpty()){pendingId="";pendingSince=0;pendingSinceWall=0;windowsThroughWall=0;missedWindows=0;return true;}
+  if(!validPendingId(id))return false;
+  if(id.equals(pendingId))return true;
   pendingId=id;pendingSince=signedLower==null?0:signedLower;pendingSinceWall=wallNow;windowsThroughWall=wallNow;missedWindows=0;
+  return true;
  }
 
  /** Local comfort clock only. A clock moved backwards counts nothing and never uncounts. */
@@ -117,7 +124,7 @@ public final class PolicyLedger {
    String resetPending=required(p,"resetPending");if(!resetPending.equals("true")&&!resetPending.equals("false"))throw new IOException("resetPending");l.resetPending=Boolean.parseBoolean(resetPending);
    l.alertLevel=Alert.Level.valueOf(required(p,"alertLevel"));l.alertReasons=required(p,"alertReasons");
    l.lastOutcome=required(p,"lastOutcome");l.lastDecision=required(p,"lastDecision");
-   if(l.pendingId.length()>256||!l.pendingId.matches("[A-Za-z0-9._:-]*"))throw new IOException("pendingId");
+   if(!l.pendingId.isEmpty()&&!validPendingId(l.pendingId))throw new IOException("pendingId");
    if(l.pendingId.isEmpty()&&(l.pendingSince!=0||l.pendingSinceWall!=0||l.windowsThroughWall!=0||l.missedWindows!=0))throw new IOException("Pending fields without a pending activation");
    if(p.size()!=14)throw new IOException("Unexpected policy ledger fields");
    return l;
