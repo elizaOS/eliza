@@ -349,6 +349,150 @@ it("does not send a cancellable request to an older native peer", async () => {
   }
 });
 
+it("gives every request failure a stable reason from the fixed list", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "native-reasons-"));
+  const socketPath = join(directory, "browser.sock");
+  const target = new NativeSocketBrowserTarget(() => {}, {
+    registrationMs: 1000,
+    heartbeatMs: 10000,
+    replyMs: 200,
+  });
+  const sockets: Socket[] = [];
+  const connect = async (profileId: string) => {
+    const socket = createConnection(socketPath);
+    sockets.push(socket);
+    const peer = socketFrames(socket);
+    peer.send({
+      type: "hello",
+      protocol: 2,
+      extensionId: "pmldpcoefklbdbgmggcejkfoinmjfeio",
+      profileId,
+      capabilities: ["list", "snapshot", "cancel"],
+      nonce: "hello",
+    });
+    await vi.waitFor(() => expect(peer.messages[0]?.type).toBe("hello-ack"));
+    return { socket, peer };
+  };
+  const dispatched = async (
+    peer: ReturnType<typeof socketFrames>,
+    count: number,
+  ) => {
+    await vi.waitFor(() =>
+      expect(
+        peer.messages.filter((message) => message.type === "command"),
+      ).toHaveLength(count),
+    );
+    return peer.messages.filter((message) => message.type === "command")[
+      count - 1
+    ];
+  };
+  try {
+    await target.start({ ELIZA_BROWSER_NATIVE_SOCKET: socketPath });
+    const { socket, peer } = await connect("reason-profile");
+    await expect(
+      target.execute({ subaction: "list" }, { signal: AbortSignal.abort() }),
+    ).rejects.toMatchObject({ kind: "STALE_REF", reason: "request-cancelled" });
+
+    const controller = new AbortController();
+    const cancelled = target.execute(
+      { subaction: "list" },
+      { signal: controller.signal },
+    );
+    const cancelledResult = expect(cancelled).rejects.toMatchObject({
+      kind: "UNCERTAIN_OUTCOME",
+      reason: "request-cancelled",
+    });
+    await dispatched(peer, 1);
+    controller.abort();
+    await cancelledResult;
+
+    await expect(target.execute({ subaction: "list" })).rejects.toMatchObject({
+      kind: "UNCERTAIN_OUTCOME",
+      reason: "reply-timeout",
+    });
+    await dispatched(peer, 2);
+
+    let sent = 2;
+    for (const [error, kind, reason] of [
+      [
+        {
+          kind: "INCOMPLETE_SNAPSHOT",
+          message: "x",
+          reason: "frame-inventory-incomplete",
+        },
+        "UNCERTAIN_OUTCOME",
+        "frame-inventory-incomplete",
+      ],
+      [
+        {
+          kind: "INCOMPLETE_SNAPSHOT",
+          message: "x",
+          reason: "frame-identity-changed",
+        },
+        "UNCERTAIN_OUTCOME",
+        "frame-identity-changed",
+      ],
+      [
+        {
+          kind: "INCOMPLETE_SNAPSHOT",
+          message: "x",
+          reason: "frame-read-incomplete",
+        },
+        "UNCERTAIN_OUTCOME",
+        "frame-read-incomplete",
+      ],
+      [
+        { kind: "UNAVAILABLE", message: "x", reason: "page-loading" },
+        "UNAVAILABLE",
+        "page-loading",
+      ],
+      // A reason outside the peer's list, or none, never passes through.
+      [
+        { kind: "UNAVAILABLE", message: "x", reason: "reply-timeout" },
+        "UNAVAILABLE",
+        "peer-error",
+      ],
+      [
+        { kind: "POLICY_BLOCKED", message: "x" },
+        "POLICY_BLOCKED",
+        "peer-error",
+      ],
+    ] as const) {
+      const running = target.execute({ subaction: "snapshot", id: "1" });
+      const result = expect(running).rejects.toMatchObject({
+        kind,
+        reason,
+        message: "x",
+      });
+      const command = await dispatched(peer, ++sent);
+      peer.send({ type: "result", id: command.id, ok: false, error });
+      await result;
+    }
+
+    const interrupted = target.execute({ subaction: "list" });
+    const interruptedResult = expect(interrupted).rejects.toMatchObject({
+      kind: "UNCERTAIN_OUTCOME",
+      reason: "connection-lost",
+    });
+    await dispatched(peer, ++sent);
+    socket.destroy();
+    await interruptedResult;
+
+    await connect("reason-profile");
+    // Registration is withdrawn synchronously; the close event follows later.
+    const stopping = target.stop();
+    await expect(target.execute({ subaction: "list" })).rejects.toMatchObject({
+      kind: "UNAVAILABLE",
+      reason: "profile-unavailable",
+    });
+    await stopping;
+  } finally {
+    for (const socket of sockets) socket.destroy();
+    await target.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 it("sends host task bindings separately from scoped model commands", async () => {
   const directory = await mkdtemp(join(tmpdir(), "native-task-binding-"));
   const socketPath = join(directory, "browser.sock");

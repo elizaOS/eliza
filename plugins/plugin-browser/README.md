@@ -97,6 +97,12 @@ and then requires host verification. A missing or different destination, effect
 violation, changed authority or failed cleanup remains unknown. Other uncertain
 effects retain the explicit reconciliation path.
 
+A failed native-socket request also carries a stable `reason` beside its `kind`
+(`NATIVE_SOCKET_FAILURE_REASONS`): `reply-timeout`, `request-cancelled`,
+`profile-unavailable`, `connection-lost`, the peer's `frame-inventory-incomplete`,
+`frame-identity-changed`, `frame-read-incomplete` and `page-loading`, or
+`peer-error` for any other peer failure. Match `reason`, not the message text.
+
 Native `select` takes an exact visible option label in `text` (or the workspace
 `value` field). Snapshots report option labels, disabled state and selection,
 never internal option values. Missing, disabled or duplicate labels are refused.

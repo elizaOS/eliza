@@ -2,9 +2,12 @@
 export const MAX_NATIVE_BYTES = 48 * 1024;
 export class BridgeError extends Error {
   readonly kind: string;
-  constructor(kind: string, message: string) {
+  /** Stable machine-readable cause, sent beside `kind` so callers never match `message`. */
+  readonly reason: string | undefined;
+  constructor(kind: string, message: string, reason?: string) {
     super(message);
     this.kind = kind;
+    this.reason = reason;
   }
 }
 export function serializeCompleteMessage(value: unknown) {
