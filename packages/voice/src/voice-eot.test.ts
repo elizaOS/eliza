@@ -44,6 +44,16 @@ describe("scoreEndOfTurnHeuristic", () => {
       "It costs a hundred.",
       "Bring me one hundred.",
       "I paid two hundred.",
+      // "one point" is a finished phrase, not only a decimal
+      "I lived there at one point.",
+      "At one point.",
+      "She scored one point.",
+      "We won by 1 point.",
+      // a full-stopped question tag
+      "Right.",
+      "That's right.",
+      "Yeah.",
+      "Correct.",
     ]) {
       expect(scoreEndOfTurnHeuristic(text), text).toBe(0.95);
     }
@@ -62,6 +72,8 @@ describe("scoreEndOfTurnHeuristic", () => {
       "It came to 45 point",
       "It came to forty-five point.",
       "It came to zero point",
+      "It came to one point",
+      "That's twenty-one point.",
     ]) {
       expect(scoreEndOfTurnHeuristic(text), text).toBe(0.2);
     }

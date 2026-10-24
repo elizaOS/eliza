@@ -105,7 +105,11 @@ const NEVER_SENTENCE_FINAL = new Set([
   "hmm",
   "hm",
 ]);
-/** A decimal point needs a preceding number, unlike "that's the point". */
+/**
+ * A decimal point needs a preceding number, unlike "that's the point". "One
+ * point" is also a finished phrase ("at one point", "won by one point"), so it
+ * only reads as a decimal without a full stop.
+ */
 const NUMBER_BEFORE_POINT =
   /^(?:\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:-(?:one|two|three|four|five|six|seven|eight|nine))?|hundred|thousand|million|billion)$/;
 /** Dangling auxiliaries/modals that need another clause or phrase to land. */
@@ -163,7 +167,8 @@ const QUESTION_TAGS = [
  *   1  Trailing ellipsis ("…" / "..")                       0.20  (trail-off)
  *   2  Sentence-final ! or ?                                0.95
  *   3  Question-tag suffix ("right?", "yeah", "correct")    0.85
- *   4  Unfinished number ("1,", "$", "45 point")            0.20  (mid-amount)
+ *   4  Unfinished number ("1,", "$", "45 point", and         0.20  (mid-amount)
+ *      "one point" without a full stop)
  *   5  Sentence-final full stop, unless the last word can    0.95
  *      never end a sentence (the / and / um / …)
  *   6  Trailing conjunction (and / but / because / …)       0.15  (mid-clause)
@@ -189,13 +194,13 @@ export function scoreEndOfTurnHeuristic(transcript: string): number {
   if (/(\.{2,}|…)$/.test(text)) return 0.2;
   // A final ! or ? → almost certainly done.
   if (/[!?]$/.test(text)) return 0.95;
+  for (const tag of QUESTION_TAGS) {
+    if (text.toLowerCase().endsWith(tag)) return 0.85;
+  }
   // A final full stop is often the recognizer's, not the speaker's, so it is
   // set aside here and weighed against the last word below.
   const fullStop = text.endsWith(".");
   const lower = (fullStop ? text.slice(0, -1).trimEnd() : text).toLowerCase();
-  for (const tag of QUESTION_TAGS) {
-    if (lower.endsWith(tag)) return 0.85;
-  }
   // An amount cut off mid-number ("1,", "$") — before the words lose punctuation.
   if (/(\d,|\$)$/.test(lower)) return 0.2;
   const words = lower
@@ -204,8 +209,13 @@ export function scoreEndOfTurnHeuristic(transcript: string): number {
     .filter(Boolean);
   if (words.length === 0) return 0.5;
   const lastWord = trimEndCharacters(words[words.length - 1], "',;:-");
-  // A decimal point cut off before its digits ("45 point").
-  if (lastWord === "point" && NUMBER_BEFORE_POINT.test(words.at(-2) ?? ""))
+  // A decimal point cut off before its digits ("45 point", "one point").
+  const beforeLast = words.at(-2) ?? "";
+  if (
+    lastWord === "point" &&
+    NUMBER_BEFORE_POINT.test(beforeLast) &&
+    !(fullStop && (beforeLast === "one" || beforeLast === "1"))
+  )
     return 0.2;
   if (fullStop && !NEVER_SENTENCE_FINAL.has(lastWord)) return 0.95;
   // Trailing conjunction / filler / incomplete phrase → mid-clause, the speaker
