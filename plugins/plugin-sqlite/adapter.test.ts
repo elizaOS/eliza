@@ -1716,6 +1716,40 @@ describe("durable SQLite agent adapter", () => {
     );
     expect((await reopened.getCaches(["crash"])).has("crash")).toBe(false);
   });
+
+  it("keeps another agent's messages out of searchMessages", async () => {
+    const adapter = await open();
+    await adapter.ensureEmbeddingDimension(3);
+    const otherAgentId = id();
+    const ownId = id();
+    const foreignId = id();
+    await adapter.createMemories([
+      {
+        memory: { ...memory("zephyr status is nominal beta"), id: ownId },
+        tableName: "messages",
+      },
+    ]);
+    // Simulate a shared file / legacy migration holding another agent's row.
+    const storage = await adapter.getConnection();
+    await storage.set("memories", foreignId, {
+      id: foreignId,
+      agentId: otherAgentId,
+      entityId,
+      roomId,
+      tableName: "messages",
+      content: { text: "zephyr launch is confidential alpha" },
+      createdAt: Date.now(),
+    });
+
+    const hits = await adapter.searchMessages({
+      roomIds: [roomId],
+      query: "zephyr",
+      tableName: "messages",
+      limit: 50,
+    });
+    // plugin-sql scopes the same query with `agent_id = this.agentId`.
+    expect(hits.map((hit) => hit.memory.id).sort()).toEqual([ownId]);
+  });
 });
 
 it("rejects a different lifecycle agent scope before invoking the callback", async () => {

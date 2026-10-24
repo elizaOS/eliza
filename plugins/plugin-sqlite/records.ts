@@ -1759,7 +1759,12 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     const stored = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
       (m) =>
-        roomSet.has(m.roomId as UUID) && storedMemoryTableName(m) === tableName,
+        // plugin-sql scopes the same query with `agent_id = this.agentId`.
+        // Rows stored without an agentId belong to this database, as in the
+        // other tenant checks.
+        (m.agentId ?? this.agentId) === this.agentId &&
+        roomSet.has(m.roomId as UUID) &&
+        storedMemoryTableName(m) === tableName,
     );
     // The window is applied before ranking + LIMIT/OFFSET, mirroring the SQL
     // adapters' created_at range conditions.
