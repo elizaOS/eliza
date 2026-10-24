@@ -380,4 +380,32 @@ describe("runBotLoopGate — deterministic anti-loop floor", () => {
       { roomId: GROUP_ROOM },
     );
   });
+
+  it("fails open and reports when the room lookup throws", async () => {
+    const { runtime, adapter } = await makeRuntime();
+    const reportError = vi.spyOn(runtime, "reportError");
+    await seed(adapter, botExchangeRows(runtime.agentId, 3));
+    const realGetRoom = runtime.getRoom.bind(runtime);
+    // Scoped failure: only this room's row read throws, so the channel type
+    // cannot be resolved from the message content either (no channelType).
+    runtime.getRoom = async (roomId: UUID) => {
+      if (roomId === GROUP_ROOM) throw new Error("room store unavailable");
+      return realGetRoom(roomId);
+    };
+    const inbound = makeRow({
+      roomId: GROUP_ROOM,
+      entityId: OTHER_BOT,
+      text: "bot ping without a channel stamp",
+      fromBot: true,
+    });
+    const result = await runBotLoopGate({ runtime, message: inbound });
+    runtime.getRoom = realGetRoom;
+    expect(result.ignored).toBe(false);
+    expect(result.reason).toBe("channel_unavailable");
+    expect(reportError).toHaveBeenCalledWith(
+      "BotLoopGate.channel",
+      expect.any(Error),
+      { roomId: GROUP_ROOM },
+    );
+  });
 });

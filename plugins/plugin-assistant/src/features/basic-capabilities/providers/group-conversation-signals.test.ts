@@ -161,13 +161,19 @@ describe("resolveChannelType", () => {
     expect(getRoomCalls).toHaveLength(0);
   });
 
-  it("returns empty when the room lookup fails or has no type", async () => {
+  it("propagates a failed room lookup instead of reporting an unknown channel", async () => {
     const failing = runtimeWithRoom(new Error("db down"));
     const message = turn(ALICE, 1, { roomId: ROOM });
-    await expect(resolveChannelType(failing.runtime, message)).resolves.toBe(
-      "",
+    // A failed room read is an IO fault, not the valid "no channel type"
+    // answer: callers must be able to tell a DM from a broken lookup.
+    await expect(resolveChannelType(failing.runtime, message)).rejects.toThrow(
+      "db down",
     );
+  });
+
+  it("returns empty when the room exists but has no type", async () => {
     const typeless = runtimeWithRoom({});
+    const message = turn(ALICE, 1, { roomId: ROOM });
     await expect(resolveChannelType(typeless.runtime, message)).resolves.toBe(
       "",
     );
