@@ -833,9 +833,19 @@ export class IMessageService extends Service implements IIMessageService {
     service.chatDbPath = service.settings.dbPath || DEFAULT_CHAT_DB_PATH;
     service.chatDb =
       service.settings.transport === "native" ? await openChatDb(service.chatDbPath) : null;
+    let tip = 0;
     if (service.chatDb) {
-      const tip = service.chatDb.getLatestRowId();
-
+      try {
+        tip = service.chatDb.getLatestRowId();
+      } catch (error) {
+        // A cursor seeded at 0 would replay the whole backlog, so stay
+        // send-only until the next start, as when chat.db cannot be opened.
+        runtime.reportError("IMessageService.start", error);
+        service.chatDb.close();
+        service.chatDb = null;
+      }
+    }
+    if (service.chatDb) {
       service.lastRowId = Math.max(0, tip - backfill);
 
       logger.debug(
