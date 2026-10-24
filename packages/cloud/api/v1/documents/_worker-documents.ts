@@ -11,7 +11,7 @@ import type {
   AppEnv,
   AuthedUser,
 } from "@elizaos/cloud-shared/types/cloud-worker-env";
-import type { Memory } from "@elizaos/core";
+import { ElizaError, type Memory } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 
 export interface DocumentScope {
@@ -349,6 +349,22 @@ export function isReadableTextDocument(
 export const UNREADABLE_DOCUMENT_ERROR =
   "cannot be read as text. PDF, Word and other binary files are not supported; upload a text document.";
 
+export const NON_UTF8_DOCUMENT_ERROR =
+  "is not UTF-8 text. Save it as UTF-8 and upload it again.";
+
+/**
+ * Decode stored document text strictly. A lenient decoder turns every
+ * non-UTF-8 byte (for example Windows-1252 "é") into U+FFFD, so the stored
+ * text silently loses those characters and never matches a search for them.
+ */
+export function decodeDocumentText(bytes: Uint8Array): string | null {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
 export async function validateDocumentFiles(
   files: File[],
 ): Promise<Response | null> {
@@ -409,17 +425,36 @@ export async function validateDocumentFiles(
     );
   }
 
+  for (const file of files) {
+    if (decodeDocumentText(new Uint8Array(await file.arrayBuffer())) === null) {
+      return Response.json(
+        {
+          success: false,
+          error: `"${file.name}" ${NON_UTF8_DOCUMENT_ERROR}`,
+        },
+        { status: 415 },
+      );
+    }
+  }
+
   return null;
 }
 
 export async function fileToDocumentInput(
   file: File,
 ): Promise<DocumentFileInput> {
+  const text = decodeDocumentText(new Uint8Array(await file.arrayBuffer()));
+  if (text === null) {
+    throw new ElizaError(`"${file.name}" ${NON_UTF8_DOCUMENT_ERROR}`, {
+      code: "DOCUMENT_NOT_UTF8",
+      severity: "ephemeral",
+    });
+  }
   return {
     filename: sanitizeFilename(file.name || "document.txt"),
     contentType: file.type || "application/octet-stream",
     size: file.size,
-    text: await file.text(),
+    text,
   };
 }
 
