@@ -148,6 +148,7 @@ async function deliverTwoReplies(first: string, second: string) {
 		reportError: (...args: unknown[]) => errors.push(JSON.stringify(args)),
 		getMemoryById: async () => null,
 		createMemory: async (memory: Memory) => memory.id,
+		updateMemory: async () => true,
 		messageService: {
 			handleMessage: async (
 				_runtime: unknown,
