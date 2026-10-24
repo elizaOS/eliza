@@ -92,10 +92,25 @@ function listContainersFromBinary(binary: string, prefix: string): string[] {
       .split("\n")
       .map((s) => s.trim())
       .filter(Boolean);
-  } catch {
-    return [];
+  } catch (cause) {
+    // error-policy:J3 A query that failed is not an empty result. The caller
+    // sweeps "containers from previous runs" from this list, so reporting an
+    // unreadable engine state as `[]` silently disables that sweep.
+    throw new ElizaError(
+      `[SandboxEngine] Failed to list sandbox containers via "${binary}"; the engine's container state is unknown`,
+      {
+        code: "SANDBOX_CONTAINER_LIST_FAILED",
+        context: { binary, prefix },
+        cause,
+      },
+    );
   }
 }
+
+// Internal helpers — exported for tests only.
+export const __test__ = {
+  listContainersFromBinary,
+};
 
 function checkHealthWithBinary(binary: string, id: string): Promise<boolean> {
   try {
