@@ -20,6 +20,12 @@ const MAX_MCP_MARKETPLACE_RESULTS = 50;
 const MAX_MCP_MARKETPLACE_SCAN_PAGES = 20;
 /** Share of the request timeout the page walk may use, leaving time for the last response. */
 const MCP_MARKETPLACE_SCAN_BUDGET_SHARE = 0.6;
+/**
+ * Abort reason that only the page-walk budget produces. A caller abort and the
+ * request timeout keep their own reason, so the walk tells the internal budget
+ * apart from a real failure and never absorbs one.
+ */
+const MCP_MARKETPLACE_SCAN_DEADLINE = Symbol("mcp-marketplace-scan-deadline");
 
 export type McpMarketplaceErrorCode =
   | "aborted"
@@ -386,6 +392,48 @@ function classifyRequestError(
   });
 }
 
+interface ScanWindow {
+  /** Aborts on the walk deadline, the caller signal, or the request timeout. */
+  signal: AbortSignal;
+  /** True only when the walk deadline, not the caller or the timeout, ended the page. */
+  reachedDeadline: () => boolean;
+  dispose: () => void;
+}
+
+/**
+ * Bounds one catalog page by the shared walk deadline. The page relays the
+ * caller signal and the request timeout, so either one still aborts it with its
+ * own reason and stays a typed error. The deadline timer is the only reason the
+ * walk treats as a partial result.
+ */
+function createScanWindow(parent: AbortSignal, deadline: number): ScanWindow {
+  const controller = new AbortController();
+  const relayParentAbort = () => {
+    if (!controller.signal.aborted) controller.abort(parent.reason);
+  };
+  if (parent.aborted) {
+    relayParentAbort();
+  } else {
+    parent.addEventListener("abort", relayParentAbort, { once: true });
+  }
+  const timer = controller.signal.aborted
+    ? undefined
+    : setTimeout(
+        () => {
+          if (!controller.signal.aborted) controller.abort(MCP_MARKETPLACE_SCAN_DEADLINE);
+        },
+        Math.max(0, deadline - Date.now())
+      );
+  return {
+    signal: controller.signal,
+    reachedDeadline: () => controller.signal.reason === MCP_MARKETPLACE_SCAN_DEADLINE,
+    dispose: () => {
+      if (timer !== undefined) clearTimeout(timer);
+      parent.removeEventListener("abort", relayParentAbort);
+    },
+  };
+}
+
 async function cancelBodyQuietly(body: ReadableStream<Uint8Array> | null): Promise<void> {
   // error-policy:J6 best-effort cancellation preserves the primary boundary error.
   try {
@@ -452,13 +500,14 @@ async function readBoundedJson(
 async function fetchRegistryJson<T>(
   url: string,
   parse: (value: unknown) => T,
-  options: ResolvedRequestOptions
+  options: ResolvedRequestOptions,
+  signal: AbortSignal = options.signal
 ): Promise<T> {
   // error-policy:J2 transport failures are wrapped with a stable typed error and cause.
   try {
     const response = await fetch(url, {
       headers: { Accept: "application/json" },
-      signal: options.signal,
+      signal,
     });
     if (!response.ok) {
       await cancelBodyQuietly(response.body);
@@ -513,14 +562,37 @@ export async function searchMcpMarketplace(
     const pageLimit = normalizedQuery ? MAX_MCP_MARKETPLACE_RESULTS : requestedLimit;
     let cursor: string | undefined;
     let pagesRead = 0;
+    let walkDeadlineReached = false;
     const seenCursors = new Set<string>();
 
     do {
-      const page = await fetchRegistryJson(
-        createSearchUrl(pageLimit, cursor),
-        parseListResponse,
-        resolved
-      );
+      const window = createScanWindow(resolved.signal, scanDeadline);
+      let page: McpRegistryListResponse;
+      try {
+        page = await fetchRegistryJson(
+          createSearchUrl(pageLimit, cursor),
+          parseListResponse,
+          resolved,
+          window.signal
+        );
+      } catch (error) {
+        // Only the walk budget becomes a partial answer. A caller abort and the
+        // request timeout keep their own reason and stay typed errors.
+        if (!window.reachedDeadline()) throw error;
+        // With no completed page there is no prefix to return, so the caller
+        // gets a typed timeout instead of an empty answer.
+        if (pagesRead === 0) {
+          throw new McpMarketplaceError(
+            "MCP marketplace scan reached its deadline before one catalog page completed",
+            "timeout",
+            { cause: error }
+          );
+        }
+        walkDeadlineReached = true;
+        break;
+      } finally {
+        window.dispose();
+      }
       pagesRead += 1;
       cursor = page.nextCursor;
       if (cursor && seenCursors.has(cursor)) {
@@ -576,7 +648,7 @@ export async function searchMcpMarketplace(
     // match set is a prefix of the catalog, not the whole of it.
     return {
       results,
-      truncated: Boolean(cursor) && results.length < requestedLimit,
+      truncated: results.length < requestedLimit && (walkDeadlineReached || Boolean(cursor)),
     };
   } finally {
     resolved.dispose();
