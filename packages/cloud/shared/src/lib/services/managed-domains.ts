@@ -283,6 +283,8 @@ export async function listCloudflareRenewalsDue(
 /**
  * Cloudflare-registered, active, verified domains that are not yet confirmed
  * live. The health-check cron probes each domain's origin and flips `isLive`.
+ * Never-checked domains come first, then the least recently checked, so
+ * domains that keep failing rotate instead of filling every batch.
  */
 export async function listCloudflareNeedingHealthCheck(limit: number): Promise<ManagedDomain[]> {
   return await dbRead.query.managedDomains.findMany({
@@ -292,6 +294,7 @@ export async function listCloudflareNeedingHealthCheck(limit: number): Promise<M
       eq(managedDomains.verified, true),
       eq(managedDomains.isLive, false),
     ),
+    orderBy: [sql`${managedDomains.lastHealthCheck} ASC NULLS FIRST`, managedDomains.createdAt],
     limit,
   });
 }
