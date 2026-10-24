@@ -95,6 +95,20 @@ export class TaskLifecycle {
     this.changed = changed;
     this.messages = { ...messages };
   }
+  /** The state last sent to `changed`. */
+  snapshot(): Readonly<TaskLifecycleState> {
+    return this.state;
+  }
+  /** The confirmed task's id, or null while a request is pending or failed. */
+  currentTaskId(): string | null {
+    const { task, pending, error } = this.state;
+    return !pending && !error ? (task?.id ?? null) : null;
+  }
+  /** True only for a confirmed paused task, with no request pending or failed. */
+  isPaused(): boolean {
+    const { task, pending, error } = this.state;
+    return !pending && !error && task?.status === "paused";
+  }
   private publish(next: TaskLifecycleState) {
     this.state = next;
     this.changed(next);
