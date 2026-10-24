@@ -42,6 +42,40 @@ describe("ensureConnection", () => {
 		});
 	});
 
+	it("keeps the room's stored server binding when a later connection omits it", async () => {
+		const agentId = stringToUuid("connection-binding-agent");
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
+		await adapter.initialize();
+		const entityId = stringToUuid("connection-binding-requester");
+		const roomId = stringToUuid("connection-binding-room");
+		const worldId = stringToUuid("connection-binding-world");
+		const serverId = "523456789012345678";
+		const messageServerId = stringToUuid("connection-binding-server");
+		const base = {
+			agentId,
+			entityId,
+			roomId,
+			worldId,
+			messageServerId,
+			serverId,
+			source: "discord",
+			channelId: "623456789012345678",
+		};
+
+		await ensureConnection(adapter, base);
+		// A later path reconciles the same room without the server binding.
+		await ensureConnection(adapter, {
+			agentId,
+			entityId,
+			roomId,
+			worldId,
+			source: "discord",
+		});
+
+		const [room] = await adapter.getRoomsByIds([roomId]);
+		expect(room).toMatchObject({ serverId, messageServerId });
+	});
+
 	it("preserves existing role grants when another caller reconciles", async () => {
 		const agentId = stringToUuid("connection-role-agent");
 		const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
