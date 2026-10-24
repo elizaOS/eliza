@@ -9,6 +9,7 @@
  * POST /api/webhooks/whatsapp/[orgId]  -- Incoming messages
  */
 
+import { ApiError } from "@elizaos/cloud-shared/lib/api/errors";
 import {
   RateLimitPresets,
   rateLimit,
@@ -17,10 +18,7 @@ import { agentGatewayRouterService } from "@elizaos/cloud-shared/lib/services/ag
 import { messageRouterService } from "@elizaos/cloud-shared/lib/services/message-router";
 import { phoneErrorDiagnostic } from "@elizaos/cloud-shared/lib/services/phone-error-diagnostics";
 import { whatsappAutomationService } from "@elizaos/cloud-shared/lib/services/whatsapp-automation";
-import {
-  releaseProcessingClaim,
-  tryClaimForProcessing,
-} from "@elizaos/cloud-shared/lib/utils/idempotency";
+import { processOnce } from "@elizaos/cloud-shared/lib/utils/idempotency";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { createPerfTrace } from "@elizaos/cloud-shared/lib/utils/perf-trace";
 import {
@@ -112,28 +110,26 @@ async function handleWhatsAppWebhook(c: AppContext): Promise<Response> {
     for (const msg of messages) {
       const idempotencyKey = `whatsapp:org:${orgId}:${msg.messageId}`;
 
-      // Preserve the provider contract owned by #22359. This storage migration
-      // does not redefine WhatsApp delivery/replay semantics.
-      const claimed = await tryClaimForProcessing(
-        idempotencyKey,
-        "whatsapp-org",
-      );
-      if (!claimed) {
-        logger.info("[WhatsAppWebhook] Skipping duplicate", { orgId });
-        continue;
-      }
-
       try {
-        await handleIncomingMessage(orgId, msg, (promise) =>
-          c.executionCtx.waitUntil(promise),
+        // Claim the message id before the model turn and the outbound send, and
+        // keep the key for the delivered window after success, so a Meta
+        // redelivery of the same message is refused instead of replied to and
+        // billed a second time (same shape as the Twilio and Blooio webhooks).
+        const outcome = await processOnce(idempotencyKey, "whatsapp-org", () =>
+          handleIncomingMessage(orgId, msg, (promise) =>
+            c.executionCtx.waitUntil(promise),
+          ),
         );
+        if (outcome.status === "duplicate") {
+          logger.info("[WhatsAppWebhook] Skipping duplicate", { orgId });
+        }
       } catch (error) {
-        // error-policy:J4 isolate ordinary message failures and release their claim.
+        // error-policy:J4 isolate ordinary message failures; processOnce has
+        // already released the claim so the provider's retry is processed.
         logger.error("[WhatsAppWebhook] Failed to process message", {
           orgId,
           ...phoneErrorDiagnostic(error),
         });
-        await releaseProcessingClaim(idempotencyKey);
       }
     }
 
@@ -359,22 +355,7 @@ async function handleIncomingMessage(
           defer,
         });
 
-        if (sent.status === "delivered") {
-          logger.info("[WhatsAppWebhook] Agent response sent", {
-            orgId,
-          });
-        } else {
-          logger.error(
-            "[WhatsAppWebhook] Agent response delivery did not complete",
-            {
-              orgId,
-              deliveryStatus: sent.status,
-              deliveryCode: sent.code,
-              retryable: sent.retryable,
-              providerStatus: sent.providerStatus,
-            },
-          );
-        }
+        settleReplyDelivery(orgId, sent);
       }
       return;
     }
@@ -405,25 +386,47 @@ async function handleIncomingMessage(
       defer,
     });
 
-    if (sent.status === "delivered") {
-      logger.info("[WhatsAppWebhook] Agent response sent", {
-        orgId,
-      });
-    } else {
-      logger.error(
-        "[WhatsAppWebhook] Agent response delivery did not complete",
-        {
-          orgId,
-          deliveryStatus: sent.status,
-          deliveryCode: sent.code,
-          retryable: sent.retryable,
-          providerStatus: sent.providerStatus,
-        },
-      );
-    }
+    settleReplyDelivery(orgId, sent);
   } finally {
     stopTyping();
     perfTrace.end();
+  }
+}
+
+type ReplyDelivery = Awaited<
+  ReturnType<typeof messageRouterService.sendMessage>
+>;
+
+/**
+ * A delivered reply, a non-retryable failure and an uncertain outcome all end
+ * the message: the idempotency key then keeps the delivered window, so a Meta
+ * redelivery is refused instead of answered and billed again. A retryable
+ * failure (for example a provider 429) delivered nothing, so it is thrown:
+ * processOnce releases the processing claim and the next redelivery is
+ * answered.
+ */
+function settleReplyDelivery(orgId: string, sent: ReplyDelivery): void {
+  if (sent.status === "delivered") {
+    logger.info("[WhatsAppWebhook] Agent response sent", { orgId });
+    return;
+  }
+  logger.error("[WhatsAppWebhook] Agent response delivery did not complete", {
+    orgId,
+    deliveryStatus: sent.status,
+    deliveryCode: sent.code,
+    retryable: sent.retryable,
+    providerStatus: sent.providerStatus,
+  });
+  if (sent.status === "failed" && sent.retryable) {
+    throw new ApiError({
+      code: "service_unavailable",
+      message: "WhatsApp reply was not delivered and can be retried",
+      status: 503,
+      details: {
+        deliveryCode: sent.code,
+        providerStatus: sent.providerStatus,
+      },
+    });
   }
 }
 
