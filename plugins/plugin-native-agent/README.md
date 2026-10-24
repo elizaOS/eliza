@@ -32,6 +32,11 @@ identity and cancellation. It cannot install packages or select a trust authorit
 Its portable contract is included in `test:native-host`. Qualify the host adapter
 separately with real Android install/recovery tests; journal tests alone do not
 prove silent-install authority or product health.
+`updater.policy.PolicyEngine` decides when to run discovery, download and activation
+jobs. It gates them on signed time, device signals (unknown signals defer) and a local
+comfort window, and keeps a durable alert ledger. Hosts bind the ports: signed clock,
+signal readers, discovery, pending plan and activation. The engine reads no clock and
+installs nothing itself. Its JVM contract is included in `test:native-host`.
 `LocalCredentialBroker` is a private loopback HTTP transport for the embedded
 native process. Hosts inject separate primary and pending-enrollment stores plus
 a nonempty private token. It is not a Capacitor method: do not pass that token or

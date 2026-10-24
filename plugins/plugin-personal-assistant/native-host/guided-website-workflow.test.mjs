@@ -114,3 +114,82 @@ test("the planner sees page blockers by control ref, never a selector", () => {
   assert.equal(JSON.stringify(view).includes("snap:0:"), false);
   assert.deepEqual(pageView(page("B"), pageControls(page("B"))).blockers, []);
 });
+
+test("a host words the outcome of a planned browser action", async () => {
+  const task = {
+    id: "task-1",
+    revision: 1,
+    epoch: 1,
+    status: "active",
+    operations: [],
+    authorization: { decisionId: "grant" },
+    observation: { id: "observed", version: 1, inputRevision: 1 },
+  };
+  const snapshot = {
+    ...page("A"),
+    elements: [
+      {
+        tag: "button",
+        label: "Next",
+        selector: "snap:0:0",
+        targetSelector: "#next",
+      },
+    ],
+  };
+  const results = [
+    { status: "failed", evidenceRef: "not-dispatched" },
+    { status: "failed", evidenceRef: "evidence:after" },
+    { status: "unknown" },
+  ];
+  const runtime = {
+    owner: { actorId: "owner" },
+    get: () => task,
+    observe: async () => task,
+    control: () => {},
+    execute: async (_id, _revision, proposal) => ({
+      operations: [{ proposal, ...results.shift() }],
+    }),
+  };
+  const workflow = new GuidedWebsiteWorkflow({
+    runtime,
+    actuator: {
+      readObservation: () => ({ observation: task.observation, snapshot }),
+      quiesce: async () => {},
+    },
+    taskId: task.id,
+    planStep: async ({ page: view }) => ({
+      status: "act",
+      kind: "agent-action",
+      action: "click",
+      ref: view.controls[0].ref,
+      step: "Press Next",
+      message: "",
+    }),
+    authorizeAction: () => true,
+    words: {
+      actionNotSent: "not sent",
+      actionUnexpected: "unexpected",
+      actionUnverified: "unverified",
+    },
+  });
+  const outcome = async () => {
+    const offer = await workflow.refresh();
+    assert.equal(offer.kind, "agent-action");
+    return workflow.executeAction(offer.offerKey);
+  };
+  assert.deepEqual(await outcome(), {
+    kind: "blocked",
+    reason: "not sent",
+    reasonCode: "action-not-sent",
+  });
+  assert.deepEqual(await outcome(), {
+    kind: "blocked",
+    reason: "unexpected",
+    reasonCode: "action-failed",
+  });
+  assert.deepEqual(await outcome(), {
+    kind: "unknown-outcome",
+    reasonCode: "action-unverified",
+    message: "unverified",
+  });
+});

@@ -2,7 +2,7 @@ import {
   type TaskChoiceWidget,
   validateTaskChoiceWidget,
 } from "@elizaos/core/task-widgets";
-import { formatMinorCurrency } from "@elizaos/ui/value-formatting";
+import { formatMinorCurrency } from "@elizaos/ui/value-formatting.mjs";
 import { gmailSourceLink } from "./bill-source-link.mjs";
 
 export class BillClientResponseError extends Error {

@@ -99,6 +99,8 @@ export const REPUTATION_FEEDS = [
     mirror: true,
     url: PHISHING_FEED,
     source: "Phishing.Database",
+    homepage: "https://github.com/Phishing-Database/Phishing.Database",
+    notice: "phishing-database.txt",
     license: "MIT",
     licenseUrl:
       "https://github.com/Phishing-Database/Phishing.Database/blob/master/LICENSE",
@@ -108,6 +110,8 @@ export const REPUTATION_FEEDS = [
     id: "threats",
     url: THREAT_FEED,
     source: "HaGeZi TIF Mini",
+    homepage: "https://github.com/hagezi/dns-blocklists",
+    notice: "hagezi-gpl-3.0.txt",
     license: "GPL-3.0",
     licenseUrl: "https://github.com/hagezi/dns-blocklists/blob/main/LICENSE",
     threats: ["MALWARE_OR_SCAM"],
