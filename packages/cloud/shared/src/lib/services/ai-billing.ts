@@ -21,6 +21,10 @@ import {
   normalizeModelName,
   PLATFORM_MARKUP_MULTIPLIER,
 } from "../pricing";
+import {
+  anthropicWebSearchRequestsFromUsage,
+  calculateAnthropicWebSearchCost,
+} from "../providers/anthropic-web-search";
 import { logger } from "../utils/logger";
 import {
   type AffiliateBillingAttribution,
@@ -62,6 +66,10 @@ export interface AIUsage {
   cacheReadInputTokens?: number;
   cacheCreationInputTokens?: number;
   cacheWriteInputTokens?: number;
+  /** Provider-native usage (AI SDK `usage.raw`), e.g. Anthropic `server_tool_use`. */
+  raw?: unknown;
+  /** Provider-run web searches counted by the caller (e.g. over finished steps or stream parts). */
+  webSearchRequests?: number;
 }
 
 export interface BillingContext {
@@ -97,6 +105,8 @@ export interface BillingResult {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
+  /** Provider-run web searches billed in this result (Anthropic server tool). */
+  webSearchRequests?: number;
   /** Includes 20% platform markup */
   markupApplied: boolean;
 }
@@ -543,6 +553,17 @@ export async function billUsage(
     outputTokens,
     context.billingSource,
   );
+  // Provider-run server tools are billed by the provider per use, outside the
+  // token fields: Anthropic's web search reports its count only in the raw
+  // usage. Charge it (with the same platform markup) on the input side so the
+  // reservation reconcile and the ledger row carry the full provider cost.
+  const webSearchRequests =
+    provider === "anthropic" ? anthropicWebSearchRequestsFromUsage(usage) : 0;
+  if (webSearchRequests > 0) {
+    const webSearchCost = calculateAnthropicWebSearchCost(webSearchRequests);
+    inputCost += webSearchCost;
+    totalCost += webSearchCost;
+  }
   let baseInputCost = inputCost / PLATFORM_MARKUP_MULTIPLIER;
   let baseOutputCost = outputCost / PLATFORM_MARKUP_MULTIPLIER;
   let baseTotalCost = totalCost / PLATFORM_MARKUP_MULTIPLIER;
@@ -575,6 +596,7 @@ export async function billUsage(
       cacheReadInputTokens,
       cacheWriteInputTokens,
       outputTokens,
+      webSearchRequests,
     });
   }
 
@@ -603,6 +625,7 @@ export async function billUsage(
     inputTokens,
     outputTokens,
     totalTokens,
+    ...(webSearchRequests > 0 ? { webSearchRequests } : {}),
     markupApplied: true,
   };
 }

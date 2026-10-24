@@ -55,6 +55,7 @@ import {
 } from "@elizaos/cloud-shared/lib/providers/anthropic-thinking";
 import {
   ANTHROPIC_WEB_SEARCH_INPUT_TOKEN_BUFFER,
+  anthropicWebSearchFeeInputTokens,
   buildProviderNativeWebSearchTools,
   isAnthropicWebSearchEnabled,
 } from "@elizaos/cloud-shared/lib/providers/anthropic-web-search";
@@ -1950,11 +1951,35 @@ export async function handleChatCompletionsPOST(
       useAppCredits && appId && monetizedApp,
     );
     try {
+      // Provider-run web searches are billed per use on top of tokens, so the
+      // token estimate alone under-sizes the hold. Add the input-token
+      // equivalent of the worst case (maxUses searches) so settlement can
+      // collect the full fee; the exact fee is charged from the reported count.
+      const reservationInputTokens = async (): Promise<number> => {
+        if (!webSearchActive) return estimatedInputTokens;
+        const { inputCost } = await calculateCost(
+          normalizedModel,
+          provider,
+          estimatedInputTokens,
+          0,
+          billingSource,
+          options.executionCtx
+            ? { cacheOnly: true, executionCtx: options.executionCtx }
+            : undefined,
+        );
+        return (
+          estimatedInputTokens +
+          anthropicWebSearchFeeInputTokens(
+            request.webSearchMaxUses,
+            inputCost / estimatedInputTokens,
+          )
+        );
+      };
       if (options.appFundingActor) {
         const { totalCost } = await calculateCost(
           normalizedModel,
           provider,
-          estimatedInputTokens,
+          await reservationInputTokens(),
           estimatedOutputTokens,
           billingSource,
         );
@@ -2009,7 +2034,7 @@ export async function handleChatCompletionsPOST(
         const { totalCost } = await calculateCost(
           normalizedModel,
           provider,
-          estimatedInputTokens,
+          await reservationInputTokens(),
           estimatedOutputTokens,
           billingSource,
           options.executionCtx
@@ -2075,7 +2100,7 @@ export async function handleChatCompletionsPOST(
             affiliateCode,
             requestId,
           },
-          estimatedInputTokens,
+          estimatedInputTokens: await reservationInputTokens(),
           estimatedOutputTokens,
           maximumInputTokens,
           maximumOutputTokens,
@@ -2583,6 +2608,7 @@ async function settleStreamingAbortReservation(params: {
   billingSource: PricingBillingSource;
   estimatedInputTokens: number;
   deliveredText: string;
+  webSearchEnabled?: boolean;
   steps: readonly StepResult<ToolSet>[];
   settleReservation: (
     actualCost: number,
@@ -2590,6 +2616,12 @@ async function settleStreamingAbortReservation(params: {
   settleUnknown: () => Promise<CreditReconciliationResult | null>;
   billingReservation?: CreditReservation;
 }): Promise<CreditReconciliationResult | null> {
+  // Tool-call frames prove only an attempt, not a billed search: Anthropic
+  // does not bill failed searches. An aborted request can also omit usage for
+  // the current step. Keep the admitted unknown-outcome settlement instead of
+  // treating observed calls or usage from earlier steps as the final charge.
+  if (params.webSearchEnabled) return await params.settleUnknown();
+
   const finishedStepUsage = summarizeFinishedStepUsage(params.steps);
   const deliveredOutputTokens = estimateTokens(params.deliveredText);
   const inputTokens = Math.max(
@@ -2625,6 +2657,7 @@ async function settleStreamingAbortReservation(params: {
         totalTokens,
         cacheReadInputTokens: finishedStepUsage?.cacheReadInputTokens,
         cacheWriteInputTokens: finishedStepUsage?.cacheWriteInputTokens,
+        webSearchRequests: finishedStepUsage?.webSearchRequests,
       },
       params.billingReservation,
     );
@@ -3334,6 +3367,7 @@ async function handleStreamingRequest(
           billingSource,
           estimatedInputTokens,
           deliveredText,
+          webSearchEnabled: Object.keys(webSearchOptions).length > 0,
           steps,
           settleReservation,
           settleUnknown,
