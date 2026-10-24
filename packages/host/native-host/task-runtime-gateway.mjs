@@ -298,19 +298,35 @@ export async function createTaskGateway({
         choice,
       };
       if (typeof decoratePresentation !== "function") return shown;
-      // The host may add its own facts. A failing decorator never fails the read.
+      // Decoration is optional, but its wait cannot outlive task authority.
+      let decorated = shown;
       try {
-        return (
+        decorated =
           (await decoratePresentation({
-            presentation: shown,
+            presentation: { ...shown },
             db,
             owner,
             runtime,
-          })) ?? shown
-        );
+          })) ?? shown;
       } catch {
-        return shown;
+        // Keep the validated presentation when optional decoration fails.
       }
+      const afterDecoration = await authenticate();
+      if (
+        closed ||
+        requestEpoch !== epoch ||
+        afterDecoration.actorId !== actorId
+      )
+        throw new NativeHostError("Task changed");
+      const afterTask = runtime.get(taskId);
+      if (
+        afterTask.epoch !== expectedEpoch ||
+        afterTask.revision !== task.revision ||
+        afterTask.status !== "active" ||
+        afterTask.authorization.state !== "active"
+      )
+        throw new NativeHostError("Task changed");
+      return decorated;
     },
     /** `onResponse` observes each answer; it cannot change or fail it. */
     async handle(request) {
@@ -319,16 +335,38 @@ export async function createTaskGateway({
       let response;
       try {
         response = await handleRequest(request);
-        return response;
       } finally {
+        const responseEpoch = epoch;
+        const responseOwner = activeOwner;
         try {
           await onResponse({
             request,
-            response,
+            response: response?.clone(),
             durationMs: performance.now() - started,
           });
         } catch {}
+        if (response?.ok) {
+          try {
+            const current = await authenticate();
+            if (
+              closed ||
+              request.signal.aborted ||
+              responseEpoch !== epoch ||
+              current.actorId !== responseOwner
+            )
+              response = Response.json(
+                { code: "TASK_UNAUTHORIZED" },
+                { status: 401 },
+              );
+          } catch {
+            response = Response.json(
+              { code: "TASK_UNAUTHORIZED" },
+              { status: 401 },
+            );
+          }
+        }
       }
+      return response;
     },
     revoke() {
       epoch++;
