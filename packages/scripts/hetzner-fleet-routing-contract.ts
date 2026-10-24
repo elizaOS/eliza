@@ -86,6 +86,18 @@ const NATIVE_RELEASE_WORKFLOWS = {
     },
   },
 };
+// A reviewed, human-approved observation of one named existing host. It is
+// manual-only, runs once from main behind the production environment and does
+// no checkout or credential work, so it has no hosted fallback to route to.
+// Any change to its guard, environment or labels needs a new review here.
+const EXISTING_HOST_OBSERVERS = {
+  "cloud-existing-runner-qualification.yml": {
+    job: "qualify-existing-host",
+    if: `${EXPRESSION_OPEN} github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.run_attempt == 1 }}`,
+    environment: "production",
+    labels: ["self-hosted", "Linux", "X64", "x-canary"],
+  },
+};
 const DIRECT_RUNNER_PATH = /^jobs\.[^.]+\.runs-on$/;
 const MATRIX_RUNNER_PATH =
   /^jobs\.[^.]+\.strategy\.matrix\.include\.\d+\.runner$/;
@@ -191,7 +203,19 @@ export function validateHetznerFleetRouting(repoRoot) {
         );
       });
 
+    const observer = EXISTING_HOST_OBSERVERS[name];
+    const observerJob = observer && jobs?.[observer.job];
+    const observerRoute =
+      observerJob &&
+      Object.keys(document.toJS().on ?? {}).join() === "workflow_dispatch" &&
+      observerJob.if === observer.if &&
+      observerJob.environment === observer.environment &&
+      JSON.stringify(observerJob["runs-on"]) === JSON.stringify(observer.labels)
+        ? `jobs.${observer.job}.runs-on`
+        : null;
+
     for (const route of routes) {
+      if (route.path === observerRoute) continue;
       if (
         nativeRoutesValid &&
         (Object.keys(native.jobs).some(
