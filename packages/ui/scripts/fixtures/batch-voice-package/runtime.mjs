@@ -4,7 +4,14 @@ import {
   sanitizeSpeechText,
   trimEndCharacters,
 } from "@elizaos/core/speech";
+import { isEditableTextControl } from "@elizaos/ui/text-control-editing";
 import { BatchVoiceConversation } from "@elizaos/ui/voice/batch-conversation";
+import { DraftTranscriptGuard } from "@elizaos/ui/voice/draft-transcript-guard";
+import { startCumulativeMicrophoneCapture } from "@elizaos/ui/voice/microphone-capture";
+import { encodeMonoPcm16Wav } from "@elizaos/ui/voice/pcm-wave";
+import { attachProgressiveSpeech } from "@elizaos/ui/voice/progressive-speech-playback";
+import { RecordedTranscriptionError } from "@elizaos/ui/voice/recorded-transcription-controller";
+import { SpeechPlaybackError } from "@elizaos/ui/voice/segmented-speech-playback";
 import {
   buildVoiceTurnSignal,
   scoreEndOfTurnHeuristic,
@@ -25,6 +32,31 @@ check(
   new ElizaError("Expected", { code: "CONSUMER_CHECK" }).code ===
     "CONSUMER_CHECK",
   "Public typed error",
+);
+check(
+  isEditableTextControl(null, ["text"]) === false,
+  "Leaf text control entry",
+);
+const draft = new DraftTranscriptGuard();
+check(
+  draft.begin((original, transcript) => original + transcript)("Hi", true)
+    .value === "Hi",
+  "Leaf draft transcript entry",
+);
+const wav = encodeMonoPcm16Wav(new Float32Array([0, 1]), 16000);
+check(
+  wav.length === 48 && String.fromCharCode(...wav.slice(0, 4)) === "RIFF",
+  "Leaf PCM wave entry",
+);
+check(
+  typeof startCumulativeMicrophoneCapture === "function" &&
+    typeof attachProgressiveSpeech === "function",
+  "Leaf media entries",
+);
+check(
+  new RecordedTranscriptionError("empty-audio").code === "empty-audio" &&
+    new SpeechPlaybackError("playback").code === "playback",
+  "Leaf typed errors",
 );
 check(scoreEndOfTurnHeuristic("What time is it?") > 0.5, "Canonical EOT");
 check(!!buildVoiceTurnSignal("What time is it?", {}), "Public voice signal");

@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validateTaskChoiceWidget } from "../../../packages/core/src/messaging/task-widgets.ts";
-import { formatMinorCurrency } from "../../../packages/ui/src/utils/value-formatting.ts";
 import {
   BillClientResponseError,
   BillDecisionClient,
@@ -10,12 +8,9 @@ import {
   readBillDecision,
   readBillSourceOffer,
   validateBillSourceLinks,
+  defaultBillClientValidators as validators,
 } from "./bill-client.ts";
 
-const validators = {
-  choice: validateTaskChoiceWidget,
-  money: (value) => formatMinorCurrency(value, "en-US"),
-};
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const deferred = () => {
   let resolve, reject;
@@ -87,7 +82,7 @@ const decision = () => ({
     },
   },
 });
-function fixture(Client = BillDecisionClient) {
+function fixture(Client = BillDecisionClient, validators) {
   const calls = [],
     states = [];
   const client = new Client({
@@ -173,6 +168,43 @@ test("response admission preserves detached metadata and validates shared money,
       return true;
     },
   );
+});
+
+test("a caller validator replaces only its default; the other default still applies", async () => {
+  const amounts = [];
+  const recorded = fixture(BillDecisionClient, {
+    money: (value) => amounts.push(value.amountMinor),
+  });
+  recorded.client.start("task1");
+  await tick();
+  recorded.calls[0].resolve(decision());
+  await tick();
+  assert.equal(
+    recorded.client.snapshot().decision.kind,
+    "choose-existing-method",
+  );
+  assert.deepEqual(amounts, [1200, 0, 1200]);
+  const unbound = decision();
+  unbound.decision.choice.schemaVersion = 2;
+  const refresh = recorded.client.refresh();
+  recorded.calls[1].resolve(unbound);
+  assert.equal(await refresh, false);
+  assert.equal(
+    recorded.client.snapshot().decision.kind,
+    "choose-existing-method",
+  );
+
+  const refused = fixture(BillSourceClient, {
+    money: () => {
+      throw new Error("caller money");
+    },
+  });
+  refused.client.start("task1");
+  await tick();
+  refused.calls[0].resolve(offer());
+  await tick();
+  assert.equal(refused.client.snapshot().offer, null);
+  assert.equal(refused.client.snapshot().error, "search");
 });
 
 test("decision effect replay defers initial request and stop suppresses every later result", async () => {
@@ -553,7 +585,6 @@ test("a shown guide is checked again and renewed before it expires, and reported
   };
   const calls = [];
   const client = new BillDecisionClient({
-    validators,
     now: () => time,
     timers,
     changed: () => {},
@@ -647,7 +678,6 @@ test("a background guide check never makes the panel pending or refuses a choice
   };
   const calls = [];
   const client = new BillDecisionClient({
-    validators,
     now: () => time,
     timers,
     changed: () => {},
@@ -731,7 +761,6 @@ test("a hold for a question stops re-checks and sends a waiting command only aft
   };
   const calls = [];
   const client = new BillDecisionClient({
-    validators,
     now: () => time,
     timers,
     changed: () => {},

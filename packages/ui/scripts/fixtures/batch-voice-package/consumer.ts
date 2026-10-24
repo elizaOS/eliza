@@ -1,10 +1,32 @@
 import { ElizaError, sanitizeSpeechText } from "@elizaos/core/speech";
 import {
+  editTextControl,
+  isEditableTextControl,
+} from "@elizaos/ui/text-control-editing";
+import {
   type BatchVoiceAwaitingUserInput,
   BatchVoiceConversation,
   type BatchVoicePorts,
   type BatchVoiceReply,
 } from "@elizaos/ui/voice/batch-conversation";
+import {
+  DraftTranscriptGuard,
+  type DraftTranscriptResult,
+} from "@elizaos/ui/voice/draft-transcript-guard";
+import {
+  observeMicrophonePause,
+  startCumulativeMicrophoneCapture,
+} from "@elizaos/ui/voice/microphone-capture";
+import { encodeMonoPcm16Wav } from "@elizaos/ui/voice/pcm-wave";
+import { attachProgressiveSpeech } from "@elizaos/ui/voice/progressive-speech-playback";
+import {
+  RecordedTranscriptionController,
+  RecordedTranscriptionError,
+} from "@elizaos/ui/voice/recorded-transcription-controller";
+import {
+  SegmentedSpeechPlayback,
+  SpeechPlaybackError,
+} from "@elizaos/ui/voice/segmented-speech-playback";
 import {
   buildVoiceTurnSignal,
   type VoiceTurnSignal,
@@ -23,4 +45,44 @@ export function finishPausedTurn(
   reply: BatchVoiceReply,
 ): boolean {
   return conversation.resume({ pause, reply });
+}
+
+export function leafEntries(field: EventTarget | null, stream: MediaStream) {
+  const guard = new DraftTranscriptGuard();
+  const apply: (text: string, final: boolean) => DraftTranscriptResult =
+    guard.begin((original, transcript) => original + transcript);
+  const wav: Uint8Array = encodeMonoPcm16Wav(new Float32Array(1), 16000);
+  const editable: boolean =
+    isEditableTextControl(field, ["text"]) &&
+    editTextControl(field, { kind: "insert", text: "a" });
+  const stopPause: () => void = observeMicrophonePause(stream, () => {}, {
+    silenceMs: 800,
+    speechThreshold: 0.02,
+    speechFrames: 2,
+    pollMs: 50,
+    fftSize: 512,
+  });
+  const attach: typeof attachProgressiveSpeech = attachProgressiveSpeech;
+  const recordingError: RecordedTranscriptionError =
+    new RecordedTranscriptionError("empty-audio");
+  const playbackError: SpeechPlaybackError = new SpeechPlaybackError(
+    "playback",
+  );
+  const controller: typeof RecordedTranscriptionController =
+    RecordedTranscriptionController;
+  const playback: typeof SegmentedSpeechPlayback = SegmentedSpeechPlayback;
+  const capture: typeof startCumulativeMicrophoneCapture =
+    startCumulativeMicrophoneCapture;
+  return {
+    apply,
+    wav,
+    editable,
+    stopPause,
+    attach,
+    recordingError,
+    playbackError,
+    controller,
+    playback,
+    capture,
+  };
 }
