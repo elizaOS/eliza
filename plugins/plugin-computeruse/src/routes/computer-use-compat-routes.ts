@@ -383,21 +383,31 @@ function isStreamAuthorized(
   res: http.ServerResponse,
   url: URL,
 ): boolean {
-  const expectedToken = getCompatApiToken();
-  if (!expectedToken) {
+  // Same-machine requests are trusted, exactly as `ensureRouteAuthorized` does:
+  // the local approval UI opens this stream before the API gate resolves.
+  if (isTrustedComputerUseLocalRequest(req)) {
     return true;
   }
 
+  // Any other caller needs the configured token, in the header or in the query
+  // because a browser EventSource cannot attach the bearer header. When no
+  // token is configured this fails closed (403), like the sibling JSON routes:
+  // returning `true` there served the pending-approval snapshot to anyone who
+  // could reach the port.
+  const expectedToken = getCompatApiToken();
   const headerToken = getProvidedApiToken(req);
-  const providedToken = url.searchParams.get("token")?.trim();
+  const queryToken = url.searchParams.get("token")?.trim();
   if (
-    (headerToken && tokenMatches(expectedToken, headerToken)) ||
-    (providedToken && tokenMatches(expectedToken, providedToken))
+    expectedToken &&
+    ((headerToken && tokenMatches(expectedToken, headerToken)) ||
+      (queryToken && tokenMatches(expectedToken, queryToken)))
   ) {
     return true;
   }
 
-  res.writeHead(401, { "Content-Type": "application/json" });
+  res.writeHead(expectedToken ? 401 : 403, {
+    "Content-Type": "application/json",
+  });
   res.end(JSON.stringify({ error: "Unauthorized" }));
   return false;
 }

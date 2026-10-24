@@ -23,6 +23,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { tryHandleRuntimePluginRoute } from "../../../../packages/agent/src/api/runtime-plugin-routes.ts";
 import { computerUsePlugin } from "../index.ts";
+import { handleComputerUseCompatRoutes } from "../routes/computer-use-compat-routes.ts";
 
 const servers: http.Server[] = [];
 
@@ -328,5 +329,135 @@ describe("plugin-computeruse routes (real dispatch)", () => {
     });
     expect(res.status).toBe(401);
     expect(state.calls).toHaveLength(0);
+  });
+});
+
+/**
+ * The approvals SSE route is `public: true` only so the local approval UI can
+ * subscribe before the API gate resolves. Its handler must therefore apply the
+ * same policy as the JSON routes: trust a same-machine request, otherwise
+ * require the configured API token, and fail closed when none is configured.
+ */
+describe("plugin-computeruse approvals stream auth", () => {
+  const savedToken = process.env.ELIZA_API_TOKEN;
+  afterEach(() => {
+    if (savedToken === undefined) delete process.env.ELIZA_API_TOKEN;
+    else process.env.ELIZA_API_TOKEN = savedToken;
+  });
+
+  function fakeRequest(
+    remoteAddress: string,
+    url: string,
+  ): { req: http.IncomingMessage; emitClose: () => void } {
+    const closeHandlers: Array<() => void> = [];
+    const req = {
+      method: "GET",
+      url,
+      headers: {},
+      socket: { remoteAddress },
+      on(event: string, handler: () => void) {
+        if (event === "close" || event === "aborted")
+          closeHandlers.push(handler);
+        return req;
+      },
+      destroy() {},
+    };
+    return {
+      req: req as unknown as http.IncomingMessage,
+      emitClose: () => {
+        for (const handler of closeHandlers) handler();
+      },
+    };
+  }
+
+  function fakeResponse(): {
+    res: http.ServerResponse;
+    status: () => number;
+    body: () => string;
+  } {
+    let statusCode = 0;
+    let body = "";
+    const res = {
+      writeHead(code: number) {
+        statusCode = code;
+        return res;
+      },
+      write(chunk: string) {
+        body += chunk;
+        return true;
+      },
+      end(chunk?: string) {
+        if (chunk) body += chunk;
+        return res;
+      },
+      on() {
+        return res;
+      },
+    };
+    return {
+      res: res as unknown as http.ServerResponse,
+      status: () => statusCode,
+      body: () => body,
+    };
+  }
+
+  function stateWith(serviceState: FakeServiceState) {
+    return {
+      current: {
+        getService: (name: string) =>
+          name === "computeruse" ? fakeService(serviceState) : null,
+      },
+    };
+  }
+
+  it("rejects a remote approval stream when no API token is configured", async () => {
+    delete process.env.ELIZA_API_TOKEN;
+    const { req, emitClose } = fakeRequest(
+      "203.0.113.7",
+      "/api/computer-use/approvals/stream",
+    );
+    const { res, status, body } = fakeResponse();
+
+    await handleComputerUseCompatRoutes(
+      req,
+      res,
+      stateWith(freshState()) as never,
+    );
+    emitClose();
+
+    expect(status()).toBe(403);
+    expect(body()).not.toContain("text/event-stream");
+    expect(body()).not.toContain("pendingApprovals");
+  });
+
+  it("serves a remote approval stream that carries the configured token", async () => {
+    process.env.ELIZA_API_TOKEN = "s3cret-token";
+    const { req, emitClose } = fakeRequest(
+      "203.0.113.7",
+      "/api/computer-use/approvals/stream?token=s3cret-token",
+    );
+    const { res, status } = fakeResponse();
+
+    await handleComputerUseCompatRoutes(
+      req,
+      res,
+      stateWith(freshState()) as never,
+    );
+    emitClose();
+
+    expect(status()).toBe(200);
+  });
+
+  it("keeps the same-machine approval stream open when an API token is configured", async () => {
+    process.env.ELIZA_API_TOKEN = "s3cret-token";
+    const base = await startServer(makeRuntime({ state: freshState() }));
+    const controller = new AbortController();
+    const res = await fetch(`${base}/api/computer-use/approvals/stream`, {
+      signal: controller.signal,
+    });
+    controller.abort();
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
   });
 });
