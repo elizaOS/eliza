@@ -1,4 +1,4 @@
-import { AgentRuntime } from "@elizaos/core";
+import { AgentRuntime, EventType } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleBatchTextEmbedding, handleTextEmbedding } from "../src/models/embedding";
 
@@ -80,5 +80,45 @@ describe("#18025: embedding request bodies are well-formed JSON", () => {
     for (const body of requestBodies) {
       expect(LONE_SURROGATE_ESCAPE.test(body)).toBe(false);
     }
+  });
+});
+
+describe("embedding usage events report listener failures", () => {
+  it("serves the embedding and reports a rejected MODEL_USED listener", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              data: [
+                {
+                  index: 0,
+                  embedding: Array.from({ length: 384 }, (_, dimension) =>
+                    dimension === 0 ? 1 : 0
+                  ),
+                },
+              ],
+              usage: { prompt_tokens: 3, total_tokens: 3 },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } }
+          )
+      )
+    );
+
+    const runtime = buildRuntime();
+    runtime.registerEvent(EventType.MODEL_USED, async () => {
+      throw new Error("MODEL_USED listener failed");
+    });
+
+    await expect(handleTextEmbedding(runtime, "remember this")).resolves.toHaveLength(384);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(runtime.getRecentReportedErrors()).toContainEqual(
+      expect.objectContaining({
+        scope: "EmbeddingsModelUsage.emitEvent",
+        message: "MODEL_USED listener failed",
+      })
+    );
   });
 });

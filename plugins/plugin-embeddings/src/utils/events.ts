@@ -46,5 +46,9 @@ export function emitModelUsageEvent(
     },
   };
 
-  runtime.emitEvent(EventType.MODEL_USED, payload);
+  void Promise.resolve(runtime.emitEvent(EventType.MODEL_USED, payload)).catch((error) => {
+    runtime.reportError("EmbeddingsModelUsage.emitEvent", error, {
+      modelType: String(type),
+    });
+  });
 }
