@@ -2541,3 +2541,55 @@ it("scopes log reads and mutations to the adapter agent", async () => {
   await adapter.deleteLogs([ownLog.id]);
   expect(await adapter.getLogsByIds([ownLog.id])).toEqual([]);
 });
+
+it("keeps another agent's room participants out of getParticipantsForRooms", async () => {
+  const adapter = await open();
+  const otherAgentId = id();
+  const ownRoomId = id();
+  const otherRoomId = id();
+  const otherEntityId = id();
+
+  await adapter.createRooms([
+    { id: ownRoomId, agentId, source: "test", type: ChannelType.DM },
+  ]);
+  await adapter.createRoomParticipants([entityId], ownRoomId);
+
+  // Simulate a restored file carrying another agent's room and a
+  // participant row in it: plugin-sql scopes getParticipantsForRooms with
+  // participant.agentId = this.agentId, so that room must answer empty.
+  const storage = await adapter.getConnection();
+  await storage.set("rooms", otherRoomId, {
+    id: otherRoomId,
+    agentId: otherAgentId,
+    source: "test",
+    type: ChannelType.DM,
+  });
+  const otherParticipantId = id();
+  await storage.set("participants", otherParticipantId, {
+    id: otherParticipantId,
+    entityId: otherEntityId,
+    roomId: otherRoomId,
+  });
+
+  // A participant whose room row is absent stays visible, matching the
+  // log-read convention for rows without a resolvable owner.
+  const orphanRoomId = id();
+  const orphanParticipantId = id();
+  await storage.set("participants", orphanParticipantId, {
+    id: orphanParticipantId,
+    entityId,
+    roomId: orphanRoomId,
+  });
+
+  expect(
+    await adapter.getParticipantsForRooms([
+      ownRoomId,
+      otherRoomId,
+      orphanRoomId,
+    ]),
+  ).toEqual([
+    { roomId: ownRoomId, entityIds: [entityId] },
+    { roomId: otherRoomId, entityIds: [] },
+    { roomId: orphanRoomId, entityIds: [entityId] },
+  ]);
+});
