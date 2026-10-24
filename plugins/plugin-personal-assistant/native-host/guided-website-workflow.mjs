@@ -359,6 +359,10 @@ const DEFAULT_WORDS = {
   notFilled: "That box was not filled in. Check it on the website.",
   fillUnknown:
     "I could not check that box after filling it in. Check the website before you go on.",
+  actionNotSent: "The browser action was not sent. Observe the page again.",
+  actionUnexpected: "The browser action did not produce the expected result.",
+  actionUnverified:
+    "The browser action could not be verified. Check the page before continuing.",
 };
 const PROTECTED_KIND = {
   password: "human-sign-in",
@@ -970,19 +974,12 @@ export class GuidedWebsiteWorkflow {
     if (kind === "agent-action")
       return operation?.status === "failed"
         ? operation.evidenceRef === "not-dispatched"
-          ? blocked(
-              "The browser action was not sent. Observe the page again.",
-              "action-not-sent",
-            )
-          : blocked(
-              "The browser action did not produce the expected result.",
-              "action-failed",
-            )
+          ? blocked(this.words.actionNotSent, "action-not-sent")
+          : blocked(this.words.actionUnexpected, "action-failed")
         : {
             kind: "unknown-outcome",
             reasonCode: "action-unverified",
-            message:
-              "The browser action could not be verified. Check the page before continuing.",
+            message: this.words.actionUnverified,
           };
     if (operation?.status === "failed")
       return operation.evidenceRef === "not-dispatched"
