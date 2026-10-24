@@ -967,7 +967,16 @@ export class GatewayManager {
         const existing = this.connections.get(assignment.connectionId);
         if (existing) {
           existing.dmPolicyState = dmPolicyState;
-          continue;
+          existing.characterId = assignment.characterId ?? null;
+          // A new bot token needs a new Discord client. The edit releases the
+          // connection, and this pod often claims it again in the next poll.
+          if (
+            !existing.client ||
+            existing.client.token === assignment.botToken
+          ) {
+            continue;
+          }
+          await this.disconnectBot(assignment.connectionId);
         }
 
         // Check capacity and reserve slot atomically to prevent TOCTOU race
