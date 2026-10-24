@@ -4,12 +4,12 @@
  * validation, bounded local-media fetching, temporary staging, cleanup, and
  * text-chunk attachment cardinality execute through production code.
  */
-import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Content, IAgentRuntime, UUID } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { IMessageService } from "../src/service.js";
 import type { IMessageServiceStatus } from "../src/types.js";
 
@@ -129,6 +129,20 @@ describe("iMessage connector — outbound media dispatch", () => {
   });
 });
 
+const originalHome = process.env.HOME;
+afterEach(() => {
+  process.env.HOME = originalHome;
+});
+
+/** Local attachments are read only from Messages' attachments directory. */
+async function messagesAttachmentsFixtureDir(): Promise<string> {
+  const home = await mkdtemp(join(tmpdir(), "imessage-media-home-"));
+  process.env.HOME = home;
+  const dir = join(home, "Library", "Messages", "Attachments", "ab");
+  await mkdir(dir, { recursive: true });
+  return dir;
+}
+
 describe("iMessage service — media → AppleScript attachment build", () => {
   function makeService(): {
     svc: IMessageService;
@@ -159,7 +173,7 @@ describe("iMessage service — media → AppleScript attachment build", () => {
 
   it("emits a `send (POSIX file …)` attachment script for a media send", async () => {
     const { svc, scripts } = makeService();
-    const fixtureDir = await mkdtemp(join(tmpdir(), "imessage-media-test-"));
+    const fixtureDir = await messagesAttachmentsFixtureDir();
     const fixturePath = join(fixtureDir, "clip.mp3");
     await writeFile(fixturePath, "media");
     try {
@@ -195,7 +209,7 @@ describe("iMessage service — media → AppleScript attachment build", () => {
 
   it("normalises a file:// media URL to a POSIX path", async () => {
     const { svc, scripts } = makeService();
-    const fixtureDir = await mkdtemp(join(tmpdir(), "imessage-media-test-"));
+    const fixtureDir = await messagesAttachmentsFixtureDir();
     const fixturePath = join(fixtureDir, "generated image.png");
     await writeFile(fixturePath, "media");
     try {
@@ -214,6 +228,23 @@ describe("iMessage service — media → AppleScript attachment build", () => {
       await expect(stat(stagedPath)).rejects.toThrow();
     } finally {
       await rm(fixtureDir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a local file outside the Messages attachments directory", async () => {
+    const { svc, scripts } = makeService();
+    await messagesAttachmentsFixtureDir();
+    const outsideDir = await mkdtemp(join(tmpdir(), "imessage-outside-"));
+    const secretPath = join(outsideDir, "eliza.json");
+    await writeFile(secretPath, "OWNER_SECRET=1");
+    try {
+      for (const mediaUrl of [secretPath, pathToFileURL(secretPath).href]) {
+        const result = await svc.sendMessage("+14155552671", "", { mediaUrl });
+        expect(result.success).toBe(false);
+      }
+      expect(scripts).toHaveLength(0);
+    } finally {
+      await rm(outsideDir, { recursive: true, force: true });
     }
   });
 
@@ -260,7 +291,7 @@ describe("iMessage service — media → AppleScript attachment build", () => {
 
   it("sends one attachment after all chunks instead of duplicating it per chunk", async () => {
     const { svc, scripts } = makeService();
-    const fixtureDir = await mkdtemp(join(tmpdir(), "imessage-media-test-"));
+    const fixtureDir = await messagesAttachmentsFixtureDir();
     const fixturePath = join(fixtureDir, "one.png");
     await writeFile(fixturePath, "media");
     try {
@@ -278,7 +309,7 @@ describe("iMessage service — media → AppleScript attachment build", () => {
 
   it("fails before osascript when a local attachment exceeds maxBytes", async () => {
     const { svc, scripts } = makeService();
-    const fixtureDir = await mkdtemp(join(tmpdir(), "imessage-media-test-"));
+    const fixtureDir = await messagesAttachmentsFixtureDir();
     const fixturePath = join(fixtureDir, "too-large.bin");
     await writeFile(fixturePath, "oversized");
     try {
@@ -323,7 +354,7 @@ describe("iMessage service — media → AppleScript attachment build", () => {
       async () => ""
     );
 
-    const fixtureDir = await mkdtemp(join(tmpdir(), "imessage-media-test-"));
+    const fixtureDir = await messagesAttachmentsFixtureDir();
     const fixturePath = join(fixtureDir, "a.png");
     await writeFile(fixturePath, "media");
     try {
@@ -391,7 +422,7 @@ describe("iMessage service — media → AppleScript attachment build", () => {
         attachments: [],
       });
 
-    const fixtureDir = await mkdtemp(join(tmpdir(), "imessage-media-test-"));
+    const fixtureDir = await messagesAttachmentsFixtureDir();
     const fixturePath = join(fixtureDir, "chart.png");
     await writeFile(fixturePath, "media");
     try {

@@ -4,9 +4,9 @@
 
 import { execFile } from "node:child_process";
 import crypto from "node:crypto";
-import { mkdtemp, open, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, open, realpath, rm, writeFile } from "node:fs/promises";
 import { homedir, platform, tmpdir } from "node:os";
-import { extname, isAbsolute, join } from "node:path";
+import { extname, isAbsolute, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
@@ -321,6 +321,24 @@ function attachmentMimeType(attachment: ChatDbMessage["attachments"][number]): s
   if (uti.includes("audio")) return "audio/mpeg";
   if (uti.includes("pdf")) return "application/pdf";
   return "application/octet-stream";
+}
+
+/**
+ * A local attachment path is accepted only inside the Messages attachments
+ * directory, where inbound iMessage attachments live (so they can be sent on).
+ * Route bodies and model replies carry these paths, so any other host file
+ * must not be readable through them; generated media goes through the media
+ * store instead.
+ */
+async function confineToMessagesAttachments(filePath: string): Promise<string> {
+  const root = await realpath(join(homedir(), "Library", "Messages", "Attachments")).catch(
+    () => null
+  );
+  const resolved = await realpath(filePath);
+  if (!root || !resolved.startsWith(`${root}${sep}`)) {
+    throw new Error("iMessage local attachments must be in the Messages attachments directory");
+  }
+  return resolved;
 }
 
 async function readBoundedRegularFile(filePath: string, maxBytes: number): Promise<Buffer> {
@@ -2165,7 +2183,7 @@ export class IMessageService extends Service implements IIMessageService {
    * Resolve an outbound attachment to a bounded local file Messages.app can
    * consume. Canonical media-store handles use the runtime-authenticated local
    * fetch; remote URLs use the shared SSRF-guarded connector resolver. Explicit
-   * absolute/file URLs preserve the service API for trusted native callers but
+   * absolute/file URLs must point into the Messages attachments directory and
    * are checked for regular-file type and size before AppleScript sees them.
    */
   private async resolveOutboundMedia(
@@ -2193,7 +2211,10 @@ export class IMessageService extends Service implements IIMessageService {
     let fileName: string | undefined;
     const localUrl = explicitPath ? null : trustedLocalMediaUrl(mediaUrl);
     if (explicitPath) {
-      buffer = await readBoundedRegularFile(explicitPath, maxBytes);
+      buffer = await readBoundedRegularFile(
+        await confineToMessagesAttachments(explicitPath),
+        maxBytes
+      );
       fileName = explicitPath.split("/").pop();
     } else if (localUrl) {
       const runtimeFetch = this.runtime.fetch ?? globalThis.fetch;

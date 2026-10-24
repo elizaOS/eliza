@@ -1,5 +1,5 @@
 /** Exercises real service chunking and Blooio parsing with a deterministic HTTP boundary; no native messages are sent. */
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -141,7 +141,12 @@ it("reports a chat database failure instead of empty connector history", async (
 });
 
 it("stages every attachment before sending and preserves partial native completion evidence", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "imessage-attachments-"));
+  // Local attachments are read only from Messages' attachments directory.
+  const home = await mkdtemp(join(tmpdir(), "imessage-attachments-"));
+  const originalHome = process.env.HOME;
+  process.env.HOME = home;
+  const directory = join(home, "Library", "Messages", "Attachments", "ab");
+  await mkdir(directory, { recursive: true });
   const first = join(directory, "one.txt"),
     second = join(directory, "two.txt");
   await writeFile(first, "one");
@@ -179,6 +184,7 @@ it("stages every attachment before sending and preserves partial native completi
     ).toBe(false);
     expect(invalid.internal.runAppleScript).not.toHaveBeenCalled();
   } finally {
-    await rm(directory, { recursive: true, force: true });
+    process.env.HOME = originalHome;
+    await rm(home, { recursive: true, force: true });
   }
 });
