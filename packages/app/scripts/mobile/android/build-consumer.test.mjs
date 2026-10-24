@@ -168,6 +168,44 @@ test("daemon and fixture/native archive selection stay host-controlled", (t) => 
   assert.equal(path.basename(result.archive), "native-fixture");
 });
 
+test("lint and androidTest switches and in-run prepare steps shape the one Gradle invocation", (t) => {
+  const f = fixture(t);
+  const seen = [];
+  f.options.lint = false;
+  f.options.androidTest = false;
+  f.options.variants = ["launcher"];
+  f.options.prepare = [
+    { command: "sync", args: [] },
+    (context) => seen.push(context),
+    { gradleTasks: [":updater:assembleDebug", ":updater:assembleRelease"] },
+  ];
+  f.build();
+  assert.deepEqual(seen, [
+    { root: f.root, environment: f.options.environment },
+  ]);
+  assert.deepEqual(
+    f.calls.map((c) => c.command),
+    ["sync", "./gradlew", "verify"],
+  );
+  assert.deepEqual(f.calls[1].args, [
+    "--no-daemon",
+    ":app:assembleLauncherDebug",
+    ":app:assembleLauncherRelease",
+    ":updater:assembleDebug",
+    ":updater:assembleRelease",
+  ]);
+  for (const prepare of [
+    [{ gradleTasks: [] }],
+    [{ gradleTasks: ["--init-script=evil.gradle"] }],
+    [{ gradleTasks: [":ok", 1] }],
+  ]) {
+    const g = fixture(t);
+    g.options.prepare = prepare;
+    assert.throws(g.build, /Invalid Android admission command/);
+    assert.equal(g.calls.length, 0);
+  }
+});
+
 test("a successful verifier that produces no fresh manifest cannot reuse old evidence", (t) => {
   const f = fixture(t),
     run = f.options.run;

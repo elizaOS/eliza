@@ -4,7 +4,10 @@ import path from "node:path";
 
 /** Build selected distributions and archive only their verified artifacts.
  * Product hosts select identity, environment, admission commands and archive metadata.
- * Commands use argv without a shell. This does not sign, install or publish APKs. */
+ * Commands use argv without a shell. This does not sign, install or publish APKs.
+ * A prepare step is an argv command, a function called with `{ root, environment }`, or
+ * `{ gradleTasks }`: extra tasks added to the one Gradle invocation that builds the app.
+ * `lint` and `androidTest` (default true) select `:app:lint` and the androidTest APKs. */
 export function buildAndroidConsumer({
   root = process.cwd(),
   environment = process.env,
@@ -13,6 +16,8 @@ export function buildAndroidConsumer({
   verify,
   archive,
   daemon = false,
+  lint = true,
+  androidTest = true,
   run = (command, args, options) => execFileSync(command, args, options),
 }) {
   if (
@@ -26,15 +31,27 @@ export function buildAndroidConsumer({
     throw new Error("Invalid Android distributions");
   if (!archive || !/^[a-z][a-z0-9-]*$/.test(archive.name))
     throw new Error("Invalid Android archive name");
-  const commands = [...prepare, verify];
+  const isCommand = (command) =>
+    command &&
+    typeof command.command === "string" &&
+    command.command &&
+    Array.isArray(command.args) &&
+    command.args.every((arg) => typeof arg === "string");
+  const isGradleStep = (step) =>
+    step &&
+    Array.isArray(step.gradleTasks) &&
+    step.gradleTasks.length > 0 &&
+    step.gradleTasks.every(
+      (task) =>
+        typeof task === "string" &&
+        /^:?[A-Za-z][\w.-]*(?::[A-Za-z][\w.-]*)*$/.test(task),
+    );
   if (
-    commands.some(
-      (command) =>
-        !command ||
-        typeof command.command !== "string" ||
-        !command.command ||
-        !Array.isArray(command.args) ||
-        command.args.some((arg) => typeof arg !== "string"),
+    !Array.isArray(prepare) ||
+    !isCommand(verify) ||
+    prepare.some(
+      (step) =>
+        typeof step !== "function" && !isCommand(step) && !isGradleStep(step),
     )
   ) {
     throw new Error("Invalid Android admission command");
@@ -46,19 +63,30 @@ export function buildAndroidConsumer({
   root = path.resolve(root);
   const invoke = ({ command, args }, cwd = root) =>
     run(command, args, { cwd, env: environment, stdio: "inherit" });
-  for (const command of prepare) invoke(command);
+  const extraTasks = [];
+  for (const step of prepare) {
+    if (typeof step === "function") step({ root, environment });
+    else if (step.gradleTasks) extraTasks.push(...step.gradleTasks);
+    else invoke(step);
+  }
   const capitalized = variants.map(
     (name) => name[0].toUpperCase() + name.slice(1),
   );
+  const modes = [
+    "Debug",
+    "Release",
+    ...(androidTest ? ["DebugAndroidTest"] : []),
+  ];
   invoke(
     {
       command: "./gradlew",
       args: [
         daemon ? "--daemon" : "--no-daemon",
-        ...["Debug", "Release", "DebugAndroidTest"].flatMap((mode) =>
+        ...modes.flatMap((mode) =>
           capitalized.map((name) => `:app:assemble${name}${mode}`),
         ),
-        ":app:lint",
+        ...extraTasks,
+        ...(lint ? [":app:lint"] : []),
       ],
     },
     path.join(root, "android"),
