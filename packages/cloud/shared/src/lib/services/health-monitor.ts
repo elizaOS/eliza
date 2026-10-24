@@ -3,7 +3,7 @@
  * Monitors deployed containers and updates their health status
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull, or } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/client";
 import { containers } from "../../db/schemas";
 import { logger } from "../utils/logger";
@@ -195,21 +195,30 @@ export async function monitorAllContainers(
 
   logger.info("Starting health check for all containers");
 
-  // Get all running containers
-  const runningContainers = await dbRead
+  // `failed` is recoverable, not terminal (`deleted` is the terminal status).
+  // A container that failed one probe stays in the sweep so
+  // `updateContainerHealth` can restore it once it answers again. Failed rows
+  // without a load-balancer URL are skipped: a deployment that never got an
+  // address has nothing to probe.
+  const monitoredContainers = await dbRead
     .select({
       id: containers.id,
       load_balancer_url: containers.load_balancer_url,
       health_check_path: containers.health_check_path,
     })
     .from(containers)
-    .where(eq(containers.status, "running"));
+    .where(
+      or(
+        eq(containers.status, "running"),
+        and(eq(containers.status, "failed"), isNotNull(containers.load_balancer_url)),
+      ),
+    );
 
-  logger.info(`Found ${runningContainers.length} running containers to check`);
+  logger.info(`Found ${monitoredContainers.length} running or failed containers to check`);
 
   // Check all containers in parallel for better performance
   const results: HealthCheckResult[] = await Promise.all(
-    runningContainers.map(async (container) => {
+    monitoredContainers.map(async (container) => {
       if (!container.load_balancer_url) {
         logger.warn("Container has no URL, skipping health check", {
           containerId: container.id,
