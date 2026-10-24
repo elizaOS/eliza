@@ -173,6 +173,16 @@ describe("GitHub account resolution", () => {
     );
   });
 
+  it("rejects a malformed GITHUB_ACCOUNTS value instead of reporting no accounts", () => {
+    expect(() =>
+      readGitHubAccounts(runtime({ GITHUB_ACCOUNTS: '{"accounts": [' })),
+    ).toThrow(/GITHUB_ACCOUNTS/);
+  });
+
+  it("still treats an absent GITHUB_ACCOUNTS value as no configured accounts", () => {
+    expect(readGitHubAccounts(runtime({}))).toEqual([]);
+  });
+
   it("uses the token saved from Settings (GITHUB_TOKEN) as the user account", async () => {
     expect(
       await readGitHubAccountsWithConnectorCredentials(
