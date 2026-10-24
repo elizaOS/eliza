@@ -36,6 +36,14 @@ export const defaultBillClientValidators: BillClientValidators = {
   choice: validateTaskChoiceWidget,
   money: (value) => formatMinorCurrency(value, "en-US"),
 };
+function withDefaultValidators(
+  validators: Partial<BillClientValidators> = {},
+): BillClientValidators {
+  return {
+    choice: validators.choice ?? defaultBillClientValidators.choice,
+    money: validators.money ?? defaultBillClientValidators.money,
+  };
+}
 export type BillSourceReference = {
   messageId: string;
   kind?: string;
@@ -586,10 +594,7 @@ export class BillDecisionClient extends BillSession<BillDecisionState> {
   }) {
     super({ decision: null, pending: false, error: null }, options.changed);
     this.request = options.request;
-    this.validators = {
-      ...defaultBillClientValidators,
-      ...options.validators,
-    };
+    this.validators = withDefaultValidators(options.validators);
     this.now = options.now ?? Date.now;
     this.timers = options.timers ?? {
       set: (callback, ms) => setTimeout(callback, ms),
@@ -800,10 +805,7 @@ export class BillSourceClient extends BillSession<BillSourceState> {
       options.changed,
     );
     this.request = options.request;
-    this.validators = {
-      ...defaultBillClientValidators,
-      ...options.validators,
-    };
+    this.validators = withDefaultValidators(options.validators);
     this.now = options.now ?? Date.now;
   }
   start(taskId: string) {
