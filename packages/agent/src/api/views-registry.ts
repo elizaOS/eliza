@@ -201,24 +201,44 @@ async function resolveWorkspacePluginPackageDir(
   return undefined;
 }
 
-/** Error codes that mean "this path is not there", as opposed to "unreadable". */
-function isAbsentPathError(error: unknown): boolean {
+/** Only `ENOENT` means "this path is not there", as opposed to "unreadable". */
+function isMissingPathError(error: unknown): boolean {
   const code = (error as NodeJS.ErrnoException | null | undefined)?.code;
-  return code === "ENOENT" || code === "ENOTDIR";
+  return code === "ENOENT";
 }
 
 /**
- * Check whether a file exists on disk. Only an absent path answers `false`;
- * a path that is present but unreadable (EACCES, EIO, EMFILE, ELOOP…) is a
- * real failure and must not be reported as a missing bundle or hero — callers
- * would otherwise register the view as unavailable with no diagnostic.
+ * Candidate-root probe for package discovery (non-throwing).
+ *
+ * This walks possible package roots looking for `package.json`, where a
+ * rejection on one candidate must not abort the search: the answer is
+ * "not here", and the caller moves on to the next candidate. Absence and
+ * unreadability are both unhelpful here, so every rejection answers `false`.
+ * Asset lookups must NOT use this — use {@link assertViewAssetReadable}.
  */
 async function fileExists(absolutePath: string): Promise<boolean> {
   try {
     await fs.access(absolutePath);
     return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Asset probe for a view's bundle/frame/hero: only a missing path answers
+ * `false`. A path that is present but unreadable (EACCES, EIO, EMFILE, ELOOP)
+ * or that cannot be a file because a parent component is not a directory
+ * (ENOTDIR) is a real fault, and reporting it as absence would register the
+ * view as unavailable — or ship the generated placeholder — with no signal.
+ * These rejections propagate to the caller instead.
+ */
+async function assertViewAssetReadable(absolutePath: string): Promise<boolean> {
+  try {
+    await fs.access(absolutePath);
+    return true;
   } catch (error) {
-    if (isAbsentPathError(error)) return false;
+    if (isMissingPathError(error)) return false;
     throw error;
   }
 }
@@ -307,7 +327,7 @@ export async function findHeroOnDisk(
   if (declaredPath) {
     const ext = path.extname(declaredPath).toLowerCase();
     const contentType = HERO_CONTENT_TYPES[ext];
-    if (contentType && (await fileExists(declaredPath))) {
+    if (contentType && (await assertViewAssetReadable(declaredPath))) {
       return { absolutePath: declaredPath, contentType };
     }
   }
@@ -322,7 +342,7 @@ export async function findHeroOnDisk(
     if (
       realCandidate &&
       isPathWithinRoot(realCandidate, realPackageRoot) &&
-      (await fileExists(realCandidate))
+      (await assertViewAssetReadable(realCandidate))
     ) {
       return {
         absolutePath: realCandidate,
@@ -607,7 +627,7 @@ async function buildEntry(
       kind === "bundle"
         ? getBundleDiskPath({ bundlePath: view.bundlePath, pluginDir })
         : getFrameDiskPath({ framePath: view.framePath, pluginDir });
-    if (file && (await fileExists(file)))
+    if (file && (await assertViewAssetReadable(file)))
       roots[kind] = await captureViewAssetRoot(file);
   }
   const bundle = roots.bundle?.files.get(roots.bundle.rootName);
