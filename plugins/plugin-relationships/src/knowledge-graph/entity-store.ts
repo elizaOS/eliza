@@ -679,9 +679,8 @@ export class EntityStore {
   /**
    * Record an interaction against an entity. Updates `state.lastInboundAt`
    * or `lastOutboundAt`, plus `lastObservedAt` and
-   * `lastInteractionPlatform`. Caller is responsible for also calling
-   * `RelationshipStore.observe` to strengthen the per-edge state where
-   * applicable.
+   * `lastInteractionPlatform`, and advances the entity's cadence edges so a
+   * follow-up keyed on the relationship resolves.
    */
   async recordInteraction(
     entityId: string,
@@ -742,6 +741,10 @@ export class EntityStore {
         },
         updatedAt: isoNow(),
       });
+      await new RelationshipStore(
+        this.runtime,
+        this.agentId,
+      ).recordEntityInteraction(entityId, interaction);
       return;
     }
     // The SQL path has no transaction or lock around this operation, so the
@@ -763,6 +766,10 @@ export class EntityStore {
         WHERE agent_id = ${sqlQuote(this.agentId)}
           AND entity_id = ${sqlQuote(entityId)}`,
     );
+    await new RelationshipStore(
+      this.runtime,
+      this.agentId,
+    ).recordEntityInteraction(entityId, interaction);
     // Summary is an audit trail concern. The repo relationship-interactions
     // table provides per-edge history; for entity-only recordings the
     // observation-id list captured on the next identity / relationship

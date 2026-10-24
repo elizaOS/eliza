@@ -137,6 +137,77 @@ it("folds a merged contact's edges into the target's edge instead of keeping a s
   });
 });
 
+it("advances a contact's cadence edge when the interaction is recorded on its entity", async () => {
+  const entities = graph.getEntityStore();
+  const relationships = graph.getRelationshipStore();
+  await entities.ensureSelf();
+  await entities.upsert({
+    entityId: "nadia",
+    type: "person",
+    preferredName: "Nadia",
+    identities: [],
+    tags: [],
+    visibility: "owner_only" as const,
+    state: {},
+  });
+  await relationships.upsert({
+    relationshipId: "lifeops-contact-nadia",
+    fromEntityId: "self",
+    toEntityId: "nadia",
+    type: "contact",
+    metadata: { cadenceDays: 14 },
+    state: {
+      lastInteractionAt: "2026-09-01T00:00:00.000Z",
+      interactionCount: 2,
+    },
+    evidence: ["contact:nadia"],
+    confidence: 1,
+    source: "import",
+  });
+  const overdue = async () =>
+    (
+      await relationships.list({
+        cadenceOverdueAsOf: new Date().toISOString(),
+      })
+    )
+      .map((edge) => edge.relationshipId)
+      .filter((id) => id === "lifeops-contact-nadia");
+  expect(await overdue()).toEqual(["lifeops-contact-nadia"]);
+
+  const at = new Date().toISOString();
+  await entities.recordInteraction("nadia", {
+    platform: "sms",
+    direction: "outbound",
+    summary: "caught up",
+    occurredAt: at,
+  });
+
+  // The follow-up watcher resolves a cadence follow-up only when the edge
+  // itself gets a new interaction, so the entity write must reach the edge.
+  expect(await overdue()).toEqual([]);
+  expect(await relationships.get("lifeops-contact-nadia")).toMatchObject({
+    state: { lastInteractionAt: at, interactionCount: 3 },
+  });
+
+  // An edge without a follow-up cadence keeps its own count.
+  const knows = await relationships.observe({
+    fromEntityId: "self",
+    toEntityId: "nadia",
+    type: "knows",
+    confidence: 1,
+    evidence: ["synthetic"],
+  });
+  await entities.recordInteraction("nadia", {
+    platform: "sms",
+    direction: "outbound",
+    summary: "again",
+    occurredAt: new Date(Date.now() + 1_000).toISOString(),
+  });
+  expect((await relationships.get(knows.relationshipId))?.state).toMatchObject({
+    interactionCount: 1,
+  });
+});
+
 it("retains current-recipient review and identity evidence on the PostgreSQL confirmation path", async () => {
   const entities = graph.getEntityStore();
   const request = {
