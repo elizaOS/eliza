@@ -73,27 +73,6 @@ function normalizeFalPricingModel(endpoint: string): string | null {
   return endpoint;
 }
 
-function readNumber(body: unknown, keys: string[]): number | undefined {
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
-    return undefined;
-  }
-
-  for (const key of keys) {
-    const value = (body as Record<string, unknown>)[key];
-    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-      return value;
-    }
-    if (typeof value === "string" && value.trim().length > 0) {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed) && parsed > 0) {
-        return parsed;
-      }
-    }
-  }
-
-  return undefined;
-}
-
 function readH3Duration(
   body: Record<string, unknown>,
   defaultDuration: number,
@@ -114,6 +93,66 @@ function readH3Duration(
     throw new ApiError(400, "validation_error", "Invalid provider duration");
   }
   return duration;
+}
+
+function readProviderDuration(value: unknown): number {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && /^\d+(?:\.\d+)?s?$/.test(value.trim())
+        ? Number(value.trim().replace(/s$/, ""))
+        : Number.NaN;
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new ApiError(400, "validation_error", "Invalid provider duration");
+  }
+  return parsed;
+}
+
+// The raw proxy forwards provider JSON unchanged, so the quote must follow the
+// field the provider reads. Host-style aliases may raise the quote but never
+// lower it, and an alias that disagrees with the provider field is refused.
+function readBilledDuration(body: unknown, defaultDuration: number): number {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return defaultDuration;
+  }
+  const record = body as Record<string, unknown>;
+  const aliases = ["durationSeconds", "duration_seconds"]
+    .filter((key) => key in record)
+    .map((key) => readProviderDuration(record[key]));
+  if (!("duration" in record)) {
+    return Math.max(defaultDuration, ...aliases);
+  }
+  const duration = readProviderDuration(record.duration);
+  if (aliases.some((alias) => alias !== duration)) {
+    throw new ApiError(
+      400,
+      "validation_error",
+      "Duration fields must match the provider duration",
+    );
+  }
+  return duration;
+}
+
+function readBilledFlag(
+  body: unknown,
+  providerKey: string,
+  aliasKey: string,
+  defaultValue: unknown,
+): boolean | undefined {
+  const provider = readBoolean(body, [providerKey]);
+  const alias = readBoolean(body, [aliasKey]);
+  if (provider !== undefined) {
+    if (alias !== undefined && alias !== provider) {
+      throw new ApiError(
+        400,
+        "validation_error",
+        `${aliasKey} must match ${providerKey}`,
+      );
+    }
+    return provider;
+  }
+  if (alias === undefined) return undefined;
+  return alias || defaultValue === true;
 }
 
 function readBoolean(body: unknown, keys: string[]): boolean | undefined {
@@ -204,19 +243,26 @@ async function priceFalMutation(c: Context<AppEnv>): Promise<{
   }
   const durationSeconds = h3Body
     ? readH3Duration(h3Body, defaults.durationSeconds)
-    : (readNumber(body, ["durationSeconds", "duration_seconds", "duration"]) ??
-      defaults.durationSeconds);
+    : readBilledDuration(body, defaults.durationSeconds);
+  const audio = readBilledFlag(
+    body,
+    "generate_audio",
+    "audio",
+    defaults.dimensions.audio,
+  );
+  const voiceControl = readBilledFlag(
+    body,
+    "voice_control",
+    "voiceControl",
+    defaults.dimensions.voiceControl,
+  );
   const dimensions = {
     ...defaults.dimensions,
     ...(readString(body, ["resolution"])
       ? { resolution: readString(body, ["resolution"]) }
       : {}),
-    ...(readBoolean(body, ["audio", "generate_audio"]) !== undefined
-      ? { audio: readBoolean(body, ["audio", "generate_audio"]) }
-      : {}),
-    ...(readBoolean(body, ["voiceControl", "voice_control"]) !== undefined
-      ? { voiceControl: readBoolean(body, ["voiceControl", "voice_control"]) }
-      : {}),
+    ...(audio !== undefined ? { audio } : {}),
+    ...(voiceControl !== undefined ? { voiceControl } : {}),
     ...(defaults.dimensions.durationSeconds !== undefined
       ? { durationSeconds }
       : {}),
