@@ -3,7 +3,9 @@
  * database directory the runtime would open (resolved by the agent runtime's
  * own resolver, honouring `config.database.pglite.dataDir`, `PGLITE_DATA_DIR`
  * and the configured agent workspace), which is re-created on the next start,
- * after an interactive confirmation prompt unless `--yes` is passed. Runs
+ * after an interactive confirmation prompt unless `--yes` is passed. An
+ * in-memory database (`memory://`, `:memory:`) has no directory, so the command
+ * reports that nothing on disk needs to be reset. Runs
  * inside `runCommandWithRuntime` for consistent error/exit handling.
  */
 import fs from "node:fs";
@@ -18,18 +20,30 @@ const defaultRuntime = {
   error: (message: string) => console.error(message),
   exit: (code: number) => process.exit(code),
 };
-async function resolveDbDir(): Promise<string> {
-  const { loadElizaConfig, resolveActivePgliteDataDir } = await import(
-    "@elizaos/agent"
-  );
-  const dataDir = resolveActivePgliteDataDir(loadElizaConfig());
-  if (!dataDir) {
-    throw new ElizaError(
-      "`eliza db reset` only resets the local PGlite database; the configured database provider is not PGlite",
-      { code: "DB_RESET_UNSUPPORTED_PROVIDER" },
-    );
+async function resolveDbDir(): Promise<string | null> {
+  const {
+    isMemoryPgliteDataDir,
+    loadElizaConfig,
+    resolveActivePgliteDataDir,
+    resolveEffectiveDbProvider,
+  } = await import("@elizaos/agent");
+  const config = loadElizaConfig();
+  const dataDir = resolveActivePgliteDataDir(config);
+  if (dataDir) return dataDir;
+  // The agent resolver also returns null for an in-memory database, which has
+  // no directory and nothing on disk to reset. PGlite is still the provider
+  // there, so report it as nothing to reset instead of a provider mismatch.
+  if (resolveEffectiveDbProvider(config) === "pglite") {
+    const setting =
+      config.database?.pglite?.dataDir?.trim() ||
+      process.env.PGLITE_DATA_DIR?.trim() ||
+      "";
+    if (isMemoryPgliteDataDir(setting)) return null;
   }
-  return dataDir;
+  throw new ElizaError(
+    "`eliza db reset` only resets the local PGlite database; the configured database provider is not PGlite",
+    { code: "DB_RESET_UNSUPPORTED_PROVIDER" },
+  );
 }
 function assertResettableDatabaseDirectory(dataDir: string): void {
   const resolved = fs.realpathSync(dataDir);
@@ -63,6 +77,12 @@ export function registerDbCommand(program: Command) {
     .action(async (opts: { yes: boolean }) => {
       await runCommandWithRuntime(defaultRuntime, async () => {
         const dbDir = await resolveDbDir();
+        if (!dbDir) {
+          console.log(
+            `${theme.muted("→")} The database runs in memory — there is no on-disk database to reset.`,
+          );
+          return;
+        }
         if (!fs.existsSync(dbDir)) {
           console.log(
             `${theme.muted("→")} Database not found at ${dbDir} — nothing to reset.`,

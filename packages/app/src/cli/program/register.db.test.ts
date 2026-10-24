@@ -10,9 +10,14 @@ vi.mock("@elizaos/agent", async () => {
   const eliza = await vi.importActual<
     typeof import("@elizaos/agent/runtime/eliza")
   >("@elizaos/agent/runtime/eliza");
+  const selection = await vi.importActual<
+    typeof import("@elizaos/agent/runtime/database-selection")
+  >("@elizaos/agent/runtime/database-selection");
   return {
     loadElizaConfig,
     resolveActivePgliteDataDir: eliza.resolveActivePgliteDataDir,
+    isMemoryPgliteDataDir: selection.isMemoryPgliteDataDir,
+    resolveEffectiveDbProvider: selection.resolveEffectiveDbProvider,
   };
 });
 
@@ -105,6 +110,24 @@ it("refuses to reset when the configured provider is postgres", async () => {
   );
   expect(exit).toHaveBeenCalledWith(1);
 });
+
+it.each(["memory://", ":memory:"])(
+  "reports that the in-memory database %s has nothing to reset",
+  async (setting) => {
+    process.env.PGLITE_DATA_DIR = setting;
+    loadElizaConfig.mockReturnValue({});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const exit = vi
+      .spyOn(process, "exit")
+      .mockImplementation(() => undefined as never);
+    await reset();
+    expect(error).not.toHaveBeenCalled();
+    expect(exit).not.toHaveBeenCalled();
+    expect(vi.mocked(console.log)).toHaveBeenCalledWith(
+      expect.stringContaining("in memory"),
+    );
+  },
+);
 
 it.each(["unrelated directory", "symlink"])(
   "refuses a configured %s without deleting user files",

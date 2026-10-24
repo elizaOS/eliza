@@ -243,6 +243,10 @@ export {
 export { buildCharacterFromConfig } from "./runtime/build-character-config.ts";
 export * from "./runtime/core-plugins.ts";
 export {
+  isMemoryPgliteDataDir,
+  resolveEffectiveDbProvider,
+} from "./runtime/database-selection.ts";
+export {
   type DevTrajectoryRecoveryPreparation,
   type DevTrajectoryRecoveryRegistration,
   type DevTrajectoryRecoveryTransport,
