@@ -12,7 +12,9 @@ import { deletePendingDocumentBlob } from "../_pending-blob-cleanup";
 import {
   createDocumentRecord,
   DOCUMENT_SNIFF_BYTES,
+  decodeDocumentText,
   isReadableTextDocument,
+  NON_UTF8_DOCUMENT_ERROR,
   type PendingDocumentFile,
   r2KeyFromBlobUrl,
   resolveDocumentScope,
@@ -94,11 +96,21 @@ app.post("/", async (c) => {
         continue;
       }
 
+      const text = decodeDocumentText(bytes);
+      if (text === null) {
+        await deletePendingDocumentBlob(c.env.BLOB, key);
+        results.push({
+          blobUrl: file.blobUrl,
+          status: "error",
+          error: `"${file.filename}" ${NON_UTF8_DOCUMENT_ERROR}`,
+        });
+        continue;
+      }
       const document = await createDocumentRecord(user, scope, {
         filename: file.filename,
         contentType: file.contentType,
         size: file.size,
-        text: new TextDecoder().decode(bytes),
+        text,
       });
       await deletePendingDocumentBlob(c.env.BLOB, key);
       results.push({ blobUrl: file.blobUrl, status: "success", document });
