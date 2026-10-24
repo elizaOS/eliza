@@ -292,6 +292,7 @@ async function requireDeployedRendererIdentity(
       "playwrightTestAuth",
       "runtimeMode",
       "schema",
+      "startedAt",
       "variant",
     ].sort(),
   );
