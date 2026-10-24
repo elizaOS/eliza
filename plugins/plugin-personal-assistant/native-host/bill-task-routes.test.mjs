@@ -353,7 +353,7 @@ test("source selection gates the workflow, rereads before committing and reuses 
     await rm(directory, { recursive: true, force: true });
   }
 });
-async function routeFixture(t, workflowFactory) {
+async function routeFixture(t, workflowFactory, options = {}) {
   const directory = await mkdtemp(join(tmpdir(), "bill-route-evidence-"));
   const bundlePath = join(directory, "runtime.mjs");
   buildTaskRuntime(bundlePath);
@@ -369,7 +369,12 @@ async function routeFixture(t, workflowFactory) {
         outcomeStore: createBillOutcomeStore(context.db, context.store),
         sourceStore: createBillSourceStore(context.db, context.store),
       };
-      route = createBillTaskRoutes({ ...stores, copy, workflowFactory });
+      route = createBillTaskRoutes({
+        ...stores,
+        ...options,
+        copy,
+        workflowFactory,
+      });
       return route;
     },
   });
@@ -430,6 +435,56 @@ test("route suppresses a completed workflow response after actor, epoch or cance
       );
       assert.equal(response.status, 401);
       assert.deepEqual(await response.json(), { code: "TASK_UNAUTHORIZED" });
+    });
+});
+
+test("failed bill route answers a fixed reason and reports it without error text", async (t) => {
+  const fail = (error) => () => ({
+    refresh: async () => {
+      throw error;
+    },
+  });
+  for (const [reason, taskId, workflowFactory, name] of [
+    [
+      "profile-unavailable",
+      "bill",
+      fail(
+        Object.assign(new Error("Configured browser profile unavailable"), {
+          reason: "profile-unavailable",
+        }),
+      ),
+      "Error",
+    ],
+    [
+      "workflow-missing",
+      "bill",
+      () => {
+        throw new TypeError("page text 4111");
+      },
+      "TypeError",
+    ],
+    ["workflow-missing", "bill", () => ({}), "BillHostError"],
+    ["store-error", "missing", fail(new Error("unused")), "ElizaError"],
+    ["unknown", "bill", fail(new RangeError("page text 4111")), "RangeError"],
+  ])
+    await t.test(`${reason} ${name}`, async (t) => {
+      const diagnostics = [];
+      const f = await routeFixture(t, workflowFactory, {
+        onDiagnostic: (event) => diagnostics.push(event),
+      });
+      const response = await f.route(
+        new Request(`http://localhost/tasks/${taskId}/bill`),
+        f.context,
+      );
+      assert.equal(response.status, 503);
+      assert.deepEqual(await response.json(), {
+        code: "BILL_WORKFLOW_UNAVAILABLE",
+        reason,
+      });
+      assert.deepEqual(diagnostics, [
+        { route: "bill", taskId, reasonCode: reason, name },
+      ]);
+      assert.doesNotMatch(JSON.stringify(diagnostics), /page text|4111/);
     });
 });
 

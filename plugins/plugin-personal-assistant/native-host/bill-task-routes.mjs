@@ -1,9 +1,23 @@
 import { BILL_SOURCE_FAILURE_REASONS } from "./bill-source-discovery.mjs";
 import { BillHostError } from "./errors.mjs";
 
+/**
+ * Fixed reasons on a failed bill route's 503. They never carry page text,
+ * values or error messages.
+ */
+export const BILL_WORKFLOW_FAILURE_REASONS = Object.freeze([
+  "profile-unavailable",
+  "workflow-missing",
+  "store-error",
+  "unknown",
+]);
+const failureReason = (error, stage) =>
+  error?.reason === "profile-unavailable" ? error.reason : stage;
+
 /** Optional bill-task HTTP facade over the host's existing task runtime and stores. */
 export function createBillTaskRoutes({
   workflowFactory,
+  onDiagnostic,
   discoverBills,
   requiresBillSelection = false,
   copy,
@@ -156,6 +170,8 @@ export function createBillTaskRoutes({
         new URL(request.url).pathname,
       );
     if (billRoute) {
+      // The step that was running when an error was thrown.
+      let stage = "store-error";
       try {
         if (new URL(request.url).search)
           return Response.json({ code: "TASK_INVALID" }, { status: 400 });
@@ -183,6 +199,7 @@ export function createBillTaskRoutes({
             { code: "BILL_WORKFLOW_UNAVAILABLE" },
             { status: 404 },
           );
+        stage = "workflow-missing";
         const workflow = workflowFactory({
           runtime,
           task,
@@ -202,6 +219,9 @@ export function createBillTaskRoutes({
             }
           },
         });
+        if (typeof workflow?.refresh !== "function")
+          throw new BillHostError("Bill workflow unavailable");
+        stage = "unknown";
         const choices = new InteractiveTaskChoices(runtime, choiceStore);
         const presentation = new SqliteTaskPresentation(db, runtime, choices);
         const withChoice = async (decision) => {
@@ -313,9 +333,23 @@ export function createBillTaskRoutes({
           },
           { headers: { "Cache-Control": "no-store" } },
         );
-      } catch {
+      } catch (error) {
+        const reason = failureReason(error, stage);
+        try {
+          // The error name is a class name from code, never page text.
+          onDiagnostic?.({
+            route: "bill",
+            taskId: billRoute[1],
+            reasonCode: reason,
+            name:
+              typeof error?.name === "string" &&
+              /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
+                ? error.name
+                : undefined,
+          });
+        } catch {}
         return Response.json(
-          { code: "BILL_WORKFLOW_UNAVAILABLE" },
+          { code: "BILL_WORKFLOW_UNAVAILABLE", reason },
           { status: 503 },
         );
       }

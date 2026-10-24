@@ -86,7 +86,9 @@ export async function createConfiguredBillHelper({
   const registrationAbort = new AbortController();
   const requireProfile = () => {
     if (native.getProfileId() !== config.profileId)
-      throw new Error("Configured browser profile unavailable");
+      throw Object.assign(new Error("Configured browser profile unavailable"), {
+        reason: "profile-unavailable",
+      });
   };
   const target = Object.fromEntries(
     ["bindTask", "guideTask", "execute"].map((method) => [
