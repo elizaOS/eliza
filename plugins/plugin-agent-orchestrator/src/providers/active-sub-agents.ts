@@ -298,9 +298,10 @@ interface InFlightTaskService {
       title: string;
       status: string;
       activeSessionCount: number;
-      roomId?: string;
     }>
   >;
+  /** The room the task was created from; the task list rows carry no room. */
+  getTaskOriginTarget?(taskId: string): Promise<{ roomId: string } | null>;
 }
 
 /** Non-terminal tasks as compact structural lines (title — status — id).
@@ -312,14 +313,24 @@ async function readInFlightTaskLines(
   const orchestrator = runtime.getService<Service & InFlightTaskService>(
     ORCHESTRATOR_TASK_SERVICE_TYPE,
   );
-  if (!orchestrator || typeof orchestrator.listTasks !== "function") {
+  if (
+    !orchestrator ||
+    typeof orchestrator.listTasks !== "function" ||
+    typeof orchestrator.getTaskOriginTarget !== "function"
+  ) {
     return [];
   }
   try {
-    const inFlight = (
-      await orchestrator.listTasks({ statuses: IN_FLIGHT_TASK_STATUSES })
-    )
-      .filter((task) => task.roomId === message.roomId)
+    const candidates = await orchestrator.listTasks({
+      statuses: IN_FLIGHT_TASK_STATUSES,
+    });
+    // Only the tasks this conversation started: the list rows have no room,
+    // so each origin is resolved the way the task supervisor does.
+    const origins = await Promise.all(
+      candidates.map((task) => orchestrator.getTaskOriginTarget?.(task.id)),
+    );
+    const inFlight = candidates
+      .filter((_task, index) => origins[index]?.roomId === message.roomId)
       .sort((a, b) => a.id.localeCompare(b.id));
     if (inFlight.length === 0) return [];
     return [

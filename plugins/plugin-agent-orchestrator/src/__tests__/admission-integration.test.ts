@@ -689,10 +689,19 @@ describe("admission queue integration (#13772)", () => {
 
     const result = await activeSubAgentsProvider.get(
       runtime as never,
-      {} as never,
+      { roomId: "11111111-1111-4111-8111-111111111111" } as never,
       {} as never,
     );
     expect(result.text).toContain("capacity: 2/2 worker sessions; queued: 2");
+    // The real service's list rows carry no room; the origin lookup scopes them.
+    expect(result.text).toContain("## In-flight tasks");
+    expect(result.text).toContain('"t0"');
+    const elsewhere = await activeSubAgentsProvider.get(
+      runtime as never,
+      { roomId: "22222222-2222-4222-8222-222222222222" } as never,
+      {} as never,
+    );
+    expect(elsewhere.text).not.toContain("## In-flight tasks");
     const capacity = (result.data as { capacity?: Record<string, unknown> })
       .capacity;
     expect(capacity?.maxSessions).toBe(2);

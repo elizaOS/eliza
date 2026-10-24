@@ -6,6 +6,7 @@
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { AcpService } from "../services/acp-service.js";
+import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import type { SessionInfo } from "../services/types.js";
 import { activeSubAgentsProvider } from "./active-sub-agents.js";
 
@@ -23,6 +24,31 @@ function session(id: string, roomId: string): SessionInfo {
   } as unknown as SessionInfo;
 }
 
+/** Mirrors the real task service: list rows carry no room; the origin is a lookup. */
+const tasks = [
+  {
+    id: "task-r",
+    title: "Refactor the router",
+    status: "running",
+    activeSessionCount: 1,
+    room: ROOM_R,
+  },
+  {
+    id: "task-s",
+    title: "Rotate the secrets",
+    status: "validating",
+    activeSessionCount: 0,
+    room: ROOM_S,
+  },
+];
+const taskService = {
+  listTasks: async () => tasks.map(({ room: _room, ...row }) => row),
+  getTaskOriginTarget: async (taskId: string) => {
+    const task = tasks.find((t) => t.id === taskId);
+    return task ? { roomId: task.room, source: "discord" } : null;
+  },
+};
+
 function runtime(sessions: SessionInfo[]): IAgentRuntime {
   const acp = {
     listSessions: () => sessions,
@@ -31,7 +57,11 @@ function runtime(sessions: SessionInfo[]): IAgentRuntime {
   return {
     agentId: "00000000-0000-0000-0000-0000000agent" as UUID,
     getService: (type: string) =>
-      type === AcpService.serviceType ? acp : null,
+      type === AcpService.serviceType
+        ? acp
+        : type === OrchestratorTaskService.serviceType
+          ? taskService
+          : null,
     getSetting: () => undefined,
     reportError: () => undefined,
     logger: { warn() {}, info() {}, error() {}, debug() {} },
@@ -54,6 +84,9 @@ describe("ACTIVE_SUB_AGENTS room scope", () => {
       result.data as { sessions: Array<{ sessionId: string }> }
     ).sessions.map((s) => s.sessionId);
     expect(listed).toEqual(["sess-r"]);
+    expect(result.text).toContain("## In-flight tasks");
+    expect(result.text).toContain('"Refactor the router"');
+    expect(result.text).not.toContain("Rotate the secrets");
   });
 
   it("is not composed for guests", () => {
