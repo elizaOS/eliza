@@ -737,6 +737,22 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       triggerId: current.triggerId,
       previous: current,
     });
+    // Enabling a saved trigger produces the state POST bounds: the cap counts
+    // the owner's enabled triggers, so re-check it here. Without this, an owner
+    // at the cap disables triggers, creates replacements, and re-enables the
+    // old ones to hold an unbounded number of active automations.
+    if (!current.enabled && nextTrigger.enabled) {
+      const activeCount = (await listOwnedTriggerTasks(runtime)).filter((candidate) => {
+        if (candidate.id === task.id) return false;
+        const trigger = readTriggerConfig(candidate);
+        return trigger?.enabled && !isAgentOwnedHeartbeat(candidate, runtime.agentId);
+      }).length;
+      const limit = getTriggerLimit(runtime);
+      if (activeCount >= limit) {
+        error(res, `Active trigger limit reached (${limit})`, 429);
+        return true;
+      }
+    }
     const existingMeta = (task.metadata ?? {}) as TriggerTaskMetadata;
     const existingRuns = readTriggerRuns(task);
     let nextMeta: TriggerTaskMetadata;
