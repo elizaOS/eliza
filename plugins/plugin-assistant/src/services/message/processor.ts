@@ -865,6 +865,7 @@ export class MessageProcessor {
               },
               onStage1RespondDecision: () => {
                 stage1DecidedRespond = true;
+                opts.onResponseDecision?.();
               },
             }),
           ),
