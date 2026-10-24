@@ -47,6 +47,7 @@ export class TwitterPostClient {
   private isDryRun: boolean;
   private state: TwitterClientState;
   private isRunning: boolean = false;
+  private generation = 0;
   private isPosting: boolean = false; // Add lock to prevent concurrent posting
 
   /**
@@ -95,14 +96,19 @@ export class TwitterPostClient {
   async stop() {
     logger.log("Stopping Twitter post client...");
     this.isRunning = false;
+    this.generation++;
   }
 
   /**
    * Starts the Twitter post client, setting up a loop to periodically generate new tweets.
    */
   async start() {
+    if (this.isRunning) return;
+
     logger.log("Starting Twitter post client...");
     this.isRunning = true;
+    const generation = ++this.generation;
+    const isCurrent = () => this.isRunning && generation === this.generation;
 
     // Each iteration waits one post interval and then posts. A start (also
     // the in-process restart that a settings save runs) therefore posts at
@@ -120,14 +126,14 @@ export class TwitterPostClient {
 
       await new Promise((resolve) => setTimeout(resolve, interval));
 
-      if (!this.isRunning) {
+      if (!isCurrent()) {
         logger.log("Twitter post client stopped, exiting loop");
         return;
       }
 
       await this.generateNewTweet();
 
-      if (this.isRunning) {
+      if (isCurrent()) {
         // Schedule the next iteration
         generateNewTweetLoop();
       }
@@ -135,6 +141,7 @@ export class TwitterPostClient {
 
     // Wait a bit longer to ensure profile is loaded
     await new Promise((resolve) => setTimeout(resolve, 5000));
+    if (!isCurrent()) return;
 
     // Check if we should generate a tweet immediately
     const postImmediately =
@@ -150,9 +157,9 @@ export class TwitterPostClient {
       );
       // Try multiple times in case profile isn't ready
       let retries = 0;
-      while (retries < 5) {
+      while (retries < 5 && isCurrent()) {
         const success = await this.generateNewTweet();
-        if (success) break;
+        if (success || !isCurrent()) break;
 
         retries++;
         logger.info(`Retrying immediate tweet (attempt ${retries}/5)...`);
@@ -161,7 +168,7 @@ export class TwitterPostClient {
     }
 
     // Start the regular generation loop
-    generateNewTweetLoop();
+    if (isCurrent()) generateNewTweetLoop();
   }
 
   /**
