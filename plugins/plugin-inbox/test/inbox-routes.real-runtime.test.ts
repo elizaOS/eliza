@@ -16,6 +16,7 @@
 
 import {
   type AgentRuntime,
+  type Memory,
   ModelType,
   type ModelTypeName,
 } from "@elizaos/core";
@@ -29,6 +30,7 @@ import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../packages/app/test/helpers/real-runtime.ts";
+import { executeInboxQueueOperation } from "../src/actions/inbox.ts";
 import { InboxRepository } from "../src/inbox/repository.ts";
 import type { InboundMessage, TriageEntry } from "../src/inbox/types.ts";
 import { inboxPlugin } from "../src/plugin.ts";
@@ -343,6 +345,36 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
     ).entries.map((entry) => entry.id);
     expect(snoozedIds).toContain(target.id);
   });
+  it("a planner snooze reads an offset-free time in the message's time zone", async () => {
+    const unresolved = await repo.getUnresolved({ limit: 50 });
+    const target = unresolved[0];
+    if (!target) throw new Error("unreachable");
+    // "Snooze until Monday 9am" arrives as a wall clock in the user's zone;
+    // New York is on EST (-05:00) in November.
+    const message = {
+      content: {
+        text: "snooze this until monday 9am",
+        metadata: { uiTimeZone: "America/New_York" },
+      },
+    } as unknown as Memory;
+    try {
+      await executeInboxQueueOperation({
+        runtime,
+        subaction: "snooze",
+        params: { entryId: target.id, snoozedUntil: "2030-11-04T09:00:00" },
+        authorization: { kind: "turn", message },
+      });
+
+      const stored = (
+        await repo.getUnresolved({ limit: 50, includeSnoozed: true })
+      ).find((entry) => entry.id === target.id);
+      expect(stored?.snoozedUntil).toBe("2030-11-04T14:00:00.000Z");
+    } finally {
+      // Later cases read this entry as unsnoozed.
+      await repo.snoozeUntil(target.id, new Date(0).toISOString());
+    }
+  });
+
   it("snooze validates its inputs: unknown entry and bad timestamp both fail loudly", async () => {
     const missing = await call(
       "POST",
