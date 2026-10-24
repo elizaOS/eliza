@@ -44,6 +44,7 @@ export function createLocalAgentGateway({
   inboundToken,
   hostPolicy,
   origins = hostPolicy?.origins,
+  isAllowedOrigin = hostPolicy?.isAllowedOrigin,
   cloudHandler,
   credentialGate,
   ownershipStore,
@@ -55,7 +56,7 @@ export function createLocalAgentGateway({
 } = {}) {
   if (
     !hostPolicy ||
-    !Array.isArray(origins) ||
+    Array.isArray(origins) === (typeof isAllowedOrigin === "function") ||
     typeof hostPolicy.prepareMessage !== "function" ||
     typeof hostPolicy.validateTitle !== "function" ||
     typeof hostPolicy.isPaidAction !== "function" ||
@@ -72,7 +73,10 @@ export function createLocalAgentGateway({
   )
     throw new Error(message("error1"));
   if (!token?.trim()) throw new Error(message("error2"));
-  const allowed = new Set(origins);
+  const allowed =
+    typeof isAllowedOrigin === "function"
+      ? isAllowedOrigin
+      : Set.prototype.has.bind(new Set(origins));
   const inferenceAvailable = async () => {
     try {
       return (await inferenceConfigured()) === true;
@@ -126,7 +130,7 @@ export function createLocalAgentGateway({
       /^(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/.test(
         req.headers.host || "",
       ) &&
-      (!origin || allowed.has(origin));
+      (!origin || allowed(origin) === true);
     // Browsers never attach credentials to a CORS preflight. Answer one from an
     // allowlisted origin before bearer authentication, or the renderer can
     // never send its authenticated request. It reaches no route.

@@ -205,7 +205,9 @@ remain authoritative. Later plugin replacement requires an explicit matching
 `native-host/gateway.mjs` is a dependency-free Node source entrypoint for native
 hosts shipping a separately verified gateway payload. Supply an explicit
 `hostPolicy`: origins, resetPaths, conversationTitle, abortReason, validateTitle,
-prepareMessage, isPaidAction, formatTaskContext, and optional messages. The policy
+prepareMessage, isPaidAction, formatTaskContext, and optional messages. In place of
+the `origins` list, a host can give an `isAllowedOrigin(origin)` predicate (for
+example, every loopback port during development); give exactly one. The policy
 owns product language and view metadata; the gateway owns authenticated loopback
 transport, bounded JSON, conversation ownership, request cancellation, account
 fencing and authenticated task presentation. Only trusted host code provides this
