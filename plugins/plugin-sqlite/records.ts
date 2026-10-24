@@ -3974,9 +3974,12 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         entry.id,
       );
       if (!existing) continue;
+      // plugin-sql's updatePairingAllowlistEntries writes only metadata:
+      // the entry's channel, senderId and createdAt are its identity — the
+      // sender an entry allows — and an update must not replace them.
       await this.storage.set(COLLECTIONS.PAIRING_ALLOWLIST, entry.id, {
         ...existing,
-        ...entry,
+        metadata: entry.metadata || {},
       });
     }
   }
