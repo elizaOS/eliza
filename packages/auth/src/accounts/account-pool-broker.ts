@@ -407,6 +407,11 @@ export class AccountPoolBroker {
       expiresAt: leaseExpiresAt,
     };
     this.byLeaseId.set(leaseId, lease);
+    // A session holds one live lease. Re-leasing (retry, TTL refresh, or a
+    // failover that excludes the previous account) supersedes the old lease;
+    // leaving it registered inflates the per-account active lease count and
+    // lets a stale id keep reporting against an account the session left.
+    if (pinned) this.deleteLease(pinned);
     this.bySessionKey.set(request.sessionKey, leaseId);
     this.observeLease(lease, request.strategy ?? configured.strategy);
     return {
