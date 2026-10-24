@@ -13,7 +13,11 @@ import {
 import { describe, expect, it, vi } from "vitest";
 import { createCalendarActionRunner } from "../../../plugin-calendar/src/actions/calendar-handler.ts";
 import { CalendarService } from "../../../plugin-calendar/src/service/CalendarService.ts";
-import { calendarReadCoverage, runEvaluator } from "./evaluator.ts";
+import {
+  calendarReadCoverage,
+  runEvaluator,
+  validatedOutcomeCoverage,
+} from "./evaluator.ts";
 
 const requestedAt = Date.parse("2026-10-04T01:19:35Z");
 
@@ -615,5 +619,24 @@ describe("request-bound Calendar read coverage", () => {
     });
     expect(stale.messageToUser).not.toContain("STALE SAME-DAY FACT");
     expect(stale.messageToUser).toContain("Notes view is open.");
+  });
+
+  // The evaluator treats the planner queues as optional (37059). A trajectory
+  // that never carried a planned queue must still be judged, not crash.
+  it("judges outcome coverage when a trajectory omits the optional planner queue", () => {
+    const f = fixture();
+    const { plannedQueue: _plannedQueue, ...rest } = f.trajectory;
+    const withoutQueue = validatedOutcomeCoverage({
+      output: f.output,
+      context: f.context,
+      trajectory: rest as PlannerTrajectory,
+    });
+    const withQueue = validatedOutcomeCoverage({
+      output: f.output,
+      context: f.context,
+      trajectory: f.trajectory,
+    });
+    expect(withQueue).toBe(true);
+    expect(withoutQueue).toBe(withQueue);
   });
 });
