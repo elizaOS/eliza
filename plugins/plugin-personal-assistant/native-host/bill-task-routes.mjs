@@ -12,6 +12,22 @@ export const BILL_WORKFLOW_FAILURE_REASONS = Object.freeze([
   "unknown",
 ]);
 
+// Error names are writable and can contain upstream page data. Only emit known
+// diagnostic categories, never an arbitrary name supplied by a workflow.
+const diagnosticErrorNames = new Set([
+  "Error",
+  "TypeError",
+  "RangeError",
+  "SyntaxError",
+  "ReferenceError",
+  "URIError",
+  "EvalError",
+  "AggregateError",
+  "AbortError",
+  "TimeoutError",
+  "BillHostError",
+]);
+
 /** Optional bill-task HTTP facade over the host's existing task runtime and stores. */
 export function createBillTaskRoutes({
   workflowFactory,
@@ -363,16 +379,13 @@ export function createBillTaskRoutes({
         const reason =
           error?.reason === "profile-unavailable" ? error.reason : stage;
         try {
-          // The error name is a class name from code, never page text.
+          // Keep diagnostic metadata within the fixed vocabulary.
+          const name = error?.name;
           onDiagnostic?.({
             route: "bill",
             taskId: billRoute[1],
             reasonCode: reason,
-            name:
-              typeof error?.name === "string" &&
-              /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
-                ? error.name
-                : undefined,
+            name: diagnosticErrorNames.has(name) ? name : undefined,
           });
         } catch {}
         return Response.json(

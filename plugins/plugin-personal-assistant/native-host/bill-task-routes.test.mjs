@@ -536,6 +536,16 @@ test("failed bill route answers the failing step's reason without error text", a
       before: choose,
     },
     {
+      label: "workflow error name contains private data",
+      reason: "unknown",
+      name: undefined,
+      workflowFactory: fail(
+        Object.assign(new Error("private page"), {
+          name: "Account4111111111111111",
+        }),
+      ),
+    },
+    {
       label: "workflow refresh",
       reason: "unknown",
       name: "RangeError",
