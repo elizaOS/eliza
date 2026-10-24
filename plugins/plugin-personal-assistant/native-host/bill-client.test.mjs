@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validateTaskChoiceWidget } from "../../../packages/core/src/messaging/task-widgets.ts";
-import { formatMinorCurrency } from "../../../packages/ui/src/utils/value-formatting.ts";
 import {
   BillClientResponseError,
   BillDecisionClient,
@@ -10,12 +8,9 @@ import {
   readBillDecision,
   readBillSourceOffer,
   validateBillSourceLinks,
+  defaultBillClientValidators as validators,
 } from "./bill-client.ts";
 
-const validators = {
-  choice: validateTaskChoiceWidget,
-  money: (value) => formatMinorCurrency(value, "en-US"),
-};
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const deferred = () => {
   let resolve, reject;
@@ -91,7 +86,6 @@ function fixture(Client = BillDecisionClient) {
   const calls = [],
     states = [];
   const client = new Client({
-    validators,
     now: () => 100,
     changed: (s) => states.push(s),
     request: (path, body) => {
@@ -553,7 +547,6 @@ test("a shown guide is checked again and renewed before it expires, and reported
   };
   const calls = [];
   const client = new BillDecisionClient({
-    validators,
     now: () => time,
     timers,
     changed: () => {},
@@ -647,7 +640,6 @@ test("a background guide check never makes the panel pending or refuses a choice
   };
   const calls = [];
   const client = new BillDecisionClient({
-    validators,
     now: () => time,
     timers,
     changed: () => {},
@@ -731,7 +723,6 @@ test("a hold for a question stops re-checks and sends a waiting command only aft
   };
   const calls = [];
   const client = new BillDecisionClient({
-    validators,
     now: () => time,
     timers,
     changed: () => {},

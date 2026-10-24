@@ -122,7 +122,9 @@ and whether that exact validated record is persisted. Host reports can distingui
 pending observations from durable evidence without querying the store's tables.
 
 `native-host/bill-client.ts` is a browser-safe client leaf for these routes. It
-validates response snapshots with injected shared choice/money validators, owns
+validates response snapshots with the shared choice/money validators
+(`validateTaskChoiceWidget` and `formatMinorCurrency` by default; a host can
+replace either through `validators`), owns
 request state and task-switch cancellation, and never replays uncertain source
 selection. Source-link opening requires an explicit call and validated provider
 URL. Hosts supply transport and UI wording; owner authorization and durable effect

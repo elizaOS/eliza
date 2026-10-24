@@ -116,6 +116,12 @@
       "types": "./dist/voice/batch-conversation.d.ts",
       "import": "./dist/voice/batch-conversation.js",
       "default": "./dist/voice/batch-conversation.js"
+    },
+    "./value-formatting": {
+      "eliza-source": "./src/utils/value-formatting.ts",
+      "types": "./dist/utils/value-formatting.d.ts",
+      "import": "./dist/utils/value-formatting.js",
+      "default": "./dist/utils/value-formatting.js"
     }
   },
   "peerDependencies": {
