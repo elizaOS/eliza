@@ -185,3 +185,77 @@ describe("an anyOf property with a sibling type", () => {
     ]);
   });
 });
+
+/**
+ * `allOf` is a simultaneous constraint too. Its branches must narrow the type
+ * the sibling `anyOf` advertises, not widen it.
+ */
+describe("an anyOf property with an allOf branch", () => {
+  const unionWithIntersection = {
+    properties: {
+      value: {
+        anyOf: [{ type: "string" }, { type: "number" }],
+        allOf: [{ type: "string" }],
+      },
+    },
+  };
+
+  it("advertises only the type the intersection allows", () => {
+    const property = providerProperty(unionWithIntersection).value;
+    expect(property.type).toBe("string");
+    expect(property.anyOf).toBeUndefined();
+  });
+
+  it("accepts the shared type and rejects the branch allOf excludes", () => {
+    expect(validateParamsAgainstSchema({ value: "text" }, unionWithIntersection)).toEqual([]);
+    expect(validateParamsAgainstSchema({ value: 7 }, unionWithIntersection)).toEqual([
+      "Parameter 'value' expected string, got number",
+    ]);
+  });
+
+  it("keeps a number only when allOf allows it", () => {
+    const schema = {
+      properties: {
+        value: { anyOf: [{ type: "string" }, { type: "number" }], allOf: [{ type: "number" }] },
+      },
+    };
+    expect(providerProperty(schema).value.type).toBe("number");
+    expect(validateParamsAgainstSchema({ value: 7 }, schema)).toEqual([]);
+    expect(validateParamsAgainstSchema({ value: "text" }, schema)).toEqual([
+      "Parameter 'value' expected number, got string",
+    ]);
+  });
+});
+
+/**
+ * A sibling `type` that no union branch allows leaves no valid value. The
+ * argument must not be advertised, and no value may pass validation.
+ */
+describe("a property whose simultaneous constraints share no type", () => {
+  const contradictory = {
+    properties: {
+      value: { type: "string", anyOf: [{ type: "number" }] },
+      note: { type: "string" },
+    },
+  };
+
+  it("advertises no argument for the unsatisfiable property", () => {
+    const properties = providerProperty(contradictory);
+    expect(properties.value).toBeUndefined();
+    // The sibling property is unaffected.
+    expect(properties.note.type).toBe("string");
+  });
+
+  it("accepts no value for the unsatisfiable property", () => {
+    expect(validateParamsAgainstSchema({ value: "text" }, contradictory)).toEqual([
+      "Parameter 'value' accepts no value, got string",
+    ]);
+    expect(validateParamsAgainstSchema({ value: 7 }, contradictory)).toEqual([
+      "Parameter 'value' accepts no value, got number",
+    ]);
+  });
+
+  it("still accepts a value for the sibling property", () => {
+    expect(validateParamsAgainstSchema({ note: "hello" }, contradictory)).toEqual([]);
+  });
+});

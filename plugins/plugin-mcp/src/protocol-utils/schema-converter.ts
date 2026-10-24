@@ -68,63 +68,95 @@ interface JsonSchemaProperty {
  */
 const MAX_TYPE_BRANCH_DEPTH = 8;
 
-function propertyTypeNames(prop: JsonSchemaProperty | undefined, depth = 0): string[] {
-  if (!prop || depth > MAX_TYPE_BRANCH_DEPTH) return [];
-  const declared = new Set<string>();
-  if (typeof prop.type === "string") {
-    declared.add(prop.type);
-  } else if (Array.isArray(prop.type)) {
-    for (const entry of prop.type) {
-      if (typeof entry === "string") declared.add(entry);
+/** Every type name a sibling `type` keyword allows. */
+function typeNameSet(declared: JsonSchemaProperty["type"]): Set<string> {
+  const names = new Set<string>();
+  if (typeof declared === "string") names.add(declared);
+  else if (Array.isArray(declared)) {
+    for (const entry of declared) {
+      if (typeof entry === "string") names.add(entry);
     }
   }
+  return names;
+}
 
-  const alternatives = new Set<string>();
+/**
+ * Types that satisfy both groups.
+ *
+ * `integer` is a narrower `number`, so that pair still describes one runtime
+ * type instead of an empty intersection.
+ */
+function intersectTypeNames(left: Set<string>, right: Set<string>): Set<string> {
+  const shared = new Set<string>();
+  for (const name of left) {
+    if (right.has(name)) shared.add(name);
+    else if (name === "integer" && right.has("number")) shared.add("integer");
+    else if (name === "number" && right.has("integer")) shared.add("integer");
+  }
+  return shared;
+}
+
+/**
+ * JSON Schema type names a property accepts.
+ *
+ * A property does not need a top-level `type`: `anyOf`/`oneOf` branch types are
+ * just as binding, and pydantic/FastMCP emit `{"anyOf":[{"type":"string"},
+ * {"type":"null"}]}` for `Optional[str]`. Ignoring those branches declared the
+ * argument as an object, so the model was told to send an object and every
+ * correct string argument failed validation.
+ *
+ * `type`, `anyOf`, `oneOf` and `allOf` are simultaneous constraints, not
+ * alternatives: a value must satisfy the sibling type, every `allOf` branch,
+ * and one branch of each union. The groups are therefore intersected. `null`
+ * means the constraints share no type, so the property accepts no value.
+ */
+function propertyTypeNames(prop: JsonSchemaProperty | undefined, depth = 0): string[] | null {
+  if (!prop || depth > MAX_TYPE_BRANCH_DEPTH) return [];
+
+  let names: Set<string> | undefined;
+  const declared = typeNameSet(prop.type);
+  if (declared.size > 0) names = declared;
+
   for (const key of ["anyOf", "oneOf"] as const) {
     const variants = prop[key];
-    if (!Array.isArray(variants)) continue;
+    if (!Array.isArray(variants) || variants.length === 0) continue;
+    const alternatives = new Set<string>();
+    let untyped = false;
     for (const variant of variants) {
-      for (const name of propertyTypeNames(variant, depth + 1)) alternatives.add(name);
-    }
-  }
-
-  const names = new Set<string>();
-  if (declared.size > 0 && alternatives.size > 0) {
-    // A sibling `type` and `anyOf`/`oneOf` are simultaneous constraints, not
-    // alternatives: `{"type":"string","anyOf":[{"type":"number"},
-    // {"type":"string"}]}` accepts strings only. Intersecting keeps the
-    // advertised type and the validator from accepting the number branch.
-    for (const name of declared) {
-      if (alternatives.has(name)) names.add(name);
-    }
-    // No shared name is an unsatisfiable pair, as in `type: "string"` with
-    // only a number branch. Keep the declared type: it is narrower than the
-    // branch set and does not invite a value the server cannot accept.
-    if (names.size === 0) {
-      for (const name of declared) names.add(name);
-    }
-  } else {
-    for (const name of declared) names.add(name);
-    for (const name of alternatives) names.add(name);
-  }
-
-  // `allOf` requires every branch. Only a type that all typed branches agree on
-  // can describe the value, so intersect the branch sets.
-  const allOf = prop.allOf;
-  if (Array.isArray(allOf) && allOf.length > 0) {
-    let shared: Set<string> | undefined;
-    for (const variant of allOf) {
       const branchNames = propertyTypeNames(variant, depth + 1);
-      if (branchNames.length === 0) continue;
-      shared = shared
-        ? new Set([...shared].filter((name) => branchNames.includes(name)))
-        : new Set(branchNames);
+      // A branch that accepts no value is no alternative.
+      if (branchNames === null) continue;
+      if (branchNames.length === 0) {
+        untyped = true;
+        continue;
+      }
+      for (const name of branchNames) alternatives.add(name);
     }
-    if (shared) for (const name of shared) names.add(name);
+    if (alternatives.size === 0) {
+      // No branch names a type: the keyword adds no bound. If every branch is
+      // unsatisfiable instead, no value can satisfy the union.
+      if (untyped) continue;
+      return null;
+    }
+    names = names ? intersectTypeNames(names, alternatives) : alternatives;
   }
+
+  // `allOf` requires every branch, so it narrows the names collected so far.
+  // Adding these branches would advertise a type that one branch excludes.
+  if (Array.isArray(prop.allOf) && prop.allOf.length > 0) {
+    for (const variant of prop.allOf) {
+      const branchNames = propertyTypeNames(variant, depth + 1);
+      if (branchNames === null) return null;
+      if (branchNames.length === 0) continue;
+      const branch = new Set(branchNames);
+      names = names ? intersectTypeNames(names, branch) : branch;
+    }
+  }
+
+  if (names && names.size === 0) return null;
 
   // A declared value with no `type` still names its own kind (`const`, `enum`).
-  if (names.size === 0) {
+  if (!names) {
     const literals = prop.const !== undefined ? [prop.const] : prop.enum;
     if (Array.isArray(literals) && literals.length > 0) {
       const kinds = new Set<string>();
@@ -134,12 +166,14 @@ function propertyTypeNames(prop: JsonSchemaProperty | undefined, depth = 0): str
       }
       if (kinds.size === 1) {
         const [kind] = kinds;
-        if (kind === "string" || kind === "number" || kind === "boolean") names.add(kind);
+        if (kind === "string" || kind === "number" || kind === "boolean") {
+          return [kind];
+        }
       }
     }
   }
 
-  return [...names];
+  return names ? [...names] : [];
 }
 
 /** Runtime value types a single JSON Schema type name can satisfy. */
@@ -164,7 +198,7 @@ function runtimeTypeName(name: string): RuntimeParameterType | undefined {
  */
 function propertyRuntimeTypes(prop: JsonSchemaProperty): RuntimeParameterType[] {
   const types = new Set<RuntimeParameterType>();
-  for (const name of propertyTypeNames(prop)) {
+  for (const name of propertyTypeNames(prop) ?? []) {
     const type = runtimeTypeName(name);
     if (type) types.add(type);
   }
@@ -178,8 +212,13 @@ function propertyRuntimeTypes(prop: JsonSchemaProperty): RuntimeParameterType[] 
  * runtime types become a pure `anyOf` union: picking the first branch would tell
  * the model that only that branch is valid and would make the declared type
  * depend on branch order.
+ *
+ * `undefined` means the property accepts no value, so no argument is advertised:
+ * any type here would name a value the server schema rejects.
  */
-function declaredParameterSchema(prop: JsonSchemaProperty): ActionParameter["schema"] {
+function declaredParameterSchema(prop: JsonSchemaProperty): ActionParameter["schema"] | undefined {
+  const names = propertyTypeNames(prop);
+  if (names === null) return undefined;
   const types = propertyRuntimeTypes(prop);
   if (types.length === 1) return { type: types[0] };
   if (types.length > 1) return { anyOf: types.map((type) => ({ type })) };
@@ -219,6 +258,7 @@ function pinnedValues(prop: JsonSchemaProperty | undefined, depth = 0): unknown[
 
 /** Readable type names for a description and for validation messages. */
 function describeParameterTypes(prop: JsonSchemaProperty): string {
+  if (propertyTypeNames(prop) === null) return "no value";
   const types = propertyRuntimeTypes(prop);
   return types.length > 0 ? types.join(" | ") : "object";
 }
@@ -397,6 +437,9 @@ export function convertJsonSchemaToActionParams(
 
   for (const [name, prop] of Object.entries(properties)) {
     const declared = declaredParameterSchema(prop);
+    // The property accepts no value. It cannot be a valid argument, and any
+    // advertised type would name a value the MCP server rejects.
+    if (!declared) continue;
     // A pure union carries no sibling constraints: core rejects those, and each
     // branch already states its own type.
     const attachEnum = declared.type !== undefined && prop.enum !== undefined;
@@ -454,9 +497,18 @@ export function validateParamsAgainstSchema(
       }
       if (value === undefined) continue;
 
-      const declaredTypes = propertyTypeNames(prop).filter((type) => type !== "null");
-      const expected = describeParameterTypes(prop);
+      const typeNames = propertyTypeNames(prop);
       const actual = getValueType(value);
+
+      // The simultaneous constraints share no type, so the server schema
+      // rejects every value. Do not accept a value that one keyword excludes.
+      if (typeNames === null) {
+        errors.push(`Parameter '${name}' accepts no value, got ${actual}`);
+        continue;
+      }
+
+      const declaredTypes = typeNames.filter((type) => type !== "null");
+      const expected = describeParameterTypes(prop);
 
       if (declaredTypes.length > 0) {
         const allowedTypes = declaredTypes.map((type) => (type === "integer" ? "number" : type));
