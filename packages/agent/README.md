@@ -227,7 +227,7 @@ messages fail instead of being truncated. At most 16 commands may be pending.
 Hosts must still authorize task commands and enforce selected-page, document,
 visibility and cancellation checks at the native handler. This channel provides
 no task authority, task store, browser profile or Chromium-extension identity.
-Source-bundle consumers must include both gateway and channel source modules.
+Source-bundle consumers must include the gateway, channel, and task-id source modules.
 
 `native-host/account-state.mjs` preserves private credential-derived namespaces
 and configuration migration. `native-host/runtime-supervisor.mjs` serializes
