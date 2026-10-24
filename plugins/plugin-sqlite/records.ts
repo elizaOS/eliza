@@ -3483,10 +3483,33 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async createAgents(agents: Partial<Agent>[]): Promise<UUID[]> {
+    if (!this.storage.setIfAbsent) {
+      throw new ElizaError(
+        "SQLite record storage cannot atomically create agents",
+        { code: "AGENT_CREATE_ATOMIC_STORAGE_REQUIRED" },
+      );
+    }
     const ids: UUID[] = [];
     for (const agent of agents) {
       const id = (agent.id ?? randomUUID()) as UUID;
-      await this.storage.set(COLLECTIONS.AGENTS, id, { ...agent, id });
+      // plugin-sql checks for an existing agent with the same id and
+      // returns false for it, so createAgents reports no id and the
+      // stored row is never overwritten — a sparse re-create would drop
+      // the stored name and settings. upsertAgents is the merge path.
+      // The insert itself makes that decision in one SQLite statement
+      // (ON CONFLICT DO NOTHING), so no separate check-then-write window
+      // remains for another writer sharing the database file.
+      const created = await this.storage.setIfAbsent(COLLECTIONS.AGENTS, id, {
+        ...agent,
+        id,
+      });
+      if (!created) {
+        logger.warn(
+          { src: "plugin:sqlite", agentId: id },
+          "Attempted to create agent with duplicate ID",
+        );
+        continue;
+      }
       ids.push(id);
     }
     return ids;

@@ -371,6 +371,21 @@ export class SQLiteStorageBase implements IStorage {
     });
   }
 
+  async setIfAbsent<T>(
+    collection: string,
+    id: string,
+    data: T,
+  ): Promise<boolean> {
+    return this.exclusive(
+      async () =>
+        this.connection()
+          .prepare(
+            "INSERT INTO records(collection,id,data) VALUES(?,?,?) ON CONFLICT(collection,id) DO NOTHING",
+          )
+          .run(collection, id, encodeRecord(data)).changes > 0,
+    );
+  }
+
   async delete(collection: string, id: string): Promise<boolean> {
     return this.exclusive(
       async () =>
