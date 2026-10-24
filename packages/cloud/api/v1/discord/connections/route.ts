@@ -109,19 +109,15 @@ app.post("/", async (c) => {
 
     const data = validation.data;
 
-    // Verify character exists and belongs to the organization
+    // Characters belong to their creator inside an organization: a bot may
+    // only run the caller's own character.
     const character = await userCharactersRepository.findById(data.characterId);
-    if (!character) {
+    if (
+      !character ||
+      character.user_id !== user.id ||
+      character.organization_id !== user.organization_id
+    ) {
       return c.json({ success: false, error: "Character not found" }, 404);
-    }
-    if (character.organization_id !== user.organization_id) {
-      return c.json(
-        {
-          success: false,
-          error: "Character does not belong to your organization",
-        },
-        403,
-      );
     }
 
     // Create connection - rely on database unique constraint to prevent duplicates

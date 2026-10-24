@@ -134,22 +134,18 @@ async function __hono_PATCH(
 
   const data = validation.data;
 
-  // Verify character exists and belongs to the organization (if provided)
+  // Characters belong to their creator inside an organization: a bot may
+  // only run the caller's own character.
   if (data.characterId) {
     const character = await userCharactersRepository.findById(data.characterId);
-    if (!character) {
+    if (
+      !character ||
+      character.user_id !== user.id ||
+      character.organization_id !== user.organization_id
+    ) {
       return Response.json(
         { success: false, error: "Character not found" },
         { status: 404 },
-      );
-    }
-    if (character.organization_id !== user.organization_id) {
-      return Response.json(
-        {
-          success: false,
-          error: "Character does not belong to your organization",
-        },
-        { status: 403 },
       );
     }
   }
