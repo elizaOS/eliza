@@ -71,6 +71,7 @@ const { creditTransactionsRepository } = await import(
   "../../../db/repositories/credit-transactions"
 );
 const { processDomainRenewals } = await import("../domain-renewals");
+const { creditsService } = await import("../credits");
 
 const pg = () => getPgliteClientForTests();
 const TABLES = [
@@ -204,4 +205,88 @@ test("a renewal records the paid period while Cloudflare still shows the old exp
   expect(run.results.map((r) => r.outcome)).toEqual(["renewed"]);
   expect(recordedExpiries).toHaveLength(1);
   expect(recordedExpiries[0]?.getTime()).toBeGreaterThan(domain.expiresAt.getTime());
+});
+
+const DAY_MS = 86_400_000;
+
+/** The ledger state a run leaves when it dies between the debit and the registrar call. */
+async function debitWithoutRenewing(period: Date) {
+  const debit = await creditsService.deductCredits({
+    organizationId: ORG,
+    amount: 15,
+    description: "domain renewal: acme.example",
+    metadata: {
+      type: "domain_renewal",
+      domain: "acme.example",
+      renewalPeriod: period.toISOString(),
+      managedDomainId: DOMAIN_ID,
+      renewalRunId: randomUUID(),
+    },
+    stripePaymentIntentId: `domain_renewal:${DOMAIN_ID}:${period.toISOString()}:0`,
+  });
+  expect(debit.success).toBe(true);
+}
+
+async function ledgerTypes(): Promise<string[]> {
+  const rows = await pg().query<{ type: string }>(
+    "SELECT metadata->>'type' AS type FROM credit_transactions WHERE organization_id=$1 ORDER BY created_at",
+    [ORG],
+  );
+  return rows.rows.map((row) => row.type);
+}
+
+async function balance(): Promise<number> {
+  const rows = await pg().query<{ credit_balance: string }>(
+    "SELECT credit_balance FROM organizations WHERE id=$1",
+    [ORG],
+  );
+  return Number(rows.rows[0]?.credit_balance);
+}
+
+test("a run cut between the debit and the registrar is completed by a later run", async () => {
+  await pg().query("DELETE FROM credit_transactions WHERE organization_id=$1", [ORG]);
+  await pg().query("UPDATE organizations SET credit_balance='100' WHERE id=$1", [ORG]);
+  domain.expiresAt = new Date(EXPIRES_AT.getTime() + 180_000); // a new period
+  registrarCalls.length = 0;
+  recordedExpiries.length = 0;
+  await debitWithoutRenewing(domain.expiresAt);
+
+  // Minutes later the charge may still belong to a run that is mid-registrar call.
+  const sameHour = await processDomainRenewals();
+  expect(sameHour.results.map((r) => r.outcome)).toEqual(["already_charged"]);
+  expect(registrarCalls).toEqual([]);
+
+  // The next daily run owns the abandoned charge: renew and record, charge nothing.
+  const nextDay = await processDomainRenewals(new Date(Date.now() + DAY_MS));
+  expect(nextDay.results.map((r) => r.outcome)).toEqual(["renewed"]);
+  expect(registrarCalls).toEqual(["acme.example"]);
+  expect(recordedExpiries).toHaveLength(1);
+  expect(recordedExpiries[0]?.getTime()).toBeGreaterThan(domain.expiresAt.getTime());
+  expect(await ledgerTypes()).toEqual(["domain_renewal"]);
+  expect(await balance()).toBeCloseTo(85, 6);
+});
+
+test("a completed renewal that fails at the registrar is refunded once and charged again later", async () => {
+  await pg().query("DELETE FROM credit_transactions WHERE organization_id=$1", [ORG]);
+  await pg().query("UPDATE organizations SET credit_balance='100' WHERE id=$1", [ORG]);
+  domain.expiresAt = new Date(EXPIRES_AT.getTime() + 240_000); // a new period
+  registrarCalls.length = 0;
+  await debitWithoutRenewing(domain.expiresAt);
+
+  registrarFails = true;
+  const resumed = await processDomainRenewals(new Date(Date.now() + DAY_MS));
+  registrarFails = false;
+  expect(resumed.results.map((r) => r.outcome)).toEqual(["registrar_failed"]);
+  expect(await ledgerTypes()).toEqual(["domain_renewal", "domain_renewal_refund"]);
+  expect(await balance()).toBeCloseTo(100, 6);
+
+  const retried = await processDomainRenewals(new Date(Date.now() + 2 * DAY_MS));
+  expect(retried.results.map((r) => r.outcome)).toEqual(["renewed"]);
+  expect(registrarCalls).toEqual(["acme.example", "acme.example"]);
+  expect(await ledgerTypes()).toEqual([
+    "domain_renewal",
+    "domain_renewal_refund",
+    "domain_renewal",
+  ]);
+  expect(await balance()).toBeCloseTo(85, 6);
 });
