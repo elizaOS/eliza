@@ -54,7 +54,79 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function parseJsonObject(text: string): Record<string, unknown> {
+/**
+ * True when the first non-space character after the opening brace starts an
+ * object body. A reply that only mentions a brace, as in "start it with {",
+ * is prose, not a call that was cut off.
+ */
+function looksLikeObjectBody(text: string, openIndex: number): boolean {
+  for (let index = openIndex + 1; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === ' ' || character === '\t' || character === '\n' || character === '\r') {
+      continue;
+    }
+    return character === '"' || character === '}';
+  }
+  return false;
+}
+
+/**
+ * Every complete top-level `{...}` region in `text`, in order, and whether the
+ * reply ends inside an object body.
+ *
+ * A region starts only at a brace whose first non-space character opens an
+ * object body. Prose such as "Use {name as a placeholder" therefore never
+ * becomes a region, so it cannot leave a brace on the scan stack and swallow
+ * the draft that follows it. Braces and quotes inside a region are tracked
+ * together; outside a region the text is prose, where a lone quote has no
+ * partner.
+ */
+function scanTopLevelObjects(text: string): {
+  regions: Array<{ start: number; end: number }>;
+  unclosedObject: boolean;
+} {
+  const regions: Array<{ start: number; end: number }> = [];
+  let unclosedObject = false;
+  let index = 0;
+  while (index < text.length) {
+    if (text[index] !== '{' || !looksLikeObjectBody(text, index)) {
+      index += 1;
+      continue;
+    }
+    const start = index;
+    let depth = 0;
+    let quote = false;
+    let closedAt = -1;
+    for (; index < text.length; index += 1) {
+      const character = text[index];
+      if (quote) {
+        if (character === '\\') index += 1;
+        else if (character === '"') quote = false;
+        continue;
+      }
+      if (character === '"') quote = true;
+      else if (character === '{') depth += 1;
+      else if (character === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          closedAt = index;
+          break;
+        }
+      }
+    }
+    if (closedAt < 0) {
+      unclosedObject = true;
+      break;
+    }
+    regions.push({ start, end: closedAt + 1 });
+    index = closedAt + 1;
+  }
+  return { regions, unclosedObject };
+}
+
+/** Read the one JSON object a generation reply returns. Exported so regression
+ * tests can drive the same parser the generation path uses. */
+export function parseJsonObject(text: string): Record<string, unknown> {
   const trimmed = text
     .trim()
     .replace(/^```(?:json)?\s*/i, '')
@@ -65,11 +137,24 @@ function parseJsonObject(text: string): Record<string, unknown> {
   } catch {
     // error-policy:J3 the fallback below extracts one explicitly-delimited JSON object.
   }
-  const start = trimmed.indexOf('{');
-  const end = trimmed.lastIndexOf('}');
-  if (start >= 0 && end > start) {
+  const { regions, unclosedObject } = scanTopLevelObjects(trimmed);
+  // The reply ends inside an object body, so it was cut off. Its last `}` closes
+  // an earlier object, which is often the example the prose described. A partial
+  // workflow must never be accepted as the draft.
+  if (unclosedObject) {
+    throw new WorkflowApiError(
+      'The model returned a workflow object that ends before it closes',
+      502
+    );
+  }
+  // Prose can describe the fields with its own braces, as in "uses {name} and
+  // {source}", and can do it before or after the draft. Try the newest complete
+  // object first, then the older ones, so a placeholder on either side is
+  // skipped instead of hiding the draft.
+  for (let index = regions.length - 1; index >= 0; index -= 1) {
+    const region = regions[index];
     try {
-      const value = JSON.parse(trimmed.slice(start, end + 1));
+      const value = JSON.parse(trimmed.slice(region.start, region.end));
       if (isRecord(value)) return value;
     } catch {
       // error-policy:J3 an invalid model response becomes a visible generation error.
