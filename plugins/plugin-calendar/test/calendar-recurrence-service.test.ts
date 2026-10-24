@@ -835,3 +835,21 @@ describe("CalendarServiceError typing", () => {
     }
   });
 });
+
+describe("deleteCalendarEventsForProvider — one account", () => {
+  it("purges only the events imported for the given grant", async () => {
+    // Account disconnect with "purge imported data" passes the grant here.
+    await repo.deleteCalendarEventsForProvider(
+      AGENT_ID,
+      "google",
+      undefined,
+      "owner",
+      GRANT_A.id,
+    );
+
+    const remaining = await repo.listCalendarEvents(AGENT_ID, "google");
+    expect(remaining.map((event) => event.grantId)).toEqual([
+      "connector-account:acct-b",
+    ]);
+  });
+});

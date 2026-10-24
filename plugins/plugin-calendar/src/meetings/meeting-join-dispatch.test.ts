@@ -5,7 +5,12 @@
  * `DispatchResult` — never a throw.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import {
+  type ConnectorAccount,
+  getConnectorAccountManager,
+  type IAgentRuntime,
+  InMemoryConnectorAccountStorage,
+} from "@elizaos/core";
 import type {
   MeetingJoinRequest,
   MeetingSession,
@@ -48,8 +53,24 @@ function eventRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function googleAccount(
+  status: ConnectorAccount["status"] = "connected",
+): ConnectorAccount {
+  return {
+    id: "grant-1",
+    provider: "google",
+    role: "OWNER",
+    purpose: ["reading"],
+    accessGate: "owner_binding",
+    status,
+    createdAt: 1,
+    updatedAt: 1,
+  };
+}
+
 interface RuntimeOptions {
   rows?: Record<string, unknown>[];
+  accounts?: ConnectorAccount[];
   meetings?: {
     requestJoin: (request: MeetingJoinRequest) => Promise<MeetingSession>;
   } | null;
@@ -57,7 +78,11 @@ interface RuntimeOptions {
 
 function makeRuntime(options: RuntimeOptions = {}): IAgentRuntime {
   const cache = new Map<string, unknown>();
-  return {
+  const storage = new InMemoryConnectorAccountStorage();
+  for (const account of options.accounts ?? [googleAccount()]) {
+    void storage.upsertAccount(account);
+  }
+  const runtime = {
     agentId: AGENT_ID,
     adapter: {
       db: {
@@ -72,6 +97,8 @@ function makeRuntime(options: RuntimeOptions = {}): IAgentRuntime {
       return true;
     },
   } as unknown as IAgentRuntime;
+  getConnectorAccountManager(runtime, storage);
+  return runtime;
 }
 
 function session(overrides: Partial<MeetingSession> = {}): MeetingSession {
@@ -147,6 +174,52 @@ describe("handleMeetingJoinDispatch", () => {
       reason: "disconnected",
       userActionable: true,
     });
+  });
+
+  it("joins when the grant names a connected account and the row has a derived account id", async () => {
+    const requests: MeetingJoinRequest[] = [];
+    const runtime = makeRuntime({
+      rows: [
+        eventRow({
+          grant_id: "connector-account:acct-7",
+          connector_account_id: "google:owner:email:3f2a",
+        }),
+      ],
+      accounts: [{ ...googleAccount(), id: "acct-7" }],
+      meetings: {
+        requestJoin: async (request) => {
+          requests.push(request);
+          return session();
+        },
+      },
+    });
+    await writeMeetingAutoJoinPolicy(runtime, "all");
+    const result = await handleMeetingJoinDispatch(runtime, {
+      target: "evt-1",
+    });
+    expect(result).toEqual({ ok: true, messageId: "meeting:sess-1" });
+    expect(requests).toHaveLength(1);
+  });
+
+  it("does not join a meeting whose calendar account was disconnected", async () => {
+    const requests: MeetingJoinRequest[] = [];
+    const runtime = makeRuntime({
+      rows: [eventRow()],
+      // Disconnect deleted the account; its imported event is still stored.
+      accounts: [],
+      meetings: {
+        requestJoin: async (request) => {
+          requests.push(request);
+          return session();
+        },
+      },
+    });
+    await writeMeetingAutoJoinPolicy(runtime, "all");
+    const result = await handleMeetingJoinDispatch(runtime, {
+      target: "evt-1",
+    });
+    expect(result).toMatchObject({ ok: false, reason: "disconnected" });
+    expect(requests).toEqual([]);
   });
 
   it("fails typed when the event no longer exists", async () => {

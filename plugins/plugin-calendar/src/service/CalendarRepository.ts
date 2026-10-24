@@ -396,18 +396,21 @@ export class CalendarRepository {
     provider: LifeOpsCalendarProvider | LifeOpsConnectorGrant["provider"],
     calendarId?: string,
     side?: LifeOpsConnectorSide,
+    grantId?: string,
   ): Promise<void> {
     const calendarClause = calendarId
       ? `AND calendar_id = ${sqlQuote(calendarId)}`
       : "";
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
+    const grantClause = grantId ? `AND grant_id = ${sqlQuote(grantId)}` : "";
     await executeRawSql(
       this.runtime,
       `DELETE FROM app_calendar.life_calendar_events
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           ${calendarClause}
-          ${sideClause}`,
+          ${sideClause}
+          ${grantClause}`,
     );
   }
 

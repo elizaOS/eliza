@@ -16,13 +16,19 @@
  * no thrown errors swallowed by the dispatcher.
  */
 
-import { type IAgentRuntime, logger } from "@elizaos/core";
+import {
+  getConnectorAccountManager,
+  type IAgentRuntime,
+  logger,
+} from "@elizaos/core";
 import {
   type MeetingJoinRequest,
   type MeetingSession,
   parseMeetingUrl,
 } from "@elizaos/core/protocol";
 import type { DispatchResult } from "@elizaos/plugin-scheduling";
+import { googleAccountIdFromGrantId } from "../internal/google-delegates.js";
+import { microsoftAccountIdFromGrantId } from "../microsoft/accounts.js";
 import { CalendarRepository } from "../service/CalendarRepository.js";
 import { readMeetingAutoJoinSettings } from "./auto-join-settings.js";
 
@@ -63,6 +69,35 @@ export function readMeetingJoinTarget(payload: unknown): string | null {
 }
 
 /**
+ * Disconnecting a calendar account keeps its imported events (unless purged),
+ * so a join task can still point at one. Only an event whose connector account
+ * is still connected may be joined.
+ */
+async function eventAccountIsConnected(
+  runtime: IAgentRuntime,
+  event: {
+    provider: string;
+    connectorAccountId?: string | null;
+    grantId?: string | null;
+  },
+): Promise<boolean> {
+  // The grant id carries the account-manager id; connectorAccountId can be a
+  // derived digest for rows written without one.
+  const candidates = [
+    event.provider === "google"
+      ? googleAccountIdFromGrantId(event.grantId)
+      : microsoftAccountIdFromGrantId(event.grantId),
+    event.connectorAccountId,
+  ].filter((id): id is string => Boolean(id));
+  const manager = getConnectorAccountManager(runtime);
+  for (const accountId of new Set(candidates)) {
+    const account = await manager.getAccount(event.provider, accountId);
+    if (account?.status === "connected") return true;
+  }
+  return false;
+}
+
+/**
  * Execute one `meeting_join` dispatch. Returns a typed `DispatchResult`.
  */
 export async function handleMeetingJoinDispatch(
@@ -99,6 +134,15 @@ export async function handleMeetingJoinDispatch(
       reason: "unknown_recipient",
       userActionable: false,
       message: `Calendar event ${eventId} no longer exists.`,
+    };
+  }
+
+  if (!(await eventAccountIsConnected(runtime, event))) {
+    return {
+      ok: false,
+      reason: "disconnected",
+      userActionable: true,
+      message: `The calendar account for event ${eventId} is no longer connected.`,
     };
   }
 
