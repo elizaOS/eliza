@@ -79,6 +79,14 @@ const TRAILING_FILLERS = new Set([
   "ah",
   "maybe",
 ]);
+/** Number words that a spoken amount usually continues after ("two hundred…"). */
+const TRAILING_NUMBER_WORDS = new Set([
+  "point",
+  "hundred",
+  "thousand",
+  "million",
+  "billion",
+]);
 /** Dangling auxiliaries/modals that need another clause or phrase to land. */
 const TRAILING_CONTINUATIONS = new Set([
   "am",
@@ -132,18 +140,23 @@ const QUESTION_TAGS = [
  * Rules fire in priority order; the first match wins:
  *
  *   1  Trailing ellipsis ("…" / "..")                       0.20  (trail-off)
- *   2  Sentence-final punctuation (. ! ?)                   0.95
+ *   2  Sentence-final ! or ?                                0.95
  *   3  Question-tag suffix ("right?", "yeah", "correct")    0.85
- *   4  Trailing conjunction (and / but / because / …)       0.15  (mid-clause)
- *   5  Trailing filler / hedge (um / uh / maybe / …)        0.20  (holding floor)
- *   6  Trailing preposition / article (to / the / with …)   0.20  (incomplete NP)
- *   7  Dangling modal/auxiliary (could / would / is / …)    0.20  (incomplete clause)
- *   8  Short utterance (< 3 words, no trail-off)            0.70  (command/ack)
- *   9  No signal                                            0.50
+ *   4  Unfinished number ("1,", "$", "point", "hundred")    0.20  (mid-amount)
+ *   5  Trailing conjunction (and / but / because / …)       0.15  (mid-clause)
+ *   6  Trailing filler / hedge (um / uh / maybe / …)        0.20  (holding floor)
+ *   7  Trailing preposition / article (to / the / with …)   0.20  (incomplete NP)
+ *   8  Dangling modal/auxiliary (could / would / is / …)    0.20  (incomplete clause)
+ *   9  Sentence-final full stop                             0.95
+ *  10  Short utterance (< 3 words, no trail-off)            0.70  (command/ack)
+ *  11  No signal                                            0.50
  *
- * Note the continuation checks precede the short-utterance rule so a 2-word
- * trail-off ("and so", "going to", "we could") is NOT misread as a complete
- * short command.
+ * Speech recognizers add a full stop to most results, including ones cut off
+ * mid-clause ("I want to pay the."), so a single final "." is set aside and
+ * the continuation checks run on the words before it; the full stop counts
+ * only when none of them fire. The continuation checks also precede the
+ * short-utterance rule so a 2-word trail-off ("and so", "going to", "we
+ * could") is NOT misread as a complete short command.
  */
 export function scoreEndOfTurnHeuristic(transcript: string): number {
   const text = transcript.trim();
@@ -151,12 +164,17 @@ export function scoreEndOfTurnHeuristic(transcript: string): number {
   // A trailing ellipsis is the strongest trail-off signal — the speaker paused
   // mid-thought. Checked BEFORE sentence-final punctuation, since "..." ends in ".".
   if (/(\.{2,}|…)$/.test(text)) return 0.2;
-  // Sentence-final punctuation → almost certainly done.
-  if (/[.!?]$/.test(text)) return 0.95;
-  const lower = text.toLowerCase();
+  // A final ! or ? → almost certainly done.
+  if (/[!?]$/.test(text)) return 0.95;
+  // A final full stop is often the recognizer's, not the speaker's: decide on
+  // the words before it, and use it only when nothing says the turn goes on.
+  const fullStop = text.endsWith(".");
+  const lower = (fullStop ? text.slice(0, -1).trimEnd() : text).toLowerCase();
   for (const tag of QUESTION_TAGS) {
     if (lower.endsWith(tag)) return 0.85;
   }
+  // An amount cut off mid-number ("1,", "$") — before the words lose punctuation.
+  if (/(\d,|\$)$/.test(lower)) return 0.2;
   const words = lower
     .replace(/[^a-z0-9'\s-]/gi, "")
     .split(/\s+/)
@@ -166,10 +184,12 @@ export function scoreEndOfTurnHeuristic(transcript: string): number {
   // Trailing conjunction / filler / incomplete phrase → mid-clause, the speaker
   // is continuing. Checked BEFORE the short-utterance rule so a 2-word trail-off
   // ("going to", "and so", "we could") is NOT misread as a complete command.
+  if (TRAILING_NUMBER_WORDS.has(lastWord)) return 0.2;
   if (TRAILING_CONJUNCTIONS.has(lastWord)) return 0.15;
   if (TRAILING_FILLERS.has(lastWord)) return 0.2;
   if (TRAILING_INCOMPLETE.has(lastWord)) return 0.2;
   if (TRAILING_CONTINUATIONS.has(lastWord)) return 0.2;
+  if (fullStop) return 0.95;
   // Short utterance that doesn't trail off (a command / acknowledgement) →
   // likely complete ("go home", "yes", "stop").
   if (words.length < 3) return 0.7;
