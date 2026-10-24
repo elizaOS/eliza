@@ -12,9 +12,20 @@ import {
 } from "./kill-process-tree.ts";
 import { drainSpawnedChildren } from "./shutdown-drain.ts";
 
+// Detached helper for orphanWatchdog. The host's SIGKILL closes the write end
+// of its stdin, so end-of-input without "exit" means the host is gone.
+const orphanWatcher = `const groups=new Set();let pending="",released=false;
+process.stdin.setEncoding("utf8");
+process.stdin.on("data",(chunk)=>{const lines=(pending+chunk).split("\\n");pending=lines.pop();
+for(const line of lines){if(line==="exit")released=true;else if(line[0]==="+")groups.add(Number(line.slice(1)));else groups.delete(Number(line.slice(1)));}});
+process.stdin.on("end",()=>{if(!released)for(const pid of groups){try{process.kill(-pid,"SIGTERM");}catch{}}process.exit(0);});`;
+
 export function createDevelopmentProcessScope(options: {
   cwd: string;
   drainWindowMs: number;
+  /** Send SIGTERM to each child's process group when this host dies without
+   * draining it (SIGKILL, crash). Off by default; ignored on Windows. */
+  orphanWatchdog?: boolean;
   onUnexpectedExit: (result: {
     name: string;
     code: number | null;
@@ -32,6 +43,23 @@ export function createDevelopmentProcessScope(options: {
   const owned: { name: string; child: ChildProcess }[] = [];
   const closed = new WeakMap<ChildProcess, Promise<void>>();
   let stopping = false;
+  let watching =
+    options.orphanWatchdog === true && process.platform !== "win32";
+  let watcher: ChildProcess | undefined;
+  const watch = (line: string) => {
+    if (!watching) return;
+    if (!watcher) {
+      watcher = spawn(process.execPath, ["-e", orphanWatcher], {
+        detached: true,
+        stdio: ["pipe", "ignore", "ignore"],
+      });
+      watcher.on("error", () => {});
+      watcher.stdin?.on("error", () => {});
+      watcher.unref();
+      (watcher.stdin as unknown as { unref?: () => void })?.unref?.();
+    }
+    watcher.stdin?.write(`${line}\n`);
+  };
   let stopPromise: ReturnType<typeof drainSpawnedChildren> | undefined;
   const stop = () => {
     if (stopPromise) return stopPromise;
@@ -74,6 +102,11 @@ export function createDevelopmentProcessScope(options: {
         detached: process.platform !== "win32",
       });
       owned.push({ name, child });
+      if (child.pid) {
+        const pid = child.pid;
+        watch(`+${pid}`);
+        child.once("close", () => watch(`-${pid}`));
+      }
       closed.set(
         child,
         new Promise((resolve) => child.once("close", () => resolve())),
@@ -104,6 +137,8 @@ export function createDevelopmentProcessScope(options: {
       try {
         return await stop();
       } finally {
+        watching = false;
+        watcher?.stdin?.end("exit\n");
         process.removeListener("SIGINT", onSignal);
         process.removeListener("SIGTERM", onSignal);
       }

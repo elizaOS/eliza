@@ -429,6 +429,8 @@ identity, readiness predicates and process reuse policy.
 cleanup with the existing process-group drain. It never adopts or restarts a
 process. Hosts choose commands, environments, readiness and diagnostics; call
 `dispose` in finally. `waitForClose` remains valid after an early close event.
+With `orphanWatchdog: true` (POSIX only), a detached helper sends SIGTERM to each
+child's process group if the host dies without draining it, for example on SIGKILL.
 
 `scripts/mobile/android/build-consumer.mjs` runs an external consumer's admission and
 sync commands, assembles selected app distributions (debug, unsigned release and

@@ -144,3 +144,51 @@ test("SIGTERM to a real host drains its owned child and removes listeners", asyn
       host.kill("SIGKILL");
   }
 });
+
+test("orphanWatchdog stops a child whose host is killed with SIGKILL", async () => {
+  const moduleUrl = new URL("./development-process-scope.ts", import.meta.url)
+    .href;
+  const alive = (pid: number) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const orphanAfterHostKill = async (
+    orphanWatchdog: boolean,
+    waitMs: number,
+  ) => {
+    const script = `import {createDevelopmentProcessScope} from ${JSON.stringify(moduleUrl)};
+      const scope=createDevelopmentProcessScope({cwd:process.cwd(),drainWindowMs:1000,orphanWatchdog:${orphanWatchdog},onUnexpectedExit:()=>{}});
+      const child=scope.launch('child',process.execPath,['-e','setInterval(()=>{},1000)'],process.env,'ignore');
+      child.once('spawn',()=>console.log(child.pid));`;
+    const host = spawn(
+      process.execPath,
+      ["--input-type=module", "-e", script],
+      {
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    );
+    assert.ok(host.stdout);
+    const [line] = await once(host.stdout, "data");
+    const pid = Number(String(line).trim());
+    host.kill("SIGKILL");
+    await once(host, "close");
+    const deadline = Date.now() + waitMs;
+    while (alive(pid) && Date.now() < deadline)
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    return pid;
+  };
+  if (process.platform === "win32") return;
+  // Process groups and the watchdog are POSIX only.
+  const watched = await orphanAfterHostKill(true, 5000);
+  assert.equal(alive(watched), false);
+  const unwatched = await orphanAfterHostKill(false, 1000);
+  try {
+    assert.equal(alive(unwatched), true);
+  } finally {
+    process.kill(unwatched, "SIGKILL");
+  }
+});
