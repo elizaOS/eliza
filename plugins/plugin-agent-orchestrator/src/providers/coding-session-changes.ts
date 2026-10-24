@@ -15,6 +15,7 @@ import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import {
   getAcpService,
   reportProviderFetchFailure,
+  sessionMatchesMessage,
 } from "../actions/common.js";
 import type { SessionInfo } from "../services/types.js";
 import type { WorkspaceChangeSet } from "../services/workspace-diff.js";
@@ -161,30 +162,4 @@ function dateMs(value: Date | string | number | undefined): number {
     return Number.isFinite(parsed) ? parsed : 0;
   }
   return 0;
-}
-
-function sessionMatchesMessage(session: SessionInfo, message: Memory): boolean {
-  const roomId = typeof message.roomId === "string" ? message.roomId : "";
-  if (!roomId) return false;
-  const metadata = session.metadata as Record<string, unknown> | undefined;
-  if (!metadata) return false;
-  if (
-    [
-      metadata.roomId,
-      metadata.taskRoomId,
-      metadata.worktreeRoomId,
-      metadata.originRoomId,
-    ]
-      .filter((value): value is string => typeof value === "string")
-      .includes(roomId)
-  ) {
-    return true;
-  }
-  const swarmRooms = Array.isArray(metadata.swarmRooms)
-    ? metadata.swarmRooms
-    : [];
-  return swarmRooms.some((entry) => {
-    if (!entry || typeof entry !== "object") return false;
-    return (entry as { roomId?: unknown }).roomId === roomId;
-  });
 }
