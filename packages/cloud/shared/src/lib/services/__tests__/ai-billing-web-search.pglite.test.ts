@@ -51,23 +51,28 @@ beforeAll(async () => {
   const { aiPricingEntries } = await import("../../../db/schemas/ai-pricing");
   await pushSchemaToTestDb({ aiPricingEntries });
   const { aiPricingRepository } = await import("../../../db/repositories/ai-pricing");
-  for (const [chargeType, unitPrice] of [
-    ["input", INPUT_USD_PER_TOKEN],
-    ["output", OUTPUT_USD_PER_TOKEN],
+  for (const [provider, model] of [
+    ["anthropic", MODEL],
+    ["openai", "gpt-4o"],
   ] as const) {
-    await aiPricingRepository.createManualOverride({
-      billingSource: "bitrouter",
-      provider: "anthropic",
-      model: `anthropic/${MODEL}`,
-      productFamily: "language",
-      chargeType,
-      unit: "token",
-      unitPrice,
-      dimensionKey: "*",
-      dimensions: {},
-      reason: "test: Anthropic list price",
-      updatedBy: "test",
-    });
+    for (const [chargeType, unitPrice] of [
+      ["input", INPUT_USD_PER_TOKEN],
+      ["output", OUTPUT_USD_PER_TOKEN],
+    ] as const) {
+      await aiPricingRepository.createManualOverride({
+        billingSource: "bitrouter",
+        provider,
+        model: `${provider}/${model}`,
+        productFamily: "language",
+        chargeType,
+        unit: "token",
+        unitPrice,
+        dimensionKey: "*",
+        dimensions: {},
+        reason: "test: isolated token prices",
+        updatedBy: "test",
+      });
+    }
   }
   ({ billUsage } = await import("../ai-billing"));
   ({ PLATFORM_MARKUP_MULTIPLIER: markup } = await import("../../pricing-constants"));
@@ -104,9 +109,33 @@ describe("billUsage with Anthropic server-side web searches", () => {
     expect(held.reconciled[0]).toBeGreaterThan(tokenOnlyCost() + searchCost - 1e-6);
   });
 
-  test("an explicit search count (aborted stream) is billed the same way", async () => {
+  test("a count aggregated from provider-reported finished steps is billed the same way", async () => {
     const billing = await billUsage(context, { ...tokens, webSearchRequests: 3 });
     expect(billing.webSearchRequests).toBe(3);
     expect(billing.totalCost).toBeCloseTo(tokenOnlyCost() + 3 * SEARCH_USD * markup, 6);
+  });
+
+  test.each([{ raw: { server_tool_use: { web_search_requests: 3 } } }, { webSearchRequests: 3 }])(
+    "does not add an Anthropic fee to another provider: %j",
+    async (searchUsage) => {
+      const held = reservation();
+      const billing = await billUsage(
+        { ...context, model: "openai/gpt-4o", provider: "openai" },
+        { ...tokens, ...searchUsage },
+        held.handle,
+      );
+      expect(billing.webSearchRequests).toBeUndefined();
+      expect(billing.totalCost).toBeCloseTo(tokenOnlyCost(), 6);
+      expect(held.reconciled).toEqual([billing.totalCost]);
+    },
+  );
+
+  test("uses the model provider when the context does not specify one", async () => {
+    const billing = await billUsage(
+      { ...context, provider: undefined },
+      { ...tokens, raw: { server_tool_use: { web_search_requests: 2 } } },
+    );
+    expect(billing.webSearchRequests).toBe(2);
+    expect(billing.totalCost).toBeCloseTo(tokenOnlyCost() + 2 * SEARCH_USD * markup, 6);
   });
 });

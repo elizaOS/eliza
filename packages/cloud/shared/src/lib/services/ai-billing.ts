@@ -557,7 +557,8 @@ export async function billUsage(
   // token fields: Anthropic's web search reports its count only in the raw
   // usage. Charge it (with the same platform markup) on the input side so the
   // reservation reconcile and the ledger row carry the full provider cost.
-  const webSearchRequests = anthropicWebSearchRequestsFromUsage(usage);
+  const webSearchRequests =
+    provider === "anthropic" ? anthropicWebSearchRequestsFromUsage(usage) : 0;
   if (webSearchRequests > 0) {
     const webSearchCost = calculateAnthropicWebSearchCost(webSearchRequests);
     inputCost += webSearchCost;

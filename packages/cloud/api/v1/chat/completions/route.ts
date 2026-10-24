@@ -55,7 +55,6 @@ import {
 } from "@elizaos/cloud-shared/lib/providers/anthropic-thinking";
 import {
   ANTHROPIC_WEB_SEARCH_INPUT_TOKEN_BUFFER,
-  ANTHROPIC_WEB_SEARCH_TOOL_NAME,
   anthropicWebSearchFeeInputTokens,
   buildProviderNativeWebSearchTools,
   isAnthropicWebSearchEnabled,
@@ -2609,8 +2608,7 @@ async function settleStreamingAbortReservation(params: {
   billingSource: PricingBillingSource;
   estimatedInputTokens: number;
   deliveredText: string;
-  /** Provider-run web searches the model had issued before the abort. */
-  issuedWebSearchRequests?: number;
+  webSearchEnabled?: boolean;
   steps: readonly StepResult<ToolSet>[];
   settleReservation: (
     actualCost: number,
@@ -2618,14 +2616,13 @@ async function settleStreamingAbortReservation(params: {
   settleUnknown: () => Promise<CreditReconciliationResult | null>;
   billingReservation?: CreditReservation;
 }): Promise<CreditReconciliationResult | null> {
+  // Tool-call frames prove only an attempt, not a billed search: Anthropic
+  // does not bill failed searches. An aborted request can also omit usage for
+  // the current step. Keep the admitted unknown-outcome settlement instead of
+  // treating observed calls or usage from earlier steps as the final charge.
+  if (params.webSearchEnabled) return await params.settleUnknown();
+
   const finishedStepUsage = summarizeFinishedStepUsage(params.steps);
-  // An aborted stream never receives the provider's final usage, which is the
-  // only place the per-search fee is reported. Bill the searches the stream
-  // showed (the issued calls include those of finished steps).
-  const webSearchRequests = Math.max(
-    finishedStepUsage?.webSearchRequests ?? 0,
-    params.issuedWebSearchRequests ?? 0,
-  );
   const deliveredOutputTokens = estimateTokens(params.deliveredText);
   const inputTokens = Math.max(
     params.estimatedInputTokens,
@@ -2660,7 +2657,7 @@ async function settleStreamingAbortReservation(params: {
         totalTokens,
         cacheReadInputTokens: finishedStepUsage?.cacheReadInputTokens,
         cacheWriteInputTokens: finishedStepUsage?.cacheWriteInputTokens,
-        webSearchRequests,
+        webSearchRequests: finishedStepUsage?.webSearchRequests,
       },
       params.billingReservation,
     );
@@ -3327,8 +3324,6 @@ async function handleStreamingRequest(
     pooledCredential && !useMonetizedAppBilling ? null : affiliateCode;
   let deliveredText = "";
   let deliveredProviderOutput = false;
-  // Ids of the provider-run web searches the model has issued so far.
-  const issuedWebSearchCallIds = new Set<string>();
   let streamingSettlementPromise: Promise<CreditReconciliationResult | null> | null =
     null;
 
@@ -3372,7 +3367,7 @@ async function handleStreamingRequest(
           billingSource,
           estimatedInputTokens,
           deliveredText,
-          issuedWebSearchRequests: issuedWebSearchCallIds.size,
+          webSearchEnabled: Object.keys(webSearchOptions).length > 0,
           steps,
           settleReservation,
           settleUnknown,
@@ -3694,14 +3689,6 @@ async function handleStreamingRequest(
               ),
             );
             continue;
-          }
-
-          if (
-            part.type === "tool-call" &&
-            part.providerExecuted === true &&
-            part.toolName === ANTHROPIC_WEB_SEARCH_TOOL_NAME
-          ) {
-            issuedWebSearchCallIds.add(part.toolCallId);
           }
 
           if (part.type === "tool-call") {
