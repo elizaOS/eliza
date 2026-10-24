@@ -310,3 +310,39 @@ test("luhn accepts a card checksum only", () => {
   assert.equal(luhn("0000000000000000"), false);
   assert.equal(luhn("123456"), false);
 });
+
+test("capacity refuses more values without forgetting earlier secrets", () => {
+  const scrubber = createSecretScrubber({ seed: 1 });
+  for (let i = 0; i < 128; i++) scrubber.scrub(`my code is ${600000 + i}`);
+  assert.equal(scrubber.scrub("use 600000 again"), `use ${MARK} again`);
+  assert.equal(scrubber.scrub("my code is 600000"), `my code is ${MARK}`);
+  assert.throws(() => scrubber.scrub("my code is 482917"), {
+    code: "SENSITIVE_TEXT_CAPACITY",
+  });
+  assert.equal(scrubber.size, 128);
+  assert.throws(() => scrubber.scrub("use 600000 again"), {
+    code: "SENSITIVE_TEXT_CAPACITY",
+  });
+  const gate = createSensitiveTextGate({ scrubber });
+  assert.throws(() => gate.require("use 482917 again"), {
+    code: "SENSITIVE_TEXT_CAPACITY",
+  });
+  scrubber.clear();
+  assert.equal(scrubber.scrub("my code is 482917"), `my code is ${MARK}`);
+});
+
+test("long credential clauses leave no unredacted suffix", () => {
+  const scrubber = createSecretScrubber();
+  const value = `${"X".repeat(90)}7`;
+  assert.equal(scrubber.scrub(`password is ${value}`), `password is ${MARK}`);
+  assert.equal(scrubber.scrub(`use ${value}`), `use ${MARK}`);
+});
+
+test("unsupported nesting refuses instead of returning unprocessed secrets", () => {
+  const scrubber = createSecretScrubber();
+  let value = { text: "my code is 482917" };
+  for (let i = 0; i < 22; i++) value = { nested: value };
+  assert.throws(() => scrubber.scrubValue(value), {
+    code: "INVALID_TEXT_STRUCTURE",
+  });
+});

@@ -189,7 +189,7 @@ const digitsOf = (text) =>
  * inside a value ("Correct-Horse!9", "abc.def") is part of it; punctuation
  * followed by a space or the end of the text ends the clause.
  */
-const CLAUSE = "(?:[^\\n.!?;,]|[.!?;,](?![\\s.!?;,]|$)){1,80}";
+const CLAUSE = "(?:[^\\n.!?;,]|[.!?;,](?![\\s.!?;,]|$))+";
 /**
  * Where a value follows (or comes before) its telling words. Each rule keeps
  * the words that say what it is ("my verification code is") and removes only
@@ -273,7 +273,7 @@ const RUN = new RegExp(
 );
 /** A remembered value is found inside a run at most this many digits longer. */
 const EXTRA_DIGITS = 2;
-/** Values one scrubber remembers before it starts again. */
+/** Refuse new values at capacity; only the host may clear session memory. */
 const REMEMBER_LIMIT = 128;
 
 /** cyrb53: a fast 53-bit keyed string hash for comparison. Not cryptographic. */
@@ -343,18 +343,31 @@ export function createSecretScrubber({
   const phraseLengths = new Set();
   const key = (text) => cyrb53(seed, text);
   const size = () => digitSecrets.size + phraseSecrets.size;
+  let exhausted = false;
+  function requireCapacity() {
+    if (exhausted)
+      throw new NativeHostError(
+        "Secret memory is full. End the session before continuing.",
+        { status: 422, code: "SENSITIVE_TEXT_CAPACITY" },
+      );
+  }
 
   function clear() {
+    exhausted = false;
     digitSecrets.clear();
     digitParts.clear();
     digitLengths.clear();
     phraseSecrets.clear();
     phraseLengths.clear();
   }
+  function rememberFingerprint(values, fingerprint) {
+    if (!values.has(fingerprint) && size() >= REMEMBER_LIMIT) exhausted = true;
+    requireCapacity();
+    values.add(fingerprint);
+  }
   function rememberDigits(digits) {
     if (digits.length < 4 || digits.length > 64) return;
-    if (size() >= REMEMBER_LIMIT) clear();
-    digitSecrets.add(key(digits));
+    rememberFingerprint(digitSecrets, key(digits));
     digitLengths.add(digits.length);
     // The start or end of the value: four or more digits of a short code,
     // eight or more of a longer number. A card's last four digits are on
@@ -366,8 +379,7 @@ export function createSecretScrubber({
   }
   function rememberWords(words) {
     for (const word of credentialWords(words)) {
-      if (size() >= REMEMBER_LIMIT) clear();
-      phraseSecrets.add(key(word));
+      rememberFingerprint(phraseSecrets, key(word));
       phraseLengths.add(1);
     }
   }
@@ -397,8 +409,7 @@ export function createSecretScrubber({
       .filter((word) => word !== SECRET_REMOVED_MARK);
     if (kind === "password") return rememberClauseValue(words[0]);
     if (!words.length || words.length > 12) return;
-    if (size() >= REMEMBER_LIMIT) clear();
-    phraseSecrets.add(key(words.join(" ")));
+    rememberFingerprint(phraseSecrets, key(words.join(" ")));
     phraseLengths.add(words.length);
     if (kind === "clause") return rememberClauseValue(words[0]);
     rememberWords(words);
@@ -475,6 +486,7 @@ export function createSecretScrubber({
 
   /** Text with every detected or remembered secret replaced by the mark. */
   function scrub(value) {
+    requireCapacity();
     if (typeof value !== "string" || !value) return value;
     const text = normalize(value);
     const out = pass(text, SECRET_REMOVED_MARK, true);
@@ -493,7 +505,12 @@ export function createSecretScrubber({
   /** A copy of a plain object or array with every string scrubbed. Keys are kept. */
   function scrubValue(value, depth = 0) {
     if (typeof value === "string") return scrub(value);
-    if (depth > 20 || value === null || typeof value !== "object") return value;
+    if (value === null || typeof value !== "object") return value;
+    if (depth > 20)
+      throw new NativeHostError("Value nesting exceeds the scrubber limit.", {
+        status: 400,
+        code: "INVALID_TEXT_STRUCTURE",
+      });
     if (Array.isArray(value))
       return value.map((item) => scrubValue(item, depth + 1));
     // A Date, Error, Map or class instance is returned as it is.
@@ -512,6 +529,7 @@ export function createSecretScrubber({
     scrubValue,
     /** Removes only values already remembered; nothing new is looked for. */
     scrubRemembered(value) {
+      requireCapacity();
       if (typeof value !== "string" || !value || !size()) return value;
       const text = normalize(value);
       const out = removeRemembered(text, SECRET_REMOVED_MARK);
@@ -522,6 +540,7 @@ export function createSecretScrubber({
      * for and nothing is remembered.
      */
     carriesRemembered(value) {
+      requireCapacity();
       if (typeof value !== "string" || !value || !size()) return false;
       const text = normalize(value);
       return removeRemembered(text, SECRET_REMOVED_MARK) !== text;
