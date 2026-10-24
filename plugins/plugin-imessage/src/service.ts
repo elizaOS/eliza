@@ -1997,6 +1997,11 @@ export class IMessageService extends Service implements IIMessageService {
     const getStringSetting = (key: string, envKey: string, defaultValue = ""): string => {
       const value = this.runtime.getSetting(key);
       if (typeof value === "string") return value;
+      // Plugin parameters declared "number" or "boolean" are saved with that
+      // type, and AgentRuntime.getSetting returns them unchanged. Dropping them
+      // here made a saved IMESSAGE_POLL_INTERVAL_MS or
+      // IMESSAGE_HEARTBEAT_INTERVAL_MS fall back to the environment or default.
+      if (typeof value === "number" || typeof value === "boolean") return String(value);
       return process.env[envKey] || defaultValue;
     };
 
