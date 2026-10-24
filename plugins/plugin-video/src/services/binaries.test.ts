@@ -8,7 +8,8 @@ import { createHash } from "node:crypto";
 import { promises as fsp } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { elizaLogger } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   BinaryResolver,
@@ -483,6 +484,82 @@ describe("BinaryResolver yt-dlp resolution", () => {
       "yt-dlp SHA256 mismatch",
     );
     await expect(fsp.readdir(cacheDir)).resolves.toEqual([]);
+  });
+});
+
+describe("BinaryResolver yt-dlp update ledger", () => {
+  async function cacheWithFailingYtDlp(cacheDir: string): Promise<void> {
+    const cached = path.join(cacheDir, ytDlpFileName());
+    await writeExecutable(cached);
+    await fsp.writeFile(
+      cached,
+      "#!/bin/sh\necho 'ERROR: Unable to extract player response' >&2\nexit 1\n",
+    );
+  }
+
+  it("reports a corrupt update ledger instead of reading it as a first run", async () => {
+    const root = await makeTempRoot();
+    const cacheDir = path.join(root, "cache");
+    await cacheWithFailingYtDlp(cacheDir);
+    const corrupt = '{"version": "2026.0';
+    await fsp.writeFile(path.join(cacheDir, "yt-dlp.meta.json"), corrupt);
+
+    const fetches: string[] = [];
+    const resolver = new BinaryResolver({
+      binariesDir: cacheDir,
+      envOverridePath: null,
+      releaseUrl: "https://example.test/latest",
+      fetchImpl: async (input: RequestInfo | URL) => {
+        fetches.push(String(input));
+        return new Response("nope", { status: 503, statusText: "Unavailable" });
+      },
+      now: () => 1_789_000_000_000,
+    });
+    const errorSpy = vi
+      .spyOn(elizaLogger, "error")
+      .mockImplementation(() => undefined);
+    try {
+      // The extractor error still reaches the caller...
+      await expect(
+        resolver.runYtDlp("https://example.test/watch?v=abc", {}),
+      ).rejects.toThrow(/Unable to extract/);
+      // ...and the unreadable ledger is reported instead of being overwritten,
+      // which used to reset the update throttle on every extractor failure.
+      expect(
+        errorSpy.mock.calls.some((call) =>
+          String(call[0]).includes(resolver.metaPath),
+        ),
+      ).toBe(true);
+      expect(fetches).toEqual([]);
+      await expect(fsp.readFile(resolver.metaPath, "utf8")).resolves.toBe(
+        corrupt,
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("still treats a missing update ledger as a first run", async () => {
+    const root = await makeTempRoot();
+    const cacheDir = path.join(root, "cache");
+    await cacheWithFailingYtDlp(cacheDir);
+
+    const fetches: string[] = [];
+    const resolver = new BinaryResolver({
+      binariesDir: cacheDir,
+      envOverridePath: null,
+      releaseUrl: "https://example.test/latest",
+      fetchImpl: async (input: RequestInfo | URL) => {
+        fetches.push(String(input));
+        return new Response("nope", { status: 503, statusText: "Unavailable" });
+      },
+      now: () => 1_789_000_000_000,
+    });
+
+    await expect(
+      resolver.runYtDlp("https://example.test/watch?v=abc", {}),
+    ).rejects.toThrow(/Unable to extract/);
+    expect(fetches).toEqual(["https://example.test/latest"]);
   });
 });
 
