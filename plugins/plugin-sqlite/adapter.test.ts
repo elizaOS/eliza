@@ -1760,6 +1760,55 @@ it("enumerates persisted memory types after reopening the owner file", async () 
   expect(await reopened.listMemoryTypes()).toEqual(["plugin_unlisted"]);
 });
 
+it("keeps another agent's memories out of searchMemories", async () => {
+  const adapter = await open();
+  await adapter.ensureEmbeddingDimension(3);
+  const otherAgentId = id();
+  const own = { ...memory("own message"), embedding: [1, 0, 0] };
+  await adapter.createMemories([{ memory: own, tableName: "messages" }]);
+  // A legacy migration can leave another agent's rows in this shared file.
+  const storage = await adapter.getConnection();
+  const foreignId = id();
+  await storage.set("memories", foreignId, {
+    id: foreignId,
+    agentId: otherAgentId,
+    entityId,
+    roomId,
+    tableName: "messages",
+    content: { text: "foreign message" },
+    embedding: [1, 0, 0],
+    createdAt: Date.now(),
+  });
+  // On boot the runtime rebuilds the vector index from every row in the file
+  // (clearEmbeddingsOutsideActiveDimension), so the foreign vector is indexed.
+  await adapter.clearEmbeddingsOutsideActiveDimension();
+  const hits = await adapter.searchMemories({
+    tableName: "messages",
+    embedding: [1, 0, 0],
+    roomId,
+    count: 10,
+    match_threshold: 0.5,
+  });
+  // plugin-sql scopes this read with `agent_id = this.agentId`; the sqlite
+  // read must not surface another agent's memory either.
+  expect(hits.map((row) => row.id)).toEqual([own.id]);
+  // The same foreign row must stay out of the sibling reads this change
+  // scopes, mirroring plugin-sql's agent scoping. searchMessages is covered
+  // by #37062, not re-scoped here.
+  const listed = await adapter.getMemories({
+    tableName: "messages",
+    count: 10,
+  });
+  expect(listed.map((row) => row.id)).toEqual([own.id]);
+  const byRooms = await adapter.getMemoriesByRoomIds({
+    roomIds: [roomId],
+    tableName: "messages",
+  });
+  expect(byRooms.map((row) => row.id)).toEqual([own.id]);
+  const counted = await adapter.countMemories({ tableName: "messages" });
+  expect(counted).toBe(1);
+});
+
 it("cache CAS has one winner, preserves null and rejects lossy values", async () => {
   const adapter = await open();
   const results = await Promise.all(
