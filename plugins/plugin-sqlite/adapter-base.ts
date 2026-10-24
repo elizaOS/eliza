@@ -813,6 +813,34 @@ export class SQLiteAdapterBase extends SQLiteRecordAdapter {
     };
   }
 
+  async listConnectorAccountAuditEvents(
+    params: {
+      agentId?: UUID;
+      provider?: string;
+      accountId?: UUID;
+      action?: string;
+      outcome?: ConnectorAccountAuditOutcome;
+      limit?: number;
+    } = {},
+  ): Promise<ConnectorAccountAuditEventRecord[]> {
+    const agentId = params.agentId ?? this.sqlite.agentId;
+    const limit = params.limit ?? 50;
+    return Array.from(this.connectorAuditEvents.values())
+      .filter((event) => event.agentId === agentId)
+      .filter((event) => !params.provider || event.provider === params.provider)
+      .filter(
+        (event) => !params.accountId || event.accountId === params.accountId,
+      )
+      .filter((event) => !params.action || event.action === params.action)
+      .filter((event) => !params.outcome || event.outcome === params.outcome)
+      .sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id))
+      .slice(0, limit)
+      .map((event) => ({
+        ...event,
+        metadata: redactConnectorJsonAudit(event.metadata, () => false),
+      }));
+  }
+
   async createOAuthFlowState(
     params: CreateOAuthFlowStateParams,
   ): Promise<OAuthFlowRecord> {
