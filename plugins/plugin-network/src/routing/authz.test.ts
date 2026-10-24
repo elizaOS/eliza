@@ -264,3 +264,66 @@ describe("Network weekday with next week", () => {
     }
   });
 });
+
+describe("Network date stated on the current day", () => {
+  it("keeps a month/day that is today in this year", () => {
+    const now = new Date("2026-10-14T15:00:00Z");
+    for (const text of [
+      "I'm in Lisbon until October 14",
+      "I'm in Lisbon until Oct 14",
+      "I'm in Lisbon until 10/14",
+      "I'm in Lisbon until October 14, 2026",
+    ]) {
+      assert.deepEqual(
+        authorizeSetState(
+          { state: "traveling", until: "2026-10-14", evidence: text },
+          text,
+          now,
+        ),
+        {
+          allowed: true,
+          state: "traveling",
+          from: null,
+          until: "2026-10-14T00:00:00.000Z",
+        },
+        text,
+      );
+    }
+  });
+
+  it("starts a range on today instead of moving the whole range a year", () => {
+    const now = new Date("2026-10-14T15:00:00Z");
+    const text = "I'm in Lisbon from October 14 until October 20";
+    assert.deepEqual(
+      authorizeSetState(
+        { state: "traveling", from: null, until: "2026-10-20", evidence: text },
+        text,
+        now,
+      ),
+      {
+        allowed: true,
+        state: "traveling",
+        from: null,
+        until: "2026-10-20T00:00:00.000Z",
+      },
+    );
+  });
+
+  it("still moves a stated date that already passed to its next occurrence", () => {
+    const now = new Date("2026-10-14T15:00:00Z");
+    const text = "I'm in Lisbon until October 13";
+    assert.deepEqual(
+      authorizeSetState(
+        { state: "traveling", until: "2027-10-13", evidence: text },
+        text,
+        now,
+      ),
+      {
+        allowed: true,
+        state: "traveling",
+        from: null,
+        until: "2027-10-13T00:00:00.000Z",
+      },
+    );
+  });
+});
