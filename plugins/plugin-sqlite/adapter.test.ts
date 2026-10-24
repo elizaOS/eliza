@@ -375,6 +375,55 @@ describe("durable SQLite agent adapter", () => {
     });
   });
 
+  it("clears stale-dimension embeddings only for the adapter agent", async () => {
+    const adapter = await open();
+    await adapter.ensureEmbeddingDimension(3);
+    const otherAgentId = id();
+    const storage = await adapter.getConnection();
+
+    // Seed rows directly, as a restored file would carry them: this
+    // agent's stale- and active-dimension memories, another agent's
+    // stale- and active-dimension memories, and a legacy row with no
+    // agentId (this database owner's row, as in the other memory reads).
+    const seed = async (
+      rowAgentId: UUID | undefined,
+      embedding: number[],
+      text: string,
+    ) => {
+      const rowId = id();
+      await storage.set("memories", rowId, {
+        id: rowId,
+        ...(rowAgentId ? { agentId: rowAgentId } : {}),
+        entityId,
+        roomId,
+        content: { text },
+        createdAt: Date.now(),
+        tableName: "messages",
+        embedding,
+      });
+      return rowId;
+    };
+    const ownStale = await seed(agentId, [1, 0], "own stale");
+    const ownActive = await seed(agentId, [1, 0, 0], "own active");
+    const foreignStale = await seed(otherAgentId, [0, 1], "foreign stale");
+    const foreignActive = await seed(otherAgentId, [0, 1, 0], "foreign active");
+    const legacyStale = await seed(undefined, [1, 1], "legacy stale");
+
+    const reclaimed = await adapter.clearEmbeddingsOutsideActiveDimension();
+    expect([...reclaimed].sort()).toEqual([legacyStale, ownStale].sort());
+
+    const storedEmbedding = async (rowId: UUID) =>
+      (await storage.get<{ embedding?: number[] }>("memories", rowId))
+        ?.embedding;
+    expect(await storedEmbedding(ownStale)).toBeUndefined();
+    expect(await storedEmbedding(legacyStale)).toBeUndefined();
+    expect(await storedEmbedding(ownActive)).toEqual([1, 0, 0]);
+    // plugin-sql scopes the sweep with agent_id = this.agentId, so the
+    // other agent's stale embedding must survive untouched.
+    expect(await storedEmbedding(foreignStale)).toEqual([0, 1]);
+    expect(await storedEmbedding(foreignActive)).toEqual([0, 1, 0]);
+  });
+
   it("finds a component by entity and type when world and source are omitted", async () => {
     const adapter = await open();
     const worldId = id();
