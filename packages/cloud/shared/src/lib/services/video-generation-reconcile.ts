@@ -202,6 +202,21 @@ async function markFailed(
   });
 }
 
+/**
+ * Records that the sweep looked at a row it could not settle. The write moves
+ * the row's `updated_at`, which is the sweep's scan order, so the row rotates
+ * behind the pending rows it has not probed yet. Nothing about the hold moves.
+ */
+async function recordSkippedProbe(generation: Generation, reason: string): Promise<void> {
+  await generationsRepository.update(generation.id, {
+    metadata: {
+      ...generation.metadata,
+      settlement_probe_at: new Date().toISOString(),
+      settlement_probe_error: reason,
+    },
+  });
+}
+
 export async function reconcilePendingVideoGenerations(params: {
   apiKeys: Record<string, string | undefined>;
   deadlineMs?: number;
@@ -229,6 +244,7 @@ export async function reconcilePendingVideoGenerations(params: {
         organizationId: generation.organization_id,
         jobId: generation.job_id,
       });
+      await recordSkippedProbe(generation, "no usable settlement payload");
       continue;
     }
 
@@ -239,6 +255,7 @@ export async function reconcilePendingVideoGenerations(params: {
         generationId: generation.id,
         billingSource: settlement.billing_source,
       });
+      await recordSkippedProbe(generation, `no provider for ${settlement.billing_source}`);
       continue;
     }
 
@@ -258,11 +275,13 @@ export async function reconcilePendingVideoGenerations(params: {
       // the warn below; the hold is retained for the next tick, with the
       // stranded-reservation sweep (#11493) as the eventual backstop.
       stats.skipped++;
+      const reason = error instanceof Error ? error.message : String(error);
       logger.warn("[VideoReconcile] Upstream status probe failed; keeping hold", {
         generationId: generation.id,
         jobId: generation.job_id,
-        error: error instanceof Error ? error.message : String(error),
+        error: reason,
       });
+      await recordSkippedProbe(generation, reason);
       continue;
     }
 

@@ -346,8 +346,10 @@ export class GenerationsRepository {
   /**
    * Lists video generations still awaiting upstream settlement (#11862):
    * rows the generate-video route persisted after a poll timeout, carrying a
-   * live credit hold that the reconcile sweep settles or refunds. Oldest
-   * first so long-pending holds are resolved before fresh ones.
+   * live credit hold that the reconcile sweep settles or refunds. Least
+   * recently touched first: the sweep stamps a row it could not settle, so a
+   * row that keeps failing its probe rotates behind the rows it has not
+   * looked at yet instead of holding a batch slot forever.
    */
   async listPendingVideoSettlements(limit = 50): Promise<Generation[]> {
     const boundedLimit = Math.min(Math.max(limit, 1), 200);
@@ -357,7 +359,7 @@ export class GenerationsRepository {
         eq(generations.status, "pending"),
         sql`${generations.metadata}->>'settlement_marker' = ${VIDEO_PENDING_SETTLEMENT_MARKER}`,
       ),
-      orderBy: asc(generations.created_at),
+      orderBy: [asc(generations.updated_at), asc(generations.created_at)],
       limit: boundedLimit,
     });
     return await Promise.all(rows.map(hydrateGeneration));
