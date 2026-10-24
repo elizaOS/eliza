@@ -1,6 +1,8 @@
 /**
  * Persists Discord user-install welcome jobs and delivers them with
- * crash recovery and deterministic Discord nonces.
+ * crash recovery and deterministic Discord nonces. A delivery Discord
+ * rejects for good (the user blocked the bot or closed their DMs) is dropped;
+ * a transient failure retries with backoff until the attempt budget is spent.
  */
 
 import { createHash } from "node:crypto";
@@ -10,10 +12,14 @@ import {
   DISCORD_WELCOME_PENDING as QUEUE_KEY,
 } from "@elizaos/cloud-services-common/discord-welcome-state";
 import { logger } from "./logger";
+import { isKnownDiscordDirectMessageRejection } from "./proactive-greeting-delivery";
 
 const DISCORD_API_BASE = "https://discord.com/api/v10";
 const DELIVERED_TTL_SECONDS = 7 * 24 * 60 * 60;
 const POLL_INTERVAL_MS = 1_000;
+const MAX_DELIVERY_ATTEMPTS = 8;
+const RETRY_BASE_DELAY_MS = 2_000;
+const RETRY_MAX_DELAY_MS = 5 * 60 * 1_000;
 const DISCORD_TOKEN_PATTERN =
   /[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{20,}/g;
 
@@ -25,6 +31,10 @@ export interface DiscordInstallWelcomeJob {
     globalName?: string | null;
     username?: string;
   };
+  /** Failed delivery attempts so far; set by the queue on a requeue. */
+  attempts?: number;
+  /** Not delivered before this time; set by the queue on a requeue. */
+  retryAt?: string;
 }
 
 export interface DiscordInstallWelcomeRedis {
@@ -47,6 +57,34 @@ export interface DiscordInstallWelcomeRedis {
 interface DiscordApiError {
   message?: string;
   code?: number;
+}
+
+/** A Discord REST failure with the status and code the terminal-rejection check reads. */
+export class DiscordApiRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: number,
+  ) {
+    super(message);
+    this.name = "DiscordApiRequestError";
+  }
+}
+
+/** Discord will never deliver this DM: a 4xx other than rate limiting. */
+function isTerminalDeliveryFailure(error: unknown): boolean {
+  return (
+    error instanceof DiscordApiRequestError &&
+    error.status !== 429 &&
+    isKnownDiscordDirectMessageRejection(error)
+  );
+}
+
+function retryDelayMs(attempts: number): number {
+  return Math.min(
+    RETRY_BASE_DELAY_MS * 2 ** (attempts - 1),
+    RETRY_MAX_DELAY_MS,
+  );
 }
 
 export function sanitizeDiscordInstallWelcomeError(error: unknown): string {
@@ -77,8 +115,10 @@ async function discordApi<T>(
   });
   const result = (await response.json()) as T & DiscordApiError;
   if (!response.ok) {
-    throw new Error(
+    throw new DiscordApiRequestError(
       `Discord API request failed (${response.status}): ${result.message ?? result.code ?? "unknown error"}`,
+      response.status,
+      typeof result.code === "number" ? result.code : undefined,
     );
   }
   return result;
@@ -122,6 +162,7 @@ export class DiscordInstallWelcomeQueue {
     private readonly redis: DiscordInstallWelcomeRedis,
     private readonly botToken: string,
     private readonly fetchImpl: typeof fetch = fetch,
+    private readonly now: () => number = Date.now,
   ) {}
 
   async enqueue(job: DiscordInstallWelcomeJob): Promise<void> {
@@ -190,6 +231,12 @@ export class DiscordInstallWelcomeQueue {
       await this.redis.lrem(PROCESSING_KEY, 1, raw);
       return true;
     }
+    if (job.retryAt && Date.parse(job.retryAt) > this.now()) {
+      // Still backing off: back to the pending list untouched.
+      await this.redis.lpush(QUEUE_KEY, raw);
+      await this.redis.lrem(PROCESSING_KEY, 1, raw);
+      return true;
+    }
 
     try {
       await sendDiscordInstallWelcome(job, {
@@ -203,12 +250,31 @@ export class DiscordInstallWelcomeQueue {
       });
       await this.redis.lrem(PROCESSING_KEY, 1, raw);
     } catch (error) {
+      const attempts = (job.attempts ?? 0) + 1;
+      const terminal = isTerminalDeliveryFailure(error);
+      if (terminal || attempts >= MAX_DELIVERY_ATTEMPTS) {
+        await this.redis.lrem(PROCESSING_KEY, 1, raw);
+        logger.warn("Discord install welcome dropped", {
+          jobId: job.id,
+          attempts,
+          reason: terminal ? "rejected_by_discord" : "attempts_exhausted",
+          error: sanitizeDiscordInstallWelcomeError(error),
+        });
+        return true;
+      }
+      const retry: DiscordInstallWelcomeJob = {
+        ...job,
+        attempts,
+        retryAt: new Date(this.now() + retryDelayMs(attempts)).toISOString(),
+      };
       // Requeue before removing the processing claim. A crash between these
       // operations creates a harmless duplicate rather than losing the job.
-      await this.redis.lpush(QUEUE_KEY, raw);
+      await this.redis.lpush(QUEUE_KEY, JSON.stringify(retry));
       await this.redis.lrem(PROCESSING_KEY, 1, raw);
       logger.warn("Discord install welcome delivery will retry", {
         jobId: job.id,
+        attempts,
+        retryAt: retry.retryAt,
         error: sanitizeDiscordInstallWelcomeError(error),
       });
     }
