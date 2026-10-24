@@ -342,6 +342,8 @@ export function createBillTaskRoutes({
                     : handled || (await workflow.refresh());
               } catch (error) {
                 if (error?.code !== "TASK_CHOICE_STALE") throw error;
+                // The stale choice is handled: the refresh is not a store step.
+                stage = "unknown";
                 decision = {
                   ...(await workflow.refresh()),
                   message: copy.staleChoiceMessage,
