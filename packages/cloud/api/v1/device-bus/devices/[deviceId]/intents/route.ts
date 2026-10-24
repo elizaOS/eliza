@@ -17,7 +17,7 @@ import { Hono } from "hono";
 import { dbRead, dbWrite } from "@elizaos/cloud-shared/db/helpers";
 import { deviceIntents, devices } from "@elizaos/cloud-shared/db/schemas";
 import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, sql } from "drizzle-orm";
 
 const DEFAULT_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 
@@ -58,6 +58,10 @@ async function __hono_GET(
       and(
         eq(deviceIntents.user_id, user.id),
         gt(deviceIntents.created_at, since),
+        // A device that loses its cursor (restart) polls with the 24h default.
+        // Skip intents this device already received, otherwise the same
+        // intent is re-delivered and re-executed on every poll.
+        sql`NOT (${deviceIntents.delivered_to} @> ${JSON.stringify([deviceId])}::jsonb)`,
       ),
     )
     .orderBy(deviceIntents.created_at);
