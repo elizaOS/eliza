@@ -1829,7 +1829,7 @@ export function validatedOutcomeCoverage(params: {
     !output.success ||
     output.requestFullyCovered !== true ||
     params.hasUnresolvedToolFailure ||
-    trajectory.plannedQueue.length > 0
+    trajectory.plannedQueue?.length
   )
     return false;
   const intents = evaluatorIntentSources(
