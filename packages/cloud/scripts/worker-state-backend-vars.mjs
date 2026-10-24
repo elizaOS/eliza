@@ -43,7 +43,7 @@ async function main() {
   )
     throw new Error("Missing deployment authority");
   const worker =
-    environment === "staging" ? "eliza-cloud-api-staging" : "eliza-cloud-api";
+    environment === "staging" ? "eliza-cloud-api-staging" : "eliza-cloud-api-prod";
   const response = await fetch(
     `https://api.cloudflare.com/client/v4/accounts/${account}/workers/scripts/${worker}/settings`,
     {
