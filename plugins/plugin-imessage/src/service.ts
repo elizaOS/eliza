@@ -833,18 +833,30 @@ export class IMessageService extends Service implements IIMessageService {
     service.chatDbPath = service.settings.dbPath || DEFAULT_CHAT_DB_PATH;
     service.chatDb =
       service.settings.transport === "native" ? await openChatDb(service.chatDbPath) : null;
+    let inboundCursorSeeded = false;
     if (service.chatDb) {
-      const tip = service.chatDb.getLatestRowId();
+      try {
+        const tip = service.chatDb.getLatestRowId();
 
-      service.lastRowId = Math.max(0, tip - backfill);
+        service.lastRowId = Math.max(0, tip - backfill);
+        inboundCursorSeeded = true;
 
-      logger.debug(
-        `[imessage][boot] dbPath=${service.chatDbPath} tip=${tip} backfillRaw=${JSON.stringify(resolvedBackfillRaw)} backfillResolved=${backfill} lastRowId=${service.lastRowId}`
-      );
+        logger.debug(
+          `[imessage][boot] dbPath=${service.chatDbPath} tip=${tip} backfillRaw=${JSON.stringify(resolvedBackfillRaw)} backfillResolved=${backfill} lastRowId=${service.lastRowId}`
+        );
 
-      logger.info(
-        `[imessage] chat.db opened, inbound polling ready (cursor starts at ROWID ${service.lastRowId}, backfilled ${backfill} from tip ${tip})`
-      );
+        logger.info(
+          `[imessage] chat.db opened, inbound polling ready (cursor starts at ROWID ${service.lastRowId}, backfilled ${backfill} from tip ${tip})`
+        );
+      } catch (error) {
+        // The tip query failed, so the cursor has no known position. Seeding
+        // it at 0 would replay the whole stored history, so stay send-only
+        // for this start instead of guessing.
+        service.runtime.reportError("IMessageService.inboundCursorSeed", error, {
+          dbPath: service.chatDbPath,
+        });
+        logger.warn("[imessage] inbound polling not started: chat.db tip could not be read");
+      }
     }
 
     // NOTE: We intentionally do NOT call loadContacts() here. App launch must
@@ -852,11 +864,13 @@ export class IMessageService extends Service implements IIMessageService {
     // to the first inbound message that actually needs name resolution (see
     // ensureContactsLoaded() below). Outbound-only users never hit this path.
 
-    // Start polling only when chat.db is available. When the database cannot
-    // be opened, the service is intentionally send-only until the next start.
-    if (service.chatDb && service.settings.pollIntervalMs > 0) {
+    // Start polling only when chat.db is available and its tip was read. When
+    // the database cannot be opened or its tip cannot be read, the service is
+    // intentionally send-only until the next start: a cursor seeded from an
+    // unknown tip would replay stored history.
+    if (service.chatDb && inboundCursorSeeded && service.settings.pollIntervalMs > 0) {
       service.startPolling();
-    } else if (!service.chatDb && service.settings.pollIntervalMs > 0) {
+    } else if (service.settings.pollIntervalMs > 0) {
       logger.debug("[imessage] inbound polling not started because chat.db is unavailable");
     }
 
