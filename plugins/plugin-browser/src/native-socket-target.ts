@@ -24,6 +24,39 @@ import type {
 
 export { commitFormHash } from "./commit-form-hash.js";
 
+/**
+ * Stable `reason` values on the failures a native-socket request can end with,
+ * set beside `kind` on each such `BrowserDispatchFailure`. Messages are prose
+ * for people and may change; these do not. The four frame and page reasons
+ * come from the browser peer; any other peer failure is `peer-error`, and a
+ * successful reply this target cannot read is `invalid-reply`. Capability,
+ * argument and policy refusals raised before a request is sent carry `kind`
+ * only.
+ */
+export const NATIVE_SOCKET_FAILURE_REASONS = [
+  "reply-timeout",
+  "request-cancelled",
+  "profile-unavailable",
+  "connection-lost",
+  "frame-inventory-incomplete",
+  "frame-identity-changed",
+  "frame-read-incomplete",
+  "page-loading",
+  "peer-error",
+  "invalid-reply",
+] as const;
+
+export type NativeSocketFailureReason =
+  (typeof NATIVE_SOCKET_FAILURE_REASONS)[number];
+
+const PEER_FAILURE_REASONS: ReadonlySet<string> =
+  new Set<NativeSocketFailureReason>([
+    "frame-inventory-incomplete",
+    "frame-identity-changed",
+    "frame-read-incomplete",
+    "page-loading",
+  ]);
+
 /** Label tone: the person acts, the assistant acts, an offer, or a host-confirmed success. */
 export type NativeTaskGuideTone =
   | "instruction"
@@ -391,7 +424,12 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
   private androidSocketPath = androidNativeBrowserSocketPath();
   constructor(
     private readonly onDiagnostic: (error: Error) => void,
-    private readonly liveness = { registrationMs: 30000, heartbeatMs: 90000 },
+    private readonly liveness: {
+      registrationMs: number;
+      heartbeatMs: number;
+      /** How long a dispatched request waits for the peer's reply. */
+      replyMs?: number;
+    } = { registrationMs: 30000, heartbeatMs: 90000 },
   ) {}
 
   private reportConnectionError(error: Error): void {
@@ -645,7 +683,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
           new BrowserDispatchFailure(
             "UNCERTAIN_OUTCOME",
             "The native Chromium connection ended after dispatch; inspect the same profile before retrying.",
-            { targetId: this.id },
+            { targetId: this.id, reason: "connection-lost" },
           ),
         );
       }
@@ -714,7 +752,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
     if (message.ok === true) pending.resolve(message.result);
     else {
       const error = message.error as
-        | { kind?: string; message?: string }
+        | { kind?: string; message?: string; reason?: unknown }
         | undefined;
       const kind =
         error?.kind === "UNAVAILABLE"
@@ -730,7 +768,15 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
         new BrowserDispatchFailure(
           kind,
           error?.message ?? "Native browser command failed.",
-          { targetId: this.id },
+          {
+            targetId: this.id,
+            // Only reasons from the fixed list cross the trust boundary.
+            reason:
+              typeof error?.reason === "string" &&
+              PEER_FAILURE_REASONS.has(error.reason)
+                ? error.reason
+                : "peer-error",
+          },
         ),
       );
     }
@@ -802,7 +848,11 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
     const { tabs, windowCount } =
       (listing as { tabs?: unknown; windowCount?: unknown } | null) ?? {};
     if (!Array.isArray(tabs))
-      throw new Error("Invalid Chromium tab inventory.");
+      throw new BrowserDispatchFailure(
+        "UNCERTAIN_OUTCOME",
+        "Invalid Chromium tab inventory.",
+        { targetId: this.id, reason: "invalid-reply" },
+      );
     // An extension that does not count windows cannot rule out another one.
     return currentPageFromTabs(tabs, windowCount);
   }
@@ -829,7 +879,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
         new BrowserDispatchFailure(
           "STALE_REF",
           "The browser request was cancelled before dispatch.",
-          { targetId: this.id },
+          { targetId: this.id, reason: "request-cancelled" },
         ),
       );
     if (signal && !this.advertised.has("cancel"))
@@ -845,7 +895,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
         new BrowserDispatchFailure(
           "UNAVAILABLE",
           "No registered Chromium profile is connected.",
-          { targetId: this.id },
+          { targetId: this.id, reason: "profile-unavailable" },
         ),
       );
     const id = randomUUID();
@@ -883,7 +933,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
           new BrowserDispatchFailure(
             "UNCERTAIN_OUTCOME",
             "The browser request was cancelled after dispatch; inspect the same tab without replaying it.",
-            { targetId: this.id },
+            { targetId: this.id, reason: "request-cancelled" },
           ),
         );
       };
@@ -896,10 +946,10 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
           new BrowserDispatchFailure(
             "UNCERTAIN_OUTCOME",
             "Chromium did not acknowledge the request before the deadline; inspect the same tab before retrying.",
-            { targetId: this.id },
+            { targetId: this.id, reason: "reply-timeout" },
           ),
         );
-      }, 30000);
+      }, this.liveness.replyMs ?? 30000);
       this.pending.set(id, {
         resolve: finish(resolve),
         reject: finish((error) => {
@@ -928,7 +978,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
             new BrowserDispatchFailure(
               "UNCERTAIN_OUTCOME",
               "The native command transport failed after dispatch; inspect the same profile before retrying.",
-              { targetId: this.id, cause },
+              { targetId: this.id, cause, reason: "connection-lost" },
             ),
           );
           socket.destroy();
@@ -973,7 +1023,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
       throw new BrowserDispatchFailure(
         "UNCERTAIN_OUTCOME",
         "Invalid website advice receipt.",
-        { targetId: this.id },
+        { targetId: this.id, reason: "invalid-reply" },
       );
     return {
       updated: Number(receipt.updated),
@@ -1170,7 +1220,11 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
         typeof listing !== "object" ||
         !Array.isArray((listing as { tabs?: unknown }).tabs)
       )
-        throw new Error("Invalid Chromium tab inventory.");
+        throw new BrowserDispatchFailure(
+          "UNCERTAIN_OUTCOME",
+          "Invalid Chromium tab inventory.",
+          { targetId: this.id, reason: "invalid-reply" },
+        );
       const tabs = (
         listing as { tabs: Array<{ id?: unknown; active?: unknown }> }
       ).tabs.filter((tab) => tab.active === true && typeof tab.id === "string");

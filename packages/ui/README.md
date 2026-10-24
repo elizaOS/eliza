@@ -82,6 +82,8 @@ until the host explicitly retries refresh; late status replies cannot restart po
 string, checking the selected currency exponent. `isIsoCalendarDate` and
 `isOrderedIsoDateRange` reject normalized invalid dates and reversed inclusive
 ranges. These browser-safe helpers leave locale, labels and domain policy to hosts.
+They live in import-free `utils/value-formatting.mjs` (export
+`@elizaos/ui/value-formatting.mjs`), so hosts that stage only `.mjs` files can load them.
 
 `ConversationTurnController` owns explicit single-flight creation/send, cached room
 identity, interruption and stale-reply fencing without importing the shell. Hosts

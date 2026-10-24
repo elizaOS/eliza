@@ -461,3 +461,52 @@ test("a host-extended binding scopes each command to the page's own task origin"
     "https://example.test/after",
   ]);
 });
+
+test("incomplete snapshot replies carry a stable reason beside the kind", async () => {
+  const frame = { frameId: 0, documentId: "doc-a" };
+  const cases = [
+    ["frame-inventory-incomplete", () => [], () => []],
+    [
+      "frame-identity-changed",
+      () => [frame],
+      () => [{ ...frame, documentId: "doc-b", result: { complete: true } }],
+    ],
+    [
+      "frame-read-incomplete",
+      () => [frame],
+      () => [{ ...frame, result: { complete: false } }],
+    ],
+  ];
+  for (const [index, [reason, inventory, read]] of cases.entries()) {
+    const f = fixture();
+    f.api.tabs = {
+      get: async () => ({ url: "https://example.test/", status: "complete" }),
+    };
+    f.api.webNavigation = { getAllFrames: async () => inventory() };
+    f.api.scripting = { executeScript: async () => read() };
+    await createCommandHandler(f.api)(
+      {
+        type: "command",
+        id: `snapshot-${index}`,
+        command: { subaction: "snapshot", id: "1" },
+      },
+      f.sender,
+      () => true,
+    );
+    assert.equal(f.replies[0].error.kind, "INCOMPLETE_SNAPSHOT");
+    assert.equal(f.replies[0].error.reason, reason);
+  }
+  const f = fixture();
+  f.api.tabs = { get: async () => ({ url: "chrome://settings/" }) };
+  await createCommandHandler(f.api)(
+    {
+      type: "command",
+      id: "internal",
+      command: { subaction: "snapshot", id: "1" },
+    },
+    f.sender,
+    () => true,
+  );
+  assert.equal(f.replies[0].error.kind, "POLICY_BLOCKED");
+  assert.equal("reason" in f.replies[0].error, false);
+});
