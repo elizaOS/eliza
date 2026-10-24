@@ -1146,4 +1146,95 @@ describe("browser workspace web-mode label click", () => {
       expect(clicked.value, text).toMatchObject({ checked: true, selector });
     }
   });
+
+  it("tells the page when a command changes a control", async () => {
+    const posts: string[] = [];
+    const server = createServer(async (request, response) => {
+      if (request.method === "POST") {
+        const chunks: Buffer[] = [];
+        for await (const chunk of request) chunks.push(chunk as Buffer);
+        posts.push(Buffer.concat(chunks).toString());
+        response.setHeader("Content-Type", "text/html");
+        response.end(`<!doctype html><title>Paid</title><p>paid</p>`);
+        return;
+      }
+      response.setHeader("Content-Type", "text/html");
+      response.end(`<!doctype html><title>Reactive checkout</title>
+        <form action="/pay" method="post">
+          <input id="card" name="card" />
+          <input id="save" type="checkbox" name="save" />
+          <select id="plan" name="plan">
+            <option value="basic">Basic</option>
+            <option value="pro">Pro</option>
+          </select>
+          <button id="pay" disabled>Pay</button>
+        </form>`);
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("No HTTP port");
+    try {
+      const tab = await openBrowserWorkspaceTab(
+        { url: `http://127.0.0.1:${address.port}` },
+        webEnv,
+      );
+      await executeBrowserWorkspaceCommand(
+        { id: tab.id, subaction: "get", selector: "title" },
+        webEnv,
+      );
+      const document = webWorkspaceState.tabs.find(
+        (entry) => entry.id === tab.id,
+      )?.dom?.window.document;
+      const card = document?.querySelector<HTMLInputElement>("#card");
+      const save = document?.querySelector<HTMLInputElement>("#save");
+      const plan = document?.querySelector<HTMLSelectElement>("#plan");
+      const pay = document?.querySelector<HTMLButtonElement>("#pay");
+      if (!document || !card || !save || !plan || !pay)
+        throw new Error("HTTP form did not load");
+      // The page's own listeners, as a checkout script installs them. A page
+      // learns an edit only from the events a browser sends.
+      const events: string[] = [];
+      for (const control of [card, save, plan])
+        for (const type of ["input", "change"])
+          control.addEventListener(type, () =>
+            events.push(`${control.id}:${type}`),
+          );
+      card.addEventListener("input", () => {
+        pay.disabled = card.value.length < 4;
+      });
+      await executeBrowserWorkspaceCommand(
+        { id: tab.id, subaction: "fill", selector: "#card", value: "4242" },
+        webEnv,
+      );
+      await executeBrowserWorkspaceCommand(
+        { id: tab.id, subaction: "check", selector: "#save" },
+        webEnv,
+      );
+      await executeBrowserWorkspaceCommand(
+        { id: tab.id, subaction: "select", selector: "#plan", value: "pro" },
+        webEnv,
+      );
+      expect([...new Set(events)]).toEqual([
+        "card:input",
+        "card:change",
+        "save:input",
+        "save:change",
+        "plan:input",
+        "plan:change",
+      ]);
+      expect(pay.disabled).toBe(false);
+      await executeBrowserWorkspaceCommand(
+        { id: tab.id, subaction: "click", selector: "#pay" },
+        webEnv,
+      );
+      expect(posts.at(-1)).toBe("card=4242&save=on&plan=pro");
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
 });
