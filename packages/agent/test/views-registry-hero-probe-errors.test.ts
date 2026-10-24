@@ -8,12 +8,8 @@
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { AgentRuntime, createCharacter, type Plugin } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  AgentRuntime,
-  createCharacter,
-  type Plugin,
-} from "@elizaos/core";
 import {
   findHeroOnDisk,
   getView,
@@ -85,18 +81,24 @@ describe("registerPluginViews bundle capture", () => {
     await fs.writeFile(path.join(pluginDir, "view.js"), "export const x = 1;");
     vi.spyOn(fs, "access").mockRejectedValue(
       Object.assign(
-        new Error(`EACCES: permission denied, access '${path.join(pluginDir, "view.js")}'`),
+        new Error(
+          `EACCES: permission denied, access '${path.join(pluginDir, "view.js")}'`,
+        ),
         { code: "EACCES", errno: -13, syscall: "access" },
       ),
     );
     const plugin: Plugin = {
       name: "bundle-probe",
       description: "Unreadable bundle fixture",
-      views: [{ id: "bundle-view", label: "Bundle view", bundlePath: "view.js" }],
+      views: [
+        { id: "bundle-view", label: "Bundle view", bundlePath: "view.js" },
+      ],
     };
 
     await expect(
-      registerPluginViews(makeRuntime("Unreadable bundle"), plugin, { pluginDir }),
+      registerPluginViews(makeRuntime("Unreadable bundle"), plugin, {
+        pluginDir,
+      }),
     ).rejects.toThrow(/EACCES/);
   });
 
@@ -107,7 +109,9 @@ describe("registerPluginViews bundle capture", () => {
     const plugin: Plugin = {
       name: "bundle-probe",
       description: "Absent bundle fixture",
-      views: [{ id: "bundle-view", label: "Bundle view", bundlePath: "view.js" }],
+      views: [
+        { id: "bundle-view", label: "Bundle view", bundlePath: "view.js" },
+      ],
     };
 
     await registerPluginViews(runtime, plugin, { pluginDir });
