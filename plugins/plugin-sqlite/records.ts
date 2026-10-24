@@ -2118,7 +2118,14 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     const memories = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
       (m) =>
-        storedMemoryTableName(m) === params.query_table_name && !!m.embedding,
+        storedMemoryTableName(m) === params.query_table_name &&
+        !!m.embedding &&
+        // plugin-sql restricts this cache query with
+        // `agent_id = this.agentId`; a row stored for another agent (import,
+        // restore, shared file) must not lend its embedding to this agent.
+        // A missing agentId is this database owner's legacy row, matching
+        // the relationship reads in this file.
+        (m.agentId ?? this.agentId) === this.agentId,
     );
 
     const results: { embedding: number[]; levenshtein_score: number }[] = [];
