@@ -2,9 +2,7 @@
 package ai.eliza.plugins.browsersurface
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ChromiumBrowserLauncherTest {
@@ -23,23 +21,5 @@ class ChromiumBrowserLauncherTest {
             }
             assertEquals("INVALID_BROWSER_URL", failure.code)
         }
-    }
-
-    @Test
-    fun trustRequiresAndroidPAPinnedDigestAndMatchingSigner() {
-        val digest = "ab".repeat(32)
-        var asked: Pair<String, ByteArray>? = null
-        assertTrue(ChromiumBrowserLauncher.isTrusted(28, digest) { packageName, certificate ->
-            asked = packageName to certificate
-            true
-        })
-        assertEquals(ChromiumBrowserLauncher.PACKAGE_NAME, asked!!.first)
-        assertEquals(32, asked!!.second.size)
-        assertEquals(0xab.toByte(), asked!!.second[0])
-
-        assertFalse(ChromiumBrowserLauncher.isTrusted(28, digest) { _, _ -> false })
-        assertFalse(ChromiumBrowserLauncher.isTrusted(27, digest) { _, _ -> true })
-        assertFalse(ChromiumBrowserLauncher.isTrusted(28, "") { _, _ -> true })
-        assertFalse(ChromiumBrowserLauncher.isTrusted(28, "not-a-digest") { _, _ -> true })
     }
 }

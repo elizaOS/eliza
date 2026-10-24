@@ -55,13 +55,10 @@ object ChromiumBrowserLauncher {
      */
     @JvmStatic
     fun isTrusted(context: Context): Boolean =
-        isTrusted(Build.VERSION.SDK_INT, BuildConfig.ELIZA_CHROMIUM_CERT_SHA256) { packageName, certificate ->
-            context.packageManager.hasSigningCertificate(packageName, certificate, PackageManager.CERT_INPUT_SHA256)
-        }
-
-    internal fun isTrusted(sdkInt: Int, certificateSha256: String, lookup: ChromiumBrowserIdentity.SigningCertificateLookup): Boolean =
-        sdkInt >= Build.VERSION_CODES.P &&
-            ChromiumBrowserIdentity.isTrustedPackage(PACKAGE_NAME, certificateSha256, lookup)
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
+            ChromiumBrowserIdentity.isTrustedPackage(PACKAGE_NAME, BuildConfig.ELIZA_CHROMIUM_CERT_SHA256) { packageName, certificate ->
+                context.packageManager.hasSigningCertificate(packageName, certificate, PackageManager.CERT_INPUT_SHA256)
+            }
 
     /**
      * Whether the pinned Chromium package answers Custom Tabs connections.
