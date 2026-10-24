@@ -13,7 +13,7 @@ Production Cloud deploys have stopped at `[db:migrate] validating canonical migr
   - row 371, at 0387's journal time: the hash of `0509_managed_gmail_operation_receipts`;
   - row 372, at 0388's time: the hash of `0535_managed_gmail_read_state_operations`;
   - row 373, at 0389's time: `a465de98…`. It matches none of the 576 migration file versions on any branch.
-- The schema already contains the effects of 0509, 0535, 0536, 0537, 0540 and 0542. A schema-only copy proved this: their objects match the canonical definitions.
+- The schema already contains the effects of 0509, 0535, 0536, 0537, 0540 and 0542. A schema-only copy proved this: their objects match the reviewed production fingerprint. Two grant constraints retain historical unscoped definitions; current migration source alone does not reproduce them.
 - `agent_compute_funding` (0387) is absent.
 - The production database is 403 MB. The largest table that a pending data-dependent statement touches has about 47k rows.
 
@@ -51,3 +51,18 @@ Schedule a maintenance window and pause application writers before running the t
 - Re-running the recovery on the repaired copy aborts with `ledger_shape_mismatch` and changes nothing.
 
 The fingerprint omits PostgreSQL 18’s separate NOT NULL catalog constraints because column nullability is already checked. This keeps the reviewed shape consistent across PostgreSQL versions without ignoring a nullable-column change. The revised guards must pass a fresh production-copy rehearsal before the production operation; synthetic schema tests do not establish current production readiness.
+
+## Fresh production-copy correction (October 24)
+
+A fresh read-only production dump rejected the previous fingerprint on
+`organization_entitlements_plan_state_check` and
+`subscription_allowance_periods_invoice_id_check`. Production retains older
+unscoped grant constraints; the synthetic setup had created newer scoped/trial
+constraints from current migration source. The fingerprint and explicit historical
+constraint fixture now pin the observed definitions. Exact comparison remains
+required, including validation state. Tests reject changed versions of either CHECK.
+
+With only these two expected definitions corrected, the fresh full-data copy
+recovered from 373 to 519 ledger rows in 2.1 seconds, retained three anomalous rows,
+left no temporary CHECKs, and refused a second run. Production was not modified.
+The production maintenance and fresh-state requirements above still apply.

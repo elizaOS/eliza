@@ -79,6 +79,17 @@ async function buildTemplate() {
       ...ALREADY_EFFECTIVE_TAGS,
     ])
       await apply(client, byTag.get(tag) as Migration);
+    // The fresh production copy has the historical, unscoped grant CHECKs.
+    // Current migration source creates newer definitions and is not this input state.
+    await client.query(
+      readFileSync(
+        path.join(
+          import.meta.dir,
+          "fixtures/production-ledger-recovery-20261023-historical-constraints.sql",
+        ),
+        "utf8",
+      ),
+    );
     for (const [offset, row] of REVIEWED_ANOMALOUS_ROWS.entries()) {
       const hash = "tag" in row ? byTag.get(row.tag)?.hash : row.hash;
       await receipt(
@@ -194,6 +205,18 @@ describe.skipIf(!ENABLED)(
         await client.end();
       }
     }, 120_000);
+
+    test("refuses a changed historical organization_entitlements_plan_state_check", () =>
+      expectRefused(
+        "ALTER TABLE organization_entitlements DROP CONSTRAINT organization_entitlements_plan_state_check; ALTER TABLE organization_entitlements ADD CONSTRAINT organization_entitlements_plan_state_check CHECK (true)",
+        "already_effective_schema_mismatch",
+      ));
+
+    test("refuses a changed historical subscription_allowance_periods_invoice_id_check", () =>
+      expectRefused(
+        "ALTER TABLE subscription_allowance_periods DROP CONSTRAINT subscription_allowance_periods_invoice_id_check; ALTER TABLE subscription_allowance_periods ADD CONSTRAINT subscription_allowance_periods_invoice_id_check CHECK (true)",
+        "already_effective_schema_mismatch",
+      ));
 
     test("refuses a ledger whose prefix hashes are not canonical", () =>
       expectRefused(

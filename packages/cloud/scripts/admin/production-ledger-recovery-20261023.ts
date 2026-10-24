@@ -146,7 +146,7 @@ export const EFFECT_FINGERPRINT_PATH = path.join(
   "fixtures/production-ledger-recovery-20261023-effects.json",
 );
 
-/** Reviewed fingerprint, captured from the canonical prefix plus the six out-of-order migrations. */
+/** Reviewed production fingerprint, including the historical unscoped grant constraints. */
 export function loadReviewedEffectFingerprint(): EffectFingerprintRow[] {
   return JSON.parse(readFileSync(EFFECT_FINGERPRINT_PATH, "utf8"));
 }
