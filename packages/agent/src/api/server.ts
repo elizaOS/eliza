@@ -1068,6 +1068,17 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     under("/api/logs") ||
     under("/api/agent/events") ||
     under("/api/security/audit") ||
+    // The agent database (query, rows, connection config).
+    under("/api/database") ||
+    // Remote capability endpoints register plugins that see the model context.
+    under("/api/capability-router") ||
+    // Sandbox shell, screen, input and signing approvals.
+    under("/api/sandbox") ||
+    // Coding agents and orchestrator tasks run code on the host.
+    under("/api/coding-agents") ||
+    under("/api/orchestrator") ||
+    // The owner's signed-in browser workspace tabs.
+    under("/api/browser-workspace") ||
     (write &&
       (pathname.startsWith("/api/wallet/") ||
         under("/api/config") ||

@@ -191,6 +191,29 @@ it("refuses owner-only writes and memory reads to a paired USER session", async 
       ["/api/logs", { method: "DELETE" }],
       ["/api/agent/events", {}],
       ["/api/security/audit", {}],
+      [
+        "/api/database/query",
+        { method: "POST", body: JSON.stringify({ sql: "SELECT 1" }) },
+      ],
+      ["/api/database/config", {}],
+      [
+        "/api/capability-router/connect",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            endpoint: { baseUrl: "https://example.invalid" },
+          }),
+        },
+      ],
+      [
+        "/api/sandbox/exec",
+        { method: "POST", body: JSON.stringify({ command: "id" }) },
+      ],
+      [
+        "/api/coding-agents/spawn",
+        { method: "POST", body: JSON.stringify({ task: "echo hi" }) },
+      ],
+      ["/api/browser-workspace", {}],
     ];
     for (const [path, init] of guestRequests) {
       const response = await send("guest-session-id", path, init);
