@@ -522,10 +522,13 @@ fingerprint}` with the exact `ro.product.model` and `ro.build.fingerprint`. The
 adb serial must be the device's `ro.serialno`. The device must not be an emulator,
 must have finished booting, enforce SELinux and run owner user 0 in front. The
 runner pins the boot ID as for Cuttlefish. Because the device is not reset after
-the run, it also records font scale, screen-off timeout, airplane mode, Wi-Fi
-and mobile data, and fails when one changed, as it does for HOME and the browser
-role. A caller that changes one must restore it. This lane is development-device
-evidence only, not release hardware, a product image or user acceptance.
+the run, it also records font scale, screen-off timeout, airplane mode, mobile
+data, live Wi-Fi state (`cmd wifi status`) and media volume, and fails when one
+changed, as it does for HOME and the browser role. A caller that changes one must
+restore it. Scenario hooks receive `context.developmentDevice` in this lane. This
+lane is development-device evidence only, not release hardware, a product image
+or user acceptance: `verification.json` records `evidenceClass:
+"development-device"` and that note.
 
 `buildConsumerAndroidRuntime` accepts `targetAbi: "x86_64"` for an emulator or
 Cuttlefish bundle; the default remains `"arm64-v8a"`. The reviewed upstream stager

@@ -33,6 +33,9 @@ const sha256 = (file) =>
   createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 const packagePattern = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/;
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+// Written into every development-device report so it is never cited as stronger evidence.
+export const DEVELOPMENT_DEVICE_NOTE =
+  "Development device evidence on an owner-approved physical device that is not reset. Not release hardware, a product image, or device or user acceptance. Where caller evidence text says emulator, it means this device.";
 
 export async function runIsolatedAndroidTest({
   serial,
@@ -176,7 +179,7 @@ export async function runIsolatedAndroidTest({
   assert.notEqual(packageName, testPackage);
   assert.ok(
     ["arm64-v8a", "x86_64"].includes(requiredAbi),
-    "Explicit emulator ABI required",
+    "Explicit ABI required",
   );
   assert.ok(
     Number.isSafeInteger(expectedTests) && expectedTests >= classes.length,
@@ -478,18 +481,36 @@ export async function runIsolatedAndroidTest({
       )
     ).trim();
   // Settings a test can change on a device that is not reset after the run.
+  // Wi-Fi and media volume are read live; the settings table can lag them.
   const deviceSettings = async () => {
     const values = {};
     for (const [namespace, key] of [
       ["system", "font_scale"],
       ["system", "screen_off_timeout"],
       ["global", "airplane_mode_on"],
-      ["global", "wifi_on"],
       ["global", "mobile_data"],
     ])
       values[key] = (
         await run("shell", "settings", "get", namespace, key)
       ).trim();
+    const wifi = /Wifi is (enabled|disabled)/.exec(
+      await run("shell", "cmd", "wifi", "status"),
+    );
+    assert.ok(wifi, "Wi-Fi state unreadable");
+    values.wifi = wifi[1];
+    const volume = /volume is (\d+)/.exec(
+      await run(
+        "shell",
+        "cmd",
+        "media_session",
+        "volume",
+        "--stream",
+        "3",
+        "--get",
+      ),
+    );
+    assert.ok(volume, "Media volume unreadable");
+    values.media_volume = volume[1];
     return values;
   };
   const packages = async () =>
@@ -588,7 +609,13 @@ export async function runIsolatedAndroidTest({
     companions,
     expectedAvdName,
     ...(cuttlefish ? { expectedCuttlefish: cuttlefish } : {}),
-    ...(device ? { developmentDevice: device } : {}),
+    ...(device
+      ? {
+          evidenceClass: "development-device",
+          note: DEVELOPMENT_DEVICE_NOTE,
+          developmentDevice: device,
+        }
+      : {}),
     requiredAbi,
     androidUser,
     testClasses: classes,
@@ -730,7 +757,7 @@ export async function runIsolatedAndroidTest({
     assert.equal(
       (await run("shell", "getprop", "ro.product.cpu.abi")).trim(),
       requiredAbi,
-      "Emulator ABI mismatch",
+      "Device ABI mismatch",
     );
     report.selinux = (await run("shell", "getenforce")).trim();
     assert.equal(
@@ -772,6 +799,7 @@ export async function runIsolatedAndroidTest({
         run,
         deviceLease: lease,
         record,
+        ...(device ? { developmentDevice: device } : {}),
       };
       // This caller hook is read-only admission; a rejection must not invoke cleanup.
       await preflightVariant?.(context);

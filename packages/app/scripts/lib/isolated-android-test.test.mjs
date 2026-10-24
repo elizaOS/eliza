@@ -11,7 +11,10 @@ import {
   deviceLeaseStateDir,
   readDeviceLease,
 } from "./device-lease.ts";
-import { runIsolatedAndroidTest } from "./isolated-android-test.mjs";
+import {
+  DEVELOPMENT_DEVICE_NOTE,
+  runIsolatedAndroidTest,
+} from "./isolated-android-test.mjs";
 import { runIsolatedAndroidUserTest } from "./isolated-android-user-test.mjs";
 
 // The fake instrumentation and custody commands read concurrently. Publish a
@@ -66,8 +69,10 @@ if(args[0]==='emu')console.log('owned-test-fixture\\nOK');
 if(args.includes('ro.kernel.qemu'))console.log(mode.startsWith('device')&&mode!=='device-emulator'?'0':'1');
 if(args.includes('ro.product.model'))console.log('Example Tablet');
 if(args.slice(0,3).join(' ')==='shell settings get')console.log(state.settings?.[args[4]]??'1');
+if(args.slice(0,3).join(' ')==='shell cmd wifi')console.log('Wifi is enabled');
+if(args.slice(0,3).join(' ')==='shell cmd media_session')console.log('volume is '+(state.mediaVolume??'7')+' in range [0..15]');
 if(args.includes('ro.product.device'))console.log(mode==='cuttlefish-wrong-device'?'physical':'vsoc_x86_64');
-if(args.includes('sys.boot_completed'))console.log(mode==='cuttlefish-booting'?'0':'1');
+if(args.includes('sys.boot_completed'))console.log(mode.endsWith('-booting')?'0':'1');
 if(args.includes('ro.build.fingerprint'))console.log(state.replaced?'Other/image/device:16/test':mode.startsWith('device')?'Example/tablet/tablet:15/test':'Example/fixture/vsoc_x86_64:16/test');
 if(args.includes('ro.serialno'))console.log(mode.startsWith('device')?'DEVTABLET01':'CUTTLEFISHCVD01');
 if(args.includes('/proc/sys/kernel/random/boot_id'))console.log(state.rebooted?'22222222-2222-2222-2222-222222222222':'11111111-1111-1111-1111-111111111111');
@@ -122,6 +127,7 @@ if(args.includes('instrument')){
  if(mode==='cuttlefish-rebooted'){state.rebooted=true;publishFixtureState(file,state);}
  if(mode==='cuttlefish-browser-change'){state.browser='other.browser';publishFixtureState(file,state);}
  if(mode==='device-settings-change'){state.settings={font_scale:'1.3'};publishFixtureState(file,state);}
+ if(mode==='device-volume-change'){state.mediaVolume='3';publishFixtureState(file,state);}
  if(mode==='device-rebooted'){state.rebooted=true;publishFixtureState(file,state);}
 
  console.log('INSTRUMENTATION_STATUS: class=org.example.consumer.Probe\\nINSTRUMENTATION_STATUS: test=probe\\nINSTRUMENTATION_STATUS: numtests=1\\nINSTRUMENTATION_STATUS_CODE: 1');
@@ -177,7 +183,10 @@ test("external consumer variants execute fully, clean packages and preserve HOME
     collected = [];
   const report = await runIsolatedAndroidTest({
     ...f.options,
-    prepareVariant: async (c) => prepared.push(c.variant),
+    prepareVariant: async (c) => {
+      assert.equal(c.developmentDevice, undefined);
+      prepared.push(c.variant);
+    },
     collectVariant: (c) => collected.push(c.variant),
   });
   assert.deepEqual(prepared, ["standalone", "launcher"]);
@@ -1642,9 +1651,25 @@ const developmentDeviceOptions = (options) => ({
 });
 test("an owner-approved development device runs both variants with unchanged settings", async (t) => {
   const f = fixture(t, "device");
-  const report = await runIsolatedAndroidTest(
-    developmentDeviceOptions(f.options),
+  const lanes = [];
+  const report = await runIsolatedAndroidTest({
+    ...developmentDeviceOptions(f.options),
+    prepareVariant: async (c) => lanes.push(c.developmentDevice),
+  });
+  assert.deepEqual(
+    lanes.map((device) => device?.serialNumber),
+    ["DEVTABLET01", "DEVTABLET01"],
   );
+  assert.equal(report.evidenceClass, "development-device");
+  assert.equal(report.note, DEVELOPMENT_DEVICE_NOTE);
+  assert.deepEqual(report.originalSettings, {
+    font_scale: "1",
+    screen_off_timeout: "1",
+    airplane_mode_on: "1",
+    mobile_data: "1",
+    wifi: "enabled",
+    media_volume: "7",
+  });
   assert.equal(report.cleaned, true);
   assert.equal(report.homeUnchanged, true);
   assert.equal(report.browserUnchanged, true);
@@ -1683,17 +1708,43 @@ test("an emulator is not admitted as a development device", async (t) => {
     false,
   );
 });
-test("development device settings drift fails qualification", async (t) => {
-  const f = fixture(t, "device-settings-change");
+for (const mode of ["device-settings-change", "device-volume-change"])
+  test(`development device ${mode} fails qualification`, async (t) => {
+    const f = fixture(t, mode);
+    await assert.rejects(
+      runIsolatedAndroidTest(developmentDeviceOptions(f.options)),
+      /Device settings changed/,
+    );
+    const report = JSON.parse(
+      fs.readFileSync(path.join(f.options.directory, "verification.json")),
+    );
+    assert.equal(report.settingsUnchanged, false);
+    assert.equal(report.cleaned, true);
+  });
+test("an adb serial other than ro.serialno is not admitted as a development device", async (t) => {
+  const f = fixture(t, "device");
+  await assert.rejects(
+    runIsolatedAndroidTest({
+      ...developmentDeviceOptions(f.options),
+      serial: "OTHERTABLET02",
+    }),
+    /Development device instance changed/,
+  );
+  assert.equal(
+    f.commands().some((c) => c[0] === "install"),
+    false,
+  );
+});
+test("a development device that has not finished booting is not admitted", async (t) => {
+  const f = fixture(t, "device-booting");
   await assert.rejects(
     runIsolatedAndroidTest(developmentDeviceOptions(f.options)),
-    /Device settings changed/,
+    /Development device boot incomplete/,
   );
-  const report = JSON.parse(
-    fs.readFileSync(path.join(f.options.directory, "verification.json")),
+  assert.equal(
+    f.commands().some((c) => c[0] === "install"),
+    false,
   );
-  assert.equal(report.settingsUnchanged, false);
-  assert.equal(report.cleaned, true);
 });
 test("a rebooted development device retains packages and defers cleanup", async (t) => {
   const f = fixture(t, "device-rebooted");
