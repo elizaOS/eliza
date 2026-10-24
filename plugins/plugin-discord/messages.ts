@@ -6,6 +6,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
 	attestDeliveryAudienceFromCanonicalRoom,
+	bindIncomingMessagePersistence,
 	type ChannelType,
 	type Content,
 	ContentType,
@@ -1955,12 +1956,17 @@ export class MessageManager {
 						?.coalescedDiscordMessageIds
 				) {
 					// The user edited a message this agent already stored. Update
-					// the stored memory in place so history shows the current text.
+					// the stored memory in place so history shows the current text,
+					// and bind the turn to that row as stored (storage drops
+					// undefined fields): the message service then reuses it
+					// instead of publishing a second body under this id.
 					await replaceStoredMessageContent(
 						this.runtime,
 						newMessage.id,
 						newMessage.content,
 					);
+					const replaced = await this.runtime.getMemoryById(newMessage.id);
+					if (replaced) bindIncomingMessagePersistence(newMessage, replaced);
 					// If the agent replied to the original, the edit gets one more
 					// normal turn. A turn key per edit keeps redeliveries a no-op.
 					// Without a reply the original turn record decides, and that
@@ -2573,11 +2579,17 @@ export class MessageManager {
 			if (draftStream) {
 				await draftStream.start(channel, outboundReplyToMessageId, replyToMode);
 			}
-			// Typing indicator is deferred until the runtime actually invokes the
-			// handler callback (see the `typingStarted` guard further down). This
-			// avoids showing "Eliza is typing…" for messages the agent decides to
-			// IGNORE/NONE, and lines up with the message-service preamble that
-			// fires the callback the moment we commit to responding.
+			// Typing indicator is deferred until the turn commits to responding:
+			// the message service's `onResponseDecision` (Stage 1 RESPOND), or the
+			// first handler callback on paths without that signal (see the
+			// `typingStarted` guard further down). This avoids showing "Eliza is
+			// typing…" for messages the agent decides to IGNORE/NONE.
+			const startTyping = () => {
+				if (!typingStarted) {
+					typingStarted = true;
+					typingController.start();
+				}
+			};
 
 			statusReactions?.setQueued();
 			statusReactions?.setThinking();
@@ -2693,10 +2705,7 @@ export class MessageManager {
 						return [];
 					}
 
-					if (!typingStarted) {
-						typingStarted = true;
-						typingController.start();
-					}
+					startTyping();
 
 					// Dedup: error when the runtime emits identical text
 					// twice in response to the same inbound message (e.g.
@@ -3204,7 +3213,10 @@ export class MessageManager {
 							this.runtime,
 							newMessage,
 							callback,
-							{ abortSignal: generationSignal },
+							{
+								abortSignal: generationSignal,
+								onResponseDecision: startTyping,
+							},
 						);
 					} else if (messagingAPI?.handleMessage) {
 						this.runtime.logger.debug(

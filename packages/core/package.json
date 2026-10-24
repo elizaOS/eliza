@@ -72,6 +72,12 @@
 			"types": "./dist/speech.d.ts",
 			"import": "./dist/speech.js",
 			"default": "./dist/speech.js"
+		},
+		"./task-widgets": {
+			"eliza-source": "./src/messaging/task-widgets.ts",
+			"types": "./dist/messaging/task-widgets.d.ts",
+			"import": "./dist/messaging/task-widgets.js",
+			"default": "./dist/messaging/task-widgets.js"
 		}
 	},
 	"files": [
