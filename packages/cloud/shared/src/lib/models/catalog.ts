@@ -269,8 +269,9 @@ const MISTRAL_TEXT_MODEL_IDS = [
   "mistralai/devstral-2",
   "mistralai/ministral-8b",
 ] as const;
-const MINIMAX_TEXT_MODEL_IDS = [
-  "minimax/minimax-m3",
+const MINIMAX_TEXT_MODEL_IDS = ["minimax/minimax-m3.1-flash:free", "minimax/minimax-m3"] as const;
+// Retain metadata lookup for saved IDs; selectors and discovery hide these rows.
+const LEGACY_MINIMAX_TEXT_MODEL_IDS = [
   "minimax/minimax-m2.7",
   "minimax/minimax-m2.5",
   "minimax/minimax-m2.1-lightning",
@@ -398,6 +399,7 @@ function titleCase(value: string): string {
 }
 
 function buildSelectorName(modelId: string): string {
+  if (modelId === "minimax/minimax-m3.1-flash:free") return "MiniMax M3.1 Flash (free)";
   const [provider, rawName] = modelId.includes("/") ? modelId.split("/", 2) : ["", modelId];
 
   if (!rawName) {
@@ -615,6 +617,7 @@ export const STATIC_TEXT_CATALOG_MODELS: CatalogModel[] = annotateCatalogModels(
   ...CEREBRAS_TEXT_CATALOG_MODELS,
   ...OPENROUTER_TEXT_CATALOG_MODELS,
   ...STATIC_TEXT_MODEL_IDS.map(buildCatalogModel),
+  ...LEGACY_MINIMAX_TEXT_MODEL_IDS.map(buildCatalogModel),
 ]);
 
 export function isGroqNativeModel(modelId: string): boolean {
@@ -654,7 +657,22 @@ export function mergeCatalogModels(
   return annotateCatalogModels(Array.from(merged.values()));
 }
 
+/** Hide old text choices without changing saved IDs or non-text catalog entries. */
+export function isLegacyMiniMaxTextModel(model: CatalogModel): boolean {
+  if (model.type && model.type !== "language") return false;
+  const outputs = model.architecture?.output_modalities;
+  if (outputs?.length && !outputs.some((output) => output.toLowerCase() === "text")) {
+    return false;
+  }
+  const outputModality = model.architecture?.modality?.split("->")[1];
+  if (!outputs?.length && outputModality && outputModality.toLowerCase() !== "text") {
+    return false;
+  }
+  return /^minimax\/(?:minimax-(?:m[12](?:[.:-]|$)|(?:text-)?01(?::|$))|abab)/i.test(model.id);
+}
+
 export function isSelectableTextModel(model: CatalogModel): boolean {
+  if (isLegacyMiniMaxTextModel(model)) return false;
   if (model.type && model.type !== "language") {
     return false;
   }

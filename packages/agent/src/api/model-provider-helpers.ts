@@ -183,16 +183,17 @@ export function getModelOptions(): {
     },
     // MiniMax
     {
-      id: "minimax/minimax-m2.7",
-      name: "MiniMax M2.7",
+      id: "minimax/minimax-m3.1-flash:free",
+      name: "MiniMax M3.1 Flash (free)",
       provider: "MiniMax",
-      description: "Fast reasoning with strong value.",
+      description: "Fast MiniMax model for agentic tasks and coding.",
+      free: true,
     },
     {
-      id: "minimax/minimax-m2.5-lightning",
-      name: "MiniMax M2.5 Lightning",
+      id: "minimax/minimax-m3",
+      name: "MiniMax M3",
       provider: "MiniMax",
-      description: "Lowest-latency MiniMax option.",
+      description: "Long-context MiniMax model for reasoning and coding.",
     },
     // Groq
     {
@@ -770,6 +771,33 @@ export async function fetchProviderModels(
       return [];
   }
 }
+// Filter only discovery choices. Cache metadata and explicit model IDs stay valid.
+function selectableProviderModels(models: CachedModel[]): CachedModel[] {
+  const selectable = models.filter(
+    (model) =>
+      model.category !== "chat" ||
+      !/^minimax\/(?:minimax-(?:m[12](?:[.:-]|$)|(?:text-)?01(?::|$))|abab)/i.test(
+        model.id,
+      ),
+  );
+  const flashIndex = selectable.findIndex(
+    (model) =>
+      model.category === "chat" &&
+      model.id === "minimax/minimax-m3.1-flash:free",
+  );
+  const m3Index = selectable.findIndex(
+    (model) => model.category === "chat" && model.id === "minimax/minimax-m3",
+  );
+  // Prefer Flash within MiniMax without moving another provider's choices.
+  if (m3Index >= 0 && flashIndex > m3Index) {
+    [selectable[m3Index], selectable[flashIndex]] = [
+      selectable[flashIndex],
+      selectable[m3Index],
+    ];
+  }
+  return selectable;
+}
+
 /** Fetch + cache a single provider. Returns cached models or empty array. */
 export async function getOrFetchProvider(
   providerId: string,
@@ -777,7 +805,7 @@ export async function getOrFetchProvider(
 ): Promise<CachedModel[]> {
   if (!force) {
     const cached = readProviderCache(providerId);
-    if (cached) return cached.models;
+    if (cached) return selectableProviderModels(cached.models);
   }
   const cfg = PROVIDER_ENV_KEYS[providerId];
   if (!cfg) return [];
@@ -814,7 +842,7 @@ export async function getOrFetchProvider(
       models,
     });
   }
-  return models;
+  return selectableProviderModels(models);
 }
 /** Fetch all configured providers (parallel). Returns map of providerId → models. */
 export async function getOrFetchAllProviders(

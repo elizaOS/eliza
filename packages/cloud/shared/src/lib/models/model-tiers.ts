@@ -70,7 +70,8 @@ function extractProvider(modelId: string): string {
   return "openai";
 }
 
-const FAST_MODEL_ID = getEnvModelId("fast", "minimax/minimax-m2.7");
+const FAST_MODEL_ID = getEnvModelId("fast", "minimax/minimax-m3.1-flash:free");
+const FAST_USES_FLASH = FAST_MODEL_ID === "minimax/minimax-m3.1-flash:free";
 const PRO_MODEL_ID = getEnvModelId("pro", BITROUTER_DEFAULT_TEXT_MODEL);
 const ULTRA_MODEL_ID = getEnvModelId("ultra", "anthropic/claude-opus-4.7");
 
@@ -83,12 +84,12 @@ export const MODEL_TIERS: Record<ModelTier, ModelTierConfig> = {
     provider: extractProvider(FAST_MODEL_ID),
     icon: "zap",
     pricing: {
-      inputPer1k: 0.00024,
-      outputPer1k: 0.0012,
+      inputPer1k: FAST_USES_FLASH ? 0 : 0.00024,
+      outputPer1k: FAST_USES_FLASH ? 0 : 0.0012,
       currency: "USD",
     },
     capabilities: ["text", "code", "function_calling"],
-    contextWindow: 128000,
+    contextWindow: FAST_USES_FLASH ? 1000000 : 128000,
   },
   pro: {
     id: "pro",
@@ -375,19 +376,20 @@ export const ADDITIONAL_MODELS: AdditionalModel[] = [
     modelId: "mistralai/magistral-medium",
     provider: "mistral",
   },
-  // Minimax
+  // MiniMax
   {
-    id: "minimax-m2.7",
-    name: "Minimax M2.7",
-    description: "Fast & affordable default",
-    modelId: "minimax/minimax-m2.7",
+    id: "minimax-m3.1-flash-free",
+    name: "MiniMax M3.1 Flash (free)",
+    description: "Fast MiniMax option",
+    modelId: "minimax/minimax-m3.1-flash:free",
     provider: "minimax",
+    free: true,
   },
   {
-    id: "minimax-m2.5",
-    name: "Minimax M2.5",
-    description: "Previous-generation Minimax",
-    modelId: "minimax/minimax-m2.5",
+    id: "minimax-m3",
+    name: "MiniMax M3",
+    description: "Long-context reasoning and coding",
+    modelId: "minimax/minimax-m3",
     provider: "minimax",
   },
   // Z.AI (Zhipu)
@@ -478,14 +480,12 @@ export const ADDITIONAL_MODELS: AdditionalModel[] = [
 ];
 
 /**
- * Agent editing tiers - uses more capable models for character and configuration tasks.
- * The fast tier uses a better model since gpt-oss can't handle complex editing instructions.
+ * Agent editing tiers for character and configuration tasks.
+ * Keep the fast model aligned with the configured text tier.
  */
 export const AGENT_EDITING_TIERS: Record<ModelTier, ModelTierConfig> = {
   fast: {
     ...MODEL_TIERS.fast,
-    modelId: "minimax/minimax-m2.7",
-    provider: "minimax",
     description: "Fast responses for agent editing",
   },
   pro: {

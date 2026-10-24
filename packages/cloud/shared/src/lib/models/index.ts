@@ -20,6 +20,7 @@ export {
   getGroqCatalogModel,
   getVastApiModelId,
   isGroqNativeModel,
+  isLegacyMiniMaxTextModel,
   isSelectableTextModel,
   isVastNativeModel,
   mergeCatalogModels,
