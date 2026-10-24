@@ -1221,7 +1221,7 @@ export class TaskService extends Service {
 	/** Stop new ticks before the runtime closes room admissions. */
 	prepareStop() {
 		this.stopped = true;
-		unregisterTaskSchedulerRuntime(this.runtime.agentId);
+		unregisterTaskSchedulerRuntime(this.runtime.agentId, this);
 		if (this.hasTimer) {
 			this.hasTimer = false;
 			this.clock.clearInterval(this.timer);
