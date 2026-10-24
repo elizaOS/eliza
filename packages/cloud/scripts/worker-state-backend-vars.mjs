@@ -12,14 +12,20 @@ const selectors = [
 export function planStateBackendVars(bindings, environment) {
   if (!Array.isArray(bindings)) throw new Error("Missing binding inventory");
   const names = new Set();
-  for (const binding of bindings) {
+  for (const [index, binding] of bindings.entries()) {
+    // Binding names are public deploy metadata (wrangler lists them too).
     if (
       !binding ||
       typeof binding.name !== "string" ||
-      !/^[A-Za-z_][A-Za-z0-9_]*$/.test(binding.name) ||
-      names.has(binding.name)
+      !/^[A-Za-z_][A-Za-z0-9_]*$/.test(binding.name)
     )
-      throw new Error("Invalid binding inventory");
+      throw new Error(
+        `Invalid binding inventory: malformed name at index ${index}${binding?.type ? ` (type ${String(binding.type).replace(/[^a-z0-9_]/gi, "")})` : ""}`,
+      );
+    if (names.has(binding.name))
+      throw new Error(
+        `Invalid binding inventory: duplicate binding ${binding.name}`,
+      );
     names.add(binding.name);
   }
   return selectors.flatMap((name) => {
@@ -32,19 +38,39 @@ export function planStateBackendVars(bindings, environment) {
   });
 }
 
-async function main() {
-  const environment = process.env.DEPLOY_ENVIRONMENT;
-  const account = process.env.CLOUDFLARE_ACCOUNT_ID;
-  const token = process.env.CLOUDFLARE_API_TOKEN;
+/** A fixed, value-free failure category safe to print in deploy logs. */
+export class StateBackendInventoryError extends Error {
+  constructor(category, detail = "") {
+    super(detail ? `${category} (${detail})` : category);
+    this.name = "StateBackendInventoryError";
+  }
+}
+
+/** Numeric Cloudflare error codes only; messages may echo request data. */
+function cloudflareErrorCodes(payload) {
+  const codes = Array.isArray(payload?.errors)
+    ? payload.errors
+        .map((error) => error?.code)
+        .filter((code) => Number.isInteger(code))
+    : [];
+  return codes.length ? `cloudflare codes ${codes.join(",")}` : "";
+}
+
+export async function fetchStateBackendVars(environment, fetchImpl = fetch) {
+  const deployEnvironment = environment.DEPLOY_ENVIRONMENT;
+  const account = environment.CLOUDFLARE_ACCOUNT_ID;
+  const token = environment.CLOUDFLARE_API_TOKEN;
   if (
-    !["staging", "production"].includes(environment) ||
+    !["staging", "production"].includes(deployEnvironment) ||
     !/^[a-f0-9]{32}$/.test(account ?? "") ||
     !token
   )
-    throw new Error("Missing deployment authority");
+    throw new StateBackendInventoryError("Missing deployment authority");
   const worker =
-    environment === "staging" ? "eliza-cloud-api-staging" : "eliza-cloud-api";
-  const response = await fetch(
+    deployEnvironment === "staging"
+      ? "eliza-cloud-api-staging"
+      : "eliza-cloud-api";
+  const response = await fetchImpl(
     `https://api.cloudflare.com/client/v4/accounts/${account}/workers/scripts/${worker}/settings`,
     {
       method: "GET",
@@ -53,10 +79,28 @@ async function main() {
       signal: AbortSignal.timeout(30_000),
     },
   );
-  if (!response.ok) throw new Error("Binding inventory unavailable");
-  const payload = await response.json();
-  if (payload.success !== true) throw new Error("Binding inventory rejected");
-  const vars = planStateBackendVars(payload.result?.bindings, process.env);
+  const payload = await response.json().catch(() => null);
+  if (!response.ok)
+    throw new StateBackendInventoryError(
+      "Binding inventory unavailable",
+      [`HTTP ${response.status}`, cloudflareErrorCodes(payload)]
+        .filter(Boolean)
+        .join("; "),
+    );
+  if (payload?.success !== true)
+    throw new StateBackendInventoryError(
+      "Binding inventory rejected",
+      cloudflareErrorCodes(payload),
+    );
+  try {
+    return planStateBackendVars(payload.result?.bindings, environment);
+  } catch (error) {
+    throw new StateBackendInventoryError(error.message);
+  }
+}
+
+async function main() {
+  const vars = await fetchStateBackendVars(process.env);
   // Only fixed selector names and enum values leave this process.
   if (vars.length) process.stdout.write(`${vars.join("\n")}\n`);
 }
@@ -65,9 +109,14 @@ if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
-  main().catch(() => {
+  main().catch((error) => {
+    // Categories are fixed strings; never print bindings, tokens or bodies.
+    const reason =
+      error instanceof StateBackendInventoryError
+        ? error.message
+        : "unexpected error";
     console.error(
-      "State backend binding inventory failed; refusing deployment",
+      `State backend binding inventory failed: ${reason}; refusing deployment`,
     );
     process.exitCode = 1;
   });
