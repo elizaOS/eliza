@@ -38,11 +38,17 @@ import type {
   Memory,
   ProviderDataRecord,
 } from "@elizaos/core";
-import { describeUserReference, hasRoleAccess, logger } from "@elizaos/core";
+import {
+  describeUserReference,
+  hasRoleAccess,
+  logger,
+  resolveScheduledAtIsoInTimeZone,
+} from "@elizaos/core";
 import type { MessageRef, MessageSource } from "@elizaos/plugin-assistant";
 import {
   getDefaultTriageService,
   requireSendConsent,
+  resolveMessageTimeZone,
   sendConsentDigest,
 } from "@elizaos/plugin-assistant";
 import { InboxRepository } from "../inbox/repository.ts";
@@ -596,7 +602,10 @@ const DEFAULT_SNOOZE_MS = 24 * 60 * 60 * 1000;
  *   - an INVALID timestamp         -> `null`, so the caller rejects bad input
  *                                     instead of silently snoozing to default
  */
-function resolveSnoozeUntil(params: InboxActionParameters): string | null {
+function resolveSnoozeUntil(
+  params: InboxActionParameters,
+  timeZone: string | null,
+): string | null {
   const raw = params.snoozedUntil ?? params.until;
   if (raw === undefined) {
     return new Date(Date.now() + DEFAULT_SNOOZE_MS).toISOString();
@@ -604,7 +613,11 @@ function resolveSnoozeUntil(params: InboxActionParameters): string | null {
   if (typeof raw !== "string") return null;
   const trimmed = raw.trim();
   if (!trimmed) return null;
-  const parsed = Date.parse(trimmed);
+  // A planner turn writes an offset-free time as a wall clock in the user's
+  // zone (CURRENT_TIME's); Date.parse would read it in the host zone.
+  const parsed = Date.parse(
+    timeZone ? resolveScheduledAtIsoInTimeZone(trimmed, timeZone) : trimmed,
+  );
   if (!Number.isFinite(parsed)) return null;
   return new Date(parsed).toISOString();
 }
@@ -961,7 +974,12 @@ export async function executeInboxQueueOperation(args: {
     }
     case "snooze": {
       const id = requireEntryId(args.params);
-      const until = resolveSnoozeUntil(args.params);
+      const until = resolveSnoozeUntil(
+        args.params,
+        args.authorization.kind === "turn"
+          ? resolveMessageTimeZone(args.runtime, args.authorization.message)
+          : null,
+      );
       if (!until) {
         throw new Error("valid snooze timestamp is required");
       }
