@@ -350,7 +350,7 @@ func TestRootReplayAtNextVersionRejected(t *testing.T) {
 // Generates only public metadata and target bytes for the Android test APK.
 // Ephemeral signing keys remain in memory and are never exported.
 func TestExportAndroidFixture(t *testing.T) {
-	dir := os.Getenv("SENIOR_CARE_OTA_TEST_ASSETS")
+	dir := os.Getenv("OTA_TRUST_TEST_ASSETS")
 	if dir == "" {
 		t.Skip("Android fixture export not requested")
 	}

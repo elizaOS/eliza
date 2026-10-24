@@ -68,7 +68,7 @@ func TestNativeAdmissionRejectsParserAmbiguity(t *testing.T) {
 			t.Fatal("ambiguous JSON accepted", replacement)
 		}
 	}
-	for _, data := range [][]byte{append(append([]byte{}, v.Release...), []byte(" {}")...), []byte(strings.Repeat(" ", int(maxBytes)+1)), {0xc3, 0x28}, bytes.Replace(v.Release, []byte(`"senior-care"`), []byte(`"\ud800"`), 1)} {
+	for _, data := range [][]byte{append(append([]byte{}, v.Release...), []byte(" {}")...), []byte(strings.Repeat(" ", int(maxBytes)+1)), {0xc3, 0x28}, bytes.Replace(v.Release, []byte(`"example-app"`), []byte(`"\ud800"`), 1)} {
 		if _, err := EvaluateReleaseInterval(data, v.Device, v.Policy); err == nil {
 			t.Fatal("bad encoding/bound accepted")
 		}

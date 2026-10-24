@@ -29,7 +29,7 @@ func enrolledTest(t *testing.T) *enrolledFixture {
 		t.Fatal(e)
 	}
 	sum := sha256.Sum256(r.root)
-	config, _ := json.Marshal(enrollmentConfig{Schema: 1, Repository: "eliza-research/senior-care", Distribution: device.Distribution, Signer: device.Signer, RootHash: hex.EncodeToString(sum[:]), MetadataBase: baseURL, Hosts: []string{"updates.example.com", "github.com"}})
+	config, _ := json.Marshal(enrollmentConfig{Schema: 1, Repository: "example-org/example-app", Distribution: device.Distribution, Signer: device.Signer, RootHash: hex.EncodeToString(sum[:]), MetadataBase: baseURL, Hosts: []string{"updates.example.com", "github.com"}})
 	directory := enrollmentDirectory(t)
 	if e := InitializeEnrollment(directory, config, r.root); e != nil {
 		t.Fatal(e)

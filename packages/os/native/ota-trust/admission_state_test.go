@@ -12,7 +12,7 @@ func rememberedFixture(t *testing.T) (string, admissionVector) {
 	t.Helper()
 	dir := privateDir(t)
 	v := admissionVectors(t)[0]
-	if err := InitializeAdmissionState(dir, "eliza-research/senior-care", "launcher"); err != nil {
+	if err := InitializeAdmissionState(dir, "example-org/example-app", "launcher"); err != nil {
 		t.Fatal(err)
 	}
 	return dir, v
@@ -58,7 +58,7 @@ func TestRememberedAdmissionRejectsRollbackAndEquivocation(t *testing.T) {
 	if result, err := run(v.Release); err != nil || result.Reason != "metadata-rollback" {
 		t.Fatalf("old policy admitted: %+v %v", result, err)
 	}
-	if err := InitializeAdmissionState(dir, "eliza-research/senior-care", "launcher"); err == nil {
+	if err := InitializeAdmissionState(dir, "example-org/example-app", "launcher"); err == nil {
 		t.Fatal("state reset allowed")
 	}
 }
