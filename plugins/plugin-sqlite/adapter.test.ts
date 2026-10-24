@@ -120,6 +120,52 @@ describe("durable SQLite agent adapter", () => {
     ]);
   });
 
+  it("keeps another agent's memories out of getMemories when no agent is named", async () => {
+    const adapter = await open();
+    await adapter.ensureEmbeddingDimension(3);
+    const otherAgentId = id();
+    const own = { ...memory("own message"), embedding: undefined };
+    await adapter.createMemories([{ memory: own, tableName: "messages" }]);
+    const storage = await adapter.getConnection();
+    const foreignId = id();
+    await storage.set("memories", foreignId, {
+      id: foreignId,
+      agentId: otherAgentId,
+      entityId,
+      roomId,
+      tableName: "messages",
+      content: { text: "foreign message" },
+      createdAt: Date.now(),
+    });
+    const legacyId = id();
+    await storage.set("memories", legacyId, {
+      id: legacyId,
+      entityId,
+      roomId,
+      tableName: "messages",
+      content: { text: "legacy message" },
+      createdAt: Date.now(),
+    });
+
+    // plugin-sql scopes getMemories with `agent_id = agentId ?? this.agentId`,
+    // so an unnamed read is this agent's read, not every agent's.
+    const unnamed = await adapter.getMemories({
+      roomId,
+      tableName: "messages",
+    });
+    expect(unnamed.map((row) => row.id).sort()).toEqual(
+      [own.id, legacyId].sort(),
+    );
+    const explicit = await adapter.getMemories({
+      roomId,
+      tableName: "messages",
+      agentId,
+    });
+    expect(explicit.map((row) => row.id).sort()).toEqual(
+      [own.id, legacyId].sort(),
+    );
+  });
+
   it("keeps quoted phrases, negation and OR in message search, like plugin-sql", async () => {
     const adapter = await open();
     const adjacent = "the exact phrase alpha beta lives here";

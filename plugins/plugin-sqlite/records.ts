@@ -1585,7 +1585,14 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
             m.agentId === params.entityId;
           if (!participantRoomIds.has(m.roomId) && !agentDocument) return false;
         }
-        if (params.agentId && m.agentId !== params.agentId) return false;
+        // plugin-sql always scopes this read with
+        // `agent_id = params.agentId ?? this.agentId`: an adapter is bound
+        // to one agent, so a read that names no agent is a read of that
+        // agent's memories, not of every agent sharing the file. Rows
+        // stored without an agentId belong to this database, as in the
+        // other tenant checks in this file.
+        if ((m.agentId ?? this.agentId) !== (params.agentId ?? this.agentId))
+          return false;
         if (authorEntityIds && !authorEntityIds.has(m.entityId as UUID))
           return false;
         if (params.roomId && m.roomId !== params.roomId) return false;
