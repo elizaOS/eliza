@@ -77,11 +77,14 @@ export async function runIsolatedAndroidTest({
 }) {
   // A TCP endpoint is never ownership. Hosts explicitly acknowledge a disposable
   // instance and pin its serial property and full image fingerprint.
-  const cuttlefish = expectedCuttlefish ? { ...expectedCuttlefish } : null;
+  // Pins are frozen: hooks and the report share them, and a hook cannot move them.
+  const cuttlefish = expectedCuttlefish
+    ? Object.freeze({ ...expectedCuttlefish })
+    : null;
   // A physical device is not disposable: the owner approves it for the run and
   // pins its model and full build fingerprint. Its adb serial is its ro.serialno.
   const device = developmentDevice
-    ? { ...developmentDevice, serialNumber: serial }
+    ? Object.freeze({ ...developmentDevice, serialNumber: serial })
     : null;
   if (device) {
     assert.equal(
@@ -94,7 +97,11 @@ export async function runIsolatedAndroidTest({
       null,
       "Choose AVD, Cuttlefish or development device admission",
     );
-    assert.match(serial ?? "", /^[A-Za-z0-9]{6,32}$/);
+    assert.match(
+      serial ?? "",
+      /^[A-Za-z0-9]{6,32}$/,
+      "A development device serial is its ro.serialno",
+    );
     assert.equal(
       device.ownerApproved,
       true,

@@ -525,7 +525,8 @@ runner pins the boot ID as for Cuttlefish. Because the device is not reset after
 the run, it also records font scale, screen-off timeout, airplane mode, mobile
 data, live Wi-Fi state (`cmd wifi status`) and media volume, and fails when one
 changed, as it does for HOME and the browser role. A caller that changes one must
-restore it. Scenario hooks receive `context.developmentDevice` in this lane. This
+restore it. Scenario hooks receive the frozen pin as `context.developmentDevice` in this
+lane, so a hook cannot change the identity the runner checks. This
 lane is development-device evidence only, not release hardware, a product image
 or user acceptance: `verification.json` records `evidenceClass:
 "development-device"` and that note.
