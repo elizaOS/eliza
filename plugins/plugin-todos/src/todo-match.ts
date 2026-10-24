@@ -62,7 +62,12 @@ function contentTokens(content: string): string[] {
 }
 
 function tokenKey(content: string): string {
-  return [...new Set(contentTokens(content))].sort().join(" ");
+  const tokens = contentTokens(content);
+  // Reordering quantities changes the task, even when its word set is unchanged.
+  return JSON.stringify([
+    [...new Set(tokens)].sort(),
+    tokens.filter((token) => /\p{N}/u.test(token)),
+  ]);
 }
 
 /** Dice similarity over stemmed content tokens. */
