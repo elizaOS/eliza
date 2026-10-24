@@ -170,6 +170,33 @@ describe("iOS installation attempt", () => {
       expect(execute).not.toHaveBeenCalled();
     },
   );
+  it("keeps the authenticated attempt when the 2FA body is malformed", async () => {
+    const { backend, command } = fixture();
+    command.mockResolvedValueOnce(result("2fa required", 1));
+    const handler = createIosHandler(backend, {});
+    const post = (route: string, body: object) =>
+      handler(
+        new Request(`http://localhost/ios/${route}`, {
+          method: "POST",
+          body: JSON.stringify(body),
+        }),
+        `/ios/${route}`,
+      );
+    const auth = await (
+      await post("authenticate", {
+        appleId: input.appleId,
+        password: "fixture",
+      })
+    ).json();
+    expect(auth.status).toBe("awaiting-2fa");
+    const { attemptToken } = auth;
+    expect((await post("2fa", { attemptToken, code: 123456 })).status).toBe(
+      400,
+    );
+    const retry = await post("2fa", { attemptToken, code: "123456" });
+    expect(retry.status).toBe(200);
+    expect((await retry.json()).status).toBe("authenticated");
+  });
   it("never emits done after a backend emits failure and returns", async () => {
     const { backend } = fixture();
     vi.spyOn(backend, "executeInstallPlan").mockImplementation(
