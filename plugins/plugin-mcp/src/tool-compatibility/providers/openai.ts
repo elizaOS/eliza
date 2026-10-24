@@ -83,11 +83,14 @@ export class OpenAIReasoningMcpCompatibility extends McpToolCompatibility {
 
   protected mergeDescription(
     originalDescription: string | undefined,
-    constraints: SchemaConstraints
+    constraints: SchemaConstraints,
+    removed: readonly string[]
   ): string {
-    const constraintText = this.formatConstraintsForReasoningModel(
-      constraints as OpenAIConstraints
-    );
+    // An enum, minimum or maximum that reasoning models still receive stays in
+    // the schema, so the note must not repeat it.
+    const dropped = this.removedConstraints(constraints, removed) as OpenAIConstraints;
+    if (Object.keys(dropped).length === 0) return originalDescription ?? "";
+    const constraintText = this.formatConstraintsForReasoningModel(dropped);
     if (originalDescription) {
       return `${originalDescription}\n\nIMPORTANT: ${constraintText}`;
     }

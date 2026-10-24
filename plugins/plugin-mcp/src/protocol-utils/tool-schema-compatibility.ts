@@ -11,7 +11,16 @@ export type McpJsonSchema = Readonly<Record<string, unknown>>;
 export interface McpSchemaCompatibilityPolicy {
   readonly applies: boolean;
   unsupportedFor(type: string | undefined): readonly string[];
-  describe(original: string | undefined, constraints: Readonly<Record<string, unknown>>): string;
+  /**
+   * `constraints` holds every keyword present on the property; `removed` holds
+   * the subset this policy deleted from the schema. A keyword that stays in the
+   * schema must not be repeated in the description.
+   */
+  describe(
+    original: string | undefined,
+    constraints: Readonly<Record<string, unknown>>,
+    removed: readonly string[]
+  ): string;
 }
 
 const CONSTRAINT_KEYS = [
@@ -92,7 +101,8 @@ function rewriteSchema(
   if (Object.keys(constraints).length > 0) {
     output.description = policy.describe(
       typeof schema.description === "string" ? schema.description : undefined,
-      constraints
+      constraints,
+      unsupported
     );
   }
   return output;
@@ -123,8 +133,8 @@ export abstract class McpSchemaCompatibility<
     return transformMcpToolSchema(toolSchema as Record<string, unknown>, {
       applies: this.shouldApply(),
       unsupportedFor: (type) => this.unsupportedFor(type),
-      describe: (original, constraints) =>
-        this.mergeDescription(original, { ...constraints } as TConstraints),
+      describe: (original, constraints, removed) =>
+        this.mergeDescription(original, { ...constraints } as TConstraints, removed),
     }) as TSchema;
   }
   private unsupportedFor(type: string | undefined): readonly string[] {
@@ -142,9 +152,30 @@ export abstract class McpSchemaCompatibility<
         return [];
     }
   }
-  protected mergeDescription(original: string | undefined, constraints: TConstraints): string {
-    const serialized = this.stringifyConstraints(constraints);
+  /**
+   * Restates only the keywords the schema lost. Restating a keyword the model
+   * still receives repeats one rule in two notations.
+   */
+  protected mergeDescription(
+    original: string | undefined,
+    constraints: TConstraints,
+    removed: readonly string[]
+  ): string {
+    const dropped = this.removedConstraints(constraints, removed);
+    if (Object.keys(dropped).length === 0) return original ?? "";
+    const serialized = this.stringifyConstraints(dropped);
     return original ? `${original}\n${serialized}` : serialized;
+  }
+  /** The keywords the schema lost; the only ones a description may restate. */
+  protected removedConstraints(
+    constraints: TConstraints,
+    removed: readonly string[]
+  ): TConstraints {
+    return Object.fromEntries(
+      Object.entries(constraints as Record<string, unknown>).filter(([key]) =>
+        removed.includes(key)
+      )
+    ) as TConstraints;
   }
   protected stringifyConstraints(constraints: TConstraints): string {
     return JSON.stringify(constraints);
