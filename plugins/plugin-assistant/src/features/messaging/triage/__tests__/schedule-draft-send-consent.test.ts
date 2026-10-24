@@ -12,6 +12,7 @@ import type {
 } from "@elizaos/core";
 import { afterEach, expect, it, vi } from "vitest";
 import { scheduleDraftSendAction } from "../actions/scheduleDraftSend.ts";
+import { registerSendPolicy } from "../send-policy.ts";
 import {
   __resetDefaultTriageServiceForTests,
   getDefaultTriageService,
@@ -76,17 +77,23 @@ let clock = Date.now();
 function ownerTurn(text: string): Memory {
   clock += 1_000;
   return {
-    id: `00000000-0000-0000-0000-${String(clock).slice(-12)}` as UUID,
-    entityId: "00000000-0000-0000-0000-00000000owner" as UUID,
-    roomId: "00000000-0000-0000-0000-000000000room" as UUID,
+    id: `00000000-0000-4000-8000-${String(clock).padStart(12, "0").slice(-12)}` as UUID,
+    entityId: "00000000-0000-4000-8000-00000000000a" as UUID,
+    roomId: "00000000-0000-4000-8000-00000000000b" as UUID,
     agentId: FAKE_AGENT_ID,
     content: { text, source: "test" },
     createdAt: clock,
   } as Memory;
 }
 
-async function schedule(runtime: IAgentRuntime, message: Memory) {
-  const sendAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+const SEND_AT = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+const LATER = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+
+async function schedule(
+  runtime: IAgentRuntime,
+  message: Memory,
+  sendAt: string = SEND_AT,
+) {
   return scheduleDraftSendAction.handler(runtime, message, undefined, {
     parameters: { draftId: "d1", sendAt },
   } as unknown as HandlerOptions);
@@ -112,5 +119,43 @@ it("does not schedule when the owner declines", async () => {
   await schedule(runtime, ownerTurn("schedule it"));
   const declined = await schedule(runtime, ownerTurn("no"));
   expect(declined?.success).toBe(false);
+  expect(scheduled).not.toHaveBeenCalled();
+});
+
+it("re-asks when the confirming turn names a different send time", async () => {
+  const scheduled = stubService();
+  const runtime = cacheRuntime();
+  await schedule(runtime, ownerTurn("send it in an hour"), SEND_AT);
+  const confirmed = await schedule(runtime, ownerTurn("yes"), LATER);
+  expect(confirmed?.data).toMatchObject({ requiresConfirmation: true });
+  expect(scheduled).not.toHaveBeenCalled();
+});
+
+it("re-asks when the draft changed between the ask and the yes", async () => {
+  const scheduled = stubService();
+  const runtime = cacheRuntime();
+  await schedule(runtime, ownerTurn("send it later"));
+  vi.spyOn(getDefaultTriageService(), "getDraft").mockReturnValue({
+    ...draft,
+    body: "Attached, plus the revised forecast.",
+  } as never);
+  const confirmed = await schedule(runtime, ownerTurn("yes"));
+  expect(confirmed?.data).toMatchObject({ requiresConfirmation: true });
+  expect(scheduled).not.toHaveBeenCalled();
+});
+
+it("refuses before asking when the connector needs owner approval", async () => {
+  const scheduled = stubService();
+  const runtime = cacheRuntime();
+  registerSendPolicy(runtime, {
+    shouldRequireApproval: async () => true,
+    enqueueApproval: async () => {
+      throw new Error("not reached");
+    },
+  } as never);
+  const result = await schedule(runtime, ownerTurn("send it later"));
+  expect(result?.success).toBe(false);
+  expect(result?.text).toMatch(/send_draft/);
+  expect(result?.data).toBeUndefined();
   expect(scheduled).not.toHaveBeenCalled();
 });

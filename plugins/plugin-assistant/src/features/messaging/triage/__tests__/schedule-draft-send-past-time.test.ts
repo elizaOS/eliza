@@ -51,9 +51,9 @@ let clock = Date.now();
 function ownerTurn(text: string): Memory {
   clock += 1_000;
   return {
-    id: `00000000-0000-0000-0000-${String(clock).slice(-12)}` as UUID,
-    entityId: "00000000-0000-0000-0000-00000000owner" as UUID,
-    roomId: "00000000-0000-0000-0000-000000000room" as UUID,
+    id: `00000000-0000-4000-8000-${String(clock).padStart(12, "0").slice(-12)}` as UUID,
+    entityId: "00000000-0000-4000-8000-00000000000a" as UUID,
+    roomId: "00000000-0000-4000-8000-00000000000b" as UUID,
     agentId: FAKE_AGENT_ID,
     content: { text, source: "test" },
     createdAt: clock,
