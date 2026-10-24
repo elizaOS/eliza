@@ -21,7 +21,7 @@ import { LIFEOPS_REMINDER_CHANNELS } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
 import { toWellFormedUnicode } from "@elizaos/core";
 import { DEFAULT_REMINDER_STEPS, isValidTimeZone } from "./defaults.js";
-import { DAY_MINUTES, MAX_OVERVIEW_OCCURRENCES } from "./service-constants.js";
+import { DAY_MINUTES } from "./service-constants.js";
 import {
   fail,
   normalizeEnumValue,
@@ -373,16 +373,9 @@ export function selectOverviewOccurrences(
   const pending = sortOverviewOccurrences(
     occurrences.filter((occurrence) => occurrence.state === "pending"),
   );
-  const next: LifeOpsOccurrenceView[] = [];
-  for (const occurrence of visible) {
-    if (next.length >= MAX_OVERVIEW_OCCURRENCES) break;
-    next.push(occurrence);
-  }
-  for (const occurrence of pending) {
-    if (next.length >= MAX_OVERVIEW_OCCURRENCES) break;
-    next.push(occurrence);
-  }
-  return next;
+  // Every occurrence in the overview horizon is kept: the summary counts, the
+  // todo projection and the model context are all built from this list.
+  return [...visible, ...pending];
 }
 
 export function buildActiveReminders(
