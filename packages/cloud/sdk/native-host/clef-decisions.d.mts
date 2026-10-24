@@ -1,4 +1,7 @@
-/** Types for `clef-decisions.mjs`. See that file for the contract. */
+/**
+ * Types for `clef-decisions.mjs`. See that file for the contract; its exports
+ * are annotated with these types and checked by `tsc -p native-host`.
+ */
 
 export declare const CLEF_DECISIONS_PATH: "/api/v1/decisions";
 
@@ -122,12 +125,16 @@ export interface ClefDecisionsClientOptions {
   timeoutMs?: number;
   /**
    * Called on each `unavailable` answer with the HTTP status, or null when
-   * no response came (network error or timeout), so a caller can back off.
+   * no usable response came (network error, timeout, or a body cut off), so
+   * a caller can back off. Never called for a caller abort.
    */
   onUnavailable?: (status: number | null) => void;
 }
 
-/** Calls the Cloud route. Network and server failures become `unavailable`. */
+/**
+ * Calls the Cloud route. Network and server failures become `unavailable`;
+ * an abort through `signal` rejects with its reason.
+ */
 export declare function createClefDecisionsClient(
   options: ClefDecisionsClientOptions,
 ): (

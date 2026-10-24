@@ -4,7 +4,9 @@
  *
  * This file is the one implementation. It has no dependencies, so a device
  * host that stages only `.mjs` files can import it. `src/clef-decisions.ts`
- * re-exports it, and `clef-decisions.d.mts` holds its types.
+ * re-exports it, and `clef-decisions.d.mts` holds its types; each export
+ * below is annotated with its declared type so `tsc -p native-host` checks
+ * this file against them.
  *
  * Clef does not write text. It returns a probability for each answer the
  * caller allows, which makes it fast (tens of milliseconds for clef-flash)
@@ -24,9 +26,15 @@
  * (passwords, codes, card or account numbers).
  */
 
+/** @import * as Types from "./clef-decisions.mjs" */
+
+/** @type {typeof Types.CLEF_DECISIONS_PATH} */
 export const CLEF_DECISIONS_PATH = "/api/v1/decisions";
 
-/** Request limits. Larger requests are rejected, never truncated. */
+/**
+ * Request limits. Larger requests are rejected, never truncated.
+ * @type {typeof Types.CLEF_DECISION_LIMITS}
+ */
 export const CLEF_DECISION_LIMITS = Object.freeze({
   goal: 2_000,
   page: 16_000,
@@ -39,17 +47,27 @@ export const CLEF_DECISION_LIMITS = Object.freeze({
   recentTurns: 6,
 });
 
-/** Option id Cloud adds to every choice: no candidate fits the goal. */
+/**
+ * Option id Cloud adds to every choice: no candidate fits the goal.
+ * @type {typeof Types.CLEF_NO_CHOICE}
+ */
 export const CLEF_NO_CHOICE = "none";
 
-/** `ask` from Clef at this probability or above: a doubtful action asks. */
+/**
+ * `ask` from Clef at this probability or above: a doubtful action asks.
+ * @type {typeof Types.CLEF_ASK_THRESHOLD}
+ */
 export const CLEF_ASK_THRESHOLD = 0.3;
-/** A turn is complete at this probability or above. */
+/**
+ * A turn is complete at this probability or above.
+ * @type {typeof Types.CLEF_TURN_COMPLETE_THRESHOLD}
+ */
 export const CLEF_TURN_COMPLETE_THRESHOLD = 0.5;
 
 /**
  * The mode to use: the floor's `ask` always stands; a suggestion can only
  * raise `tell` to `ask`. A missing suggestion keeps the floor.
+ * @type {typeof Types.combineActionMode}
  */
 export function combineActionMode(floor, suggestion) {
   return floor === "ask" || suggestion === "ask" ? "ask" : "tell";
@@ -63,6 +81,7 @@ const UNFINISHED_NUMBER = /(?:\$|\d,)$/;
 /**
  * Offline fallback for `turn`: a turn that trails off ("and", "um", "so"),
  * ends on a connecting word or an unfinished number is not complete.
+ * @type {typeof Types.turnLooksComplete}
  */
 export function turnLooksComplete(transcript) {
   const raw = transcript.trim();
@@ -72,9 +91,13 @@ export function turnLooksComplete(transcript) {
   return text.length > 0 && !TRAILING_INCOMPLETE.test(text);
 }
 
-/** Request checks shared by Cloud and clients; returns a reason or null. */
+/**
+ * Request checks shared by Cloud and clients; returns a reason or null.
+ * @type {typeof Types.clefDecisionRequestProblem}
+ */
 export function clefDecisionRequestProblem(request) {
   const limits = CLEF_DECISION_LIMITS;
+  /** @type {(value: unknown, max: number) => boolean} */
   const text = (value, max) =>
     typeof value === "string" && value.trim().length > 0 && value.length <= max;
   switch (request.kind) {
@@ -130,9 +153,28 @@ export function clefDecisionRequestProblem(request) {
   }
 }
 
-// Bound header acquisition and body reads too, including host transports that
-// do not honor the fetch signal themselves. Late headers must never dispatch.
-function withAbort(operation, signal) {
+/**
+ * A body that is not JSON is a provider error, like a wrong one.
+ * @param {string} text
+ */
+function parseJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    // error-policy:J2 a body that is not JSON is the documented unavailable answer.
+    return null;
+  }
+}
+
+/**
+ * Bounds header acquisition and body reads too, including host transports
+ * that do not honor the fetch signal themselves. Late headers never dispatch.
+ * @template T
+ * @param {() => T | Promise<T>} operation
+ * @param {AbortSignal | undefined} signal
+ * @returns {Promise<T>}
+ */
+async function withAbort(operation, signal) {
   signal?.throwIfAborted();
   if (!signal) return operation();
   return new Promise((resolve, reject) => {
@@ -151,11 +193,13 @@ function withAbort(operation, signal) {
 /**
  * Calls the Cloud route. Network and server failures, and a request past
  * `timeoutMs`, become `unavailable`. `onUnavailable` receives the HTTP status,
- * or null when no response came, so a caller can back off.
+ * or null when no usable response came, so a caller can back off.
+ * @type {typeof Types.createClefDecisionsClient}
  */
 export function createClefDecisionsClient(options) {
   const send = options.fetch ?? fetch;
   const { timeoutMs, onUnavailable } = options;
+  /** @type {(status: number | null, reason: "disabled" | "provider_error") => Types.ClefDecisionResponse} */
   const unavailable = (status, reason) => {
     onUnavailable?.(status);
     return { status: "unavailable", reason };
@@ -171,6 +215,7 @@ export function createClefDecisionsClient(options) {
         ? AbortSignal.any([signal, deadline])
         : (signal ?? deadline);
     let response;
+    let text;
     try {
       response = await withAbort(async () => {
         const headers = await options.headers();
@@ -182,6 +227,9 @@ export function createClefDecisionsClient(options) {
           signal: combined,
         });
       }, combined);
+      // A cut-off or late body is no usable response either.
+      const reply = response;
+      text = await withAbort(() => reply.text(), combined);
     } catch {
       signal?.throwIfAborted();
       // error-policy:J2 an unreachable or late Cloud is the documented unavailable answer.
@@ -189,14 +237,7 @@ export function createClefDecisionsClient(options) {
     }
     if (response.status === 400 || response.status === 401)
       throw new Error(`Clef decision request was refused (${response.status})`);
-    let body;
-    try {
-      body = await withAbort(() => response.json(), combined);
-    } catch {
-      signal?.throwIfAborted();
-      // error-policy:J2 malformed or late response bodies are unavailable.
-      return unavailable(response.status, "provider_error");
-    }
+    const body = parseJson(text);
     if (!response.ok || body?.status !== "ok" || body.kind !== request.kind)
       return unavailable(
         response.status,

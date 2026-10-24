@@ -36,7 +36,7 @@
     "build": "bun run build.ts",
     "clean": "rm -rf dist",
     "prepack": "bun run build",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p native-host",
     "audit:routes": "node ../scripts/sdk/audit-api-routes.ts",
     "test:e2e": "ELIZA_CLOUD_SDK_LIVE=1 vitest run --config vitest.live.config.ts src/live.e2e.test.ts",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
