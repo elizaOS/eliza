@@ -906,7 +906,11 @@ export class AgentSandboxesRepository {
    * failed instead of being silently revived.
    *
    * Scoped to `dedicated-always` because `dedicated-lazy`/`shared` are NOT meant
-   * to hold an always-on container. Deleted rows are excluded.
+   * to hold an always-on container. Deleted rows are excluded. Rows with an
+   * active provisioning-status owner job are excluded too: that job is already
+   * driving the row back, so re-probing it would race the job, and the row
+   * would hold a batch slot while it stays `disconnected` for the whole
+   * provisioning window.
    */
   async listRecoverable(limit = 100): Promise<
     Array<{
@@ -945,6 +949,7 @@ export class AgentSandboxesRepository {
           )`,
           eq(agentSandboxes.execution_tier, "dedicated-always"),
           sql`${agentSandboxes.deleted_at} IS NULL`,
+          hasNoProvisioningStatusOwnerJob(),
         ),
       )
       .limit(limit);
