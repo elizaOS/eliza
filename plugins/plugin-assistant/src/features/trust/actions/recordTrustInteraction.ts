@@ -130,7 +130,21 @@ export async function recordTrustInteractionHandler(
   };
 
   try {
-    await trustEngineService.trustEngine.recordInteraction(interaction);
+    const recorded =
+      await trustEngineService.trustEngine.recordInteraction(interaction);
+    if (!recorded) {
+      return {
+        success: false,
+        text: "Trust interaction not recorded: this entity reached the hourly limit for trust interactions.",
+        error: "TRUST_INTERACTION_RATE_LIMITED",
+        data: {
+          actionName: "TRUST",
+          subaction: "record_interaction",
+          interaction,
+          success: false,
+        },
+      };
+    }
 
     logger.info(
       {
