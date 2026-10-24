@@ -12,5 +12,10 @@
     "types": ["bun"],
     "customConditions": ["eliza-source"]
   },
-  "include": ["src/sdk/**/*.ts", "src/server/**/*.ts", "test/login/**/*.ts"]
+  "include": [
+    "src/sdk/**/*.ts",
+    "src/server/**/*.ts",
+    "test/login/**/*.ts",
+    "test/sdk-*.test.ts"
+  ]
 }

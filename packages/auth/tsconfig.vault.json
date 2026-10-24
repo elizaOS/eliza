@@ -19,5 +19,6 @@
     "declaration": true,
     "noEmit": true
   },
-  "include": ["src/vault/**/*", "test/*.ts"]
+  "include": ["src/vault/**/*", "test/*.ts"],
+  "exclude": ["test/sdk-*.test.ts"]
 }
