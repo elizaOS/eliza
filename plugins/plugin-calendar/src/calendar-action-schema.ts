@@ -234,7 +234,9 @@ export const CALENDAR_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
       properties: {
         agentId: { type: "string" },
         noteId: { type: "string" },
-        contentHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
+        // Strict provider grammars reject a `pattern` keyword. The host checks
+        // the same sha256 shape in `internal/note-source.ts`.
+        contentHash: { type: "string" },
       },
       required: ["agentId", "noteId", "contentHash"],
       additionalProperties: false,
