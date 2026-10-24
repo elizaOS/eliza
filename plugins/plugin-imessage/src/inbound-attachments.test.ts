@@ -160,7 +160,8 @@ describe("native Messages inbound attachments", () => {
   function pollHarness(
     rows: ChatDbMessage[],
     createMemory: ReturnType<typeof vi.fn>,
-    fetchImpl?: ChatDbReader["fetchNewMessages"]
+    fetchImpl?: ChatDbReader["fetchNewMessages"],
+    emitImpl?: (type: string, payload: unknown) => unknown
   ) {
     const fetchNewMessages = vi.fn(
       fetchImpl ??
@@ -173,7 +174,10 @@ describe("native Messages inbound attachments", () => {
       agentId: "00000000-0000-0000-0000-000000000001",
       getSetting: vi.fn(() => undefined),
       getService: vi.fn(() => null),
-      emitEvent: vi.fn((type: string) => emitted.push(type)),
+      emitEvent: vi.fn((type: string, payload: unknown) => {
+        emitted.push(type);
+        return emitImpl?.(type, payload);
+      }),
       ensureConnection: vi.fn(async () => {}),
       createMemory,
       reportError,
@@ -389,6 +393,64 @@ describe("native Messages inbound attachments", () => {
     });
 
     await expect(internal.pollForNewMessagesInner()).rejects.toThrow("unexpected reader failure");
+  });
+
+  it("reports a rejecting MESSAGE_RECEIVED listener without stalling ingestion", async () => {
+    const row = textRow(90, "hello from listener-failure test");
+    const createMemory = vi.fn(async () => {});
+    const listenerError = new Error("trajectory logger boom");
+
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandled);
+
+    // Both MESSAGE_RECEIVED emissions go through observeRuntimeEvent; make the
+    // mocked emitEvent reject asynchronously like a throwing listener would.
+    const { internal, fetchNewMessages, emitted, reportError } = pollHarness(
+      [row],
+      createMemory,
+      undefined,
+      (type: string) => {
+        if (type === "MESSAGE_RECEIVED" || type === "IMESSAGE_MESSAGE_RECEIVED") {
+          return Promise.reject(listenerError);
+        }
+        return undefined;
+      }
+    );
+
+    try {
+      await internal.pollForNewMessagesInner();
+      // Let the .catch(reportFailure) microtasks run.
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    } finally {
+      process.removeListener("unhandledRejection", onUnhandled);
+    }
+
+    // Message storage completed normally despite the listener failure.
+    expect(createMemory).toHaveBeenCalledTimes(1);
+    // Cursor advanced normally.
+    expect(internal.lastRowId).toBe(90);
+    // Both MESSAGE_RECEIVED events were attempted.
+    expect(emitted.filter((type) => type === "MESSAGE_RECEIVED")).toHaveLength(1);
+    expect(emitted.filter((type) => type === "IMESSAGE_MESSAGE_RECEIVED")).toHaveLength(1);
+    // reportError received the listener failure with event context.
+    const listenerReports = reportError.mock.calls.filter((call) => call[1] === listenerError);
+    expect(listenerReports.length).toBe(2);
+    for (const call of listenerReports) {
+      expect(call[0]).toBe("IMessageService.emitReceivedEvents");
+      expect(call[2]).toEqual(
+        expect.objectContaining({ event: expect.stringContaining("MESSAGE_RECEIVED") })
+      );
+    }
+    // No unhandled rejection escaped.
+    expect(unhandled).toHaveLength(0);
+
+    // Second poll does not re-save or retry the message.
+    await internal.pollForNewMessagesInner();
+    expect(fetchNewMessages).toHaveBeenLastCalledWith(90, 50);
+    expect(createMemory).toHaveBeenCalledTimes(1);
   });
 });
 
