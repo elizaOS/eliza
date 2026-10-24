@@ -390,6 +390,63 @@ describe("InboxService + InboxRepository — real PGLite", () => {
     });
   });
 
+  it("keeps the List-Unsubscribe target of a message that is not the batch's first", async () => {
+    const gmail = {
+      requireGmailGrant: async () =>
+        ({
+          id: "grant-1",
+          connectorAccountId: "account-1",
+          capabilities: ["google.gmail.triage"],
+        }) as Awaited<ReturnType<InboxGmailGateway["requireGmailGrant"]>>,
+      searchGmail: async () =>
+        ({
+          syncedAt: "2026-10-11T00:00:00.000Z",
+          messages: [
+            {
+              // Gmail lists newest-first. This sender publishes
+              // List-Unsubscribe on its campaign mail, not on every message.
+              id: "unsubscribe-message-newest",
+              threadId: "unsubscribe-thread-newest",
+              from: "Shop <shop@example.com>",
+              fromEmail: "shop@example.com",
+              subject: "Your order shipped",
+              receivedAt: "2026-10-11T00:00:00.000Z",
+              metadata: { headers: {} },
+            },
+            {
+              id: "unsubscribe-message-older",
+              threadId: "unsubscribe-thread-older",
+              from: "Shop <shop@example.com>",
+              fromEmail: "shop@example.com",
+              subject: "Weekly offer",
+              receivedAt: "2026-10-09T00:00:00.000Z",
+              metadata: {
+                headers: {
+                  "List-Unsubscribe":
+                    "<mailto:leave@lists.example.com?subject=unsubscribe>",
+                },
+              },
+            },
+          ],
+        }) as Awaited<ReturnType<InboxGmailGateway["searchGmail"]>>,
+      sendMailtoUnsubscribeEmail: vi.fn(),
+      createGmailFilterForSender: vi.fn(async () => ({ filterId: null })),
+      trashGmailThread: vi.fn(),
+    } satisfies InboxGmailGateway;
+    const unsubscribe = new InboxUnsubscribeService(runtime, { gmail });
+
+    const scan = await unsubscribe.scanEmailSubscriptions({ maxMessages: 2 });
+
+    expect(scan.senders).toHaveLength(1);
+    expect(scan.senders[0]).toMatchObject({
+      senderEmail: "shop@example.com",
+      messageCount: 2,
+      unsubscribeMethod: "mailto",
+      unsubscribeMailto: "mailto:leave@lists.example.com?subject=unsubscribe",
+    });
+    expect(scan.summary.manualOnlyCount).toBe(0);
+  });
+
   it("dedups one source message against the real DB on re-triage", async () => {
     const first = await service.triage([
       inbound({ id: "msg-dedup", text: "Can you confirm the meeting?" }),
