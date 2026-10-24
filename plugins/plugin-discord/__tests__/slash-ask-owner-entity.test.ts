@@ -7,7 +7,7 @@
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { createUniqueUuid } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { getRegisteredCommands } from "../slash-commands";
+import { getRegisteredCommands, handleSlashCommand } from "../slash-commands";
 
 const OWNER_ENTITY = "00000000-0000-0000-0000-00000000own1" as UUID;
 
@@ -42,6 +42,32 @@ function interaction() {
 }
 
 describe("Discord /ask caller identity", () => {
+	it("receives the dispatched context through the real dispatcher", async () => {
+		const handleMessage = vi.fn(
+			async (
+				_rt: IAgentRuntime,
+				_m: Memory,
+				cb: (c: { text: string }) => Promise<unknown>,
+			) => {
+				await cb({ text: "Two meetings." });
+				return { responseMessages: [] };
+			},
+		);
+		const rt = runtime(handleMessage);
+		const dispatched = {
+			...interaction(),
+			commandName: "ask",
+			user: { id: "discord-user-2", username: "owner", displayName: "Owner" },
+		};
+		// Same call the Discord event handler makes after resolving the caller.
+		await handleSlashCommand(dispatched as never, rt, {
+			entityId: OWNER_ENTITY,
+			roomId: createUniqueUuid(rt, "channel-1"),
+		});
+		const message = handleMessage.mock.calls[0]?.[1] as Memory;
+		expect(message.entityId).toBe(OWNER_ENTITY);
+	});
+
 	it("acts as the entity the service resolved for the caller", async () => {
 		const handleMessage = vi.fn(
 			async (
