@@ -3486,6 +3486,10 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     const ids: UUID[] = [];
     for (const agent of agents) {
       const id = (agent.id ?? randomUUID()) as UUID;
+      // plugin-sql refuses a duplicate agent id and leaves the stored row
+      // untouched, so a later sparse create must not drop the name, bio, or
+      // settings already saved on this database's owner row.
+      if (await this.storage.get<Agent>(COLLECTIONS.AGENTS, id)) continue;
       await this.storage.set(COLLECTIONS.AGENTS, id, { ...agent, id });
       ids.push(id);
     }
