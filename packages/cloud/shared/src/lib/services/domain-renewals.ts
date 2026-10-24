@@ -125,7 +125,13 @@ async function renewOne(domain: ManagedDomain, now: Date): Promise<DomainRenewal
       ...base,
       chargedAt: charges.lastDebitAt?.toISOString(),
     });
-    return completeRenewal(domain, base, renewalPriceCents, debitMetadata, lifecycleRevision);
+    return completeRenewal(
+      domain,
+      domain.expiresAt,
+      renewalPriceCents,
+      debitMetadata,
+      lifecycleRevision,
+    );
   }
 
   // Debit BEFORE the registrar action so a renewal can never run for free.
@@ -169,13 +175,19 @@ async function renewOne(domain: ManagedDomain, now: Date): Promise<DomainRenewal
     };
   }
 
-  return completeRenewal(domain, base, renewalPriceCents, debitMetadata, lifecycleRevision);
+  return completeRenewal(
+    domain,
+    domain.expiresAt,
+    renewalPriceCents,
+    debitMetadata,
+    lifecycleRevision,
+  );
 }
 
 /** After the period is paid: renew at the registrar and record the new expiry, or refund exactly once. */
 async function completeRenewal(
   domain: ManagedDomain,
-  base: { domain: string; organizationId: string },
+  expiresAt: Date,
   renewalPriceCents: number,
   debitMetadata: {
     type: "domain_renewal";
@@ -186,9 +198,7 @@ async function completeRenewal(
   },
   lifecycleRevision: number,
 ): Promise<DomainRenewalResult> {
-  if (!domain.expiresAt) {
-    return { ...base, outcome: "missing_price", reason: "no expiry on record" };
-  }
+  const base = { domain: domain.domain, organizationId: domain.organizationId };
   try {
     await requireActiveOrganizationLifecycle(domain.organizationId, lifecycleRevision);
   } catch (error) {
@@ -210,9 +220,7 @@ async function completeRenewal(
     // expiry is usually still the old one. Record the period the org paid for.
     const registrarExpiry = renewed.expiresAt ? new Date(renewed.expiresAt) : null;
     const newExpiry =
-      registrarExpiry && registrarExpiry > domain.expiresAt
-        ? registrarExpiry
-        : addOneYear(domain.expiresAt);
+      registrarExpiry && registrarExpiry > expiresAt ? registrarExpiry : addOneYear(expiresAt);
     await managedDomainsService.recordRenewal(domain.id, newExpiry);
     logger.info("[Domain Renewals] renewed", {
       ...base,
