@@ -5,9 +5,10 @@ import path from "node:path";
 /** Build selected distributions and archive only their verified artifacts.
  * Product hosts select identity, environment, admission commands and archive metadata.
  * Commands use argv without a shell. This does not sign, install or publish APKs.
- * A prepare step is an argv command, a synchronous function called with `{ root, environment }`, or
- * `{ gradleTasks }`: extra tasks added to the one Gradle invocation that builds the app.
- * `lint` and `androidTest` (default true) select `:app:lint` and the androidTest APKs. */
+ * A prepare step is exactly one of: an argv command, a synchronous function called with
+ * `{ root, environment }`, or `{ gradleTasks }`: extra tasks added to the one Gradle
+ * invocation that builds the app. `lint` and `androidTest` (default true) select
+ * `:app:lint` and the androidTest APKs; the archive's `build-checks.json` records both. */
 export function buildAndroidConsumer({
   root = process.cwd(),
   environment = process.env,
@@ -29,6 +30,8 @@ export function buildAndroidConsumer({
     new Set(variants).size !== variants.length
   )
     throw new Error("Invalid Android distributions");
+  if (typeof lint !== "boolean" || typeof androidTest !== "boolean")
+    throw new Error("Android lint and androidTest switches must be booleans");
   if (!archive || !/^[a-z][a-z0-9-]*$/.test(archive.name))
     throw new Error("Invalid Android archive name");
   const isCommand = (command) =>
@@ -36,7 +39,8 @@ export function buildAndroidConsumer({
     typeof command.command === "string" &&
     command.command &&
     Array.isArray(command.args) &&
-    command.args.every((arg) => typeof arg === "string");
+    command.args.every((arg) => typeof arg === "string") &&
+    !("gradleTasks" in command);
   const isGradleStep = (step) =>
     step &&
     Array.isArray(step.gradleTasks) &&
@@ -45,14 +49,14 @@ export function buildAndroidConsumer({
       (task) =>
         typeof task === "string" &&
         /^:?[A-Za-z][\w.-]*(?::[A-Za-z][\w.-]*)*$/.test(task),
-    );
+    ) &&
+    !("command" in step);
   if (
     !Array.isArray(prepare) ||
     !isCommand(verify) ||
     prepare.some(
       (step) =>
-        typeof step !== "function" &&
-        (step?.gradleTasks ? !isGradleStep(step) : !isCommand(step)),
+        typeof step !== "function" && !isCommand(step) && !isGradleStep(step),
     )
   ) {
     throw new Error("Invalid Android admission command");
@@ -66,8 +70,11 @@ export function buildAndroidConsumer({
     run(command, args, { cwd, env: environment, stdio: "inherit" });
   const extraTasks = [];
   for (const step of prepare) {
-    if (typeof step === "function") step({ root, environment });
-    else if (step.gradleTasks) extraTasks.push(...step.gradleTasks);
+    if (typeof step === "function") {
+      // An async step would race the Gradle build and could not stop publication.
+      if (typeof step({ root, environment })?.then === "function")
+        throw new Error("Android prepare functions must be synchronous");
+    } else if (isGradleStep(step)) extraTasks.push(...step.gradleTasks);
     else invoke(step);
   }
   const capitalized = variants.map(
@@ -132,6 +139,10 @@ export function buildAndroidConsumer({
       fs.copyFileSync(path.join(output, name), path.join(replacement, name));
     fs.copyFileSync(manifest, path.join(replacement, "apk-manifest.json"));
     fs.writeFileSync(path.join(replacement, "service-mode.json"), metadata);
+    fs.writeFileSync(
+      path.join(replacement, "build-checks.json"),
+      JSON.stringify({ lint, androidTest }, null, 2),
+    );
     let moved = false;
     try {
       fs.renameSync(destination, previous);

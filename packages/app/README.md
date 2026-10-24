@@ -436,9 +436,11 @@ instrumentation), runs lint and product APK verification, then archives only the
 selected APKs plus verification manifest and host metadata. It never signs, installs
 or publishes a release. Hosts select environment, distribution names and archive
 identity. `lint: false` and `androidTest: false` skip lint and the instrumentation
-APKs. A prepare step may also be a synchronous function or `{ gradleTasks }`, which adds tasks to
-the same Gradle run instead of starting another one. The generated `variables.gradle`
-exposes `rootProject.ext.consumerIdentity` (`appId`, `namespace`) for extra modules.
+APKs, and the archive's `build-checks.json` records which of the two ran. A prepare
+step may also be a synchronous function or `{ gradleTasks }`, which adds tasks to the
+same Gradle run instead of starting another one; a step has exactly one of these
+shapes. The generated `variables.gradle` exposes `rootProject.ext.consumerIdentity`
+(`appId`, `namespace`) for extra modules.
 Missing build outputs or failed verification prevent archive publication.
 Run `node --test scripts/mobile/android/build-consumer.test.mjs` for ordering, failure
 and stale-artifact isolation checks.

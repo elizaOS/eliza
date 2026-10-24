@@ -88,6 +88,10 @@ test("selected variants are built and verified before archiving; unrelated APKs 
     JSON.parse(fs.readFileSync(path.join(result.archive, "service-mode.json"))),
     f.options.archive.metadata,
   );
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(path.join(result.archive, "build-checks.json"))),
+    { lint: true, androidTest: true },
+  );
 });
 test("admission and build failures cannot publish an archive", (t) => {
   for (const failed of ["admit", "sync", "./gradlew", "verify"]) {
@@ -179,7 +183,11 @@ test("lint and androidTest switches and in-run prepare steps shape the one Gradl
     (context) => seen.push(context),
     { gradleTasks: [":updater:assembleDebug", ":updater:assembleRelease"] },
   ];
-  f.build();
+  const result = f.build();
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(path.join(result.archive, "build-checks.json"))),
+    { lint: false, androidTest: false },
+  );
   assert.deepEqual(seen, [
     { root: f.root, environment: f.options.environment },
   ]);
@@ -199,11 +207,36 @@ test("lint and androidTest switches and in-run prepare steps shape the one Gradl
     [{ gradleTasks: ["--init-script=evil.gradle"] }],
     [{ gradleTasks: [":ok", 1] }],
     [{ command: "sync", args: [], gradleTasks: ["--init-script=evil.gradle"] }],
+    [{ command: "sync", args: [], gradleTasks: [":updater:assembleDebug"] }],
   ]) {
     const g = fixture(t);
     g.options.prepare = prepare;
     assert.throws(g.build, /Invalid Android admission command/);
     assert.equal(g.calls.length, 0);
+  }
+  for (const patch of [{ lint: "false" }, { androidTest: 0 }]) {
+    const g = fixture(t);
+    Object.assign(g.options, patch);
+    assert.throws(g.build, /must be booleans/);
+    assert.equal(g.calls.length, 0);
+  }
+});
+
+test("a prepare function that throws or is async stops the build before Gradle", (t) => {
+  for (const step of [
+    () => {
+      throw Error("controlled failure");
+    },
+    async () => {},
+  ]) {
+    const f = fixture(t);
+    f.options.prepare = [step, { command: "sync", args: [] }];
+    assert.throws(f.build, /controlled failure|must be synchronous/);
+    assert.deepEqual(f.calls, []);
+    assert.equal(
+      fs.existsSync(path.join(f.root, "artifacts/production")),
+      false,
+    );
   }
 });
 
@@ -233,6 +266,7 @@ test("reusing an archive replaces its contents when selected variants shrink", (
   const second = f.build();
   assert.deepEqual(fs.readdirSync(second.archive).sort(), [
     "apk-manifest.json",
+    "build-checks.json",
     "launcher-debug.apk",
     "launcher-release-unsigned.apk",
     "service-mode.json",
