@@ -5,7 +5,11 @@ import {
   SURFACE_CHANNEL_PATHS,
   SurfaceChannelError,
 } from "./surface-channel.mjs";
+import { TASK_ID_PATTERN } from "./task-id.mjs";
 
+const taskEventsPath = new RegExp(
+  `^/tasks/${TASK_ID_PATTERN.source.slice(1, -1)}/events$`,
+);
 const MAX_BODY = 64 * 1024;
 const uuid =
   "[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}";
@@ -44,6 +48,7 @@ export function createLocalAgentGateway({
   inboundToken,
   hostPolicy,
   origins = hostPolicy?.origins,
+  isAllowedOrigin = hostPolicy?.isAllowedOrigin,
   cloudHandler,
   credentialGate,
   ownershipStore,
@@ -55,7 +60,7 @@ export function createLocalAgentGateway({
 } = {}) {
   if (
     !hostPolicy ||
-    !Array.isArray(origins) ||
+    Array.isArray(origins) === (typeof isAllowedOrigin === "function") ||
     typeof hostPolicy.prepareMessage !== "function" ||
     typeof hostPolicy.validateTitle !== "function" ||
     typeof hostPolicy.isPaidAction !== "function" ||
@@ -72,7 +77,10 @@ export function createLocalAgentGateway({
   )
     throw new Error(message("error1"));
   if (!token?.trim()) throw new Error(message("error2"));
-  const allowed = new Set(origins);
+  const allowed =
+    typeof isAllowedOrigin === "function"
+      ? isAllowedOrigin
+      : Set.prototype.has.bind(new Set(origins));
   const inferenceAvailable = async () => {
     try {
       return (await inferenceConfigured()) === true;
@@ -122,11 +130,19 @@ export function createLocalAgentGateway({
   const server = http.createServer(async (req, res) => {
     const origin = req.headers.origin;
     // Host validation also rejects DNS rebinding requests without an Origin.
+    let originAllowed = !origin;
+    if (origin) {
+      try {
+        originAllowed = allowed(origin) === true;
+      } catch {
+        // A host policy failure must deny the request, not escape the HTTP handler.
+        originAllowed = false;
+      }
+    }
     const trustedCaller =
       /^(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/.test(
         req.headers.host || "",
-      ) &&
-      (!origin || allowed.has(origin));
+      ) && originAllowed;
     // Browsers never attach credentials to a CORS preflight. Answer one from an
     // allowlisted origin before bearer authentication, or the renderer can
     // never send its authenticated request. It reaches no route.
@@ -226,10 +242,7 @@ export function createLocalAgentGateway({
         await persist();
       }
       const taskEventRead =
-        req.method === "GET" &&
-        /^\/tasks\/[A-Za-z0-9][A-Za-z0-9_.:@-]{0,255}\/events$/.test(
-          url.pathname,
-        );
+        req.method === "GET" && taskEventsPath.test(url.pathname);
       if (url.search && !url.pathname.startsWith("/cloud/") && !taskEventRead)
         return json(res, 400, { error: message("error10") });
       if (SURFACE_CHANNEL_PATHS.has(url.pathname)) {
