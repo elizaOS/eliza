@@ -26,9 +26,11 @@ import androidx.activity.OnBackPressedCallback;
   const launcherSetup = launcherKiosk
     ? `
         // The launcher owns the device surface. Keep Back from finishing the
-        // root activity, then enter Android lock-task mode. A managed device
-        // owner can allowlist this package for silent kiosk; an unmanaged
-        // Pixel receives Android's recoverable screen-pinning confirmation.
+        // root activity. Register before super.onCreate: lifecycle-bound Back
+        // callbacks are added on every start in registration order and the
+        // last one wins, so the Capacitor App plugin's backButton handler
+        // (loaded in super.onCreate) still lets the page close a sheet or go
+        // back first. This callback runs only when nothing else handles Back.
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
@@ -61,6 +63,7 @@ import androidx.activity.OnBackPressedCallback;
 
     private void restoreBundledRendererAfterAuthCallback(Intent intent) {
         if (!isCloudAuthCallback(intent)
+                || rendererGone
                 || getBridge() == null
                 || getBridge().getWebView() == null) {
             return;
@@ -137,6 +140,8 @@ ${
 
 import android.os.Bundle;
 import android.content.Intent;
+import android.view.ViewGroup;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.view.WindowManager;
@@ -147,11 +152,16 @@ ${navigationInsetsImport}import androidx.core.view.WindowInsetsControllerCompat;
 ${launcherImports}
 
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.WebViewListener;
 
 import ${androidPackage}.BuildConfig;
 
 public class MainActivity extends BridgeActivity {
 ${launcherConstants}
+    // Set when Android ends the WebView renderer. The dead WebView is never
+    // used again; the activity is recreated with a new one on its next start.
+    private boolean rendererGone;
+    private boolean started;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -173,10 +183,9 @@ ${launcherConstants}
         registerPlugin(ElizaPlaySettingsPlugin.class);
 
 ${safePushRegistration}
+${launcherSetup}
         super.onCreate(savedInstanceState);
         keepScreenAwake();
-
-${launcherSetup}
 
         // Draw the canonical Cloud renderer behind transparent system bars. The
         // launcher variant hides only the navigation bar; a swipe can reveal
@@ -193,6 +202,25 @@ ${navigationBarPolicy}
         if (getBridge() != null && getBridge().getWebView() != null) {
             WebSettings settings = getBridge().getWebView().getSettings();
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+            // Android can end the renderer for memory while the screen is off.
+            // An unhandled renderer death makes WebView kill the whole app
+            // process, and any foreground service in it. Remove and destroy
+            // the dead WebView instead, and recreate the activity when it is
+            // next started (at once if it is on screen), so a new renderer
+            // does not start into the same memory pressure.
+            getBridge().addWebViewListener(new WebViewListener() {
+                @Override
+                public boolean onRenderProcessGone(
+                        WebView view, RenderProcessGoneDetail detail) {
+                    rendererGone = true;
+                    if (view.getParent() instanceof ViewGroup) {
+                        ((ViewGroup) view.getParent()).removeView(view);
+                    }
+                    view.destroy();
+                    if (started) recreate();
+                    return true;
+                }
+            });
         }
     }
 
@@ -213,6 +241,11 @@ ${focusHandler}
     @Override
     public void onStart() {
         super.onStart();
+        started = true;
+        if (rendererGone) {
+            recreate();
+            return;
+        }
         if (getBridge() != null && getBridge().getWebView() != null) {
             getBridge().getWebView().onResume();
         }
@@ -220,7 +253,10 @@ ${focusHandler}
 
     @Override
     public void onStop() {
-        if (getBridge() != null && getBridge().getWebView() != null) {
+        started = false;
+        if (!rendererGone
+                && getBridge() != null
+                && getBridge().getWebView() != null) {
             getBridge().getWebView().onPause();
         }
         super.onStop();

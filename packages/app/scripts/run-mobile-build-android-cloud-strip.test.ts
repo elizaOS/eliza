@@ -91,6 +91,41 @@ describe("Android cloud WebView visibility", () => {
       );
     }
   });
+
+  it("survives renderer death and recreates on the next start in both variants", () => {
+    for (const launcherKiosk of [false, true]) {
+      const source = cloudSafeMainActivityJava("ai.elizaos.app", {
+        launcherKiosk,
+      });
+      const gone = source.slice(source.indexOf("onRenderProcessGone("));
+      expect(gone.indexOf("removeView(view)")).toBeLessThan(
+        gone.indexOf("view.destroy()"),
+      );
+      expect(gone.indexOf("view.destroy()")).toBeLessThan(
+        gone.indexOf("return true;"),
+      );
+      const onStart = source.slice(source.indexOf("public void onStart()"));
+      expect(onStart.indexOf("recreate()")).toBeLessThan(
+        onStart.indexOf("getWebView().onResume()"),
+      );
+      const onStop = source.slice(source.indexOf("public void onStop()"));
+      expect(onStop.indexOf("!rendererGone")).toBeLessThan(
+        onStop.indexOf("getWebView().onPause()"),
+      );
+    }
+  });
+
+  it("lets the App plugin's backButton handler run before the launcher keeps Back", () => {
+    const source = cloudSafeMainActivityJava("ai.elizaos.app", {
+      launcherKiosk: true,
+    });
+    expect(source.indexOf("new OnBackPressedCallback(true)")).toBeGreaterThan(
+      -1,
+    );
+    expect(source.indexOf("new OnBackPressedCallback(true)")).toBeLessThan(
+      source.indexOf("super.onCreate(savedInstanceState)"),
+    );
+  });
 });
 
 /** Every committed main-sourceset .java basename that references ElizaAgentService. */
