@@ -65,6 +65,33 @@ export function incomingMessagePersistenceSnapshot(
 	return structuredClone(persisted);
 }
 
+function dropUndefined<T>(value: T): T {
+	if (value === null || typeof value !== "object") {
+		return value;
+	}
+	if (Array.isArray(value)) {
+		return value.map(dropUndefined) as unknown as T;
+	}
+	if (
+		value instanceof Date ||
+		value instanceof RegExp ||
+		ArrayBuffer.isView(value)
+	) {
+		return value;
+	}
+	const result: Record<string, unknown> = {};
+	for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+		if (val !== undefined) {
+			result[key] = dropUndefined(val);
+		}
+	}
+	return result as T;
+}
+
+function isStorageContentEqual(a: unknown, b: unknown): boolean {
+	return isDeepStrictEqual(dropUndefined(a), dropUndefined(b));
+}
+
 function contentNeedsNativeSegments(content: Content): boolean {
 	const encoder = new TextEncoder();
 	if (
@@ -147,14 +174,15 @@ export async function persistIncomingMessageMemory(
 				: {}),
 		};
 		for (const content of [memory.content, textRedacted, allRedacted]) {
-			if (isDeepStrictEqual(existing.content, content)) return id;
+			if (isStorageContentEqual(existing.content, content)) return id;
 			const projection = buildMessageContentProjection({
 				...memory,
 				id,
 				agentId: memory.agentId ?? runtime.agentId,
 				content,
 			});
-			if (!isDeepStrictEqual(existing.content, projection.content)) continue;
+			if (!isStorageContentEqual(existing.content, projection.content))
+				continue;
 			const expected = projection.segments;
 			const rows = await runtime.getMemoriesByIds(
 				expected.map((segment) => {
@@ -177,8 +205,8 @@ export async function persistIncomingMessageMemory(
 						row.agentId === segment.agentId &&
 						row.roomId === segment.roomId &&
 						row.entityId === segment.entityId &&
-						isDeepStrictEqual(row.content, segment.content) &&
-						isDeepStrictEqual(storedMetadata, expectedMetadata)
+						isStorageContentEqual(row.content, segment.content) &&
+						isStorageContentEqual(storedMetadata, expectedMetadata)
 					);
 				})
 			)
