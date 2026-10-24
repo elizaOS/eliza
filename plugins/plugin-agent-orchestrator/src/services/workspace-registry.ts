@@ -84,16 +84,21 @@ type Logger = (
  * `withFileTypes` and never follows symlinked directories, so a workspace that
  * symlinks a shared store is not double-counted or walked out of bounds. A
  * vanished entry (concurrent teardown) contributes zero rather than throwing;
- * the caller is measuring a best-effort footprint, not auditing.
+ * the caller is measuring a best-effort footprint, not auditing. Any other
+ * read failure is a broken registry path or a sick filesystem and propagates:
+ * counting it as zero bytes would under-report `usedBytes` and admit a spawn
+ * the cap was meant to refuse. Same contract as `freeBytesFor`, which reads an
+ * unknown filesystem as a hard refusal rather than "plenty of space".
  */
 export async function measureDirBytes(dir: string): Promise<number> {
   let total = 0;
   let entries: Dirent[];
   try {
     entries = await readdir(dir, { withFileTypes: true });
-  } catch {
-    // A dir that vanished or is unreadable contributes nothing measurable.
-    return 0;
+  } catch (error) {
+    // Only a dir that is genuinely gone contributes nothing measurable.
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return 0;
+    throw workspaceDiskMeasurementError(dir, "readdir", error);
   }
   for (const entry of entries) {
     const full = join(dir, entry.name);
@@ -107,8 +112,10 @@ export async function measureDirBytes(dir: string): Promise<number> {
     try {
       const st = await stat(full);
       total += st.size;
-    } catch {
-      // Raced with teardown — skip.
+    } catch (error) {
+      // Raced with teardown — skip. Anything else is unmeasurable, not zero.
+      if ((error as NodeJS.ErrnoException)?.code === "ENOENT") continue;
+      throw workspaceDiskMeasurementError(full, "stat", error);
     }
   }
   return total;
@@ -336,6 +343,34 @@ export class WorkspaceRegistry {
       usedBytes: used,
     };
   }
+}
+
+/**
+ * The one place an unmeasurable workspace dir becomes a throwable error.
+ * Mirrors {@link workspaceDiskBudgetError}: both are reachable from the
+ * `provision_workspace` action, whose catch relays `error.message` toward chat,
+ * so the message stays human and carries no filesystem path. The offending
+ * path, the syscall, and the raw errno ride the structured `context` (for the
+ * action's error data / `reportError`) and the Node error is kept as `cause`.
+ */
+export function workspaceDiskMeasurementError(
+  dir: string,
+  operation: "readdir" | "stat",
+  cause: unknown,
+): ElizaError {
+  return new ElizaError(
+    "a workspace directory could not be measured, so the disk budget could not be verified and the workspace was not created",
+    {
+      code: "WORKSPACE_DISK_MEASUREMENT_FAILED",
+      severity: "ephemeral",
+      context: {
+        dir,
+        operation,
+        errno: (cause as NodeJS.ErrnoException)?.code,
+      },
+      cause,
+    },
+  );
 }
 
 /**
