@@ -2513,6 +2513,15 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     });
   }
 
+  private memoryIsVisibleToOwner(memory: StoredMemory): boolean {
+    // Rows stored without an agentId belong to this database. A stored
+    // agentId for someone else matches the SQL memory `agent_id` predicate
+    // plugin-sql applies in deleteAllMemories. A stored null (the JSON
+    // layer's reading of a SQL NULL agent_id on legacy/migrated rows)
+    // is also this database's row, so it stays wipable.
+    return memory.agentId == null || memory.agentId === this.agentId;
+  }
+
   async deleteMemories(memoryIds: UUID[]): Promise<void> {
     return this.withMemoryMutationLock(async () => {
       if (memoryIds.length === 0) return;
@@ -2564,7 +2573,11 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         COLLECTIONS.MEMORIES,
         (m) =>
           roomSet.has(m.roomId as UUID) &&
-          (tableName ? storedMemoryTableName(m) === tableName : true),
+          (tableName ? storedMemoryTableName(m) === tableName : true) &&
+          // pg scopes the wipe to this agent; a shared file can hold rows
+          // for another agent (legacy migration), and wiping those would
+          // destroy another tenant's data.
+          this.memoryIsVisibleToOwner(m),
       );
       const ids = memories
         .map((m) => m.id)
@@ -2575,7 +2588,9 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       const segments = await this.storage.getWhere<StoredMemory>(
         COLLECTIONS.MEMORIES,
         (m) =>
-          !deleted.has(m.id as string) && isMessageContentSegmentOf(m, deleted),
+          !deleted.has(m.id as string) &&
+          isMessageContentSegmentOf(m, deleted) &&
+          this.memoryIsVisibleToOwner(m),
       );
       for (const segment of segments)
         if (segment.id) ids.push(segment.id as UUID);
