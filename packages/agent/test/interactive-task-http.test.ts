@@ -567,6 +567,10 @@ it.each(["pause", "close"] as const)(
       await entered.promise;
       expect(runtime.get("task-1").status).toBe("paused");
       expect(completed).toBe(false);
+      // The host has paused, but the client has no confirmed reply yet.
+      expect(client.snapshot()).toMatchObject({ pending: true });
+      expect(client.isPaused()).toBe(false);
+      expect(client.currentTaskId()).toBeNull();
       // A host may close a task while its earlier Pause cleanup still awaits an ack.
       runtime.control("task-1", runtime.get("task-1").revision, "close");
       await Promise.resolve();
@@ -594,8 +598,14 @@ it.each(["pause", "close"] as const)(
         error: "",
         task: { status: "paused" },
       });
+      expect(client.snapshot()).toBe(states.at(-1));
+      expect(client.isPaused()).toBe(true);
+      expect(client.currentTaskId()).toBe("task-1");
       fail = true;
       expect(await client.control("close")).toBe(false);
+      expect(client.snapshot()).toMatchObject({ error: "pause failed" });
+      expect(client.isPaused()).toBe(false);
+      expect(client.currentTaskId()).toBeNull();
       const failedRevision = runtime.get("task-1").revision;
       expect(await client.control("pause")).toBe(false);
       expect(runtime.get("task-1").revision).toBe(failedRevision);
