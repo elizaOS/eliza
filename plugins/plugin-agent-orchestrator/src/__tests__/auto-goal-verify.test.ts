@@ -371,6 +371,34 @@ describe("auto goal verification on task_complete", () => {
     expect(doc?.task.status).not.toBe("done");
   });
 
+  it("a character setting ELIZA_SANDBOX_HAS_BROWSER=true that core returns as a boolean lets the correction ask for a screenshot", async () => {
+    const fake = makeFakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { sessionId } = await seedTaskWithSession(store, [
+      "the settings page renders",
+    ]);
+    const runtime = makeRuntime(fake.service, () =>
+      JSON.stringify({
+        passed: false,
+        summary: "page not shown",
+        missing: ["the settings page renders"],
+      }),
+    );
+    // AgentRuntime.getSetting turns a saved "true" string into boolean true.
+    runtime.getSetting = (key: string) =>
+      key === "ELIZA_SANDBOX_HAS_BROWSER" ? true : undefined;
+    const service = createService(runtime as never, { store });
+    await service.start();
+
+    fake.emit(sessionId, "task_complete", { response: "I think it works" });
+    await vi.waitFor(() => {
+      expect(fake.service.sendToSession).toHaveBeenCalled();
+    });
+    const lastSent = fake.sent.at(-1)?.text ?? "";
+    expect(lastSent).toContain("full-page screenshot");
+    expect(lastSent).not.toContain("NO browser");
+  });
+
   it("escalates the corrective tone on the second failure (attempt 2)", async () => {
     const fake = makeFakeAcp();
     const store = new OrchestratorTaskStore({ backend: "memory" });
@@ -1049,6 +1077,45 @@ describe("independent read-only verifier (#8898)", () => {
     const correction = fake.service.sendToSession.mock.calls.at(-1)?.[1] ?? "";
     expect(correction).toContain("concrete evidence");
     expect(correction).not.toContain("CompletionEnvelope");
+  });
+
+  it("a character setting ELIZA_ORCHESTRATOR_INDEPENDENT_VERIFY=false that core returns as a boolean disables the verifier", async () => {
+    const fake = makeVerifierAcp(() => FAILING_VERIFIER_ENVELOPE);
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId, sessionId } = await seedCodeChangeTask(store, [
+      "tests pass",
+    ]);
+    const useModel = vi.fn(async () =>
+      JSON.stringify({ passed: true, summary: "confirmed", missing: [] }),
+    );
+    const runtime = {
+      character: { name: "Tester" },
+      databaseAdapter: undefined,
+      logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      // AgentRuntime.getSetting turns a saved "false" string into boolean false.
+      getSetting: (key: string) =>
+        key === "ELIZA_ACP_DEFAULT_AGENT"
+          ? "claude"
+          : key === "ELIZA_ORCHESTRATOR_INDEPENDENT_VERIFY"
+            ? false
+            : undefined,
+      useModel,
+      getService: (type: string) =>
+        type === AcpService.serviceType ? fake.service : undefined,
+    };
+    const service = createService(runtime as never, { store });
+    await service.start();
+
+    fake.emit(sessionId, "task_complete", { response: "done, all tests pass" });
+    await until(
+      async () =>
+        fake.spawned.length > 0 ||
+        (await store.getTask(taskId))?.task.status === "done",
+    );
+
+    expect(fake.spawned).toHaveLength(0);
+    expect((await store.getTask(taskId))?.task.status).toBe("done");
+    expect(useModel).toHaveBeenCalledTimes(1);
   });
 
   it("does NOT spawn a verifier for a task with no code changes (gated)", async () => {

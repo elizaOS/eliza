@@ -35,6 +35,7 @@ import {
   type IAgentRuntime,
   projectWorldId,
   type RecordedTrajectory,
+  resolveSetting,
   resolveStateDir,
   resolveTrajectoryGate,
   rollUpTrajectoryUsage,
@@ -1169,10 +1170,7 @@ export class OrchestratorTaskService extends Service {
           adapter: this.runtime.adapter,
           databaseAdapter: this.runtime.databaseAdapter,
           logger: this.runtime.logger,
-          getSetting: (key) => {
-            const value = this.runtime.getSetting?.(key);
-            return typeof value === "string" ? value : undefined;
-          },
+          getSetting: (key) => this.readSetting(key),
         },
       });
   }
@@ -4777,10 +4775,7 @@ export class OrchestratorTaskService extends Service {
       );
       const workerCaps = capabilitiesForBackend(
         workerSession?.framework,
-        (key) => {
-          const value = this.runtime.getSetting?.(key);
-          return typeof value === "string" ? value : undefined;
-        },
+        (key) => this.readSetting(key),
       );
       if (evidenceBundle) {
         // Reuse the bundle assembled on the task_complete path. When assembly
@@ -5178,16 +5173,10 @@ export class OrchestratorTaskService extends Service {
   ): Promise<IndependentVerifierVerdict | null> {
     const changeSet = await this.resolveCompletionChangeSet(sessionId, doc);
     const hasCodeChanges = (changeSet?.changedFiles.length ?? 0) > 0;
-    // shouldRunIndependentVerify wants (key) => string | undefined | null.
     // Resolve from runtime settings, then fall back to process.env so the
     // ELIZA_ORCHESTRATOR_INDEPENDENT_VERIFY flag is honored consistently with the
-    // env-driven shouldAutoVerifyGoal gate (runtime.getSetting may be absent).
-    const getSetting = (key: string): string | undefined => {
-      const value = this.runtime.getSetting?.(key);
-      if (typeof value === "string") return value;
-      const fromEnv = process.env[key];
-      return typeof fromEnv === "string" ? fromEnv : undefined;
-    };
+    // env-driven shouldAutoVerifyGoal gate.
+    const getSetting = (key: string) => this.readSetting(key);
     if (!shouldRunIndependentVerify(getSetting, hasCodeChanges)) return null;
     // #20794: the verifier reports through a CompletionEnvelope, but the
     // default spawn backend (elizaos) never emits one — every such run is
@@ -7155,11 +7144,13 @@ export class OrchestratorTaskService extends Service {
     );
   }
 
+  /** Runtime setting, then process.env. AgentRuntime.getSetting returns a
+   *  saved "true"/"false" as a boolean; resolveSetting keeps it as a string. */
   private readSetting(key: string): string | undefined {
-    const raw = this.runtime.getSetting?.(key);
-    if (typeof raw === "string" && raw.length > 0) return raw;
-    const env = process.env[key];
-    return typeof env === "string" && env.length > 0 ? env : undefined;
+    // Some hand-rolled host runtimes do not have getSetting.
+    const runtime =
+      typeof this.runtime.getSetting === "function" ? this.runtime : null;
+    return resolveSetting(runtime, key);
   }
 
   /** Read the admission record off a task's metadata, or null if not queued. */
