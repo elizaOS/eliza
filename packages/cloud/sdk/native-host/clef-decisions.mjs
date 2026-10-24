@@ -130,6 +130,24 @@ export function clefDecisionRequestProblem(request) {
   }
 }
 
+// Bound header acquisition and body reads too, including host transports that
+// do not honor the fetch signal themselves. Late headers must never dispatch.
+function withAbort(operation, signal) {
+  signal?.throwIfAborted();
+  if (!signal) return operation();
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+    Promise.resolve()
+      .then(() => {
+        signal.throwIfAborted();
+        return operation();
+      })
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener("abort", abort));
+  });
+}
+
 /**
  * Calls the Cloud route. Network and server failures, and a request past
  * `timeoutMs`, become `unavailable`. `onUnavailable` receives the HTTP status,
@@ -154,23 +172,31 @@ export function createClefDecisionsClient(options) {
         : (signal ?? deadline);
     let response;
     try {
-      response = await send(new URL(CLEF_DECISIONS_PATH, options.baseUrl), {
-        method: "POST",
-        headers: {
-          ...(await options.headers()),
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(request),
-        signal: combined,
-      });
-    } catch (error) {
-      if (signal?.aborted) throw error;
+      response = await withAbort(async () => {
+        const headers = await options.headers();
+        combined?.throwIfAborted();
+        return send(new URL(CLEF_DECISIONS_PATH, options.baseUrl), {
+          method: "POST",
+          headers: { ...headers, "content-type": "application/json" },
+          body: JSON.stringify(request),
+          signal: combined,
+        });
+      }, combined);
+    } catch {
+      signal?.throwIfAborted();
       // error-policy:J2 an unreachable or late Cloud is the documented unavailable answer.
       return unavailable(null, "provider_error");
     }
     if (response.status === 400 || response.status === 401)
       throw new Error(`Clef decision request was refused (${response.status})`);
-    const body = await response.json().catch(() => null);
+    let body;
+    try {
+      body = await withAbort(() => response.json(), combined);
+    } catch {
+      signal?.throwIfAborted();
+      // error-policy:J2 malformed or late response bodies are unavailable.
+      return unavailable(response.status, "provider_error");
+    }
     if (!response.ok || body?.status !== "ok" || body.kind !== request.kind)
       return unavailable(
         response.status,

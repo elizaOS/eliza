@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import {
   CLEF_DECISION_LIMITS,
   clefDecisionRequestProblem,
@@ -179,4 +181,84 @@ test("the client ends a late request as unavailable and reports each one", async
   const pending = decide(mode, caller.signal);
   caller.abort(new Error("stopped"));
   await expect(pending).rejects.toThrow("stopped");
+});
+
+test("deadline bounds headers and streamed bodies without swallowing caller cancellation", async () => {
+  let requests = 0;
+  const server = createServer((_request, response) => {
+    requests++;
+    response.writeHead(200, { "content-type": "application/json" });
+    response.write('{"status":');
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const statuses: Array<number | null> = [];
+  const onUnavailable = (status: number | null) => statuses.push(status);
+  const request = { kind: "mode" as const, action: "Read the page" };
+  try {
+    let releaseHeaders!: (headers: Record<string, string>) => void;
+    const headers = new Promise<Record<string, string>>((resolve) => {
+      releaseHeaders = resolve;
+    });
+    const delayed = createClefDecisionsClient({
+      baseUrl,
+      headers: () => headers,
+      timeoutMs: 20,
+      onUnavailable,
+    });
+    expect(await delayed(request)).toEqual({
+      status: "unavailable",
+      reason: "provider_error",
+    });
+    releaseHeaders({});
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(requests).toBe(0);
+    expect(statuses).toEqual([null]);
+
+    const stalled = createClefDecisionsClient({
+      baseUrl,
+      headers: () => ({}),
+      timeoutMs: 100,
+      onUnavailable,
+    });
+    expect(await stalled(request)).toEqual({
+      status: "unavailable",
+      reason: "provider_error",
+    });
+    expect(statuses).toEqual([null, 200]);
+
+    let bodyReading!: () => void;
+    const reading = new Promise<void>((resolve) => {
+      bodyReading = resolve;
+    });
+    const cancellable = createClefDecisionsClient({
+      baseUrl,
+      headers: () => ({}),
+      timeoutMs: 1000,
+      onUnavailable,
+      fetch: (async (input, init) => {
+        const response = await fetch(input, init);
+        const json = response.json.bind(response);
+        response.json = () => {
+          bodyReading();
+          return json();
+        };
+        return response;
+      }) as typeof fetch,
+    });
+    const caller = new AbortController();
+    const pending = cancellable(request, caller.signal);
+    const outcome = pending.then(
+      (value) => value,
+      (error: unknown) => error,
+    );
+    await reading;
+    const stopped = new Error("caller stopped body read");
+    caller.abort(stopped);
+    expect(await outcome).toBe(stopped);
+    expect(statuses).toEqual([null, 200]);
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 });

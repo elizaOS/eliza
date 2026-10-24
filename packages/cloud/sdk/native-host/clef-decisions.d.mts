@@ -118,7 +118,7 @@ export interface ClefDecisionsClientOptions {
   /** Adds the caller's own Cloud authorization to each request. */
   headers: () => Record<string, string> | Promise<Record<string, string>>;
   fetch?: typeof fetch;
-  /** Ends a request after this many milliseconds as `unavailable`. */
+  /** Ends a request, including headers and body, after this many milliseconds as `unavailable`. */
   timeoutMs?: number;
   /**
    * Called on each `unavailable` answer with the HTTP status, or null when
