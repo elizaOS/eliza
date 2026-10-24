@@ -139,6 +139,16 @@ describe("ScreenCaptureBridgeService", () => {
     // A timed-out request can no longer be fulfilled.
     expect(bridge.submitFrame("any", SAMPLE_BASE64, "png", 1, 1)).toBe(false);
   });
+  it("drops a timed-out request from the queue the renderer drains", async () => {
+    const bridge = makeBridge(5);
+    const frame = await bridge.requestFrame();
+    expect(frame).toBeNull();
+    // A request that timed out can never be delivered, so the poller must not
+    // receive it: the renderer would otherwise capture the screen (and may
+    // re-prompt for MediaProjection consent) for a request the agent already
+    // abandoned, then POST a frame the route rejects as `unknown_request`.
+    expect(bridge.takeRequests()).toHaveLength(0);
+  });
   it("failFrame resolves the pending promise as null", async () => {
     const bridge = makeBridge();
     const framePromise = bridge.requestFrame();
