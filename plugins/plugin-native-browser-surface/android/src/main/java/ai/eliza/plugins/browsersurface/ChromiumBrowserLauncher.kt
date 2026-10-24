@@ -6,6 +6,7 @@
 package ai.eliza.plugins.browsersurface
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -47,11 +48,33 @@ object ChromiumBrowserLauncher {
         activity.startActivity(intent)
     }
 
+    /**
+     * Whether the build's pinned Chromium package is installed with its pinned
+     * signing certificate. Uses the same check as [launch] and [present], so
+     * apps can decide whether to offer a browser flow before starting it.
+     */
+    @JvmStatic
+    fun isTrusted(context: Context): Boolean =
+        isTrusted(Build.VERSION.SDK_INT, BuildConfig.ELIZA_CHROMIUM_CERT_SHA256) { packageName, certificate ->
+            context.packageManager.hasSigningCertificate(packageName, certificate, PackageManager.CERT_INPUT_SHA256)
+        }
+
+    internal fun isTrusted(sdkInt: Int, certificateSha256: String, lookup: ChromiumBrowserIdentity.SigningCertificateLookup): Boolean =
+        sdkInt >= Build.VERSION_CODES.P &&
+            ChromiumBrowserIdentity.isTrustedPackage(PACKAGE_NAME, certificateSha256, lookup)
+
+    /**
+     * Whether the pinned Chromium package answers Custom Tabs connections.
+     * This does not check the signer; pair it with [isTrusted].
+     */
+    @JvmStatic
+    fun supportsCustomTabs(context: Context): Boolean {
+        val service = Intent(CustomTabsService.ACTION_CUSTOM_TABS_CONNECTION).setPackage(PACKAGE_NAME)
+        return context.packageManager.resolveService(service, 0) != null
+    }
+
     internal fun requireTrustedBrowser(activity: Activity) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P ||
-            !ChromiumBrowserIdentity.isTrustedPackage(PACKAGE_NAME, BuildConfig.ELIZA_CHROMIUM_CERT_SHA256) { packageName, certificate ->
-                activity.packageManager.hasSigningCertificate(packageName, certificate, PackageManager.CERT_INPUT_SHA256)
-            }) {
+        if (!isTrusted(activity)) {
             throw BrowserLaunchException("BROWSER_UNTRUSTED", "The configured Chromium package or signing certificate is unavailable. Repair the provisioned browser and try again.")
         }
     }
@@ -60,8 +83,7 @@ object ChromiumBrowserLauncher {
     fun launch(activity: Activity, url: String) {
         val target = Uri.parse(validatedUrl(url))
         requireTrustedBrowser(activity)
-        val service = Intent(CustomTabsService.ACTION_CUSTOM_TABS_CONNECTION).setPackage(PACKAGE_NAME)
-        if (activity.packageManager.resolveService(service, 0) == null) {
+        if (!supportsCustomTabs(activity)) {
             throw BrowserLaunchException("BROWSER_UNAVAILABLE", "Chromium is unavailable. Install or repair the system Chromium browser, then try again.")
         }
         val browser = CustomTabsIntent.Builder().setShowTitle(true).build()
