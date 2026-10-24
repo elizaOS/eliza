@@ -56,16 +56,28 @@ export type ParadeeDiscovery =
 	| { ok: true; config: ParadeeEngineConfig }
 	| { ok: false; reason: string };
 
-function hasPinnedModelFiles(dir: string): boolean {
+function checkPinnedModelFiles(dir: string): {
+	staged: boolean;
+	unreadable?: string;
+} {
 	for (const file of PARADEE_MODEL_FILES) {
+		const filePath = path.join(dir, file.path);
 		try {
-			const stat = lstatSync(path.join(dir, file.path));
-			if (!stat.isFile() || stat.size !== file.bytes) return false;
-		} catch {
-			return false;
+			const stat = lstatSync(filePath);
+			if (!stat.isFile() || stat.size !== file.bytes) return { staged: false };
+		} catch (error) {
+			const code = (error as NodeJS.ErrnoException).code;
+			// ENOENT/ENOTDIR: this candidate does not hold the pinned file.
+			// Anything else (EACCES, EIO, EMFILE) means the directory could
+			// not be looked at, which is not the same as "not staged".
+			if (code === "ENOENT" || code === "ENOTDIR") return { staged: false };
+			return {
+				staged: false,
+				unreadable: `${filePath} (${code ?? "unreadable"})`,
+			};
 		}
 	}
-	return true;
+	return { staged: true };
 }
 
 /** Candidate model directories in precedence order. */
@@ -125,10 +137,27 @@ export function discoverParadeeEngine(
 	opts: { bundleRoot?: string | null; env?: NodeJS.ProcessEnv } = {},
 ): ParadeeDiscovery {
 	const env = opts.env ?? process.env;
-	const modelDir = paradeeModelDirCandidates(opts.bundleRoot, env).find(
-		hasPinnedModelFiles,
-	);
+	let modelDir: string | undefined;
+	let unreadable: string | undefined;
+	for (const dir of paradeeModelDirCandidates(opts.bundleRoot, env)) {
+		const check = checkPinnedModelFiles(dir);
+		if (check.staged) {
+			modelDir = dir;
+			break;
+		}
+		unreadable ??= check.unreadable;
+	}
 	if (!modelDir) {
+		if (unreadable) {
+			// The first candidate that could not be looked at decides the
+			// message: reporting a read failure as "not staged" sends the
+			// operator to download a model that may be staged and readable
+			// only after a permission fix.
+			return {
+				ok: false,
+				reason: `Paradee-8M v1.1 could not be read at ${unreadable}; this is a read failure, not a missing install`,
+			};
+		}
 		return {
 			ok: false,
 			reason: `Paradee-8M v1.1 is not staged (looked for ${PARADEE_MODEL_FILES.map((f) => f.path).join(" + ")} in ELIZA_PARADEE_MODEL_DIR, <bundle>/tts/paradee and <stateDir>/local-inference/models/paradee)`,

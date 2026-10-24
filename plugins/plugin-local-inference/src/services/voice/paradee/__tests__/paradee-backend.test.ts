@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import {
+	chmodSync,
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
@@ -542,6 +543,29 @@ describe("discoverParadeeEngine", () => {
 		});
 		expect(noDigest.ok).toBe(false);
 		if (!noDigest.ok) expect(noDigest.reason).toMatch(/reviewed digest/);
+	});
+
+	it("reports an unreadable model directory instead of a missing install", () => {
+		const models = path.join(tmp, "locked");
+		stageModels(models);
+		chmodSync(models, 0o000);
+		try {
+			const found = discoverParadeeEngine({
+				env: { ELIZA_STATE_DIR: tmp, ELIZA_PARADEE_MODEL_DIR: models },
+			});
+			// A staged but unreadable directory is a broken install, not an
+			// install without the pinned files: do not send the operator to
+			// download a model that is already there.
+			expect(found.ok).toBe(false);
+			if (!found.ok) {
+				expect(found.reason).toMatch(/could not be read/);
+				expect(found.reason).toContain(
+					path.join(models, "paradee-8m-v1_1.gguf"),
+				);
+			}
+		} finally {
+			chmodSync(models, 0o700);
+		}
 	});
 
 	it("tracks the host worker's pinned Paradee files", () => {
