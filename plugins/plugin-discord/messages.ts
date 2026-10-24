@@ -26,6 +26,7 @@ import {
 	type SendHandlerReceipt,
 	type Service,
 	ServiceType,
+	scrubIncomingMessageTextForStorage,
 	stringToUuid,
 	TurnAbortedError,
 	toWellFormedUnicode,
@@ -1054,6 +1055,21 @@ export class MessageManager {
 	/** Last queued turn per Discord message id; see `queueMessageTurn`. */
 	private readonly messageTurnTails = new Map<string, Promise<void>>();
 	/**
+	 * Running generations by Discord message id, with the edit stamp of the
+	 * text each one answers. Until the agent starts typing, a turn has only
+	 * read the message: nothing was sent and no action ran.
+	 */
+	private readonly runningGenerations = new Map<
+		string,
+		{
+			controller: AbortController;
+			editedAt: string | undefined;
+			typing: () => boolean;
+		}
+	>();
+	/** The edit stamp whose edit cancelled the turn before it, by message id. */
+	private readonly editCancelledTurns = new Map<string, string>();
+	/**
 	 * Constructor for a new instance of MessageManager.
 	 * @param {IDiscordService} discordService - The Discord service instance.
 	 * @param {ICompatRuntime} runtime - The agent runtime instance (with cross-core compat).
@@ -1504,25 +1520,46 @@ export class MessageManager {
 		) {
 			return;
 		}
+		// A turn that has not started typing would answer text the user has
+		// replaced: cancel it, and the edit's turn gives the only answer. A
+		// typing turn finishes first, as it may already have sent or acted.
+		// Only a newer edit cancels; an unfurl or redelivery repeats the stamp.
+		const running = this.runningGenerations.get(message.id);
+		if (
+			running &&
+			!running.typing() &&
+			editedAt !== undefined &&
+			(running.editedAt === undefined || editedAt > running.editedAt)
+		) {
+			this.editCancelledTurns.set(message.id, editedAt);
+			running.controller.abort(new TurnAbortedError("superseded by an edit"));
+		}
 		return this.queueMessageTurn(message.id, async () => {
-			const stored = await this.runtime.getMemoryById(
-				createUniqueUuid(this.runtime, message.id),
-			);
-			// Never stored: not a message this agent took in. A stored stamp that
-			// is the same or newer: a redelivery, an unfurl after a handled edit,
-			// or an older edit whose fetch finished after a newer one was stored.
-			// ISO stamps sort in time order.
-			const storedEditedAt = stored?.content.editedAt;
-			if (
-				!stored ||
-				(typeof storedEditedAt === "string" &&
-					editedAt !== undefined &&
-					storedEditedAt >= editedAt)
-			) {
-				return;
+			try {
+				const stored = await this.runtime.getMemoryById(
+					createUniqueUuid(this.runtime, message.id),
+				);
+				// Never stored: not a message this agent took in, unless the edit
+				// cancelled its turn before the message was stored. A stored stamp
+				// that is the same or newer: a redelivery, an unfurl after a handled
+				// edit, or an older edit whose fetch finished after a newer one was
+				// stored. ISO stamps sort in time order.
+				const storedEditedAt = stored?.content.editedAt;
+				if (
+					(!stored && !this.editCancelledTurns.has(message.id)) ||
+					(typeof storedEditedAt === "string" &&
+						editedAt !== undefined &&
+						storedEditedAt >= editedAt)
+				) {
+					return;
+				}
+				this.releaseMessageProcessing(message.id);
+				await this.runMessageTurn(message);
+			} finally {
+				if (this.editCancelledTurns.get(message.id) === editedAt) {
+					this.editCancelledTurns.delete(message.id);
+				}
 			}
-			this.releaseMessageProcessing(message.id);
-			await this.runMessageTurn(message);
 		});
 	}
 
@@ -1957,9 +1994,16 @@ export class MessageManager {
 				) {
 					// The user edited a message this agent already stored. Update
 					// the stored memory in place so history shows the current text,
+					// keeping the text it replaces so the agent sees what changed,
 					// and bind the turn to that row as stored (storage drops
 					// undefined fields): the message service then reuses it
 					// instead of publishing a second body under this id.
+					const previousText =
+						stored.content.currentMessageText ?? stored.content.text;
+					if (typeof previousText === "string") {
+						newMessage.content.editedFrom =
+							scrubIncomingMessageTextForStorage(previousText);
+					}
 					await replaceStoredMessageContent(
 						this.runtime,
 						newMessage.id,
@@ -1967,13 +2011,19 @@ export class MessageManager {
 					);
 					const replaced = await this.runtime.getMemoryById(newMessage.id);
 					if (replaced) bindIncomingMessagePersistence(newMessage, replaced);
-					// If the agent replied to the original, the edit gets one more
-					// normal turn. A turn key per edit keeps redeliveries a no-op.
-					// Without a reply the original turn record decides, and that
-					// is already terminal for an ingested or ignored message.
+					// If the agent replied to the original, or an edit cancelled its
+					// reply, the edit gets one more normal turn. A turn key per edit
+					// keeps redeliveries a no-op. Otherwise the original turn record
+					// decides, and that is already terminal for an ingested or
+					// ignored message. The cached message may already carry a newer
+					// edit than the one that cancelled: this turn answers that one.
+					const cancelledAt = this.editCancelledTurns.get(message.id);
 					if (
+						(cancelledAt !== undefined &&
+							editedAt !== undefined &&
+							cancelledAt <= editedAt) ||
 						(await findDeliveredReply(this.runtime, roomId, newMessage.id)) !==
-						null
+							null
 					) {
 						turnKey = `${message.id}:edit:${newMessage.content.editedAt}`;
 					}
@@ -3179,6 +3229,19 @@ export class MessageManager {
 			// runGenerationWithAbortableTimeout above and __tests__/generation-abort.
 			const generationAbortController = new AbortController();
 			const generationSignal = generationAbortController.signal;
+			const running = {
+				controller: generationAbortController,
+				editedAt,
+				typing: () => typingStarted,
+			};
+			// A turn whose text folds in other messages (a batch, or recent
+			// channel context) also answers those; an edit must not cancel it.
+			if (
+				(message as DiscordMessageWithCoalescedMetadata)
+					.__discordAddressingContent === undefined
+			) {
+				this.runningGenerations.set(message.id, running);
+			}
 			let generationTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
 			let coordinationHeartbeatHandle:
 				| ReturnType<typeof setInterval>
@@ -3289,7 +3352,9 @@ export class MessageManager {
 					generationTimedOut &&
 					!!messageId &&
 					hasActiveTaskAgentWorkForMessage(this.runtime, messageId);
-				const designedAbortReason = designedTurnAbortReason(generationError);
+				const designedAbortReason =
+					designedTurnAbortReason(generationError) ??
+					designedTurnAbortReason(generationSignal.reason);
 				if (designedAbortReason) {
 					typingController.stop();
 					statusReactions?.setDone();
@@ -3400,6 +3465,9 @@ export class MessageManager {
 				}
 				return;
 			} finally {
+				if (this.runningGenerations.get(message.id) === running) {
+					this.runningGenerations.delete(message.id);
+				}
 				if (generationTimeoutHandle) {
 					clearTimeout(generationTimeoutHandle);
 				}

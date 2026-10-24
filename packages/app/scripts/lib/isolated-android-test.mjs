@@ -7,7 +7,7 @@ import { execFile } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { promisify } from "node:util";
+import { isDeepStrictEqual, promisify } from "node:util";
 
 const executeFile = promisify(execFile);
 
@@ -33,6 +33,9 @@ const sha256 = (file) =>
   createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 const packagePattern = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/;
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+// Written into every development-device report so it is never cited as stronger evidence.
+export const DEVELOPMENT_DEVICE_NOTE =
+  "Development device evidence on an owner-approved physical device that is not reset. Not release hardware, a product image, or device or user acceptance. Where caller evidence text says emulator, it means this device.";
 
 export async function runIsolatedAndroidTest({
   serial,
@@ -50,6 +53,7 @@ export async function runIsolatedAndroidTest({
   requiredAbi,
   expectedAvdName,
   expectedCuttlefish,
+  developmentDevice,
   androidUser,
   deviceLease,
   signal,
@@ -73,8 +77,44 @@ export async function runIsolatedAndroidTest({
 }) {
   // A TCP endpoint is never ownership. Hosts explicitly acknowledge a disposable
   // instance and pin its serial property and full image fingerprint.
-  const cuttlefish = expectedCuttlefish ? { ...expectedCuttlefish } : null;
-  if (cuttlefish) {
+  // Pins are frozen: hooks and the report share them, and a hook cannot move them.
+  const cuttlefish = expectedCuttlefish
+    ? Object.freeze({ ...expectedCuttlefish })
+    : null;
+  // A physical device is not disposable: the owner approves it for the run and
+  // pins its model and full build fingerprint. Its adb serial is its ro.serialno.
+  const device = developmentDevice
+    ? Object.freeze({ ...developmentDevice, serialNumber: serial })
+    : null;
+  if (device) {
+    assert.equal(
+      expectedAvdName,
+      undefined,
+      "Choose AVD, Cuttlefish or development device admission",
+    );
+    assert.equal(
+      cuttlefish,
+      null,
+      "Choose AVD, Cuttlefish or development device admission",
+    );
+    assert.match(
+      serial ?? "",
+      /^[A-Za-z0-9]{6,32}$/,
+      "A development device serial is its ro.serialno",
+    );
+    assert.equal(
+      device.ownerApproved,
+      true,
+      "Owner-approved development device required",
+    );
+    assert.match(device.model ?? "", /^[A-Za-z0-9_. -]{2,64}$/);
+    assert.match(device.fingerprint ?? "", /^[A-Za-z0-9_./:+-]+$/);
+    assert.ok(
+      device.fingerprint.includes("/"),
+      "Exact build fingerprint required",
+    );
+    assert.equal(androidUser, 0, "A development device requires owner user 0");
+  } else if (cuttlefish) {
     assert.equal(
       expectedAvdName,
       undefined,
@@ -95,6 +135,8 @@ export async function runIsolatedAndroidTest({
     );
     assert.equal(androidUser, 0, "Cuttlefish currently requires owner user 0");
   } else assert.match(serial ?? "", /^emulator-\d+$/);
+  const pinned = cuttlefish ?? device;
+  const pinnedLabel = cuttlefish ? "Cuttlefish" : "Development device";
   const runnerEvidenceFor = (additionalRunners) => {
     assert.ok(
       Array.isArray(additionalRunners),
@@ -144,7 +186,7 @@ export async function runIsolatedAndroidTest({
   assert.notEqual(packageName, testPackage);
   assert.ok(
     ["arm64-v8a", "x86_64"].includes(requiredAbi),
-    "Explicit emulator ABI required",
+    "Explicit ABI required",
   );
   assert.ok(
     Number.isSafeInteger(expectedTests) && expectedTests >= classes.length,
@@ -153,7 +195,7 @@ export async function runIsolatedAndroidTest({
     Number.isSafeInteger(androidUser) && androidUser >= 0,
     "Explicit Android user required",
   );
-  if (!cuttlefish) assert.match(expectedAvdName ?? "", /^[A-Za-z0-9_.-]+$/);
+  if (!pinned) assert.match(expectedAvdName ?? "", /^[A-Za-z0-9_.-]+$/);
   for (const deadline of [
     commandTimeoutMs,
     instrumentationTimeoutMs,
@@ -384,39 +426,39 @@ export async function runIsolatedAndroidTest({
         maxBuffer: 4 * 1024 ** 2,
       })
     ).stdout;
-  let cuttlefishBootId;
-  const assertCuttlefish = async () => {
+  let pinnedBootId;
+  const assertPinnedInstance = async () => {
     assert.equal(
       (await rawRun("shell", "getprop", "ro.build.fingerprint")).trim(),
-      cuttlefish.fingerprint,
-      "Cuttlefish fingerprint changed",
+      pinned.fingerprint,
+      `${pinnedLabel} fingerprint changed`,
     );
     assert.equal(
       (await rawRun("shell", "getprop", "ro.serialno")).trim(),
-      cuttlefish.serialNumber,
-      "Cuttlefish instance changed",
+      pinned.serialNumber,
+      `${pinnedLabel} instance changed`,
     );
     assert.equal(
       (await rawRun("shell", "am", "get-current-user")).trim(),
       "0",
-      "Cuttlefish foreground user changed",
+      `${pinnedLabel} foreground user changed`,
     );
     const bootId = (
       await rawRun("shell", "cat", "/proc/sys/kernel/random/boot_id")
     ).trim();
     assert.match(bootId, /^[a-f0-9-]{36}$/);
-    if (cuttlefishBootId)
+    if (pinnedBootId)
       assert.equal(
         bootId,
-        cuttlefishBootId,
-        "Cuttlefish boot changed; retain installations for explicit recovery",
+        pinnedBootId,
+        `${pinnedLabel} boot changed; retain installations for explicit recovery`,
       );
-    else cuttlefishBootId = bootId;
+    else pinnedBootId = bootId;
   };
   // Recheck on every command, including callback commands and cancellation cleanup.
   // A reconnect/reboot must not uninstall packages from a different instance.
   const run = async (...args) => {
-    if (cuttlefishBootId) await assertCuttlefish();
+    if (pinnedBootId) await assertPinnedInstance();
     return rawRun(...args);
   };
   const browserRole = async () =>
@@ -445,6 +487,39 @@ export async function runIsolatedAndroidTest({
         "android.intent.category.HOME",
       )
     ).trim();
+  // Settings a test can change on a device that is not reset after the run.
+  // Wi-Fi and media volume are read live; the settings table can lag them.
+  const deviceSettings = async () => {
+    const values = {};
+    for (const [namespace, key] of [
+      ["system", "font_scale"],
+      ["system", "screen_off_timeout"],
+      ["global", "airplane_mode_on"],
+      ["global", "mobile_data"],
+    ])
+      values[key] = (
+        await run("shell", "settings", "get", namespace, key)
+      ).trim();
+    const wifi = /Wifi is (enabled|disabled)/.exec(
+      await run("shell", "cmd", "wifi", "status"),
+    );
+    assert.ok(wifi, "Wi-Fi state unreadable");
+    values.wifi = wifi[1];
+    const volume = /volume is (\d+)/.exec(
+      await run(
+        "shell",
+        "cmd",
+        "media_session",
+        "volume",
+        "--stream",
+        "3",
+        "--get",
+      ),
+    );
+    assert.ok(volume, "Media volume unreadable");
+    values.media_volume = volume[1];
+    return values;
+  };
   const packages = async () =>
     (await run("shell", "pm", "list", "packages", "-u", "--user", "all")).split(
       /\r?\n/,
@@ -455,7 +530,7 @@ export async function runIsolatedAndroidTest({
     );
   // Binary-safe read of one declared file from the installed app's sandbox.
   const readAppFile = async (name) => {
-    if (cuttlefishBootId) await assertCuttlefish();
+    if (pinnedBootId) await assertPinnedInstance();
     return (
       await executeFile(
         adb,
@@ -541,6 +616,13 @@ export async function runIsolatedAndroidTest({
     companions,
     expectedAvdName,
     ...(cuttlefish ? { expectedCuttlefish: cuttlefish } : {}),
+    ...(device
+      ? {
+          evidenceClass: "development-device",
+          note: DEVELOPMENT_DEVICE_NOTE,
+          developmentDevice: device,
+        }
+      : {}),
     requiredAbi,
     androidUser,
     testClasses: classes,
@@ -554,6 +636,7 @@ export async function runIsolatedAndroidTest({
     campaignFinished = false,
     previousHome,
     previousBrowser,
+    previousSettings,
     failure,
     activeContext,
     scenarioCleanupFailure;
@@ -640,10 +723,32 @@ export async function runIsolatedAndroidTest({
         "1",
         "Cuttlefish boot incomplete",
       );
-      await assertCuttlefish();
-      report.bootId = cuttlefishBootId;
+      await assertPinnedInstance();
+      report.bootId = pinnedBootId;
       previousBrowser = await browserRole();
       report.originalBrowser = previousBrowser;
+    } else if (device) {
+      assert.notEqual(
+        (await rawRun("shell", "getprop", "ro.kernel.qemu")).trim(),
+        "1",
+        "An emulator is not a development device",
+      );
+      assert.equal(
+        (await rawRun("shell", "getprop", "ro.product.model")).trim(),
+        device.model,
+        "Development device model differs",
+      );
+      assert.equal(
+        (await rawRun("shell", "getprop", "sys.boot_completed")).trim(),
+        "1",
+        "Development device boot incomplete",
+      );
+      await assertPinnedInstance();
+      report.bootId = pinnedBootId;
+      previousBrowser = await browserRole();
+      report.originalBrowser = previousBrowser;
+      previousSettings = await deviceSettings();
+      report.originalSettings = previousSettings;
     } else {
       assert.equal(
         (await run("shell", "getprop", "ro.kernel.qemu")).trim(),
@@ -659,7 +764,7 @@ export async function runIsolatedAndroidTest({
     assert.equal(
       (await run("shell", "getprop", "ro.product.cpu.abi")).trim(),
       requiredAbi,
-      "Emulator ABI mismatch",
+      "Device ABI mismatch",
     );
     report.selinux = (await run("shell", "getenforce")).trim();
     assert.equal(
@@ -701,6 +806,7 @@ export async function runIsolatedAndroidTest({
         run,
         deviceLease: lease,
         record,
+        ...(device ? { developmentDevice: device } : {}),
       };
       // This caller hook is read-only admission; a rejection must not invoke cleanup.
       await preflightVariant?.(context);
@@ -895,7 +1001,7 @@ export async function runIsolatedAndroidTest({
             assert.ok(!settled, "Instrumentation exited before interruption");
             effectIssued = true;
           }
-          if (cuttlefishBootId) await assertCuttlefish();
+          if (pinnedBootId) await assertPinnedInstance();
           return (
             await executeFile(adb, ["-s", serial, ...args], {
               env,
@@ -1052,11 +1158,17 @@ export async function runIsolatedAndroidTest({
       assert.ok(!(await installed()), "Variant package cleanup failed");
       owned.clear();
       assert.equal(await home(), previousHome, "Default HOME changed");
-      if (cuttlefish)
+      if (pinned)
         assert.equal(
           await browserRole(),
           previousBrowser,
           "Default browser changed",
+        );
+      if (device)
+        assert.deepEqual(
+          await deviceSettings(),
+          previousSettings,
+          "Device settings changed",
         );
     }
     report.verifiedAt = new Date().toISOString();
@@ -1130,12 +1242,18 @@ export async function runIsolatedAndroidTest({
           report.cleaned =
             !(await installed()) && unacknowledgedInstalls.size === 0;
           report.homeUnchanged = (await home()) === previousHome;
-          if (cuttlefish)
+          if (pinned)
             report.browserUnchanged = (await browserRole()) === previousBrowser;
+          if (device)
+            report.settingsUnchanged = isDeepStrictEqual(
+              await deviceSettings(),
+              previousSettings,
+            );
         } catch {
           report.cleaned = false;
           report.homeUnchanged = false;
-          if (cuttlefish) report.browserUnchanged = false;
+          if (pinned) report.browserUnchanged = false;
+          if (device) report.settingsUnchanged = false;
         }
         fs.writeFileSync(
           path.join(directory, "verification.json"),
@@ -1144,7 +1262,8 @@ export async function runIsolatedAndroidTest({
         if (
           !report.cleaned ||
           !report.homeUnchanged ||
-          (cuttlefish && !report.browserUnchanged) ||
+          (pinned && !report.browserUnchanged) ||
+          (device && !report.settingsUnchanged) ||
           report.cleanupErrors.length
         )
           failure ??= new Error(

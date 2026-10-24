@@ -298,6 +298,7 @@ export const ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES = [
   "BionicDecodeLoopTest.java",
   "DeviceRamTierPolicyTest.java",
   "ElizaAgentAutostartPolicyTest.java",
+  "ElizaAgentEventSubscriptionTest.java",
   "ElizaAgentWatchdogPolicyInstrumentedTest.java",
   "ElizaAssetExtractionPolicyTest.java",
   "ElizaAssistantSurfaceInstrumentedTest.java",

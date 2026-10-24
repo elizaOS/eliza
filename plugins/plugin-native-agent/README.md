@@ -36,7 +36,9 @@ prove silent-install authority or product health.
 jobs. It gates them on signed time, device signals (unknown signals defer) and a local
 comfort window, and keeps a durable alert ledger. Hosts bind the ports: signed clock,
 signal readers, discovery, pending plan and activation. The engine reads no clock and
-installs nothing itself. Its JVM contract is included in `test:native-host`.
+installs nothing itself. Share one engine per ledger across scheduled jobs; runs
+serialize effects and ledger updates. Do not write that ledger from another engine
+or process. Its JVM contract is included in `test:native-host`.
 `LocalCredentialBroker` is a private loopback HTTP transport for the embedded
 native process. Hosts inject separate primary and pending-enrollment stores plus
 a nonempty private token. It is not a Capacitor method: do not pass that token or

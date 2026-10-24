@@ -138,7 +138,13 @@ Omitting the selector keeps the primary-client release check.
 ### App-owned managed Google returns
 
 App-owned connector callbacks use `APP_OAUTH_RETURN_URLS` for exact HTTPS
-Gmail return addresses. Initiation accepts the app nonce as the only `state`
+Gmail return addresses. The deployment owner sets this comma-separated Worker
+binding separately for each environment; no application callback is shipped in
+source. `keep_vars = true` preserves the configured allowlist during releases.
+An unset allowlist disables app-owned returns. For example, a deployment may
+allow `https://apps.example.org/reader/callback` and
+`https://apps.example.org/planner/callback` without changing upstream code.
+Initiation accepts the app nonce as the only `state`
 query parameter and returns `appReturn: 2` when configured. The callback uses
 server-owned state and returns only state/result plus `connectionId` on success.
 The app must verify that connection through its authenticated connector list.
