@@ -52,6 +52,42 @@ describe("project registry reads", () => {
       expect.objectContaining({ code: "PROJECT_REGISTRY_READ_FAILED" }),
     );
   });
+  it("reads a registry whose UTF-8 BOM precedes the JSON object", () => {
+    const env = environment();
+    const registry = {
+      version: 1,
+      activeProjectId: "project-bom",
+      projects: [
+        {
+          id: "project-bom",
+          name: "BOM project",
+          localPath: "/workspace/bom",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          lastOpenedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    };
+    writeFileSync(
+      projectRegistryPath(env),
+      `\uFEFF${JSON.stringify(registry)}`,
+    );
+    expect(readProjectRegistry(env)).toEqual(registry);
+  });
+});
+
+it("imports a legacy workspace selection whose UTF-8 BOM precedes the JSON object", () => {
+  const env = environment();
+  const selection = {
+    path: "/workspace/bom-selection",
+    bookmark: null,
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+  writeFileSync(
+    join(env.ELIZA_STATE_DIR, "workspace-folder.json"),
+    `\uFEFF${JSON.stringify(selection)}`,
+  );
+  const registry = readProjectRegistry(env);
+  expect(registry?.projects[0]?.localPath).toBe(selection.path);
 });
 
 it("imports a complete workspace selection once and retains bound project ids", () => {

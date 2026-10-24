@@ -78,6 +78,15 @@ export function projectRegistryPath(
   return join(resolveStateDir(env), "projects.json");
 }
 
+/**
+ * Parse a registry document. Both files are plain JSON; a UTF-8 BOM is an
+ * encoding marker, not JSON text, and editors write it by default on Windows.
+ * It stays out of the parsed value so the stored bytes satisfy the schema.
+ */
+function parseStoredJson(raw: string): unknown {
+  return JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw);
+}
+
 function readStoredRegistry(env: NodeJS.ProcessEnv): unknown {
   const filePath = projectRegistryPath(env);
   let raw: string;
@@ -92,7 +101,7 @@ function readStoredRegistry(env: NodeJS.ProcessEnv): unknown {
     });
   }
   try {
-    return JSON.parse(raw);
+    return parseStoredJson(raw);
   } catch (cause) {
     throw new ElizaError("Malformed project registry JSON", {
       code: "PROJECT_REGISTRY_INVALID",
@@ -133,7 +142,7 @@ function importWorkspaceSelection(
   }
   let value: unknown;
   try {
-    value = JSON.parse(raw);
+    value = parseStoredJson(raw);
   } catch (cause) {
     throw new ElizaError("Malformed workspace selection JSON", {
       code: "PROJECT_SELECTION_INVALID",
