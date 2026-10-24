@@ -143,6 +143,7 @@ jobs:
         run: >-
           bun test --config=/dev/null --isolate
           packages/cloud/scripts/admin/migrate-with-diagnostics.postgres.test.ts
+          packages/cloud/scripts/admin/production-ledger-recovery-20261023.postgres.test.ts
       - name: Run generic app subscription PostgreSQL contracts
         env:
           APP_BILLING_TEST_POSTGRES_URL: postgresql://postgres@127.0.0.1:5432/postgres
