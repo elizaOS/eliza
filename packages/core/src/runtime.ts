@@ -3248,22 +3248,28 @@ export class AgentRuntime implements IAgentRuntime {
 	}: Room) {
 		if (!worldId) throw new Error("worldId is required");
 
-		// Check if room exists (for logging only)
+		// Check if room exists (for logging and for the merge below)
 		const room = await this.getRoom(id);
 
-		// Atomic upsert - handles both insert and update
+		// Atomic upsert - handles both insert and update. A field the caller
+		// omits keeps the stored room's value, the same rule
+		// ensureWorldExists applies to a world's name and messageServerId:
+		// the fixed-shape object built from the destructured parameters
+		// otherwise carries every omitted field as `undefined`, and an
+		// adapter merge-write overwrites the stored name, type, channel and
+		// server binding with it.
 		await this.adapter.upsertRooms([
 			{
 				id,
-				name,
+				name: name ?? room?.name,
 				agentId: this.agentId,
-				source,
-				type,
-				channelId,
-				serverId,
-				messageServerId,
+				source: source ?? room?.source,
+				type: type ?? room?.type,
+				channelId: channelId ?? room?.channelId,
+				serverId: serverId ?? room?.serverId,
+				messageServerId: messageServerId ?? room?.messageServerId,
 				worldId,
-				metadata,
+				metadata: metadata ?? room?.metadata,
 			},
 		]);
 		// The existence probe above may have memoized null/stale for this id.
