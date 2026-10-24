@@ -19,6 +19,15 @@ export interface Lock {
   extend: (ms: number) => Promise<void>;
 }
 
+export interface LockOptions {
+  /**
+   * Renew the lock every third of its TTL until it is released, so a holder
+   * whose work outlasts the TTL (a model turn with tools) keeps the room.
+   * Renewal stops as soon as ownership is lost.
+   */
+  keepAlive?: boolean;
+}
+
 /**
  * Service for managing distributed locks using Redis.
  */
@@ -44,19 +53,19 @@ export class DistributedLockService {
   async acquireRoomLockWithRetry(
     roomId: string,
     ttl: number = 90000,
-    options: {
+    options: LockOptions & {
       maxRetries?: number;
       initialDelayMs?: number;
       maxDelayMs?: number;
     } = {},
   ): Promise<Lock | null> {
-    const { maxRetries = 10, initialDelayMs = 100, maxDelayMs = 2000 } = options;
+    const { maxRetries = 10, initialDelayMs = 100, maxDelayMs = 2000, keepAlive } = options;
 
     let attempt = 0;
     let delayMs = initialDelayMs;
 
     while (attempt <= maxRetries) {
-      const lock = await this.acquireRoomLock(roomId, ttl);
+      const lock = await this.acquireRoomLock(roomId, ttl, { keepAlive });
 
       if (lock) {
         if (attempt > 0) {
@@ -93,7 +102,11 @@ export class DistributedLockService {
    * PERFORMANCE FIX: Increased from 30s to 90s to accommodate long-running LLM calls
    * @returns Lock object if acquired, null if already locked
    */
-  async acquireRoomLock(roomId: string, ttl: number = 90000): Promise<Lock | null> {
+  async acquireRoomLock(
+    roomId: string,
+    ttl: number = 90000,
+    options: LockOptions = {},
+  ): Promise<Lock | null> {
     if (!cache.isAvailable()) {
       logger.warn("[Distributed Locks] Service disabled, skipping lock acquisition");
       return this.createDummyLock(roomId, ttl);
@@ -112,17 +125,45 @@ export class DistributedLockService {
 
     logger.debug(`[Distributed Locks] Acquired lock ${lockId} for ${roomId} (TTL: ${ttl}ms)`);
 
+    const heartbeat = options.keepAlive ? this.startKeepAlive(roomId, lockId, ttl) : null;
     return {
       lockId,
       roomId,
       expiresAt: new Date(Date.now() + ttl),
       release: async () => {
+        heartbeat?.stop();
         await this.releaseRoomLock(roomId, lockId);
       },
       extend: async (ms) => {
         await this.extendLock(roomId, lockId, ms);
       },
     };
+  }
+
+  /** Extends the lock by one interval every third of its TTL; stops when ownership is lost. */
+  private startKeepAlive(roomId: string, lockId: string, ttl: number): { stop: () => void } {
+    const intervalMs = Math.max(Math.floor(ttl / 3), 50);
+    let renewing = false;
+    const timer = setInterval(() => {
+      if (renewing) return;
+      renewing = true;
+      this.extendLock(roomId, lockId, intervalMs)
+        .then((extended) => {
+          if (!extended) stop();
+        })
+        .catch((error: unknown) => {
+          logger.warn(`[Distributed Locks] Keep-alive for ${roomId} failed`, {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        })
+        .finally(() => {
+          renewing = false;
+        });
+    }, intervalMs);
+    // Node/Bun: do not keep the process alive for a heartbeat.
+    if (typeof timer === "object" && "unref" in timer) timer.unref();
+    const stop = () => clearInterval(timer);
+    return { stop };
   }
 
   /**

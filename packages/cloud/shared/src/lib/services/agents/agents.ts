@@ -279,11 +279,13 @@ class AgentsService {
   async sendMessage(input: SendMessageInput): Promise<AgentResponse> {
     const { roomId, message, streaming, attachments, characterId } = input;
 
-    // Acquire distributed lock with retry
+    // Acquire distributed lock with retry. The turn below (model call plus
+    // tools) can outlast the TTL, so the lock renews itself until released.
     const lock = await distributedLocks.acquireRoomLockWithRetry(roomId, 60000, {
       maxRetries: 10,
       initialDelayMs: 100,
       maxDelayMs: 2000,
+      keepAlive: true,
     });
 
     if (!lock) {
