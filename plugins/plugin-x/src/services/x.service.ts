@@ -296,8 +296,17 @@ export class TwitterClientInstance implements ITwitterClient {
       );
     }
 
+    // DM-only keeps the agent out of every public interaction below.
+    const dmOnly = parseBooleanFromText(
+      getSetting(runtime, "TWITTER_DM_ONLY") ?? process.env.TWITTER_DM_ONLY,
+    );
+    if (dmOnly) {
+      logger.info("Twitter DM-only mode: public interactions are DISABLED");
+    }
+
     // Mentions and interactions
     const repliesEnabled =
+      !dmOnly &&
       (getSetting(runtime, "TWITTER_ENABLE_REPLIES") ??
         process.env.TWITTER_ENABLE_REPLIES) !== "false";
 
@@ -331,6 +340,7 @@ export class TwitterClientInstance implements ITwitterClient {
 
     // Timeline actions (likes, retweets, replies)
     const actionsEnabled =
+      !dmOnly &&
       (getSetting(runtime, "TWITTER_ENABLE_ACTIONS") ??
         process.env.TWITTER_ENABLE_ACTIONS) === "true";
 
@@ -343,11 +353,12 @@ export class TwitterClientInstance implements ITwitterClient {
 
     // Discovery service for autonomous content discovery
     const discoveryEnabled =
-      (getSetting(runtime, "TWITTER_ENABLE_DISCOVERY") ??
+      !dmOnly &&
+      ((getSetting(runtime, "TWITTER_ENABLE_DISCOVERY") ??
         process.env.TWITTER_ENABLE_DISCOVERY) === "true" ||
-      (actionsEnabled &&
-        (getSetting(runtime, "TWITTER_ENABLE_DISCOVERY") ??
-          process.env.TWITTER_ENABLE_DISCOVERY) !== "false");
+        (actionsEnabled &&
+          (getSetting(runtime, "TWITTER_ENABLE_DISCOVERY") ??
+            process.env.TWITTER_ENABLE_DISCOVERY) !== "false"));
 
     if (discoveryEnabled) {
       logger.info("Twitter discovery service is ENABLED");
