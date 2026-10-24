@@ -5,7 +5,7 @@ import path from "node:path";
 /** Build selected distributions and archive only their verified artifacts.
  * Product hosts select identity, environment, admission commands and archive metadata.
  * Commands use argv without a shell. This does not sign, install or publish APKs.
- * A prepare step is an argv command, a function called with `{ root, environment }`, or
+ * A prepare step is an argv command, a synchronous function called with `{ root, environment }`, or
  * `{ gradleTasks }`: extra tasks added to the one Gradle invocation that builds the app.
  * `lint` and `androidTest` (default true) select `:app:lint` and the androidTest APKs. */
 export function buildAndroidConsumer({
@@ -51,7 +51,8 @@ export function buildAndroidConsumer({
     !isCommand(verify) ||
     prepare.some(
       (step) =>
-        typeof step !== "function" && !isCommand(step) && !isGradleStep(step),
+        typeof step !== "function" &&
+        (step?.gradleTasks ? !isGradleStep(step) : !isCommand(step)),
     )
   ) {
     throw new Error("Invalid Android admission command");

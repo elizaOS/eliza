@@ -198,6 +198,7 @@ test("lint and androidTest switches and in-run prepare steps shape the one Gradl
     [{ gradleTasks: [] }],
     [{ gradleTasks: ["--init-script=evil.gradle"] }],
     [{ gradleTasks: [":ok", 1] }],
+    [{ command: "sync", args: [], gradleTasks: ["--init-script=evil.gradle"] }],
   ]) {
     const g = fixture(t);
     g.options.prepare = prepare;
