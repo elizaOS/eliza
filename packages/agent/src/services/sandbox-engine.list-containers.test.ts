@@ -44,6 +44,8 @@ describe("sandbox engine container listing", () => {
   it("keeps an engine that reports no containers as an empty list", async () => {
     const binary = await writeFakeEngine("exit 0");
 
-    expect(__test__.listContainersFromBinary(binary, "eliza-sandbox")).toEqual([]);
+    expect(__test__.listContainersFromBinary(binary, "eliza-sandbox")).toEqual(
+      [],
+    );
   });
 });
