@@ -9,6 +9,8 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /** JVM fault suite for the OTA policy. Fake ports only: no Android, network,
  * signed-time authority or installer. */
@@ -31,7 +33,7 @@ public final class OtaPolicyTest {
 
  public static void main(String[] args)throws Exception{
   Path dir=Path.of(args[0]);
-  defaults();activitySignals();downloadGate();activationGate();rebootGate();window();ledger();store(dir);engine(dir);
+  defaults();activitySignals();downloadGate();activationGate();rebootGate();window();ledger();store(dir);engine(dir);concurrentJobs(dir);
   System.out.println("OtaPolicy: "+passed+" assertions passed");
  }
 
@@ -354,4 +356,28 @@ public final class OtaPolicyTest {
   plan=d.engine(P,ds).run(PolicyEngine.Job.ACTIVATION);
   same(d.calls,List.of(),"reset ledger starts with zero missed windows");check(plan.alert.reasons.contains("policy-state-reset"),"reset alert");
  }
+ static void concurrentJobs(Path dir)throws Exception {
+  CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1),attempted=new CountDownLatch(1),overlap=new CountDownLatch(1);
+  AtomicInteger calls=new AtomicInteger();
+  PolicyStore store=new PolicyStore(dir.resolve("engine/concurrent.properties"));
+  PolicyEngine engine=new PolicyEngine(P,store,()->T0,()->la(2026,10,15,14,0),()->ready().build(),permitted->{
+   if(calls.incrementAndGet()==1){entered.countDown();if(!release.await(5,TimeUnit.SECONDS))throw new AssertionError("first job not released");}
+   else overlap.countDown();
+   return PolicyEngine.Discovery.Result.CHECKED;
+  },()->null,id->PolicyEngine.Activation.Outcome.NOT_ENABLED,bound->0,()->false);
+  ExecutorService pool=Executors.newFixedThreadPool(2);
+  try {
+   Future<PolicyEngine.Plan> first=pool.submit(()->engine.run(PolicyEngine.Job.DISCOVERY));
+   check(entered.await(5,TimeUnit.SECONDS),"first job entered discovery");
+   Future<PolicyEngine.Plan> second=pool.submit(()->{attempted.countDown();return engine.run(PolicyEngine.Job.DOWNLOAD);});
+   check(attempted.await(5,TimeUnit.SECONDS),"second scheduled job attempted");
+   check(!overlap.await(200,TimeUnit.MILLISECONDS),"second job cannot dispatch while first owns ledger");
+   release.countDown();
+   same(first.get(5,TimeUnit.SECONDS).outcome,"discovery-checked","first job completes");
+   same(second.get(5,TimeUnit.SECONDS).outcome,"download-checked","queued job completes");
+   same(calls.get(),2,"both scheduled effects run once");
+   check(!store.load().resetPending,"serialized ledger remains readable");
+  } finally {release.countDown();pool.shutdownNow();}
+ }
+
 }

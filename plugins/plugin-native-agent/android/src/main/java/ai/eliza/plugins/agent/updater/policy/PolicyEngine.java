@@ -71,7 +71,9 @@ public final class PolicyEngine {
  /** 6 h +/- jitter. */
  public long nextDiscoveryDelay(){return policy.discoveryIntervalMillis-policy.discoveryJitterMillis+jitter.next(2*policy.discoveryJitterMillis+1);}
 
- public Plan run(Job job)throws IOException {
+ /** Serializes effects and the complete ledger transaction across scheduled jobs.
+  * Hosts must share one engine per ledger and keep other writers out. */
+ public synchronized Plan run(Job job)throws IOException {
   PolicyLedger ledger=store.load();
   Long now=signedLower();
   ZonedDateTime local=comfort.local();
