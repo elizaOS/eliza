@@ -132,9 +132,13 @@ const DEFAULT_IMAGE_TITLE = "Image Analysis";
 // A genuine title line must be the first non-blank content the model emitted,
 // e.g. "Title: <text>". Anchoring to the start prevents a mid-sentence mention
 // of the word "title" (books, posters, signs, UI screenshots) from hijacking
-// the split and truncating the description the agent reasons over.
-const LEADING_TITLE_LINE = /^\s*title\s*[:-]\s*(.*?)(?:\r?\n|$)/i;
-const LEADING_DESCRIPTION_LABEL = /^\s*description\s*[:-]\s*/i;
+// the split and truncating the description the agent reasons over. Vision
+// models answer "**Title:** <text>" as often as the plain form, so the labels
+// accept optional bold markers and the title text drops them (the same
+// contract the elizacloud image parser implements).
+const LEADING_TITLE_LINE = /^\s*(?:\*\*)?title(?:\*\*)?\s*[:-]\s*(.*?)(?:\r?\n|$)/i;
+const LEADING_DESCRIPTION_LABEL =
+  /^\s*(?:\*\*description\*\*\s*[:-]\s*|\*\*description\s*[:-]\*\*\s*|\*\*description\*\*\s+|description\s*[:-]\s*)/i;
 
 /**
  * Splits a vision model's reply into a `{ title, description }` pair. The
@@ -155,7 +159,7 @@ function parseImageDescriptionResponse(content: string): {
     return { title: DEFAULT_IMAGE_TITLE, description: trimmed };
   }
 
-  const titleText = titleLine[1]?.trim() ?? "";
+  const titleText = (titleLine[1] ?? "").replace(/\*\*/g, "").trim();
   const remainder = trimmed.slice(titleLine[0].length).trim();
 
   if (remainder.length > 0) {
