@@ -3,6 +3,10 @@ export interface ReputationFeed {
   id: string;
   url: string;
   source: string;
+  /** Shown beside the feed on the warning and licenses pages. */
+  homepage?: string;
+  /** Licence notice file under `protection/licenses/`; the build requires it. */
+  notice?: string;
   license?: string;
   licenseUrl?: string;
   threats: readonly string[];
