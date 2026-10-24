@@ -5,7 +5,11 @@ import {
   SURFACE_CHANNEL_PATHS,
   SurfaceChannelError,
 } from "./surface-channel.mjs";
+import { TASK_ID_PATTERN } from "./task-id.mjs";
 
+const taskEventsPath = new RegExp(
+  `^/tasks/${TASK_ID_PATTERN.source.slice(1, -1)}/events$`,
+);
 const MAX_BODY = 64 * 1024;
 const uuid =
   "[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}";
@@ -238,10 +242,7 @@ export function createLocalAgentGateway({
         await persist();
       }
       const taskEventRead =
-        req.method === "GET" &&
-        /^\/tasks\/[A-Za-z0-9][A-Za-z0-9_.:@-]{0,255}\/events$/.test(
-          url.pathname,
-        );
+        req.method === "GET" && taskEventsPath.test(url.pathname);
       if (url.search && !url.pathname.startsWith("/cloud/") && !taskEventRead)
         return json(res, 400, { error: message("error10") });
       if (SURFACE_CHANNEL_PATHS.has(url.pathname)) {
