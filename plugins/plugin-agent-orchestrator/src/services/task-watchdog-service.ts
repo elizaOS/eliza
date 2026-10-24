@@ -364,7 +364,13 @@ export class TaskWatchdogService extends Service {
       if (this.warned.has(key)) continue; // already warned this approach
       this.warned.add(key);
       try {
-        await this.postCapWarning(warning, metaById.get(warning.id));
+        // "Warned" means the originating room received the message. A tick that
+        // could not deliver (no send handler bound yet, or the session has no
+        // chat origin) must not spend the one-time warning: the session is still
+        // approaching its cap, so the key stays pending for a later tick.
+        if (!(await this.postCapWarning(warning, metaById.get(warning.id)))) {
+          this.warned.delete(key);
+        }
       } catch (error) {
         // error-policy:J7 watchdog loop must survive a single failed warning delivery; the failure is warned and retried next tick
         // Delivery failed; un-mark so the next tick retries.
@@ -378,14 +384,15 @@ export class TaskWatchdogService extends Service {
     }
   }
 
+  /** Post one cap warning. Returns false when this tick has nowhere to deliver. */
   private async postCapWarning(
     warning: CapWarning,
     metadata: Record<string, unknown> | undefined,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const send = (this.runtime as RuntimeWithSendTarget).sendMessageToTarget;
-    if (typeof send !== "function") return;
+    if (typeof send !== "function") return false;
     const origin = resolveOrigin(metadata);
-    if (!origin) return; // no chat origin — nothing to warn into
+    if (!origin) return false; // no chat origin — nothing to warn into
     const text = composeCapWarning(warning, sessionLabel(metadata));
     requireConfirmedSendHandlerDelivery(
       await send(
@@ -398,6 +405,7 @@ export class TaskWatchdogService extends Service {
         warning.ratio * 100,
       )}%) — warning room ${origin.roomId}`,
     );
+    return true;
   }
 
   async stop(): Promise<void> {
