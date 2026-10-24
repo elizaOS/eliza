@@ -383,6 +383,25 @@ export function isLoginPasskeyAlreadyRegisteredError(
 
 // ─── LoginAuth ──────────────────────────────────────────────────────────────
 
+/**
+ * How a session rotation reports a call that never produced a verdict on the
+ * stored refresh token (network failure, timeout, 429 or 5xx).
+ *
+ * `"throw"` is used by `refreshSession()`, whose documented contract is
+ * "null == no token, or token rejected"; `"null"` keeps the best-effort callers
+ * (`switchTenant` and the background refresh kicked off by `getToken`) on their
+ * existing "any failure means no new session" behaviour.
+ */
+type CallFailurePolicy = "throw" | "null";
+
+/**
+ * 429 / 5xx answers carry no verdict on the refresh token — the request never
+ * reached the auth logic that inspects it. 400/401/403 do: the token is refused.
+ */
+function statusDefersTokenVerdict(status: number): boolean {
+  return status === 429 || status >= 500;
+}
+
 export class LoginAuth {
   private readonly baseUrl: string;
   private readonly storage: SessionStorage;
@@ -689,14 +708,22 @@ export class LoginAuth {
   /**
    * Exchange the stored refresh token for a new access token + rotated refresh token.
    * Stores both tokens and notifies session listeners.
-   * Returns the new session, or null if the refresh token is missing or invalid.
+   *
+   * Returns null only when there is no refresh token or the login API answered
+   * with a verdict on it (malformed / rejected → sign-out). Rejects with
+   * {@link LoginApiError} when the call never completed — network failure,
+   * timeout, rate limit or 5xx — because that says nothing about the stored
+   * credential: the previous session and refresh token must survive so a retry
+   * can succeed instead of the caller treating an outage as "signed out".
    */
   async refreshSession(): Promise<LoginSession | null> {
     // Refresh tokens rotate on every use and replay detection revokes the token
     // family. Coalesce near-expiry callers so one client instance never sends
     // the same one-time token more than once concurrently.
     if (this.refreshPromise) return this.refreshPromise;
-    const refresh = this.runSerializedRotation(() => this.rotateSession());
+    const refresh = this.runSerializedRotation(() =>
+      this.rotateSession(undefined, "throw"),
+    );
     this.refreshPromise = refresh;
     const clear = () => {
       if (this.refreshPromise === refresh) this.refreshPromise = null;
@@ -708,6 +735,7 @@ export class LoginAuth {
   private async refreshDirect(
     tenantId: string | undefined,
     generation: number,
+    onCallFailure: CallFailurePolicy,
   ): Promise<LoginSession | null> {
     const refreshToken = this.getRefreshToken();
     if (!refreshToken) return null;
@@ -725,13 +753,18 @@ export class LoginAuth {
           }),
         },
       );
-    } catch {
+    } catch (error) {
+      if (onCallFailure === "throw") throw error;
       return null;
     }
 
     if (!res.ok) {
       if (res.status === 401) {
         this.signOut();
+        return null;
+      }
+      if (onCallFailure === "throw" && statusDefersTokenVerdict(res.status)) {
+        throw new LoginApiError(res.error, res.status);
       }
       return null;
     }
@@ -2594,6 +2627,7 @@ export class LoginAuth {
     tenantId: string | undefined,
     generation: number,
     logoutEpoch: string | null,
+    onCallFailure: CallFailurePolicy,
   ): Promise<LoginSession | null> {
     const proxyUrl = this.authProxyUrl;
     if (!proxyUrl) return null;
@@ -2605,13 +2639,18 @@ export class LoginAuth {
         headers: AUTH_PROXY_HEADERS,
         body: JSON.stringify(tenantId ? { tenantId } : {}),
       });
-    } catch {
+    } catch (error) {
+      if (onCallFailure === "throw") throw error;
       return null;
     }
 
     if (!res.ok) {
       if (res.status === 401) {
         this.signOut();
+        return null;
+      }
+      if (onCallFailure === "throw" && statusDefersTokenVerdict(res.status)) {
+        throw new LoginApiError(res.error, res.status);
       }
       return null;
     }
@@ -2640,7 +2679,10 @@ export class LoginAuth {
    * a waiting tab therefore sends the newly rotated cookie after its predecessor
    * completes instead of replaying the predecessor's one-time token.
    */
-  private async rotateSession(tenantId?: string): Promise<LoginSession | null> {
+  private async rotateSession(
+    tenantId?: string,
+    onCallFailure: CallFailurePolicy = "null",
+  ): Promise<LoginSession | null> {
     const generation = this.sessionGeneration;
     if (this.authProxyUrl) {
       // Cookie rotation is safe only with both an origin-wide lock and a shared
@@ -2656,10 +2698,15 @@ export class LoginAuth {
         ) {
           return null;
         }
-        return this.refreshViaProxy(tenantId, generation, logoutEpoch);
+        return this.refreshViaProxy(
+          tenantId,
+          generation,
+          logoutEpoch,
+          onCallFailure,
+        );
       });
     }
-    return this.refreshDirect(tenantId, generation);
+    return this.refreshDirect(tenantId, generation, onCallFailure);
   }
 
   /** Serialize every one-time refresh-token mutation within this instance. */
