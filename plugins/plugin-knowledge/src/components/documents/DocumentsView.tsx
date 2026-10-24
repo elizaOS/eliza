@@ -184,11 +184,31 @@ function toCard(document: PresentedDocument): DocumentCard {
 
 const SNIPPET_MAX = 100;
 
+/**
+ * Cut a long search fragment to `maxLength` code units without splitting a
+ * surrogate pair. A bare `slice` can land between the halves of an emoji and
+ * leave a lone high surrogate, which the search row renders as U+FFFD — the
+ * same boundary the document label guards in `document-presenter.ts`
+ * (`truncateLabel`). Back off one code unit only when the cut really splits a
+ * pair, so every other fragment keeps its current output.
+ */
+function truncateSnippet(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  const boundary = value.charCodeAt(maxLength - 1);
+  const next = value.charCodeAt(maxLength);
+  const splitsSurrogatePair =
+    boundary >= 0xd800 &&
+    boundary <= 0xdbff &&
+    next >= 0xdc00 &&
+    next <= 0xdfff;
+  return value.slice(0, splitsSurrogatePair ? maxLength - 1 : maxLength);
+}
+
 function toHit(result: DocumentSearchResultWire): DocumentSearchHit {
   const trimmed = result.text.trim();
   const snippet =
     trimmed.length > SNIPPET_MAX
-      ? `${trimmed.slice(0, SNIPPET_MAX - 1)}…`
+      ? `${truncateSnippet(trimmed, SNIPPET_MAX - 1)}…`
       : trimmed;
   return {
     id: result.id,

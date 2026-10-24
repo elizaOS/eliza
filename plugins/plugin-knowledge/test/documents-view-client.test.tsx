@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DocumentsSnapshot } from "../src/components/documents/DocumentsSpatialView.tsx";
 
 const snapshots: DocumentsSnapshot[] = [];
+const onActionHandlers: Array<(action: string) => void> = [];
 const clientFetch = vi.hoisted(() => vi.fn());
 
 vi.mock("@elizaos/ui", () => ({
@@ -28,8 +29,12 @@ vi.mock("@elizaos/ui", () => ({
 }));
 
 vi.mock("../src/components/documents/DocumentsSpatialView.tsx", () => ({
-  DocumentsSpatialView: (props: { snapshot: DocumentsSnapshot }) => {
+  DocumentsSpatialView: (props: {
+    snapshot: DocumentsSnapshot;
+    onAction?: (action: string) => void;
+  }) => {
     snapshots.push(props.snapshot);
+    if (props.onAction) onActionHandlers.push(props.onAction);
     return null;
   },
 }));
@@ -71,6 +76,7 @@ beforeEach(() => {
     globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
   ).IS_REACT_ACT_ENVIRONMENT = true;
   snapshots.length = 0;
+  onActionHandlers.length = 0;
   clientFetch.mockReset();
   clientFetch.mockImplementation(async (path: string) =>
     path.startsWith("/api/documents/stats") ? STATS_WIRE : LIST_WIRE,
@@ -113,5 +119,52 @@ describe("DocumentsView default fetchers", () => {
       { method: "GET", signal: expect.any(AbortSignal) },
       { timeoutMs: 15_000 },
     );
+  });
+});
+
+describe("DocumentsView search snippet truncation", () => {
+  // A search fragment whose 99th code unit (SNIPPET_MAX - 1) is the high half
+  // of an emoji. A bare slice leaves a lone high surrogate; the documents view
+  // renders it as U+FFFD, exactly like document-presenter truncateLabel guards.
+  const EMOJI_STRADDLING_THE_CUT = `${"a".repeat(98)}🤖${"b".repeat(20)}`;
+
+  it("never ends a snippet in the middle of a surrogate pair", async () => {
+    await act(async () => {
+      root.render(
+        <DocumentsView
+          fetchers={{
+            fetchDocuments: async () => LIST_WIRE,
+            fetchStats: async () => STATS_WIRE,
+            fetchSearch: async () => ({
+              query: "q",
+              threshold: 0.5,
+              count: 1,
+              results: [
+                {
+                  id: "frag-1",
+                  text: EMOJI_STRADDLING_THE_CUT,
+                  documentTitle: "notes.md",
+                },
+              ],
+            }),
+          }}
+        />,
+      );
+    });
+
+    const onAction = onActionHandlers.at(-1);
+    expect(onAction).toBeDefined();
+    await act(async () => {
+      onAction?.("search:q");
+    });
+
+    const search = snapshots.at(-1)?.search;
+    expect(search?.kind).toBe("results");
+    const snippet =
+      search?.kind === "results" ? (search.hits[0]?.snippet ?? "") : "";
+
+    expect(snippet.endsWith("…")).toBe(true);
+    // No unpaired high surrogate may survive the cut.
+    expect(snippet).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
   });
 });
