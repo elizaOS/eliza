@@ -2444,6 +2444,71 @@ it("scopes room updates, upserts and deletes to the adapter agent", async () => 
   expect(await storage.get("memories", danglingMemoryId)).toBeTruthy();
 });
 
+it("keeps another agent's memories out of getMemoriesByRoomIds", async () => {
+  const adapter = await open();
+  await adapter.ensureEmbeddingDimension(3);
+  const otherAgentId = id();
+  const ownRoomId = id();
+  const otherRoomId = id();
+
+  await adapter.createRooms([
+    { id: ownRoomId, agentId, source: "test", type: ChannelType.DM },
+  ]);
+  const ownMemory = { ...memory("own memory"), roomId: ownRoomId };
+  await adapter.createMemories([{ memory: ownMemory, tableName: "messages" }]);
+
+  // Simulate a restored file carrying another agent's room and memories:
+  // plugin-sql scopes getMemoriesByRoomIds with agent_id = this.agentId, so
+  // none of the foreign rows may surface, wherever they sit.
+  const storage = await adapter.getConnection();
+  await storage.set("rooms", otherRoomId, {
+    id: otherRoomId,
+    agentId: otherAgentId,
+    source: "test",
+    type: ChannelType.DM,
+  });
+  const seedForeign = async (roomIdForRow: UUID, text: string) => {
+    const foreignId = id();
+    await storage.set("memories", foreignId, {
+      id: foreignId,
+      agentId: otherAgentId,
+      entityId,
+      roomId: roomIdForRow,
+      content: { text },
+      createdAt: Date.now(),
+      tableName: "messages",
+    });
+    return foreignId;
+  };
+  await seedForeign(otherRoomId, "foreign memory in foreign room");
+  await seedForeign(ownRoomId, "foreign memory in own room");
+  const foreignOrphanRoomId = id();
+  await seedForeign(foreignOrphanRoomId, "foreign memory in room-less row");
+
+  // An own memory whose room row is absent stays visible: plugin-sql's
+  // agent predicate passes it and its room filter is by id list only.
+  const ownOrphanRoomId = id();
+  const ownOrphanId = id();
+  await storage.set("memories", ownOrphanId, {
+    id: ownOrphanId,
+    agentId,
+    entityId,
+    roomId: ownOrphanRoomId,
+    content: { text: "own memory in room-less row" },
+    createdAt: Date.now(),
+    tableName: "messages",
+  });
+
+  const rows = await adapter.getMemoriesByRoomIds({
+    roomIds: [ownRoomId, otherRoomId, foreignOrphanRoomId, ownOrphanRoomId],
+    tableName: "messages",
+  });
+  expect(rows.map((row) => row.content.text).sort()).toEqual([
+    "own memory",
+    "own memory in room-less row",
+  ]);
+});
+
 it("scopes log reads and mutations to the adapter agent", async () => {
   const adapter = await open();
   const otherAgentId = id();
