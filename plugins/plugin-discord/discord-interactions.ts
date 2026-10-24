@@ -36,7 +36,10 @@ import {
 	buildDiscordEntityMetadata,
 	buildDiscordWorldMetadata,
 } from "./identity";
-import { buildDiscordReplyPayload } from "./interactions";
+import {
+	buildDiscordReplyPayload,
+	type DiscordInteractionRender,
+} from "./interactions";
 import { chunkDiscordText } from "./messaging";
 import { generateInviteUrl } from "./permissions";
 import { syncDiscordClientProfile } from "./profileSync";
@@ -49,11 +52,7 @@ import {
 	type DiscordSlashCommand,
 	type DiscordSlashCommandPayload,
 } from "./types";
-import {
-	buildDiscordComponents,
-	getMessageService,
-	sendMessageInChunks,
-} from "./utils";
+import { buildDiscordComponents, getMessageService } from "./utils";
 
 /**
  * Subset of DiscordService fields needed by interaction handling.
@@ -281,59 +280,8 @@ export async function handleInteractionCreate(
 			}
 			const callback: HandlerCallback = async (content) => {
 				const render = buildDiscordReplyPayload(service.runtime, content);
-				const components =
-					render.components.length > 0
-						? buildDiscordComponents(render.components)
-						: undefined;
-				const chunks = render.text.trim() ? chunkDiscordText(render.text) : [];
-				// A user-installed app in a group DM / DM-with-others is NOT a
-				// channel member, so `channel.send` is unavailable — the button
-				// reply must ride the interaction token via followUp (the button
-				// was already deferUpdate'd above, so followUp posts a new
-				// message). Buttons attach to the LAST chunk. Fall back to
-				// channel.send only when there is no usable interaction (should
-				// not happen for a component interaction).
-				if (chunks.length === 0 && !components) {
-					return [];
-				}
-				const lastIndex = Math.max(0, chunks.length - 1);
-				try {
-					if (chunks.length === 0 && components) {
-						await interaction.followUp({ content: "​", components });
-					}
-					for (let i = 0; i < chunks.length; i++) {
-						await interaction.followUp({
-							content: chunks[i],
-							...(components && i === lastIndex ? { components } : {}),
-						});
-					}
-					return [];
-				} catch (error) {
-					// error-policy:J1 interaction delivery failed (token expired or
-					// missing) — fall back to a channel send where the bot can.
-					const channel = interaction.channel as TextChannel | null;
-					if (channel && typeof channel.send === "function") {
-						await sendMessageInChunks(
-							channel,
-							render.text,
-							"",
-							[],
-							render.components.length > 0 ? render.components : undefined,
-							service.runtime,
-						);
-					} else {
-						service.runtime.logger.warn(
-							{
-								src: "plugin:discord",
-								agentId: service.runtime.agentId,
-								customId: interaction.customId,
-								error: error instanceof Error ? error.message : String(error),
-							},
-							"Button-reply delivery failed and no channel send is available",
-						);
-					}
-					return [];
-				}
+				await deliverInteractionReply(interaction, render, service.runtime);
+				return [];
 			};
 			const messageService = getMessageService(service.runtime);
 			if (messageService) {
@@ -783,5 +731,69 @@ export async function onReady(
 
 	if (service.client) {
 		service.client.emit("voiceManagerReady");
+	}
+}
+
+/** The parts of a component interaction a button reply needs. */
+export type InteractionReplyTarget = Pick<
+	MessageComponentInteraction,
+	"customId" | "channel" | "followUp"
+>;
+
+/**
+ * Sends a button reply. A user-installed app in a group DM / DM-with-others is
+ * NOT a channel member, so `channel.send` is unavailable — the reply must ride
+ * the interaction token via followUp (the button was already deferUpdate'd, so
+ * followUp posts a new message). Buttons attach to the LAST chunk. When the
+ * token fails part way (expired or missing), only the parts the interaction
+ * did not deliver go out through the channel, so the user never sees a part
+ * twice.
+ */
+export async function deliverInteractionReply(
+	interaction: InteractionReplyTarget,
+	render: Pick<DiscordInteractionRender, "text" | "components">,
+	runtime: DiscordService["runtime"],
+): Promise<void> {
+	const components =
+		render.components.length > 0
+			? buildDiscordComponents(render.components)
+			: undefined;
+	const chunks = render.text.trim() ? chunkDiscordText(render.text) : [];
+	if (chunks.length === 0 && !components) return;
+	// A components-only reply is one message with a zero-width body.
+	const parts = chunks.length > 0 ? chunks : ["\u200b"];
+	const lastIndex = parts.length - 1;
+	const message = (index: number) => ({
+		content: parts[index],
+		...(components && index === lastIndex ? { components } : {}),
+	});
+	let delivered = 0;
+	try {
+		for (; delivered < parts.length; delivered++) {
+			await interaction.followUp(message(delivered));
+		}
+	} catch (error) {
+		// error-policy:J1 interaction delivery failed (token expired or
+		// missing) — fall back to a channel send where the bot can.
+		const channel = interaction.channel as TextChannel | null;
+		if (channel && typeof channel.send === "function") {
+			for (let index = delivered; index < parts.length; index++) {
+				await channel.send(
+					message(index) as Parameters<TextChannel["send"]>[0],
+				);
+			}
+		} else {
+			runtime.logger.warn(
+				{
+					src: "plugin:discord",
+					agentId: runtime.agentId,
+					customId: interaction.customId,
+					delivered,
+					total: parts.length,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"Button-reply delivery failed and no channel send is available",
+			);
+		}
 	}
 }
