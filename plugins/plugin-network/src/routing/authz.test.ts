@@ -264,3 +264,44 @@ describe("Network weekday with next week", () => {
     }
   });
 });
+
+describe("Network back the date", () => {
+  it("ends a stay on the date after 'back the', as authz reads it", () => {
+    const now = new Date("2026-10-19T15:00:00Z"); // Monday
+    for (const [proposal, text, until] of [
+      [
+        { state: "paused", until: null, evidence: "Pause intros" },
+        "Pause intros, back the 5th",
+        "2026-11-05",
+      ],
+      [
+        { state: "traveling", until: null, evidence: "I'm in Lisbon" },
+        "I'm in Lisbon, back the 12th",
+        "2026-11-12",
+      ],
+      // The member's own date wins over a wrong model date.
+      [
+        { state: "paused", until: "2026-10-25", evidence: "Pause intros" },
+        "Pause intros, back the 5th",
+        "2026-11-05",
+      ],
+      // The preposition forms already resolved.
+      [
+        { state: "paused", until: null, evidence: "Pause intros" },
+        "Pause intros, back on the 5th",
+        "2026-11-05",
+      ],
+    ] as const) {
+      assert.deepEqual(
+        authorizeSetState(proposal, text, now),
+        {
+          allowed: true,
+          state: proposal.state,
+          from: null,
+          until: `${until}T00:00:00.000Z`,
+        },
+        text,
+      );
+    }
+  });
+});
