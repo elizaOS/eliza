@@ -516,6 +516,17 @@ repair unrelated role policy. SDK AVD admission is unchanged. Caller ownership
 is an explicit assertion, not inferred from a loopback address, and this lane
 proves only the selected APK scenarios, not product-image or live integrations.
 
+A third lane admits one owner-approved physical development device: omit
+`expectedAvdName` and supply `developmentDevice: {ownerApproved: true, model,
+fingerprint}` with the exact `ro.product.model` and `ro.build.fingerprint`. The
+adb serial must be the device's `ro.serialno`. The device must not be an emulator,
+must have finished booting, enforce SELinux and run owner user 0 in front. The
+runner pins the boot ID as for Cuttlefish. Because the device is not reset after
+the run, it also records font scale, screen-off timeout, airplane mode, Wi-Fi
+and mobile data, and fails when one changed, as it does for HOME and the browser
+role. A caller that changes one must restore it. This lane is development-device
+evidence only, not release hardware, a product image or user acceptance.
+
 `buildConsumerAndroidRuntime` accepts `targetAbi: "x86_64"` for an emulator or
 Cuttlefish bundle; the default remains `"arm64-v8a"`. The reviewed upstream stager
 selects the matching Bun, musl loader and libraries, and the consumer builder
