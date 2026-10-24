@@ -41,6 +41,21 @@ test("existing-host observer exception accepts only the reviewed manual job", ()
     assert.doesNotThrow(() => check(() => {}));
     for (const mutate of [
       (workflow) => {
+        job(workflow).steps.push({ uses: "actions/checkout@v4" });
+      },
+      (workflow) => {
+        job(workflow).steps[0].run += "\necho changed";
+      },
+      (workflow) => {
+        workflow.permissions = { contents: "write" };
+      },
+      (workflow) => {
+        workflow.env = { TOKEN: "$" + "{{ secrets.TEST_TOKEN }}" };
+      },
+      (workflow) => {
+        job(workflow)["timeout-minutes"] = 30;
+      },
+      (workflow) => {
         delete job(workflow).if;
       },
       (workflow) => {

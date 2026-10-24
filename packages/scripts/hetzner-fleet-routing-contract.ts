@@ -5,6 +5,7 @@
  * variables, so an empty value must fail safely to GitHub-hosted runners.
  */
 
+import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -92,6 +93,10 @@ const NATIVE_RELEASE_WORKFLOWS = {
 // Any change to its guard, environment or labels needs a new review here.
 const EXISTING_HOST_OBSERVERS = {
   "cloud-existing-runner-qualification.yml": {
+    // Pin parsed workflow content, including steps, permissions, inputs and env.
+    // Comments/formatting do not matter; an execution change needs review.
+    contentSha256:
+      "d6a1c246ccc66d6f4328f266e8ac07e4cf731a4a3f9054f53a62d15f122b4c7b",
     job: "qualify-existing-host",
     if: `${EXPRESSION_OPEN} github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.run_attempt == 1 }}`,
     environment: "production",
@@ -207,6 +212,9 @@ export function validateHetznerFleetRouting(repoRoot) {
     const observerJob = observer && jobs?.[observer.job];
     const observerRoute =
       observerJob &&
+      createHash("sha256")
+        .update(JSON.stringify(document.toJS()))
+        .digest("hex") === observer.contentSha256 &&
       Object.keys(document.toJS().on ?? {}).join() === "workflow_dispatch" &&
       observerJob.if === observer.if &&
       observerJob.environment === observer.environment &&
