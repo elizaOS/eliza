@@ -8,6 +8,7 @@ describe("scoreEndOfTurnHeuristic", () => {
       "I was going to call my daughter and.",
       "Can you call my son because.",
       "Um.",
+      "I want to buy a.",
     ]) {
       expect(scoreEndOfTurnHeuristic(text), text).toBeLessThan(0.5);
       expect(scoreEndOfTurnHeuristic(text)).toBe(
@@ -49,6 +50,10 @@ describe("scoreEndOfTurnHeuristic", () => {
       "At one point.",
       "She scored one point.",
       "We won by 1 point.",
+      // a capital "A" is the letter, not a dangling article
+      "I'd like option A.",
+      "I'll take vitamin A.",
+      "A.",
       // a full-stopped question tag
       "Right.",
       "That's right.",
@@ -58,6 +63,7 @@ describe("scoreEndOfTurnHeuristic", () => {
       expect(scoreEndOfTurnHeuristic(text), text).toBe(0.95);
     }
     expect(scoreEndOfTurnHeuristic("What time is it?")).toBe(0.95);
+    expect(scoreEndOfTurnHeuristic(".")).toBe(0.95);
   });
 
   it("keeps listening through a trailing ellipsis", () => {
@@ -74,6 +80,9 @@ describe("scoreEndOfTurnHeuristic", () => {
       "It came to zero point",
       "It came to one point",
       "That's twenty-one point.",
+      "That's twenty one point.",
+      "It came to 20 1 point.",
+      "It was a hundred one point.",
     ]) {
       expect(scoreEndOfTurnHeuristic(text), text).toBe(0.2);
     }

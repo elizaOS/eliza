@@ -108,7 +108,8 @@ const NEVER_SENTENCE_FINAL = new Set([
 /**
  * A decimal point needs a preceding number, unlike "that's the point". "One
  * point" is also a finished phrase ("at one point", "won by one point"), so it
- * only reads as a decimal without a full stop.
+ * only reads as a decimal without a full stop or after another number word
+ * ("twenty one point").
  */
 const NUMBER_BEFORE_POINT =
   /^(?:\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:-(?:one|two|three|four|five|six|seven|eight|nine))?|hundred|thousand|million|billion)$/;
@@ -200,21 +201,28 @@ export function scoreEndOfTurnHeuristic(transcript: string): number {
   // A final full stop is often the recognizer's, not the speaker's, so it is
   // set aside here and weighed against the last word below.
   const fullStop = text.endsWith(".");
-  const lower = (fullStop ? text.slice(0, -1).trimEnd() : text).toLowerCase();
+  const body = fullStop ? text.slice(0, -1).trimEnd() : text;
   // An amount cut off mid-number ("1,", "$") — before the words lose punctuation.
-  if (/(\d,|\$)$/.test(lower)) return 0.2;
-  const words = lower
+  if (/(\d,|\$)$/.test(body)) return 0.2;
+  const words = body
     .replace(/[^a-z0-9'\s-]/gi, "")
     .split(/\s+/)
-    .filter(Boolean);
-  if (words.length === 0) return 0.5;
+    .filter(Boolean)
+    // A capital "A" is the letter ("option A", "vitamin A"), not the article.
+    .map((word) => (word === "A" ? word : word.toLowerCase()));
+  if (words.length === 0) return fullStop ? 0.95 : 0.5;
   const lastWord = trimEndCharacters(words[words.length - 1], "',;:-");
   // A decimal point cut off before its digits ("45 point", "one point").
+  // "One point" alone is finished, but not as the end of "twenty one point".
   const beforeLast = words.at(-2) ?? "";
   if (
     lastWord === "point" &&
     NUMBER_BEFORE_POINT.test(beforeLast) &&
-    !(fullStop && (beforeLast === "one" || beforeLast === "1"))
+    !(
+      fullStop &&
+      (beforeLast === "one" || beforeLast === "1") &&
+      !NUMBER_BEFORE_POINT.test(words.at(-3) ?? "")
+    )
   )
     return 0.2;
   if (fullStop && !NEVER_SENTENCE_FINAL.has(lastWord)) return 0.95;
