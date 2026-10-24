@@ -16,6 +16,7 @@ import {
   createUniqueUuid,
   ElizaError,
   type Entity,
+  type EventPayload,
   EventType,
   type IAgentRuntime,
   logger,
@@ -1046,6 +1047,31 @@ export class TelegramService extends Service {
   }
 
   /**
+   * Emits an observer event and reports a rejected listener.
+   *
+   * The bot update is already applied. Event listeners are observers, so a
+   * rejected listener must not become an unhandled rejection that stops the
+   * process.
+   */
+  private emitObserved(
+    scope: string,
+    event: string,
+    payload: EventPayload,
+    context: Record<string, unknown>,
+  ): void {
+    const reportFailure = (error: unknown) => {
+      // error-policy:J7 The update is already applied. Report the observer
+      // failure instead of making the accepted update look retryable.
+      this.runtime.reportError(scope, error, context);
+    };
+    try {
+      void this.runtime.emitEvent(event, payload).catch(reportFailure);
+    } catch (error) {
+      reportFailure(error);
+    }
+  }
+
+  /**
    * Registers the `/start` handler and
    * the task-board command on a freshly created Telegraf instance. Called
    * exactly once per bot (see {@link TelegramAccountRuntime.wiring}).
@@ -1063,9 +1089,11 @@ export class TelegramService extends Service {
         accountId,
         metadata: { accountId },
       };
-      this.runtime.emitEvent(
+      this.emitObserved(
+        "TelegramService.emitSlashStart",
         TelegramEventTypes.SLASH_START as string,
         slashStartPayload,
+        { accountId },
       );
     });
 
@@ -1875,9 +1903,11 @@ export class TelegramService extends Service {
           accountId: string;
           metadata: { accountId: string };
         };
-        this.runtime.emitEvent(
+        this.emitObserved(
+          "TelegramService.emitEntityJoined",
           TelegramEventTypes.ENTITY_JOINED,
           entityJoinedPayload,
+          { accountId, entityId },
         );
       }
     }
