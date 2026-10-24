@@ -1849,6 +1849,42 @@ it("reports an existing entity id as created without overwriting another agent's
   });
 });
 
+it("keeps an existing memory when a create reuses its id, like plugin-sql", async () => {
+  const adapter = await open();
+  const memoryId = id();
+  await adapter.createMemories([
+    {
+      memory: {
+        ...memory("original text"),
+        id: memoryId,
+        createdAt: 1_700_000_000_000,
+        embedding: undefined,
+      },
+      tableName: "messages",
+    },
+  ]);
+
+  // plugin-sql inserts with ON CONFLICT DO NOTHING: the stored row wins and
+  // every requested id is still reported as created.
+  expect(
+    await adapter.createMemories([
+      {
+        memory: {
+          ...memory("rewritten text"),
+          id: memoryId,
+          createdAt: 1_700_000_000_500,
+          embedding: undefined,
+        },
+        tableName: "messages",
+      },
+    ]),
+  ).toEqual([memoryId]);
+
+  const [stored] = await adapter.getMemoriesByIds([memoryId], "messages");
+  expect(stored.content.text).toBe("original text");
+  expect(stored.createdAt).toBe(1_700_000_000_000);
+});
+
 it("keeps another agent's worlds out of listing, updates, and metadata swaps", async () => {
   const adapter = await open();
   const ownedId = id();
