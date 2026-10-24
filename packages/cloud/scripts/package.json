@@ -23,6 +23,8 @@
     "sms-gateway:verify:cloud-prod": "node ./gateway/verify-cloud-api-production-deploy.ts"
   },
   "devDependencies": {
-    "playwright": "^1.64.1"
+    "playwright": "^1.64.1",
+    "@types/pg": "8.23.1",
+    "pg": "8.23.1"
   }
 }

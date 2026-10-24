@@ -233,6 +233,24 @@ describe.skipIf(!ENABLED)(
         "function guard_subscription_grant_record",
       ));
 
+    test("refuses a disabled already-effective trigger", () =>
+      expectRefused(
+        "ALTER TABLE subscription_grants DISABLE TRIGGER subscription_grants_immutable",
+        "trigger subscription_grants.subscription_grants_immutable",
+      ));
+
+    test("refuses a changed function security mode", () =>
+      expectRefused(
+        "ALTER FUNCTION guard_subscription_grant_record() SECURITY DEFINER",
+        "function guard_subscription_grant_record",
+      ));
+
+    test("refuses an unexpected constraint on an already-effective table", () =>
+      expectRefused(
+        "ALTER TABLE subscription_grants ADD CONSTRAINT unexpected_check CHECK (false) NOT VALID",
+        "constraint subscription_grants.unexpected_check",
+      ));
+
     test("a late failure rolls back the ledger rows and the id sequence", async () => {
       // 0545 creates this table unconditionally, after ~140 new receipts.
       const client = await clone(

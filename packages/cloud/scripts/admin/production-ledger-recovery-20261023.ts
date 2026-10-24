@@ -106,26 +106,30 @@ export const EFFECT_FINGERPRINT_SQL = `SELECT 'column' AS kind, c.relname || '.'
     AND (c.relname IN (${list(EFFECT_TABLES)})
       OR (c.relname, a.attname) IN (${EFFECT_COLUMNS.map(([t, c]) => `('${t}','${c}')`).join(",")}))
 UNION ALL
-SELECT 'constraint', c.relname || '.' || con.conname, pg_get_constraintdef(con.oid)
+SELECT 'constraint', c.relname || '.' || con.conname, pg_get_constraintdef(con.oid) || ' validated:' || con.convalidated
   FROM pg_constraint con
   JOIN pg_class c ON c.oid = con.conrelid
   JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
-  WHERE c.relname IN (${list(EFFECT_TABLES)}) OR con.conname IN (${list(EFFECT_CONSTRAINTS)})
+  WHERE con.contype <> 'n' AND (c.relname IN (${list(EFFECT_TABLES)}) OR con.conname IN (${list(EFFECT_CONSTRAINTS)}))
 UNION ALL
-SELECT 'index', i.relname, pg_get_indexdef(i.oid)
+SELECT 'index', i.relname, pg_get_indexdef(i.oid) || ' valid:' || x.indisvalid || ' ready:' || x.indisready
   FROM pg_index x
   JOIN pg_class i ON i.oid = x.indexrelid
   JOIN pg_class t ON t.oid = x.indrelid
   JOIN pg_namespace n ON n.oid = t.relnamespace AND n.nspname = 'public'
   WHERE t.relname IN (${list(EFFECT_TABLES)}) OR i.relname IN (${list(EFFECT_INDEXES)})
 UNION ALL
-SELECT 'trigger', c.relname || '.' || tg.tgname, pg_get_triggerdef(tg.oid)
+SELECT 'trigger', c.relname || '.' || tg.tgname, pg_get_triggerdef(tg.oid) || ' enabled:' || tg.tgenabled::text
   FROM pg_trigger tg
   JOIN pg_class c ON c.oid = tg.tgrelid
   JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
   WHERE NOT tg.tgisinternal AND tg.tgname IN (${list(EFFECT_TRIGGERS)})
 UNION ALL
 SELECT 'function', p.proname, l.lanname || ' ' || format_type(p.prorettype, NULL) || ' md5:' || md5(p.prosrc)
+    || ' args:' || pg_get_function_identity_arguments(p.oid)
+    || ' security_definer:' || p.prosecdef || ' strict:' || p.proisstrict
+    || ' volatility:' || p.provolatile::text || ' parallel:' || p.proparallel::text
+    || ' config:' || COALESCE(p.proconfig::text, 'null')
   FROM pg_proc p
   JOIN pg_language l ON l.oid = p.prolang
   JOIN pg_namespace n ON n.oid = p.pronamespace AND n.nspname = 'public'
@@ -268,6 +272,7 @@ export function buildRecoverySql(
     "SET LOCAL lock_timeout = '10s';",
     "SET LOCAL statement_timeout = '300s';",
     "LOCK TABLE drizzle.__drizzle_migrations IN ACCESS EXCLUSIVE MODE;",
+    `LOCK TABLE ${[...new Set([...EFFECT_TABLES, ...EFFECT_COLUMNS.map(([table]) => table)])].map((table) => `public.${table}`).join(", ")} IN ACCESS EXCLUSIVE MODE;`,
     `DO $$ BEGIN
   IF ${ledgerMismatch(before)} THEN
     RAISE EXCEPTION 'ledger_shape_mismatch: production ledger is not the reviewed ${before.length}-row state';
@@ -276,10 +281,13 @@ END $$;`,
     `DO $$ DECLARE mismatched text; BEGIN
   WITH expected(kind, name, definition) AS (VALUES
     ${effectValues}),
-  actual AS (${EFFECT_FINGERPRINT_SQL})
+  actual AS (${EFFECT_FINGERPRINT_SQL}),
+  differences AS (
+    (SELECT * FROM expected EXCEPT SELECT * FROM actual)
+    UNION ALL
+    (SELECT * FROM actual EXCEPT SELECT * FROM expected))
   SELECT string_agg(e.kind || ' ' || e.name, ', ' ORDER BY e.kind, e.name) INTO mismatched
-    FROM expected e
-    WHERE NOT EXISTS (SELECT 1 FROM actual a WHERE a.kind = e.kind AND a.name = e.name AND a.definition = e.definition);
+    FROM differences e;
   IF mismatched IS NOT NULL THEN
     RAISE EXCEPTION 'already_effective_schema_mismatch: %', mismatched;
   END IF;

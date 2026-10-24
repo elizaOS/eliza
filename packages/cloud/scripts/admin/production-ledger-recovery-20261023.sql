@@ -3,6 +3,7 @@ BEGIN;
 SET LOCAL lock_timeout = '10s';
 SET LOCAL statement_timeout = '300s';
 LOCK TABLE drizzle.__drizzle_migrations IN ACCESS EXCLUSIVE MODE;
+LOCK TABLE public.managed_gmail_operation_receipts, public.subscription_grant_codes, public.subscription_grants, public.rooms, public.relationships, public.embeddings, public.organization_entitlements, public.subscription_allowance_periods IN ACCESS EXCLUSIVE MODE;
 DO $$ BEGIN
   IF (SELECT count(*) FROM drizzle.__drizzle_migrations) <> 373
      OR EXISTS (
@@ -435,55 +436,55 @@ DO $$ DECLARE mismatched text; BEGIN
     ('column','subscription_grants.revoked_reason','text'),
     ('column','subscription_grants.starts_at','timestamp with time zone NOT NULL'),
     ('column','subscription_grants.user_id','uuid'),
-    ('constraint','embeddings.embedding_space_write_check','CHECK (((space_id IS NULL) OR (write_nonce IS NOT NULL)))'),
-    ('constraint','managed_gmail_operation_receipts.managed_gmail_operation_receipts_check','CHECK ((((state = ''prepared''::text) AND (dispatched_at IS NULL) AND (finished_at IS NULL)) OR ((state = ''dispatched''::text) AND (dispatched_at IS NOT NULL) AND (finished_at IS NULL)) OR ((state = ANY (ARRAY[''succeeded''::text, ''rejected''::text, ''outcome-unknown''::text])) AND (dispatched_at IS NOT NULL) AND (finished_at IS NOT NULL))))'),
-    ('constraint','managed_gmail_operation_receipts.managed_gmail_operation_receipts_check1','CHECK (((state = ''succeeded''::text) = (provider_result IS NOT NULL)))'),
-    ('constraint','managed_gmail_operation_receipts.managed_gmail_operation_receipts_check2','CHECK (((rejection_code IS NULL) OR (state = ''rejected''::text)))'),
-    ('constraint','managed_gmail_operation_receipts.managed_gmail_operation_receipts_kind_check','CHECK ((kind = ANY (ARRAY[''send''::text, ''draft-create''::text, ''draft-replace''::text, ''draft-delete''::text, ''archive''::text, ''unarchive''::text, ''trash''::text, ''untrash''::text, ''mark-read''::text, ''mark-unread''::text])))'),
-    ('constraint','managed_gmail_operation_receipts.managed_gmail_operation_receipts_organization_id_fkey','FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE'),
-    ('constraint','managed_gmail_operation_receipts.managed_gmail_operation_receipts_pkey','PRIMARY KEY (organization_id, user_id, grant_id, request_id)'),
-    ('constraint','managed_gmail_operation_receipts.managed_gmail_operation_receipts_review_digest_check','CHECK ((review_digest ~ ''^[a-f0-9]{64}$''::text))'),
-    ('constraint','managed_gmail_operation_receipts.managed_gmail_operation_receipts_state_check','CHECK ((state = ANY (ARRAY[''prepared''::text, ''dispatched''::text, ''succeeded''::text, ''rejected''::text, ''outcome-unknown''::text])))'),
-    ('constraint','managed_gmail_operation_receipts.managed_gmail_operation_receipts_user_id_fkey','FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE'),
-    ('constraint','organization_entitlements.organization_entitlements_plan_state_check','CHECK ((((source_grant_id IS NULL) AND (((billing_scope_id IS NOT NULL) AND (source_subscription_id IS NOT NULL) AND (source_subscription_revision IS NOT NULL) AND (state = ANY (ARRAY[''trialing''::text, ''active''::text, ''grace''::text, ''past_due''::text, ''unpaid''::text, ''paused''::text, ''canceled''::text, ''incomplete''::text, ''incomplete_expired''::text])) AND (access = ANY (ARRAY[''granted''::text, ''read_only''::text, ''denied''::text])) AND (entitlement_effective = (access = ''granted''::text))) OR ((billing_scope_id IS NULL) AND (plan_key = ANY (ARRAY[''free''::text, ''plus_monthly''::text, ''pro_monthly''::text])) AND (state = ANY (ARRAY[''free''::text, ''active''::text, ''grace''::text, ''past_due''::text, ''unpaid''::text])) AND (((plan_key = ''free''::text) AND (state = ''free''::text) AND entitlement_effective AND ((source_subscription_id IS NULL) = (source_subscription_revision IS NULL))) OR ((plan_key <> ''free''::text) AND (state <> ''free''::text) AND (source_subscription_id IS NOT NULL) AND (source_subscription_revision IS NOT NULL) AND (entitlement_effective = (state = ANY (ARRAY[''active''::text, ''grace''::text])))))))) OR ((source_grant_id IS NOT NULL) AND (billing_scope_id IS NULL) AND (plan_key = ANY (ARRAY[''plus_monthly''::text, ''pro_monthly''::text])) AND (state = ''active''::text) AND entitlement_effective AND (access = ''granted''::text) AND (source_subscription_id IS NULL) AND (source_subscription_revision IS NULL) AND (effective_until IS NOT NULL))))'),
-    ('constraint','organization_entitlements.organization_entitlements_source_grant_tenant_fk','FOREIGN KEY (source_grant_id, organization_id) REFERENCES subscription_grants(id, organization_id) ON DELETE RESTRICT'),
-    ('constraint','subscription_allowance_periods.subscription_allowance_periods_invoice_id_check','CHECK ((((provider = ''stripe''::text) AND (provider_environment = ANY (ARRAY[''test''::text, ''live''::text])) AND (subscription_id IS NOT NULL) AND (subscription_revision IS NOT NULL) AND (promo_grant_id IS NULL) AND (((grant_source = ''paid_invoice''::text) AND (stripe_invoice_id IS NOT NULL) AND (stripe_invoice_id ~ ''^in_[A-Za-z0-9]+$''::text) AND (trial_claim_id IS NULL)) OR ((grant_source = ''trial_claim''::text) AND (billing_scope_id IS NOT NULL) AND (stripe_invoice_id IS NULL) AND (trial_claim_id IS NOT NULL)))) OR ((grant_source = ''promo_grant''::text) AND (provider = ''eliza''::text) AND (provider_environment = ANY (ARRAY[''test''::text, ''live''::text])) AND (billing_scope_id IS NULL) AND (merchant_key = ''platform''::text) AND (subscription_id IS NULL) AND (subscription_revision IS NULL) AND (stripe_invoice_id IS NULL) AND (trial_claim_id IS NULL) AND (promo_grant_id IS NOT NULL))))'),
-    ('constraint','subscription_allowance_periods.subscription_allowance_periods_promo_grant_tenant_fk','FOREIGN KEY (promo_grant_id, organization_id) REFERENCES subscription_grants(id, organization_id) ON DELETE RESTRICT'),
-    ('constraint','subscription_grant_codes.subscription_grant_codes_catalog_version_check','CHECK ((length(btrim(catalog_version)) > 0))'),
-    ('constraint','subscription_grant_codes.subscription_grant_codes_check','CHECK (((redeemed_count >= 0) AND (redeemed_count <= max_redemptions)))'),
-    ('constraint','subscription_grant_codes.subscription_grant_codes_code_hash_check','CHECK ((code_hash ~ ''^[0-9a-f]{64}$''::text))'),
-    ('constraint','subscription_grant_codes.subscription_grant_codes_code_hash_key','UNIQUE (code_hash)'),
-    ('constraint','subscription_grant_codes.subscription_grant_codes_duration_days_check','CHECK (((duration_days >= 1) AND (duration_days <= 731)))'),
-    ('constraint','subscription_grant_codes.subscription_grant_codes_family_check','CHECK ((family ~ ''^[a-z0-9_]{1,64}$''::text))'),
-    ('constraint','subscription_grant_codes.subscription_grant_codes_label_check','CHECK (((label IS NULL) OR (length(label) <= 200)))'),
-    ('constraint','subscription_grant_codes.subscription_grant_codes_max_redemptions_check','CHECK ((max_redemptions > 0))'),
-    ('constraint','subscription_grant_codes.subscription_grant_codes_pkey','PRIMARY KEY (id)'),
-    ('constraint','subscription_grant_codes.subscription_grant_codes_plan_key_check','CHECK ((plan_key = ANY (ARRAY[''plus_monthly''::text, ''pro_monthly''::text])))'),
-    ('constraint','subscription_grants.subscription_grants_catalog_version_check','CHECK ((length(btrim(catalog_version)) > 0))'),
-    ('constraint','subscription_grants.subscription_grants_code_id_fkey','FOREIGN KEY (code_id) REFERENCES subscription_grant_codes(id) ON DELETE RESTRICT'),
-    ('constraint','subscription_grants.subscription_grants_family_check','CHECK ((family ~ ''^[a-z0-9_]{1,64}$''::text))'),
-    ('constraint','subscription_grants.subscription_grants_id_org_idx','UNIQUE (id, organization_id)'),
-    ('constraint','subscription_grants.subscription_grants_idempotency_key_check','CHECK ((idempotency_key ~ ''^[A-Za-z0-9._:-]{8,128}$''::text))'),
-    ('constraint','subscription_grants.subscription_grants_org_family_idx','UNIQUE (organization_id, family)'),
-    ('constraint','subscription_grants.subscription_grants_organization_id_fkey','FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT'),
-    ('constraint','subscription_grants.subscription_grants_pkey','PRIMARY KEY (id)'),
-    ('constraint','subscription_grants.subscription_grants_plan_key_check','CHECK ((plan_key = ANY (ARRAY[''plus_monthly''::text, ''pro_monthly''::text])))'),
-    ('constraint','subscription_grants.subscription_grants_revocation_check','CHECK ((((revoked_at IS NULL) = (revoked_reason IS NULL)) AND ((revoked_reason IS NULL) OR ((length(btrim(revoked_reason)) >= 1) AND (length(btrim(revoked_reason)) <= 500)))))'),
-    ('constraint','subscription_grants.subscription_grants_user_id_fkey','FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL'),
-    ('constraint','subscription_grants.subscription_grants_window_check','CHECK ((ends_at > starts_at))'),
-    ('function','guard_managed_gmail_operation_receipt','plpgsql trigger md5:dbcf951c25ab7e3d74a12806e649dd90'),
-    ('function','guard_subscription_grant_record','plpgsql trigger md5:1eba62b1d0cc69100e1721106b3e1f49'),
-    ('index','managed_gmail_operation_receipts_pkey','CREATE UNIQUE INDEX managed_gmail_operation_receipts_pkey ON public.managed_gmail_operation_receipts USING btree (organization_id, user_id, grant_id, request_id)'),
-    ('index','subscription_allowance_periods_promo_grant_period_idx','CREATE UNIQUE INDEX subscription_allowance_periods_promo_grant_period_idx ON public.subscription_allowance_periods USING btree (promo_grant_id, period_start) WHERE (promo_grant_id IS NOT NULL)'),
-    ('index','subscription_grant_codes_code_hash_key','CREATE UNIQUE INDEX subscription_grant_codes_code_hash_key ON public.subscription_grant_codes USING btree (code_hash)'),
-    ('index','subscription_grant_codes_pkey','CREATE UNIQUE INDEX subscription_grant_codes_pkey ON public.subscription_grant_codes USING btree (id)'),
-    ('index','subscription_grants_code_idx','CREATE INDEX subscription_grants_code_idx ON public.subscription_grants USING btree (code_id)'),
-    ('index','subscription_grants_id_org_idx','CREATE UNIQUE INDEX subscription_grants_id_org_idx ON public.subscription_grants USING btree (id, organization_id)'),
-    ('index','subscription_grants_org_family_idx','CREATE UNIQUE INDEX subscription_grants_org_family_idx ON public.subscription_grants USING btree (organization_id, family)'),
-    ('index','subscription_grants_org_window_idx','CREATE INDEX subscription_grants_org_window_idx ON public.subscription_grants USING btree (organization_id, ends_at)'),
-    ('index','subscription_grants_pkey','CREATE UNIQUE INDEX subscription_grants_pkey ON public.subscription_grants USING btree (id)'),
-    ('trigger','managed_gmail_operation_receipts.managed_gmail_operation_receipt_guard','CREATE TRIGGER managed_gmail_operation_receipt_guard BEFORE UPDATE ON public.managed_gmail_operation_receipts FOR EACH ROW EXECUTE FUNCTION guard_managed_gmail_operation_receipt()'),
-    ('trigger','subscription_grants.subscription_grants_immutable','CREATE TRIGGER subscription_grants_immutable BEFORE DELETE OR UPDATE ON public.subscription_grants FOR EACH ROW EXECUTE FUNCTION guard_subscription_grant_record()')),
+    ('constraint','embeddings.embedding_space_write_check','CHECK (((space_id IS NULL) OR (write_nonce IS NOT NULL))) validated:true'),
+    ('constraint','managed_gmail_operation_receipts.managed_gmail_operation_receipts_check','CHECK ((((state = ''prepared''::text) AND (dispatched_at IS NULL) AND (finished_at IS NULL)) OR ((state = ''dispatched''::text) AND (dispatched_at IS NOT NULL) AND (finished_at IS NULL)) OR ((state = ANY (ARRAY[''succeeded''::text, ''rejected''::text, ''outcome-unknown''::text])) AND (dispatched_at IS NOT NULL) AND (finished_at IS NOT NULL)))) validated:true'),
+    ('constraint','managed_gmail_operation_receipts.managed_gmail_operation_receipts_check1','CHECK (((state = ''succeeded''::text) = (provider_result IS NOT NULL))) validated:true'),
+    ('constraint','managed_gmail_operation_receipts.managed_gmail_operation_receipts_check2','CHECK (((rejection_code IS NULL) OR (state = ''rejected''::text))) validated:true'),
+    ('constraint','managed_gmail_operation_receipts.managed_gmail_operation_receipts_kind_check','CHECK ((kind = ANY (ARRAY[''send''::text, ''draft-create''::text, ''draft-replace''::text, ''draft-delete''::text, ''archive''::text, ''unarchive''::text, ''trash''::text, ''untrash''::text, ''mark-read''::text, ''mark-unread''::text]))) validated:true'),
+    ('constraint','managed_gmail_operation_receipts.managed_gmail_operation_receipts_organization_id_fkey','FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE validated:true'),
+    ('constraint','managed_gmail_operation_receipts.managed_gmail_operation_receipts_pkey','PRIMARY KEY (organization_id, user_id, grant_id, request_id) validated:true'),
+    ('constraint','managed_gmail_operation_receipts.managed_gmail_operation_receipts_review_digest_check','CHECK ((review_digest ~ ''^[a-f0-9]{64}$''::text)) validated:true'),
+    ('constraint','managed_gmail_operation_receipts.managed_gmail_operation_receipts_state_check','CHECK ((state = ANY (ARRAY[''prepared''::text, ''dispatched''::text, ''succeeded''::text, ''rejected''::text, ''outcome-unknown''::text]))) validated:true'),
+    ('constraint','managed_gmail_operation_receipts.managed_gmail_operation_receipts_user_id_fkey','FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE validated:true'),
+    ('constraint','organization_entitlements.organization_entitlements_plan_state_check','CHECK ((((source_grant_id IS NULL) AND (((billing_scope_id IS NOT NULL) AND (source_subscription_id IS NOT NULL) AND (source_subscription_revision IS NOT NULL) AND (state = ANY (ARRAY[''trialing''::text, ''active''::text, ''grace''::text, ''past_due''::text, ''unpaid''::text, ''paused''::text, ''canceled''::text, ''incomplete''::text, ''incomplete_expired''::text])) AND (access = ANY (ARRAY[''granted''::text, ''read_only''::text, ''denied''::text])) AND (entitlement_effective = (access = ''granted''::text))) OR ((billing_scope_id IS NULL) AND (plan_key = ANY (ARRAY[''free''::text, ''plus_monthly''::text, ''pro_monthly''::text])) AND (state = ANY (ARRAY[''free''::text, ''active''::text, ''grace''::text, ''past_due''::text, ''unpaid''::text])) AND (((plan_key = ''free''::text) AND (state = ''free''::text) AND entitlement_effective AND ((source_subscription_id IS NULL) = (source_subscription_revision IS NULL))) OR ((plan_key <> ''free''::text) AND (state <> ''free''::text) AND (source_subscription_id IS NOT NULL) AND (source_subscription_revision IS NOT NULL) AND (entitlement_effective = (state = ANY (ARRAY[''active''::text, ''grace''::text])))))))) OR ((source_grant_id IS NOT NULL) AND (billing_scope_id IS NULL) AND (plan_key = ANY (ARRAY[''plus_monthly''::text, ''pro_monthly''::text])) AND (state = ''active''::text) AND entitlement_effective AND (access = ''granted''::text) AND (source_subscription_id IS NULL) AND (source_subscription_revision IS NULL) AND (effective_until IS NOT NULL)))) validated:true'),
+    ('constraint','organization_entitlements.organization_entitlements_source_grant_tenant_fk','FOREIGN KEY (source_grant_id, organization_id) REFERENCES subscription_grants(id, organization_id) ON DELETE RESTRICT validated:true'),
+    ('constraint','subscription_allowance_periods.subscription_allowance_periods_invoice_id_check','CHECK ((((provider = ''stripe''::text) AND (provider_environment = ANY (ARRAY[''test''::text, ''live''::text])) AND (subscription_id IS NOT NULL) AND (subscription_revision IS NOT NULL) AND (promo_grant_id IS NULL) AND (((grant_source = ''paid_invoice''::text) AND (stripe_invoice_id IS NOT NULL) AND (stripe_invoice_id ~ ''^in_[A-Za-z0-9]+$''::text) AND (trial_claim_id IS NULL)) OR ((grant_source = ''trial_claim''::text) AND (billing_scope_id IS NOT NULL) AND (stripe_invoice_id IS NULL) AND (trial_claim_id IS NOT NULL)))) OR ((grant_source = ''promo_grant''::text) AND (provider = ''eliza''::text) AND (provider_environment = ANY (ARRAY[''test''::text, ''live''::text])) AND (billing_scope_id IS NULL) AND (merchant_key = ''platform''::text) AND (subscription_id IS NULL) AND (subscription_revision IS NULL) AND (stripe_invoice_id IS NULL) AND (trial_claim_id IS NULL) AND (promo_grant_id IS NOT NULL)))) validated:true'),
+    ('constraint','subscription_allowance_periods.subscription_allowance_periods_promo_grant_tenant_fk','FOREIGN KEY (promo_grant_id, organization_id) REFERENCES subscription_grants(id, organization_id) ON DELETE RESTRICT validated:true'),
+    ('constraint','subscription_grant_codes.subscription_grant_codes_catalog_version_check','CHECK ((length(btrim(catalog_version)) > 0)) validated:true'),
+    ('constraint','subscription_grant_codes.subscription_grant_codes_check','CHECK (((redeemed_count >= 0) AND (redeemed_count <= max_redemptions))) validated:true'),
+    ('constraint','subscription_grant_codes.subscription_grant_codes_code_hash_check','CHECK ((code_hash ~ ''^[0-9a-f]{64}$''::text)) validated:true'),
+    ('constraint','subscription_grant_codes.subscription_grant_codes_code_hash_key','UNIQUE (code_hash) validated:true'),
+    ('constraint','subscription_grant_codes.subscription_grant_codes_duration_days_check','CHECK (((duration_days >= 1) AND (duration_days <= 731))) validated:true'),
+    ('constraint','subscription_grant_codes.subscription_grant_codes_family_check','CHECK ((family ~ ''^[a-z0-9_]{1,64}$''::text)) validated:true'),
+    ('constraint','subscription_grant_codes.subscription_grant_codes_label_check','CHECK (((label IS NULL) OR (length(label) <= 200))) validated:true'),
+    ('constraint','subscription_grant_codes.subscription_grant_codes_max_redemptions_check','CHECK ((max_redemptions > 0)) validated:true'),
+    ('constraint','subscription_grant_codes.subscription_grant_codes_pkey','PRIMARY KEY (id) validated:true'),
+    ('constraint','subscription_grant_codes.subscription_grant_codes_plan_key_check','CHECK ((plan_key = ANY (ARRAY[''plus_monthly''::text, ''pro_monthly''::text]))) validated:true'),
+    ('constraint','subscription_grants.subscription_grants_catalog_version_check','CHECK ((length(btrim(catalog_version)) > 0)) validated:true'),
+    ('constraint','subscription_grants.subscription_grants_code_id_fkey','FOREIGN KEY (code_id) REFERENCES subscription_grant_codes(id) ON DELETE RESTRICT validated:true'),
+    ('constraint','subscription_grants.subscription_grants_family_check','CHECK ((family ~ ''^[a-z0-9_]{1,64}$''::text)) validated:true'),
+    ('constraint','subscription_grants.subscription_grants_id_org_idx','UNIQUE (id, organization_id) validated:true'),
+    ('constraint','subscription_grants.subscription_grants_idempotency_key_check','CHECK ((idempotency_key ~ ''^[A-Za-z0-9._:-]{8,128}$''::text)) validated:true'),
+    ('constraint','subscription_grants.subscription_grants_org_family_idx','UNIQUE (organization_id, family) validated:true'),
+    ('constraint','subscription_grants.subscription_grants_organization_id_fkey','FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT validated:true'),
+    ('constraint','subscription_grants.subscription_grants_pkey','PRIMARY KEY (id) validated:true'),
+    ('constraint','subscription_grants.subscription_grants_plan_key_check','CHECK ((plan_key = ANY (ARRAY[''plus_monthly''::text, ''pro_monthly''::text]))) validated:true'),
+    ('constraint','subscription_grants.subscription_grants_revocation_check','CHECK ((((revoked_at IS NULL) = (revoked_reason IS NULL)) AND ((revoked_reason IS NULL) OR ((length(btrim(revoked_reason)) >= 1) AND (length(btrim(revoked_reason)) <= 500))))) validated:true'),
+    ('constraint','subscription_grants.subscription_grants_user_id_fkey','FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL validated:true'),
+    ('constraint','subscription_grants.subscription_grants_window_check','CHECK ((ends_at > starts_at)) validated:true'),
+    ('function','guard_managed_gmail_operation_receipt','plpgsql trigger md5:dbcf951c25ab7e3d74a12806e649dd90 args: security_definer:false strict:false volatility:v parallel:u config:null'),
+    ('function','guard_subscription_grant_record','plpgsql trigger md5:1eba62b1d0cc69100e1721106b3e1f49 args: security_definer:false strict:false volatility:v parallel:u config:null'),
+    ('index','managed_gmail_operation_receipts_pkey','CREATE UNIQUE INDEX managed_gmail_operation_receipts_pkey ON public.managed_gmail_operation_receipts USING btree (organization_id, user_id, grant_id, request_id) valid:true ready:true'),
+    ('index','subscription_allowance_periods_promo_grant_period_idx','CREATE UNIQUE INDEX subscription_allowance_periods_promo_grant_period_idx ON public.subscription_allowance_periods USING btree (promo_grant_id, period_start) WHERE (promo_grant_id IS NOT NULL) valid:true ready:true'),
+    ('index','subscription_grant_codes_code_hash_key','CREATE UNIQUE INDEX subscription_grant_codes_code_hash_key ON public.subscription_grant_codes USING btree (code_hash) valid:true ready:true'),
+    ('index','subscription_grant_codes_pkey','CREATE UNIQUE INDEX subscription_grant_codes_pkey ON public.subscription_grant_codes USING btree (id) valid:true ready:true'),
+    ('index','subscription_grants_code_idx','CREATE INDEX subscription_grants_code_idx ON public.subscription_grants USING btree (code_id) valid:true ready:true'),
+    ('index','subscription_grants_id_org_idx','CREATE UNIQUE INDEX subscription_grants_id_org_idx ON public.subscription_grants USING btree (id, organization_id) valid:true ready:true'),
+    ('index','subscription_grants_org_family_idx','CREATE UNIQUE INDEX subscription_grants_org_family_idx ON public.subscription_grants USING btree (organization_id, family) valid:true ready:true'),
+    ('index','subscription_grants_org_window_idx','CREATE INDEX subscription_grants_org_window_idx ON public.subscription_grants USING btree (organization_id, ends_at) valid:true ready:true'),
+    ('index','subscription_grants_pkey','CREATE UNIQUE INDEX subscription_grants_pkey ON public.subscription_grants USING btree (id) valid:true ready:true'),
+    ('trigger','managed_gmail_operation_receipts.managed_gmail_operation_receipt_guard','CREATE TRIGGER managed_gmail_operation_receipt_guard BEFORE UPDATE ON public.managed_gmail_operation_receipts FOR EACH ROW EXECUTE FUNCTION guard_managed_gmail_operation_receipt() enabled:O'),
+    ('trigger','subscription_grants.subscription_grants_immutable','CREATE TRIGGER subscription_grants_immutable BEFORE DELETE OR UPDATE ON public.subscription_grants FOR EACH ROW EXECUTE FUNCTION guard_subscription_grant_record() enabled:O')),
   actual AS (SELECT 'column' AS kind, c.relname || '.' || a.attname AS name,
     format_type(a.atttypid, a.atttypmod) || CASE WHEN a.attnotnull THEN ' NOT NULL' ELSE '' END
       || COALESCE(' DEFAULT ' || pg_get_expr(d.adbin, d.adrelid), '') AS definition
@@ -495,33 +496,40 @@ DO $$ DECLARE mismatched text; BEGIN
     AND (c.relname IN ('managed_gmail_operation_receipts','subscription_grant_codes','subscription_grants')
       OR (c.relname, a.attname) IN (('rooms','connector_server_id'),('relationships','extraction_evidence'),('embeddings','space_id'),('embeddings','write_nonce'),('embeddings','dim_2048'),('organization_entitlements','source_grant_id'),('subscription_allowance_periods','subscription_id'),('subscription_allowance_periods','subscription_revision'),('subscription_allowance_periods','promo_grant_id')))
 UNION ALL
-SELECT 'constraint', c.relname || '.' || con.conname, pg_get_constraintdef(con.oid)
+SELECT 'constraint', c.relname || '.' || con.conname, pg_get_constraintdef(con.oid) || ' validated:' || con.convalidated
   FROM pg_constraint con
   JOIN pg_class c ON c.oid = con.conrelid
   JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
-  WHERE c.relname IN ('managed_gmail_operation_receipts','subscription_grant_codes','subscription_grants') OR con.conname IN ('embedding_space_write_check','organization_entitlements_source_grant_tenant_fk','organization_entitlements_plan_state_check','subscription_allowance_periods_promo_grant_tenant_fk','subscription_allowance_periods_invoice_id_check')
+  WHERE con.contype <> 'n' AND (c.relname IN ('managed_gmail_operation_receipts','subscription_grant_codes','subscription_grants') OR con.conname IN ('embedding_space_write_check','organization_entitlements_source_grant_tenant_fk','organization_entitlements_plan_state_check','subscription_allowance_periods_promo_grant_tenant_fk','subscription_allowance_periods_invoice_id_check'))
 UNION ALL
-SELECT 'index', i.relname, pg_get_indexdef(i.oid)
+SELECT 'index', i.relname, pg_get_indexdef(i.oid) || ' valid:' || x.indisvalid || ' ready:' || x.indisready
   FROM pg_index x
   JOIN pg_class i ON i.oid = x.indexrelid
   JOIN pg_class t ON t.oid = x.indrelid
   JOIN pg_namespace n ON n.oid = t.relnamespace AND n.nspname = 'public'
   WHERE t.relname IN ('managed_gmail_operation_receipts','subscription_grant_codes','subscription_grants') OR i.relname IN ('subscription_allowance_periods_promo_grant_period_idx')
 UNION ALL
-SELECT 'trigger', c.relname || '.' || tg.tgname, pg_get_triggerdef(tg.oid)
+SELECT 'trigger', c.relname || '.' || tg.tgname, pg_get_triggerdef(tg.oid) || ' enabled:' || tg.tgenabled::text
   FROM pg_trigger tg
   JOIN pg_class c ON c.oid = tg.tgrelid
   JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
   WHERE NOT tg.tgisinternal AND tg.tgname IN ('managed_gmail_operation_receipt_guard','subscription_grants_immutable')
 UNION ALL
 SELECT 'function', p.proname, l.lanname || ' ' || format_type(p.prorettype, NULL) || ' md5:' || md5(p.prosrc)
+    || ' args:' || pg_get_function_identity_arguments(p.oid)
+    || ' security_definer:' || p.prosecdef || ' strict:' || p.proisstrict
+    || ' volatility:' || p.provolatile::text || ' parallel:' || p.proparallel::text
+    || ' config:' || COALESCE(p.proconfig::text, 'null')
   FROM pg_proc p
   JOIN pg_language l ON l.oid = p.prolang
   JOIN pg_namespace n ON n.oid = p.pronamespace AND n.nspname = 'public'
-  WHERE p.proname IN ('guard_managed_gmail_operation_receipt','guard_subscription_grant_record'))
+  WHERE p.proname IN ('guard_managed_gmail_operation_receipt','guard_subscription_grant_record')),
+  differences AS (
+    (SELECT * FROM expected EXCEPT SELECT * FROM actual)
+    UNION ALL
+    (SELECT * FROM actual EXCEPT SELECT * FROM expected))
   SELECT string_agg(e.kind || ' ' || e.name, ', ' ORDER BY e.kind, e.name) INTO mismatched
-    FROM expected e
-    WHERE NOT EXISTS (SELECT 1 FROM actual a WHERE a.kind = e.kind AND a.name = e.name AND a.definition = e.definition);
+    FROM differences e;
   IF mismatched IS NOT NULL THEN
     RAISE EXCEPTION 'already_effective_schema_mismatch: %', mismatched;
   END IF;
