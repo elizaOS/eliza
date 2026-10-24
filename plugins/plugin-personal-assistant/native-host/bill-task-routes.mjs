@@ -11,8 +11,6 @@ export const BILL_WORKFLOW_FAILURE_REASONS = Object.freeze([
   "store-error",
   "unknown",
 ]);
-const failureReason = (error, stage) =>
-  error?.reason === "profile-unavailable" ? error.reason : stage;
 
 /** Optional bill-task HTTP facade over the host's existing task runtime and stores. */
 export function createBillTaskRoutes({
@@ -170,25 +168,43 @@ export function createBillTaskRoutes({
         new URL(request.url).pathname,
       );
     if (billRoute) {
-      // The step that was running when an error was thrown.
-      let stage = "store-error";
+      // The failure reason of the innermost step running when an error is
+      // thrown: a step that throws leaves its own reason in place. A
+      // synchronous step stays synchronous.
+      let stage = "unknown";
+      const step = (reason, operation) => {
+        const outer = stage;
+        stage = reason;
+        const result = operation();
+        if (typeof result?.then !== "function") {
+          stage = outer;
+          return result;
+        }
+        return result.then((value) => {
+          stage = outer;
+          return value;
+        });
+      };
+      const stored = (operation) => step("store-error", operation);
       try {
         if (new URL(request.url).search)
           return Response.json({ code: "TASK_INVALID" }, { status: 400 });
-        const task = runtime.get(billRoute[1]);
-        const outcomes = outcomeStore.forTask(runtime, task.id);
-        if (request.method === "GET" && outcomes.load())
+        const task = stored(() => runtime.get(billRoute[1]));
+        const outcomes = stored(() => outcomeStore.forTask(runtime, task.id));
+        if (request.method === "GET" && stored(() => outcomes.load()))
           return Response.json(
             {
-              decision: {
+              decision: stored(() => ({
                 ...outcomes.retry(),
                 billSources: sourceStore.forTask(runtime, task.id).load()
                   ?.candidate.sources,
-              },
+              })),
             },
             { headers: { "Cache-Control": "no-store" } },
           );
-        const sourceSelection = sourceStore.forTask(runtime, task.id).load();
+        const sourceSelection = stored(() =>
+          sourceStore.forTask(runtime, task.id).load(),
+        );
         if (requiresBillSelection && !sourceSelection)
           return Response.json(
             { decision: { kind: "source-selection-required" } },
@@ -199,46 +215,49 @@ export function createBillTaskRoutes({
             { code: "BILL_WORKFLOW_UNAVAILABLE" },
             { status: 404 },
           );
-        stage = "workflow-missing";
-        const workflow = workflowFactory({
-          runtime,
-          task,
-          outcomes,
-          sourceSelection,
-          signal: request.signal,
-          stillAuthorized: async () => {
-            try {
-              const current = await authenticate();
-              return (
-                !request.signal.aborted &&
-                requestEpoch === currentEpoch() &&
-                current.actorId === owner.actorId
-              );
-            } catch {
-              return false;
-            }
-          },
+        const workflow = step("workflow-missing", () => {
+          const workflow = workflowFactory({
+            runtime,
+            task,
+            outcomes,
+            sourceSelection,
+            signal: request.signal,
+            stillAuthorized: async () => {
+              try {
+                const current = await authenticate();
+                return (
+                  !request.signal.aborted &&
+                  requestEpoch === currentEpoch() &&
+                  current.actorId === owner.actorId
+                );
+              } catch {
+                return false;
+              }
+            },
+          });
+          if (typeof workflow?.refresh !== "function")
+            throw new BillHostError("Bill workflow unavailable");
+          return workflow;
         });
-        if (typeof workflow?.refresh !== "function")
-          throw new BillHostError("Bill workflow unavailable");
-        stage = "unknown";
         const choices = new InteractiveTaskChoices(runtime, choiceStore);
         const presentation = new SqliteTaskPresentation(db, runtime, choices);
         const withChoice = async (decision) => {
           if (decision.kind === "choose-existing-method")
             return {
               ...decision,
-              choice: await presentation.publish(task.id, decision.reviewKey, {
-                kind: "choice",
-                id: "existing-method",
-                scope: "bill-existing-method",
-                prompt: copy.existingMethodPrompt,
-                options: [
-                  { value: "existing", label: copy.existingMethodLabel },
-                ],
-              }),
+              choice: await stored(() =>
+                presentation.publish(task.id, decision.reviewKey, {
+                  kind: "choice",
+                  id: "existing-method",
+                  scope: "bill-existing-method",
+                  prompt: copy.existingMethodPrompt,
+                  options: [
+                    { value: "existing", label: copy.existingMethodLabel },
+                  ],
+                }),
+              ),
             };
-          presentation.clear(task.id);
+          stored(() => presentation.clear(task.id));
           return decision;
         };
         let decision;
@@ -272,7 +291,8 @@ export function createBillTaskRoutes({
               input.value !== "existing"
             )
               return Response.json({ code: "TASK_INVALID" }, { status: 400 });
-            if (outcomes.load()) decision = outcomes.retry();
+            if (stored(() => outcomes.load()))
+              decision = stored(() => outcomes.retry());
             else {
               let handled;
               try {
@@ -280,19 +300,23 @@ export function createBillTaskRoutes({
                 // invalidate the first delivery's in-flight observation/proposal.
                 // The echoed context is bound to the persisted offered choice;
                 // the workflow re-observes and compares it before any effect.
-                const result = await choices.respond({
-                  taskId: task.id,
-                  contextKey: input.contextKey,
-                  callbackData: input.callbackData,
-                  value: input.value,
-                  execute: async ({ operationId, isCurrent }) => {
-                    handled = await workflow.chooseExistingMethod(
-                      input.contextKey,
-                      { operationId, isCurrent },
-                    );
-                    return { decision: handled.kind };
-                  },
-                });
+                const result = await stored(() =>
+                  choices.respond({
+                    taskId: task.id,
+                    contextKey: input.contextKey,
+                    callbackData: input.callbackData,
+                    value: input.value,
+                    execute: async ({ operationId, isCurrent }) => {
+                      handled = await step("unknown", () =>
+                        workflow.chooseExistingMethod(input.contextKey, {
+                          operationId,
+                          isCurrent,
+                        }),
+                      );
+                      return { decision: handled.kind };
+                    },
+                  }),
+                );
                 decision =
                   result.status === "in_progress"
                     ? {
@@ -334,7 +358,10 @@ export function createBillTaskRoutes({
           { headers: { "Cache-Control": "no-store" } },
         );
       } catch (error) {
-        const reason = failureReason(error, stage);
+        if (error?.code === "TASK_NOT_FOUND")
+          return Response.json({ code: "TASK_NOT_FOUND" }, { status: 404 });
+        const reason =
+          error?.reason === "profile-unavailable" ? error.reason : stage;
         try {
           // The error name is a class name from code, never page text.
           onDiagnostic?.({

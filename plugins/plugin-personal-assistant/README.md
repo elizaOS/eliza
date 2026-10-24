@@ -115,10 +115,16 @@ outcomes into the app task gateway extension. It receives the existing task
 runtime, SQLite stores, workflow policy and four required presentation strings
 from the host. Authorization is rechecked after asynchronous work; source
 selection and duplicate choice delivery retain their durable task bindings.
-A failed bill route answers `503 BILL_WORKFLOW_UNAVAILABLE` with a fixed
-`reason` (`profile-unavailable`, `workflow-missing`, `store-error` or `unknown`).
-The optional `onDiagnostic` hook receives the route, task id, reason and error
-name. Neither carries page text, values or error messages.
+An unknown task answers `404 TASK_NOT_FOUND`. A failed bill route answers
+`503 BILL_WORKFLOW_UNAVAILABLE` with a fixed `reason` naming the step that
+failed: `profile-unavailable`, `workflow-missing` (the host factory),
+`store-error` (a read or write of the task, its saved bill records or its
+choice) or `unknown` (the workflow). The optional `onDiagnostic` hook receives
+the route, task id, reason and error name. Neither carries page text, values or
+error messages. The configured helper's own error carries
+`reason: "profile-unavailable"`, so a host route that calls the workflow itself
+can name that failure without matching the message; `onDiagnostic` covers only
+`/tasks/:id/bill`.
 Product helper descriptions, support/study routes and UI copy stay with hosts.
 
 The native bill-outcome store's `loadEvidence()` returns the current observation

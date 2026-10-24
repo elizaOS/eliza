@@ -84,11 +84,14 @@ export async function createConfiguredBillHelper({
     onUnavailable(),
   );
   const registrationAbort = new AbortController();
+  // `reason` lets hosts name this failure without matching the message.
+  const profileUnavailable = (cause) =>
+    Object.assign(
+      new Error("Configured browser profile unavailable", { cause }),
+      { reason: "profile-unavailable" },
+    );
   const requireProfile = () => {
-    if (native.getProfileId() !== config.profileId)
-      throw Object.assign(new Error("Configured browser profile unavailable"), {
-        reason: "profile-unavailable",
-      });
+    if (native.getProfileId() !== config.profileId) throw profileUnavailable();
   };
   const target = Object.fromEntries(
     ["bindTask", "guideTask", "execute"].map((method) => [
@@ -97,9 +100,15 @@ export async function createConfiguredBillHelper({
         // Wait only before a new binding, never before replaying an effect or
         // revocation cleanup. The actuator fences task revisions around binding.
         if (method === "bindTask" && !args[0]?.revoked) {
-          await native.waitForProfile(config.profileId, {
-            signal: registrationAbort.signal,
-          });
+          try {
+            await native.waitForProfile(config.profileId, {
+              signal: registrationAbort.signal,
+            });
+          } catch (error) {
+            // Another, stopped or unregistered profile. Closing aborts instead.
+            if (error?.kind !== "UNAVAILABLE") throw error;
+            throw profileUnavailable(error);
+          }
           if (
             (await credentialGate()) !== config.actorId ||
             registrationAbort.signal.aborted
