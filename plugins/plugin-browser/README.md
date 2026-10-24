@@ -100,8 +100,11 @@ effects retain the explicit reconciliation path.
 A failed native-socket request also carries a stable `reason` beside its `kind`
 (`NATIVE_SOCKET_FAILURE_REASONS`): `reply-timeout`, `request-cancelled`,
 `profile-unavailable`, `connection-lost`, the peer's `frame-inventory-incomplete`,
-`frame-identity-changed`, `frame-read-incomplete` and `page-loading`, or
-`peer-error` for any other peer failure. Match `reason`, not the message text.
+`frame-identity-changed`, `frame-read-incomplete` and `page-loading`,
+`peer-error` for any other peer failure, or `invalid-reply` for a successful
+reply the target cannot read. Capability, argument and policy refusals raised
+before the request is sent carry only `kind`. Match `reason`, not the message
+text.
 
 Native `select` takes an exact visible option label in `text` (or the workspace
 `value` field). Snapshots report option labels, disabled state and selection,
