@@ -1,21 +1,33 @@
 /**
  * Redis-backed work queue.
  *
- * `enqueue` pushes a JSON-serialized envelope onto a list; `drain` pops
- * up to `max` envelopes and runs the handler. The handler reports either
- * `ack` (drop the message), `retry` (push back with attempts++ and an
- * exponential `notBefore` delay until `maxAttempts`, then send to the DLQ
- * list), or `dlq` (push straight to the DLQ — used for permanent failures).
- * A message whose `notBefore` is in the future is requeued untouched, and a
- * drain stops once it pops a message it already requeued, so one cron tick
- * never burns a retry budget. `onDeadLetter` lets the owner release
- * producer-side dedupe so a provider resend can re-enter the queue.
+ * `enqueue` pushes a JSON-serialized envelope onto a list; `drain` moves
+ * up to `max` envelopes onto the queue's processing list and runs the
+ * handler on each. The handler reports either `ack` (drop the message),
+ * `retry` (push back with attempts++ and an exponential `notBefore` delay
+ * until `maxAttempts`, then send to the DLQ list), or `dlq` (push straight
+ * to the DLQ — used for permanent failures). A message whose `notBefore` is
+ * in the future is requeued untouched, and a drain stops once it pops a
+ * message it already requeued, so one cron tick never burns a retry budget.
+ * `onDeadLetter` lets the owner release producer-side dedupe so a provider
+ * resend can re-enter the queue.
+ *
+ * A claimed message stays on `<queue>:processing` until its outcome is
+ * written back, so a drain that dies mid-handler or cannot reach Redis for
+ * the write-back leaves it there instead of nowhere. The next drain treats
+ * every message still on the processing list as a failed attempt: it is
+ * requeued with the retry delay or, once the retry budget is spent,
+ * dead-lettered. A short lease (`<queue>:drain-lease`) keeps two drains from
+ * treating each other's in-flight messages as abandoned; a drain that
+ * outlives its lease can see one message handled twice, which the handler
+ * must tolerate (the Stripe consumer re-checks every downstream write).
  *
  * Backed by the same shared `cache` client, so it follows the same
  * adapter selection (Upstash REST in cloud, native Redis or embedded
  * Wadis locally) and circuit-breaker behavior.
  */
 
+import { randomUUID } from "node:crypto";
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { cache } from "./cache/client";
 import { logger } from "./utils/logger";
@@ -47,6 +59,12 @@ export interface DrainOptions<T = unknown> {
   retryBaseDelayMs?: number;
   /** Retry delay ceiling (default 3_600_000 ms). */
   retryMaxDelayMs?: number;
+  /**
+   * How long this drain owns the queue (default `budgetMs` plus 60 s). Messages
+   * left on the processing list are recovered only by a drain that holds the
+   * lease, so the lease must outlive one handler run.
+   */
+  leaseMs?: number;
   /** Runs after a message is durably written to the DLQ; failures are logged, the message stays in the DLQ. */
   onDeadLetter?: (envelope: { body: T; attempts: number; enqueuedAt: number }) => Promise<void>;
 }
@@ -59,6 +77,10 @@ export interface DrainStats {
   failed: number;
   /** Messages requeued untouched because their retry delay has not elapsed. */
   deferred: number;
+  /** Messages an earlier drain left on the processing list, requeued or dead-lettered here. */
+  recovered: number;
+  /** True when nothing ran: another drain holds the lease or Redis is unavailable. */
+  skipped: boolean;
 }
 
 export function retryDelayMs(attempts: number, baseMs: number, maxMs: number): number {
@@ -67,6 +89,14 @@ export function retryDelayMs(attempts: number, baseMs: number, maxMs: number): n
 
 function dlqKey(queueKey: string): string {
   return `${queueKey}:dlq`;
+}
+
+function processingKey(queueKey: string): string {
+  return `${queueKey}:processing`;
+}
+
+function leaseKey(queueKey: string): string {
+  return `${queueKey}:drain-lease`;
 }
 
 async function pushRawRequired(queueKey: string, raw: string): Promise<void> {
@@ -82,6 +112,14 @@ async function pushRequired(queueKey: string, envelope: Envelope<unknown>): Prom
   return raw;
 }
 
+/** Drops a settled message from the processing list; throws so the message stays claimed when Redis is unavailable. */
+async function settleRequired(queueKey: string, raw: string): Promise<void> {
+  const removed = await cache.removeQueueValue(processingKey(queueKey), raw);
+  if (removed === null) {
+    throw new Error(`[Queue] Redis unavailable; cannot settle ${processingKey(queueKey)}`);
+  }
+}
+
 /**
  * Push a value onto the queue. Throws if Redis is unavailable so the caller
  * can return a 5xx and let the upstream producer (e.g. Stripe) retry.
@@ -89,6 +127,24 @@ async function pushRequired(queueKey: string, envelope: Envelope<unknown>): Prom
 export async function enqueue<T>(queueKey: string, body: T): Promise<void> {
   const envelope: Envelope<T> = { body, attempts: 0, enqueuedAt: Date.now() };
   await pushRequired(queueKey, envelope);
+}
+
+async function acquireLease(queueKey: string, token: string, leaseMs: number): Promise<boolean> {
+  try {
+    return await cache.setIfNotExists(leaseKey(queueKey), token, leaseMs);
+  } catch (error) {
+    logger.warn(`[Queue] Redis unavailable; drain of ${queueKey} skipped`, {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+}
+
+async function releaseLease(queueKey: string, token: string): Promise<void> {
+  const key = leaseKey(queueKey);
+  if ((await cache.get<string>(key)) === token) {
+    await cache.del(key);
+  }
 }
 
 /**
@@ -105,6 +161,7 @@ export async function drain<T>(
   const maxAttempts = options.maxAttempts ?? 5;
   const retryBaseDelayMs = options.retryBaseDelayMs ?? 60_000;
   const retryMaxDelayMs = options.retryMaxDelayMs ?? 3_600_000;
+  const leaseMs = options.leaseMs ?? budgetMs + 60_000;
   const start = Date.now();
 
   const stats: DrainStats = {
@@ -114,15 +171,56 @@ export async function drain<T>(
     dlqed: 0,
     failed: 0,
     deferred: 0,
+    recovered: 0,
+    skipped: false,
   };
+
+  const leaseToken = randomUUID();
+  if (!(await acquireLease(queueKey, leaseToken, leaseMs))) {
+    logger.info(`[Queue] Drain of ${queueKey} skipped; another drain holds the lease`);
+    return { ...stats, skipped: true };
+  }
+  try {
+    await drainClaimed(queueKey, handler, stats, {
+      max,
+      budgetMs,
+      maxAttempts,
+      retryBaseDelayMs,
+      retryMaxDelayMs,
+      start,
+      onDeadLetter: options.onDeadLetter,
+    });
+  } finally {
+    await releaseLease(queueKey, leaseToken);
+  }
+  return stats;
+}
+
+interface DrainRun<T> {
+  max: number;
+  budgetMs: number;
+  maxAttempts: number;
+  retryBaseDelayMs: number;
+  retryMaxDelayMs: number;
+  start: number;
+  onDeadLetter: DrainOptions<T>["onDeadLetter"];
+}
+
+async function drainClaimed<T>(
+  queueKey: string,
+  handler: DrainHandler<T>,
+  stats: DrainStats,
+  run: DrainRun<T>,
+): Promise<void> {
+  const { max, budgetMs, maxAttempts, retryBaseDelayMs, retryMaxDelayMs, start } = run;
   // Serialized envelopes this drain pushed back; popping one means the queue wrapped.
   const requeued = new Set<string>();
   const deadLetter = async (envelope: Envelope<T>) => {
     await pushRequired(dlqKey(queueKey), envelope);
     stats.dlqed++;
-    if (!options.onDeadLetter) return;
+    if (!run.onDeadLetter) return;
     try {
-      await options.onDeadLetter({
+      await run.onDeadLetter({
         body: envelope.body,
         attempts: envelope.attempts,
         enqueuedAt: envelope.enqueuedAt,
@@ -135,6 +233,49 @@ export async function drain<T>(
       });
     }
   };
+  const parse = (raw: string): Envelope<T> | null => {
+    try {
+      return JSON.parse(raw) as Envelope<T>;
+    } catch (parseError) {
+      logger.error(`[Queue] Dropping unparseable envelope from ${queueKey}`, {
+        error: parseError instanceof Error ? parseError.message : String(parseError),
+        sample: truncateWellFormed(toWellFormedUnicode(raw), 200),
+      });
+      stats.failed++;
+      return null;
+    }
+  };
+  // Counts one more attempt and requeues with the retry delay, or dead-letters once the budget is spent.
+  const retryOrDeadLetter = async (envelope: Envelope<T>) => {
+    const attempts = envelope.attempts + 1;
+    if (attempts >= maxAttempts) {
+      const { notBefore: _notBefore, ...dead } = envelope;
+      await deadLetter({ ...dead, attempts });
+      return;
+    }
+    const next: Envelope<T> = {
+      ...envelope,
+      attempts,
+      notBefore: Date.now() + retryDelayMs(attempts, retryBaseDelayMs, retryMaxDelayMs),
+    };
+    requeued.add(await pushRequired(queueKey, next));
+    stats.retried++;
+  };
+
+  // Messages an earlier drain claimed but never settled: it died mid-handler or
+  // lost Redis before the write-back. Each one counts as a failed attempt.
+  const abandoned = await cache.listQueue(processingKey(queueKey));
+  for (const raw of abandoned ?? []) {
+    const envelope = parse(raw);
+    if (envelope) {
+      await retryOrDeadLetter(envelope);
+      stats.recovered++;
+      logger.warn(`[Queue] Recovered an abandoned message on ${queueKey}`, {
+        attempts: envelope.attempts + 1,
+      });
+    }
+    await settleRequired(queueKey, raw);
+  }
 
   for (let i = 0; i < max; i++) {
     if (Date.now() - start > budgetMs) {
@@ -142,27 +283,23 @@ export async function drain<T>(
       break;
     }
 
-    const raw = await cache.popQueueTail(queueKey);
+    const raw = await cache.moveQueueTail(queueKey, processingKey(queueKey));
     if (raw === null) break;
     if (requeued.has(raw)) {
       await pushRawRequired(queueKey, raw);
+      await settleRequired(queueKey, raw);
       break;
     }
 
-    let envelope: Envelope<T>;
-    try {
-      envelope = JSON.parse(raw) as Envelope<T>;
-    } catch (parseError) {
-      logger.error(`[Queue] Dropping unparseable envelope from ${queueKey}`, {
-        error: parseError instanceof Error ? parseError.message : String(parseError),
-        sample: truncateWellFormed(toWellFormedUnicode(raw), 200),
-      });
-      stats.failed++;
+    const envelope = parse(raw);
+    if (!envelope) {
+      await settleRequired(queueKey, raw);
       continue;
     }
 
     if (typeof envelope.notBefore === "number" && envelope.notBefore > Date.now()) {
       await pushRawRequired(queueKey, raw);
+      await settleRequired(queueKey, raw);
       requeued.add(raw);
       stats.deferred++;
       continue;
@@ -193,26 +330,12 @@ export async function drain<T>(
         await deadLetter(dead);
         break;
       }
-      case "retry": {
-        const attempts = envelope.attempts + 1;
-        if (attempts >= maxAttempts) {
-          const { notBefore: _notBefore, ...dead } = envelope;
-          await deadLetter({ ...dead, attempts });
-        } else {
-          const next: Envelope<T> = {
-            ...envelope,
-            attempts,
-            notBefore: Date.now() + retryDelayMs(attempts, retryBaseDelayMs, retryMaxDelayMs),
-          };
-          requeued.add(await pushRequired(queueKey, next));
-          stats.retried++;
-        }
+      case "retry":
+        await retryOrDeadLetter(envelope);
         break;
-      }
     }
+    await settleRequired(queueKey, raw);
   }
-
-  return stats;
 }
 
 /** Current depth of the queue (best-effort; eventually consistent on Upstash). */

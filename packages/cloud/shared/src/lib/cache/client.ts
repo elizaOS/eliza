@@ -1190,6 +1190,69 @@ export class CacheClient {
     }
   }
 
+  /**
+   * Moves the tail of `key` onto the head of `destination` in one command, so a
+   * consumer that dies between the pop and its write-back leaves the value in
+   * `destination` instead of nowhere. Null when the queue is empty or Redis is
+   * unavailable.
+   */
+  async moveQueueTail(key: string, destination: string): Promise<string | null> {
+    const redis = await this.getRedisClient();
+    if (!redis) return null;
+
+    try {
+      const value = await redis.rpoplpush(this.pk(key), this.pk(destination));
+      this.resetFailures();
+      return value;
+    } catch (error) {
+      this.recordFailure();
+      logger.error("[Cache] queue move failed", {
+        key,
+        destination,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  /** Removes one occurrence of `value` from the list; null when Redis is unavailable. */
+  async removeQueueValue(key: string, value: string): Promise<number | null> {
+    const redis = await this.getRedisClient();
+    if (!redis) return null;
+
+    try {
+      const removed = await redis.lrem(this.pk(key), 1, value);
+      this.resetFailures();
+      return removed;
+    } catch (error) {
+      this.recordFailure();
+      logger.error("[Cache] queue remove failed", {
+        key,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  /** Every value in the list, head first; null when Redis is unavailable. */
+  async listQueue(key: string): Promise<string[] | null> {
+    const redis = await this.getRedisClient();
+    if (!redis) return null;
+
+    try {
+      const values = await redis.lrange(this.pk(key), 0, -1);
+      this.resetFailures();
+      return values;
+    } catch (error) {
+      this.recordFailure();
+      logger.error("[Cache] queue list failed", {
+        key,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
   private isCircuitOpen(): boolean {
     if (this.failureCount < this.MAX_FAILURES) {
       return false;

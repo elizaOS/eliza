@@ -3,6 +3,7 @@
  * Worker environments where a KV store stands in for Redis.
  */
 
+import { rangeOf, removeOccurrences } from "./list-emulation";
 import type { CacheRedisClient } from "./types";
 
 /**
@@ -42,7 +43,8 @@ function clampTtlSeconds(ttlSeconds: number): number {
  *   - `set …{nx}` / `incr` are NOT atomic (racy under concurrency); callers that
  *     need atomicity gate on `CacheClient.supportsAtomicOperations()`, which
  *     returns false for this backend, so distributed locks use dummy locks.
- *   - list ops (`lpush`/`rpop`/`llen`) are emulated via a JSON array value.
+ *   - list ops (`lpush`/`rpop`/`llen`/`rpoplpush`/`lrem`/`lrange`) are emulated
+ *     via a JSON array value.
  *   - `pttl` cannot be derived from KV and returns -1 (present, ttl unknown).
  *
  * KV's 60s minimum TTL is clamped transparently.
@@ -160,6 +162,23 @@ export class KvCacheAdapter implements CacheRedisClient {
 
   async llen(key: string): Promise<number> {
     return (await this.readList(key)).length;
+  }
+
+  async rpoplpush(source: string, destination: string): Promise<string | null> {
+    const value = await this.rpop(source);
+    if (value !== null) await this.lpush(destination, value);
+    return value;
+  }
+
+  async lrem(key: string, count: number, value: string): Promise<number> {
+    const list = await this.readList(key);
+    const removed = removeOccurrences(list, count, value);
+    if (removed > 0) await this.kv.put(key, JSON.stringify(list));
+    return removed;
+  }
+
+  async lrange(key: string, start: number, stop: number): Promise<string[]> {
+    return rangeOf(await this.readList(key), start, stop);
   }
 
   private async readList(key: string): Promise<string[]> {
