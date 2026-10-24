@@ -201,15 +201,25 @@ async function resolveWorkspacePluginPackageDir(
   return undefined;
 }
 
+/** Error codes that mean "this path is not there", as opposed to "unreadable". */
+function isAbsentPathError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | null | undefined)?.code;
+  return code === "ENOENT" || code === "ENOTDIR";
+}
+
 /**
- * Check whether a file exists on disk (non-throwing).
+ * Check whether a file exists on disk. Only an absent path answers `false`;
+ * a path that is present but unreadable (EACCES, EIO, EMFILE, ELOOP…) is a
+ * real failure and must not be reported as a missing bundle or hero — callers
+ * would otherwise register the view as unavailable with no diagnostic.
  */
 async function fileExists(absolutePath: string): Promise<boolean> {
   try {
     await fs.access(absolutePath);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (isAbsentPathError(error)) return false;
+    throw error;
   }
 }
 
