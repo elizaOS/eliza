@@ -1,3 +1,5 @@
+import { TASK_ID_PATTERN } from "@elizaos/core/protocol";
+
 export type TaskView = {
   schemaVersion: 1;
   id: string;
@@ -36,7 +38,7 @@ function taskFrom(value: unknown): TaskView | null {
   if (
     t.schemaVersion !== 1 ||
     typeof t.id !== "string" ||
-    !/^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,255}$/.test(t.id) ||
+    !TASK_ID_PATTERN.test(t.id) ||
     !Number.isSafeInteger(t.revision) ||
     t.revision < 0 ||
     !Number.isSafeInteger(t.epoch) ||

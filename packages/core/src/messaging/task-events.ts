@@ -1,6 +1,13 @@
 /** Browser-safe, host-neutral task activity protocol. No page text or credentials. */
 import { ElizaError } from "../errors.ts";
 
+/**
+ * A task id as hosts mint and accept it: a letter or digit, then up to 255
+ * letters, digits or `_ . : @ -`. `packages/agent/native-host/task-id.mjs`
+ * holds the same rule for staged hosts that cannot import this package.
+ */
+export const TASK_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,255}$/;
+
 export type TaskStatus =
 	| "active"
 	| "paused"
