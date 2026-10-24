@@ -131,3 +131,52 @@ test("the client turns Cloud failures into unavailable and refuses bad requests"
     "transcript",
   );
 });
+
+test("the client ends a late request as unavailable and reports each one", async () => {
+  const statuses: Array<number | null> = [];
+  let reply: (signal: AbortSignal) => Promise<Response>;
+  const decide = createClefDecisionsClient({
+    baseUrl: "https://cloud.example",
+    headers: () => ({}),
+    timeoutMs: 20,
+    onUnavailable: (status) => statuses.push(status),
+    fetch: (async (_input: URL, init: RequestInit) =>
+      reply(init.signal as AbortSignal)) as typeof fetch,
+  });
+  const mode = { kind: "mode" as const, action: "Click Pay $84.20" };
+  // Like fetch: settles only when its signal aborts.
+  const hang = (signal: AbortSignal) =>
+    new Promise<Response>((_resolve, reject) => {
+      if (signal.aborted) reject(signal.reason);
+      signal.addEventListener("abort", () => reject(signal.reason));
+    });
+  reply = hang;
+  expect(await decide(mode)).toEqual({
+    status: "unavailable",
+    reason: "provider_error",
+  });
+  reply = async () =>
+    Response.json(
+      { status: "unavailable", reason: "disabled" },
+      { status: 503 },
+    );
+  expect(await decide(mode)).toEqual({
+    status: "unavailable",
+    reason: "disabled",
+  });
+  reply = async () =>
+    Response.json({
+      status: "ok",
+      kind: "mode",
+      model: "clef-flash",
+      suggestedMode: "ask",
+      askProbability: 0.8,
+    });
+  expect(await decide(mode)).toMatchObject({ suggestedMode: "ask" });
+  expect(statuses).toEqual([null, 503]);
+  const caller = new AbortController();
+  reply = hang;
+  const pending = decide(mode, caller.signal);
+  caller.abort(new Error("stopped"));
+  await expect(pending).rejects.toThrow("stopped");
+});
