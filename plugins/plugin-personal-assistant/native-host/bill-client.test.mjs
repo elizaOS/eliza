@@ -82,10 +82,11 @@ const decision = () => ({
     },
   },
 });
-function fixture(Client = BillDecisionClient) {
+function fixture(Client = BillDecisionClient, validators) {
   const calls = [],
     states = [];
   const client = new Client({
+    validators,
     now: () => 100,
     changed: (s) => states.push(s),
     request: (path, body) => {
@@ -167,6 +168,43 @@ test("response admission preserves detached metadata and validates shared money,
       return true;
     },
   );
+});
+
+test("a caller validator replaces only its default; the other default still applies", async () => {
+  const amounts = [];
+  const recorded = fixture(BillDecisionClient, {
+    money: (value) => amounts.push(value.amountMinor),
+  });
+  recorded.client.start("task1");
+  await tick();
+  recorded.calls[0].resolve(decision());
+  await tick();
+  assert.equal(
+    recorded.client.snapshot().decision.kind,
+    "choose-existing-method",
+  );
+  assert.deepEqual(amounts, [1200, 0, 1200]);
+  const unbound = decision();
+  unbound.decision.choice.schemaVersion = 2;
+  const refresh = recorded.client.refresh();
+  recorded.calls[1].resolve(unbound);
+  assert.equal(await refresh, false);
+  assert.equal(
+    recorded.client.snapshot().decision.kind,
+    "choose-existing-method",
+  );
+
+  const refused = fixture(BillSourceClient, {
+    money: () => {
+      throw new Error("caller money");
+    },
+  });
+  refused.client.start("task1");
+  await tick();
+  refused.calls[0].resolve(offer());
+  await tick();
+  assert.equal(refused.client.snapshot().offer, null);
+  assert.equal(refused.client.snapshot().error, "search");
 });
 
 test("decision effect replay defers initial request and stop suppresses every later result", async () => {
