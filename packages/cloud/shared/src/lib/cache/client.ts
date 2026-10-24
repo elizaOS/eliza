@@ -1052,7 +1052,9 @@ export class CacheClient {
    * bounded SCAN. Returns at most `maxKeys`. Used by the inference-charge sweep
    * (#9899) to find stale pending entries; the returned keys can be passed back
    * to `get`/`getAndDelete`/`del` directly (the env prefix is stripped here and
-   * re-applied by those ops). Returns `[]` when the cache is unavailable.
+   * re-applied by those ops). Returns `[]` only when the cache is unavailable —
+   * a scan that stops early THROWS, because a partial page set would read as a
+   * complete backlog and leave the unscanned pending charges uncollected.
    */
   async scanByPrefix(prefix: string, maxKeys = 1000): Promise<string[]> {
     const redis = await this.getRedisClient();
@@ -1081,6 +1083,11 @@ export class CacheClient {
         }
         if (++iterations >= 1000) break;
       } while (cursor !== "0");
+      if (cursor !== "0") {
+        throw new Error(
+          `[Cache] SCAN_BY_PREFIX for ${prefix} stopped at the iteration guard with keys left unscanned`,
+        );
+      }
       this.resetFailures();
       return out;
     } catch (error) {
@@ -1089,7 +1096,9 @@ export class CacheClient {
         prefix,
         error: error instanceof Error ? error.message : String(error),
       });
-      return out;
+      // The caller treats the result as the whole backlog: never return the
+      // pages that happened to arrive before the failure.
+      throw error;
     }
   }
 
