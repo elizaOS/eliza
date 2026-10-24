@@ -171,7 +171,32 @@ async function graphApiRequest<T>(
       },
     });
 
-    const json = await response.json();
+    const json = (await response.json().catch(() => null)) as GraphApiError | null;
+
+    if (json === null) {
+      lastError = new Error(`Meta API Error: non-JSON response (status ${response.status})`);
+
+      // A non-JSON response does not prove the request failed: a write may
+      // have committed before its response was lost or replaced by a gateway
+      // error page. Replaying a non-idempotent write could duplicate the
+      // resource, so only reads are retried on an undecodable response.
+      const method = (options.method ?? "GET").toUpperCase();
+      if (method === "GET" && attempt < RETRY_CONFIG.maxAttempts) {
+        const delay = Math.min(
+          RETRY_CONFIG.baseDelayMs * 2 ** (attempt - 1),
+          RETRY_CONFIG.maxDelayMs,
+        );
+        logger.info("[MetaAds] Retrying after non-JSON response", {
+          status: response.status,
+          attempt,
+          delay,
+        });
+        await sleep(delay);
+        continue;
+      }
+
+      throw lastError;
+    }
 
     if ((json as GraphApiError).error) {
       const error = (json as GraphApiError).error!;
