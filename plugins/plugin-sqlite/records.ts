@@ -2631,9 +2631,18 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     ).filter((id): id is UUID => typeof id === "string" && id.length > 0);
     if (requestedIds.length === 0) return [];
     const worldSet = new Set(requestedIds);
+    // Only this agent's rooms resolve the world: plugin-sql adds its
+    // agentId predicate to the same room lookup, and getRoomsByWorlds in
+    // this file applies roomIsVisibleToOwner to the same world->rooms
+    // step. Without it, a foreign agent's room in the same world (a
+    // restored or shared file) hands its memories to this adapter.
     const rooms = await this.storage.getWhere<Room>(
       COLLECTIONS.ROOMS,
-      (room) => (room.worldId ? worldSet.has(room.worldId as UUID) : false),
+      (room) =>
+        room.worldId
+          ? worldSet.has(room.worldId as UUID) &&
+            this.roomIsVisibleToOwner(room)
+          : false,
     );
     const roomSet = new Set(
       rooms.flatMap((room) => (room.id ? [room.id as UUID] : [])),
