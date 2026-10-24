@@ -709,6 +709,32 @@ describe("MeetingService — roster, transcripts, listing", () => {
     expect(pipelines[0].left).toEqual([{ participantId: "p1", atMs: 45_000 }]);
   });
 
+  it("keeps different participants who share a display name on distinct entities", async () => {
+    const adapter = new ScriptedAdapter("google_meet");
+    const { fake, service } = makeService([adapter]);
+    const dto = await service.requestJoin({
+      platform: "google_meet",
+      meetingUrl: MEET_URL,
+    });
+    const botSession = await adapter.started;
+    botSession.sink.participantJoined({ id: "p1", displayName: "Jill" });
+    botSession.sink.participantJoined({ id: "p2", displayName: "Jill" });
+    // A rejoin of the SAME participant keeps that participant's entity.
+    botSession.sink.participantJoined({ id: "p1", displayName: "Jill" });
+    await new Promise((r) => setTimeout(r, 5));
+
+    const session = service.getSession(dto.id as never);
+    expect(session?.participants).toHaveLength(2);
+    const [first, second] = session?.participants ?? [];
+    expect(first?.entityId).toBeTypeOf("string");
+    expect(second?.entityId).toBeTypeOf("string");
+    expect(first?.entityId).not.toBe(second?.entityId);
+    // Each distinct participant produced its own entity record.
+    const createdIds = fake.entities.map((e) => e.id);
+    expect(new Set(createdIds).size).toBe(createdIds.length);
+    expect(createdIds).toHaveLength(2);
+  });
+
   it("persists pipeline updates + finalizes a ready transcript with metadata", async () => {
     const adapter = new ScriptedAdapter("google_meet");
     const { fake, service, pipelines } = makeService([adapter]);

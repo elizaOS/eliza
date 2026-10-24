@@ -683,10 +683,21 @@ export class MeetingService extends Service {
       existing.displayName = participant.displayName;
       return existing;
     }
-    const entityId = createUniqueUuid(
+    let entityId = createUniqueUuid(
       this.runtime,
       `meeting-participant:${session.platform}:${participant.displayName.toLowerCase()}`,
     );
+    // Display names are not unique: a different participant in this session
+    // already holds the name-derived entity. Give this participant a
+    // session-scoped entity keyed by participant id instead of merging two
+    // people into one entity. The name-derived entity (and its cross-session
+    // identity) stays with the first participant who claimed it.
+    if (session.participants.some((p) => p.entityId === entityId)) {
+      entityId = createUniqueUuid(
+        this.runtime,
+        `meeting-participant:${session.id}:${participant.id}`,
+      );
+    }
     const tracked: MeetingParticipant = { ...participant, entityId };
     session.participants.push(tracked);
     // Entity creation is idempotent per (platform, name) via the seeded UUID;
