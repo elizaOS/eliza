@@ -1557,6 +1557,108 @@ describe("durable SQLite agent adapter", () => {
     ).toBeNull();
   });
 
+  it("keeps another agent's connector account out of id lookup, upsert, credential refs, and delete", async () => {
+    const adapter = await open();
+    const otherAgentId = id();
+    const storage = await adapter.getConnection();
+    const now = Date.now();
+    const foreignAccount = (foreignId: UUID, accountKey: string) => ({
+      id: foreignId,
+      agentId: otherAgentId,
+      provider: "google",
+      accountKey,
+      externalId: `${accountKey}-ext`,
+      displayName: "Foreign Owner",
+      username: null,
+      email: null,
+      ownerBindingId: null,
+      ownerIdentityId: null,
+      role: "OWNER",
+      purpose: ["messaging"],
+      accessGate: "open",
+      status: "connected",
+      scopes: [],
+      capabilities: [],
+      profile: {},
+      metadata: {},
+      connectedAt: now,
+      lastSyncAt: null,
+      deletedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const foreignId = id();
+    const foreign2Id = id();
+    await storage.set(
+      "connector_accounts",
+      foreignId,
+      foreignAccount(foreignId, "foreign-acct"),
+    );
+    await storage.set(
+      "connector_accounts",
+      foreign2Id,
+      foreignAccount(foreign2Id, "foreign-acct-2"),
+    );
+    const refKey = JSON.stringify([foreignId, "oauth"]);
+    await storage.set("connector_credentials", refKey, {
+      id: id(),
+      accountId: foreignId,
+      agentId: otherAgentId,
+      provider: "google",
+      credentialType: "oauth",
+      vaultRef: "vault://foreign-own",
+      metadata: {},
+      expiresAt: null,
+      lastVerifiedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const own = await adapter.upsertConnectorAccount({
+      provider: "google",
+      accountKey: "own-acct",
+      externalId: "own-ext",
+    });
+    expect((await adapter.getConnectorAccount({ id: own.id }))?.id).toBe(
+      own.id,
+    );
+    // plugin-sql scopes every account lookup by agent, the id lookup too.
+    expect(await adapter.getConnectorAccount({ id: foreignId })).toBeNull();
+    expect(
+      await adapter.getConnectorAccount({ id: foreignId, agentId }),
+    ).toBeNull();
+    await expect(
+      adapter.setConnectorAccountCredentialRef({
+        accountId: foreignId,
+        credentialType: "oauth",
+        vaultRef: "vault://foreign-probe",
+      }),
+    ).rejects.toMatchObject({ code: "SQLITE_CONNECTOR_INVALID" });
+    expect(
+      await adapter.deleteConnectorAccountCredentialRefs({
+        accountId: foreignId,
+      }),
+    ).toBe(0);
+    expect(await storage.get("connector_credentials", refKey)).not.toBeNull();
+    await expect(
+      adapter.upsertConnectorAccount({
+        id: foreign2Id,
+        provider: "google",
+        accountKey: "foreign-acct-2",
+        displayName: "Taken Over",
+      }),
+    ).rejects.toMatchObject({ code: "SQLITE_CONNECTOR_INVALID" });
+    expect(await storage.get("connector_accounts", foreign2Id)).toMatchObject({
+      agentId: otherAgentId,
+      displayName: "Foreign Owner",
+    });
+    expect(await adapter.deleteConnectorAccount({ id: foreignId })).toBe(false);
+    expect(await storage.get("connector_accounts", foreignId)).toMatchObject({
+      deletedAt: null,
+      status: "connected",
+    });
+  });
+
   it("persists OAuth invalidation and refuses expired or wrong-provider state", async () => {
     const adapter = await open();
     await adapter.createOAuthFlowState({
