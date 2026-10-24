@@ -25,16 +25,19 @@ import androidx.activity.OnBackPressedCallback;
     : "";
   const launcherSetup = launcherKiosk
     ? `
-        // The launcher owns the device surface. Keep Back from finishing the
-        // root activity. Register before super.onCreate: lifecycle-bound Back
-        // callbacks are added on every start in registration order and the
-        // last one wins, so the Capacitor App plugin's backButton handler
-        // (loaded in super.onCreate) still lets the page close a sheet or go
-        // back first. This callback runs only when nothing else handles Back.
+        // The launcher owns the device surface. Lifecycle-bound Back callbacks
+        // are added on every start in registration order and the last one
+        // wins, so this one, registered after super.onCreate, runs instead of
+        // the Capacitor App plugin's. That plugin would minimize the launcher
+        // task or walk WebView history back through Cloud/OAuth pages. Give
+        // the page only its back intent, so an open sheet closes, and
+        // otherwise stay on the launcher root.
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                // Intentionally stay on the launcher root.
+                getBridge().eval(
+                    "window.dispatchEvent(new CustomEvent('eliza:back-intent', { detail: { handled: false } }))",
+                    null);
             }
         });
 `
@@ -183,10 +186,10 @@ ${launcherConstants}
         registerPlugin(ElizaPlaySettingsPlugin.class);
 
 ${safePushRegistration}
-${launcherSetup}
         super.onCreate(savedInstanceState);
         keepScreenAwake();
 
+${launcherSetup}
         // Draw the canonical Cloud renderer behind transparent system bars. The
         // launcher variant hides only the navigation bar; a swipe can reveal
         // it transiently; ordinary Cloud builds keep both bars visible.
