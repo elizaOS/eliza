@@ -90,9 +90,10 @@ export interface SceneBuilderDeps {
     idState: OcrAdapterIdState,
   ) => Promise<SceneOcrBox[]>;
   /**
-   * Run OCR on a list of cropped PNGs, each carrying its display-local bbox.
-   * Returned boxes have their bboxes translated back into source-frame
-   * display-local coordinates. Default: `runOcrOnRegions`.
+   * Run OCR on a list of cropped PNGs, each carrying its bbox in the source
+   * frame's pixels. Returned boxes have their bboxes translated back into
+   * source-frame pixels; the builder converts them to display-local
+   * coordinates. Default: `runOcrOnRegions`.
    */
   runOcrOnCrops?: (
     crops: Array<{ png: Buffer; bbox: [number, number, number, number] }>,
@@ -278,6 +279,15 @@ export class SceneBuilder extends EventEmitter {
       const dirtyFraction =
         dirty && totalBlocks > 0 ? dirty.length / totalBlocks : 1;
       const prevOcr = state.lastScene.scene.ocr ?? [];
+      // The frame is at backing-store resolution (2x the logical bounds on a
+      // macOS retina display) and OCR reports boxes in its pixels. Scene
+      // boxes, region captures and input dispatch are display-local logical
+      // coordinates, so convert at this boundary.
+      const scale = dims
+        ? frameToDisplayScale(capture.display.bounds, dims)
+        : { x: 1, y: 1 };
+      const toDisplayBoxes = (boxes: SceneOcrBox[]): SceneOcrBox[] =>
+        boxes.map((b) => ({ ...b, bbox: frameToDisplayRect(b.bbox, scale) }));
 
       // 1. Whole-frame match + zero dirty blocks → cache hit.
       if (
@@ -307,7 +317,7 @@ export class SceneBuilder extends EventEmitter {
             grid,
             dims.width,
             dims.height,
-          );
+          ).map((rect) => ({ bbox: frameToDisplayRect(rect.bbox, scale) }));
           // Capture all dirty regions concurrently — they are independent OS
           // grabs, so wall-clock is max(region) not sum(region). If ANY region
           // fails we drop to full-frame OCR for this display (unchanged
@@ -326,7 +336,12 @@ export class SceneBuilder extends EventEmitter {
                   width: rect.bbox[2],
                   height: rect.bbox[3],
                 });
-                return { png: regionCapture.frame, bbox: rect.bbox };
+                // The region comes back at the frame's resolution, so its OCR
+                // offset is the region's origin in frame pixels.
+                return {
+                  png: regionCapture.frame,
+                  bbox: displayToFrameRect(rect.bbox, scale),
+                };
               }),
             );
           } catch (err) {
@@ -350,14 +365,14 @@ export class SceneBuilder extends EventEmitter {
               (b) =>
                 b.displayId === displayId && !intersectsAnyRect(b.bbox, rects),
             );
-            ocr.push(...keep, ...refreshed);
+            ocr.push(...keep, ...toDisplayBoxes(refreshed));
           } else {
             const refreshed = await this.deps.runOcrOnFrame(
               capture.frame,
               displayId,
               this.ocrIdState,
             );
-            ocr.push(...refreshed);
+            ocr.push(...toDisplayBoxes(refreshed));
           }
         } else {
           // 3. Full-frame OCR (no usable dirty diff, or too many blocks dirty).
@@ -366,7 +381,7 @@ export class SceneBuilder extends EventEmitter {
             displayId,
             this.ocrIdState,
           );
-          ocr.push(...refreshed);
+          ocr.push(...toDisplayBoxes(refreshed));
         }
         state.lastBlockGrid = grid ?? state.lastBlockGrid;
       } else if (state.lastScene.scene.ocr) {
@@ -565,6 +580,47 @@ export function getDefaultSceneBuilder(): SceneBuilder {
 /** Test-only reset. */
 export function _resetDefaultSceneBuilderForTests(): void {
   singleton = null;
+}
+
+/**
+ * Logical units per frame pixel on each axis: `bounds / frame size`, the same
+ * ratio `DefaultComputerInterface.toScreenCoordinates` uses. 1 when the frame
+ * already matches the logical bounds (Windows, Linux, non-retina macOS).
+ */
+function frameToDisplayScale(
+  bounds: [number, number, number, number],
+  frame: { width: number; height: number },
+): { x: number; y: number } {
+  const x = frame.width > 0 ? bounds[2] / frame.width : 1;
+  const y = frame.height > 0 ? bounds[3] / frame.height : 1;
+  return {
+    x: Number.isFinite(x) && x > 0 ? x : 1,
+    y: Number.isFinite(y) && y > 0 ? y : 1,
+  };
+}
+
+/** Frame-pixel rect → display-local logical rect, rounded outward. */
+function frameToDisplayRect(
+  bbox: [number, number, number, number],
+  scale: { x: number; y: number },
+): [number, number, number, number] {
+  if (scale.x === 1 && scale.y === 1) return bbox;
+  const [x, y, w, h] = bbox;
+  const x0 = Math.floor(x * scale.x);
+  const y0 = Math.floor(y * scale.y);
+  const x1 = Math.ceil((x + w) * scale.x);
+  const y1 = Math.ceil((y + h) * scale.y);
+  return [x0, y0, x1 - x0, y1 - y0];
+}
+
+/** Display-local logical rect → frame-pixel rect. */
+function displayToFrameRect(
+  bbox: [number, number, number, number],
+  scale: { x: number; y: number },
+): [number, number, number, number] {
+  if (scale.x === 1 && scale.y === 1) return bbox;
+  const [x, y, w, h] = bbox;
+  return [x / scale.x, y / scale.y, w / scale.x, h / scale.y];
 }
 
 function intersectsAnyRect(
