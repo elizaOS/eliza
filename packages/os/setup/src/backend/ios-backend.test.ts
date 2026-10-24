@@ -61,6 +61,18 @@ describe("iOS installation attempt", () => {
     );
     expect((await backend.submit2fa("123456")).status).toBe("failed");
   });
+  it("reports a failed sign-in when the sideloader CLI cannot start", async () => {
+    const { backend, command } = fixture();
+    command.mockRejectedValueOnce(
+      Object.assign(new Error("spawn sideloader ENOENT"), { code: "ENOENT" }),
+    );
+    const state = await backend.authenticate(input.appleId, "fixture");
+    expect(state.status).toBe("failed");
+    expect(state.errorMessage).toBeTruthy();
+    await expect(backend.createInstallPlan(input)).rejects.toBeInstanceOf(
+      IosAuthNotReadyError,
+    );
+  });
   it.each(["download", "sign", "install"])(
     "rejects %s failure instead of returning success",
     async (phase) => {

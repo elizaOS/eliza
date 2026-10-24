@@ -208,12 +208,29 @@ export class SideloaderIosBackend implements IosBackend {
   async authenticate(appleId: string, password: string): Promise<IosAuthState> {
     this.authState = { status: "authenticating", appleId };
 
-    const { stdout, stderr, exitCode } = await this.command(
-      "sideloader",
-      ["auth", "login", "--apple-id", appleId],
-      // Pass password via env var — never logged or shown
-      { SIDELOADER_PASSWORD: password },
-    );
+    let output: Awaited<ReturnType<typeof runCommand>>;
+    try {
+      output = await this.command(
+        "sideloader",
+        ["auth", "login", "--apple-id", appleId],
+        // Pass password via env var — never logged or shown
+        { SIDELOADER_PASSWORD: password },
+      );
+    } catch (cause) {
+      // A CLI that cannot start (missing binary, not executable) is a failed
+      // sign-in, not an attempt still running. Report the documented failed
+      // state so the caller can show the reason and offer a retry.
+      this.authState = {
+        status: "failed",
+        appleId,
+        errorMessage: `The sideloader CLI could not be started: ${
+          cause instanceof Error ? cause.message : String(cause)
+        }`,
+      };
+      return this.authState;
+    }
+
+    const { stdout, stderr, exitCode } = output;
 
     const combined = (stdout + stderr).toLowerCase();
 
