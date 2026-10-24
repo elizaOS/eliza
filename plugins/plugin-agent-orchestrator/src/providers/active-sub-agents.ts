@@ -255,7 +255,8 @@ export const activeSubAgentsProvider: Provider = {
             ?.userId,
         })),
         capacity: capacityData(capacity, admission),
-        waves,
+        waves: waves ?? [],
+        wavesUnavailable: waves === null,
       },
     };
   },
@@ -382,7 +383,10 @@ function formatCapacityLine(
   return nextTaskId ? `${base}; next queued: task ${nextTaskId}` : base;
 }
 
-function readWaveStatuses(runtime: IAgentRuntime): WaveStatusSnapshot[] {
+/** `null` means the supervisor read failed; `[]` means no waves exist. Callers
+ * must not render both as "no waves" — a failed read hides live lanes from the
+ * planner and can lead it to spawn a duplicate wave. */
+function readWaveStatuses(runtime: IAgentRuntime): WaveStatusSnapshot[] | null {
   const supervisor = runtime.getService<
     Service & { getWaveStatuses?: () => WaveStatusSnapshot[] }
   >(WAVE_SUPERVISOR_SERVICE_TYPE);
@@ -390,12 +394,25 @@ function readWaveStatuses(runtime: IAgentRuntime): WaveStatusSnapshot[] {
     return [];
   try {
     return supervisor.getWaveStatuses();
-  } catch {
-    return [];
+  } catch (error) {
+    // error-policy:J4 wave counters drive spawn/refill decisions; an unavailable
+    // getter must not read as "no waves", so report it and mark the section
+    // unavailable instead of degrading to an empty list.
+    runtime.reportError(PROVIDER_NAME, error, {
+      operation: "getWaveStatuses",
+    });
+    return null;
   }
 }
 
-function formatWaveLines(waves: readonly WaveStatusSnapshot[]): string[] {
+function formatWaveLines(
+  waves: readonly WaveStatusSnapshot[] | null,
+): string[] {
+  if (waves === null) {
+    return [
+      "wave status unavailable (failed to read the wave supervisor) — do not assume there are no active waves; retry before spawning a new one.",
+    ];
+  }
   return waves.map(
     (wave) =>
       `wave ${wave.waveId}: ${wave.activeLanes}/${wave.concurrencyCap} active, ${wave.queuedLanes} queued, ${wave.terminalLanes}/${wave.totalLanes} terminal, ${wave.refillCount} refills, ${wave.salvageCount} salvages, ${wave.collisionCount} collisions`,
@@ -405,7 +422,7 @@ function formatWaveLines(waves: readonly WaveStatusSnapshot[]): string[] {
 function emptyResult(
   capacity: AcpCapacity | null = null,
   admission: AdmissionSnapshot | null = null,
-  waves: WaveStatusSnapshot[] = [],
+  waves: WaveStatusSnapshot[] | null = [],
   inFlightTaskLines: string[] = [],
 ) {
   const lines = [
@@ -423,7 +440,8 @@ function emptyResult(
     data: {
       sessions: [],
       capacity: capacityData(capacity, admission),
-      waves,
+      waves: waves ?? [],
+      wavesUnavailable: waves === null,
     },
   };
 }
