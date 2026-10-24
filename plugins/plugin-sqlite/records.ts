@@ -1013,17 +1013,34 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         (c) =>
           c.entityId === component.entityId &&
           c.type === component.type &&
-          c.worldId === component.worldId &&
-          c.sourceEntityId === component.sourceEntityId,
+          // An omitted worldId/sourceEntityId matches any value, as in
+          // plugin-sql's getComponent (which plugin-sql's upsertComponents
+          // resolves its natural key through) and in
+          // getComponentsByNaturalKeys below. Strict equality here missed
+          // the stored row and inserted a second component for the same
+          // entity and type instead of updating it.
+          (component.worldId === undefined ||
+            c.worldId === component.worldId) &&
+          (component.sourceEntityId === undefined ||
+            c.sourceEntityId === component.sourceEntityId),
       );
 
       const existing = naturalKey[0];
       if (existing) {
-        await this.storage.set(COLLECTIONS.COMPONENTS, existing.id, {
+        const merged: Component = {
           ...existing,
           ...component,
           id: existing.id,
-        });
+          // The shared adapter contract preserves the original timestamp
+          // on upsert: only data, agentId, and roomId are mutable.
+          createdAt: existing.createdAt,
+        };
+        // An omitted key matched the stored row; it must not erase the
+        // stored world/source the match was allowed to ignore.
+        if (component.worldId === undefined) merged.worldId = existing.worldId;
+        if (component.sourceEntityId === undefined)
+          merged.sourceEntityId = existing.sourceEntityId;
+        await this.storage.set(COLLECTIONS.COMPONENTS, existing.id, merged);
       } else {
         const id = component.id as UUID;
         await this.storage.set(COLLECTIONS.COMPONENTS, id, {
