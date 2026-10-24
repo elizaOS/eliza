@@ -848,6 +848,7 @@ describe("automatic morning configured source selection", () => {
     "partial-empty",
     "probe-failure",
     "dm-only",
+    "full-read",
   ])(
     "collects %s using actual owner account/status methods",
     async (mode) => {
@@ -913,6 +914,9 @@ describe("automatic morning configured source selection", () => {
         .mockImplementation(async () => {
           throw new Error("morning must not call a model");
         });
+      // "full-read": the inbox returns the whole requested page of 25.
+      const messageCount =
+        mode === "partial-empty" ? 0 : mode === "full-read" ? 25 : 1;
       const gmail = vi
         .spyOn(service, "getGmailTriage")
         .mockImplementation(async (_url, request) => {
@@ -923,27 +927,22 @@ describe("automatic morning configured source selection", () => {
           )
             throw new Error("Connected Gmail fetch failed");
           return {
-            messages:
-              mode === "partial-empty"
-                ? []
-                : [
-                    {
-                      from: "Sender",
-                      subject: request?.grantId,
-                      snippet: "Useful owner mail",
-                      receivedAt: "2026-10-04T05:00:00.000Z",
-                      isUnread: true,
-                      isImportant: false,
-                      likelyReplyNeeded: true,
-                      triageScore: 1,
-                      triageReason: "Reply needed",
-                      htmlLink: null,
-                    },
-                  ],
+            messages: Array.from({ length: messageCount }, () => ({
+              from: "Sender",
+              subject: request?.grantId,
+              snippet: "Useful owner mail",
+              receivedAt: "2026-10-04T05:00:00.000Z",
+              isUnread: true,
+              isImportant: false,
+              likelyReplyNeeded: true,
+              triageScore: 1,
+              triageReason: "Reply needed",
+              htmlLink: null,
+            })),
             summary: {
-              unreadCount: mode === "partial-empty" ? 0 : 1,
+              unreadCount: messageCount,
               importantNewCount: 0,
-              likelyReplyNeededCount: mode === "partial-empty" ? 0 : 1,
+              likelyReplyNeededCount: messageCount,
             },
           } as never;
         });
@@ -1083,6 +1082,11 @@ describe("automatic morning configured source selection", () => {
               ),
             ).toBe(false);
             expect(report.summaryText).not.toContain("No Gmail");
+          } else if (mode === "full-read") {
+            // The counts cover the newest 25 messages, not the whole inbox.
+            expect(googleSection?.summary).toBe(
+              "25 unread, 0 important, 25 likely needing reply in the newest 25 messages.",
+            );
           } else
             expect(googleSection?.items).toHaveLength(
               mode === "multiple" ? 2 : 1,
