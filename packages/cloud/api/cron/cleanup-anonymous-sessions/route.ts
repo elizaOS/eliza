@@ -16,7 +16,7 @@ import { userIdentities } from "@elizaos/cloud-shared/db/schemas/user-identities
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
-import { and, eq, lt } from "drizzle-orm";
+import { and, eq, inArray, lt } from "drizzle-orm";
 import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
@@ -52,7 +52,7 @@ app.get("/", async (c) => {
       const conversationsToDelete = await dbRead
         .select()
         .from(conversations)
-        .where(eq(conversations.user_id, userIds[0]));
+        .where(inArray(conversations.user_id, userIds));
 
       deletedConversations = conversationsToDelete.length;
 
@@ -83,6 +83,7 @@ app.get("/", async (c) => {
         createdAt: users.created_at,
       })
       .from(users)
+      .innerJoin(userIdentities, eq(users.id, userIdentities.user_id))
       .leftJoin(anonymousSessions, eq(anonymousSessions.user_id, users.id))
       .where(
         and(
@@ -93,7 +94,7 @@ app.get("/", async (c) => {
 
     let deletedInactiveUsers = 0;
     for (const record of inactiveUsersWithSessions) {
-      if (record.messageCount === 0) {
+      if (record.messageCount === null || record.messageCount === 0) {
         await dbWrite.delete(users).where(eq(users.id, record.userId));
         deletedInactiveUsers++;
       }
