@@ -84,9 +84,25 @@ export function normalizeMessagesLimit(value: unknown, fallback = 200): number {
   return Math.min(500, Math.max(1, Math.trunc(value)));
 }
 
-export async function loadMessagesState(limit = 200) {
+/**
+ * The largest `limit` the native bridge accepts (a positive 32-bit integer). A
+ * complete read asks for it and treats a reply of that size as the bridge
+ * boundary, like `plugin-native-phone`'s call-log read.
+ */
+export const COMPLETE_MESSAGES_READ_LIMIT = 2_147_483_647;
+
+/**
+ * Read the message list plus the SMS role state. `complete` asks the bridge for
+ * every matching message instead of the bounded UI page.
+ */
+export async function loadMessagesState(
+  options: { complete?: boolean; limit?: number } = {},
+) {
+  const limit = options.complete
+    ? COMPLETE_MESSAGES_READ_LIMIT
+    : normalizeMessagesLimit(options.limit ?? 200);
   const [messageResult, statusResult] = await Promise.all([
-    Messages.listMessages({ limit: normalizeMessagesLimit(limit) }),
+    Messages.listMessages({ limit }),
     System.getStatus().catch((cause) => {
       // error-policy:J2 role status is part of the complete read contract; a
       // failed native status call cannot be represented as an unheld role.
