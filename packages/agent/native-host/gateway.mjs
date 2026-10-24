@@ -126,11 +126,19 @@ export function createLocalAgentGateway({
   const server = http.createServer(async (req, res) => {
     const origin = req.headers.origin;
     // Host validation also rejects DNS rebinding requests without an Origin.
+    let originAllowed = !origin;
+    if (origin) {
+      try {
+        originAllowed = allowed(origin) === true;
+      } catch {
+        // A host policy failure must deny the request, not escape the HTTP handler.
+        originAllowed = false;
+      }
+    }
     const trustedCaller =
       /^(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/.test(
         req.headers.host || "",
-      ) &&
-      (!origin || allowed(origin) === true);
+      ) && originAllowed;
     // Browsers never attach credentials to a CORS preflight. Answer one from an
     // allowlisted origin before bearer authentication, or the renderer can
     // never send its authenticated request. It reaches no route.

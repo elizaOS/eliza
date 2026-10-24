@@ -550,7 +550,11 @@ for (const transition of ["reset", "rotate"]) {
 const predicatePolicy = {
   ...policy,
   origins: undefined,
-  isAllowedOrigin: (origin) => origin === "https://example.org",
+  isAllowedOrigin: (origin) => {
+    if (origin === "https://policy-error.example")
+      throw new Error("policy failed");
+    return origin === "https://example.org";
+  },
 };
 const preflightBeforeAuthentication = (hostPolicy) => async () => {
   const gateway = createLocalAgentGateway({
@@ -591,6 +595,10 @@ const preflightBeforeAuthentication = (hostPolicy) => async () => {
       /\bAuthorization\b/,
     );
     assert.equal((await options("https://untrusted.example")).statusCode, 403);
+    assert.equal(
+      (await options("https://policy-error.example")).statusCode,
+      403,
+    );
     assert.equal(
       (await options("https://example.org", { Host: "attacker.example" }))
         .statusCode,
