@@ -97,6 +97,25 @@ describe("Network own-word boundary", () => {
       { kind: "travel", evidence: "I'M In Lisbon" },
     ]);
   });
+
+  it("records a later cue when an earlier cue of the same kind is negated", () => {
+    assert.deepEqual(
+      detectNetworkSignals(
+        "It wasn't creepy at first, but then he harassed me after dinner.",
+      ),
+      [{ kind: "safety_concern", evidence: "harassed" }],
+    );
+    assert.deepEqual(
+      detectNetworkSignals(
+        "He didn't harass me, but his follow-up messages made me uncomfortable.",
+      ),
+      [{ kind: "safety_concern", evidence: "made me uncomfortable" }],
+    );
+    assert.deepEqual(
+      detectNetworkSignals("He wasn't creepy and never harassed anyone."),
+      [],
+    );
+  });
 });
 
 describe("Network stated duration", () => {
