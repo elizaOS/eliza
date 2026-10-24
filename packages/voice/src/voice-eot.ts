@@ -81,12 +81,14 @@ const TRAILING_FILLERS = new Set([
 ]);
 /** Number words that a spoken amount usually continues after ("two hundred…"). */
 const TRAILING_NUMBER_WORDS = new Set([
-  "point",
   "hundred",
   "thousand",
   "million",
   "billion",
 ]);
+/** A decimal point needs a preceding number, unlike "that's the point". */
+const NUMBER_BEFORE_POINT =
+  /^(?:\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:-(?:one|two|three|four|five|six|seven|eight|nine))?|hundred|thousand|million|billion)$/;
 /** Dangling auxiliaries/modals that need another clause or phrase to land. */
 const TRAILING_CONTINUATIONS = new Set([
   "am",
@@ -184,7 +186,11 @@ export function scoreEndOfTurnHeuristic(transcript: string): number {
   // Trailing conjunction / filler / incomplete phrase → mid-clause, the speaker
   // is continuing. Checked BEFORE the short-utterance rule so a 2-word trail-off
   // ("going to", "and so", "we could") is NOT misread as a complete command.
-  if (TRAILING_NUMBER_WORDS.has(lastWord)) return 0.2;
+  if (
+    TRAILING_NUMBER_WORDS.has(lastWord) ||
+    (lastWord === "point" && NUMBER_BEFORE_POINT.test(words.at(-2) ?? ""))
+  )
+    return 0.2;
   if (TRAILING_CONJUNCTIONS.has(lastWord)) return 0.15;
   if (TRAILING_FILLERS.has(lastWord)) return 0.2;
   if (TRAILING_INCOMPLETE.has(lastWord)) return 0.2;

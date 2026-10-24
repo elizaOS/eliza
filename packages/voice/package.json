@@ -35,6 +35,7 @@
     "lint:check": "bunx @biomejs/biome check src test package.json",
     "lint": "bunx @biomejs/biome check --write src test package.json",
     "prepublishOnly": "bun run build",
+    "test": "vitest run",
     "test:browser:consumer": "node test/consumer.mjs"
   },
   "dependencies": {

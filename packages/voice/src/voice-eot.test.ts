@@ -28,6 +28,8 @@ describe("scoreEndOfTurnHeuristic", () => {
       "The bill was 1,",
       "Send them $",
       "It came to 45 point",
+      "It came to forty-five point.",
+      "It came to zero point",
       "I paid two hundred.",
       "About three thousand",
       "It costs a million",
@@ -35,5 +37,12 @@ describe("scoreEndOfTurnHeuristic", () => {
       expect(scoreEndOfTurnHeuristic(text), text).toBe(0.2);
     }
     expect(scoreEndOfTurnHeuristic("The bill was 1,250.")).toBe(0.95);
+    for (const text of [
+      "That's the point.",
+      "Go to the meeting point.",
+      "Add a bullet point.",
+    ]) {
+      expect(scoreEndOfTurnHeuristic(text), text).toBe(0.95);
+    }
   });
 });
