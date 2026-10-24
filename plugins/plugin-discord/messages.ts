@@ -6,6 +6,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
 	attestDeliveryAudienceFromCanonicalRoom,
+	bindIncomingMessagePersistence,
 	type ChannelType,
 	type Content,
 	ContentType,
@@ -1955,12 +1956,17 @@ export class MessageManager {
 						?.coalescedDiscordMessageIds
 				) {
 					// The user edited a message this agent already stored. Update
-					// the stored memory in place so history shows the current text.
+					// the stored memory in place so history shows the current text,
+					// and bind the turn to that row as stored (storage drops
+					// undefined fields): the message service then reuses it
+					// instead of publishing a second body under this id.
 					await replaceStoredMessageContent(
 						this.runtime,
 						newMessage.id,
 						newMessage.content,
 					);
+					const replaced = await this.runtime.getMemoryById(newMessage.id);
+					if (replaced) bindIncomingMessagePersistence(newMessage, replaced);
 					// If the agent replied to the original, the edit gets one more
 					// normal turn. A turn key per edit keeps redeliveries a no-op.
 					// Without a reply the original turn record decides, and that

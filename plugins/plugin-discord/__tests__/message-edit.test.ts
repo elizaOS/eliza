@@ -2,11 +2,18 @@
  * Discord message edits. Drives the real `MessageManager` (inbound guards,
  * memory build, durable turn records, response callback) against an in-memory
  * store. The stub message service persists the inbound memory the way core
- * does: an existing row must hold the same content, or the turn fails.
+ * does: it wraps the text first, as core's incoming-message security does,
+ * then stores the host-bound copy if there is one, else the wrapped message;
+ * an existing row must hold the same content, or the turn fails. Rows are
+ * stored as JSON, as a real database does, so undefined fields drop out.
  */
 import { isDeepStrictEqual } from "node:util";
 import type { Content, Memory, UUID } from "@elizaos/core";
-import { ChannelType, createUniqueUuid } from "@elizaos/core";
+import {
+	ChannelType,
+	createUniqueUuid,
+	incomingMessagePersistenceSnapshot,
+} from "@elizaos/core";
 import type { Message as DiscordMessage } from "discord.js";
 import { ChannelType as DiscordChannelType } from "discord.js";
 import { describe, expect, it } from "vitest";
@@ -19,6 +26,7 @@ const BOT_USER_ID = "888000000000000000";
 const AUTHOR_ID = "555000111222333444";
 const MESSAGE_ID = "666000000000000000";
 const noop = () => {};
+const asStored = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
 function makeHarness(replies: Array<string | null>) {
 	const rows = new Map<string, { memory: Memory; table: string }>();
@@ -52,7 +60,7 @@ function makeHarness(replies: Array<string | null>) {
 			structuredClone(rows.get(id)?.memory) ?? null,
 		createMemory: async (memory: Memory, table: string) => {
 			rows.set(memory.id as string, {
-				memory: structuredClone(memory),
+				memory: asStored(memory),
 				table,
 			});
 			return memory.id;
@@ -60,7 +68,7 @@ function makeHarness(replies: Array<string | null>) {
 		updateMemory: async (patch: Partial<Memory> & { id: UUID }) => {
 			const row = rows.get(patch.id);
 			if (!row) return false;
-			row.memory = { ...row.memory, ...structuredClone(patch) };
+			row.memory = asStored({ ...row.memory, ...patch });
 			return true;
 		},
 		getMemories: async (params: { roomId: UUID; tableName: string }) =>
@@ -77,13 +85,16 @@ function makeHarness(replies: Array<string | null>) {
 				message: Memory,
 				callback: (content: Content) => Promise<unknown>,
 			) => {
+				message.content.text = `<external>${message.content.text}</external>`;
+				const persistable =
+					incomingMessagePersistenceSnapshot(message) ?? message;
 				const stored = rows.get(message.id as string)?.memory;
-				if (stored && !isDeepStrictEqual(stored.content, message.content)) {
+				if (stored && !isDeepStrictEqual(stored.content, persistable.content)) {
 					throw new Error("MESSAGE_CONTENT_PUBLICATION_CONFLICT");
 				}
 				if (!stored) {
 					rows.set(message.id as string, {
-						memory: structuredClone(message),
+						memory: asStored(persistable),
 						table: "messages",
 					});
 				}
