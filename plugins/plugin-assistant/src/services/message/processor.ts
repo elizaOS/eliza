@@ -1685,11 +1685,23 @@ export class MessageProcessor {
     message: Memory,
     source: string,
   ): Promise<void> {
-    await runtime.emitEvent(EventType.MESSAGE_SENT, {
-      runtime,
-      message,
-      source,
-      trajectoryTerminalOwner: "run",
-    });
+    // Listeners are observers: a throwing or rejecting listener must not
+    // turn an already-persisted reply into a delivery failure. Report the
+    // listener error and continue so the delivery callback still runs.
+    const event = EventType.MESSAGE_SENT;
+    try {
+      await runtime.emitEvent(event, {
+        runtime,
+        message,
+        source,
+        trajectoryTerminalOwner: "run",
+      });
+    } catch (error) {
+      runtime.reportError("MessageProcessor.emitMessageSent", error, {
+        event,
+        messageId: message.id,
+        source,
+      });
+    }
   }
 }
