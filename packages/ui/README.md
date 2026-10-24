@@ -13,7 +13,7 @@ Hosts that render their own UI can also load these leaf modules without the Reac
 UI root: `@elizaos/ui/text-control-editing` and `@elizaos/ui/voice/` followed by
 `draft-transcript-guard`, `microphone-capture`, `pcm-wave`,
 `progressive-speech-playback`, `recorded-transcription-controller` or
-`segmented-speech-playback`.
+`segmented-speech-playback`. The same packed-consumer test covers these entries.
 The app owns renderer composition and native transport selection. Consumers render
 domain DTOs imported from `@elizaos/contracts`; business logic belongs to domain services. Use `bun run --cwd packages/ui storybook` for
 component development. Changes reaching the app require its visual audit.
