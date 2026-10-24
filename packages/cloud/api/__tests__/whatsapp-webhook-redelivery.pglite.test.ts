@@ -19,6 +19,8 @@ const USER = "33333333-3333-4333-8333-3333333333f2";
 
 let modelTurns = 0;
 let repliesSent = 0;
+/** Outcomes the fake sender returns in order; empty means delivered. */
+const sendOutcomes: Array<Record<string, unknown>> = [];
 
 mock.module("@elizaos/cloud-shared/lib/services/whatsapp-automation", () => ({
   whatsappAutomationService: {
@@ -46,6 +48,8 @@ mock.module("@elizaos/cloud-shared/lib/services/agent-gateway-router", () => ({
 mock.module("@elizaos/cloud-shared/lib/services/message-router", () => ({
   messageRouterService: {
     sendMessage: async () => {
+      const outcome = sendOutcomes.shift();
+      if (outcome) return outcome;
       repliesSent += 1;
       return { status: "delivered" };
     },
@@ -150,4 +154,44 @@ test("a redelivery after the processing claim expired is not answered again", as
   expect(await deliver("wamid.second")).toBe(200);
   expect(modelTurns).toBe(2);
   expect(repliesSent).toBe(2);
+}, 60_000);
+
+test("a reply the provider refused with a retryable error is answered on redelivery", async () => {
+  const turnsBefore = modelTurns;
+  const sentBefore = repliesSent;
+  sendOutcomes.push({
+    status: "failed",
+    code: "DELIVERY_PROVIDER_REJECTED",
+    retryable: true,
+    providerStatus: 429,
+  });
+  expect(await deliver("wamid.retry")).toBe(200);
+  expect(modelTurns).toBe(turnsBefore + 1);
+  expect(repliesSent).toBe(sentBefore);
+
+  await getPgliteClientForTests().query(
+    "UPDATE idempotency_keys SET expires_at = expires_at - interval '3 minutes'",
+  );
+  expect(await deliver("wamid.retry")).toBe(200);
+  expect(modelTurns).toBe(turnsBefore + 2);
+  expect(repliesSent).toBe(sentBefore + 1);
+}, 60_000);
+
+test("an uncertain delivery is not answered again on redelivery", async () => {
+  const turnsBefore = modelTurns;
+  const sentBefore = repliesSent;
+  sendOutcomes.push({
+    status: "uncertain",
+    code: "DELIVERY_OUTCOME_UNKNOWN",
+    retryable: false,
+  });
+  expect(await deliver("wamid.uncertain")).toBe(200);
+  expect(modelTurns).toBe(turnsBefore + 1);
+
+  await getPgliteClientForTests().query(
+    "UPDATE idempotency_keys SET expires_at = expires_at - interval '3 minutes'",
+  );
+  expect(await deliver("wamid.uncertain")).toBe(200);
+  expect(modelTurns).toBe(turnsBefore + 1);
+  expect(repliesSent).toBe(sentBefore);
 }, 60_000);
