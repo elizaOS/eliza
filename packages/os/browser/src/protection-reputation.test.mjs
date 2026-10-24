@@ -92,6 +92,40 @@ test("unavailable, empty and malformed feeds never produce a clean verdict", asy
     assert.equal((await check("https://example.org")).status, "unavailable");
   }
 });
+test("verdicts have exactly the shapes declared in reputation.d.mts", async () => {
+  const check = createWebsiteReputation({
+    minEntries: 2,
+    now: () => start,
+    fetchImpl: async () => feed(),
+  });
+  assert.deepEqual(await check("https://sub.bad.example/path"), {
+    status: "blocked",
+    source: "Phishing.Database",
+    scope: "domain",
+    threats: ["SOCIAL_ENGINEERING"],
+  });
+  assert.deepEqual(await check("https://example.org"), {
+    status: "no-known-threat",
+    source: "Phishing.Database",
+    scope: "domain",
+  });
+  assert.deepEqual(await check("http://example.org"), {
+    status: "unavailable",
+    reason: "invalid-address",
+  });
+  assert.deepEqual(await check("https://localhost/"), {
+    status: "unavailable",
+    reason: "local-address",
+  });
+  const offline = createWebsiteReputation({
+    now: () => start,
+    fetchImpl: async () => new Response("error", { status: 503 }),
+  });
+  assert.deepEqual(await offline("https://example.org"), {
+    status: "unavailable",
+    reason: "feed-unavailable",
+  });
+});
 test("old feeds and a failed refresh keep the last-good snapshot at any age; failures have a retry cooldown", async () => {
   // A feed published 13 days ago, or with no date, is used like a new one.
   for (const response of [
