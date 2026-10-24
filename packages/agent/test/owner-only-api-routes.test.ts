@@ -214,6 +214,35 @@ it("refuses owner-only writes and memory reads to a paired USER session", async 
         { method: "POST", body: JSON.stringify({ task: "echo hi" }) },
       ],
       ["/api/browser-workspace", {}],
+      ["/api/imessage/messages", {}],
+      [
+        "/api/imessage/messages",
+        {
+          method: "POST",
+          body: JSON.stringify({ to: "+15550002", text: "hi" }),
+        },
+      ],
+      [
+        "/api/cloud/x/posts",
+        { method: "POST", body: JSON.stringify({ text: "hi" }) },
+      ],
+      ["/api/workflow/workflows", {}],
+      [
+        "/api/setup/telegram/start",
+        { method: "POST", body: JSON.stringify({ botToken: "1:x" }) },
+      ],
+      [
+        "/api/meetings",
+        {
+          method: "POST",
+          body: JSON.stringify({ url: "https://example.invalid" }),
+        },
+      ],
+      ["/api/github/token", { method: "DELETE" }],
+      ["/api/lifeops/scheduled-tasks", {}],
+      ["/api/voice/profiles", {}],
+      ["/api/notes/state", {}],
+      ["/assistant/autonomy/enable", { method: "POST" }],
     ];
     for (const [path, init] of guestRequests) {
       const response = await send("guest-session-id", path, init);

@@ -1079,6 +1079,21 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     under("/api/orchestrator") ||
     // The owner's signed-in browser workspace tabs.
     under("/api/browser-workspace") ||
+    // Plugin routes admit any paired session. These read the owner's
+    // messages, notes, reminders and voice prints, post or send as the owner,
+    // run the owner's workflows, or replace connector credentials.
+    (under("/api/imessage") && !under("/api/imessage/webhook")) ||
+    under("/api/cloud/x") ||
+    (under("/api/workflow") &&
+      !under("/api/workflow/hosted/cloud-delegation")) ||
+    under("/api/setup") ||
+    under("/api/meetings") ||
+    under("/api/github") ||
+    under("/api/lifeops/scheduled-tasks") ||
+    under("/api/voice/profiles") ||
+    under("/api/notes") ||
+    under("/assistant/autonomy") ||
+    under("/assistant/api/channel-topics") ||
     (write &&
       (pathname.startsWith("/api/wallet/") ||
         under("/api/config") ||
