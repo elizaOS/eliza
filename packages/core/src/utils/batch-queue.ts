@@ -77,6 +77,7 @@ export class BatchQueue<T> {
 	private taskDrain: TaskDrain | null = null;
 	private runtime?: IAgentRuntime;
 	private isDraining = false;
+	private drainCompletion: Promise<void> = Promise.resolve();
 	private disposed = false;
 	private readonly batchSize: number;
 	private readonly options: BatchQueueOptions<T>;
@@ -122,6 +123,10 @@ export class BatchQueue<T> {
 			return 0;
 		}
 		this.isDraining = true;
+		let finishDrain!: () => void;
+		this.drainCompletion = new Promise<void>((resolve) => {
+			finishDrain = resolve;
+		});
 		const started = Date.now();
 		try {
 			// Evaluate live capability before removing work: a failed probe must
@@ -208,6 +213,7 @@ export class BatchQueue<T> {
 			return batch.length;
 		} finally {
 			this.isDraining = false;
+			finishDrain();
 		}
 	}
 
@@ -291,6 +297,8 @@ export class BatchQueue<T> {
 		opts?: { flushHighPriority?: boolean },
 	): Promise<void> {
 		this.disposed = true;
+		// Finish admitted work before flushing or releasing the runtime task.
+		await this.drainCompletion;
 		const flush =
 			opts?.flushHighPriority ?? this.options.drainHighPriorityOnStop !== false;
 		if (flush) {
