@@ -6,10 +6,14 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { GoogleChatService } from "./service.ts";
+import { GoogleChatEventTypes } from "./types.js";
 
 function serviceWithRecordedSends() {
   const sent: Array<{ url: string; body: Record<string, unknown> }> = [];
-  const runtime = { emitEvent: vi.fn() } as unknown as IAgentRuntime;
+  const runtime = {
+    emitEvent: vi.fn(async () => {}),
+    reportError: vi.fn(),
+  } as unknown as IAgentRuntime;
   const service = new GoogleChatService(runtime);
   vi.spyOn(service, "getAccessToken").mockResolvedValue("token");
   (service as unknown as { getState: () => { accountId: string } }).getState = () => ({
@@ -19,7 +23,7 @@ function serviceWithRecordedSends() {
     sent.push({ url, body: JSON.parse(String(init?.body)) });
     return new Response(JSON.stringify({ name: "spaces/AAA/messages/M1" }));
   }) as typeof fetch;
-  return { service, sent };
+  return { service, sent, runtime };
 }
 
 describe("Google Chat send", () => {
@@ -57,5 +61,27 @@ describe("Google Chat send", () => {
     const { service, sent } = serviceWithRecordedSends();
     await service.sendMessage({ space: "spaces/AAA", text: "hello" });
     expect(sent[0]?.url).toBe("https://chat.googleapis.com/v1/spaces/AAA/messages");
+  });
+
+  it("reports a listener failure instead of rejecting after the send", async () => {
+    const reported: Array<{ scope: string; context?: Record<string, unknown> }> = [];
+    const { service, runtime } = serviceWithRecordedSends();
+    runtime.emitEvent = vi.fn(async () => {
+      throw new Error("message-sent observer down");
+    });
+    runtime.reportError = vi.fn(
+      (scope: string, _error: unknown, context?: Record<string, unknown>) => {
+        reported.push({ scope, context });
+      }
+    );
+
+    const result = await service.sendMessage({ space: "spaces/AAA", text: "on it" });
+    // The observer runs off the send path, so one microtask turn is enough.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(result.success).toBe(true);
+    expect(reported.map((entry) => entry.scope)).toEqual(["GoogleChatService.emitEvent"]);
+    expect(reported[0]?.context?.event).toBe(GoogleChatEventTypes.MESSAGE_SENT);
+    expect(reported[0]?.context?.accountId).toBe("default");
   });
 });

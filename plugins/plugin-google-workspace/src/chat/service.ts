@@ -68,6 +68,35 @@ function normalizeGoogleChatQuery(query: string): string {
   return query.trim().toLowerCase();
 }
 
+/**
+ * Emits a Google Chat observer event. A listener that rejects must not turn an
+ * already-accepted provider call into an unhandled rejection, so the rejection
+ * is reported as a diagnostic instead.
+ */
+function emitObservedEvent(
+  runtime: IAgentRuntime | undefined,
+  event: string,
+  payload: EventPayload,
+  context: Record<string, unknown>
+): void {
+  if (!runtime) {
+    return;
+  }
+  const reportFailure = (error: unknown) =>
+    runtime.reportError("GoogleChatService.emitEvent", error, {
+      event,
+      ...context,
+    });
+  try {
+    // error-policy:J7 diagnostics-must-not-kill-the-loop — the Google Chat API
+    // call already succeeded. Listeners are observers, so a rejected listener
+    // must not make the accepted message look retryable.
+    void Promise.resolve(runtime.emitEvent(event, payload)).catch(reportFailure);
+  } catch (error) {
+    reportFailure(error);
+  }
+}
+
 function scoreGoogleChatSpace(space: GoogleChatSpace, query: string): number {
   const normalized = normalizeGoogleChatQuery(query);
   if (!normalized) {
@@ -298,11 +327,16 @@ export class GoogleChatService extends Service implements IGoogleChatService {
       service.states.set(state.accountId, state);
       GoogleChatService.registerSendHandlers(runtime, service, state.accountId);
 
-      runtime.emitEvent(GoogleChatEventTypes.CONNECTION_READY, {
+      emitObservedEvent(
         runtime,
-        service,
-        accountId: state.accountId,
-      } as EventPayload);
+        GoogleChatEventTypes.CONNECTION_READY,
+        {
+          runtime,
+          service,
+          accountId: state.accountId,
+        } as EventPayload,
+        { accountId: state.accountId }
+      );
     }
 
     logger.info(
@@ -750,14 +784,17 @@ export class GoogleChatService extends Service implements IGoogleChatService {
 
     logger.debug(`Message sent to ${options.space}: ${messageName}`);
 
-    if (this.runtime) {
-      this.runtime.emitEvent(GoogleChatEventTypes.MESSAGE_SENT, {
+    emitObservedEvent(
+      this.runtime,
+      GoogleChatEventTypes.MESSAGE_SENT,
+      {
         runtime: this.runtime,
         accountId: state.accountId,
         messageName,
         space: options.space,
-      } as EventPayload);
-    }
+      } as EventPayload,
+      { accountId: state.accountId, space: options.space }
+    );
 
     return {
       success: true,
@@ -830,15 +867,18 @@ export class GoogleChatService extends Service implements IGoogleChatService {
       state.accountId
     );
 
-    if (this.runtime) {
-      this.runtime.emitEvent(GoogleChatEventTypes.REACTION_SENT, {
+    emitObservedEvent(
+      this.runtime,
+      GoogleChatEventTypes.REACTION_SENT,
+      {
         runtime: this.runtime,
         accountId: state.accountId,
         messageName,
         emoji,
         reactionName: result.name,
-      } as EventPayload);
-    }
+      } as EventPayload,
+      { accountId: state.accountId, messageName }
+    );
 
     return {
       success: true,
@@ -1099,28 +1139,43 @@ export class GoogleChatService extends Service implements IGoogleChatService {
     if (!this.runtime) return;
 
     if (eventType === "MESSAGE") {
-      this.runtime.emitEvent(GoogleChatEventTypes.MESSAGE_RECEIVED, {
-        runtime: this.runtime,
-        accountId: resolvedAccountId,
-        event,
-        message: event.message,
-        space: event.space,
-        user: event.user,
-      } as EventPayload);
+      emitObservedEvent(
+        this.runtime,
+        GoogleChatEventTypes.MESSAGE_RECEIVED,
+        {
+          runtime: this.runtime,
+          accountId: resolvedAccountId,
+          event,
+          message: event.message,
+          space: event.space,
+          user: event.user,
+        } as EventPayload,
+        { accountId: resolvedAccountId }
+      );
     } else if (eventType === "ADDED_TO_SPACE") {
-      this.runtime.emitEvent(GoogleChatEventTypes.SPACE_JOINED, {
-        runtime: this.runtime,
-        accountId: resolvedAccountId,
-        space: event.space,
-        user: event.user,
-      } as EventPayload);
+      emitObservedEvent(
+        this.runtime,
+        GoogleChatEventTypes.SPACE_JOINED,
+        {
+          runtime: this.runtime,
+          accountId: resolvedAccountId,
+          space: event.space,
+          user: event.user,
+        } as EventPayload,
+        { accountId: resolvedAccountId }
+      );
     } else if (eventType === "REMOVED_FROM_SPACE") {
-      this.runtime.emitEvent(GoogleChatEventTypes.SPACE_LEFT, {
-        runtime: this.runtime,
-        accountId: resolvedAccountId,
-        space: event.space,
-        user: event.user,
-      } as EventPayload);
+      emitObservedEvent(
+        this.runtime,
+        GoogleChatEventTypes.SPACE_LEFT,
+        {
+          runtime: this.runtime,
+          accountId: resolvedAccountId,
+          space: event.space,
+          user: event.user,
+        } as EventPayload,
+        { accountId: resolvedAccountId }
+      );
     }
   }
 
