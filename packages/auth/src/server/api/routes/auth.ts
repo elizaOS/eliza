@@ -265,29 +265,47 @@ export async function recordSmsVerifyFailure(
   await claimSmsVerifyAttempt(phone, purpose);
 }
 
-function totpVerifyAttemptKey(scope: string): string {
-  return `totp-verify-attempts:${hashSha256Hex(scope)}`;
+function totpVerifyAttemptSlotKey(scope: string, slot: number): string {
+  return `totp-verify-attempts:${hashSha256Hex(scope)}:${slot}`;
 }
 
-async function getTotpVerifyFailedAttempts(scope: string): Promise<number> {
-  const raw = await getMfaBackend().get(totpVerifyAttemptKey(scope));
-  if (!raw) return 0;
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+/**
+ * Claim one attempt slot before a code is checked. A read-then-write counter
+ * lets a parallel burst read the same count and all reach verification, so
+ * each attempt takes its own slot atomically, like SMS verification. A
+ * failed attempt keeps its slot; success clears them all.
+ */
+async function claimTotpVerifyAttempt(scope: string): Promise<boolean> {
+  const token = `totp-verify-attempt:${randomBytes(16).toString("hex")}`;
+  for (let slot = 1; slot <= TOTP_VERIFY_MAX_FAILED_ATTEMPTS; slot++) {
+    if (
+      await getMfaBackend().setIfNotExists(
+        totpVerifyAttemptSlotKey(scope, slot),
+        token,
+        TOTP_VERIFY_FAILED_ATTEMPT_TTL_MS,
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
-async function recordTotpVerifyFailure(scope: string): Promise<number> {
-  const next = (await getTotpVerifyFailedAttempts(scope)) + 1;
-  await getMfaBackend().set(
-    totpVerifyAttemptKey(scope),
-    String(next),
-    TOTP_VERIFY_FAILED_ATTEMPT_TTL_MS,
+async function countTotpVerifyAttempts(scope: string): Promise<number> {
+  const slots = await Promise.all(
+    Array.from({ length: TOTP_VERIFY_MAX_FAILED_ATTEMPTS }, (_, index) =>
+      getMfaBackend().get(totpVerifyAttemptSlotKey(scope, index + 1)),
+    ),
   );
-  return next;
+  return slots.filter((value) => value !== null).length;
 }
 
 async function clearTotpVerifyFailures(scope: string): Promise<void> {
-  await getMfaBackend().delete(totpVerifyAttemptKey(scope));
+  await Promise.all(
+    Array.from({ length: TOTP_VERIFY_MAX_FAILED_ATTEMPTS }, (_, index) =>
+      getMfaBackend().delete(totpVerifyAttemptSlotKey(scope, index + 1)),
+    ),
+  );
 }
 
 async function getTenantAuthAbuseConfig(tenantId: string) {
@@ -7162,10 +7180,7 @@ auth.post("/mfa/totp/complete", async (c) => {
     );
   }
   const attemptScope = `login:${challenge.userId}:${body.challengeId}`;
-  if (
-    (await getTotpVerifyFailedAttempts(attemptScope)) >=
-    TOTP_VERIFY_MAX_FAILED_ATTEMPTS
-  ) {
+  if (!(await claimTotpVerifyAttempt(attemptScope))) {
     await getMfaBackend().delete(challengeKey);
     return c.json<ApiResponse>(
       {
@@ -7206,7 +7221,7 @@ auth.post("/mfa/totp/complete", async (c) => {
       !verified.stored ||
       typeof verified.acceptedStep !== "number"
     ) {
-      const failures = await recordTotpVerifyFailure(attemptScope);
+      const failures = await countTotpVerifyAttempts(attemptScope);
       if (failures >= TOTP_VERIFY_MAX_FAILED_ATTEMPTS)
         await getMfaBackend().delete(challengeKey);
       return c.json<ApiResponse>({ ok: false, error: "Invalid code" }, 401);
@@ -7302,10 +7317,7 @@ auth.post("/mfa/totp/step-up", async (c) => {
   }
 
   const attemptScope = `step-up:${session.payload.userId}`;
-  if (
-    (await getTotpVerifyFailedAttempts(attemptScope)) >=
-    TOTP_VERIFY_MAX_FAILED_ATTEMPTS
-  ) {
+  if (!(await claimTotpVerifyAttempt(attemptScope))) {
     return c.json<ApiResponse>(
       { ok: false, error: "Too many invalid codes. Please try again later." },
       429,
@@ -7320,7 +7332,6 @@ auth.post("/mfa/totp/step-up", async (c) => {
       body?.recoveryCode ?? "",
     );
     if (!verified.valid) {
-      await recordTotpVerifyFailure(attemptScope);
       return c.json<ApiResponse>({ ok: false, error: "Invalid code" }, 401);
     }
     method = "recovery_code";
@@ -7334,7 +7345,6 @@ auth.post("/mfa/totp/step-up", async (c) => {
       !verified.stored ||
       typeof verified.acceptedStep !== "number"
     ) {
-      await recordTotpVerifyFailure(attemptScope);
       return c.json<ApiResponse>({ ok: false, error: "Invalid code" }, 401);
     }
     await writeMfaJson(mfaKey("totp:enabled", session.payload.userId), {
@@ -7380,10 +7390,7 @@ auth.post("/mfa/recovery-codes/regenerate", async (c) => {
   }
 
   const attemptScope = `manage:${session.payload.userId}:recovery-regenerate`;
-  if (
-    (await getTotpVerifyFailedAttempts(attemptScope)) >=
-    TOTP_VERIFY_MAX_FAILED_ATTEMPTS
-  ) {
+  if (!(await claimTotpVerifyAttempt(attemptScope))) {
     return c.json<ApiResponse>(
       { ok: false, error: "Too many invalid codes. Please try again later." },
       429,
@@ -7395,7 +7402,6 @@ auth.post("/mfa/recovery-codes/regenerate", async (c) => {
     !verified.stored ||
     typeof verified.acceptedStep !== "number"
   ) {
-    await recordTotpVerifyFailure(attemptScope);
     return c.json<ApiResponse>({ ok: false, error: "Invalid code" }, 401);
   }
   await clearTotpVerifyFailures(attemptScope);
@@ -8309,10 +8315,7 @@ auth.post("/mfa/totp/unenroll", async (c) => {
   }
 
   const attemptScope = `manage:${session.payload.userId}:totp-unenroll`;
-  if (
-    (await getTotpVerifyFailedAttempts(attemptScope)) >=
-    TOTP_VERIFY_MAX_FAILED_ATTEMPTS
-  ) {
+  if (!(await claimTotpVerifyAttempt(attemptScope))) {
     return c.json<ApiResponse>(
       { ok: false, error: "Too many invalid codes. Please try again later." },
       429,
@@ -8320,7 +8323,6 @@ auth.post("/mfa/totp/unenroll", async (c) => {
   }
   const verified = await verifyStoredTotp(session.payload.userId, body.code);
   if (!verified.valid) {
-    await recordTotpVerifyFailure(attemptScope);
     return c.json<ApiResponse>({ ok: false, error: "Invalid code" }, 401);
   }
   await clearTotpVerifyFailures(attemptScope);
