@@ -565,6 +565,18 @@ export function ensureGradleProperty(content, key, value) {
   return `${content.replace(/\s*$/, "")}\n${key}=${value}\n`;
 }
 
+/** Exposes the consumer's identity to Gradle as `rootProject.ext.consumerIdentity`, so extra
+ * modules use the generated app id instead of reading the app config themselves. */
+export function applyConsumerIdentityExt(content, { appId, namespace }) {
+  for (const value of [appId, namespace])
+    if (!/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/.test(value))
+      throw new Error(`Invalid Android package name: ${value}`);
+  const line = `    consumerIdentity = [appId: '${appId}', namespace: '${namespace}']`;
+  if (/^[ \t]*consumerIdentity\s*=.*$/m.test(content))
+    return content.replace(/^[ \t]*consumerIdentity\s*=.*$/m, line);
+  return content.replace(/^ext\s*\{[^\n]*\n/m, (open) => `${open}${line}\n`);
+}
+
 export function applyAndroidGeneratedBuildTargetProperties(
   content,
   { cloudBuild = false } = {},
