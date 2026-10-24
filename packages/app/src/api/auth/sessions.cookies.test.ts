@@ -3,6 +3,7 @@ import * as uiSessions from "@elizaos/auth";
 import { expect, it } from "vitest";
 import { readCookie as authReadCookie, getSessionCookieName } from "../auth";
 import {
+  BROWSER_SESSION_TTL_MS,
   CSRF_COOKIE_NAME,
   CSRF_HEADER_NAME,
   parseCookieHeader,
@@ -11,6 +12,7 @@ import {
   readCookie,
   SESSION_COOKIE_NAME,
   serializeCsrfExpiryCookie,
+  serializeSessionCookie,
   serializeSessionExpiryCookie,
 } from "./sessions";
 
@@ -83,4 +85,30 @@ it("lists every distinct session credential for logout without choosing one", ()
     "second",
   ]);
   expect(readAllCookieValues(req(undefined), SESSION_COOKIE_NAME)).toEqual([]);
+});
+
+it("gives a remember-device cookie the policy cap, not the idle window", () => {
+  const now = Date.now();
+  const storedExpiresAt = now + BROWSER_SESSION_TTL_MS;
+  const maxAgeSeconds = (rememberDevice: boolean) =>
+    Number(
+      /Max-Age=(\d+)/.exec(
+        serializeSessionCookie(
+          {
+            id: "session-id",
+            kind: "browser",
+            createdAt: now,
+            expiresAt: storedExpiresAt,
+            rememberDevice,
+          },
+          { env: {} },
+        ),
+      )?.[1],
+    );
+  // A browser cookie bounds the absolute lifetime only. The stored expiry
+  // slides inside the server, so the cookie must not shrink to the idle window.
+  expect(maxAgeSeconds(false)).toBeLessThanOrEqual(
+    BROWSER_SESSION_TTL_MS / 1000,
+  );
+  expect(maxAgeSeconds(true)).toBeGreaterThan(29 * 24 * 60 * 60);
 });
