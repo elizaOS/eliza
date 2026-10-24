@@ -8,9 +8,14 @@
  * - row 373 carries a hash that matches no committed migration at 0389's time;
  * - 0536, 0537, 0540 and 0542 are already effective in the schema.
  *
- * The generated SQL runs in one transaction: it refuses any other ledger
- * shape, archives rows 371-373, applies the remaining canonical migrations in
- * journal order and writes canonical receipts for every journal entry. A
+ * The generated SQL runs in one transaction. Under the ledger lock and before
+ * any mutation it refuses any ledger other than the exact reviewed rows (every
+ * id, hash and created_at) and any schema in which an already-effective
+ * migration's objects are missing or differ from the reviewed fingerprint. It
+ * then archives rows 371-373, restarts the id sequence transactionally,
+ * applies the remaining canonical migrations in journal order, writes
+ * canonical receipts for every reviewed journal entry and verifies the
+ * complete resulting ledger and sequence. A
  * superseded intermediate CHECK (one a later pending migration redefines) is
  * created as a `CHECK (true) NOT VALID` placeholder, because historical rows
  * written by the out-of-order migrations cannot satisfy the intermediate
@@ -19,13 +24,19 @@
  * placeholder survives.
  *
  * Usage: bun --no-env-file packages/cloud/scripts/admin/production-ledger-recovery-20261023.ts > recovery.sql
+ *        bun --no-env-file packages/cloud/scripts/admin/production-ledger-recovery-20261023.ts --fingerprint-query
+ *          prints the read-only query behind the already-effective fingerprint.
  */
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import {
-  type Migration,
   loadCanonicalMigrations,
+  type Migration,
 } from "./canonical-migration-ledger";
 
 export const REVIEWED_PREFIX_LENGTH = 370;
+/** Journal entries the recovery was reviewed against; later entries migrate normally. */
+export const REVIEWED_JOURNAL_LENGTH = 519;
 export const REVIEWED_ANOMALOUS_ROWS = [
   { id: 371, tag: "0509_managed_gmail_operation_receipts" },
   { id: 372, tag: "0535_managed_gmail_read_state_operations" },
@@ -42,6 +53,119 @@ export const ALREADY_EFFECTIVE_TAGS = new Set([
   "0540_embeddings_space_nonce_dim2048",
   "0542_subscription_grant_codes",
 ]);
+
+const EFFECT_TABLES = [
+  "managed_gmail_operation_receipts",
+  "subscription_grant_codes",
+  "subscription_grants",
+];
+const EFFECT_COLUMNS = [
+  ["rooms", "connector_server_id"],
+  ["relationships", "extraction_evidence"],
+  ["embeddings", "space_id"],
+  ["embeddings", "write_nonce"],
+  ["embeddings", "dim_2048"],
+  ["organization_entitlements", "source_grant_id"],
+  ["subscription_allowance_periods", "subscription_id"],
+  ["subscription_allowance_periods", "subscription_revision"],
+  ["subscription_allowance_periods", "promo_grant_id"],
+];
+const EFFECT_CONSTRAINTS = [
+  "embedding_space_write_check",
+  "organization_entitlements_source_grant_tenant_fk",
+  "organization_entitlements_plan_state_check",
+  "subscription_allowance_periods_promo_grant_tenant_fk",
+  "subscription_allowance_periods_invoice_id_check",
+];
+const EFFECT_INDEXES = [
+  "subscription_allowance_periods_promo_grant_period_idx",
+];
+const EFFECT_TRIGGERS = [
+  "managed_gmail_operation_receipt_guard",
+  "subscription_grants_immutable",
+];
+const EFFECT_FUNCTIONS = [
+  "guard_managed_gmail_operation_receipt",
+  "guard_subscription_grant_record",
+];
+
+const list = (values: string[]) => values.map((v) => `'${v}'`).join(",");
+
+/**
+ * Read-only catalog fingerprint of every object the already-effective
+ * migrations create or change, as (kind, name, definition) rows.
+ */
+export const EFFECT_FINGERPRINT_SQL = `SELECT 'column' AS kind, c.relname || '.' || a.attname AS name,
+    format_type(a.atttypid, a.atttypmod) || CASE WHEN a.attnotnull THEN ' NOT NULL' ELSE '' END
+      || COALESCE(' DEFAULT ' || pg_get_expr(d.adbin, d.adrelid), '') AS definition
+  FROM pg_attribute a
+  JOIN pg_class c ON c.oid = a.attrelid
+  JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
+  LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+  WHERE c.relkind = 'r' AND a.attnum > 0 AND NOT a.attisdropped
+    AND (c.relname IN (${list(EFFECT_TABLES)})
+      OR (c.relname, a.attname) IN (${EFFECT_COLUMNS.map(([t, c]) => `('${t}','${c}')`).join(",")}))
+UNION ALL
+SELECT 'constraint', c.relname || '.' || con.conname, pg_get_constraintdef(con.oid)
+  FROM pg_constraint con
+  JOIN pg_class c ON c.oid = con.conrelid
+  JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
+  WHERE c.relname IN (${list(EFFECT_TABLES)}) OR con.conname IN (${list(EFFECT_CONSTRAINTS)})
+UNION ALL
+SELECT 'index', i.relname, pg_get_indexdef(i.oid)
+  FROM pg_index x
+  JOIN pg_class i ON i.oid = x.indexrelid
+  JOIN pg_class t ON t.oid = x.indrelid
+  JOIN pg_namespace n ON n.oid = t.relnamespace AND n.nspname = 'public'
+  WHERE t.relname IN (${list(EFFECT_TABLES)}) OR i.relname IN (${list(EFFECT_INDEXES)})
+UNION ALL
+SELECT 'trigger', c.relname || '.' || tg.tgname, pg_get_triggerdef(tg.oid)
+  FROM pg_trigger tg
+  JOIN pg_class c ON c.oid = tg.tgrelid
+  JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
+  WHERE NOT tg.tgisinternal AND tg.tgname IN (${list(EFFECT_TRIGGERS)})
+UNION ALL
+SELECT 'function', p.proname, l.lanname || ' ' || format_type(p.prorettype, NULL) || ' md5:' || md5(p.prosrc)
+  FROM pg_proc p
+  JOIN pg_language l ON l.oid = p.prolang
+  JOIN pg_namespace n ON n.oid = p.pronamespace AND n.nspname = 'public'
+  WHERE p.proname IN (${list(EFFECT_FUNCTIONS)})`;
+
+export interface EffectFingerprintRow {
+  kind: string;
+  name: string;
+  definition: string;
+}
+
+export const EFFECT_FINGERPRINT_PATH = path.join(
+  import.meta.dir,
+  "fixtures/production-ledger-recovery-20261023-effects.json",
+);
+
+/** Reviewed fingerprint, captured from the canonical prefix plus the six out-of-order migrations. */
+export function loadReviewedEffectFingerprint(): EffectFingerprintRow[] {
+  return JSON.parse(readFileSync(EFFECT_FINGERPRINT_PATH, "utf8"));
+}
+
+const literal = (value: string) => `'${value.replaceAll("'", "''")}'`;
+
+function ledgerValues(rows: { id: number; hash: string; when: number }[]) {
+  return rows
+    .map((row) => `(${row.id},${literal(row.hash)},${row.when}::bigint)`)
+    .join(",\n    ");
+}
+
+/** Exact-set comparison of the whole ledger, by id, hash and created_at. */
+function ledgerMismatch(rows: { id: number; hash: string; when: number }[]) {
+  return `(SELECT count(*) FROM drizzle.__drizzle_migrations) <> ${rows.length}
+     OR EXISTS (
+  WITH expected(id, hash, created_at) AS (VALUES
+    ${ledgerValues(rows)}),
+  actual AS (SELECT id::int, hash, created_at::bigint FROM drizzle.__drizzle_migrations)
+  (SELECT * FROM actual EXCEPT SELECT * FROM expected)
+  UNION ALL
+  (SELECT * FROM expected EXCEPT SELECT * FROM actual))`;
+}
 
 const ADD_CHECK = /ADD\s+CONSTRAINT\s+"?([a-z0-9_]+)"?\s+CHECK\s*\(/gi;
 
@@ -102,19 +226,42 @@ export function placeholderSupersededChecks(
   return rewritten;
 }
 
-export function buildRecoverySql(migrations: Migration[]): string {
-  const byTag = new Map(migrations.map((m) => [m.entry.tag, m]));
-  const anomalous = REVIEWED_ANOMALOUS_ROWS.map((row) => {
+export function buildRecoverySql(
+  migrations: Migration[],
+  effects: EffectFingerprintRow[],
+): string {
+  if (migrations.length < REVIEWED_JOURNAL_LENGTH)
+    throw Error(`journal_shorter_than_reviewed:${migrations.length}`);
+  if (effects.length === 0) throw Error("missing_reviewed_effect_fingerprint");
+  const reviewed = migrations.slice(0, REVIEWED_JOURNAL_LENGTH);
+  const byTag = new Map(reviewed.map((m) => [m.entry.tag, m]));
+  const before = reviewed
+    .slice(0, REVIEWED_PREFIX_LENGTH)
+    .map((m, index) => ({ id: index + 1, hash: m.hash, when: m.entry.when }));
+  REVIEWED_ANOMALOUS_ROWS.forEach((row, offset) => {
     const hash = "tag" in row ? byTag.get(row.tag)?.hash : row.hash;
     if (!hash)
       throw Error(
         `missing_reviewed_migration:${"tag" in row ? row.tag : row.id}`,
       );
-    return `(id=${row.id} AND hash='${hash}')`;
-  }).join(" OR ");
-  const tail = migrations.slice(REVIEWED_PREFIX_LENGTH);
+    // Each anomalous row was written at the journal time of the canonical entry it displaced.
+    const when = reviewed[REVIEWED_PREFIX_LENGTH + offset].entry.when;
+    before.push({ id: row.id, hash, when });
+  });
+  const after = reviewed.map((m, index) => ({
+    id: index + 1,
+    hash: m.hash,
+    when: m.entry.when,
+  }));
+  const tail = reviewed.slice(REVIEWED_PREFIX_LENGTH);
   const pending = tail.filter((m) => !ALREADY_EFFECTIVE_TAGS.has(m.entry.tag));
   const executable = placeholderSupersededChecks(pending);
+  const effectValues = effects
+    .map(
+      (row) =>
+        `(${literal(row.kind)},${literal(row.name)},${literal(row.definition)})`,
+    )
+    .join(",\n    ");
   const lines = [
     "\\set ON_ERROR_STOP on",
     "BEGIN;",
@@ -122,20 +269,35 @@ export function buildRecoverySql(migrations: Migration[]): string {
     "SET LOCAL statement_timeout = '300s';",
     "LOCK TABLE drizzle.__drizzle_migrations IN ACCESS EXCLUSIVE MODE;",
     `DO $$ BEGIN
-  IF (SELECT count(*) FROM drizzle.__drizzle_migrations) <> ${REVIEWED_PREFIX_LENGTH + REVIEWED_ANOMALOUS_ROWS.length}
-     OR (SELECT max(id) FROM drizzle.__drizzle_migrations) <> ${REVIEWED_PREFIX_LENGTH + REVIEWED_ANOMALOUS_ROWS.length}
-     OR (SELECT count(*) FROM drizzle.__drizzle_migrations WHERE ${anomalous}) <> ${REVIEWED_ANOMALOUS_ROWS.length} THEN
-    RAISE EXCEPTION 'ledger_shape_mismatch: production ledger is not the reviewed 373-row state';
+  IF ${ledgerMismatch(before)} THEN
+    RAISE EXCEPTION 'ledger_shape_mismatch: production ledger is not the reviewed ${before.length}-row state';
   END IF;
 END $$;`,
-    `CREATE TABLE drizzle.__drizzle_migrations_retired_20261023 AS SELECT *, now() AS retired_at FROM drizzle.__drizzle_migrations WHERE ${anomalous};`,
-    `DELETE FROM drizzle.__drizzle_migrations WHERE ${anomalous};`,
-    `SELECT setval(pg_get_serial_sequence('drizzle.__drizzle_migrations','id'), ${REVIEWED_PREFIX_LENGTH}, true);`,
+    `DO $$ DECLARE mismatched text; BEGIN
+  WITH expected(kind, name, definition) AS (VALUES
+    ${effectValues}),
+  actual AS (${EFFECT_FINGERPRINT_SQL})
+  SELECT string_agg(e.kind || ' ' || e.name, ', ' ORDER BY e.kind, e.name) INTO mismatched
+    FROM expected e
+    WHERE NOT EXISTS (SELECT 1 FROM actual a WHERE a.kind = e.kind AND a.name = e.name AND a.definition = e.definition);
+  IF mismatched IS NOT NULL THEN
+    RAISE EXCEPTION 'already_effective_schema_mismatch: %', mismatched;
+  END IF;
+END $$;`,
+    `CREATE TABLE drizzle.__drizzle_migrations_retired_20261023 AS SELECT *, now() AS retired_at FROM drizzle.__drizzle_migrations WHERE id > ${REVIEWED_PREFIX_LENGTH};`,
+    `DELETE FROM drizzle.__drizzle_migrations WHERE id > ${REVIEWED_PREFIX_LENGTH};`,
+    // setval is not transactional; a restart is, so a rollback restores the original sequence.
+    `DO $$ DECLARE seq text := pg_get_serial_sequence('drizzle.__drizzle_migrations', 'id'); BEGIN
+  IF seq IS NULL THEN RAISE EXCEPTION 'ledger_sequence_missing'; END IF;
+  EXECUTE format('ALTER SEQUENCE %s RESTART WITH ${REVIEWED_PREFIX_LENGTH + 1}', seq);
+END $$;`,
   ];
   for (const migration of tail) {
     const tag = migration.entry.tag;
     if (ALREADY_EFFECTIVE_TAGS.has(tag)) {
-      lines.push(`-- already effective in production: ${tag}`);
+      lines.push(
+        `-- already effective in production (fingerprint verified): ${tag}`,
+      );
     } else {
       const sql = executable.get(tag) ?? migrationSql(migration);
       lines.push(`-- apply ${tag}`);
@@ -151,8 +313,12 @@ END $$;`,
       `INSERT INTO drizzle.__drizzle_migrations(hash, created_at) VALUES ('${migration.hash}', ${migration.entry.when});`,
     );
   }
-  lines.push(`DO $$ BEGIN
-  IF (SELECT count(*) FROM drizzle.__drizzle_migrations) <> ${migrations.length} THEN RAISE EXCEPTION 'ledger_count_mismatch after repair'; END IF;
+  lines.push(`DO $$ DECLARE seq text := pg_get_serial_sequence('drizzle.__drizzle_migrations', 'id'); last_id bigint; called boolean; BEGIN
+  IF ${ledgerMismatch(after)} THEN
+    RAISE EXCEPTION 'ledger_mismatch_after_repair';
+  END IF;
+  EXECUTE format('SELECT last_value, is_called FROM %s', seq) INTO last_id, called;
+  IF NOT called OR last_id < ${after.length} THEN RAISE EXCEPTION 'ledger_sequence_behind_after_repair'; END IF;
   IF EXISTS (SELECT 1 FROM pg_constraint WHERE contype='c' AND pg_get_constraintdef(oid) ~ '^CHECK \\(true\\)') THEN RAISE EXCEPTION 'placeholder_constraint_survived'; END IF;
 END $$;`);
   lines.push("COMMIT;");
@@ -160,5 +326,12 @@ END $$;`);
 }
 
 if (import.meta.main) {
-  process.stdout.write(buildRecoverySql(await loadCanonicalMigrations()));
+  process.stdout.write(
+    process.argv.includes("--fingerprint-query")
+      ? `${EFFECT_FINGERPRINT_SQL}\nORDER BY 1, 2;\n`
+      : buildRecoverySql(
+          await loadCanonicalMigrations(),
+          loadReviewedEffectFingerprint(),
+        ),
+  );
 }
