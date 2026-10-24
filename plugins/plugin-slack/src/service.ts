@@ -3725,6 +3725,7 @@ export class SlackService extends Service implements ISlackService {
   async fetchConnectorMessages(
     _context: MessageConnectorQueryContext,
     params: ConnectorFetchMessagesParams,
+    untilMatches?: { count: number; matches: (memory: Memory) => boolean },
   ): Promise<Memory[]> {
     const accountId = await this.resolveAccountIdForTarget(
       _context.runtime,
@@ -3764,6 +3765,19 @@ export class SlackService extends Service implements ISlackService {
             before: params.before,
             after: params.after,
             cursor: params.cursor,
+            untilMatches: untilMatches && {
+              count: untilMatches.count,
+              matches: async (message) =>
+                Boolean(message.ts) &&
+                untilMatches.matches(
+                  await this.slackMessageToMemory(
+                    message,
+                    channelId,
+                    threadTs,
+                    accountId,
+                  ),
+                ),
+            },
           },
           accountId,
         );
@@ -3809,15 +3823,21 @@ export class SlackService extends Service implements ISlackService {
     }
 
     const requestedLimit = normalizeConnectorLimit(params.limit);
-    const memories = await this.fetchConnectorMessages(context, {
-      ...params,
-      limit: undefined,
-    });
-    const matches = memories.filter((memory) => {
+    const matchesQuery = (memory: Memory) => {
       const text = String(memory.content.text ?? "").toLowerCase();
       const name = String(memory.content.name ?? "").toLowerCase();
       return text.includes(query) || name.includes(query);
-    });
+    };
+    // Channel history is read newest-first, so the first `limit` matches read
+    // are the newest ones: stop paging there, not at the start of the channel.
+    const memories = await this.fetchConnectorMessages(
+      context,
+      { ...params, limit: undefined },
+      requestedLimit === undefined
+        ? undefined
+        : { count: requestedLimit, matches: matchesQuery },
+    );
+    const matches = memories.filter(matchesQuery);
     return requestedLimit === undefined
       ? matches
       : matches.slice(0, requestedLimit);
@@ -4464,6 +4484,11 @@ export class SlackService extends Service implements ISlackService {
       before?: string;
       after?: string;
       cursor?: string;
+      /** Stop paging once `count` of the rows read match. */
+      untilMatches?: {
+        count: number;
+        matches: (message: SlackMessage) => Promise<boolean>;
+      };
     },
     accountId?: string | null,
   ): Promise<SlackMessage[]> {
@@ -4477,6 +4502,7 @@ export class SlackService extends Service implements ISlackService {
     const seen = new Set<string>();
     let cursor = options?.cursor;
     if (cursor) seen.add(cursor);
+    let matched = 0;
     do {
       const result = await client.conversations.history({
         channel: channelId,
@@ -4485,11 +4511,19 @@ export class SlackService extends Service implements ISlackService {
         oldest: options?.after,
         cursor,
       });
-      rawMessages.push(
-        ...((result.messages ?? []) as Array<Record<string, unknown>>),
-      );
+      const page = (result.messages ?? []) as Array<Record<string, unknown>>;
+      rawMessages.push(...page);
       if (requestedLimit !== undefined && rawMessages.length >= requestedLimit)
         break;
+      const until = options?.untilMatches;
+      if (until) {
+        for (const msg of page) {
+          if (await until.matches(this.wireMessageToSlackMessage(msg))) {
+            matched += 1;
+          }
+        }
+        if (matched >= until.count) break;
+      }
       cursor = nextSlackCursor(result, seen, "conversation history");
     } while (cursor);
 
