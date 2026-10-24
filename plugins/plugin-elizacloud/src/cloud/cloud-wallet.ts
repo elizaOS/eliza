@@ -46,7 +46,9 @@ function ensureFlag(): void {
  */
 function normalizePrivateKey(raw: string): `0x${string}` {
   const trimmed = raw.trim();
-  const hex = trimmed.startsWith("0x") ? trimmed.slice(2) : trimmed;
+  // A key copied with an uppercase `0X` prefix is the same 32-byte key. Strip
+  // either prefix; the 64-hex check still rejects short or padded values.
+  const hex = /^0x/i.test(trimmed) ? trimmed.slice(2) : trimmed;
   if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
     throw new Error(
       `Malformed ${ELIZA_CLOUD_CLIENT_ADDRESS_KEY_ENV}: expected 32-byte hex`,
