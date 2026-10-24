@@ -152,13 +152,16 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
   sessionExact("auth.guest-pair-code", "POST", "/api/auth/guest-pair-code"),
   sessionExact("cloud.status", "GET", "/api/cloud/status"),
   sessionExact("cloud.credits", "GET", "/api/cloud/credits"),
-  sessionExact("cloud.login", "POST", "/api/cloud/login"),
-  sessionExact("cloud.login.status", "GET", "/api/cloud/login/status"),
-  sessionExact("cloud.login.persist", "POST", "/api/cloud/login/persist"),
-  sessionExact("cloud.disconnect", "POST", "/api/cloud/disconnect"),
-  sessionPrefix("cloud.compat", "/api/cloud/compat/"),
-  sessionPrefix("cloud.v1", "/api/cloud/v1/"),
-  sessionPrefix("cloud.billing", "/api/cloud/billing/"),
+  // Cloud login, its key and billing belong to the owner: a paired device
+  // (USER) must not link, replace or disconnect the agent's Cloud account.
+  ownerExact("cloud.login", "POST", "/api/cloud/login"),
+  ownerExact("cloud.login.status", "GET", "/api/cloud/login/status"),
+  ownerExact("cloud.login.persist", "POST", "/api/cloud/login/persist"),
+  ownerExact("cloud.disconnect", "POST", "/api/cloud/disconnect"),
+  // General proxies to the Cloud API with the owner's key.
+  ownerPrefix("cloud.compat", "/api/cloud/compat/"),
+  ownerPrefix("cloud.v1", "/api/cloud/v1/"),
+  ownerPrefix("cloud.billing", "/api/cloud/billing/"),
 
   sessionExact("dev.stack", "GET", "/api/dev/stack"),
   sessionExact("dev.route-catalog", "GET", "/api/dev/route-catalog"),

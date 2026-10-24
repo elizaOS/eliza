@@ -1094,6 +1094,12 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     under("/api/notes") ||
     under("/assistant/autonomy") ||
     under("/assistant/api/channel-topics") ||
+    // The owner's Cloud account: login, its key, billing and the Cloud proxies.
+    under("/api/cloud/login") ||
+    pathname === "/api/cloud/disconnect" ||
+    under("/api/cloud/billing") ||
+    under("/api/cloud/v1") ||
+    under("/api/cloud/compat") ||
     (write &&
       (pathname.startsWith("/api/wallet/") ||
         under("/api/config") ||

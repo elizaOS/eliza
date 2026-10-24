@@ -243,6 +243,12 @@ it("refuses owner-only writes and memory reads to a paired USER session", async 
       ["/api/voice/profiles", {}],
       ["/api/notes/state", {}],
       ["/assistant/autonomy/enable", { method: "POST" }],
+      [
+        "/api/cloud/login/persist",
+        { method: "POST", body: JSON.stringify({ apiKey: "attacker-key" }) },
+      ],
+      ["/api/cloud/disconnect", { method: "POST" }],
+      ["/api/cloud/v1/credits", {}],
     ];
     for (const [path, init] of guestRequests) {
       const response = await send("guest-session-id", path, init);

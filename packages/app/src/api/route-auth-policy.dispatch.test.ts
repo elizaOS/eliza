@@ -14,8 +14,11 @@ import { Socket } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { __resetRuntimeModeSnapshotCacheForTests } from "@elizaos/agent/api/runtime-mode/runtime-mode";
+import type { AgentRuntime } from "@elizaos/core";
+import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { authStoreForRuntime } from "../services/auth-store";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { handleElizaCompatRoute } from "./server";
 
@@ -346,5 +349,71 @@ describe("compat dispatcher default-deny (H5)", () => {
         url: "/api/cloud/login",
       },
     ]);
+  });
+});
+
+describe("Cloud account routes", () => {
+  it("accept the owner and refuse a paired device session", async () => {
+    process.env.ELIZA_API_TOKEN = "local-api-token";
+    process.env.ELIZA_REQUIRE_LOCAL_AUTH = "1";
+    const adapter = SQLiteDatabaseAdapter.create(
+      path.join(stateDir ?? os.tmpdir(), "agent.sqlite"),
+      "11111111-2222-3333-4444-555555555555",
+    );
+    await adapter.initialize();
+    const runtime = {
+      agentId: "11111111-2222-3333-4444-555555555555",
+      adapter,
+      reportError: vi.fn(),
+    } as unknown as AgentRuntime;
+    const store = authStoreForRuntime(runtime);
+    if (!store) throw new Error("Missing test auth store");
+    const now = Date.now();
+    // A paired device is a `machine` identity, which resolves to USER.
+    for (const [id, kind] of [
+      ["owner", "owner"],
+      ["device", "machine"],
+    ] as const) {
+      await store.createIdentity({ id, kind, displayName: id, createdAt: now });
+      await store.createSession({
+        id: `${id}-session`,
+        identityId: id,
+        kind: "machine",
+        createdAt: now,
+        lastSeenAt: now,
+        expiresAt: now + 3_600_000,
+        rememberDevice: false,
+        csrfSecret: "csrf",
+        ip: null,
+        userAgent: null,
+        scopes: [],
+      });
+    }
+    const state: CompatRuntimeState = { ...STATE, current: runtime };
+    const call = async (method: string, pathname: string, token: string) => {
+      const cap = captureRes();
+      await handleElizaCompatRoute(
+        bearerReq(method, pathname, token),
+        cap.res,
+        state,
+      );
+      return cap.status();
+    };
+    try {
+      for (const [method, pathname] of [
+        ["POST", "/api/cloud/login"],
+        ["GET", "/api/cloud/login/status?sessionId=x"],
+        ["POST", "/api/cloud/login/persist"],
+        ["POST", "/api/cloud/disconnect"],
+        ["GET", "/api/cloud/billing/summary"],
+        ["GET", "/api/cloud/v1/credits"],
+      ] as const) {
+        expect(await call(method, pathname, "device-session")).toBe(403);
+      }
+      expect(targetHits).toEqual([]);
+      expect(await call("POST", "/api/cloud/login", "owner-session")).toBe(200);
+    } finally {
+      await adapter.close();
+    }
   });
 });
