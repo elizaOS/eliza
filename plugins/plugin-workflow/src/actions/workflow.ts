@@ -190,7 +190,9 @@ export const workflowAction: Action = {
     if (!service) return { success: false, text: 'Workflow service is unavailable.' };
     const ownerId = (await resolveCanonicalOwnerIdForMessage(runtime, message)) ?? message.entityId;
     const workflowId = text(params.workflowId);
-    const limit = Math.min(50, Math.max(1, number(params.limit, 20)));
+    // The limit is a count of rows: truncate a fractional planner value before
+    // it becomes a database LIMIT, which accepts only an integer.
+    const limit = Math.min(50, Math.max(1, Math.trunc(number(params.limit, 20))));
 
     try {
       if (op === 'list' || op === 'search') {
