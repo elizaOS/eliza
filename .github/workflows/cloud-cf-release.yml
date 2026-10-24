@@ -1276,11 +1276,8 @@ jobs:
         working-directory: ${{ env.CHECKOUT_DIR }}
         env:
           DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
-          # Probe the upstream this release will route to. The canonical one is
-          # the Cloudflare login Worker (https://login-staging.eliza.app),
-          # published via ELIZA_LOGIN_API_URL. Unset means pre-cutover: the
-          # committed wrangler.toml default (Railway) stays live, so probe it.
-          STEWARD_UPSTREAM_URL: ${{ vars.ELIZA_LOGIN_API_URL || 'https://steward-api-staging.up.railway.app' }}
+          # Probe the protected upstream override or the committed Cloudflare default.
+          STEWARD_UPSTREAM_URL: ${{ vars.ELIZA_LOGIN_API_URL || 'https://login-staging.eliza.app' }}
         run: |
           set -euo pipefail
           node packages/cloud/scripts/verify-steward-provider-discovery.ts \
