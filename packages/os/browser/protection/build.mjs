@@ -14,7 +14,8 @@ const escapeHtml = (s) =>
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 
 /** Text for the `{{key}}` slots of warning.html. Values are plain text. */
 export function warningCopy(
@@ -31,7 +32,7 @@ export function warningCopy(
     limits: "Domain-list protection cannot detect every threat.",
   };
   for (const [key, value] of Object.entries(copy))
-    if (!(key in defaults) || typeof value !== "string")
+    if (!Object.hasOwn(defaults, key) || typeof value !== "string")
       throw Error(`Unknown or invalid warning copy: ${key}`);
   return { ...defaults, ...copy };
 }
@@ -91,11 +92,18 @@ export async function buildBrowserProtection(
   if (bundled.status !== 0)
     throw Error(`Advisory build failed: ${bundled.stderr}`);
   const engine = await readFile(join(root, "extension.mjs"), "utf8");
+  // Attribution fields stay at build time; a local notice path never ships.
+  const runtimeFeeds = feeds.map(({ notice, homepage, ...feed }) => feed);
   await writeFile(
     join(output, "background.mjs"),
     engine +
       "\nexport const protection = installBrowserProtection({chrome:globalThis.chrome,..." +
-      JSON.stringify({ feeds, refreshAlarm, exceptionAlarm, advisory }) +
+      JSON.stringify({
+        feeds: runtimeFeeds,
+        refreshAlarm,
+        exceptionAlarm,
+        advisory,
+      }) +
       "});\n",
   );
   const manifest = {

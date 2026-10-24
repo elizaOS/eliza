@@ -82,6 +82,9 @@ test("the default warning names the assistant and lists the configured feeds", a
     }
     assert.match(licenses, /MIT License/);
     assert.match(licenses, /GNU GENERAL PUBLIC LICENSE/);
+    const worker = await readFile(join(output, "background.mjs"), "utf8");
+    assert.doesNotMatch(worker, /"notice"|"homepage"/);
+    assert.ok(worker.includes(`"url":"${REPUTATION_FEEDS[0].url}"`));
   } finally {
     await rm(output, { recursive: true, force: true });
   }
@@ -111,7 +114,8 @@ test("warning copy and licenses follow the consumer's assistant name and feed se
   } finally {
     await rm(output, { recursive: true, force: true });
   }
-  assert.throws(() => warningCopy({ copy: { footer: "x" } }), /footer/);
+  for (const key of ["footer", "constructor", "toString"])
+    assert.throws(() => warningCopy({ copy: { [key]: "x" } }), new RegExp(key));
   assert.throws(() => warningCopy({ copy: { heading: 1 } }), /heading/);
   await assert.rejects(
     buildBrowserProtection(output, {
@@ -128,6 +132,13 @@ test("consumer warning pages may use the copy slots; unknown slots reject", () =
     "<title>Website warning — Ada</title><p>Community lists: Phishing.Database (MIT) and HaGeZi TIF Mini (GPL-3.0).</p>",
   );
   assert.equal(renderWarningPage("<h1>Static</h1>", copy), "<h1>Static</h1>");
+  assert.equal(
+    renderWarningPage(
+      "<meta content='{{stopped}}'>",
+      warningCopy({ assistantName: "O'Neil" }),
+    ),
+    "<meta content='O&#39;Neil stopped it before it opened.'>",
+  );
   assert.throws(() => renderWarningPage("{{footer}}", copy), /footer/);
 });
 

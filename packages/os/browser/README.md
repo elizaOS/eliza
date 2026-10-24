@@ -402,7 +402,8 @@ high-contrast and forced-colors modes. `warning: {assistantName, copy}` fills th
 page's `{{title}}`, `{{heading}}`, `{{stopped}}`, `{{mistake}}`, `{{feeds}}` and
 `{{limits}}` slots as plain text; an override page may use the same slots. The feed
 sentence and `licenses.html` are built from `feeds`; each feed names its `homepage`
-and a license `notice` (a file in `protection/licenses/` or an absolute path).
+and a license `notice` (a file in `protection/licenses/` or an absolute path), both read
+only at build time and left out of the shipped worker.
 The optional builder defaults to the reviewed Phishing.Database and HaGeZi lists.
 `composeProtectionAssets` adds the complete admitted resource inventory to an
 existing component without changing its other capabilities. Keep existing alarm
