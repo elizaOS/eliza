@@ -1800,6 +1800,10 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     for (const id of memoryIds) {
       const m = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, id);
       if (!m) continue;
+      // ID lookups stay inside this adapter's tenant, like plugin-sql scopes
+      // the same read with `agent_id = this.agentId`. Rows stored without an
+      // agentId belong to this database.
+      if ((m.agentId ?? this.agentId) !== this.agentId) continue;
       if (tableName && storedMemoryTableName(m) !== tableName) continue;
       memories.push(toMemory(m));
     }
