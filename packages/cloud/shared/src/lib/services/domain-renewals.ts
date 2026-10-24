@@ -15,6 +15,10 @@ import { randomUUID } from "node:crypto";
  *   4. On a declined debit, disables auto-renew (so Cloudflare stops renewing on
  *      our account) and lets the domain lapse per policy.
  *   5. If the registrar fails after the debit, refunds exactly once.
+ *   6. A charge with no recorded renewal that is older than
+ *      DOMAIN_RENEWAL_RESUME_AFTER_MS belongs to a run that died between the
+ *      debit and the registrar call; the next run completes it (steps 3 and 5)
+ *      without charging again.
  */
 
 import { creditTransactionsRepository } from "../../db/repositories/credit-transactions";
@@ -30,6 +34,11 @@ import { managedDomainsService } from "./managed-domains";
 
 /** How far ahead of expiry the cron starts attempting a renewal. */
 export const DOMAIN_RENEWAL_WINDOW_DAYS = 14;
+/**
+ * A charge this old with no recorded renewal is abandoned, not in flight: a
+ * run finishes its registrar call in seconds, and the cron runs once a day.
+ */
+export const DOMAIN_RENEWAL_RESUME_AFTER_MS = 60 * 60 * 1000;
 
 export type DomainRenewalOutcome =
   | "renewed"
@@ -68,7 +77,7 @@ function addOneYear(from: Date): Date {
   return next;
 }
 
-async function renewOne(domain: ManagedDomain): Promise<DomainRenewalResult> {
+async function renewOne(domain: ManagedDomain, now: Date): Promise<DomainRenewalResult> {
   const base = { domain: domain.domain, organizationId: domain.organizationId };
   let lifecycleRevision: number;
   try {
@@ -96,10 +105,6 @@ async function renewOne(domain: ManagedDomain): Promise<DomainRenewalResult> {
     domain.domain,
     renewalPeriod,
   );
-  if (charges.debits > charges.refunds) {
-    return { ...base, outcome: "already_charged" };
-  }
-
   const runId = randomUUID();
   const debitMetadata = {
     type: "domain_renewal" as const,
@@ -108,6 +113,20 @@ async function renewOne(domain: ManagedDomain): Promise<DomainRenewalResult> {
     managedDomainId: domain.id,
     renewalRunId: runId,
   };
+  if (charges.debits > charges.refunds) {
+    // The domain is still due for the paid period, so the run that charged it
+    // never recorded a renewal. A fresh charge may belong to a run that is
+    // still at the registrar; an old one is abandoned and is completed here.
+    const chargeAgeMs = charges.lastDebitAt ? now.getTime() - charges.lastDebitAt.getTime() : 0;
+    if (chargeAgeMs < DOMAIN_RENEWAL_RESUME_AFTER_MS) {
+      return { ...base, outcome: "already_charged" };
+    }
+    logger.warn("[Domain Renewals] paid period has no recorded renewal; completing it", {
+      ...base,
+      chargedAt: charges.lastDebitAt?.toISOString(),
+    });
+    return completeRenewal(domain, base, renewalPriceCents, debitMetadata, lifecycleRevision);
+  }
 
   // Debit BEFORE the registrar action so a renewal can never run for free.
   // The key names the charge for this period and attempt (the refund count
@@ -150,6 +169,26 @@ async function renewOne(domain: ManagedDomain): Promise<DomainRenewalResult> {
     };
   }
 
+  return completeRenewal(domain, base, renewalPriceCents, debitMetadata, lifecycleRevision);
+}
+
+/** After the period is paid: renew at the registrar and record the new expiry, or refund exactly once. */
+async function completeRenewal(
+  domain: ManagedDomain,
+  base: { domain: string; organizationId: string },
+  renewalPriceCents: number,
+  debitMetadata: {
+    type: "domain_renewal";
+    domain: string;
+    renewalPeriod: string;
+    managedDomainId: string;
+    renewalRunId: string;
+  },
+  lifecycleRevision: number,
+): Promise<DomainRenewalResult> {
+  if (!domain.expiresAt) {
+    return { ...base, outcome: "missing_price", reason: "no expiry on record" };
+  }
   try {
     await requireActiveOrganizationLifecycle(domain.organizationId, lifecycleRevision);
   } catch (error) {
@@ -209,7 +248,7 @@ export async function processDomainRenewals(
   const results: DomainRenewalResult[] = [];
   for (const domain of due) {
     try {
-      results.push(await renewOne(domain));
+      results.push(await renewOne(domain, now));
     } catch (err) {
       logger.error("[Domain Renewals] unexpected error renewing domain", {
         domain: domain.domain,

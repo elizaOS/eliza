@@ -140,11 +140,14 @@ export class CreditTransactionsRepository {
     organizationId: string,
     domain: string,
     renewalPeriod: string,
-  ): Promise<{ debits: number; refunds: number }> {
+  ): Promise<{ debits: number; refunds: number; lastDebitAt: Date | null }> {
     const [row] = await dbWrite
       .select({
         debits: sql<number>`count(*) filter (where ${creditTransactions.metadata}->>'type' = 'domain_renewal')`,
         refunds: sql<number>`count(*) filter (where ${creditTransactions.metadata}->>'type' = 'domain_renewal_refund')`,
+        lastDebitAt: sql<
+          Date | string | null
+        >`max(${creditTransactions.created_at}) filter (where ${creditTransactions.metadata}->>'type' = 'domain_renewal')`,
       })
       .from(creditTransactions)
       .where(
@@ -154,7 +157,11 @@ export class CreditTransactionsRepository {
           sql`${creditTransactions.metadata}->>'renewalPeriod' = ${renewalPeriod}`,
         ),
       );
-    return { debits: Number(row?.debits ?? 0), refunds: Number(row?.refunds ?? 0) };
+    return {
+      debits: Number(row?.debits ?? 0),
+      refunds: Number(row?.refunds ?? 0),
+      lastDebitAt: row?.lastDebitAt ? new Date(row.lastDebitAt) : null,
+    };
   }
 
   // ============================================================================
