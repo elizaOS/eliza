@@ -14,7 +14,8 @@ compatibility_flags = ["nodejs_compat"]
 account_id = "23cf6feaeaa541f6a0675053c33da768"
 workers_dev = false
 minify = true
-# Voice routing/provider values are environment-managed plain-text bindings.
+# Voice routing/provider values and app OAuth return allowlists are
+# environment-managed plain-text bindings.
 # Preserve those bindings when publishing the committed vars block; without
 # this Wrangler deletes them and every configured Twilio line fails closed.
 keep_vars = true
@@ -672,7 +673,6 @@ binding = "AI"
 binding = "BROWSER"
 
 [env.staging.vars]
-APP_OAUTH_RETURN_URLS = "https://alphacompute.ai/alphaphone/gmail/staging/callback"
 NODE_ENV = "production"
 # Cloudflare login upstream; ELIZA_LOGIN_API_URL can select the same environment's workers.dev origin.
 LOGIN_API_URL = "https://login-staging.eliza.app"
@@ -1023,7 +1023,6 @@ binding = "AI"
 binding = "BROWSER"
 
 [env.production.vars]
-APP_OAUTH_RETURN_URLS = "https://alphacompute.ai/alphaphone/gmail/callback"
 # Cloudflare login upstream (see the staging block above).
 LOGIN_API_URL = "https://login.eliza.app"
 NODE_ENV = "production"
