@@ -126,6 +126,28 @@ const DEFAULT_BROKER_URL = "https://hol.org/registry/api/v1";
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_CACHE_TTL_MS = 300_000; // 5 minutes
 
+/**
+ * A registry read that did not produce a usable answer: transport failure,
+ * timeout, non-2xx status, or a body that is not the documented shape.
+ * Callers must be able to tell this apart from an empty result set.
+ */
+export class UAIDRegistryError extends Error {
+  /** HTTP status of the registry response, when there was one. */
+  readonly status?: number;
+
+  constructor(
+    message: string,
+    options: { status?: number; cause?: unknown } = {},
+  ) {
+    super(
+      message,
+      options.cause === undefined ? undefined : { cause: options.cause },
+    );
+    this.name = "UAIDRegistryError";
+    this.status = options.status;
+  }
+}
+
 /** EVM chain IDs for UAID protocol mapping */
 const EVM_CHAIN_IDS: Record<SupportedChain, number> = {
   ethereum: 1,
@@ -253,7 +275,11 @@ export class UAIDResolver {
    *
    * @param query - Search terms (name, capability, protocol)
    * @param options - Optional filters
-   * @returns Array of matching UAIDResolution results
+   * @returns Array of matching UAIDResolution results; empty only when the
+   *   registry answered successfully with no matches
+   * @throws {UAIDRegistryError} when the registry is unreachable, times out,
+   *   answers with a non-2xx status, or returns a body that is not the
+   *   documented `{ agents: [...] }` shape
    */
   async search(
     query: string,
@@ -263,48 +289,80 @@ export class UAIDResolver {
       minTrustScore?: number;
     },
   ): Promise<UAIDResolution[]> {
+    const params = new URLSearchParams({ q: query });
+    if (options?.protocol) params.set("protocol", options.protocol);
+    if (options?.limit) params.set("limit", String(options.limit));
+    if (options?.minTrustScore)
+      params.set("minTrust", String(options.minTrustScore));
+
+    let response: Response;
     try {
-      const params = new URLSearchParams({ q: query });
-      if (options?.protocol) params.set("protocol", options.protocol);
-      if (options?.limit) params.set("limit", String(options.limit));
-      if (options?.minTrustScore)
-        params.set("minTrust", String(options.minTrustScore));
-
-      const response = await this.brokerRequest(
-        "GET",
-        `/agents/search?${params}`,
-      );
-      if (!response.ok) return [];
-
-      const data = await response.json();
-      const results: UAIDResolution[] = (data.agents ?? []).map(
-        (agent: Record<string, unknown>) => ({
-          resolved: true,
-          uaid: agent.uaid as string,
-          identity: {
-            agentId: String(agent.agentId ?? agent.nativeId ?? ""),
-            owner: (agent.owner ?? agent.controller ?? "") as string,
-            agentURI: (agent.agentURI ?? agent.metadataUri ?? "") as string,
-            paymentAddress: (agent.paymentAddress ??
-              agent.agentWallet ??
-              "") as string,
-            registrationFile: (agent.registrationFile ??
-              null) as AgentRegistrationFile | null,
-            protocol: (agent.protocol ?? "unknown") as UAIDProtocol,
-            chain: (agent.chain ?? "") as string,
-            uaid: agent.uaid as string,
-          },
-          protocol: (agent.protocol ?? "unknown") as UAIDProtocol,
-          chain: agent.chain as string | undefined,
-          trustScore: agent.trustScore as number | undefined,
-          registryVerified: (agent.verified ?? false) as boolean,
-        }),
-      );
-
-      return results;
-    } catch {
-      return [];
+      response = await this.brokerRequest("GET", `/agents/search?${params}`);
+    } catch (error: unknown) {
+      throw new UAIDRegistryError("HOL registry search request failed", {
+        cause: error,
+      });
     }
+    if (!response.ok) {
+      throw new UAIDRegistryError(
+        `HOL registry search failed with ${response.status}`,
+        { status: response.status },
+      );
+    }
+
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch (error: unknown) {
+      throw new UAIDRegistryError("HOL registry search returned invalid JSON", {
+        cause: error,
+      });
+    }
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      throw new UAIDRegistryError("HOL registry search returned invalid JSON");
+    }
+    const agents = (payload as { agents?: unknown }).agents;
+    if (!Array.isArray(agents)) {
+      throw new UAIDRegistryError(
+        "HOL registry search returned an invalid agents list",
+      );
+    }
+    const entries = agents.map((agent: unknown, index: number) => {
+      if (!agent || typeof agent !== "object" || Array.isArray(agent)) {
+        throw new UAIDRegistryError(
+          `HOL registry search returned an invalid agent at index ${index}`,
+        );
+      }
+      const { uaid } = agent as { uaid?: unknown };
+      if (typeof uaid !== "string" || uaid.length === 0) {
+        throw new UAIDRegistryError(
+          `HOL registry search returned an agent without a uaid at index ${index}`,
+        );
+      }
+      return agent as Record<string, unknown>;
+    });
+
+    return entries.map((agent: Record<string, unknown>) => ({
+      resolved: true,
+      uaid: agent.uaid as string,
+      identity: {
+        agentId: String(agent.agentId ?? agent.nativeId ?? ""),
+        owner: (agent.owner ?? agent.controller ?? "") as string,
+        agentURI: (agent.agentURI ?? agent.metadataUri ?? "") as string,
+        paymentAddress: (agent.paymentAddress ??
+          agent.agentWallet ??
+          "") as string,
+        registrationFile: (agent.registrationFile ??
+          null) as AgentRegistrationFile | null,
+        protocol: (agent.protocol ?? "unknown") as UAIDProtocol,
+        chain: (agent.chain ?? "") as string,
+        uaid: agent.uaid as string,
+      },
+      protocol: (agent.protocol ?? "unknown") as UAIDProtocol,
+      chain: agent.chain as string | undefined,
+      trustScore: agent.trustScore as number | undefined,
+      registryVerified: (agent.verified ?? false) as boolean,
+    }));
   }
 
   // ── ERC-8004 ↔ UAID bridge ────────────────────────────────────────────────

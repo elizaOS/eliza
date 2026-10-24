@@ -614,7 +614,7 @@ export type {
   UniversalAgentIdentity,
 } from "./identity/uaid.js";
 // ─── UAID: Cross-Chain Identity Resolution (HOL Registry Broker) ────────────
-export { UAIDResolver } from "./identity/uaid.js";
+export { UAIDRegistryError, UAIDResolver } from "./identity/uaid.js";
 export type {
   RequestValidationParams,
   RespondToValidationParams,
