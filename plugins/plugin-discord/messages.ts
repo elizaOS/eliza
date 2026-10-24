@@ -2573,11 +2573,17 @@ export class MessageManager {
 			if (draftStream) {
 				await draftStream.start(channel, outboundReplyToMessageId, replyToMode);
 			}
-			// Typing indicator is deferred until the runtime actually invokes the
-			// handler callback (see the `typingStarted` guard further down). This
-			// avoids showing "Eliza is typing…" for messages the agent decides to
-			// IGNORE/NONE, and lines up with the message-service preamble that
-			// fires the callback the moment we commit to responding.
+			// Typing indicator is deferred until the turn commits to responding:
+			// the message service's `onResponseDecision` (Stage 1 RESPOND), or the
+			// first handler callback on paths without that signal (see the
+			// `typingStarted` guard further down). This avoids showing "Eliza is
+			// typing…" for messages the agent decides to IGNORE/NONE.
+			const startTyping = () => {
+				if (!typingStarted) {
+					typingStarted = true;
+					typingController.start();
+				}
+			};
 
 			statusReactions?.setQueued();
 			statusReactions?.setThinking();
@@ -2693,10 +2699,7 @@ export class MessageManager {
 						return [];
 					}
 
-					if (!typingStarted) {
-						typingStarted = true;
-						typingController.start();
-					}
+					startTyping();
 
 					// Dedup: error when the runtime emits identical text
 					// twice in response to the same inbound message (e.g.
@@ -3204,7 +3207,10 @@ export class MessageManager {
 							this.runtime,
 							newMessage,
 							callback,
-							{ abortSignal: generationSignal },
+							{
+								abortSignal: generationSignal,
+								onResponseDecision: startTyping,
+							},
 						);
 					} else if (messagingAPI?.handleMessage) {
 						this.runtime.logger.debug(
