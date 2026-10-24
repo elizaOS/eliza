@@ -1058,6 +1058,16 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
       ].some((op) => under(`/api/agent/${op}`))) ||
     // Legacy restart endpoint: exits and restarts the whole agent process.
     (write && pathname === "/api/restart") ||
+    // Workbench files and plugin loading run code in the agent process.
+    under("/api/workbench") ||
+    pathname === "/api/plugins/load-from-directory" ||
+    pathname === "/api/plugins/unload-from-directory" ||
+    // Custom actions hold the owner's request credentials and run as the agent.
+    under("/api/custom-actions") ||
+    // Owner diagnostics: logs, the agent event stream and the security audit.
+    under("/api/logs") ||
+    under("/api/agent/events") ||
+    under("/api/security/audit") ||
     (write &&
       (pathname.startsWith("/api/wallet/") ||
         under("/api/config") ||

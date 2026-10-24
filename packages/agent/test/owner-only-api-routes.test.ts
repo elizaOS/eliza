@@ -160,6 +160,37 @@ it("refuses owner-only writes and memory reads to a paired USER session", async 
           body: JSON.stringify({ name: "Guest", systemPrompt: "Guest set." }),
         },
       ],
+      [
+        "/api/workbench/vfs/projects",
+        { method: "POST", body: JSON.stringify({ name: "guest-project" }) },
+      ],
+      [
+        "/api/workbench/vfs/projects/guest-project/load-plugin",
+        { method: "POST", body: JSON.stringify({ entry: "p.mjs" }) },
+      ],
+      [
+        "/api/plugins/load-from-directory",
+        { method: "POST", body: JSON.stringify({ directory: "/tmp/p" }) },
+      ],
+      [
+        "/api/plugins/unload-from-directory",
+        { method: "POST", body: JSON.stringify({ pluginName: "sql" }) },
+      ],
+      ["/api/custom-actions", {}],
+      [
+        "/api/custom-actions",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: "GUEST_ACTION",
+            handler: { type: "http" },
+          }),
+        },
+      ],
+      ["/api/logs", {}],
+      ["/api/logs", { method: "DELETE" }],
+      ["/api/agent/events", {}],
+      ["/api/security/audit", {}],
     ];
     for (const [path, init] of guestRequests) {
       const response = await send("guest-session-id", path, init);
