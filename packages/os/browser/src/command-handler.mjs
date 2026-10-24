@@ -117,6 +117,9 @@ export function createCommandHandler(api) {
         error: {
           kind: error instanceof BridgeError ? error.kind : "UNCERTAIN_OUTCOME",
           message: error instanceof Error ? error.message : String(error),
+          ...(error instanceof BridgeError && error.reason
+            ? { reason: error.reason }
+            : {}),
         },
       };
       await sender.send(reply);

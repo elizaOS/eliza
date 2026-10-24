@@ -76,7 +76,7 @@
     "audit:story-coverage": "node scripts/stories-coverage.ts",
     "audit:dead-code": "knip --config knip.json --include files,dependencies,unlisted,unresolved --max-issues 0",
     "audit:public-api": "node scripts/audit-public-api.ts",
-    "build:dist:unlocked": "bun run clean && node ../scripts/ensure-tsc-nested-output-dir.ts packages/ui && tsc6 --noCheck -p tsconfig.build.json && node ../scripts/flatten-tsc-package-output.ts packages/ui && node ../scripts/copy-package-assets.ts packages/ui src/css-modules.d.ts src/styles src/cloud-ui/index.css src/voice/worklets src/voice/microphone-samples.worklet.mjs src/components/views/view-icons src/login/LICENSE assets && node ../scripts/prepare-package-dist.ts packages/ui && node ../scripts/rewrite-dist-relative-imports-node-esm.ts packages/ui && node ../scripts/verify-package-runtime-exports.ts packages/ui && node ../scripts/copy-package-assets.ts packages/ui src/brand/brand.css src/brand-classic/brand.css",
+    "build:dist:unlocked": "bun run clean && node ../scripts/ensure-tsc-nested-output-dir.ts packages/ui && tsc6 --noCheck -p tsconfig.build.json && node ../scripts/flatten-tsc-package-output.ts packages/ui && node ../scripts/copy-package-assets.ts packages/ui src/css-modules.d.ts src/styles src/cloud-ui/index.css src/voice/worklets src/voice/microphone-samples.worklet.mjs src/utils/value-formatting.mjs src/utils/value-formatting.d.mts src/components/views/view-icons src/login/LICENSE assets && node ../scripts/prepare-package-dist.ts packages/ui && node ../scripts/rewrite-dist-relative-imports-node-esm.ts packages/ui && node ../scripts/verify-package-runtime-exports.ts packages/ui && node ../scripts/copy-package-assets.ts packages/ui src/brand/brand.css src/brand-classic/brand.css",
     "generate:view-icons": "node scripts/bake-view-icons.ts",
     "test:orchestrator-accounts-e2e": "bun run --cwd ../.. packages/ui/src/components/chat/widgets/__e2e__/run-orchestrator-accounts-e2e.mjs",
     "test:wallet-widget-e2e": "bun run --cwd ../.. packages/ui/src/components/chat/widgets/__e2e__/run-wallet-widget-e2e.mjs",
@@ -111,11 +111,59 @@
       "import": "./dist/voice/microphone-samples.worklet.mjs",
       "default": "./dist/voice/microphone-samples.worklet.mjs"
     },
+    "./value-formatting.mjs": {
+      "eliza-source": "./src/utils/value-formatting.mjs",
+      "types": "./dist/utils/value-formatting.d.mts",
+      "import": "./dist/utils/value-formatting.mjs",
+      "default": "./dist/utils/value-formatting.mjs"
+    },
     "./voice/batch-conversation": {
       "eliza-source": "./src/voice/batch-conversation.ts",
       "types": "./dist/voice/batch-conversation.d.ts",
       "import": "./dist/voice/batch-conversation.js",
       "default": "./dist/voice/batch-conversation.js"
+    },
+    "./text-control-editing": {
+      "eliza-source": "./src/utils/text-control-editing.ts",
+      "types": "./dist/utils/text-control-editing.d.ts",
+      "import": "./dist/utils/text-control-editing.js",
+      "default": "./dist/utils/text-control-editing.js"
+    },
+    "./voice/draft-transcript-guard": {
+      "eliza-source": "./src/voice/draft-transcript-guard.ts",
+      "types": "./dist/voice/draft-transcript-guard.d.ts",
+      "import": "./dist/voice/draft-transcript-guard.js",
+      "default": "./dist/voice/draft-transcript-guard.js"
+    },
+    "./voice/microphone-capture": {
+      "eliza-source": "./src/voice/microphone-capture.ts",
+      "types": "./dist/voice/microphone-capture.d.ts",
+      "import": "./dist/voice/microphone-capture.js",
+      "default": "./dist/voice/microphone-capture.js"
+    },
+    "./voice/pcm-wave": {
+      "eliza-source": "./src/voice/pcm-wave.ts",
+      "types": "./dist/voice/pcm-wave.d.ts",
+      "import": "./dist/voice/pcm-wave.js",
+      "default": "./dist/voice/pcm-wave.js"
+    },
+    "./voice/progressive-speech-playback": {
+      "eliza-source": "./src/voice/progressive-speech-playback.ts",
+      "types": "./dist/voice/progressive-speech-playback.d.ts",
+      "import": "./dist/voice/progressive-speech-playback.js",
+      "default": "./dist/voice/progressive-speech-playback.js"
+    },
+    "./voice/recorded-transcription-controller": {
+      "eliza-source": "./src/voice/recorded-transcription-controller.ts",
+      "types": "./dist/voice/recorded-transcription-controller.d.ts",
+      "import": "./dist/voice/recorded-transcription-controller.js",
+      "default": "./dist/voice/recorded-transcription-controller.js"
+    },
+    "./voice/segmented-speech-playback": {
+      "eliza-source": "./src/voice/segmented-speech-playback.ts",
+      "types": "./dist/voice/segmented-speech-playback.d.ts",
+      "import": "./dist/voice/segmented-speech-playback.js",
+      "default": "./dist/voice/segmented-speech-playback.js"
     }
   },
   "peerDependencies": {
