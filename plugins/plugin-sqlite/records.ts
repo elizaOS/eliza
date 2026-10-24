@@ -3312,6 +3312,14 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     }>,
   ): Promise<void> {
     for (const { roomId, entityId, state } of updates) {
+      // Participant rows carry no agentId; ownership runs through the room,
+      // the same convention the log writes use (logIsVisibleToOwner).
+      // plugin-sql scopes this write with
+      // eq(participantTable.agentId, this.agentId), so a room stored for
+      // another agent is not written here. A room row that is absent
+      // (legacy rows) stays writable, matching the log writes.
+      const room = await this.storage.get<Room>(COLLECTIONS.ROOMS, roomId);
+      if (room && !this.roomIsVisibleToOwner(room)) continue;
       const matches = await this.storage.getWhere<StoredParticipant>(
         COLLECTIONS.PARTICIPANTS,
         (p) => p.roomId === roomId && p.entityId === entityId,
