@@ -2,6 +2,9 @@ import { randomUUID } from "node:crypto";
 import type { SideloaderIosBackend } from "./ios-backend";
 import type { IosInstallPlan } from "./ios-types";
 
+/** The request body is unusable. This is not a failed sign-in. */
+class InvalidRequestField extends Error {}
+
 /** The sideloader owns one host credential session, so attempts are serialized. */
 export function createIosHandler(
   backend: SideloaderIosBackend,
@@ -50,7 +53,7 @@ export function createIosHandler(
     const text = (key: string): string => {
       const value = body[key];
       if (typeof value !== "string" || !value.trim())
-        throw new Error(`Missing ${key}`);
+        throw new InvalidRequestField(`Missing ${key}`);
       return value;
     };
     if (attempt && (attempt.busy || body.attemptToken !== attempt.token))
@@ -163,6 +166,11 @@ export function createIosHandler(
         },
       });
     } catch (error) {
+      // A body mistake is not a failed sign-in. Report it and keep the attempt,
+      // so the caller can resend the field instead of repeating the Apple ID
+      // login and the 2FA challenge.
+      if (error instanceof InvalidRequestField)
+        return json({ error: String(error) }, 400);
       if (pathname === "/ios/authenticate" || pathname === "/ios/2fa") {
         backend.resetAuth();
         attempt = undefined;
