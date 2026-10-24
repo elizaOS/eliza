@@ -223,6 +223,21 @@ describe("SandboxService default blocklist", () => {
     expect(blocked).toContain(path.join(home, "blocked-home"));
   });
 
+  it("expands a bare $HOME so the block covers the whole home directory", async () => {
+    const home = realpathSync(homedir());
+    const svc = await SandboxService.start(
+      mockRuntime({ CODING_TOOLS_BLOCKED_PATHS: "$HOME" }),
+    );
+    expect(svc.getBlockedPaths()).toContain(home);
+
+    // A configured block must cover the configured directory. A literal
+    // `$HOME` entry resolves against the process cwd instead, so the block
+    // matches no real path and the home directory stays readable.
+    const v = await svc.validatePath(undefined, path.join(home, "notes.txt"));
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.reason).toBe("blocked");
+  });
+
   it("rejects relative paths regardless of blocklist", async () => {
     const svc = await SandboxService.start(mockRuntime());
     const v = await svc.validatePath(undefined, "relative/path");
