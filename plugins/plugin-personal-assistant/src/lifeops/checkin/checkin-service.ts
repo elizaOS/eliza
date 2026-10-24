@@ -87,6 +87,8 @@ export function getCheckinSummaryTrajectoryPurpose(
 }
 const ACK_WINDOW_MS = 72 * 60 * 60 * 1000;
 const INTERNAL_URL = new URL("http://127.0.0.1/");
+/** Gmail messages read per inbox for a check-in; counts cover only these. */
+const CHECKIN_GMAIL_MAX_RESULTS = 25;
 export interface CheckinSourceService {
   getGoogleConnectorAccounts?(
     requestUrl: URL,
@@ -1214,7 +1216,11 @@ async function collectGmailSection(
           return {
             feed: await getGmailTriage(
               INTERNAL_URL,
-              { maxResults: 25, side: "owner", grantId: account.grant.id },
+              {
+                maxResults: CHECKIN_GMAIL_MAX_RESULTS,
+                side: "owner",
+                grantId: account.grant.id,
+              },
               now,
             ),
             error: null,
@@ -1264,12 +1270,19 @@ async function collectGmailSection(
       }),
       { unread: 0, important: 0, reply: 0 },
     );
+    // A full read per inbox counts only its newest messages, not the inbox.
+    const sampled = feeds.some(
+      (feed) => feed.messages.length >= CHECKIN_GMAIL_MAX_RESULTS,
+    );
+    const scope = sampled
+      ? ` in the newest ${feeds.reduce((sum, feed) => sum + feed.messages.length, 0)} messages`
+      : "";
     return {
       key: "gmail",
       title: "Gmail",
       summary:
         feeds.length > 0
-          ? `${counts.unread} unread, ${counts.important} important, ${counts.reply} likely needing reply${errors.length ? "; some connected inboxes couldn't be checked" : ""}.`
+          ? `${counts.unread} unread, ${counts.important} important, ${counts.reply} likely needing reply${scope}${errors.length ? "; some connected inboxes couldn't be checked" : ""}.`
           : "Connected Gmail inboxes couldn't be checked.",
       items,
       error: errors.length ? errors.join("; ") : null,

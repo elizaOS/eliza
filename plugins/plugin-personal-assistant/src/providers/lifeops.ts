@@ -260,7 +260,13 @@ function summarizeNextEvent(
   return lines;
 }
 
-function summarizeGmailTriage(summary: LifeOpsGmailTriageSummary): string[] {
+/** Gmail messages the per-turn context reads; counts cover only these. */
+const GMAIL_CONTEXT_MAX_RESULTS = 5;
+
+function summarizeGmailTriage(
+  summary: LifeOpsGmailTriageSummary,
+  messageCount: number,
+): string[] {
   const parts: string[] = [];
   if (summary.unreadCount > 0) parts.push(`${summary.unreadCount} unread`);
   if (summary.importantNewCount > 0)
@@ -270,7 +276,12 @@ function summarizeGmailTriage(summary: LifeOpsGmailTriageSummary): string[] {
   if (parts.length === 0) {
     return [];
   }
-  return [`Inbox: ${parts.join(", ")}`];
+  // A full read counts only the newest messages, not the whole inbox.
+  const scope =
+    messageCount >= GMAIL_CONTEXT_MAX_RESULTS
+      ? ` in the newest ${messageCount} messages`
+      : "";
+  return [`Inbox${scope}: ${parts.join(", ")}`];
 }
 
 function summarizeOwnerProfile(profile: LifeOpsOwnerProfile): string[] {
@@ -667,10 +678,15 @@ export const lifeOpsProvider: Provider = {
             } else {
               try {
                 const triage = await service.getGmailTriage(INTERNAL_URL, {
-                  maxResults: 5,
+                  maxResults: GMAIL_CONTEXT_MAX_RESULTS,
                 });
                 gmailSummary = triage.summary;
-                emailLines.push(...summarizeGmailTriage(triage.summary));
+                emailLines.push(
+                  ...summarizeGmailTriage(
+                    triage.summary,
+                    triage.messages.length,
+                  ),
+                );
               } catch (cause) {
                 // error-policy:J4 the granted Gmail triage read failed —
                 // degrade to a visible "degraded" line and report, never a

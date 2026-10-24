@@ -279,7 +279,7 @@ const EXPECTED_DYNAMIC_LINES = [
   "Next event: Standup (30m)",
   "  With: Bo",
   "  At: Zoom",
-  "Inbox: 4 unread, 1 important, 2 needing reply",
+  "Inbox in the newest 5 messages: 4 unread, 1 important, 2 needing reply",
   "Connector Google (Gmail + Calendar) degraded: token expiring",
   "Agent open occurrences: 1",
   "Agent active goals: 0",
@@ -373,7 +373,11 @@ function wireImmediate(): void {
   reads.getGoogleConnectorAccounts.mockResolvedValue(fixture.googleAccounts);
   reads.connectorStatus.mockResolvedValue(fixture.connectorStatus);
   reads.getNextCalendarEventContext.mockResolvedValue(fixture.nextEvent);
-  reads.getGmailTriage.mockResolvedValue({ summary: fixture.gmailSummary });
+  reads.getGmailTriage.mockResolvedValue({
+    summary: fixture.gmailSummary,
+    // A full read: the provider asks for the newest 5 messages.
+    messages: Array.from({ length: 5 }, () => ({})),
+  });
 }
 
 beforeEach(() => {
@@ -529,7 +533,11 @@ describe("lifeops provider read fan-out", () => {
     reads.getGoogleConnectorAccounts.mockReturnValue(gates.google.promise);
     reads.connectorStatus.mockReturnValue(gates.status.promise);
     reads.getNextCalendarEventContext.mockResolvedValue(fixture.nextEvent);
-    reads.getGmailTriage.mockResolvedValue({ summary: fixture.gmailSummary });
+    reads.getGmailTriage.mockResolvedValue({
+      summary: fixture.gmailSummary,
+      // A full read: the provider asks for the newest 5 messages.
+      messages: Array.from({ length: 5 }, () => ({})),
+    });
     const runtime = createRuntime();
 
     const pending = lifeOpsProvider.get(runtime, message, state);
@@ -631,7 +639,7 @@ describe("lifeops provider read fan-out", () => {
     );
     expect(lines).not.toContain("Next event: Standup (30m)");
     expect(lines).not.toContain(
-      "Inbox: 4 unread, 1 important, 2 needing reply",
+      "Inbox in the newest 5 messages: 4 unread, 1 important, 2 needing reply",
     );
     expect(reads.getNextCalendarEventContext).not.toHaveBeenCalled();
     expect(reads.getGmailTriage).not.toHaveBeenCalled();
