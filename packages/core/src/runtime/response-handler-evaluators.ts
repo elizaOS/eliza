@@ -21,7 +21,7 @@ import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 import type { ContextProviderEvent } from "./context-object";
 import type { DirectActionRoutingRule } from "./direct-action-routing";
-import { TurnAbortedError } from "./turn-controller";
+import { TurnAbortedError } from "./turn-aborted-error";
 
 export interface ResponseHandlerPatch {
 	processMessage?: MessageHandlerAction;
