@@ -583,7 +583,10 @@ export class AdbFlasherBackend implements AospFlasherBackend {
         const manifestResp = await fetch(asset.browser_download_url, {
           signal: AbortSignal.timeout(10_000),
         });
-        if (!manifestResp.ok) continue;
+        if (!manifestResp.ok)
+          throw new Error(
+            `Android release manifest ${asset.name} returned HTTP ${manifestResp.status}.`,
+          );
 
         const signedManifest = await manifestResp.text();
         const description = await describeSignedRelease(signedManifest);
