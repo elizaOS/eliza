@@ -33,13 +33,13 @@
  * attribution pipeline then resolves on the next recognition.
  */
 import type * as http from "node:http";
-import path from "node:path";
-import { logger, resolveStateDir } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { readJsonBody, sendJson, sendJsonError } from "@elizaos/host";
-import {
-	type VoiceProfileRecord,
+import type {
+	VoiceProfileRecord,
 	VoiceProfileStore,
 } from "../services/voice/profile-store.js";
+import { getSharedVoiceProfileStore } from "../services/voice/speaker/profile-store-factory.js";
 
 // ---------------------------------------------------------------------------
 // Injectable test hook
@@ -52,11 +52,7 @@ export function setVoiceSpeakerProfileStore(
 }
 async function getProfileStore(): Promise<VoiceProfileStore> {
 	if (profileStoreOverride) return profileStoreOverride;
-	const store = new VoiceProfileStore({
-		rootDir: path.join(resolveStateDir(), "voice-profiles"),
-	});
-	await store.init();
-	return store;
+	return getSharedVoiceProfileStore();
 }
 // ---------------------------------------------------------------------------
 // Response shape
