@@ -2404,6 +2404,19 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       const ids: UUID[] = [];
       for (const { memory, tableName, unique } of memories) {
         const id = (memory.id ?? randomUUID()) as UUID;
+        // plugin-sql inserts with onConflictDoNothing, so an existing row is
+        // never overwritten — in particular not another agent's memory,
+        // whose stored agentId, text and metadata a blind set would replace.
+        // The core contract reserves overwrite for upsertMemories. Like
+        // plugin-sql, the existing id is still reported as created.
+        if (await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, id)) {
+          logger.warn(
+            { src: "plugin:sqlite", memoryId: id },
+            "Memory already existed; treating it as created",
+          );
+          ids.push(id);
+          continue;
+        }
         const stored: StoredMemory = {
           ...persistableMemory(memory),
           id,
