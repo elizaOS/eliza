@@ -22,6 +22,7 @@ import type {
   ConnectorAccountManager,
   ConnectorAccountPatch,
   ConnectorAccountProvider,
+  ConnectorAccountStatus,
   IAgentRuntime,
 } from "@elizaos/core";
 import {
@@ -34,20 +35,49 @@ import type { GoogleChatSettings } from "./types.js";
 
 export const GOOGLE_CHAT_PROVIDER_ID = "google-chat";
 
-function extractServiceAccountEmail(serviceAccount?: string): string | undefined {
-  if (!serviceAccount) return undefined;
+/**
+ * Safe, input-free reason attached to the account metadata. Node's `JSON.parse`
+ * message embeds a window of the offending input, and the input here is a
+ * service-account key, so the raw message must never leave this function.
+ */
+const SERVICE_ACCOUNT_UNREADABLE = "Inline service account JSON could not be parsed";
+
+/** Parsed bot identity, or the fact that the inline JSON could not be read. */
+interface ServiceAccountParse {
+  email?: string;
+  unreadable?: boolean;
+}
+
+function parseServiceAccount(serviceAccount?: string): ServiceAccountParse {
+  if (!serviceAccount) return {};
   try {
-    const parsed = JSON.parse(serviceAccount) as { client_email?: string };
-    return typeof parsed.client_email === "string" ? parsed.client_email : undefined;
+    const parsed = JSON.parse(serviceAccount) as { client_email?: unknown };
+    return { email: typeof parsed.client_email === "string" ? parsed.client_email : undefined };
   } catch {
-    return undefined;
+    // error-policy:J3 Character/env-supplied credential material is untrusted at
+    // this boundary. The unreadable payload is reported as a first-class account
+    // error, never dropped on the assumption that there is no bot identity. Only
+    // the fact of the failure is kept: the parser message echoes payload bytes.
+    return { unreadable: true };
   }
 }
 
 function toConnectorAccount(settings: GoogleChatSettings): ConnectorAccount {
   const now = Date.now();
   const configured = Boolean(settings.serviceAccount || settings.serviceAccountFile);
-  const email = extractServiceAccountEmail(settings.serviceAccount);
+  const serviceAccount = parseServiceAccount(settings.serviceAccount);
+  const email = serviceAccount.email;
+  // `createAuth` prefers the key file, so an untouched inline string is inert.
+  const inlineCredentialsUnreadable =
+    serviceAccount.unreadable === true && !settings.serviceAccountFile;
+  const status: ConnectorAccountStatus =
+    settings.enabled === false
+      ? "disabled"
+      : inlineCredentialsUnreadable
+        ? "error"
+        : configured
+          ? "connected"
+          : "disabled";
   return {
     id: normalizeGoogleChatAccountId(settings.accountId),
     provider: GOOGLE_CHAT_PROVIDER_ID,
@@ -55,12 +85,15 @@ function toConnectorAccount(settings: GoogleChatSettings): ConnectorAccount {
     role: "AGENT",
     purpose: ["messaging"],
     accessGate: "open",
-    status: settings.enabled !== false && configured ? "connected" : "disabled",
+    status,
     externalId: email ?? undefined,
     displayHandle: email ?? settings.botUser ?? undefined,
     createdAt: now,
     updatedAt: now,
     metadata: {
+      ...(serviceAccount.unreadable === true
+        ? { serviceAccountError: SERVICE_ACCOUNT_UNREADABLE }
+        : {}),
       audienceType: settings.audienceType,
       audience: settings.audience,
       webhookPath: settings.webhookPath,
