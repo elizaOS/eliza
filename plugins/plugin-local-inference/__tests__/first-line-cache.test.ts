@@ -3,7 +3,15 @@
  * TTS sentences plus its voice-revision fingerprint/invalidation helpers.
  * Exercises the real filesystem against a temp directory.
  */
-import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+	mkdtempSync,
+	readdirSync,
+	rmSync,
+	statSync,
+	symlinkSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -436,6 +444,41 @@ describe("FirstLineCache — persistence across reopen", () => {
 
 		const got = cache1.get(makeKey());
 		expect(got).toBeNull();
+	});
+
+	it("keeps the index row when the blob read fails for a reason other than absence", () => {
+		const cache = makeCache();
+		const key = makeKey();
+		cache.put({
+			...key,
+			bytes: makeBytes(48),
+			rawText: "Got it.",
+			contentType: "audio/mpeg",
+			durationMs: 0,
+		});
+
+		// A self-referencing symlink proves the path exists while readFileSync
+		// fails with ELOOP — a read failure, not an absent blob.
+		const findBlob = (dir: string): string | null => {
+			for (const ent of readdirSync(dir, { withFileTypes: true })) {
+				const full = path.join(dir, ent.name);
+				if (ent.isDirectory()) {
+					const nested = findBlob(full);
+					if (nested) return nested;
+				} else if (full.endsWith(".mp3")) {
+					return full;
+				}
+			}
+			return null;
+		};
+		const blob = findBlob(path.join(tmpRoot, "blobs"));
+		expect(blob).not.toBeNull();
+		unlinkSync(blob as string);
+		symlinkSync(blob as string, blob as string);
+
+		expect(cache.get(key)).toBeNull();
+		expect(cache.has(key)).toBe(true);
+		expect(cache.stats()).toMatchObject({ entries: 1 });
 	});
 });
 

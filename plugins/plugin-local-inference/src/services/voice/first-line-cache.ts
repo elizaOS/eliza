@@ -430,8 +430,13 @@ export class FirstLineCache {
 		let bytes: Uint8Array;
 		try {
 			bytes = readFileSync(blobAbs);
-		} catch {
-			// Blob missing → drop the orphan row and report miss.
+		} catch (error) {
+			// Only a provably absent blob is an orphan row. Any other errno
+			// (EACCES/EIO/EMFILE/ELOOP) means the path exists and the read
+			// failed, so the bytes may still be valid on a later read: deleting
+			// the row here would drop a live cache entry and strand its blob.
+			const code = (error as NodeJS.ErrnoException | null)?.code;
+			if (code !== "ENOENT" && code !== "ENOTDIR") return null;
 			this.db
 				.prepare(`DELETE FROM tts_first_line WHERE key_hash = ?`)
 				.run(keyHash);
