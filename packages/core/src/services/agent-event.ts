@@ -25,6 +25,9 @@ import type { UUID } from "../types/primitives.ts";
 import type { IAgentRuntime } from "../types/runtime.js";
 import { Service, ServiceType } from "../types/service.ts";
 
+/** Run ids whose event sequence is kept; the least recently emitting are dropped. */
+const RUN_SEQ_LIMIT = 4096;
+
 /**
  * Resolve heartbeat status to an indicator type for UI display
  */
@@ -157,7 +160,16 @@ export class AgentEventService extends Service {
 	 */
 	emit(event: AgentEventInput): void {
 		const nextSeq = (this.seqByRun.get(event.runId) ?? 0) + 1;
+		// Many emitters use a run id that never gets a RUN_ENDED (each inbound
+		// message, each notification), so the map is bounded: the run that
+		// emitted moves to the newest position and the oldest are evicted.
+		this.seqByRun.delete(event.runId);
 		this.seqByRun.set(event.runId, nextSeq);
+		while (this.seqByRun.size > RUN_SEQ_LIMIT) {
+			const oldest = this.seqByRun.keys().next().value;
+			if (oldest === undefined) break;
+			this.seqByRun.delete(oldest);
+		}
 
 		const context = this.runContextById.get(event.runId);
 		const sessionKey =
