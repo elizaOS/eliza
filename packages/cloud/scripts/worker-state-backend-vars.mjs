@@ -69,7 +69,7 @@ export async function fetchStateBackendVars(environment, fetchImpl = fetch) {
   const worker =
     deployEnvironment === "staging"
       ? "eliza-cloud-api-staging"
-      : "eliza-cloud-api";
+      : "eliza-cloud-api-prod";
   const response = await fetchImpl(
     `https://api.cloudflare.com/client/v4/accounts/${account}/workers/scripts/${worker}/settings`,
     {
