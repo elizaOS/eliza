@@ -66,6 +66,10 @@ import type { ElizaConfig } from "@elizaos/host/protocol";
 import { z } from "zod";
 import { resolveConfigPath } from "../config/paths.ts";
 import { maybeInjectFault } from "../runtime/crash-injection.ts";
+import {
+  isMemoryPgliteDataDir,
+  MEMORY_PGLITE_DATA_DIR,
+} from "../runtime/database-selection.ts";
 import { cancelAndDrainDeferredBoot } from "../runtime/deferred-boot-owner.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import {
@@ -660,9 +664,16 @@ function makeStateFileInclude(
     return true;
   };
 }
-async function resolvePgliteDir(): Promise<string> {
+/** @internal Exported so backup tests can prove how the PGlite data dir resolves. */
+export async function resolvePgliteDir(): Promise<string> {
   const configured = process.env.PGLITE_DATA_DIR?.trim();
   if (configured) {
+    // An in-memory setting is a PGlite URL, not a path (the same rule
+    // applyDatabaseConfigToEnv enforces). Resolving it here yields
+    // `<cwd>/memory:`, which has no "://", so the non-filesystem guards at the
+    // call sites never fire: capture walks a directory that does not exist and
+    // restore fs.rm()s and recreates a PGlite at that stray path.
+    if (isMemoryPgliteDataDir(configured)) return MEMORY_PGLITE_DATA_DIR;
     return configured.startsWith("~")
       ? path.join(process.cwd(), configured.slice(1))
       : path.resolve(configured);
