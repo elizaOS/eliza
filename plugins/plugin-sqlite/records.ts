@@ -3178,6 +3178,14 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     entityIds: UUID[],
     roomId: UUID,
   ): Promise<UUID[]> {
+    // Participant rows carry no agentId, so ownership runs through the
+    // room, as in the log reads: a room stored for another agent is not a
+    // room this adapter may enroll anyone in — plugin-sql stamps
+    // agentId = this.agentId on every participant row it inserts. A room
+    // row that is absent (legacy rows, callers that enroll before the room
+    // exists) stays writable, matching the log convention.
+    const room = await this.storage.get<Room>(COLLECTIONS.ROOMS, roomId);
+    if (room && !this.roomIsVisibleToOwner(room)) return [];
     const ids: UUID[] = [];
     for (const entityId of entityIds) {
       const existing = await this.storage.getWhere<StoredParticipant>(
