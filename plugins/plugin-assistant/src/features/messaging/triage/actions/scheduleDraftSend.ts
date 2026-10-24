@@ -18,6 +18,12 @@ import type {
   State,
 } from "@elizaos/core";
 import { ElizaError, logger } from "@elizaos/core";
+import {
+  draftConsentDigest,
+  requireSendConsent,
+  sendConsentDigest,
+} from "../send-consent.ts";
+import { getSendPolicy } from "../send-policy.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
 import {
   draftIdParameter,
@@ -102,7 +108,7 @@ export const scheduleDraftSendAction: Action = {
 
   handler: async (
     runtime: IAgentRuntime,
-    _message: Memory,
+    message: Memory,
     _state?: State,
     options?: HandlerOptions,
     callback?: HandlerCallback,
@@ -120,6 +126,74 @@ export const scheduleDraftSendAction: Action = {
       const msg = `No draft found for id ${parsed.draftId}`;
       logger.warn(`[ScheduleDraftSend] ${msg}`);
       return { success: false, text: msg, error: msg };
+    }
+
+    // A connector that routes sends through the owner approval queue cannot
+    // take a scheduled send: the queue holds the draft until the owner
+    // approves, and that is the send_draft path. Decide this before asking,
+    // so the owner is never asked to confirm something that cannot run.
+    const policy = getSendPolicy(runtime);
+    if (
+      policy &&
+      (await policy.shouldRequireApproval(runtime, {
+        source: existing.source,
+        inReplyToId: existing.inReplyToId,
+        threadId: existing.threadId,
+        to: existing.to,
+        subject: existing.subject,
+        body: existing.body,
+        worldId: existing.worldId,
+        channelId: existing.channelId,
+        metadata: existing.metadata,
+      }))
+    ) {
+      const msg = `Draft ${parsed.draftId} needs owner approval before it is sent; use send_draft so it goes through the approval queue instead of a timer.`;
+      logger.warn(`[ScheduleDraftSend] ${msg}`);
+      return { success: false, text: msg, error: msg, continueChain: false };
+    }
+
+    // Scheduling is a send with a later clock: it passes the same owner
+    // consent gate as sending now, bound to a later user message, to this
+    // exact draft and to this exact send time. A changed draft or a changed
+    // time is a new ask. The one-shot dispatcher sends without a user turn,
+    // so the consent has to be given here.
+    const consent = await requireSendConsent(
+      runtime,
+      message,
+      sendConsentDigest({
+        draft: draftConsentDigest(existing),
+        sendAt: sendAtIso,
+      }),
+      { draftId: existing.draftId, source: existing.source },
+    );
+    if (consent === "cancelled") {
+      return {
+        success: false,
+        text: "Nothing was scheduled.",
+        continueChain: false,
+      };
+    }
+    if (consent === "pending") {
+      const text = `Here's what I'm about to schedule for ${sendAtIso}: ${existing.preview} — want me to schedule it?`;
+      logger.info(
+        `[ScheduleDraftSend] confirmation gate: draftId=${parsed.draftId}`,
+      );
+      if (callback) await callback({ text, action: "MESSAGE" });
+      return {
+        success: true,
+        text,
+        userFacingText: text,
+        verifiedUserFacing: true,
+        turnComplete: true,
+        continueChain: false,
+        data: {
+          requiresConfirmation: true,
+          preview: existing.preview,
+          draftId: existing.draftId,
+          source: existing.source,
+          sendAt: sendAtIso,
+        },
+      };
     }
 
     const updated = await service.scheduleDraftSend(
