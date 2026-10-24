@@ -29,7 +29,12 @@ export interface CameraResolution {
 }
 
 export interface CameraPreviewOptions {
-  element: HTMLElement;
+  /**
+   * Host element for the web preview's `<video>`. Required on web, where
+   * `startPreview` rejects without it; the native bridges render their own
+   * preview and ignore it.
+   */
+  element?: HTMLElement;
   deviceId?: string;
   direction?: CameraDirection;
   resolution?: CameraResolution;
@@ -121,7 +126,7 @@ export interface CameraPlugin {
   getDevices(): Promise<{ devices: CameraDevice[] }>;
 
   /**
-   * Start camera preview in the specified element
+   * Start camera preview (in `options.element` on web)
    */
   startPreview(options: CameraPreviewOptions): Promise<CameraPreviewResult>;
 
