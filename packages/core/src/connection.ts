@@ -435,9 +435,10 @@ export async function ensureConnections(
 		},
 	);
 
-	// A connection that omits the room's channel, name, or type keeps what the
-	// room already records, such as the platform conversation id a connector
-	// stored through ensureRoomExists; replies to the room are addressed by it.
+	// A connection that omits the room's channel, name, type, or server binding
+	// keeps what the room already records, such as the platform conversation id a
+	// connector stored through ensureRoomExists; replies to the room are
+	// addressed by it, and server authorization matches the stored binding.
 	const storedRooms =
 		roomMap.size > 0
 			? ((await adapter.getRoomsByIds([...roomMap.keys()] as UUID[])) ?? [])
@@ -452,6 +453,10 @@ export async function ensureConnections(
 			// A connection that omits `type` keeps the stored room's type;
 			// the DM default applies only when no type is recorded at all.
 			type: roomExplicitTypes.get(r.id) ?? stored?.type ?? r.type,
+			// The same rule for the durable server binding: a DM or alias path
+			// that reconciles the room without it must not unbind the room.
+			serverId: r.serverId ?? stored?.serverId,
+			messageServerId: r.messageServerId ?? stored?.messageServerId,
 			agentId,
 		};
 	});
