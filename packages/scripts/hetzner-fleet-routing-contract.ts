@@ -86,11 +86,35 @@ const NATIVE_RELEASE_WORKFLOWS = {
     },
   },
 };
+/**
+ * Human-dispatched host qualification observes one existing machine with no
+ * checkout, credentials or artifact transfer, so it pins that machine's pool
+ * by design: a hosted fallback would observe nothing. Each entry admits one
+ * job only when its dispatch guard, environment and label set match exactly
+ * and the workflow has no trigger other than workflow_dispatch.
+ */
+const HOST_QUALIFICATION_WORKFLOWS = {
+  "cloud-existing-runner-qualification.yml": {
+    job: "qualify-existing-host",
+    guard:
+      "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.run_attempt == 1",
+    environment: "production",
+    labels: ["self-hosted", "Linux", "X64", "x-canary"],
+  },
+};
 const DIRECT_RUNNER_PATH = /^jobs\.[^.]+\.runs-on$/;
 const MATRIX_RUNNER_PATH =
   /^jobs\.[^.]+\.strategy\.matrix\.include\.\d+\.runner$/;
 const JANITOR_ROUTE_PATH =
   /^jobs\.reap\.strategy\.matrix\.include\.\d+\.runner$/;
+
+/** Normalizes a job `if`, with or without its `${{ }}` wrapper, to one line. */
+function unwrapExpression(value) {
+  if (typeof value !== "string") return undefined;
+  const text = value.replace(/\s+/g, " ").trim();
+  const wrapped = text.startsWith(EXPRESSION_OPEN) && text.endsWith("}}");
+  return wrapped ? text.slice(EXPRESSION_OPEN.length, -2).trim() : text;
+}
 
 function lineAt(source, offset) {
   return source.slice(0, offset).split("\n").length;
@@ -177,7 +201,20 @@ export function validateHetznerFleetRouting(repoRoot) {
     files += 1;
     selectors += routes.length;
 
-    const jobs = document.toJS().jobs;
+    const parsed = document.toJS();
+    const jobs = parsed.jobs;
+    const qualification = HOST_QUALIFICATION_WORKFLOWS[name];
+    const qualificationJob = qualification && jobs?.[qualification.job];
+    const triggers = parsed.on ?? parsed[true];
+    const qualificationRouteValid =
+      qualification &&
+      unwrapExpression(qualificationJob?.if) === qualification.guard &&
+      qualificationJob.environment === qualification.environment &&
+      JSON.stringify(qualificationJob["runs-on"]) ===
+        JSON.stringify(qualification.labels) &&
+      triggers &&
+      typeof triggers === "object" &&
+      Object.keys(triggers).join() === "workflow_dispatch";
     const native = NATIVE_RELEASE_WORKFLOWS[name];
     const nativeRoutesValid =
       native &&
@@ -192,6 +229,11 @@ export function validateHetznerFleetRouting(repoRoot) {
       });
 
     for (const route of routes) {
+      if (
+        qualificationRouteValid &&
+        route.path === `jobs.${qualification.job}.runs-on`
+      )
+        continue;
       if (
         nativeRoutesValid &&
         (Object.keys(native.jobs).some(
