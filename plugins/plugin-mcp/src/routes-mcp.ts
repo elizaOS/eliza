@@ -210,7 +210,11 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
         signal: abortTracker.signal,
       });
       if (abortTracker.isAborted() || !canWriteMarketplaceResponse(res)) return true;
-      await json(res, { ok: true, results: result.results });
+      await json(res, {
+        ok: true,
+        results: result.results,
+        truncated: result.truncated,
+      });
       abortTracker.markCompleted();
     } catch (err) {
       if (abortTracker.isAborted() || !canWriteMarketplaceResponse(res)) return true;
