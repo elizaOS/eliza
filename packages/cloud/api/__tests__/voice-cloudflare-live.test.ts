@@ -83,6 +83,7 @@ describe("Workers AI through authenticated Cloud voice routes", () => {
       });
       expect(stt.status).toBe(200);
       expect(stt.headers.get("X-Eliza-STT-Provider")).toBe("cloudflare");
+      expect(stt.headers.get("X-Eliza-STT-Model")).toBe("@cf/deepgram/nova-3");
       const payload = (await stt.json()) as { transcript?: unknown };
       expect(typeof payload.transcript).toBe("string");
       if (typeof payload.transcript !== "string")

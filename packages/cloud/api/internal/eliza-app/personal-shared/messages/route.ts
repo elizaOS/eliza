@@ -606,7 +606,13 @@ async function transcribeTelegramVoiceNote(
   filename: string,
 ): Promise<string> {
   if (env.AI) {
-    const result = await transcribeCloudflareAudio(env.AI, bytes);
+    const result = await transcribeCloudflareAudio(
+      env.AI,
+      bytes,
+      undefined,
+      undefined,
+      "audio/ogg",
+    );
     const transcript = result.text.trim();
     if (!transcript)
       throw new Error("Telegram voice transcription returned no speech");

@@ -513,6 +513,6 @@ voices, not the original Kokoro identities. Responses identify the actual provid
 and speaker in `X-Eliza-TTS-Provider` and `X-Eliza-TTS-Voice`. Configured Cartesia
 defaults and custom ElevenLabs voices retain their existing selection and billing.
 Set `VOICE_BATCH_STT_PROVIDER=cloudflare` to move a pinned Whisper deployment to
-Workers AI; verify authenticated TTS/STT before retiring the old services.
+Workers AI Nova-3, including word timestamps and Telegram Ogg voice notes; verify authenticated TTS/STT before retiring the old services.
 
 Workers AI TTS accepts up to 2,000 characters per request. Longer text is rejected explicitly before synthesis; it is never truncated.
