@@ -326,15 +326,19 @@ export function createSourceReplySnapshot(
       continue;
     const speaker =
       typeof meta?.speakerName === "string" ? meta.speakerName : undefined;
-    const attachments =
-      typeof meta?.attachmentSummary === "string"
-        ? ` ${meta.attachmentSummary}`
-        : "";
+    const attachmentSummary =
+      typeof meta?.attachmentSummary === "string" ? meta.attachmentSummary : "";
+    // Composition writes `[text, attachmentSummary].join(" ")`, so an
+    // attachment-only line has no leading space. Prepending one here made the
+    // reconstructed line differ from the recorded segment, so the line stayed in
+    // history but could never be bound as a quote source.
+    const body = [raw, attachmentSummary].filter(Boolean).join(" ");
+    const trimmedBody = [raw.trim(), attachmentSummary]
+      .filter(Boolean)
+      .join(" ");
     if (
-      priorDialogueContent(`${raw}${attachments}`, speaker) !==
-        event.segment.content &&
-      priorDialogueContent(`${raw.trim()}${attachments}`, speaker) !==
-        event.segment.content
+      priorDialogueContent(body, speaker) !== event.segment.content &&
+      priorDialogueContent(trimmedBody, speaker) !== event.segment.content
     )
       continue;
     originals.set(id, raw);
