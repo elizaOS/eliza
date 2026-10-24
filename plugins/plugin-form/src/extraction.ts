@@ -73,22 +73,187 @@ type CorrectionJsonResponse = {
   corrections?: CorrectionJsonField[];
 };
 
-function parseJsonObjectResponse<T>(response: string): T | null {
-  try {
-    const trimmed = response.trim();
-    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-    const candidate = (fenced?.[1] ?? trimmed).trim();
-    const firstBrace = candidate.indexOf("{");
-    const lastBrace = candidate.lastIndexOf("}");
-    if (firstBrace < 0 || lastBrace <= firstBrace) return null;
-    const parsed = JSON.parse(candidate.slice(firstBrace, lastBrace + 1));
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+interface JsonObjectRegion {
+  start: number;
+  end: number;
+}
+
+/**
+ * Find each complete top-level `{...}` region in one pass. A brace inside a
+ * JSON string does not change the depth, so a value such as `"a{b}c"` stays
+ * inside its region. A region still open at the end of the text is a cut-off
+ * reply and is not reported.
+ */
+function topLevelObjectRegions(text: string): JsonObjectRegion[] {
+  const regions: JsonObjectRegion[] = [];
+  let depth = 0;
+  let start = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === '"') inString = false;
+      continue;
+    }
+    if (character === '"' && depth > 0) {
+      inString = true;
+    } else if (character === "{") {
+      if (depth === 0) start = index;
+      depth += 1;
+    } else if (character === "}" && depth > 0) {
+      depth -= 1;
+      if (depth === 0) regions.push({ start, end: index + 1 });
+    }
+  }
+  return regions;
+}
+
+/** Fields that carry the answer, at the top level or inside `corrections`. */
+const ANSWER_VALUE_FIELDS = new Set(["value", "old_value", "new_value"]);
+
+function valueFieldStrings(value: unknown, depth = 0): string[] {
+  if (depth > 3 || !value || typeof value !== "object") return [];
+  if (Array.isArray(value))
+    return value.flatMap((entry) => valueFieldStrings(entry, depth + 1));
+  const strings: string[] = [];
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof entry === "string" && ANSWER_VALUE_FIELDS.has(key)) {
+      strings.push(entry.trim());
+    } else if (entry && typeof entry === "object") {
+      strings.push(...valueFieldStrings(entry, depth + 1));
+    }
+  }
+  return strings;
+}
+
+/**
+ * The placeholder text each prompt shows as its own response shape. A reply can
+ * restate the shape it was given, and a restated shape is not an answer: it
+ * carries the placeholder, not the user's value. Only the placeholder of the
+ * caller's own prompt marks an echo, so a real answer that equals example text
+ * from another prompt stays an answer.
+ */
+const SINGLE_FIELD_SHAPE_VALUE = "extracted value or null if not found";
+const CORRECTION_SHAPE_OLD_VALUE = "old@example.com";
+const CORRECTION_SHAPE_NEW_VALUE = "new@example.com";
+
+function sameText(value: unknown, expected: string): boolean {
+  return typeof value === "string" && value.trim().toLowerCase() === expected;
+}
+
+/** The user's own words carry this text, so the text is data and not a shape. */
+function userSupplied(userText: string, value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const said = userText.toLowerCase();
+  const needle = value.trim().toLowerCase();
+  return needle.length > 0 && said.includes(needle);
+}
+
+/** Every answer value repeats the single-field placeholder value. */
+function isSingleFieldShapeEcho(
+  parsed: SingleFieldJsonResponse,
+  userText: string,
+): boolean {
+  const strings = valueFieldStrings(parsed);
+  return (
+    strings.length > 0 &&
+    strings.every(
+      (entry) =>
+        sameText(entry, SINGLE_FIELD_SHAPE_VALUE) &&
+        !userSupplied(userText, entry),
+    )
+  );
+}
+
+/** The stored value of the field a correction names, when the form has it. */
+function currentValueOfCorrectionField(
+  field: unknown,
+  controls: FormControl[],
+  currentValues: Record<string, JsonValue>,
+): JsonValue | undefined {
+  if (typeof field !== "string") return undefined;
+  const name = field.trim().toLowerCase();
+  if (!name) return undefined;
+  // Same resolution rule the caller uses to write the correction: a label or a
+  // key, case-insensitive. A name that matches no control grounds nothing.
+  const control = controls.find(
+    (c) => c.label.toLowerCase() === name || c.key.toLowerCase() === name,
+  );
+  return control ? currentValues[control.key] : undefined;
+}
+
+/**
+ * Every correction repeats the correction prompt's example pair. The user's own
+ * message and the value the form already holds win: a pair is a real correction
+ * only when the user stated the replacement and the old address is either
+ * their own words or the exact stored value of the field being corrected. A
+ * mention of one side does not ground the other side, and a value stored on a
+ * different field does not authorize this one, so restating the pair stays a
+ * shape echo.
+ */
+function isCorrectionShapeEcho(
+  parsed: CorrectionJsonResponse,
+  userText: string,
+  currentValues: Record<string, JsonValue>,
+  controls: FormControl[],
+): boolean {
+  const corrections = Array.isArray(parsed?.corrections)
+    ? parsed.corrections
+    : [];
+  if (corrections.length === 0) return false;
+  return corrections.every((correction) => {
+    if (!sameText(correction.old_value, CORRECTION_SHAPE_OLD_VALUE))
+      return false;
+    if (!sameText(correction.new_value, CORRECTION_SHAPE_NEW_VALUE))
+      return false;
+    if (!userSupplied(userText, correction.new_value)) return true;
+    if (userSupplied(userText, correction.old_value)) return false;
+    // An exact normalized match with this field's own value, not a substring
+    // of any stored value and not a value that belongs to another field.
+    const stored = currentValueOfCorrectionField(
+      correction.field,
+      controls,
+      currentValues,
+    );
+    return !(
+      typeof stored === "string" && sameText(stored, CORRECTION_SHAPE_OLD_VALUE)
+    );
+  });
+}
+
+function parseJsonObjectResponse<T>(
+  response: string,
+  isShapeEcho: (parsed: T) => boolean,
+): T | null {
+  const acrossRegions = (candidate: string): T | null => {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return null;
+      }
+      return parsed as T;
+    } catch {
       return null;
     }
-    return parsed as T;
-  } catch {
-    return null;
+  };
+  const trimmed = String(response ?? "").trim();
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  const candidate = (fenced?.[1] ?? trimmed).trim();
+  const regions = topLevelObjectRegions(candidate);
+  // Prose can hold its own complete braces, as in "treat {city} as text", and
+  // the reply can narrate before or after the object. Read the newest region
+  // that the caller does not report as its own restated shape: an answer stays
+  // readable when the shape is restated after it, and a cut-off reply that only
+  // restated the shape keeps the field empty instead of storing placeholder text.
+  for (let index = regions.length - 1; index >= 0; index -= 1) {
+    const region = regions[index];
+    const parsed = acrossRegions(candidate.slice(region.start, region.end));
+    if (parsed && !isShapeEcho(parsed)) return parsed;
   }
+  return null;
 }
 
 function parseBoolean(value: unknown): boolean {
@@ -401,7 +566,10 @@ Return only a valid JSON object with this schema:
     temperature: 0.1,
   });
 
-  const parsed = parseJsonObjectResponse<SingleFieldJsonResponse>(response);
+  const parsed = parseJsonObjectResponse<SingleFieldJsonResponse>(
+    response,
+    (parsed) => isSingleFieldShapeEcho(parsed, text),
+  );
   const found = parsed?.found === true || parsed?.found === "true";
   if (!found || !parsed) return null;
 
@@ -499,7 +667,11 @@ Rules:
     temperature: 0.1,
   });
 
-  const parsed = parseJsonObjectResponse<CorrectionJsonResponse>(response);
+  const parsed = parseJsonObjectResponse<CorrectionJsonResponse>(
+    response,
+    (parsed) =>
+      isCorrectionShapeEcho(parsed, text, currentValues, resolvedControls),
+  );
   const hasCorrection =
     parsed?.has_correction === true || parsed?.has_correction === "true";
   if (!parsed || !hasCorrection || !parsed.corrections) return [];
