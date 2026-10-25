@@ -622,6 +622,24 @@ class SlackTextPartialDeliveryError extends ElizaError {
   }
 }
 
+/**
+ * Slack history bounds (latest/oldest) are Unix timestamps in seconds; the
+ * connector contract leaves the format open, and callers often pass ISO dates.
+ * A Slack ts or epoch value passes through; a date is converted.
+ */
+function slackTimestampBound(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  if (/^\d+(?:\.\d+)?$/.test(trimmed)) return trimmed;
+  const ms = Date.parse(trimmed);
+  if (!Number.isFinite(ms)) {
+    throw new Error(
+      `Slack message bound must be a Unix timestamp or an ISO date, got "${trimmed}"`,
+    );
+  }
+  return (ms / 1000).toFixed(6);
+}
+
 export class SlackService extends Service implements ISlackService {
   static serviceType: string = SLACK_SERVICE_NAME;
   capabilityDescription =
@@ -4481,8 +4499,8 @@ export class SlackService extends Service implements ISlackService {
       const result = await client.conversations.history({
         channel: channelId,
         limit: Math.min(15, requestedLimit ?? 15),
-        latest: options?.before,
-        oldest: options?.after,
+        latest: slackTimestampBound(options?.before),
+        oldest: slackTimestampBound(options?.after),
         cursor,
       });
       rawMessages.push(
@@ -4551,8 +4569,8 @@ export class SlackService extends Service implements ISlackService {
         channel: channelId,
         ts: threadTs,
         limit: 15,
-        latest: options?.before,
-        oldest: options?.after,
+        latest: slackTimestampBound(options?.before),
+        oldest: slackTimestampBound(options?.after),
         cursor,
       });
       rawMessages.push(
