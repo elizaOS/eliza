@@ -25,7 +25,6 @@ import {
 import { Auth } from "googleapis";
 
 type Credentials = Auth.Credentials;
-const { OAuth2Client } = Auth;
 
 import {
   CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES,
@@ -212,7 +211,7 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
         "Google OAuth refresh_token is available, but GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are not configured for token refresh."
       );
     }
-    const client = new OAuth2Client(
+    const client = new Auth.OAuth2Client(
       clientConfig.clientId,
       clientConfig.clientSecret,
       clientConfig.redirectUri

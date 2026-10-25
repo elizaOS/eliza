@@ -341,6 +341,10 @@ const nativeStubs = {
   // Chromium — stub the driver so its multi-MB dependency closure stays out
   // of the on-device bundle (same rationale as plugin-meetings above).
   "puppeteer-core": path.join(stubsDir, "null-plugin.ts"),
+  // Google Workspace's local OAuth SDK, reached through LifeOps. Phones use
+  // the host's managed Google brokers and never register that plugin.
+  googleapis: path.join(stubsDir, "null-plugin.ts"),
+  "google-auth-library": path.join(stubsDir, "null-plugin.ts"),
   // React + react-dom stubs: workspace plugins (`@elizaos/plugin-personal-assistant`,
   // etc.) re-export their UI subtree from
   // `src/index.ts` for the host app to consume. The agent only loads each
@@ -423,13 +427,8 @@ if (TARGET === "ios-jsc") {
 // boot). The narrow list below is exactly the packages whose dependency
 // closure pulls in `@elizaos/core@2.0.0-alpha.3` or `2.0.0-alpha.223`.
 //
-// Other packages — including `@elizaos/plugin-agent-orchestrator` and
-// `@elizaos/plugin-personal-assistant` — are imported by `api/server.ts` as
-// named functions (e.g.
-// `wireCoordinatorBridgesWhenReady`). Stubbing them with a Proxy doesn't
-// satisfy Bun's `__toESM` namespace builder (it iterates `ownKeys`), so we
-// let them bundle. The mobile plugin filter still strips them out of the
-// runtime load set, so they don't try to register at boot.
+// `@elizaos/plugin-personal-assistant` bundles for Android: the app entry
+// registers its lazy loader and the collector selects it there.
 const optionalPluginStubs = {
   "@elizaos/plugin-agent-orchestrator": path.join(stubsDir, "null-plugin.ts"),
   "@elizaos/plugin-coding-tools": path.join(stubsDir, "null-plugin.ts"),
@@ -472,35 +471,36 @@ const optionalPluginStubs = {
   // routes instead, so stub the whole package like WhatsApp above.
   "@elizaos/plugin-meetings": path.join(stubsDir, "null-plugin.ts"),
 };
-// Platform-neutral remote-control protocol modules. #32865 moved them into
-// plugin-browser, and the mobile remote-target plugin
+// Platform-neutral plugin-browser modules. #32865 moved the remote-control
+// protocol into plugin-browser, and the mobile remote-target plugin
 // (packages/app/src/mobile-remote-target.ts) and the UI cloud client import
-// them through `@elizaos/plugin-browser/remote-control/*`. They depend only on
-// node:crypto, @elizaos/core and the elizacloud domain contract, so they
-// resolve to source. The longest-alias match keeps them out of the
-// plugin-browser mobile stub; browser-controller stays stubbed because it
-// drives the desktop BrowserService.
-const pluginBrowserRemoteControlSources = Object.fromEntries(
+// them through `@elizaos/plugin-browser/remote-control/*`; LifeOps imports the
+// bridge contracts, record constructors, schema and password-manager bridge.
+// They depend only on node built-ins, @elizaos/core, drizzle and the
+// elizacloud domain contract, so they resolve to source. The longest-alias
+// match keeps them out of the plugin-browser mobile stub; browser-controller
+// stays stubbed because it drives the desktop BrowserService.
+const pluginBrowserPlatformNeutralSources = Object.fromEntries(
   [
-    "cloud-client",
-    "cloud-endpoints",
-    "controller",
-    "crypto",
-    "runtime-store",
-    "secure-store-contract",
+    "remote-control/cloud-client",
+    "remote-control/cloud-endpoints",
+    "remote-control/controller",
+    "remote-control/crypto",
+    "remote-control/runtime-store",
+    "remote-control/secure-store-contract",
+    "contracts",
+    "bridge-records",
+    "schema",
+    "password-manager-bridge",
   ].map((name) => [
-    `@elizaos/plugin-browser/remote-control/${name}`,
-    path.join(
-      repoRoot,
-      "plugins/plugin-browser/src/remote-control",
-      `${name}.ts`,
-    ),
+    `@elizaos/plugin-browser/${name}`,
+    path.join(repoRoot, "plugins/plugin-browser/src", `${name}.ts`),
   ]),
 );
 const stubAliases = {
   ...nativeStubs,
   ...optionalPluginStubs,
-  ...pluginBrowserRemoteControlSources,
+  ...pluginBrowserPlatformNeutralSources,
 };
 const stubResolverPlugin = {
   name: "eliza-mobile-stubs",
