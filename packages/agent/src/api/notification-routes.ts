@@ -213,11 +213,22 @@ function parseLimit(raw: string | null): number | null | undefined {
   if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
   return Math.min(parsed, 500);
 }
-function parseCategory(raw: string | null): NotificationCategory | undefined {
-  if (raw && CATEGORIES.includes(raw as NotificationCategory)) {
-    return raw as NotificationCategory;
+function parseCategory(
+  raw: string | null,
+):
+  | { ok: true; category: NotificationCategory | undefined }
+  | { ok: false; message: string } {
+  if (raw === null || raw === "") return { ok: true, category: undefined };
+  if (CATEGORIES.includes(raw as NotificationCategory)) {
+    return { ok: true, category: raw as NotificationCategory };
   }
-  return undefined;
+  // An unknown token must not silently widen to the full inbox the way
+  // an omitted filter does; the sibling approval list rejects unknown
+  // states for the same reason.
+  return {
+    ok: false,
+    message: `category must be one of: ${CATEGORIES.join(", ")}`,
+  };
 }
 /** Native completion closes sequence gaps, so filtered and ambiguous queries are invalid. */
 function parseNativeQuery(url: URL): NativeNotificationQuery | undefined {
@@ -420,9 +431,14 @@ export async function handleNotificationRoute(
       }
       return true;
     }
+    const parsedCategory = parseCategory(url.searchParams.get("category"));
+    if (!parsedCategory.ok) {
+      helpers.error(res, parsedCategory.message, 400);
+      return true;
+    }
     const notifications = service.list({
       unreadOnly,
-      category: parseCategory(url.searchParams.get("category")),
+      category: parsedCategory.category,
       limit,
     });
     helpers.json(res, {
