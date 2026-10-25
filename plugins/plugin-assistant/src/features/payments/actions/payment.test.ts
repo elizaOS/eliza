@@ -145,6 +145,8 @@ describe("PAYMENT", () => {
     expect(result.data?.actionName).toBe("PAYMENT");
     expect(result.data?.paymentAction).toBe("create_request");
     expect(result.data?.eligibleDeliveryTargets).not.toContain("public_link");
+    // amountCents is in minor units: the envelope holds 1000 cents, which is $10.00.
+    expect(result.text).toContain("$10.00");
   });
 
   test("create_request rejects invalid amountCents", async () => {

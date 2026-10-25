@@ -255,7 +255,7 @@ async function handleCreateRequest(
     `[Payment:create_request] requestId=${envelope.paymentRequestId} provider=${envelope.provider} amountCents=${envelope.amountCents}`,
   );
 
-  const text = `Created payment request ${envelope.paymentRequestId} for ${envelope.amountCents} ${envelope.currency}.`;
+  const text = `Created payment request ${envelope.paymentRequestId} for ${formatMinorUnits(envelope.amountCents, envelope.currency)}.`;
 
   return {
     success: true,
@@ -610,6 +610,19 @@ function isPaymentAvailable(
   return (Object.keys(PAYMENT_ACTION_SERVICES) as PaymentAction[]).some(
     (candidate) => hasServicesFor(runtime, candidate),
   );
+}
+
+/** amountCents is in minor units: 500 USD cents reads "$5.00". */
+function formatMinorUnits(amountCents: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currency.toUpperCase(),
+    }).format(amountCents / 100);
+  } catch {
+    // error-policy:J3 an unknown currency code still reads as a decimal amount.
+    return `${(amountCents / 100).toFixed(2)} ${currency.toUpperCase()}`;
+  }
 }
 
 export const paymentAction: Action = {
