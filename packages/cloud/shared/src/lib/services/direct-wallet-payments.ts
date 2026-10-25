@@ -130,10 +130,10 @@ const BSC_TOKEN_OPTIONS: DirectWalletTokenOption[] = [
 ];
 
 /**
- * Slippage tolerance applied to native-token (BNB) verification. The locked
- * quote may move slightly between createPayment and the user broadcasting
- * the tx; we accept up to ±200bps (2%) deviation before rejecting. Stables
- * use 0 — there's no oracle to drift, so units must match exactly.
+ * Overpayment tolerance applied to native-token (BNB) verification. A
+ * payment may exceed the locked quote by up to 200bps (2%) and still credit;
+ * it may never be below the quote. Stables use 0, so units must match
+ * exactly.
  */
 const NATIVE_SLIPPAGE_BPS = 200;
 
@@ -143,9 +143,7 @@ const NATIVE_SLIPPAGE_BPS = 200;
  * {@link NATIVE_SLIPPAGE_BPS} (200) for native payments or 0 for stables, so a
  * value above the native tolerance can only come from DB corruption, a tampered
  * metadata row, or a future non-canonical writer — all of which must FAIL
- * CLOSED (refuse to credit) rather than silently widen the band. In particular,
- * 10_000 bps would make the floor 0 and allow a zero-value native transfer to
- * pass verification.
+ * CLOSED (refuse to credit) rather than silently widen the overpayment band.
  */
 const MAX_DIRECT_SLIPPAGE_BPS = NATIVE_SLIPPAGE_BPS;
 const CANONICAL_NONNEGATIVE_INTEGER_PATTERN = /^(?:0|[1-9]\d*)$/;
@@ -868,7 +866,8 @@ async function verifyEvmTokenPayment(params: {
   return { blockNumber: receipt.blockNumber.toString(), receivedUnits };
 }
 
-async function verifyEvmNativePayment(params: {
+/** Exported for behavioral regression coverage of the native amount band. */
+export async function verifyEvmNativePayment(params: {
   cfg: DirectWalletNetworkConfig;
   payerAddress: string;
   txHash: string;
@@ -913,20 +912,15 @@ async function verifyEvmNativePayment(params: {
   if (!tx.to || tx.to.toLowerCase() !== normalizeEvmAddress(params.cfg.receiveAddress)) {
     throw new Error("Transaction recipient does not match the receive address");
   }
-  // Apply slippage tolerance to BOTH floor and ceiling for native-token
-  // payments. The locked quote may drift between createPayment and broadcast,
-  // so we accept tx.value in [expected*(1-bps), expected*(1+bps)]. The
-  // ceiling protects against accidental gross overpayments — e.g. a user
-  // typoing 10 BNB instead of 0.01 BNB. Credits are locked at create time
-  // (payment.credits_to_add), so an unbounded overpayment would silently
-  // lose the user money with no extra credit. Better to reject and force a
-  // fresh quote. For stables (slippageBps=0), tx.value must equal
-  // expectedUnits exactly.
+  // The floor is the locked quote. Credits are fixed at create time
+  // (payment.credits_to_add), so a payment below expectedUnits would buy those
+  // credits at a discount; any quote drift is the payer's to cover. The
+  // ceiling keeps the slippage tolerance so a small overpayment still credits,
+  // and protects against accidental gross overpayments (10 BNB instead of
+  // 0.01 BNB) that would lose the user money with no extra credit. For stables
+  // (slippageBps=0), tx.value must equal expectedUnits exactly.
   const slippageBps = BigInt(params.slippageBps ?? 0);
-  const floor =
-    slippageBps > 0n
-      ? (params.expectedUnits * (10_000n - slippageBps)) / 10_000n
-      : params.expectedUnits;
+  const floor = params.expectedUnits;
   const ceiling =
     slippageBps > 0n
       ? (params.expectedUnits * (10_000n + slippageBps)) / 10_000n
