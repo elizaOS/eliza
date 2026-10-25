@@ -29,7 +29,7 @@ export const SENSITIVE_ENV_RESPONSE_KEYS = new Set([
 ]);
 
 const SENSITIVE_RESPONSE_KEY_RE =
-  /password|secret|api.?key|private.?key|seed.?phrase|authorization|connection.?string|credential|(?<!max)tokens?$/i;
+  /password|secret|api.?key|private.?key|passphrase|mnemonic|seed|authorization|connection.?string|credential|(?<!max)tokens?$|(?:^|_)pat$/i;
 
 /** Honest GET /api/config payloads are a handful of objects deep. */
 export const MAX_CONFIG_FILTER_DEPTH = 32;
@@ -228,6 +228,18 @@ export function filterConfigEnvForResponse(
   for (const [key, value] of Object.entries(env as Record<string, unknown>)) {
     if (SENSITIVE_ENV_RESPONSE_KEYS.has(key.toUpperCase())) continue;
     filteredEnv[key] = value;
+  }
+  // The denylist must apply to the nested env.vars block too: config env
+  // resolution reads vars first, so a denylisted key stored there is just as
+  // live as one at the top level.
+  const vars = filteredEnv.vars;
+  if (vars && typeof vars === "object" && !Array.isArray(vars)) {
+    const filteredVars: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(vars)) {
+      if (SENSITIVE_ENV_RESPONSE_KEYS.has(key.toUpperCase())) continue;
+      filteredVars[key] = value;
+    }
+    filteredEnv.vars = filteredVars;
   }
   return { ...redactedConfig, env: filteredEnv };
 }
