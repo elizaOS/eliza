@@ -879,7 +879,7 @@ it("runs a cron time that a DST change skips one gap later, not the next day", (
       triggerId: randomUUID() as UUID,
     });
     const ms = buildTriggerMetadata({ trigger, nowMs: Date.parse(nowIso) })
-      ?.trigger.nextRunAtMs;
+      ?.trigger?.nextRunAtMs;
     return ms === undefined ? undefined : new Date(ms).toISOString();
   };
   // 2026-03-08 New York has no 02:30; the run is at 03:30 EDT.
