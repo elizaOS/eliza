@@ -296,6 +296,7 @@ export async function handleStandaloneSpeechRoute(
       controller.signal.throwIfAborted();
       if (!current() || host.stopped) throw new Error("Speech host stopped");
       if (!text) {
+        host.seen.delete(`${identity.identityId}:${requestId}`);
         sendJson(res, 422, { error: "no_speech" });
         return true;
       }
@@ -345,6 +346,9 @@ export async function handleStandaloneSpeechRoute(
       res.end(audio);
     }
   } catch {
+    // A failed request must not hold its id for 10 minutes: release it so
+    // the same id can retry. The entry stays only on success.
+    host.seen.delete(`${identity.identityId}:${requestId}`);
     if (!res.destroyed)
       sendJson(res, controller.signal.aborted ? 499 : 502, {
         error: controller.signal.aborted
