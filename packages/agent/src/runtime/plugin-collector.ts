@@ -631,6 +631,15 @@ export function collectPluginNames(
   // The host app owns default feature selection through `elizaos.app.defaults`
   // in its package manifest. A standalone @elizaos/agent installation must not
   // implicitly select a package outside its published dependency closure.
+  // Android bundles have no manifest to read; their app entry bundles LifeOps
+  // (packages/app/src/mobile-agent-entry.ts), so select it here instead.
+  if (isAndroidMobile()) {
+    pluginsToLoad.add("@elizaos/plugin-personal-assistant");
+    track(
+      "@elizaos/plugin-personal-assistant",
+      "Android app default (LifeOps)",
+    );
+  }
   // Allow list is additive — extra plugins on top of auto-detection,
   // not an exclusive whitelist that blocks everything else.
   if (allowList && allowList.length > 0) {
@@ -931,6 +940,7 @@ export function collectPluginNames(
     const mobileAllowed = new Set<string>([
       ...MOBILE_CORE_PLUGINS,
       ...(mobileWorkflows ? ["@elizaos/plugin-workflow"] : []),
+      ...(isAndroidMobile() ? ["@elizaos/plugin-personal-assistant"] : []),
       ...MOBILE_VIEW_PLUGINS,
       ...(onElizaOsAndroid ? ELIZAOS_ANDROID_CORE_PLUGINS : []),
       ...(onElizaOsAndroid ? ELIZAOS_ANDROID_TERMINAL_PLUGINS : []),
