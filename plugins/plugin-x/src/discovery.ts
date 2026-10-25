@@ -836,7 +836,7 @@ export class TwitterDiscoveryClient {
           );
         } else {
           this.assertCurrentSession(session);
-          await this.twitterClient.followUser(scoredAccount.user.id);
+          await this.twitterClient.followUser(scoredAccount.user.username);
 
           logger.info(
             `Followed @${scoredAccount.user.username} ` +

@@ -1126,8 +1126,8 @@ export class Client {
   }
 
   /**
-   * Follows a user with the given user ID.
-   * @param userId The user ID of the user to follow.
+   * Follows a user with the given username.
+   * @param userName The username of the user to follow.
    * @returns A promise that resolves when the user is followed.
    */
   public async followUser(userName: string): Promise<void> {
