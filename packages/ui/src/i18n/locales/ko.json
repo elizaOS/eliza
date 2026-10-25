@@ -6020,7 +6020,7 @@
   "cloud.terms.returnToLogin": "로그인으로 돌아가기",
   "cloud.paymentSuccess.received": "결제 수신됨",
   "cloud.paymentSuccess.redirecting": "대시보드로 이동 중...",
-  "cloud.appAuth.metaTitle": "앱 인증 | Eliza Cloud",
+  "cloud.appAuth.metaTitle": "앱 인증 | {{cloudName}}",
   "cloud.emailCallback.unavailable": "로그인을 사용할 수 없습니다. 앱에서 다시 로그인하세요.",
   "cloud.emailCallback.noRequest": "앱 인증 요청을 찾을 수 없습니다. 앱에서 다시 로그인하세요.",
   "cloud.emailCallback.missingToken": "이 로그인 링크에 토큰 또는 이메일이 없습니다.",

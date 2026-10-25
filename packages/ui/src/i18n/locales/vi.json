@@ -6013,7 +6013,7 @@
   "cloud.terms.returnToLogin": "Quay lại đăng nhập",
   "cloud.paymentSuccess.received": "Đã nhận thanh toán",
   "cloud.paymentSuccess.redirecting": "Đang chuyển hướng đến bảng điều khiển...",
-  "cloud.appAuth.metaTitle": "Ủy quyền ứng dụng | Eliza Cloud",
+  "cloud.appAuth.metaTitle": "Ủy quyền ứng dụng | {{cloudName}}",
   "cloud.emailCallback.unavailable": "Đăng nhập không khả dụng. Vui lòng bắt đầu đăng nhập lại từ ứng dụng.",
   "cloud.emailCallback.noRequest": "Không tìm thấy yêu cầu ủy quyền ứng dụng. Vui lòng bắt đầu đăng nhập lại từ ứng dụng.",
   "cloud.emailCallback.missingToken": "Liên kết đăng nhập này thiếu token hoặc email.",

@@ -6020,7 +6020,7 @@
   "cloud.terms.returnToLogin": "ログインに戻る",
   "cloud.paymentSuccess.received": "お支払いを受領しました",
   "cloud.paymentSuccess.redirecting": "ダッシュボードへリダイレクト中...",
-  "cloud.appAuth.metaTitle": "アプリを認可 | Eliza Cloud",
+  "cloud.appAuth.metaTitle": "アプリを認可 | {{cloudName}}",
   "cloud.emailCallback.unavailable": "サインインが利用できません。アプリから再度サインインを開始してください。",
   "cloud.emailCallback.noRequest": "アプリの認可リクエストが見つかりませんでした。アプリから再度サインインを開始してください。",
   "cloud.emailCallback.missingToken": "このサインインリンクにはトークンまたはメールが欠けています。",

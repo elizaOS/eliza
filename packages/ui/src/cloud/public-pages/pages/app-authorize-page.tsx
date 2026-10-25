@@ -22,7 +22,7 @@ export default function AppAuthAuthorizePage() {
   const t = useCloudT();
   useDocumentTitle(
     t("cloud.appAuth.metaTitle", {
-      defaultValue: "Authorize App | Eliza Cloud",
+      defaultValue: "Authorize App | {{cloudName}}",
     }),
   );
   return (

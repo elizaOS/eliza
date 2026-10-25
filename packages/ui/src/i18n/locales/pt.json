@@ -6020,7 +6020,7 @@
   "cloud.terms.returnToLogin": "Retornar ao login",
   "cloud.paymentSuccess.received": "Pagamento recebido",
   "cloud.paymentSuccess.redirecting": "Redirecionando para o painel...",
-  "cloud.appAuth.metaTitle": "Autorizar aplicativo | Eliza Cloud",
+  "cloud.appAuth.metaTitle": "Autorizar aplicativo | {{cloudName}}",
   "cloud.emailCallback.unavailable": "O login está indisponível. Inicie o login novamente pelo aplicativo.",
   "cloud.emailCallback.noRequest": "Não foi possível encontrar a solicitação de autorização do aplicativo. Inicie o login novamente pelo aplicativo.",
   "cloud.emailCallback.missingToken": "Este link de login está sem token ou e-mail.",

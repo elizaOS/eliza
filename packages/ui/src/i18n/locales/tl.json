@@ -6013,7 +6013,7 @@
   "cloud.terms.returnToLogin": "Bumalik sa login",
   "cloud.paymentSuccess.received": "Natanggap ang Bayad",
   "cloud.paymentSuccess.redirecting": "Nagre-redirect sa iyong dashboard...",
-  "cloud.appAuth.metaTitle": "Awtorisahin ang App | Eliza Cloud",
+  "cloud.appAuth.metaTitle": "Awtorisahin ang App | {{cloudName}}",
   "cloud.emailCallback.unavailable": "Hindi available ang pag-sign in. Magsimula muli ng pag-sign in mula sa app.",
   "cloud.emailCallback.noRequest": "Hindi mahanap ang kahilingan sa awtorisasyon ng app. Magsimula muli ng pag-sign in mula sa app.",
   "cloud.emailCallback.missingToken": "Nawawala ang token o email sa sign-in link na ito.",

@@ -6020,7 +6020,7 @@
   "cloud.terms.returnToLogin": "返回登录",
   "cloud.paymentSuccess.received": "已收到付款",
   "cloud.paymentSuccess.redirecting": "正在跳转到您的控制台…",
-  "cloud.appAuth.metaTitle": "授权应用 | Eliza Cloud",
+  "cloud.appAuth.metaTitle": "授权应用 | {{cloudName}}",
   "cloud.emailCallback.unavailable": "登录不可用。请从应用重新开始登录。",
   "cloud.emailCallback.noRequest": "找不到应用授权请求。请从应用重新开始登录。",
   "cloud.emailCallback.missingToken": "此登录链接缺少令牌或邮箱。",

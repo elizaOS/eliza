@@ -6031,7 +6031,7 @@
   "cloud.terms.returnToLogin": "Volver al inicio de sesión",
   "cloud.paymentSuccess.received": "Pago recibido",
   "cloud.paymentSuccess.redirecting": "Redirigiendo a tu panel...",
-  "cloud.appAuth.metaTitle": "Autorizar app | Eliza Cloud",
+  "cloud.appAuth.metaTitle": "Autorizar app | {{cloudName}}",
   "cloud.emailCallback.unavailable": "El inicio de sesión no está disponible. Reinicia el proceso desde la app.",
   "cloud.emailCallback.noRequest": "No se encontró la solicitud de autorización de la app. Reinicia el proceso desde la app.",
   "cloud.emailCallback.missingToken": "Faltan el token o el correo electrónico en este enlace de inicio de sesión.",

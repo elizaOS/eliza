@@ -35,7 +35,7 @@ export default function OidcContinuePage() {
 
   useDocumentTitle(
     t("cloud.oidcContinue.metaTitle", {
-      defaultValue: "Signing in | Eliza Cloud",
+      defaultValue: "Signing in | {{cloudName}}",
     }),
   );
 
@@ -94,7 +94,7 @@ export default function OidcContinuePage() {
             <p className="text-fg">
               {t("cloud.oidcContinue.sessionUnavailable", {
                 defaultValue:
-                  "Your Eliza session could not be securely transferred to the identity provider. Sign in again to continue.",
+                  "Your {{appName}} session could not be securely transferred to the identity provider. Sign in again to continue.",
               })}
             </p>
             <RecoveryAction href={retryContinuationHref} />
