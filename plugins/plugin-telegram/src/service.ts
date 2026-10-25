@@ -2699,8 +2699,9 @@ export class TelegramService extends Service {
   ): Promise<Memory | undefined> {
     const target = params.target as AccountScopedTargetInfo;
     const accountId = await this.resolveAccountIdForTarget(runtime, target);
-    const bot = this.getAccountState(accountId)?.bot ?? this.bot;
-    if (!bot) {
+    const accountState = this.getAccountState(accountId);
+    const messageManager = accountState?.messageManager ?? this.messageManager;
+    if (!messageManager) {
       throw new Error("Telegram bot is not available — cannot post to thread");
     }
     const chatId =
@@ -2710,9 +2711,15 @@ export class TelegramService extends Service {
       return undefined;
     }
     const threadId = Number(params.thread.threadId);
-    await bot.telegram.sendMessage(chatId, text, {
-      message_thread_id: Number.isFinite(threadId) ? threadId : undefined,
-    });
+    // Route through the send path instead of calling the API directly: the
+    // direct call skips supergroup migration retry, 4096-character chunking,
+    // and MarkdownV2 conversion with its plain-text fallback.
+    await messageManager.sendMessageWithReceipt(
+      chatId,
+      { text },
+      undefined,
+      Number.isFinite(threadId) ? threadId : undefined,
+    );
     return undefined;
   }
 
