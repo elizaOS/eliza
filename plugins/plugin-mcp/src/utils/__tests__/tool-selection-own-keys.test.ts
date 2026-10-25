@@ -27,7 +27,7 @@ const advertisedServer = {
 /** Only the runtime calls the selection path makes: settings and one model call. */
 function stubRuntime(reply = JSON.stringify({ toolArguments: { target: "today" } })) {
   return {
-    getSetting: () => ({ maxRetries: 0 }),
+    getSetting: () => ({ servers: {}, maxRetries: 0 }),
     useModel: vi.fn(async () => reply),
   };
 }
@@ -54,28 +54,61 @@ describe("MCP tool selection with a server-supplied __proto__ name", () => {
     expect(Object.hasOwn(projection.values.mcp, reserved)).toBe(true);
   });
 
-  it("accepts the advertised name through validation and argument creation", async () => {
+  it("accepts the advertised name in validation", () => {
     const projection = buildMcpProviderProjection([advertisedServer]);
-    const state = stateOf(projection);
-    const runtime = stubRuntime();
 
-    expect(validateToolSelectionName({ serverName: reserved, toolName: reserved }, state)).toEqual({
+    expect(
+      validateToolSelectionName({ serverName: reserved, toolName: reserved }, stateOf(projection))
+    ).toEqual({
       success: true,
       data: { serverName: reserved, toolName: reserved },
     });
+  });
 
-    const argument = await createToolSelectionArgument({
+  it("resolves the advertised name in argument creation", async () => {
+    const projection = buildMcpProviderProjection([advertisedServer]);
+    const runtime = stubRuntime();
+
+    // A name without an own key throws before the model is asked, so one model
+    // call proves that both lookups resolved the advertised `__proto__` entry.
+    // The argument value itself is decided by the sandboxed schema worker, which
+    // runs on its own time budget, so this test does not assert the value.
+    await createToolSelectionArgument({
       runtime: runtime as never,
-      state,
+      state: stateOf(projection),
       message,
-      callback: null,
       mcpProvider: projection as never,
       toolSelectionName: { serverName: reserved, toolName: reserved },
     });
 
-    expect(argument).toEqual({ toolArguments: { target: "today" } });
-    // The model was asked for arguments, so both names resolved to real entries.
     expect(runtime.useModel).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects an inherited name before it asks the model", async () => {
+    const projection = buildMcpProviderProjection([advertisedServer]);
+    const runtime = stubRuntime();
+
+    await expect(
+      createToolSelectionArgument({
+        runtime: runtime as never,
+        state: stateOf(projection),
+        message,
+        mcpProvider: projection as never,
+        toolSelectionName: { serverName: "constructor", toolName: reserved },
+      })
+    ).rejects.toThrow('Server "constructor" not found in MCP provider data');
+
+    await expect(
+      createToolSelectionArgument({
+        runtime: runtime as never,
+        state: stateOf(projection),
+        message,
+        mcpProvider: projection as never,
+        toolSelectionName: { serverName: reserved, toolName: "toString" },
+      })
+    ).rejects.toThrow(`Tool "toString" not found on server "${reserved}"`);
+
+    expect(runtime.useModel).not.toHaveBeenCalled();
   });
 
   it("still rejects inherited names the server did not list", () => {
