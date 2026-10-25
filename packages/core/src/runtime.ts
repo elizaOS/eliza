@@ -533,6 +533,11 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 	private invalidateTurnIdentityClusters(): void {
 		invalidateTurnMemoPrefix(`identity-cluster:${this.agentId}:`);
+		// Verified clusters live under a different prefix but are invalidated
+		// by the same relationship/entity mutations; without this, a verified
+		// cluster memoized earlier in the turn survives a link removal until
+		// the turn ends. invalidateRelatedEntityIds already clears both.
+		invalidateTurnMemoPrefix(`verified-identity-cluster:${this.agentId}:`);
 	}
 	readonly fetch: FetchLike = fetch;
 	services = new Map<ServiceTypeName, Service[]>();
