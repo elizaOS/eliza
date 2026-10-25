@@ -127,6 +127,7 @@ import {
   writeAuditEvent as appendAuthAuditEvent,
 } from "../services/audit";
 import {
+  normalizeEmailDomain,
   publicAuthAbuseConfig,
   validateEmailAbusePolicy,
   validatePhoneAbusePolicy,
@@ -227,21 +228,6 @@ function isReservedTenantId(value: string): boolean {
   );
 }
 
-function normalizeEmailDomain(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const email = value.trim().toLowerCase();
-  const at = email.lastIndexOf("@");
-  if (at <= 0 || at >= email.length - 1) return null;
-  const domain = email.slice(at + 1);
-  if (
-    !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(
-      domain,
-    )
-  ) {
-    return null;
-  }
-  return domain;
-}
 const TOTP_VERIFY_MAX_FAILED_ATTEMPTS = 5;
 const TOTP_VERIFY_FAILED_ATTEMPT_TTL_MS = 10 * 60 * 1000;
 const FACTOR_ENROLLMENT_STEP_UP_MAX_AGE_MS = 5 * 60 * 1000;
