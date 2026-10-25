@@ -24,7 +24,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { ChannelType, logger } from "@elizaos/core";
 import { hasOwnerAccess } from "../security/access.ts";
 import {
   type OwnerBindConnector,
@@ -150,6 +150,20 @@ export const pairOwnerAccountAction: Action = {
         await callback({ text, action: PAIR_OWNER_ACCOUNT });
       }
       return failure(text, "NOT_OWNER");
+    }
+
+    // The code grants OWNER to whoever redeems it, and the reply below
+    // goes back into the triggering room — so issuance is only safe in a
+    // DM. In a shared room every member would see the code, and the
+    // redeem side accepts any platform user, first-redeemer-wins. Unknown
+    // surfaces fail closed: the owner can retry from a DM.
+    if (message.content.channelType !== ChannelType.DM) {
+      const text =
+        "I can only issue a pairing code in a direct message. Run this from a DM with me so no one else sees the code.";
+      if (callback) {
+        await callback({ text, action: PAIR_OWNER_ACCOUNT });
+      }
+      return failure(text, "NOT_DM");
     }
 
     const messageText =
