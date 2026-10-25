@@ -1765,7 +1765,8 @@ export class LifeOpsService extends LifeOpsServiceBase {
     // silently evicted owner wins from the recap (#16966 post-merge review).
     // Known completion timestamps are bounded through now before the scan
     // limit, so future timestamps cannot evict real wins. The local-day filter
-    // then removes the lookback tail; the final cap bounds the provider block.
+    // then removes the lookback tail. Every win of the day is returned: the
+    // provider and the evening brief report this count to the model.
     const views = await this.repository.listCompletedOccurrenceViewsSince(
       this.agentId(),
       new Date(now.getTime() - lookbackMs).toISOString(),
@@ -1782,19 +1783,17 @@ export class LifeOpsService extends LifeOpsServiceBase {
         limit: 200,
       },
     );
-    return views
-      .filter((occurrence) => {
-        const completedAt = occurrence.completionPayload?.completedAt;
-        if (typeof completedAt !== "string") return false;
-        const completedMs = Date.parse(completedAt);
-        return (
-          Number.isFinite(completedMs) &&
-          new Date(completedMs).toISOString() === completedAt &&
-          completedMs <= now.getTime() &&
-          dayKey(new Date(completedMs)) === todayKey
-        );
-      })
-      .slice(0, 24);
+    return views.filter((occurrence) => {
+      const completedAt = occurrence.completionPayload?.completedAt;
+      if (typeof completedAt !== "string") return false;
+      const completedMs = Date.parse(completedAt);
+      return (
+        Number.isFinite(completedMs) &&
+        new Date(completedMs).toISOString() === completedAt &&
+        completedMs <= now.getTime() &&
+        dayKey(new Date(completedMs)) === todayKey
+      );
+    });
   }
 
   async listChannelPolicies(): Promise<LifeOpsChannelPolicy[]> {
