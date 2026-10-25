@@ -2512,6 +2512,9 @@ public class ElizaAgentService extends Service {
             agentEnv.put("ELIZA_LOCAL_AGENT_TRANSPORT","filesystem-v1");
             initializeLocalAgentTransport(this);
             agentEnv.put("ELIZA_LOCAL_AGENT_SOCKET_PATH",privateSocketPath);
+            // Bun finds no /etc/localtime on Android and runs in UTC. Calendar dates and
+            // times resolve in the process zone when no owner time zone is registered.
+            agentEnv.put("TZ", java.util.TimeZone.getDefault().getID());
             // Context can expose files/ via /data/data while getDataDir() uses
             // /data/user/0. Export both identity paths in the same namespace.
             agentEnv.put("ELIZA_STATE_DIR", canonicalStateDir);
