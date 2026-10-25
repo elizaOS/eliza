@@ -8,6 +8,7 @@
 import type {
   DisconnectLifeOpsHealthConnectorRequest,
   GetLifeOpsHealthSummaryRequest,
+  LifeOpsConnectorGrant,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsHealthConnectorProvider,
@@ -421,6 +422,25 @@ export class HealthDomain {
     );
   }
 
+  /**
+   * Write a sync result onto the grant as it is now. A sync can take long; if
+   * the owner disconnected the connector meanwhile the grant is gone (or was
+   * replaced), and writing the copy read before the sync would bring it back.
+   */
+  private async updateSyncedGrant(
+    grant: LifeOpsConnectorGrant,
+    update: (current: LifeOpsConnectorGrant) => LifeOpsConnectorGrant,
+  ): Promise<void> {
+    const current = await this.ctx.repository.getConnectorGrant(
+      grant.agentId,
+      grant.provider,
+      grant.mode,
+      grant.side,
+    );
+    if (!current || current.id !== grant.id) return;
+    await this.ctx.repository.upsertConnectorGrant(update(current));
+  }
+
   async syncHealthConnectors(
     request: HealthSyncRequest = {},
   ): Promise<LifeOpsHealthSummaryResponse> {
@@ -488,17 +508,17 @@ export class HealthDomain {
             },
           }),
         );
-        await this.ctx.repository.upsertConnectorGrant({
-          ...grant,
-          identity: payload.identity ?? grant.identity,
+        await this.updateSyncedGrant(grant, (current) => ({
+          ...current,
+          identity: payload.identity ?? current.identity,
           metadata: {
-            ...grant.metadata,
+            ...current.metadata,
             authState: "connected",
             lastSyncAt: syncedAt,
           },
           lastRefreshAt: syncedAt,
           updatedAt: syncedAt,
-        });
+        }));
       } catch (error) {
         const failedAt = new Date().toISOString();
         await this.ctx.repository.upsertHealthSyncState(
@@ -515,17 +535,17 @@ export class HealthDomain {
           }),
         );
         if (healthReasonForAuthError(error)) {
-          await this.ctx.repository.upsertConnectorGrant({
-            ...grant,
+          await this.updateSyncedGrant(grant, (current) => ({
+            ...current,
             metadata: {
-              ...grant.metadata,
+              ...current.metadata,
               authState: "needs_reauth",
               lastAuthError:
                 error instanceof Error ? error.message : String(error),
               lastAuthErrorAt: failedAt,
             },
             updatedAt: failedAt,
-          });
+          }));
         }
         this.ctx.logLifeOpsWarn(
           "health_connector_sync",
