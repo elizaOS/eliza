@@ -270,13 +270,14 @@ export class TaskService extends Service {
 			if (this.stopped) break;
 			const context = { taskId: task.id, taskName: task.name };
 			const metadata = task.metadata as TaskMetadata | undefined;
-			if (task.tags?.includes("repeat") && metadata?.paused) {
+			if (metadata?.paused) {
 				// Heal in BOTH directions: a repeat task WE paused for a missing
 				// worker (orphanedNoWorker marker) must resume once a redeploy
 				// re-registers that worker. Without this, the paused check here (which
 				// runs before the worker lookup) stranded healed tasks paused forever.
 				// Operator-paused tasks (no marker) are never touched.
 				if (
+					task.tags?.includes("repeat") &&
 					metadata.orphanedNoWorker === true &&
 					task.id &&
 					this.runtime.getTaskWorker(task.name)
@@ -284,6 +285,9 @@ export class TaskService extends Service {
 					await this.resumeHealedOrphanTask(task, metadata);
 				}
 				// Resumed or not, skip this tick; a resumed task runs when next due.
+				// Skipping every paused task here also keeps a paused one-shot out
+				// of the orphan path below, which would otherwise delete it when
+				// its worker is unregistered.
 				continue;
 			}
 			if (!task.id) {
