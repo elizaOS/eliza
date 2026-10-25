@@ -662,6 +662,34 @@ function resolvePausedUntil(
   return new Date(pauseUntilMs).toISOString();
 }
 /**
+ * Picks the quota occurrence whose progress a checkin should report. A
+ * count_per_day occurrence's due time is its window end, so after the window
+ * closes the earliest future occurrence is tomorrow's — reporting it at a
+ * night checkin shows today's completed quota as untouched. Prefer the
+ * current local day's occurrence (past or future); only when the day has no
+ * occurrence yet fall back to the earliest future one.
+ */
+function selectCurrentDayQuotaOccurrence(
+  occurrences: HabitOccurrence[],
+  now: Date,
+  timezone: string,
+): HabitOccurrence | undefined {
+  const day = localDayWindow(now, timezone);
+  const startMs = day.start.getTime();
+  const endMs = day.end.getTime();
+  const todays = occurrences
+    .filter(
+      (occurrence) =>
+        occurrence.dueAtMs >= startMs && occurrence.dueAtMs < endMs,
+    )
+    .sort((left, right) => left.dueAtMs - right.dueAtMs);
+  if (todays.length > 0) return todays[0];
+  return occurrences
+    .filter((occurrence) => occurrence.dueAtMs >= now.getTime())
+    .sort((left, right) => left.dueAtMs - right.dueAtMs)[0];
+}
+
+/**
  * Projects one definition's occurrences into the client-facing `HabitSummary`.
  * For `count_per_day` cadences the summary carries the server-derived quota
  * progress for the current active day so clients render remaining counts
@@ -675,6 +703,7 @@ export function buildHabitSummary(args: {
   occurrences: HabitOccurrence[];
   cadence: LifeOpsCadence;
   now: Date;
+  timezone: string;
 }): HabitSummary {
   const pauseUntil = resolvePausedUntil(args.metadata, args.now);
   const dueOccurrences = args.occurrences
@@ -692,9 +721,11 @@ export function buildHabitSummary(args: {
   const missedStreak = computeMissedOccurrenceStreak(streakInput);
   const quotaOccurrence =
     args.cadence.kind === "count_per_day"
-      ? args.occurrences
-          .filter((occurrence) => occurrence.dueAtMs >= args.now.getTime())
-          .sort((left, right) => left.dueAtMs - right.dueAtMs)[0]
+      ? selectCurrentDayQuotaOccurrence(
+          args.occurrences,
+          args.now,
+          args.timezone,
+        )
       : undefined;
   const completedCount = quotaOccurrence
     ? Math.min(
@@ -729,6 +760,7 @@ export function buildHabitSummary(args: {
 async function collectHabitSummaries(
   runtime: IAgentRuntime,
   now: Date,
+  timezone: string,
 ): Promise<
   CollectorResult<HabitSummary> & {
     pausedDefinitionIds: Set<string>;
@@ -821,6 +853,7 @@ async function collectHabitSummaries(
         cadence,
         occurrences: occurrencesByDefinitionId.get(definitionId) ?? [],
         now,
+        timezone,
       });
       if (summary.isPaused) {
         pausedDefinitionIds.add(definitionId);
@@ -1720,7 +1753,11 @@ export class CheckinService {
     const now = request.now ?? new Date();
     const timezone =
       request.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const habitCollector = await collectHabitSummaries(this.runtime, now);
+    const habitCollector = await collectHabitSummaries(
+      this.runtime,
+      now,
+      timezone,
+    );
     const [overdueTodos, todaysMeetings, completedWins, briefingSections] =
       await Promise.all([
         collectOverdueTodos(
