@@ -292,11 +292,14 @@ export class GoogleDomain {
         .filter((event) => event.grantId === grant.id)
         .map((event) => event.id),
     );
+    // Scope by grant: the grant id is not a calendar id, so passing it as
+    // one deleted nothing and left this account's events cached.
     await this.ctx.repository.deleteCalendarEventsForProvider(
       this.ctx.agentId(),
       "google",
-      grant.id,
+      undefined,
       grant.side,
+      grant.id,
     );
     await this.ctx.repository.deleteCalendarSyncState(
       this.ctx.agentId(),
