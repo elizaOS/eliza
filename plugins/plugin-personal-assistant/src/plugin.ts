@@ -31,7 +31,10 @@ import {
   MEETING_TRANSCRIPT_FINALIZED_EVENT,
   type MeetingTranscriptFinalizedPayload,
 } from "@elizaos/core/protocol";
-import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
+import {
+  isMobilePlatform,
+  type HttpPlugin as Plugin,
+} from "@elizaos/host/protocol";
 import {
   getDefaultTriageService,
   messagingTriageActions,
@@ -677,11 +680,13 @@ const rawPersonalAssistantPlugin: Plugin = {
   // always-loaded (CORE + MOBILE), but declaring the dependency guarantees the
   // runner host is registered before PA's init injects deps + seeds. Agreement
   // ingestion also resolves the canonical complete-document PDF service and
-  // must not boot with that required collaborator absent.
+  // must not boot with that required collaborator absent. Phones ship neither
+  // Google Workspace nor PDF: Google goes through the host's managed brokers.
   dependencies: [
-    GOOGLE_CONNECTOR_PLUGIN_PACKAGE,
     "@elizaos/plugin-scheduling",
-    "@elizaos/plugin-pdf",
+    ...(isMobilePlatform()
+      ? []
+      : [GOOGLE_CONNECTOR_PLUGIN_PACKAGE, "@elizaos/plugin-pdf"]),
   ],
   // LifeOps owns the reply pipeline: connectors ingest but do not auto-reply
   // unless the operator explicitly disables passive mode.
@@ -951,9 +956,10 @@ const rawPersonalAssistantPlugin: Plugin = {
       );
     }
     registerLifeOpsWebsiteBlockingPermissionProber(runtime);
-    await ensureLifeOpsGooglePluginRegistered(runtime);
+    const onPhone = isMobilePlatform();
+    if (!onPhone) await ensureLifeOpsGooglePluginRegistered(runtime);
     await ensureLifeOpsCalendarPluginRegistered(runtime);
-    await ensureLifeOpsPdfPluginRegistered(runtime);
+    if (!onPhone) await ensureLifeOpsPdfPluginRegistered(runtime);
     await ensureLifeOpsRemindersPluginRegistered(runtime);
     await ensureLifeOpsGoalsPluginRegistered(runtime);
     await ensureLifeOpsInboxPluginRegistered(runtime);
@@ -1119,9 +1125,11 @@ const rawPersonalAssistantPlugin: Plugin = {
     registerSendPolicy(runtime, createOwnerSendPolicy());
     // First-party adapters backed by LifeOps services. Gmail and X replace the
     // core default adapters so MESSAGE triage operations operate on real
-    // connected data.
+    // connected data. Phone Gmail is the inbox plugin's managed adapter.
     const triage = getDefaultTriageService();
-    if (!triage.getAdapter("gmail")) triage.register(new GoogleGmailAdapter());
+    if (!onPhone && !triage.getAdapter("gmail")) {
+      triage.register(new GoogleGmailAdapter());
+    }
     triage.register(new XDmAdapter());
     // Register the activity-profile maintenance worker. One scheduler
     // (#10721 H1): this tick only maintains the owner activity profile and

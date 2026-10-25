@@ -19,7 +19,7 @@ import {
   type BrowserBridgeTabSummary,
   type UpdateBrowserBridgeSettingsRequest,
   type UpsertBrowserBridgeCompanionRequest,
-} from "@elizaos/plugin-browser";
+} from "@elizaos/plugin-browser/contracts";
 import {
   mergeBrowserTaskLifecycle,
   summarizeBrowserTaskLifecycle,

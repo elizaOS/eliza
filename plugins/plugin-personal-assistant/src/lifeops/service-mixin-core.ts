@@ -25,15 +25,15 @@ import {
   logger,
   resolveOwnerEntityId,
 } from "@elizaos/core";
+import { createBrowserBridgeCompanionStatus } from "@elizaos/plugin-browser/bridge-records";
 import {
   BROWSER_BRIDGE_COMPANION_CONNECTION_STATES,
   BROWSER_BRIDGE_KINDS,
   type BrowserBridgeAction,
   type BrowserBridgeCompanionStatus,
   type BrowserBridgeSettings,
-  createBrowserBridgeCompanionStatus,
   type UpsertBrowserBridgeCompanionRequest,
-} from "@elizaos/plugin-browser";
+} from "@elizaos/plugin-browser/contracts";
 import { LifeOpsScheduleSyncClient } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-client";
 import {
   DEFAULT_BROWSER_PERMISSION_STATE,

@@ -23,7 +23,7 @@ import { LIFEOPS_DEFINITION_KINDS } from "@elizaos/contracts";
 import {
   BROWSER_BRIDGE_ACTION_KINDS,
   type BrowserBridgeAction,
-} from "@elizaos/plugin-browser";
+} from "@elizaos/plugin-browser/contracts";
 import { DAY_MINUTES } from "./service-constants.js";
 import {
   fail,

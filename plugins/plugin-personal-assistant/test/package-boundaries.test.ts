@@ -211,9 +211,11 @@ describe("LifeOps package boundaries", () => {
 
     expect(statusMixin).toContain('from "@elizaos/plugin-browser"');
     expect(screenTimeMixin).toContain('from "@elizaos/plugin-browser"');
-    expect(browserMixin).toContain('from "@elizaos/plugin-browser"');
+    expect(browserMixin).toContain('from "@elizaos/plugin-browser/contracts"');
     expect(coreMixin).toContain("createBrowserBridgeCompanionStatus");
-    expect(coreMixin).toContain('from "@elizaos/plugin-browser"');
+    expect(coreMixin).toContain(
+      'from "@elizaos/plugin-browser/bridge-records"',
+    );
     expect(
       existsSync(
         resolve(packageRoot, "src/components/BrowserBridgeStatusChip.tsx"),

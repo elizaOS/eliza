@@ -8,7 +8,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { logger, toWellFormedUnicode } from "@elizaos/core";
-import { FRAME_FILE } from "@elizaos/plugin-browser";
 import type sharp from "sharp";
 
 export type LifeOpsScreenFocus =
@@ -412,7 +411,11 @@ export class LifeOpsScreenContextSampler {
       };
     }
 
-    const framePath = this.options.framePath ?? FRAME_FILE;
+    // Browser capture is desktop-only; phones resolve the native browser entry,
+    // which has no capture frame, so sampling reports the disabled state.
+    const framePath =
+      this.options.framePath ??
+      (await import("@elizaos/plugin-browser")).FRAME_FILE;
     const maxFrameAgeMs =
       this.options.maxFrameAgeMs ?? DEFAULT_MAX_FRAME_AGE_MS;
 

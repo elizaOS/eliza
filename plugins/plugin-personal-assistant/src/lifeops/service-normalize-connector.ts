@@ -34,7 +34,7 @@ import {
   type BrowserBridgePermissionState,
   type BrowserBridgeSettings,
   type UpdateBrowserBridgeSettingsRequest,
-} from "@elizaos/plugin-browser";
+} from "@elizaos/plugin-browser/contracts";
 import { DEFAULT_BROWSER_PERMISSION_STATE } from "./browser-constants.js";
 import {
   resolveDefaultTimeZone,
