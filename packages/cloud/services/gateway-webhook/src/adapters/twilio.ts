@@ -355,6 +355,11 @@ export const twilioAdapter: PlatformAdapter = {
       messageId: event.MessageSid,
       chatId: event.From,
       senderId: normalizeSenderIdentity(event.From),
+      // Receiving line, distinct from the sender: Twilio's To is the number
+      // the message was sent to, so Network turns must carry it instead of
+      // falling back to null (the Blooio adapter gained the same field in
+      // #37577; Twilio was left behind).
+      receivingNumber: normalizeSenderIdentity(event.To),
       senderName: event.ProfileName,
       text:
         mediaUrls.length > 0 && !text
