@@ -6909,7 +6909,7 @@ export class CalendarService extends Service {
             ? false
             : undefined,
       attendees:
-        request.attendees === undefined
+        request.attendees === undefined || request.attendees === null
           ? undefined
           : normalizeCalendarAttendees(request.attendees),
     };
