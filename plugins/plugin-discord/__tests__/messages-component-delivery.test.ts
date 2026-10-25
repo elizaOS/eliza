@@ -296,6 +296,70 @@ describe("Discord outbound component delivery (#14527)", () => {
 	});
 });
 
+describe("Discord draft-stream finalize of a long reply", () => {
+	const code = Array.from(
+		{ length: 120 },
+		(_, i) => `const value${i} = compute(${i});`,
+	).join("\n");
+	const LONG_REPLY: Content = {
+		text: `Here is the script:\n\n\`\`\`ts\n${code}\n\`\`\`\nRun it with bun. Then check the output.`,
+		channelType: "DM",
+	};
+	const fences = (text: string | undefined) =>
+		(text ?? "").match(/```/g)?.length ?? 0;
+
+	function draftChannel(failOnSend?: number) {
+		const sends: CapturedSend[] = [];
+		const channel = {
+			id: "777000000000000000",
+			type: DiscordChannelType.DM,
+			isThread: () => false,
+			send: async (options: CapturedSend) => {
+				sends.push(options);
+				if (sends.length === failOnSend) {
+					throw new Error("Discord API 500");
+				}
+				return makeSentMessage(`99000000000000000${sends.length}`, options);
+			},
+		};
+		return { channel, sends };
+	}
+
+	async function deliver(channel: unknown, inboundId: string) {
+		const client = { user: { id: "888000000000000000" } };
+		const { runtime, errors } = makeRuntime(LONG_REPLY, {
+			DISCORD_DRAFT_STREAMING: "true",
+		});
+		const manager = new MessageManager(makeDiscordService(client), runtime);
+		await manager.handleMessage(
+			makeInbound(channel, "555000111222333444", inboundId),
+		);
+		return errors;
+	}
+
+	it("closes and reopens a code block cut between messages", async () => {
+		const { channel, sends } = draftChannel();
+		const errors = await deliver(channel, "666000000000000002");
+
+		expect(errors).toEqual([]);
+		expect(sends.length).toBeGreaterThan(1);
+		for (const sent of sends) {
+			expect(sent.content?.length ?? 0).toBeLessThanOrEqual(2000);
+			expect(fences(sent.content) % 2).toBe(0);
+		}
+	});
+
+	it("reports a refused later part instead of a delivered reply", async () => {
+		const { channel, sends } = draftChannel(2);
+		const errors = await deliver(channel, "666000000000000003");
+
+		expect(sends).toHaveLength(2);
+		expect(
+			errors.some((error) => error.includes("discord:draft-partial-delivery")),
+		).toBe(true);
+	});
+});
+
 describe("buildDmSendOptions payload shape", () => {
 	it("omits empty files/components keys entirely — Discord rejects empty arrays", () => {
 		const bare = buildDmSendOptions("hi", [], undefined);

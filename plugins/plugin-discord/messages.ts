@@ -2872,7 +2872,16 @@ export class MessageManager {
 								? buildDiscordComponents(rendered.components)
 								: undefined;
 							messages = await runResponseDispatch(() =>
-								draftStream.finalize(textContent, draftComponents),
+								draftStream.finalize(textContent, draftComponents, (error) => {
+									// error-policy:J1 the delivered parts keep their receipt; the
+									// refused part marks the reply partially delivered.
+									providerSendFailure = error;
+									this.runtime.reportError(
+										"discord:draft-partial-delivery",
+										error,
+										{ channelId: channel.id },
+									);
+								}),
 							);
 						} else {
 							await finalizePendingDraft();
