@@ -6,8 +6,10 @@
  * capability), these privileged operations are auth-gated (PrivateRoute).
  */
 import {
+  actorFromAccessContext,
   type IAgentRuntime,
   type IFileStorageService,
+  isAdminRank,
   ServiceType,
   type UUID,
 } from "@elizaos/core";
@@ -59,6 +61,19 @@ export const fileDeleteRoute: Route = {
     const storage = getFileStorage(ctx.runtime);
     if (!storage) {
       return { status: 503, body: { error: "file storage unavailable" } };
+    }
+    // The raw store is an owner/admin management surface, as the list
+    // route enforces: USER/GUEST viewers get the restricted state there,
+    // so they must not delete here either. No context means the
+    // single-owner boundary, which keeps current behavior.
+    if (ctx.accessContext) {
+      const actor = actorFromAccessContext(
+        ctx.accessContext,
+        ctx.runtime.agentId as UUID,
+      );
+      if (!isAdminRank(actor.role) && actor.role !== "AGENT") {
+        return { status: 403, body: { error: "file deletion is restricted" } };
+      }
     }
     const filename = ctx.params?.filename ?? "";
     const deleted = await storage.delete(filename);
