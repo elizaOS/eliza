@@ -520,7 +520,12 @@ export class TwitterDirectMessageClient {
         session,
         "before the direct-message reply was sent",
       );
-      if (this.isDryRun) {
+      // Generation can take long: re-read dry run (the owner may have turned
+      // it on meanwhile) instead of trusting the construction-time value.
+      if (
+        this.isDryRun ||
+        parseBoolean(getSetting(this.runtime, "TWITTER_DRY_RUN"), false)
+      ) {
         logger.info(
           { src: "plugin:x", senderId, text },
           "[DRY RUN] Would reply to X DM",

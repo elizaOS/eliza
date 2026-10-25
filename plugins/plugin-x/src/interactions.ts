@@ -18,6 +18,7 @@ import {
   type Memory,
   type MessagePayload,
   ModelType,
+  parseBooleanFromText,
 } from "@elizaos/core";
 import { parseJSONObjectFromText } from "@elizaos/core/protocol";
 import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
@@ -1276,7 +1277,12 @@ ${tweet.text}`;
       }
       egressAttempted = true;
       const tweetToReplyTo = tweetId || tweet.id;
-      if (this.isDryRun) {
+      // Generation can take long: re-read dry run (the owner may have turned
+      // it on meanwhile) instead of trusting the construction-time value.
+      if (
+        this.isDryRun ||
+        parseBooleanFromText(getSetting(this.runtime, "TWITTER_DRY_RUN"))
+      ) {
         logger.info(
           `[DRY RUN] Would have replied to ${tweet.username} with: ${response.text}`,
         );
