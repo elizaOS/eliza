@@ -88,7 +88,7 @@ type WorkflowServiceLike = {
     userId: string,
   ) => Promise<unknown>;
   listExecutions: (
-    params: { workflowId?: string; limit?: number },
+    params: { workflowId?: string; limit?: number; cursor?: string },
     userId: string,
   ) => Promise<{ data: unknown[]; nextCursor?: string }>;
   getExecutionDetail: (executionId: string, userId: string) => Promise<unknown>;
@@ -1003,10 +1003,15 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
               {
                 workflowId: params.workflowId,
                 limit: boundedLimit(query.limit, 10),
+                cursor:
+                  typeof query.cursor === "string" ? query.cursor : undefined,
               },
               userId,
             );
-            return { executions: response.data };
+            return {
+              executions: response.data,
+              nextCursor: response.nextCursor,
+            };
           },
         );
       },
