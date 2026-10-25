@@ -257,7 +257,10 @@ export function selectMediaToEvict(
   const evictable = files.filter(
     (file) => !PRIVATE_MEDIA_FILE_NAME.test(file.name),
   );
-  let total = evictable.reduce((sum, file) => sum + file.size, 0);
+  // The cap bounds the whole directory, and private files share it, so the
+  // trigger and the target use the directory total. Only evictable files
+  // are ever deleted.
+  let total = files.reduce((sum, file) => sum + file.size, 0);
   if (total <= cap) return [];
   const target = Math.floor(cap * 0.9);
   const oldestFirst = evictable.sort((a, b) => a.mtimeMs - b.mtimeMs);
