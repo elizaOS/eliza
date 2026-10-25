@@ -739,7 +739,12 @@ export class AccountPool {
       opts?.providerId,
     );
     if (!account) return;
+    // An unknown cooldown still needs a horizon: the selection gate
+    // re-admits a rate-limited account only once its until passes, so
+    // without one this state would never clear on its own. Match the
+    // fallback markRateLimited uses when no usable timestamp is given.
     const healthDetail: LinkedAccountHealthDetail = {
+      until: Date.now() + DEFAULT_RATE_LIMIT_BACKOFF_MS,
       lastChecked: Date.now(),
       ...(detail ? { lastError: detail } : {}),
     };
