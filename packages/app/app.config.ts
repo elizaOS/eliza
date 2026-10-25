@@ -82,6 +82,7 @@ export function resolveAppConfig(env: AppIdentityEnv = process.env) {
       shareImagePath: "/brand/ogembeds/eliza_ogembed.png",
     },
     branding: {
+      supportEmail: "support@eliza.cloud",
       appName: identity.appName,
       cloudName: "Eliza Cloud",
       logoUrl: "/brand/logos/eliza_logotext.svg",

@@ -21,6 +21,9 @@ component development. Changes reaching the app require its visual audit.
 Pass the host's `branding` to `CloudRouterShell` as well as its app provider.
 Public sign-in uses `appName`, optional `cloudName` (defaults to the app name
 followed by Cloud), and optional `logoUrl` (omitted logos show the app name).
+Account deletion uses the same app and Cloud names and the optional host-owned
+`supportEmail`. Set it in the app branding; shared defaults provide no mailbox.
+When absent, the page explains that support contact details are unavailable.
 These presentation values do not change authentication tenants or API endpoints.
 
 ## Development
