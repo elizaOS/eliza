@@ -33,6 +33,7 @@ import {
 import { contentSafetyService } from "./content-safety";
 import type { CreditReconciliationResult, CreditReservation } from "./credits";
 import { generationsService } from "./generations";
+import { isKnownUnacceptedProviderError } from "./inference-provider-outcome";
 
 const MAX_IMAGES = 4;
 
@@ -269,13 +270,17 @@ async function generateProviderImage(
       billingSource: provider.billingSource,
       error: error instanceof Error ? error.message : String(error),
     });
-    throw new ApiError(
+    const ErrorType = isKnownUnacceptedProviderError(error) ? ImageProviderRejectedError : ApiError;
+    throw new ErrorType(
       503,
       "internal_error",
       "Image generation is temporarily unavailable. Please try again shortly.",
     );
   }
 }
+
+/** The provider clearly refused the request, so it produced no image. */
+class ImageProviderRejectedError extends ApiError {}
 
 export function createImageGenerationExecutor(deps: ImageGenerationDependencies) {
   return async function execute(
@@ -497,7 +502,11 @@ export function createImageGenerationExecutor(deps: ImageGenerationDependencies)
                 error: error instanceof Error ? error.message : String(error),
               },
             );
-            await admission?.settleUnknown();
+            // A clear provider rejection before any image was stored means
+            // nothing was produced; a later failure stays conservative.
+            await (error instanceof ImageProviderRejectedError && storedImages.length === 0
+              ? admission?.settle(0)
+              : admission?.settleUnknown());
           } else {
             await admission?.settle(0);
           }
