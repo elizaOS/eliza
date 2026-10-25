@@ -247,23 +247,31 @@ function offsetMsFromFormatter(
 	return tzDate - atMs;
 }
 
-function cronMatches(
+function cronMatchesZoned(
 	schedule: CronSchedule,
 	candidateMs: number,
-	timezone: string | undefined,
-	formatter: Intl.DateTimeFormat | null,
+	formatter: Intl.DateTimeFormat,
+	candidateOffset: number,
+	gap: { atMs: number; offsetBefore: number; gapMs: number } | null,
 ): boolean {
-	if (!timezone || timezone === "UTC" || !formatter) {
-		return cronMatchesUTC(schedule, candidateMs);
+	const wallMs = candidateMs + candidateOffset;
+	if (!cronMatchesUTC(schedule, wallMs)) {
+		// DST spring-forward skips the wall times [atMs + offsetBefore,
+		// atMs + offsetBefore + gapMs). A skipped time the schedule names runs
+		// one gap later (02:30 -> 03:30 for a one-hour gap), as
+		// resolveScheduledAtIsoInTimeZone and Date.parse read a skipped local
+		// time, instead of not running that day.
+		return (
+			gap !== null &&
+			candidateMs - gap.atMs < gap.gapMs &&
+			cronMatchesUTC(schedule, candidateMs + gap.offsetBefore)
+		);
 	}
-	const wallMs = candidateMs + offsetMsFromFormatter(formatter, candidateMs);
-	if (!cronMatchesUTC(schedule, wallMs)) return false;
 	// DST fall-back: an ambiguous local time repeats. Fire only the FIRST
 	// instant, matching common cron implementations. The repeated span is not
 	// always one hour (Australia/Lord_Howe falls back by 30 minutes), so derive
 	// the actual offset delta and reject candidates whose wall-clock already
 	// existed at candidate-delta.
-	const candidateOffset = offsetMsFromFormatter(formatter, candidateMs);
 	for (const lookbackMs of CRON_FALLBACK_LOOKBACKS_MS) {
 		const priorOffset = offsetMsFromFormatter(
 			formatter,
@@ -300,15 +308,52 @@ export function computeNextCronRunAtMs(
 	// window.
 	const formatter =
 		timezone && timezone !== "UTC" ? buildTzFormatter(timezone) : null;
+	// Each minute's offset is read once and carried to the next minute. The
+	// walk starts two hours early so a scan that begins inside a
+	// spring-forward window still knows the gap.
+	let gap: { atMs: number; offsetBefore: number; gapMs: number } | null = null;
+	let previousOffset = 0;
+	if (formatter) {
+		const lookbackStart = start - 2 * CRON_HOUR_MS;
+		previousOffset = offsetMsFromFormatter(formatter, lookbackStart);
+		for (
+			let minute = lookbackStart + CRON_MINUTE_MS;
+			minute <= start;
+			minute += CRON_MINUTE_MS
+		) {
+			const offset = offsetMsFromFormatter(formatter, minute);
+			if (offset > previousOffset) {
+				gap = {
+					atMs: minute,
+					offsetBefore: previousOffset,
+					gapMs: offset - previousOffset,
+				};
+			}
+			previousOffset = offset;
+		}
+	}
 
 	for (
 		let candidate = start + CRON_MINUTE_MS;
 		candidate <= cutoff;
 		candidate += CRON_MINUTE_MS
 	) {
-		if (cronMatches(schedule, candidate, timezone, formatter)) {
+		if (!formatter) {
+			if (cronMatchesUTC(schedule, candidate)) return candidate;
+			continue;
+		}
+		const offset = offsetMsFromFormatter(formatter, candidate);
+		if (offset > previousOffset) {
+			gap = {
+				atMs: candidate,
+				offsetBefore: previousOffset,
+				gapMs: offset - previousOffset,
+			};
+		}
+		if (cronMatchesZoned(schedule, candidate, formatter, offset, gap)) {
 			return candidate;
 		}
+		previousOffset = offset;
 	}
 
 	return null;
