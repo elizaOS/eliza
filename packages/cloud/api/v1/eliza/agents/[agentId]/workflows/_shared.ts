@@ -241,6 +241,18 @@ async function forwardWorkflowToAgentServer(params: {
 
   const headers = new Headers(params.request.headers);
   headers.delete("host");
+  // The caller's Cloud credentials and identity headers are not for the agent
+  // server; it trusts only the headers set below.
+  for (const name of [...headers.keys()]) {
+    if (
+      name === "cookie" ||
+      name === "authorization" ||
+      name === "x-api-key" ||
+      name.startsWith("x-eliza-")
+    ) {
+      headers.delete(name);
+    }
+  }
   headers.set("x-server-token", sharedSecret);
   headers.set("x-eliza-user-id", params.user.id);
   headers.set("x-eliza-organization-id", params.user.organization_id);
@@ -290,6 +302,20 @@ export async function handleWorkflowProxyRequest(
         Response.json(
           { success: false, error: "Agent not found" },
           { status: 404 },
+        ),
+        WORKFLOW_CORS_METHODS,
+      );
+    }
+    // The suffix arrives percent-decoded, and the target URL resolves dot
+    // segments, so "..%2F" would leave this agent's /workflows routes and
+    // reach other agent-server routes with the server secret.
+    if (
+      suffix.split("/").some((segment) => segment === "." || segment === "..")
+    ) {
+      return applyCorsHeaders(
+        Response.json(
+          { success: false, error: "Invalid workflow path" },
+          { status: 400 },
         ),
         WORKFLOW_CORS_METHODS,
       );
