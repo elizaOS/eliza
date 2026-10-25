@@ -978,6 +978,10 @@ export function createProductionScheduledTaskDispatcher(opts: {
         return renderFailureDispatchResult(error);
       }
 
+      // Rendering can take long (a model call): do not deliver a task the
+      // owner dismissed, completed or deleted meanwhile.
+      await record.assertStillFired?.();
+
       if (deliveryBindingDecision?.ok && preparedMessage !== message) {
         // Persist the exact rendered payload BEFORE provider egress. Recovery
         // must replay byte-for-byte content because connector-level durable

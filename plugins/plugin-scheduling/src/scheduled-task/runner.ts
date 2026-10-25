@@ -534,6 +534,11 @@ export interface ScheduledTaskDispatchRecord {
     message: string,
     idempotencyKey: string,
   ) => Promise<void>;
+  /**
+   * Call right before egress: throws when a user verb (dismiss, complete,
+   * snooze, delete) settled the task while the dispatcher was preparing it.
+   */
+  assertStillFired?: () => Promise<void>;
   output?: ScheduledTask["output"];
   metadata?: ScheduledTask["metadata"];
 }
@@ -2899,6 +2904,15 @@ export function createScheduledTaskRunner(
                 context: { taskId: claimed.taskId },
               },
             );
+          }
+        },
+        assertStillFired: async () => {
+          const current = await deps.store.get(claimed.taskId);
+          if (current?.state.status !== "fired") {
+            throw new ElizaError("Scheduled task changed before delivery", {
+              code: "SCHEDULED_TASK_DISPATCH_PREPARATION_RACED",
+              context: { taskId: claimed.taskId },
+            });
           }
         },
       });
