@@ -1800,6 +1800,8 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     for (const id of memoryIds) {
       const m = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, id);
       if (!m) continue;
+      // Scope by-id reads to this agent's memories, like getMemories.
+      if (m.agentId !== this.agentId) continue;
       if (tableName && storedMemoryTableName(m) !== tableName) continue;
       memories.push(toMemory(m));
     }
@@ -2467,6 +2469,8 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           memory.id,
         );
         if (!existing) continue;
+        // Scope by-id writes to this agent's memories.
+        if (existing.agentId !== this.agentId) continue;
         const updated: StoredMemory = {
           ...existing,
           ...persistableMemory(memory),
@@ -2516,10 +2520,22 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   async deleteMemories(memoryIds: UUID[]): Promise<void> {
     return this.withMemoryMutationLock(async () => {
       if (memoryIds.length === 0) return;
+      // Scope the delete to this agent's memories. Fragments collected
+      // below derive from these roots, so foreign roots also keep their
+      // fragments.
+      const ownedIds: UUID[] = [];
+      for (const id of memoryIds) {
+        const row = await this.storage.get<StoredMemory>(
+          COLLECTIONS.MEMORIES,
+          id,
+        );
+        if (row && row.agentId === this.agentId) ownedIds.push(id);
+      }
+      if (ownedIds.length === 0) return;
       // Retention and a full wipe delete document rows through this method.
       // deleteDocumentWithSnapshot already removes chunks; this path did not,
       // so a pruned document stayed searchable through its fragments.
-      const roots = new Set(memoryIds);
+      const roots = new Set(ownedIds);
       const fragments = await this.storage.getWhere<StoredMemory>(
         COLLECTIONS.MEMORIES,
         (memory) => {
@@ -2544,7 +2560,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         },
       );
       const ids = [
-        ...memoryIds,
+        ...ownedIds,
         ...fragments.flatMap((memory) =>
           memory.id ? [memory.id as UUID] : [],
         ),
