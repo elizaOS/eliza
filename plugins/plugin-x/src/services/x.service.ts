@@ -24,6 +24,7 @@ import {
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
   parseBooleanFromText,
+  parseBooleanValue,
   Service,
   type TargetInfo,
   type UUID,
@@ -297,9 +298,12 @@ export class TwitterClientInstance implements ITwitterClient {
     }
 
     // Mentions and interactions
+    // Boolean setting, on by default: "false", "0", "no" and "off" turn it off.
     const repliesEnabled =
-      (getSetting(runtime, "TWITTER_ENABLE_REPLIES") ??
-        process.env.TWITTER_ENABLE_REPLIES) !== "false";
+      parseBooleanValue(
+        getSetting(runtime, "TWITTER_ENABLE_REPLIES") ??
+          process.env.TWITTER_ENABLE_REPLIES,
+      ) ?? true;
 
     if (repliesEnabled) {
       logger.info("Twitter replies/interactions are ENABLED");
