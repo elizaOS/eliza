@@ -109,22 +109,24 @@ function normalizeEmailList(value: unknown, field: string): string[] | string {
 function normalizeWalletList(value: unknown, field: string): string[] | string {
   if (value === undefined) return [];
   if (!Array.isArray(value)) return `${field} must be an array`;
-  const wallets = value
-    .map((entry) =>
-      typeof entry === "string" ? entry.trim().toLowerCase() : "",
-    )
+  const entries = value
+    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
     .filter(Boolean);
-  if (wallets.length > 5000) return `${field} can include at most 5000 wallets`;
+  if (entries.length > 5000) return `${field} can include at most 5000 wallets`;
+  // Validate before lower-casing: a base58 Solana address may contain an
+  // upper-case "L", and base58 has no lower-case "l". Lists are stored and
+  // matched lower-cased (validateWalletAbusePolicy lower-cases the signer).
   if (
-    !wallets.every(
+    !entries.every(
       (wallet) =>
-        /^0x[a-f0-9]{40}$/.test(wallet) ||
-        /^solana:[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(wallet),
+        /^0x[a-f0-9]{40}$/i.test(wallet) ||
+        (/^solana:/i.test(wallet) &&
+          /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(wallet.slice("solana:".length))),
     )
   ) {
     return `${field} contains an invalid wallet`;
   }
-  return [...new Set(wallets)];
+  return [...new Set(entries.map((wallet) => wallet.toLowerCase()))];
 }
 
 function normalizeCountryCodeList(
