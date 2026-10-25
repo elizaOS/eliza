@@ -42,6 +42,7 @@
   "dependencies": {
     "@capacitor/core": "8.4.0",
     "@elizaos/core": "workspace:*",
+    "@elizaos/host": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "drizzle-orm": "0.45.4",
     "lucide-react": "^1.0.0",

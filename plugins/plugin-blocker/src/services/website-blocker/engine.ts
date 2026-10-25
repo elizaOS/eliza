@@ -7,6 +7,7 @@ import path from "node:path";
 import { domainToASCII } from "node:url";
 import { promisify } from "node:util";
 import type { HandlerOptions } from "@elizaos/core";
+import { isMobilePlatform } from "@elizaos/host/protocol";
 import { getDomain } from "tldts";
 import type { PermissionState, PermissionStatus } from "./permissions.ts";
 
@@ -317,6 +318,8 @@ export function cancelSelfControlExpiryTimer(): void {
 export async function resolveSelfControlHostsFilePath(
   config: SelfControlPluginConfig = currentConfig,
 ): Promise<string | null> {
+  // A phone's hosts file is not the app's to edit; only a native backend blocks there.
+  if (isMobilePlatform()) return null;
   const override =
     config.hostsFilePath?.trim() ||
     process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH ||
@@ -352,7 +355,9 @@ export async function reconcileSelfControlBlockState(
       platform: process.platform,
       supportsElevationPrompt,
       elevationPromptMethod,
-      reason: "Could not find the system hosts file on this machine.",
+      reason: isMobilePlatform()
+        ? "Website blocking on this device needs the native blocker, which is not connected."
+        : "Could not find the system hosts file on this machine.",
     };
   }
 
